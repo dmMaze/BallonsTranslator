@@ -1,0 +1,7 @@
+urllib3==1.25.11 # https://github.com/psf/requests/issues/5740
+jaconv
+torch
+transformers
+fugashi
+unidic_lite
+# pycld2 # https://www.lfd.uci.edu/~gohlke/pythonlibs/#pycld2
