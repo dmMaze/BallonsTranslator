@@ -1,6 +1,8 @@
 # BallonTranslator
+[English](doc/README_EN.md)  
 深度学习辅助漫画翻译工具, 支持一键机翻和简单的图像/文本编辑  
-[国内网盘分流](https://cowtransfer.com/s/b336741eec834b)  
+## 下载
+[国内网盘](https://cowtransfer.com/s/b336741eec834b)  
 
 <img src="doc/src/ui0.jpg" div align=center>
 
