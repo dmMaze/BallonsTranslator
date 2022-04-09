@@ -3,7 +3,7 @@
 
 深度学习辅助漫画翻译工具, 支持一键机翻和简单的图像/文本编辑  
 ## 下载
-[国内网盘](https://cowtransfer.com/s/b336741eec834b)  
+[国内网盘](https://cowtransfer.com/s/b336741eec834b)  | [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
 
 <img src="doc/src/ui0.jpg" div align=center>
 
