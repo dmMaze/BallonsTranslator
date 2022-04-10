@@ -42,7 +42,7 @@ preview
 
 
 
-## 画板
+## Image editing
 <img src="doc/src/imgedit_inpaint.gif">
 <p align = "center">
 Image editing mode, inpainting tool
@@ -55,7 +55,7 @@ Text editing mode
 </p>
 
 ## Shortcuts
-current page, the program will save the rendered image, saving a large image could freeze the program for a little while.   
+* A/D to turn the page, if there are some unsaved changes made to current page, the program will save the rendered image, saving a large image could freeze the program for a little while.   
 * Ctrl+Z, Ctrl+Y to undo/redo most operations, note the undo stack will be cleared after you turn the page.
 * Click the "T" button on the bottom toolbar to enter/leave text-editing mode, press W to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
 * In the image editing mode, use the slider on the right bottom to control the original image transparency.
@@ -89,7 +89,7 @@ Support English and Japanese text detection, training code and more details can 
  * papago  
  To add a new translator, please reference [加别的翻译器](doc/加别的翻译器.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
 
-## 杂
+## Misc
 * The release package contains PyTorch and cuda. For future updates, if no changes are made to the dependencies, only the new exe and models will be released, copy them to the program folder to get the grogram updated. 
 * If your computer has an Nvidia GPU, the program will enable cuda acceleration for all models by default, which requires around 6G GPU memory, you can turn down the inpaint_size in the config panel to avoid OOM. 
 
