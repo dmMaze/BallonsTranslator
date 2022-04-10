@@ -298,3 +298,54 @@ class CaiyunTranslator(TranslatorBase):
         translations = json.loads(response.text)["target"]
 
         return translations
+
+
+# # "dummy translator" is the name showed in the app
+# @register_translator('dummy translator')
+# class DummyTranslator(TranslatorBase):
+
+#     concate_text = True
+
+#     # parameters showed in the config panel. 
+#     # keys are parameter names, if value type is str, it will be a text editor(required key)
+#     # if value type is dict, you need to spicify the 'type' of the parameter, 
+#     # following 'device' is a selector, options a cpu and cuda, default is cpu
+#     setup_params: Dict = {
+#         'api_key': '', 
+#         'device': {
+#             'type': 'selector',
+#             'options': ['cpu', 'cuda'],
+#             'select': 'cpu'
+#         }
+#     }
+
+#     def _setup_translator(self):
+#         '''
+#         do the setup here.  
+#         keys of lang_map are those languages options showed in the app, 
+#         assign corresponding language keys accepted by API to supported languages.  
+#         This translator only supports Chinese, Japanese, and English.
+#         '''
+#         self.lang_map['简体中文'] = 'zh'
+#         self.lang_map['日本語'] = 'ja'
+#         self.lang_map['English'] = 'en'  
+        
+#     def _translate(self, text: Union[str, List]) -> Union[str, List]:
+#         '''
+#         do the translation here.  
+#         This translator do nothing but return the original text.
+#         '''
+#         source = self.lang_map[self.lang_source]
+#         target = self.lang_map[self.lang_target]
+#         return text 
+
+#     def updateParam(self, param_key: str, param_content):
+#         '''
+#         required only if some state need to be updated immediately after user change the translator params,
+#         for example, if this translator is a pytorch model, you can convert it to cpu/gpu here.
+#         '''
+#         super().updateParam(param_key, param_content)
+#         if param_key == 'device':
+#             # self.model.to(self.setup_params['device']['select'])
+#             pass
+

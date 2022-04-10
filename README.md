@@ -1,5 +1,5 @@
 # BallonTranslator
-<sup> 简体中文 | [English](doc/README_EN.md)</sup>  
+<sup> 简体中文 | [English](README_EN.md)</sup>  
 
 深度学习辅助漫画翻译工具, 支持一键机翻和简单的图像/文本编辑  
 ## 下载

@@ -152,8 +152,9 @@ class TranslateThread(ModuleThread):
         if self.translator is not None:
             if self.translator.name == translator:
                 return
-        setup_params = self.dl_config.translator_setup_params[translator]
+        
         try:
+            setup_params = self.dl_config.translator_setup_params[translator]
             translator_module: TranslatorBase = TRANSLATORS.module_dict[translator]
             if setup_params is not None:
                 self.translator = translator_module(source, target, **setup_params)

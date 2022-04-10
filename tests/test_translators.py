@@ -19,7 +19,7 @@ engchscht_test_list = [
         'source': '简体中文',
         'target': 'English',
         'text_list': [
-            '中文测试',
+            '中文测试',     # can be text or text list
             ['', '', '测试', '', '', '简中', ''],
         ]
     },
