@@ -424,6 +424,7 @@ class ProgramConfig:
         self.original_transparency = 0
         self.global_fontformat = FontFormat()
         self.drawpanel = DrawPanelConfig()
+        self.open_recent_on_startup = False
         if config_dict is not None:
             self.load_from_dict(config_dict)
 
@@ -439,6 +440,7 @@ class ProgramConfig:
             self.original_transparency = config_dict['original_transparency']
             self.global_fontformat = FontFormat(**config_dict['global_fontformat'])
             self.drawpanel = DrawPanelConfig(**config_dict['drawpanel'])
+            self.open_recent_on_startup = config_dict['open_recent_on_startup']
         except Exception as e:
             raise InvalidProgramConfigException(e)
 
@@ -452,7 +454,8 @@ class ProgramConfig:
             'global_fontformat': self.global_fontformat.to_dict(),
             'mask_transparency': self.mask_transparency,
             'original_transparency': self.original_transparency,
-            'drawpanel': vars(self.drawpanel)
+            'drawpanel': vars(self.drawpanel),
+            'open_recent_on_startup': self.open_recent_on_startup
         }
 
 

@@ -29,21 +29,24 @@ class ConfigTextLabel(QLabel):
 
 class ConfigSubBlock(Widget):
     pressed = pyqtSignal(int, int)
-    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None) -> None:
+    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout=True) -> None:
         super().__init__()
         self.idx0: int = None
         self.idx1: int = None
-        self.vlayout = QVBoxLayout(self)
+        if vertical_layout:
+            layout = QVBoxLayout(self)
+        else:
+            layout = QHBoxLayout(self)
         self.name = name
         if name is not None:
             textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.DemiBold)
-            self.vlayout.addWidget(textlabel)
+            layout.addWidget(textlabel)
         if discription is not None:
-            self.vlayout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT-2))
+            layout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT-2))
         if isinstance(widget, QWidget):
-            self.vlayout.addWidget(widget)
+            layout.addWidget(widget)
         else:
-            self.vlayout.addLayout(widget)
+            layout.addLayout(widget)
         self.setContentsMargins(24, 6, 24, 6)
 
     def setIdx(self, idx0: int, idx1: int) -> None:
@@ -62,9 +65,9 @@ class ConfigBlock(Widget):
         self.header = ConfigTextLabel(header, CONFIG_FONTSIZE_HEADER)
         self.vlayout = QVBoxLayout(self)
         self.vlayout.addWidget(self.header)
-        # self.addCombobox(['xxxx', 'asdfasd'], 'detect model', 'select model for detection')
         self.setContentsMargins(24, 24, 24, 24)
         self.label_list = []
+        self.subblock_list = []
         self.index: int = 0
 
     def setIndex(self, index: int):
@@ -79,6 +82,7 @@ class ConfigBlock(Widget):
         self.vlayout.addWidget(sublock)
         sublock.setIdx(self.index, len(self.label_list)-1)
         sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
+        self.subblock_list.append(sublock)
 
     def addCombobox(self, sel: List[str], name: str, discription: str = None):
         combox = ConfigComboBox()
@@ -91,11 +95,22 @@ class ConfigBlock(Widget):
         self.addSublock(sublock)
         return sublock
 
-    def addCheckBox(self, name: str, discription: str = None):
+    def addCheckBox(self, name: str, discription: str = None) -> QCheckBox:
         checkbox = QCheckBox()
-        checkbox.setText(discription)
-        sublock = ConfigSubBlock(checkbox, name)
+        if discription is not None:
+            checkbox.setText(discription)
+            vertical_layout = True
+        else:
+            vertical_layout = False
+        sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout)
+        if vertical_layout is False:
+            sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         self.addSublock(sublock)
+        return checkbox
+
+    def getSubBlockbyIdx(self, idx: int) -> ConfigSubBlock:
+        print(idx)
+        return self.subblock_list[idx]
 
 
 class ConfigContent(QScrollArea):
@@ -126,7 +141,7 @@ class ConfigContent(QScrollArea):
         else:
             self.active_label = block.header
         self.active_label.setActiveBackground()
-        self.ensureWidgetVisible(self.active_label)
+        # self.ensureWidgetVisible(self.active_label)
 
     def deactiveLabel(self):
         if self.active_label is not None:
@@ -216,6 +231,15 @@ class ConfigTable(QTreeView):
             self.tableitem_pressed.emit(idx0, idx1)
 
 
+class GeneralPanel(QWidget):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+
+        layout = QVBoxLayout(self)
+        
+
+
 class ConfigPanel(Widget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -223,21 +247,23 @@ class ConfigPanel(Widget):
         self.configTable = ConfigTable()
         self.configTable.tableitem_pressed.connect(self.onTableItemPressed)
         self.configContent = ConfigContent()
+        dlConfigPanel, dltableitem = self.addConfigBlock(self.tr('DL Module'))
+        generalConfigPanel, generalTableItem = self.addConfigBlock(self.tr('General'))
         
-        dlConfigPanel, dltableitem = self.addConfigBlock('DL Module')
         label_text_det = self.tr('Text Detection')
         label_text_ocr = self.tr('OCR')
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
-        dl_text_det = TableItem(label_text_det, CONFIG_FONTSIZE_TABLE)
-        dl_text_ocr = TableItem(label_text_ocr, CONFIG_FONTSIZE_TABLE)
-        dl_inpaint = TableItem(label_inpaint, CONFIG_FONTSIZE_TABLE)
-        dl_translator = TableItem(label_translator, CONFIG_FONTSIZE_TABLE)
+        label_startup = self.tr('Startup')
+    
         dltableitem.appendRows([
-            dl_text_det,
-            dl_text_ocr,
-            dl_inpaint,
-            dl_translator
+            TableItem(label_text_det, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_text_ocr, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_inpaint, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_translator, CONFIG_FONTSIZE_TABLE)
+        ])
+        generalTableItem.appendRows([
+            TableItem(label_startup, CONFIG_FONTSIZE_TABLE)
         ])
 
         dlConfigPanel.addTextLabel(label_text_det)
@@ -255,6 +281,10 @@ class ConfigPanel(Widget):
         dlConfigPanel.addTextLabel(label_translator)
         self.trans_config_panel = TranslatorConfigPanel(self.tr('Translator'))
         self.trans_sub_block = dlConfigPanel.addBlock(self.trans_config_panel)
+
+        generalConfigPanel.addTextLabel(self.tr('Startup'))
+        self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
+        self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.configTable)
@@ -281,17 +311,23 @@ class ConfigPanel(Widget):
 
     def onTableItemPressed(self, idx0, idx1):
         self.configContent.setActiveLabel(idx0, idx1)
-        
+        cb: ConfigBlock = self.configContent.config_block_list[idx0]
+        self.configContent.ensureWidgetVisible(cb.getSubBlockbyIdx(idx1))
+
+    def on_open_onstartup_changed(self):
+        self.config.open_recent_on_startup = self.open_on_startup_checker.isChecked()
+
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
         self.configTable.setCurrentItem(idx0, idx1)
         self.configTable.tableitem_pressed.emit(idx0, idx1)
 
     def showEvent(self, e) -> None:
-        self.inpaint_sub_block.vlayout.addWidget(self.inpaint_config_panel)
+        self.inpaint_sub_block.layout().addWidget(self.inpaint_config_panel)
         return super().showEvent(e)
 
     def hideEvent(self, e) -> None:
-        self.inpaint_sub_block.vlayout.removeWidget(self.inpaint_config_panel)
+        self.inpaint_sub_block.layout().removeWidget(self.inpaint_config_panel)
         return super().hideEvent(e)
         
+    

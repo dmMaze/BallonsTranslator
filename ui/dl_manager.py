@@ -471,7 +471,6 @@ class DLManager(QObject):
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.setOCR)
 
-
         self.setTextDetector()
         self.setOCR()
         if self.dl_config.enable_translate:
@@ -619,7 +618,6 @@ class DLManager(QObject):
         self.ocr_thread.setOCR(ocr)
 
     def on_finish_setdetector(self):
-        # return
         if self.textdetector is not None:
             self.dl_config.textdetector = self.textdetector.name
             self.logger.info('Text detector set to {}'.format(self.textdetector.name))

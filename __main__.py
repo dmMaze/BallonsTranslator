@@ -1,12 +1,19 @@
 import sys
+import argparse
 import os.path as osp
+import os
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QTranslator, QLocale
 from ui.mainwindow import MainWindow
-from ui.constants import PROGRAM_PATH, LIBS_PATH
+from ui.constants import PROGRAM_PATH
 
-if __name__ == '__main__':
-    import os
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
+    args = parser.parse_args()
+
+
     os.chdir(PROGRAM_PATH)
     app = QApplication(sys.argv)
     translator = QTranslator()
@@ -15,8 +22,12 @@ if __name__ == '__main__':
         osp.dirname(osp.abspath(__file__)) + "/translate",
     )
     app.installTranslator(translator)
-    ballontrans = MainWindow(app)
+    ballontrans = MainWindow(app, open_dir=args.proj_dir)
 
     # ballontrans.openDir(r'data/testpacks/manga2')
     ballontrans.show()
     sys.exit(app.exec())
+
+if __name__ == '__main__':
+    main()
+    # import os

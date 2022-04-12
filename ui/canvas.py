@@ -12,13 +12,9 @@ from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
 from .image_edit import StrokeItem, PenStrokeItem, PenStrokeCommand, ImageEditMode
 
-CANVAS_MODE_TEXTEDIT = 1
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
 CANVAS_SCALE_SPEED = 0.1
-
-PROJ_NAME = 'proj.json'
-TST_HTML = '<html><p>xxxxxx</p><p style="font-size:15pt">AAAAA</p><p>、测试、</p><br /><p style="font-size:20pt">测测测测测试</p></html>'
 
 class CustomGV(QGraphicsView):
     do_scale = True

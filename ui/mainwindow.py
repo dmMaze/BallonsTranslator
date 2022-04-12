@@ -481,7 +481,7 @@ class MainWindow(FrameLessMainWindow):
     proj_directory = None
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
-    def __init__(self, app: QApplication, *args, **kwargs) -> None:
+    def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         global DPI, LDPI
         DPI = QGuiApplication.primaryScreen().physicalDotsPerInch()
@@ -492,6 +492,14 @@ class MainWindow(FrameLessMainWindow):
         self.setupConfig()
         self.setupShortcuts()
         self.showMaximized()
+
+        if open_dir != '' and osp.exists(open_dir):
+            self.openDir(open_dir)
+        elif self.config.open_recent_on_startup:
+            if len(self.leftBar.recent_proj_list) > 0:
+                proj_dir = self.leftBar.recent_proj_list[0]
+                if osp.exists(proj_dir):
+                    self.openDir(proj_dir)
 
     def setupUi(self):
         screen_size = QApplication.desktop().screenGeometry().size()
@@ -619,6 +627,9 @@ class MainWindow(FrameLessMainWindow):
 
         self.drawingPanel.set_config(self.config.drawpanel)
         self.drawingPanel.initDLModule(dl_manager)
+
+        if self.config.open_recent_on_startup:
+            self.configPanel.open_on_startup_checker.setChecked(True)
 
     def setupLogger(self):
         from utils.logger import logger
