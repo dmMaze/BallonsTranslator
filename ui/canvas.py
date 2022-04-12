@@ -63,9 +63,6 @@ class CustomGV(QGraphicsView):
         self.setFocus()
         return super().enterEvent(event)
 
-    def resizeTool(self) -> bool:
-        return self.alt_pressed and self.leftbtn_pressed
-
 
 class Canvas(QGraphicsScene):
 
@@ -193,6 +190,8 @@ class Canvas(QGraphicsScene):
         scrollBar.setValue(int(factor * scrollBar.value() + ((factor - 1) * scrollBar.pageStep() / 2)))
 
     def scaleImage(self, factor: float):
+        if not self.gv.isVisible() or not self.imgtrans_proj.img_valid:
+            return
         s_f = self.scale_factor * factor
         s_f = np.clip(s_f, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX)
 
@@ -388,7 +387,6 @@ class Canvas(QGraphicsScene):
             self.removeItem(self.stroke_path_item)
             self.stroke_path_item = None
 
-
     def on_undostack_changed(self):
         if self.undoStack.count() != 0:
             self.setProjSaveState(True)
@@ -399,10 +397,4 @@ class Canvas(QGraphicsScene):
         else:
             self.projstate_unsaved = un_saved
             self.proj_savestate_changed.emit(un_saved)
-
-    
-
-    
-        
-
     

@@ -4,7 +4,7 @@ import json
 from collections import OrderedDict
 
 from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QListWidget, QShortcut, QListWidgetItem
-from PyQt5.QtCore import Qt, QCoreApplication, pyqtSignal, QPoint, QSize, QLocale
+from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize
 from PyQt5.QtGui import QGuiApplication, QIcon, QMouseEvent, QCloseEvent, QKeySequence, QImage, QPainter
 
 from typing import List, Union, Tuple
@@ -107,7 +107,7 @@ class StateChecker(QCheckBox):
 class PageListView(QListWidget):    
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setFixedWidth(512)
+        self.setMaximumWidth(512)
         self.setIconSize(QSize(70, 70))
 
 class OpenBtn(QToolButton):
@@ -456,11 +456,6 @@ class BottomBar(Widget):
         self.transcheck_statechanged.emit(self.transChecker.isChecked())
     
 
-class FrameLessMainWindow(QMainWindow):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-
 class StackWidget(QStackedWidget):
 
     def __init__(self, *args, **kwargs) -> None:
@@ -477,15 +472,25 @@ class StackWidget(QStackedWidget):
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
         self.adjustSize()
 
-class MainWindow(FrameLessMainWindow):
+
+class FrameLessWindow(QMainWindow):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+
+
+class MainWindow(FrameLessWindow):
+
     proj_directory = None
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
+    
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         global DPI, LDPI
         DPI = QGuiApplication.primaryScreen().physicalDotsPerInch()
         constants.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
+
         self.app = app
         self.setupLogger()
         self.setupUi()
@@ -528,7 +533,7 @@ class MainWindow(FrameLessMainWindow):
 
         mainHLayout = QHBoxLayout()
         mainHLayout.addWidget(self.leftBar)
-        mainHLayout.addWidget(self.pageList)
+        # mainHLayout.addWidget(self.pageList)
         mainHLayout.addWidget(self.centralStackWidget)
         mainHLayout.setContentsMargins(0, 0, 0, 0)
         mainHLayout.setSpacing(0)
@@ -553,10 +558,11 @@ class MainWindow(FrameLessMainWindow):
         self.rightComicTransStackPanel.addWidget(self.textPanel)
 
         self.comicTransSplitter = QSplitter(Qt.Horizontal)
+        self.comicTransSplitter.addWidget(self.pageList)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
-        self.comicTransSplitter.setStretchFactor(0, 10)
-        self.comicTransSplitter.setStretchFactor(1, 1)
+        self.comicTransSplitter.setStretchFactor(1, 10)
+        self.comicTransSplitter.setStretchFactor(2, 1)
 
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
@@ -707,7 +713,6 @@ class MainWindow(FrameLessMainWindow):
             self.st_manager.updateTextList()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
 
-
     def setupShortcuts(self):
         shortcutNext = QShortcut(QKeySequence("D"), self)
         shortcutNext.activated.connect(self.shortcutNext)
@@ -715,6 +720,10 @@ class MainWindow(FrameLessMainWindow):
         shortcutBefore.activated.connect(self.shortcutBefore)
         shortcutTextblock = QShortcut(QKeySequence("W"), self)
         shortcutTextblock.activated.connect(self.shortcutTextblock)
+        shortcutZoomIn = QShortcut(QKeySequence.StandardKey.ZoomIn, self)
+        shortcutZoomIn.activated.connect(self.canvas.gv.scale_up_signal)
+        shortcutZoomOut = QShortcut(QKeySequence.StandardKey.ZoomOut, self)
+        shortcutZoomOut.activated.connect(self.canvas.gv.scale_down_signal)
         
     def shortcutNext(self):
         if self.centralStackWidget.currentIndex() == 0:
