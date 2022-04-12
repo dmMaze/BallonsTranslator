@@ -582,7 +582,6 @@ class DLManager(QObject):
             self.progress_msgbox.hide()
             self.imgtrans_proj.save()
             self.imgtrans_pipeline_finished.emit()
-            
 
     def setTranslator(self, translator: str = None):
         if translator is None:

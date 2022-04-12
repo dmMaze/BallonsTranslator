@@ -17,7 +17,7 @@ from .dl_manager import DLManager
 from .imgtranspanel import TextPanel
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
-from .constants import STYLESHEET_PATH, CONFIG_PATH, DPI, LDPI, LANG_SUPPORT_VERTICAL
+from .constants import STYLESHEET_PATH, CONFIG_PATH, DPI, LDPI, LANG_SUPPORT_VERTICAL, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT
 from . import constants
 
 class StatusButton(QPushButton):
@@ -126,8 +126,10 @@ class LeftBar(Widget):
     open_dir = pyqtSignal(str)
     save_proj = pyqtSignal()
     run_imgtrans = pyqtSignal()
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, mainwindow, *args, **kwargs) -> None:
+        super().__init__(mainwindow, *args, **kwargs)
+        self.mainwindow: QMainWindow = mainwindow
+        self.drag_resize_pos: QPoint = None
 
         bar_width = 90
         btn_width = 56
@@ -199,6 +201,7 @@ class LeftBar(Widget):
         vlayout.setAlignment(Qt.AlignCenter)
         vlayout.setSpacing(btn_width/2)
         self.setGeometry(0, 0, 300, 500)
+        self.setMouseTracking(True)
 
     def updateRecentProjList(self, proj_list: List[str]):
         if len(proj_list) == 0:
@@ -285,18 +288,52 @@ class LeftBar(Widget):
             self.imgTransChecker.setChecked(False)
             self.configChecked.emit()
 
+    def mouseMoveEvent(self, e: QMouseEvent) -> None:
+        if not self.mainwindow.isMaximized():
+            ex = e.globalPos().x()
+            geow = self.mainwindow.geometry()
+            if ex - geow.left() < WINDOW_BORDER_WIDTH:
+                self.setCursor(Qt.CursorShape.SizeHorCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+
+            if self.drag_resize_pos is not None:
+                self.setCursor(Qt.CursorShape.SizeHorCursor)
+                delta_x = ex - self.drag_resize_pos.x()
+                self.drag_resize_pos = e.globalPos()
+                geow.setLeft(geow.left() + delta_x)
+                self.mainwindow.setGeometry(geow)
+        return super().mouseMoveEvent(e)
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        ex = e.globalPos().x()
+        geow = self.mainwindow.geometry()
+        if ex - geow.left() < WINDOW_BORDER_WIDTH:
+            self.drag_resize_pos = e.globalPos()
+        return super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+        self.drag_resize_pos = None
+        return super().mouseReleaseEvent(e)
+
+    def leaveEvent(self, e: QMouseEvent) -> None:
+        self.drag_resize_pos = None
+        return super().leaveEvent(e)
+
 
 class TitleBar(Widget):
 
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
         self.mainwindow : QMainWindow = parent
-        self.mPos = None
+        self.mPos: QPoint = None
+        self.drag_resize_pos: QPoint = None
         self.normalsize = False
         self.proj_name = ''
         self.page_name = ''
         self.save_state = ''
         self.setFixedHeight(40)
+        self.setMouseTracking(True)
 
         self.titleLabel = QLabel('BallonTranslator')
         self.titleLabel.setObjectName('TitleLabel')
@@ -338,12 +375,17 @@ class TitleBar(Widget):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
-            self.mPos = event.pos()
-            self.mPosGlobal = event.globalPos()
+            if not self.mainwindow.isMaximized() and \
+                event.pos().y() < WINDOW_BORDER_WIDTH:
+                self.drag_resize_pos = event.globalPos()
+            else:
+                self.mPos = event.pos()
+                self.mPosGlobal = event.globalPos()
         return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self.mPos = None
+        self.drag_resize_pos = None
         return super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -360,6 +402,28 @@ class TitleBar(Widget):
                     self.mainwindow.move(event.globalPos() - self.mPos)
             else:
                 self.mainwindow.move(event.globalPos()-self.mPos)
+        elif not self.mainwindow.isMaximized():
+            y = event.pos().y()
+            if y < WINDOW_BORDER_WIDTH:
+                self.setCursor(Qt.CursorShape.SizeVerCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            if self.drag_resize_pos is not None:
+                delta_y = event.globalPos().y() - self.drag_resize_pos.y()
+                self.drag_resize_pos = event.globalPos()
+                geo = self.mainwindow.geometry()
+                geo.setTop(geo.top() + delta_y)
+                self.mainwindow.setGeometry(geo)
+
+    def hideEvent(self, e) -> None:
+        self.mPos = None
+        self.drag_resize_pos = None
+        return super().hideEvent(e)
+
+    def leaveEvent(self, e) -> None:
+        self.mPos = None
+        self.drag_resize_pos = None
+        return super().leaveEvent(e)
 
     def setTitleContent(self, proj_name: str = None, page_name: str = None, save_state: str = None):
         max_proj_len = 50
@@ -386,9 +450,13 @@ class BottomBar(Widget):
     textblock_checkchanged = pyqtSignal()
     ocrcheck_statechanged = pyqtSignal(bool)
     transcheck_statechanged = pyqtSignal(bool)
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setFixedHeight(48)
+    def __init__(self, mainwindow: QMainWindow, *args, **kwargs) -> None:
+        super().__init__(mainwindow, *args, **kwargs)
+        self.setFixedHeight(BOTTOMBAR_HEIGHT)
+        self.setMouseTracking(True)
+        self.mainwindow = mainwindow
+        self.drag_resize_pos: QPoint = None
+
         self.ocrChecker = TextChecker('ocr')
         self.ocrChecker.setObjectName('OCRChecker')
         self.ocrChecker.setToolTip(self.tr('Enable/disable ocr'))
@@ -433,7 +501,7 @@ class BottomBar(Widget):
         self.hlayout.addWidget(self.paintChecker)
         self.hlayout.addWidget(self.texteditChecker)
         self.hlayout.addWidget(self.textblockChecker)
-        self.hlayout.setContentsMargins(90, 0, 15, 0)
+        self.hlayout.setContentsMargins(90, 0, 15, WINDOW_BORDER_WIDTH)
 
 
     def onPaintCheckerPressed(self):
@@ -454,6 +522,38 @@ class BottomBar(Widget):
         
     def transCheckerStateChanged(self):
         self.transcheck_statechanged.emit(self.transChecker.isChecked())
+
+    def mouseMoveEvent(self, e: QMouseEvent) -> None:
+        if not self.mainwindow.isMaximized():
+            ey = e.globalPos().y()
+            geow = self.mainwindow.geometry()
+            if geow.bottom() - ey < WINDOW_BORDER_WIDTH:
+                self.setCursor(Qt.CursorShape.SizeVerCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+
+            if self.drag_resize_pos is not None:
+                self.setCursor(Qt.CursorShape.SizeVerCursor)
+                delta_y = ey - self.drag_resize_pos.y()
+                self.drag_resize_pos = e.globalPos()
+                geow.setBottom(geow.bottom() + delta_y)
+                self.mainwindow.setGeometry(geow)
+        return super().mouseMoveEvent(e)
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        ey = e.globalPos().y()
+        geow = self.mainwindow.geometry()
+        if geow.bottom() - ey < WINDOW_BORDER_WIDTH:
+            self.drag_resize_pos = e.globalPos()
+        return super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+        self.drag_resize_pos = None
+        return super().mouseReleaseEvent(e)
+
+    def leaveEvent(self, e: QMouseEvent) -> None:
+        self.drag_resize_pos = None
+        return super().leaveEvent(e)
     
 
 class StackWidget(QStackedWidget):
@@ -510,7 +610,7 @@ class MainWindow(FrameLessWindow):
         screen_size = QApplication.desktop().screenGeometry().size()
         self.setMinimumWidth(screen_size.width()*0.5)
 
-        self.leftBar = LeftBar()
+        self.leftBar = LeftBar(self)
         self.leftBar.showPageListLabel.stateChanged.connect(self.pageLabelStateChanged)
         self.leftBar.imgTransChecked.connect(self.setupImgTransUI)
         self.leftBar.configChecked.connect(self.setupConfigUI)
@@ -575,6 +675,7 @@ class MainWindow(FrameLessWindow):
         mainVBoxLayout.addWidget(self.bottomBar)
         mainVBoxLayout.setContentsMargins(0, 0, 0, 0)
         mainVBoxLayout.setSpacing(0)
+        self.mainvlayout = mainVBoxLayout
         
     def setupConfig(self):
         with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
@@ -865,3 +966,4 @@ class MainWindow(FrameLessWindow):
         p = self.mapToGlobal(QPoint(size.width() - msg_size.width(),
                                     size.height() - msg_size.height()))
         self.dl_manager.progress_msgbox.move(p)
+
