@@ -7,7 +7,6 @@ from typing import List, Union, Tuple
 from .stylewidgets import Widget, ConfigComboBox
 from .misc import ProgramConfig, DLModuleConfig
 from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
-from dl import TranslatorBase, InpainterBase, TextDetectorBase
 from .dlconfig_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 
 class ConfigTextLabel(QLabel):

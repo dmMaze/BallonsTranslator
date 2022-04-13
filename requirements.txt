@@ -4,4 +4,4 @@ torch
 transformers
 fugashi
 unidic_lite
-# pycld2 # https://www.lfd.uci.edu/~gohlke/pythonlibs/#pycld2
+opencv-python>=4.5.4

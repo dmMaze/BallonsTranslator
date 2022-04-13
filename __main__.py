@@ -24,10 +24,8 @@ def main():
     app.installTranslator(translator)
     ballontrans = MainWindow(app, open_dir=args.proj_dir)
 
-    # ballontrans.openDir(r'data/testpacks/manga2')
     ballontrans.show()
     sys.exit(app.exec())
 
 if __name__ == '__main__':
     main()
-    # import os
