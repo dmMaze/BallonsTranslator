@@ -453,8 +453,6 @@ class MainWindow(FrameLessWindow):
                                     size.height() - msg_size.height()))
         self.dl_manager.progress_msgbox.move(p)
 
-    
-
     def on_closebtn_clicked(self):
         if self.imsave_thread.isRunning():
             self.imsave_thread.finished.connect(self.close)
