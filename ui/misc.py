@@ -218,15 +218,15 @@ class ProjImgTrans:
         self.set_current_img_byidx(0)
         self.save()
         
-    def save(self, save_mask=False, save_inpainted=False):
+    def save(self):
         if not osp.exists(self.directory):
             raise ProjectDirNotExistException
         with open(self.proj_path, "w", encoding="utf-8") as f:
             f.write(json.dumps(self.to_dict(), ensure_ascii=False, indent=4, separators=(',', ':'), cls=TextBlkEncoder))
-        if save_mask and self.mask_valid:
-            self.save_mask(self.current_img, self.mask_array)
-        if save_inpainted and self.inpainted_valid:
-            self.save_inpainted(self.current_img, self.inpainted_array)
+        # if save_mask and self.mask_valid:
+        #     self.save_mask(self.current_img, self.mask_array)
+        # if save_inpainted and self.inpainted_valid:
+        #     self.save_inpainted(self.current_img, self.inpainted_array)
 
     def to_dict(self) -> Dict:
         pages = self.pages.copy()
@@ -263,10 +263,14 @@ class ProjImgTrans:
             return None
         return self.get_inpainted_path(self.current_img)
 
-    def get_mask_path(self, imgname: str) -> str:
+    def get_mask_path(self, imgname: str = None) -> str:
+        if imgname is None:
+            imgname = self.current_img
         return osp.join(self.mask_dir(), osp.splitext(imgname)[0]+'.png')
 
-    def get_inpainted_path(self, imgname: str) -> str:
+    def get_inpainted_path(self, imgname: str = None) -> str:
+        if imgname is None:
+            imgname = self.current_img
         return osp.join(self.inpainted_dir(), osp.splitext(imgname)[0]+'.png')
 
     def get_result_path(self, imgname: str) -> str:

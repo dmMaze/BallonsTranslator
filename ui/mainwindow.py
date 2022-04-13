@@ -3,8 +3,8 @@ import os
 import json
 
 from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QListWidget, QShortcut, QListWidgetItem
-from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize
-from PyQt5.QtGui import QGuiApplication, QIcon, QMouseEvent, QCloseEvent, QKeySequence, QImage, QPainter
+from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize, QThread
+from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
 
 from typing import List, Union, Tuple
 
@@ -16,8 +16,11 @@ from .imgtranspanel import TextPanel
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
+from .io_thread import ImgSaveThread
 from .constants import STYLESHEET_PATH, CONFIG_PATH, DPI, LDPI, LANG_SUPPORT_VERTICAL
 from . import constants
+
+
 
 
 class PageListView(QListWidget):    
@@ -67,6 +70,8 @@ class MainWindow(FrameLessWindow):
         self.setupConfig()
         self.setupShortcuts()
         self.showMaximized()
+
+        self.imsave_thread = ImgSaveThread()
 
         if open_dir != '' and osp.exists(open_dir):
             self.openDir(open_dir)
@@ -363,11 +368,17 @@ class MainWindow(FrameLessWindow):
             self.saveCurrentPage()
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True):
-        self.logger.info('saving ' + self.imgtrans_proj.current_img)
         if update_scene_text:
             self.st_manager.updateTextBlkList()
         if save_proj:
-            self.imgtrans_proj.save(save_mask=True, save_inpainted=True)
+            self.imgtrans_proj.save()
+            mask_path = self.imgtrans_proj.get_mask_path()
+            mask_array = self.imgtrans_proj.mask_array
+            inpainted_path = self.imgtrans_proj.get_inpainted_path()
+            inpainted_array = self.imgtrans_proj.inpainted_array
+        else:
+            mask_path = inpainted_path = None
+            
         img = QImage(self.canvas.imgLayer.pixmap().size(), QImage.Format.Format_ARGB32)
 
         if self.config.imgtrans_textblock:
@@ -385,8 +396,13 @@ class MainWindow(FrameLessWindow):
         painter.end()
         if not osp.exists(self.imgtrans_proj.result_dir()):
             os.makedirs(self.imgtrans_proj.result_dir())
-        img.save(self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img))
 
+        imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
+        self.imsave_thread.saveImg(imsave_path, img)
+        if mask_path is not None:
+            self.imsave_thread.saveImg(mask_path, mask_array)
+        if inpainted_path is not None:
+            self.imsave_thread.saveImg(inpainted_path, inpainted_array)
         if hide_tsc:
             self.st_manager.txtblkShapeControl.show()
         self.canvas.setProjSaveState(False)
