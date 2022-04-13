@@ -357,7 +357,7 @@ class RightBar(Widget):
 
 
 class TitleBar(Widget):
-
+    closebtn_clicked = pyqtSignal()
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
         self.mainwindow : QMainWindow = parent
@@ -382,7 +382,7 @@ class TitleBar(Widget):
         self.maxBtn.clicked.connect(self.onMaxBtnClicked)
         self.closeBtn = QPushButton()
         self.closeBtn.setObjectName('closeBtn')
-        self.closeBtn.clicked.connect(self.onCloseBtnClicked)
+        self.closeBtn.clicked.connect(self.closebtn_clicked)
         self.maxBtn.setFixedSize(72, 40)
         hlayout = QHBoxLayout(self)
         hlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -405,9 +405,6 @@ class TitleBar(Widget):
 
     def onMinBtnClicked(self):
         self.mainwindow.showMinimized()
-
-    def onCloseBtnClicked(self):
-        self.mainwindow.close()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:

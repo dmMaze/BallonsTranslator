@@ -2,9 +2,9 @@ import os.path as osp
 import os
 import json
 
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QListWidget, QShortcut, QListWidgetItem
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize, QThread
-from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
+from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont
 
 from typing import List, Union, Tuple
 
@@ -17,10 +17,9 @@ from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
+from .stylewidgets import FrameLessMessageBox
 from .constants import STYLESHEET_PATH, CONFIG_PATH, DPI, LDPI, LANG_SUPPORT_VERTICAL
 from . import constants
-
-
 
 
 class PageListView(QListWidget):    
@@ -100,7 +99,7 @@ class MainWindow(FrameLessWindow):
         self.centralStackWidget = QStackedWidget(self)
         
         self.titleBar = TitleBar(self)
-        
+        self.titleBar.closebtn_clicked.connect(self.on_closebtn_clicked)
         self.bottomBar = BottomBar(self)
         self.bottomBar.textedit_checkchanged.connect(self.setTextEditMode)
         self.bottomBar.paintmode_checkchanged.connect(self.setPaintMode)
@@ -272,7 +271,6 @@ class MainWindow(FrameLessWindow):
         config_dict = self.config.to_dict()
         with open(CONFIG_PATH, 'w', encoding='utf8') as f:
             f.write(json.dumps(config_dict, ensure_ascii=False, indent=4, separators=(',', ':')))
-            # yaml.safe_dump(config_dict, f)
         return super().closeEvent(event)
 
     def onHideCanvas(self):
@@ -312,7 +310,6 @@ class MainWindow(FrameLessWindow):
                 row = index.row()
                 row = (row + 1) % page_count
                 self.pageList.setCurrentRow(row)
-
 
     def shortcutBefore(self):
         if self.centralStackWidget.currentIndex() == 0:
@@ -455,4 +452,16 @@ class MainWindow(FrameLessWindow):
         p = self.mapToGlobal(QPoint(size.width() - msg_size.width(),
                                     size.height() - msg_size.height()))
         self.dl_manager.progress_msgbox.move(p)
+
+    
+
+    def on_closebtn_clicked(self):
+        if self.imsave_thread.isRunning():
+            self.imsave_thread.finished.connect(self.close)
+            mb = FrameLessMessageBox()
+            mb.setText(self.tr('Saving image...'))
+            self.imsave_thread.finished.connect(mb.close)
+            mb.exec()
+            return
+        self.close()
 

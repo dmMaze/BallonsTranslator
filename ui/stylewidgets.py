@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QToolBar, QMenu, QSpacerItem, QPushButton, QHBoxLayout, QVBoxLayout, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
+from PyQt5.QtWidgets import QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QMenu, QSpacerItem, QPushButton, QHBoxLayout, QVBoxLayout, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
 from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, pyqtSignal, QSizeF, QObject, QEvent
 from PyQt5.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument
 from typing import List, Union, Tuple
@@ -81,6 +81,11 @@ class TaskProgressBar(Widget):
         self.textlabel.setText(msg)
         self.progressbar.setValue(progress)
 
+class FrameLessMessageBox(QMessageBox):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        
 class ProgressMessageBox(QDialog):
     showed = pyqtSignal()
     def __init__(self, *args, **kwargs) -> None:
