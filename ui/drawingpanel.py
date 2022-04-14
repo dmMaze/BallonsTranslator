@@ -3,9 +3,8 @@ from PyQt5.QtWidgets import QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, Q
 from PyQt5.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
-from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE
-from .misc import DrawPanelConfig, pixmap2ndarray, ndarray2pixmap
-from utils.io_utils import imread, imwrite
+from .misc import DrawPanelConfig
+from utils.imgproc_utils import enlarge_window
 from typing import Union, Tuple, List
 import numpy as np
 import cv2
@@ -17,25 +16,7 @@ from .configpanel import InpaintConfigPanel
 INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)
 MAX_PEN_SIZE = 1000
 MIN_PEN_SIZE = 1
-
 TOOLNAME_POINT_SIZE = 13
-
-def enlarge_window(rect, im_w, im_h, ratio=2.5) -> List:
-    assert ratio > 1.0
-    
-    x1, y1, x2, y2 = rect
-    w = x2 - x1
-    h = y2 - y1
-
-    # https://numpy.org/doc/stable/reference/generated/numpy.roots.html
-    coeff = [1, w+h, (1-ratio)*w*h]
-    roots = np.roots(coeff)
-    roots.sort()
-    delta = int(round(roots[-1] / 2 ))
-    rect = np.array([x1-delta, y1-delta, x2+delta, y2+delta], dtype=np.int64)
-    rect[[0, 2]] = np.clip(rect[[0, 2]], 0, im_w)
-    rect[[1, 3]] = np.clip(rect[[1, 3]], 0, im_h)
-    return rect.tolist()
 
 class DrawToolCheckBox(QCheckBox):
     checked = pyqtSignal()

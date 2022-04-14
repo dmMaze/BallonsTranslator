@@ -4,4 +4,5 @@ torch
 transformers
 fugashi
 unidic_lite
+tqdm
 opencv-python>=4.5.4

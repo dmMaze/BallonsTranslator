@@ -336,9 +336,6 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=
 
     if show_process:
         print(f"\nuse inpaint: {use_inpaint}, sd: {sd}, {type(inner_rect)}")
-        
-        def box(width, height):
-            return np.ones((height, width), dtype=np.uint8)
         draw_connected_labels(num_labels, labels, stats, centroids)
         show_img_by_dict({"thresh": thresh, "ori": img, "outer": outer_mask, "text": text_mask, "bgmask": bg_mask, "paintres": paint_res})
 

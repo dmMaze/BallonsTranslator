@@ -1,18 +1,6 @@
 import cv2, os, time
 import numpy as np
 
-class Ray():
-    def __init__(self, start_x=None, start_y=None):
-        self.start_x = start_x
-        self.start_y = start_y
-        self.end_x = None
-        self.end_y = None
-        self.length = None
-    def set_endpnt(self, end_x, end_y):
-        self.end_x = end_x
-        self.end_y = end_y
-        self.length = np.sqrt((self.start_x-self.end_x)**2 + (self.start_y-self.end_y)**2)
-
 
 def calculate_derivatives(gx, gy):
     mag = np.sqrt(gx*gx + gy*gy)
@@ -22,9 +10,8 @@ def calculate_derivatives(gx, gy):
         return True, gx / mag, gy / mag
 
 def sw_calculator(mask, canny_img, gradient_x, gradient_y, show_process=False):
-    # _, canny_img = cv2.threshold(mask, 1, 255, cv2.THRESH_OTSU+cv2.THRESH_BINARY)
     height, width = canny_img.shape[0], canny_img.shape[1]
-    img_area = canny_img.shape[0] * canny_img.shape[1]
+
     if show_process:
         drawborder = np.zeros((canny_img.shape[0], canny_img.shape[1], 3), dtype=np.uint8)
 
@@ -35,7 +22,7 @@ def sw_calculator(mask, canny_img, gradient_x, gradient_y, show_process=False):
 
     cur_pnt_ind = 0
     ray_list = []
-    t0 = time.time()
+    
     while cur_pnt_ind < total_pnt_num:
         start_x, start_y = pnts[1][cur_pnt_ind], pnts[0][cur_pnt_ind]
         ray_arr = [start_x, start_y, -1, -1, -1]
@@ -65,16 +52,10 @@ def sw_calculator(mask, canny_img, gradient_x, gradient_y, show_process=False):
                     drawborder = cv2.arrowedLine(drawborder, (ray_arr[0], ray_arr[1]), (ray_arr[2], ray_arr[3]), 
                                                     (0, 255, 0), 1)
 
-
-            end_x, end_y = None, None
-
         cur_pnt_ind += sample_step
         cur_pnt_ind = int(round(cur_pnt_ind))
     if show_process and len(ray_list) != 0:
         ray_list.sort(key=lambda x: x[4])
-        
-        print(f"cost time: {time.time() - t0}, {total_pnt_num}, {ray_list[int(len(ray_list)/2)][4]}")
-
         cv2.imshow("border", drawborder)
         cv2.imshow("cannyimg", canny_img)
         cv2.waitKey(0)

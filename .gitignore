@@ -8,8 +8,7 @@ data/testpacks/eng_dontupload
 tmp.py
 dummy_scripts.py
 
-dist
-PACKAGES
+tmp
 
 *.json
 .vscode

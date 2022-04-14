@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import random
+from typing import List
 
 def hex2bgr(hex):
     gmask = 254 << 8
@@ -159,6 +160,23 @@ def expand_textwindow(img_size, xyxy, expand_r=8, shrink=False):
     x1, y1 = max(0, x1 - paddings), max(0, y1 - paddings)
     x2, y2 = min(im_w-1, x2+paddings), min(im_h-1, y2+paddings)
     return [x1, y1, x2, y2]
+
+def enlarge_window(rect, im_w, im_h, ratio=2.5) -> List:
+    assert ratio > 1.0
+    
+    x1, y1, x2, y2 = rect
+    w = x2 - x1
+    h = y2 - y1
+
+    # https://numpy.org/doc/stable/reference/generated/numpy.roots.html
+    coeff = [1, w+h, (1-ratio)*w*h]
+    roots = np.roots(coeff)
+    roots.sort()
+    delta = int(round(roots[-1] / 2 ))
+    rect = np.array([x1-delta, y1-delta, x2+delta, y2+delta], dtype=np.int64)
+    rect[[0, 2]] = np.clip(rect[[0, 2]], 0, im_w)
+    rect[[1, 3]] = np.clip(rect[[1, 3]], 0, im_h)
+    return rect.tolist()
 
 def draw_connected_labels(num_labels, labels, stats, centroids, names="draw_connected_labels", skip_background=True):
     labdraw = np.zeros((labels.shape[0], labels.shape[1], 3), dtype=np.uint8)

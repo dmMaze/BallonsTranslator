@@ -6,8 +6,6 @@ from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication,
 from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize, QThread
 from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont
 
-from typing import List, Union, Tuple
-
 from .misc import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -45,13 +43,7 @@ class StackWidget(QStackedWidget):
         self.adjustSize()
 
 
-class FrameLessWindow(QMainWindow):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-
-
-class MainWindow(FrameLessWindow):
+class MainWindow(QMainWindow):
 
     proj_directory = None
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
@@ -59,6 +51,7 @@ class MainWindow(FrameLessWindow):
     
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         global DPI, LDPI
         DPI = QGuiApplication.primaryScreen().physicalDotsPerInch()
         constants.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
