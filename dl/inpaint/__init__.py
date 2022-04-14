@@ -30,16 +30,68 @@ class InpainterBase(ModuleParamParser):
         raise NotImplementedError
 
     def inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+        def extract_ballon_mask(img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+            # img = cv2.GaussianBlur(img,(3,3),cv2.BORDER_DEFAULT)
+            h, w = img.shape[:2]
+            text_sum = np.sum(mask)
+            cannyed = cv2.Canny(img, 70, 140, L2gradient=True, apertureSize=3)
+            br = cv2.boundingRect(cv2.findNonZero(mask))
+            br_xyxy = [br[0], br[1], br[0] + br[2], br[1] + br[3]]
+
+            cv2.rectangle(cannyed, (0, 0), (w-1, h-1), (255, 255, 255), 1, cv2.LINE_8)
+            cannyed = cv2.bitwise_and(cannyed, 255 - mask)
+
+            cons, _ = cv2.findContours(cannyed, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+            min_ballon_area = w * h
+            ballon_mask = None
+            non_text_mask = None
+            for ii, con in enumerate(cons):
+                br_c = cv2.boundingRect(con)
+                br_c = [br_c[0], br_c[1], br_c[0] + br_c[2], br_c[1] + br_c[3]]
+                if br_c[0] > br_xyxy[0] or br_c[1] > br_xyxy[1] or br_c[2] < br_xyxy[2] or br_c[3] < br_xyxy[3]:
+                    continue
+                tmp = np.zeros_like(cannyed)
+                cv2.drawContours(tmp, cons, ii, (255, 255, 255), -1, cv2.LINE_8)
+                if cv2.bitwise_and(tmp, mask).sum() >= text_sum:
+                    con_area = cv2.contourArea(con)
+                    if con_area < min_ballon_area:
+                        min_ballon_area = con_area
+                        ballon_mask = tmp
+            if ballon_mask is not None:
+                non_text_mask = cv2.bitwise_and(ballon_mask, 255 - mask)
+            #     cv2.imshow('ballon', ballon_mask)
+            #     cv2.imshow('non_text', non_text_mask)
+            # cv2.imshow('im', img)
+            # cv2.imshow('msk', mask)
+            # cv2.imshow('br', mask[br_xyxy[1]:br_xyxy[3], br_xyxy[0]:br_xyxy[2]])
+            # cv2.imshow('canny', cannyed)
+                
+            # cv2.waitKey(0)
+            # return msk
+            return ballon_mask, non_text_mask
+
+
         if not self.inpaint_by_block or textblock_list is None:
             return self._inpaint(img, mask)
         else:
             im_h, im_w = img.shape[:2]
-            inpainted = img
+            inpainted = np.copy(img)
             for blk in textblock_list:
                 xyxy = blk.xyxy
                 xyxy_e = enlarge_window(xyxy, im_w, im_h, ratio=1.5)
                 im = inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
                 msk = mask[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
+                # ballon_msk, non_text_msk = extract_ballon_mask(im, msk)
+                # if ballon_msk is not None:
+                #     non_text_region = np.where(non_text_msk > 0)
+                #     non_text_px = im[non_text_region]
+                #     average_bg_color = np.mean(non_text_px, axis=0)
+                #     std = np.std(non_text_px - average_bg_color, axis=0)
+                #     print(average_bg_color, std)
+                #     cv2.imshow('im', im)
+                #     cv2.imshow('ballon', ballon_msk)
+                #     cv2.imshow('non_text', non_text_msk)
+                #     cv2.waitKey(0)
                 inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]] = self._inpaint(im, msk)
             return inpainted
 
@@ -179,6 +231,6 @@ class AOTInpainter(InpainterBase):
                 self.inpaint_by_block = False
             else:
                 self.inpaint_by_block = True
-                
+
         elif param_key == 'inpaint_size':
             self.inpaint_size = int(self.setup_params['inpaint_size']['select'])
