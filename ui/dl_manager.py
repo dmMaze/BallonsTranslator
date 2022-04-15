@@ -449,6 +449,8 @@ class DLManager(QObject):
         inpainter_panel.setupModulesParamWidgets(inpainter_setup_params)
         inpainter_panel.paramwidget_edited.connect(self.on_inpainterparam_edited)
         inpainter_panel.inpainter_changed.connect(self.setInpainter)
+        inpainter_panel.needInpaintChecker.checker_changed.connect(self.on_inpainter_checker_changed)
+        inpainter_panel.needInpaintChecker.checker.setChecked(dl_config.check_need_inpaint)
 
         self.textdetect_panel = textdetector_panel = config_panel.detect_config_panel
         textdetector_setup_params = self.dl_config.textdetector_setup_params
@@ -722,5 +724,10 @@ class DLManager(QObject):
         if detail is not None:
             err.setDetailedText(detail)
         err.exec()
+
+    def on_inpainter_checker_changed(self, is_checked: bool):
+        self.dl_config.check_need_inpaint = is_checked
+        InpainterBase.check_need_inpaint = is_checked
+        
 
     

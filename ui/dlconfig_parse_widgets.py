@@ -1,8 +1,8 @@
 from typing import List, Union, Tuple
 
-from PyQt5.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QPlainTextEdit, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QTreeView, QPlainTextEdit, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
 from PyQt5.QtCore import Qt, QModelIndex, pyqtSignal, QPointF, QPoint, QSize, QSizeF, QObject, QEvent
-from PyQt5.QtGui import QStandardItemModel
+from PyQt5.QtGui import QStandardItemModel, QFontMetricsF
 from .stylewidgets import ConfigComboBox
 from .constants import CONFIG_FONTSIZE_TABLE, CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
 
@@ -10,15 +10,18 @@ from dl import VALID_INPAINTERS, VALID_TEXTDETECTORS, VALID_TRANSLATORS, VALID_O
     TranslatorBase, DEFAULT_DEVICE
 
 class ParamNameLabel(QLabel):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__( *args, **kwargs)
+    def __init__(self, param_name: str, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
         self.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         font = self.font()
         font.setPointSizeF(CONFIG_FONTSIZE_CONTENT-2)
         self.setFont(font)
         labelwidth = 120
+        fm = QFontMetricsF(font)
+        fmw = fm.width(param_name)
+        labelwidth = max(fmw, labelwidth)
         self.setFixedWidth(labelwidth)
-
+        self.setText(param_name)
 
 class ParamEditor(QLineEdit):
     
@@ -47,6 +50,23 @@ class ParamComboBox(QComboBox):
 
     def on_select_changed(self):
         self.paramwidget_edited.emit(self.param_key, self.currentText())
+
+
+class ParamCheckerBox(QWidget):
+    checker_changed = pyqtSignal(bool)
+    def __init__(self, param_key: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.param_key = param_key
+        self.checker = QCheckBox()
+        name_label = ParamNameLabel(param_key)
+        hlayout = QHBoxLayout(self)
+        hlayout.addWidget(name_label)
+        hlayout.addWidget(self.checker)
+        hlayout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.checker.stateChanged.connect(self.on_checker_changed)
+
+    def on_checker_changed(self):
+        self.checker_changed.emit(self.checker.isChecked())
 
 
 class ParamWidget(QWidget):
@@ -206,7 +226,8 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         self.inpainter_changed = self.module_changed
         self.inpainter_combobox = self.module_combobox
         self.setInpainter = self.setModule
-
+        self.needInpaintChecker = ParamCheckerBox(self.tr('Let the program decide whether it is necessary to use the selected inpaint method.'))
+        self.vlayout.addWidget(self.needInpaintChecker)
 
 class TextDetectConfigPanel(ModuleConfigParseWidget):
     def __init__(self, module_name: str, *args, **kwargs) -> None:

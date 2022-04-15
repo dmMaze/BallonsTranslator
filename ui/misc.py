@@ -338,6 +338,7 @@ class DLModuleConfig:
                  inpainter_setup_params = None,
                  translate_source = '日本語',
                  translate_target = '简体中文',
+                 check_need_inpaint = True
                  ) -> None:
         self.textdetector = textdetector
         self.ocr = ocr
@@ -364,6 +365,7 @@ class DLModuleConfig:
             inpainter_setup_params = inpainter_setup_params
         self.translate_source = translate_source
         self.translate_target = translate_target
+        self.check_need_inpaint = check_need_inpaint
 
     def load_from_dict(self, config_dict: dict):
         try:
@@ -380,6 +382,7 @@ class DLModuleConfig:
             self.ocr_setup_params = config_dict['ocr_setup_params']
             self.translate_source = config_dict['translate_source']
             self.translate_target = config_dict['translate_target']
+            self.check_need_inpaint = config_dict['check_need_inpaint']
         except Exception as e:
             raise InvalidProgramConfigException(e)
 

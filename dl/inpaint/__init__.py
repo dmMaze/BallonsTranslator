@@ -39,7 +39,7 @@ class InpainterBase(ModuleParamParser):
             inpainted = np.copy(img)
             for blk in textblock_list:
                 xyxy = blk.xyxy
-                xyxy_e = enlarge_window(xyxy, im_w, im_h, ratio=2)
+                xyxy_e = enlarge_window(xyxy, im_w, im_h, ratio=1.7)
                 im = inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
                 msk = mask[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
                 need_inpaint = True
@@ -54,7 +54,7 @@ class InpainterBase(ModuleParamParser):
                         inpaint_thresh = 7 if np.std(std_bgr) > 1 else 10
                         if std_max < inpaint_thresh:
                             need_inpaint = False
-                            inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]][np.where(ballon_msk > 0)] = average_bg_color
+                            im[np.where(ballon_msk > 0)] = average_bg_color
                         # cv2.imshow('im', im)
                         # cv2.imshow('ballon', ballon_msk)
                         # cv2.imshow('non_text', non_text_msk)

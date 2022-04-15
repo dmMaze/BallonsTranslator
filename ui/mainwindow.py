@@ -73,6 +73,15 @@ class MainWindow(QMainWindow):
                 if osp.exists(proj_dir):
                     self.openDir(proj_dir)
 
+        # qt's layout management just can't do it right 
+        self.comicTransSplitter.setStretchFactor(2, 0.3)
+        self.comicTransSplitter.setStretchFactor(1, 10)
+        w = QGuiApplication.primaryScreen().geometry().width()
+        rw = self.rightComicTransStackPanel.sizeHint().width()
+        pw = int((w - rw) / 4)
+        gvw = pw * 3
+        self.comicTransSplitter.setSizes([pw, gvw, rw])
+
     def setupUi(self):
         screen_size = QApplication.desktop().screenGeometry().size()
         self.setMinimumWidth(screen_size.width()*0.5)
@@ -131,8 +140,8 @@ class MainWindow(QMainWindow):
         self.comicTransSplitter.addWidget(self.pageList)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
-        self.comicTransSplitter.setStretchFactor(1, 10)
-        self.comicTransSplitter.setStretchFactor(2, 1)
+        # self.comicTransSplitter.setStretchFactor(1, 10)
+        # self.comicTransSplitter.setStretchFactor(2, 1)
 
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
@@ -455,4 +464,3 @@ class MainWindow(QMainWindow):
             mb.exec()
             return
         self.close()
-

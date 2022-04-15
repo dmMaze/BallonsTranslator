@@ -8,8 +8,6 @@ from typing import List
 from .textitem import TextBlock, TextBlkItem
 from .fontformatpanel import FontFormatPanel
 
-
-
 class SourceTextEdit(QTextEdit):
     hover_enter = pyqtSignal(int)
     hover_leave = pyqtSignal(int)
@@ -128,7 +126,3 @@ class TextPanel(Widget):
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(20)
         layout.setAlignment(Qt.AlignCenter)
-
-    
-        
-        

@@ -63,8 +63,5 @@ if __name__ == '__main__':
     manga_proj = ProjImgTrans(manga_dir)
     comic_proj = ProjImgTrans(comic_dir)
     # comic_proj = ProjImgTrans(comic_dir2)
-    # test_aot(manga_proj, device='cpu', inpaint_by_block=True)
-    test_patchmatch(comic_proj, inpaint_by_block=True)
-    
-    
-
+    test_aot(comic_proj, device='cpu', inpaint_by_block=True, inpaint_size=2048)
+    # test_patchmatch(comic_proj, inpaint_by_block=False)

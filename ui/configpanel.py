@@ -38,7 +38,7 @@ class ConfigSubBlock(Widget):
             layout = QHBoxLayout(self)
         self.name = name
         if name is not None:
-            textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.DemiBold)
+            textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
             layout.addWidget(textlabel)
         if discription is not None:
             layout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT-2))
@@ -108,7 +108,6 @@ class ConfigBlock(Widget):
         return checkbox
 
     def getSubBlockbyIdx(self, idx: int) -> ConfigSubBlock:
-        print(idx)
         return self.subblock_list[idx]
 
 
