@@ -168,71 +168,71 @@ def refine_mask(img: np.ndarray, pred_mask: np.ndarray, blk_list: List[TextBlock
         mask_refined[by1: by2, bx1: bx2] = cv2.bitwise_or(mask_refined[by1: by2, bx1: bx2], mask_merged)
     return mask_refined
 
-def extract_textballoon(img, pred_textmsk=None, global_mask=None):
-    if len(img.shape) > 2 and img.shape[2] == 3:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    im_h, im_w = img.shape[0], img.shape[1]
-    hyp_textmsk = np.zeros((im_h, im_w), np.uint8)
-    thresh_val, threshed = cv2.threshold(img, 1, 255, cv2.THRESH_OTSU+cv2.THRESH_BINARY)
-    xormap_sum = cv2.bitwise_xor(threshed, pred_textmsk).sum()
-    neg_threshed = 255 - threshed
-    neg_xormap_sum = cv2.bitwise_xor(neg_threshed, pred_textmsk).sum()
-    neg_thresh = neg_xormap_sum < xormap_sum
-    if neg_thresh:
-        threshed = neg_threshed
-    thresh_info = {'thresh_val': thresh_val,'neg_thresh': neg_thresh}
-    connectivity = 8
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(threshed, connectivity, cv2.CV_16U)
-    label_unchanged = np.copy(labels)
-    if global_mask is not None:
-        labels[np.where(global_mask==0)] = 0
-    text_labels = []
-    if pred_textmsk is not None:
-        text_score_thresh = 0.5
-        textbbox_map = np.zeros_like(pred_textmsk)
-        for label_index, stat, centroid in zip(range(num_labels), stats, centroids):
-            if label_index != 0: # skip background label
-                x, y, w, h, area = stat
-                area *= 255
-                x1, y1, x2, y2 = x, y, x+w, y+h
-                label_local = labels[y1: y2, x1: x2]
-                label_cordinates = np.where(label_local==label_index)
-                tmp_merged = np.zeros((h, w), np.uint8)
-                tmp_merged[label_cordinates] = 255
-                andmap = cv2.bitwise_and(tmp_merged, pred_textmsk[y1: y2, x1: x2])
-                text_score = andmap.sum() / area
-                if text_score > text_score_thresh:
-                    text_labels.append(label_index)
-                    hyp_textmsk[y1: y2, x1: x2][label_cordinates] = 255
-    labels = label_unchanged
-    bubble_msk = np.zeros((img.shape[0], img.shape[1]), np.uint8)
-    bubble_msk[np.where(labels==0)] = 255
-    # if lang == LANG_JPN:
-    bubble_msk = cv2.erode(bubble_msk, (3, 3), iterations=1)
-    line_thickness = 2
-    cv2.rectangle(bubble_msk, (0, 0), (im_w, im_h), BLACK, line_thickness, cv2.LINE_8)
-    contours, hiers = cv2.findContours(bubble_msk, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+# def extract_textballoon(img, pred_textmsk=None, global_mask=None):
+#     if len(img.shape) > 2 and img.shape[2] == 3:
+#         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+#     im_h, im_w = img.shape[0], img.shape[1]
+#     hyp_textmsk = np.zeros((im_h, im_w), np.uint8)
+#     thresh_val, threshed = cv2.threshold(img, 1, 255, cv2.THRESH_OTSU+cv2.THRESH_BINARY)
+#     xormap_sum = cv2.bitwise_xor(threshed, pred_textmsk).sum()
+#     neg_threshed = 255 - threshed
+#     neg_xormap_sum = cv2.bitwise_xor(neg_threshed, pred_textmsk).sum()
+#     neg_thresh = neg_xormap_sum < xormap_sum
+#     if neg_thresh:
+#         threshed = neg_threshed
+#     thresh_info = {'thresh_val': thresh_val,'neg_thresh': neg_thresh}
+#     connectivity = 8
+#     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(threshed, connectivity, cv2.CV_16U)
+#     label_unchanged = np.copy(labels)
+#     if global_mask is not None:
+#         labels[np.where(global_mask==0)] = 0
+#     text_labels = []
+#     if pred_textmsk is not None:
+#         text_score_thresh = 0.5
+#         textbbox_map = np.zeros_like(pred_textmsk)
+#         for label_index, stat, centroid in zip(range(num_labels), stats, centroids):
+#             if label_index != 0: # skip background label
+#                 x, y, w, h, area = stat
+#                 area *= 255
+#                 x1, y1, x2, y2 = x, y, x+w, y+h
+#                 label_local = labels[y1: y2, x1: x2]
+#                 label_cordinates = np.where(label_local==label_index)
+#                 tmp_merged = np.zeros((h, w), np.uint8)
+#                 tmp_merged[label_cordinates] = 255
+#                 andmap = cv2.bitwise_and(tmp_merged, pred_textmsk[y1: y2, x1: x2])
+#                 text_score = andmap.sum() / area
+#                 if text_score > text_score_thresh:
+#                     text_labels.append(label_index)
+#                     hyp_textmsk[y1: y2, x1: x2][label_cordinates] = 255
+#     labels = label_unchanged
+#     bubble_msk = np.zeros((img.shape[0], img.shape[1]), np.uint8)
+#     bubble_msk[np.where(labels==0)] = 255
+#     # if lang == LANG_JPN:
+#     bubble_msk = cv2.erode(bubble_msk, (3, 3), iterations=1)
+#     line_thickness = 2
+#     cv2.rectangle(bubble_msk, (0, 0), (im_w, im_h), BLACK, line_thickness, cv2.LINE_8)
+#     contours, hiers = cv2.findContours(bubble_msk, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
 
-    brect_area_thresh = im_h * im_w * 0.4
-    min_brect_area = np.inf
-    ballon_index = -1
-    maxium_pixsum = -1
-    for ii, contour in enumerate(contours):
-        brect = cv2.boundingRect(contours[ii])
-        brect_area = brect[2] * brect[3]
-        if brect_area > brect_area_thresh and brect_area < min_brect_area:
-            tmp_ballonmsk = np.zeros_like(bubble_msk)
-            tmp_ballonmsk = cv2.drawContours(tmp_ballonmsk, contours, ii, WHITE, cv2.FILLED)
-            andmap_sum = cv2.bitwise_and(tmp_ballonmsk, hyp_textmsk).sum()
-            if andmap_sum > maxium_pixsum:
-                maxium_pixsum = andmap_sum
-                min_brect_area = brect_area
-                ballon_index = ii
-    if ballon_index != -1:
-        bubble_msk = np.zeros_like(bubble_msk)
-        bubble_msk = cv2.drawContours(bubble_msk, contours, ballon_index, WHITE, cv2.FILLED)
-    hyp_textmsk = cv2.bitwise_and(hyp_textmsk, bubble_msk)
-    return hyp_textmsk, bubble_msk, thresh_info, (num_labels, label_unchanged, stats, centroids, text_labels)
+#     brect_area_thresh = im_h * im_w * 0.4
+#     min_brect_area = np.inf
+#     ballon_index = -1
+#     maxium_pixsum = -1
+#     for ii, contour in enumerate(contours):
+#         brect = cv2.boundingRect(contours[ii])
+#         brect_area = brect[2] * brect[3]
+#         if brect_area > brect_area_thresh and brect_area < min_brect_area:
+#             tmp_ballonmsk = np.zeros_like(bubble_msk)
+#             tmp_ballonmsk = cv2.drawContours(tmp_ballonmsk, contours, ii, WHITE, cv2.FILLED)
+#             andmap_sum = cv2.bitwise_and(tmp_ballonmsk, hyp_textmsk).sum()
+#             if andmap_sum > maxium_pixsum:
+#                 maxium_pixsum = andmap_sum
+#                 min_brect_area = brect_area
+#                 ballon_index = ii
+#     if ballon_index != -1:
+#         bubble_msk = np.zeros_like(bubble_msk)
+#         bubble_msk = cv2.drawContours(bubble_msk, contours, ballon_index, WHITE, cv2.FILLED)
+#     hyp_textmsk = cv2.bitwise_and(hyp_textmsk, bubble_msk)
+#     return hyp_textmsk, bubble_msk, thresh_info, (num_labels, label_unchanged, stats, centroids, text_labels)
 
 # def extract_textballoon_channelwise(img, pred_textmsk, test_grey=True, global_mask=None):
 #     c_list = [img[:, :, i] for i in range(3)]

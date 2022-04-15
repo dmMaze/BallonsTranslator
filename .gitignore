@@ -4,6 +4,7 @@ mask
 result
 data/models
 data/testpacks/eng_dontupload
+data/testpacks/testpacks
 
 tmp.py
 dummy_scripts.py

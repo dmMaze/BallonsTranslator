@@ -344,3 +344,48 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=
                 "bground_bgr": bground_aver,
                 "inner_rect": inner_rect}
     return text_mask, paint_res, bub_dict
+
+
+def extract_ballon_mask(img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    img = cv2.GaussianBlur(img,(3,3),cv2.BORDER_DEFAULT)
+    h, w = img.shape[:2]
+    text_sum = np.sum(mask)
+    
+    # _, threshed = cv2.threshold(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 1, 255, cv2.THRESH_OTSU+cv2.THRESH_BINARY)
+    cannyed = cv2.Canny(img, 70, 140, L2gradient=True, apertureSize=3)
+    e_size = 1
+    element = cv2.getStructuringElement(cv2.MORPH_RECT, (2 * e_size + 1, 2 * e_size + 1),(e_size, e_size))
+    cannyed = cv2.dilate(cannyed, element, iterations=1)
+    br = cv2.boundingRect(cv2.findNonZero(mask))
+    br_xyxy = [br[0], br[1], br[0] + br[2], br[1] + br[3]]
+
+    cv2.rectangle(cannyed, (0, 0), (w-1, h-1), (255, 255, 255), 1, cv2.LINE_8)
+    cannyed = cv2.bitwise_and(cannyed, 255 - mask)
+
+    cons, _ = cv2.findContours(cannyed, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+    min_ballon_area = w * h
+    ballon_mask = None
+    non_text_mask = None
+    for ii, con in enumerate(cons):
+        br_c = cv2.boundingRect(con)
+        br_c = [br_c[0], br_c[1], br_c[0] + br_c[2], br_c[1] + br_c[3]]
+        if br_c[0] > br_xyxy[0] or br_c[1] > br_xyxy[1] or br_c[2] < br_xyxy[2] or br_c[3] < br_xyxy[3]:
+            continue
+        tmp = np.zeros_like(cannyed)
+        cv2.drawContours(tmp, cons, ii, (255, 255, 255), -1, cv2.LINE_8)
+        if cv2.bitwise_and(tmp, mask).sum() >= text_sum:
+            con_area = cv2.contourArea(con)
+            if con_area < min_ballon_area:
+                min_ballon_area = con_area
+                ballon_mask = tmp
+    if ballon_mask is not None:
+        non_text_mask = cv2.bitwise_and(ballon_mask, 255 - mask)
+    #     cv2.imshow('ballon', ballon_mask)
+    #     cv2.imshow('non_text', non_text_mask)
+    # cv2.imshow('im', img)
+    # cv2.imshow('msk', mask)
+    # cv2.imshow('br', mask[br_xyxy[1]:br_xyxy[3], br_xyxy[0]:br_xyxy[2]])
+    # cv2.imshow('canny', cannyed)
+    # cv2.waitKey(0)
+
+    return ballon_mask, non_text_mask
