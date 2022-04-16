@@ -373,8 +373,10 @@ class MainWindow(QMainWindow):
             self.imgtrans_proj.save()
             mask_path = self.imgtrans_proj.get_mask_path()
             mask_array = self.imgtrans_proj.mask_array
+            self.imsave_thread.saveImg(mask_path, mask_array)
             inpainted_path = self.imgtrans_proj.get_inpainted_path()
             inpainted_array = self.imgtrans_proj.inpainted_array
+            self.imsave_thread.saveImg(inpainted_path, inpainted_array)
         else:
             mask_path = inpainted_path = None
             
@@ -398,10 +400,7 @@ class MainWindow(QMainWindow):
 
         imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
         self.imsave_thread.saveImg(imsave_path, img)
-        if mask_path is not None:
-            self.imsave_thread.saveImg(mask_path, mask_array)
-        if inpainted_path is not None:
-            self.imsave_thread.saveImg(inpainted_path, inpainted_array)
+            
         if hide_tsc:
             self.st_manager.txtblkShapeControl.show()
         self.canvas.setProjSaveState(False)
@@ -441,7 +440,12 @@ class MainWindow(QMainWindow):
         if self.config.dl.translate_target not in LANG_SUPPORT_VERTICAL:
             for blk in self.imgtrans_proj.get_blklist_byidx(page_index):
                 blk.vertical = False
-        self.pageList.setCurrentRow(page_index)
+        if page_index != 0:
+            self.pageList.setCurrentRow(page_index)
+        else:
+            self.imgtrans_proj.set_current_img_byidx(0)
+            self.canvas.updateCanvas()
+            self.st_manager.updateTextList()
         self.saveCurrentPage(False, False)
 
     def on_savestate_changed(self, unsaved: bool):
