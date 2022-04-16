@@ -386,7 +386,7 @@ class SceneTextManager(QObject):
             xywh = np.copy(xyxy)
             xywh[[2, 3]] -= xywh[[0, 1]]
             block.lines = xywh2xyxypoly(np.array([xywh])).reshape(-1, 4, 2).tolist()
-            blk_item = TextBlkItem(block, len(self.textblk_item_list), set_format=False)
+            blk_item = TextBlkItem(block, len(self.textblk_item_list), set_format=False, show_rect=True)
             blk_item.set_fontformat(self.formatpanel.global_format)
             self.canvasUndoStack.push(CreateItemCommand(blk_item, self))
 

@@ -278,3 +278,11 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def paint(self, painter: QPainter, option: 'QStyleOptionGraphicsItem', widget = ...) -> None:
         painter.setCompositionMode(QPainter.RasterOp_NotDestination)
         super().paint(painter, option, widget)
+
+    def hideControls(self):
+        for ctrl in self.ctrlblock_group:
+            ctrl.hide()
+
+    def showControls(self):
+        for ctrl in self.ctrlblock_group:
+            ctrl.show()

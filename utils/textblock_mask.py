@@ -94,7 +94,7 @@ def bground_calculator(buble_img, back_ground_mask, dilate=True):
     return bground_aver, bground_region, sd
 
 # 输入：文本块roi，分割出文本mask，根据mask计算文本bgr均值和标准差，决定纯色覆盖/inpaint修复
-def canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=opencv_inpaint):
+def canny_flood(img, show_process=False, inpaint_sdthresh=10):
     # cv2.setNumThreads(4)
     WHITE = (255, 255, 255)
     BLACK = (0, 0, 0)
@@ -121,7 +121,7 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=opencv_inp
 
     cv2.rectangle(detected_edges, (0, 0), (w-1, h-1), BLACK, 1, cv2.LINE_8)
 
-    outer_msk, outer_index = np.zeros((h, w), np.uint8), -1
+    ballon_mask, outer_index = np.zeros((h, w), np.uint8), -1
 
     min_retval = np.inf
     mask = np.zeros((h, w), np.uint8)
@@ -141,24 +141,24 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=opencv_inp
             mask = cv2.drawContours(mask, cons, ii, (0), 2)
         if retval < min_retval and retval > img_area * 0.3:
             min_retval = retval
-            outer_msk = cpmask
+            ballon_mask = cpmask
 
-    outer_msk = 127 - outer_msk
-    outer_msk = cv2.dilate(outer_msk, kernel,iterations = 1)
-    outer_area, _, _, rect = cv2.floodFill(outer_msk, mask=None, seedPoint=seedpnt,  flags=4, newVal=(30), loDiff=(difres, difres, difres), upDiff=(difres, difres, difres))
-    outer_msk = 30 - outer_msk    
-    retval, outer_msk = cv2.threshold(outer_msk, 1, 255, cv2.THRESH_BINARY)
-    outer_msk = cv2.bitwise_not(outer_msk, outer_msk)
+    ballon_mask = 127 - ballon_mask
+    ballon_mask = cv2.dilate(ballon_mask, kernel,iterations = 1)
+    outer_area, _, _, rect = cv2.floodFill(ballon_mask, mask=None, seedPoint=seedpnt,  flags=4, newVal=(30), loDiff=(difres, difres, difres), upDiff=(difres, difres, difres))
+    ballon_mask = 30 - ballon_mask    
+    retval, ballon_mask = cv2.threshold(ballon_mask, 1, 255, cv2.THRESH_BINARY)
+    ballon_mask = cv2.bitwise_not(ballon_mask, ballon_mask)
 
     detected_edges = cv2.dilate(detected_edges, kernel, iterations = 1)
     for ii in range(2):
-        detected_edges = cv2.bitwise_and(detected_edges, outer_msk)
+        detected_edges = cv2.bitwise_and(detected_edges, ballon_mask)
         mask = np.copy(detected_edges)
         bgarea1, _, _, rect = cv2.floodFill(mask, mask=None, seedPoint=(0, 0),  flags=4, newVal=(127), loDiff=(difres, difres, difres), upDiff=(difres, difres, difres))
         bgarea2, _, _, rect = cv2.floodFill(mask, mask=None, seedPoint=(detected_edges.shape[1]-1, detected_edges.shape[0]-1),  flags=4, newVal=(127), loDiff=(difres, difres, difres), upDiff=(difres, difres, difres))
         txt_area = min(img_area - bgarea1, img_area - bgarea2)
         ratio_ob = txt_area / outer_area
-        outer_msk = cv2.erode(outer_msk, kernel,iterations = 1)
+        ballon_mask = cv2.erode(ballon_mask, kernel,iterations = 1)
         if ratio_ob < 0.85:
             break
 
@@ -166,11 +166,11 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=opencv_inp
     retval, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
     if scaleR != 1:
         img = orimg
-        outer_msk = cv2.resize(outer_msk, (oriw, orih))
+        ballon_mask = cv2.resize(ballon_mask, (oriw, orih))
         mask = cv2.resize(mask, (oriw, orih))
 
-    bg_mask = cv2.bitwise_or(mask, 255-outer_msk)
-    mask = cv2.bitwise_and(mask, outer_msk)
+    bg_mask = cv2.bitwise_or(mask, 255-ballon_mask)
+    mask = cv2.bitwise_and(mask, ballon_mask)
 
     bground_aver, bground_region, sd = bground_calculator(img, bg_mask)
     inner_rect = None
@@ -184,16 +184,12 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=opencv_inp
     else: letter_aver = [0, 0, 0]
 
     if sd != -1 and sd < inpaint_sdthresh:
-        img[np.where(outer_msk==255)] = bground_aver
-        paint_res = img
-        use_inpaint = False
+        need_inpaint = False
     else:
-        # paint_res = inpaint(img, mask, outer_msk, bground_region, inpaint_type)
-        paint_res = inpaint(img, mask)
-        use_inpaint = True
+        need_inpaint = True
     if show_process:
-        print(f"\nuse inpaint: {use_inpaint}, sd: {sd}, {type(inner_rect)}")
-        show_img_by_dict({"res": paint_res, "outermask": outer_msk, "detect": detected_edges, "mask": mask})
+        print(f"\nneed_inpaint: {need_inpaint}, sd: {sd}, {type(inner_rect)}")
+        show_img_by_dict({"outermask": ballon_mask, "detect": detected_edges, "mask": mask})
 
 
     if isinstance(inner_rect, tuple):
@@ -206,11 +202,12 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=opencv_inp
     bground_aver = bground_aver.astype(int).tolist()
     bub_dict = {"bgr": letter_aver,
                 "bground_bgr": bground_aver,
-                "inner_rect": inner_rect}
-    return threshed, paint_res, bub_dict
+                "inner_rect": inner_rect,
+                "need_inpaint": need_inpaint}
+    return mask, ballon_mask, bub_dict
 
 # 输入：文本块roi，分割出文本mask，根据mask计算文本bgr均值和标准差，决定纯色覆盖/inpaint修复
-def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=opencv_inpaint, apply_strokewidth_check=0):
+def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_strokewidth_check=0):
 
     # 寻找最可能是气泡的外轮廓mask
     def find_outermask(img):
@@ -235,15 +232,15 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=
         rects = np.array([cv2.boundingRect(cnt) for cnt in cons])
         rect_area = np.array([rect[2] * rect[3] for rect in rects])
         quali_ind = np.where(rect_area > img_area * 0.3)[0]
-        outer_mask = np.zeros((img.shape[0], img.shape[1]), np.uint8)
+        ballon_mask = np.zeros((img.shape[0], img.shape[1]), np.uint8)
         for ind in quali_ind:
-            outer_mask = cv2.drawContours(outer_mask, cons, ind, (255), 2)
+            ballon_mask = cv2.drawContours(ballon_mask, cons, ind, (255), 2)
         
-        seedpnt = (int(outer_mask.shape[1]/2), int(outer_mask.shape[0]/2))
+        seedpnt = (int(ballon_mask.shape[1]/2), int(ballon_mask.shape[0]/2))
         difres = 10
-        retval, _, _, rect = cv2.floodFill(outer_mask, mask=None, seedPoint=seedpnt,  flags=4, newVal=(127), loDiff=(difres, difres, difres), upDiff=(difres, difres, difres))
-        outer_mask = 255 - cv2.threshold(outer_mask - 127, 1, 255, cv2.THRESH_BINARY)[1]
-        return num_labels, labels, stats, centroids, outer_mask
+        retval, _, _, rect = cv2.floodFill(ballon_mask, mask=None, seedPoint=seedpnt,  flags=4, newVal=(127), loDiff=(difres, difres, difres), upDiff=(difres, difres, difres))
+        ballon_mask = 255 - cv2.threshold(ballon_mask - 127, 1, 255, cv2.THRESH_BINARY)[1]
+        return num_labels, labels, stats, centroids, ballon_mask
 
     # BGR直接转灰度图可能导致文本区域和背景难以区分，比如测试样例中的黑底红字
     # 但是总有一个通道文本和背景容易区分
@@ -301,7 +298,7 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=
     # reverse to get white text on black bg
     if reverse:
         thresh = 255 - thresh
-    num_labels, labels, stats, centroids, outer_mask = find_outermask(thresh)
+    num_labels, labels, stats, centroids, ballon_mask = find_outermask(thresh)
     img_area = img.shape[0] * img.shape[1]
     text_mask = np.zeros((img.shape[0], img.shape[1]), np.uint8)
     max_ind = np.argmax(stats[:, 4])
@@ -311,7 +308,7 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=
             labcord = np.where(labels==lab)
             text_mask[labcord] = 255
 
-    text_mask = cv2.bitwise_and(text_mask, outer_mask)
+    text_mask = cv2.bitwise_and(text_mask, ballon_mask)
     if apply_strokewidth_check > 0:
         text_mask = strokewidth_check(text_mask, labels, num_labels, stats, debug_type=show_process-1)
         
@@ -320,31 +317,28 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, inpaint=
     inner_rect = [ii for ii in inner_rect]
     inner_rect.append(-1)
 
-    bg_mask = cv2.bitwise_or(text_mask, 255-outer_mask)
+    bg_mask = cv2.bitwise_or(text_mask, 255-ballon_mask)
 
     bground_aver, bground_region, sd = bground_calculator(img, bg_mask)
 
-    paint_res = img
-    roi_mask = cv2.GaussianBlur(text_mask,(3,3),cv2.BORDER_DEFAULT)
-    _, roi_mask = cv2.threshold(roi_mask, 1, 255, cv2.THRESH_BINARY)
+    mask = cv2.GaussianBlur(text_mask,(3,3),cv2.BORDER_DEFAULT)
+    _, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
     if sd != -1 and sd < inpaint_sdthresh:
-        paint_res[np.where(outer_mask==255)] = bground_aver
-        use_inpaint = False
+        need_inpaint = False
     else:
-        # paint_res = inpaint(img, roi_mask, outer_mask, bground_region, inpaint_type)
-        paint_res = inpaint(img, roi_mask)
-        use_inpaint = True
+        need_inpaint = True
 
     if show_process:
-        print(f"\nuse inpaint: {use_inpaint}, sd: {sd}, {type(inner_rect)}")
+        print(f"\nuse inpaint: {need_inpaint}, sd: {sd}, {type(inner_rect)}")
         draw_connected_labels(num_labels, labels, stats, centroids)
-        show_img_by_dict({"thresh": thresh, "ori": img, "outer": outer_mask, "text": text_mask, "bgmask": bg_mask, "paintres": paint_res})
+        show_img_by_dict({"thresh": thresh, "ori": img, "outer": ballon_mask, "text": text_mask, "bgmask": bg_mask})
 
     bground_aver = bground_aver.astype(int).tolist()
     bub_dict = {"bgr": text_color,
                 "bground_bgr": bground_aver,
-                "inner_rect": inner_rect}
-    return text_mask, paint_res, bub_dict
+                "inner_rect": inner_rect,
+                "need_inpaint": need_inpaint}
+    return mask, ballon_mask, bub_dict
 
 
 def extract_ballon_mask(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:

@@ -68,6 +68,7 @@ class Canvas(QGraphicsScene):
 
     scalefactor_changed = pyqtSignal()
     end_create_textblock = pyqtSignal(QRectF)
+    end_create_rect = pyqtSignal(QRectF)
     delete_textblks = pyqtSignal()
     finish_painting = pyqtSignal(StrokeItem)
     finish_erasing = pyqtSignal(StrokeItem)
@@ -78,9 +79,8 @@ class Canvas(QGraphicsScene):
     canvas_undostack_changed = pyqtSignal()
     
     imgtrans_proj: ProjImgTrans = None
-    painting = False
     painting_pen = QPen()
-    image_edit_mode = None
+    image_edit_mode = ImageEditMode.NONE
     alt_pressed = False
     scale_tool_mode = False
 
@@ -241,7 +241,7 @@ class Canvas(QGraphicsScene):
         item.setPen(self.painting_pen)
         item.setParentItem(self.drawingLayer)
 
-    def startCreateTextblock(self, pos: QPointF):
+    def startCreateTextblock(self, pos: QPointF, hide_control: bool = False):
         self.creating_textblock = True
         self.create_block_origin = pos
         self.gv.viewport().setCursor(Qt.CrossCursor)
@@ -249,13 +249,18 @@ class Canvas(QGraphicsScene):
         self.txtblkShapeControl.setPos(0, 0)
         self.txtblkShapeControl.setRotation(0)
         self.txtblkShapeControl.setRect(QRectF(pos, QSizeF(1, 1)))
+        if hide_control:
+            self.txtblkShapeControl.hideControls()
         self.txtblkShapeControl.show()
 
     def endCreateTextblock(self):
         self.creating_textblock = False
         self.gv.viewport().setCursor(Qt.ArrowCursor)
-        self.txtblkShapeControl.hide()
-        self.end_create_textblock.emit(self.txtblkShapeControl.rect())
+        if self.creating_normal_rect:
+            self.end_create_rect.emit(self.txtblkShapeControl.rect())
+        else:
+            self.txtblkShapeControl.hide()
+            self.end_create_textblock.emit(self.txtblkShapeControl.rect())
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.creating_textblock:
@@ -290,6 +295,8 @@ class Canvas(QGraphicsScene):
             elif self.painting:
                 self.stroke_path_item = PenStrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
                 self.addStrokeItem(self.stroke_path_item)
+            elif self.creating_normal_rect:
+                return self.startCreateTextblock(event.scenePos(), hide_control=True)
                 
         elif event.button() == Qt.MouseButton.RightButton:
             if self.painting:
@@ -298,11 +305,15 @@ class Canvas(QGraphicsScene):
 
         return super().mousePressEvent(event)
 
+    @property
+    def creating_normal_rect(self):
+        return self.image_edit_mode == ImageEditMode.RectTool
+
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.button() == Qt.RightButton:
-            if self.creating_textblock:
-                return self.endCreateTextblock()
-            elif self.stroke_path_item is not None:
+        if self.creating_textblock:
+            return self.endCreateTextblock()
+        elif event.button() == Qt.RightButton:
+            if self.stroke_path_item is not None:
                 self.finish_erasing.emit(self.stroke_path_item)
         elif event.button() == Qt.MouseButton.LeftButton:
             if self.stroke_path_item is not None:
@@ -351,7 +362,11 @@ class Canvas(QGraphicsScene):
             self.maskLayer.setVisible(False)
             self.gv.setCursor(self.default_cursor)
             self.gv.setDragMode(QGraphicsView.ScrollHandDrag)
-            self.painting = False
+            self.image_edit_mode = ImageEditMode.NONE
+
+    @property
+    def painting(self):
+        return self.image_edit_mode == ImageEditMode.PenTool or self.image_edit_mode == ImageEditMode.InpaintTool
 
     def setMaskTransparencyBySlider(self, slider_value: int):
         self.setMaskTransparency(slider_value / 100)
@@ -378,7 +393,6 @@ class Canvas(QGraphicsScene):
     def on_hide_canvas(self):
         self.alt_pressed = False
         self.scale_tool_mode = False
-        self.textblock_mode = False
         self.creating_textblock = False
         self.create_block_origin = None
         self.editing_textblkitem = None

@@ -10,9 +10,11 @@ import cv2
 SIZE_MAX = 2147483647
 
 class ImageEditMode:
+    NONE = 0
     HandTool = 0
     InpaintTool = 1
     PenTool = 2
+    RectTool = 3
 
 class StrokeItem(QGraphicsPathItem):
     def __init__(self, origin_point: QPointF):

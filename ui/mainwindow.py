@@ -56,12 +56,14 @@ class MainWindow(QMainWindow):
                 if osp.exists(proj_dir):
                     self.openDir(proj_dir)
 
+        textblock_mode = self.config.imgtrans_textblock
         self.bottomBar.texteditChecker.click()
         self.bottomBar.paintChecker.click()
         if self.config.imgtrans_textedit:
+            if textblock_mode:
+                self.bottomBar.textblockChecker.setChecked(True)
             self.bottomBar.texteditChecker.click()
-            if self.config.imgtrans_textblock:
-                self.bottomBar.textblockChecker.click()
+
         elif not self.config.imgtrans_paintmode:
             self.bottomBar.paintChecker.click()
         self.comicTransSplitter.setStretchFactor(2, 0.5)
@@ -315,6 +317,7 @@ class MainWindow(QMainWindow):
             self.rightComicTransStackPanel.setCurrentIndex(1)
             self.st_manager.setTextEditMode(True)
             self.bottomBar.originalSlider.setHidden(True)
+            self.setTextBlockMode()
         else:
             self.bottomBar.textblockChecker.hide()
             self.rightComicTransStackPanel.setHidden(True)
