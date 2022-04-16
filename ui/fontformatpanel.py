@@ -37,8 +37,13 @@ def restore_textcursor(formatting_func):
 
 @restore_textcursor
 def set_textblk_color(blkitem: TextBlkItem, cursor: QTextCursor, rgb: List):
-    fraghtml = cursor.selection().toHtml()
-    cursor.insertHtml(set_html_color(fraghtml, rgb))
+    if not blkitem.document().isEmpty():
+        fraghtml = cursor.selection().toHtml()
+        cursor.insertHtml(set_html_color(fraghtml, rgb))
+    else:
+        fmt = cursor.charFormat()
+        fmt.setForeground(QColor(*rgb))
+        cursor.setCharFormat(fmt)
     
 
 @restore_textcursor
