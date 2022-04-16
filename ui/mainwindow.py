@@ -4,7 +4,7 @@ import json
 
 from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize, QThread
-from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont
+from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QMouseEvent
 
 from .misc import ProjImgTrans
 from .canvas import Canvas
@@ -16,31 +16,14 @@ from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
 from .stylewidgets import FrameLessMessageBox
-from .constants import STYLESHEET_PATH, CONFIG_PATH, DPI, LDPI, LANG_SUPPORT_VERTICAL
+from .constants import STYLESHEET_PATH, CONFIG_PATH, DPI, LDPI, LANG_SUPPORT_VERTICAL, DRAWPANEL_WIDTH
 from . import constants
-
 
 class PageListView(QListWidget):    
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setMaximumWidth(512)
         self.setIconSize(QSize(70, 70))
-
-
-class StackWidget(QStackedWidget):
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.currentChanged.connect(self.onCurrentChanged)
-        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
-
-    def addWidget(self, w: QWidget) -> int:
-        super().addWidget(w)
-        self.adjustSize()
-
-    def onCurrentChanged(self, index: int) -> None:
-        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
-        self.adjustSize()
 
 
 class MainWindow(QMainWindow):
@@ -73,14 +56,16 @@ class MainWindow(QMainWindow):
                 if osp.exists(proj_dir):
                     self.openDir(proj_dir)
 
-        # qt's layout management just can't do it right 
-        self.comicTransSplitter.setStretchFactor(2, 0.3)
+        self.bottomBar.texteditChecker.click()
+        self.bottomBar.paintChecker.click()
+        if self.config.imgtrans_textedit:
+            self.bottomBar.texteditChecker.click()
+            if self.config.imgtrans_textblock:
+                self.bottomBar.textblockChecker.click()
+        elif not self.config.imgtrans_paintmode:
+            self.bottomBar.paintChecker.click()
+        self.comicTransSplitter.setStretchFactor(2, 0.5)
         self.comicTransSplitter.setStretchFactor(1, 10)
-        w = QGuiApplication.primaryScreen().geometry().width()
-        rw = self.rightComicTransStackPanel.sizeHint().width()
-        pw = int((w - rw) / 4)
-        gvw = pw * 3
-        self.comicTransSplitter.setSizes([pw, gvw, rw])
 
     def setupUi(self):
         screen_size = QApplication.desktop().screenGeometry().size()
@@ -111,7 +96,6 @@ class MainWindow(QMainWindow):
 
         mainHLayout = QHBoxLayout()
         mainHLayout.addWidget(self.leftBar)
-        # mainHLayout.addWidget(self.pageList)
         mainHLayout.addWidget(self.centralStackWidget)
         mainHLayout.addWidget(self.rightBar)
         mainHLayout.setContentsMargins(0, 0, 0, 0)
@@ -132,7 +116,7 @@ class MainWindow(QMainWindow):
         self.st_manager = SceneTextManager(self.app, self.canvas, self.textPanel)
 
         # comic trans pannel
-        self.rightComicTransStackPanel = StackWidget(self)
+        self.rightComicTransStackPanel = QStackedWidget(self)
         self.rightComicTransStackPanel.addWidget(self.drawingPanel)
         self.rightComicTransStackPanel.addWidget(self.textPanel)
 
@@ -140,8 +124,6 @@ class MainWindow(QMainWindow):
         self.comicTransSplitter.addWidget(self.pageList)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
-        # self.comicTransSplitter.setStretchFactor(1, 10)
-        # self.comicTransSplitter.setStretchFactor(2, 1)
 
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
@@ -174,25 +156,10 @@ class MainWindow(QMainWindow):
         self.leftBar.imgTransChecker.setChecked(True)
         self.st_manager.formatpanel.global_format = self.config.global_fontformat
         self.st_manager.formatpanel.set_active_format(self.config.global_fontformat)
-        if self.config.imgtrans_paintmode:
-            self.bottomBar.paintChecker.setChecked(True)
-            self.rightComicTransStackPanel.setCurrentIndex(0)
-            self.rightComicTransStackPanel.onCurrentChanged(0)
-            self.canvas.setPaintMode(True)
-            self.st_manager.setTextEditMode(False)
-        elif self.config.imgtrans_textedit:
-            self.bottomBar.texteditChecker.setChecked(True)
-            self.bottomBar.originalSlider.setHidden(True)
-            self.rightComicTransStackPanel.setCurrentIndex(1)
-            self.canvas.setPaintMode(False)
-            self.st_manager.setTextEditMode(True)
-            if self.config.imgtrans_textblock:
-                self.bottomBar.textblockChecker.setChecked(True)
-                self.setTextBlockMode()
-        else:
-            self.bottomBar.originalSlider.setHidden(True)
-            self.rightComicTransStackPanel.setHidden(True)
-            self.st_manager.setTextEditMode(False)
+        
+        self.bottomBar.originalSlider.setHidden(True)
+        self.rightComicTransStackPanel.setHidden(True)
+        self.st_manager.setTextEditMode(False)
 
         self.bottomBar.ocrChecker.setCheckState(self.config.dl.enable_ocr)
         self.bottomBar.transChecker.setChecked(self.config.dl.enable_translate)

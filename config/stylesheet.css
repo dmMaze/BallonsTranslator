@@ -757,6 +757,10 @@ DrawToolCheckBox::indicator {
     padding: 10px;
 }
 
+DrawToolCheckBox::indicator:checked {
+    background-color: rgba(30, 147, 229, 80);
+}
+
 DrawToolCheckBox#DrawHandTool::indicator {
     
     image: url(icons/drawingtools_hand.svg);
@@ -767,7 +771,7 @@ DrawToolCheckBox#DrawHandTool::indicator:hover {
 }
 
 DrawToolCheckBox#DrawHandTool::indicator:checked {
-    background-color: rgba(30, 147, 229, 80);
+    
     image: url(icons/drawingtools_hand.svg);
 }
 
@@ -780,7 +784,6 @@ DrawToolCheckBox#DrawInpaintTool::indicator:hover {
 }
 
 DrawToolCheckBox#DrawInpaintTool::indicator:checked {
-    background-color: rgba(30, 147, 229, 80);
     image: url(icons/drawingtools_inpaint.svg);
 }
 
@@ -793,7 +796,20 @@ DrawToolCheckBox#DrawPenTool::indicator:hover {
 }
 
 DrawToolCheckBox#DrawPenTool::indicator:checked {
-    background-color: rgba(30, 147, 229, 80);
     image: url(icons/drawingtools_pen.svg);
 }
+
+DrawToolCheckBox#DrawRectTool::indicator {
+    image: url(icons/bottombar_textblock_activate.svg);
+}
+
+DrawToolCheckBox#DrawRectTool::indicator:hover {
+    image: url(icons/bottombar_textblock.svg);
+}
+
+DrawToolCheckBox#DrawRectTool::indicator:checked {
+    image: url(icons/bottombar_textblock_activate.svg);
+}
+
+
 

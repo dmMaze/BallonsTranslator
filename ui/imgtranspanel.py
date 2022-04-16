@@ -1,5 +1,5 @@
 
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QFontComboBox, QColorDialog, QComboBox, QApplication, QPushButton, QRadioButton, QCheckBox
+from PyQt5.QtWidgets import QSizePolicy, QLabel, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QFontComboBox, QColorDialog, QComboBox, QApplication, QPushButton, QRadioButton, QCheckBox
 from PyQt5.QtCore import pyqtSignal, Qt, QSize, QEvent, QObject
 from PyQt5.QtGui import QColor, QFocusEvent, QIntValidator, QMouseEvent, QFont, QTextCursor
 from .stylewidgets import Widget, SeparatorWidget, PaintQSlider
@@ -104,6 +104,7 @@ class TextEditListScrollArea(QScrollArea):
         self.setWidgetResizable(True)
         self.vlayout = vlayout
         
+        
     def addPairWidget(self, pairwidget):
         
         self.vlayout.addWidget(pairwidget)
@@ -126,3 +127,4 @@ class TextPanel(Widget):
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(20)
         layout.setAlignment(Qt.AlignCenter)
+

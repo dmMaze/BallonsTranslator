@@ -33,7 +33,6 @@ class DrawToolCheckBox(QCheckBox):
         if self.isChecked():
             self.checked.emit()
 
-
 class ToolNameLabel(QLabel):
     def __init__(self, fix_width=None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -49,8 +48,6 @@ class ToolNameLabel(QLabel):
                 font.setPointSizeF(font_size)
         self.setFont(font)
             
-
-
 
 class InpaintPanel(Widget):
 
@@ -83,11 +80,14 @@ class InpaintPanel(Widget):
             self.thicknessChanged.emit(self.thicknessSlider.value())
 
     def showEvent(self, e) -> None:
+        self.inpainter_panel.needInpaintChecker.setVisible(False)
         self.vlayout.addWidget(self.inpainter_panel)
-        return super().showEvent(e)
+        super().showEvent(e)
+
 
     def hideEvent(self, e) -> None:
         self.vlayout.removeWidget(self.inpainter_panel)
+        self.inpainter_panel.needInpaintChecker.setVisible(True)
         return super().hideEvent(e)
 
 
@@ -174,6 +174,10 @@ class DrawingPanel(Widget):
         self.inpaintConfigPanel = InpaintPanel(inpainter_panel)
         self.inpaintConfigPanel.thicknessChanged.connect(self.setInpaintToolWidth)
 
+        self.rectTool = DrawToolCheckBox()
+        self.rectTool.setObjectName("DrawRectTool")
+        self.rectTool.checked.connect(self.on_use_rectremoval_tool)
+
         self.penTool = DrawToolCheckBox()
         self.penTool.setObjectName("DrawPenTool")
         self.penTool.checked.connect(self.on_use_pentool)
@@ -186,6 +190,7 @@ class DrawingPanel(Widget):
         toolboxlayout.addWidget(self.handTool)
         toolboxlayout.addWidget(self.inpaintTool)
         toolboxlayout.addWidget(self.penTool)
+        toolboxlayout.addWidget(self.rectTool)
 
         self.canvas.painting_pen = self.pentool_pen = \
             QPen(Qt.GlobalColor.black, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
@@ -218,7 +223,6 @@ class DrawingPanel(Widget):
         self.dl_manager = dl_manager
         dl_manager.canvas_inpaint_finished.connect(self.on_inpaint_finished)
         dl_manager.inpaint_thread.exception_occurred.connect(self.on_inpaint_failed)
-
 
     def setInpaintToolWidth(self, width):
         self.inpaint_pen.setWidth(width)
@@ -271,6 +275,9 @@ class DrawingPanel(Widget):
             self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.setPenCursor()
             self.canvas.painting = True
+
+    def on_use_rectremoval_tool(self) -> None:
+        print('use rect removal tool')
 
     def get_config(self) -> DrawPanelConfig:
         config = DrawPanelConfig()
@@ -400,8 +407,6 @@ class DrawingPanel(Widget):
             if not inpaint_stroke.isEmpty():
                 self.inpaint_stroke.addStroke(inpaint_stroke.stroke)
             self.canvas.removeItem(inpaint_stroke)
-
-
 
     def runInpaint(self):
 
