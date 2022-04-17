@@ -460,8 +460,7 @@ class FontFormatPanel(Widget):
             if self.focusOnColorDialog:
                 focus_on_fmtoptions = True
             elif focus_p:
-                if focus_p == self or\
-                    focus_p.parentWidget() == self:
+                if focus_p == self or focus_p.parentWidget() == self:
                     focus_on_fmtoptions = True
             if focus_on_fmtoptions:
                 self.text_cursor = QTextCursor(self.textblk_item.textCursor())

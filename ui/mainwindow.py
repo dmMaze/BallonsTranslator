@@ -2,7 +2,7 @@ import os.path as osp
 import os
 import json
 
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QListWidget, QShortcut, QListWidgetItem
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QGraphicsDropShadowEffect, QCheckBox, QToolButton, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize, QThread
 from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QMouseEvent
 
@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
         mainVBoxLayout.setContentsMargins(0, 0, 0, 0)
         mainVBoxLayout.setSpacing(0)
         self.mainvlayout = mainVBoxLayout
-        
+
     def setupConfig(self):
         with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
             self.setStyleSheet(f.read())
