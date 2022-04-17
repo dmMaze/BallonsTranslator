@@ -244,7 +244,7 @@ class Canvas(QGraphicsScene):
     def startCreateTextblock(self, pos: QPointF, hide_control: bool = False):
         self.creating_textblock = True
         self.create_block_origin = pos
-        self.gv.viewport().setCursor(Qt.CrossCursor)
+        self.gv.setCursor(Qt.CrossCursor)
         self.txtblkShapeControl.setBlkItem(None)
         self.txtblkShapeControl.setPos(0, 0)
         self.txtblkShapeControl.setRotation(0)
@@ -255,7 +255,7 @@ class Canvas(QGraphicsScene):
 
     def endCreateTextblock(self):
         self.creating_textblock = False
-        self.gv.viewport().setCursor(Qt.ArrowCursor)
+        self.gv.setCursor(Qt.ArrowCursor)
         self.txtblkShapeControl.hide()
         if self.creating_normal_rect:
             self.end_create_rect.emit(self.txtblkShapeControl.rect())

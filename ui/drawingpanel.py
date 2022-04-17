@@ -354,6 +354,7 @@ class DrawingPanel(Widget):
         self.toolConfigStackwidget.setCurrentWidget(self.rectPanel)
         self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.canvas.image_edit_mode = ImageEditMode.RectTool
+        self.setCrossCursor()
 
     def get_config(self) -> DrawPanelConfig:
         config = DrawPanelConfig()
@@ -681,6 +682,7 @@ class DrawingPanel(Widget):
                 self.inpaintRect(inpaint_dict)
             else:
                 self.rect_inpaint_dict = inpaint_dict
+            self.setCrossCursor()
 
     def inpaintRect(self, inpaint_dict):
         img = inpaint_dict['img']
