@@ -266,13 +266,21 @@ class MainWindow(QMainWindow):
         shortcutNext.activated.connect(self.shortcutNext)
         shortcutBefore = QShortcut(QKeySequence("A"), self)
         shortcutBefore.activated.connect(self.shortcutBefore)
+        shortcutTextedit = QShortcut(QKeySequence("T"), self)
+        shortcutTextedit.activated.connect(self.shortcutTextedit)
         shortcutTextblock = QShortcut(QKeySequence("W"), self)
+        shortcutPaint = QShortcut(QKeySequence("P"), self)
+        shortcutPaint.activated.connect(self.shortcutPaint)
         shortcutTextblock.activated.connect(self.shortcutTextblock)
         shortcutZoomIn = QShortcut(QKeySequence.StandardKey.ZoomIn, self)
         shortcutZoomIn.activated.connect(self.canvas.gv.scale_up_signal)
         shortcutZoomOut = QShortcut(QKeySequence.StandardKey.ZoomOut, self)
         shortcutZoomOut.activated.connect(self.canvas.gv.scale_down_signal)
-        
+        shortcutCtrlD = QShortcut(QKeySequence("Ctrl+D"), self)
+        shortcutCtrlD.activated.connect(self.shortcutCtrlD)
+        shortcutSpace = QShortcut(QKeySequence("Space"), self)
+        shortcutSpace.activated.connect(self.shortcutSpace)
+
     def shortcutNext(self):
         if self.centralStackWidget.currentIndex() == 0:
             index = self.pageList.currentIndex()
@@ -291,9 +299,30 @@ class MainWindow(QMainWindow):
                 row = (row - 1 + page_count) % page_count
                 self.pageList.setCurrentRow(row)
 
+    def shortcutTextedit(self):
+        if self.centralStackWidget.currentIndex() == 0:
+            self.bottomBar.texteditChecker.click()
+
     def shortcutTextblock(self):
-        if self.bottomBar.texteditChecker.isChecked():
-            self.bottomBar.textblockChecker.click()
+        if self.centralStackWidget.currentIndex() == 0:
+            if self.bottomBar.texteditChecker.isChecked():
+                self.bottomBar.textblockChecker.click()
+
+    def shortcutPaint(self):
+        if self.centralStackWidget.currentIndex() == 0:
+            self.bottomBar.paintChecker.click()
+
+    def shortcutCtrlD(self):
+        if self.centralStackWidget.currentIndex() == 0:
+            if self.drawingPanel.isVisible():
+                if self.drawingPanel.currentTool == self.drawingPanel.rectTool:
+                    self.drawingPanel.rectPanel.delete_btn.click()
+
+    def shortcutSpace(self):
+        if self.centralStackWidget.currentIndex() == 0:
+            if self.drawingPanel.isVisible():
+                if self.drawingPanel.currentTool == self.drawingPanel.rectTool:
+                    self.drawingPanel.rectPanel.inpaint_btn.click()
 
     def setPaintMode(self):
         if self.bottomBar.paintChecker.isChecked():

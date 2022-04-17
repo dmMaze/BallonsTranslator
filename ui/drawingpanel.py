@@ -703,7 +703,8 @@ class DrawingPanel(Widget):
     def on_rect_deletebtn_clicked(self):
         self.rect_inpaint_dict = None
         self.canvas.image_edit_mode = ImageEditMode.RectTool
-        self.canvas.removeItem(self.inpaint_mask_item)
+        if self.inpaint_mask_item.scene() == self.canvas:
+            self.canvas.removeItem(self.inpaint_mask_item)
 
     def on_rectchecker_changed(self):
         if not self.rectTool.isChecked():
