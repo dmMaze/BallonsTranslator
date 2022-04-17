@@ -55,7 +55,7 @@ Text editing mode
 </p>
 
 ## Shortcuts
-* A/D to turn the page, if there are some unsaved changes made to current page, the program will save the rendered image, saving a large image could freeze the program for a little while.   
+* A/D to turn the page
 * Ctrl+Z, Ctrl+Y to undo/redo most operations, note the undo stack will be cleared after you turn the page.
 * Click the "T" button on the bottom toolbar to enter/leave text-editing mode, press W to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
 * In the image editing mode, use the slider on the right bottom to control the original image transparency.
