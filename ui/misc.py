@@ -414,11 +414,15 @@ class DrawPanelConfig:
                  pentool_color: List = None,
                  pentool_width: float = 30.,
                  inpainter_width: float = 30.,
-                 current_tool: int = 0) -> None:
+                 current_tool: int = 0,
+                 rectool_auto: bool = False, 
+                 rectool_method: int = 0) -> None:
         self.pentool_color = pentool_color if pentool_color is not None else [0, 0, 0]
         self.pentool_width = pentool_width
         self.inpainter_width = inpainter_width
         self.current_tool = current_tool
+        self.rectool_auto = rectool_auto
+        self.rectool_method = rectool_method
 
 class ProgramConfig:
     def __init__(self, config_dict=None) -> None:

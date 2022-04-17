@@ -256,10 +256,11 @@ class Canvas(QGraphicsScene):
     def endCreateTextblock(self):
         self.creating_textblock = False
         self.gv.viewport().setCursor(Qt.ArrowCursor)
+        self.txtblkShapeControl.hide()
         if self.creating_normal_rect:
             self.end_create_rect.emit(self.txtblkShapeControl.rect())
+            self.txtblkShapeControl.showControls()
         else:
-            self.txtblkShapeControl.hide()
             self.end_create_textblock.emit(self.txtblkShapeControl.rect())
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:

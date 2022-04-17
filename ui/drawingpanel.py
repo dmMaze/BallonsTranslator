@@ -1,5 +1,5 @@
 from PyQt5.QtCore import pyqtSignal, Qt, QPointF, QSize, QLineF, QRect, QRectF
-from PyQt5.QtWidgets import QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QUndoCommand, QStackedWidget, QVBoxLayout, QLabel, QGraphicsEllipseItem
+from PyQt5.QtWidgets import QPushButton, QGraphicsPixmapItem, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QUndoCommand, QStackedWidget, QVBoxLayout, QLabel, QGraphicsEllipseItem
 from PyQt5.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
 
 from typing import Union, Tuple, List
@@ -10,11 +10,11 @@ from utils.imgproc_utils import enlarge_window
 from utils.textblock_mask import canny_flood, connected_canny_flood
 
 from .dl_manager import DLManager
-from .image_edit import ImageEditMode, StrokeItem
+from .image_edit import ImageEditMode, StrokeItem, PixmapItem
 from .configpanel import InpaintConfigPanel
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
-from .misc import DrawPanelConfig
+from .misc import DrawPanelConfig, ndarray2pixmap, pixmap2ndarray
 from .constants import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 
 INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)
@@ -151,7 +151,8 @@ class PenConfigPanel(Widget):
 
 class RectPanel(Widget):
     method_changed = pyqtSignal(int)
-
+    delete_btn_clicked = pyqtSignal()
+    inpaint_btn_clicked = pyqtSignal()
     def __init__(self, inpainter_panel: InpaintConfigPanel, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.inpainter_panel = inpainter_panel
@@ -159,10 +160,24 @@ class RectPanel(Widget):
         self.methodComboBox.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.methodComboBox.setFixedWidth(CONFIG_COMBOBOX_SHORT)
         self.methodComboBox.addItems([self.tr('method 1'), self.tr('method 2')])
+        self.autoChecker = QCheckBox(self.tr("Auto"))
+        self.autoChecker.setToolTip(self.tr("run inpainting automatically."))
+        self.autoChecker.stateChanged.connect(self.on_auto_changed)
+        self.inpaint_btn = QPushButton(self.tr("Inpaint"))
+        self.inpaint_btn.clicked.connect(self.inpaint_btn_clicked)
+        self.delete_btn = QPushButton(self.tr("Delete"))
+        self.delete_btn.clicked.connect(self.delete_btn_clicked)
+        self.btnlayout = QHBoxLayout()
+        self.btnlayout.addWidget(self.inpaint_btn)
+        self.btnlayout.addWidget(self.delete_btn)
+        hlayout = QHBoxLayout()
+        hlayout.addWidget(self.methodComboBox)
+        hlayout.addWidget(self.autoChecker)
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        layout.addWidget(self.methodComboBox)
+        layout.addLayout(hlayout)
         layout.addWidget(inpainter_panel)
+        layout.addLayout(self.btnlayout)
         layout.setSpacing(20)
         self.vlayout = layout
 
@@ -170,7 +185,6 @@ class RectPanel(Widget):
         self.inpainter_panel.needInpaintChecker.setVisible(False)
         self.vlayout.addWidget(self.inpainter_panel)
         super().showEvent(e)
-
 
     def hideEvent(self, e) -> None:
         self.vlayout.removeWidget(self.inpainter_panel)
@@ -183,6 +197,18 @@ class RectPanel(Widget):
         else:
             return connected_canny_flood
 
+    def on_auto_changed(self):
+        if self.autoChecker.isChecked():
+            self.inpaint_btn.hide()
+            self.delete_btn.hide()
+        else:
+            self.inpaint_btn.show()
+            self.delete_btn.show()
+
+    def auto(self) -> bool:
+        return self.autoChecker.isChecked()
+
+
 
 class DrawingPanel(Widget):
 
@@ -193,6 +219,10 @@ class DrawingPanel(Widget):
         self.dl_manager: DLManager = None
         self.canvas = canvas
         self.inpaint_stroke: StrokeItem = None
+        self.rect_inpaint_dict: dict = None
+
+        border_pen = QPen(INPAINT_BRUSH_COLOR, 3, Qt.PenStyle.DashLine)
+        self.inpaint_mask_item: PixmapItem = PixmapItem(border_pen)
         self.scale_circle = QGraphicsEllipseItem()
         
         canvas.finish_painting.connect(self.on_finish_painting)
@@ -218,7 +248,10 @@ class DrawingPanel(Widget):
         self.rectTool = DrawToolCheckBox()
         self.rectTool.setObjectName("DrawRectTool")
         self.rectTool.checked.connect(self.on_use_rect_tool)
+        self.rectTool.stateChanged.connect(self.on_rectchecker_changed)
         self.rectPanel = RectPanel(inpainter_panel)
+        self.rectPanel.inpaint_btn_clicked.connect(self.on_rect_inpaintbtn_clicked)
+        self.rectPanel.delete_btn_clicked.connect(self.on_rect_deletebtn_clicked)
         
         self.penTool = DrawToolCheckBox()
         self.penTool.setObjectName("DrawPenTool")
@@ -322,7 +355,6 @@ class DrawingPanel(Widget):
         self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.canvas.image_edit_mode = ImageEditMode.RectTool
 
-
     def get_config(self) -> DrawPanelConfig:
         config = DrawPanelConfig()
         pc = self.pentool_pen.color()
@@ -330,11 +362,15 @@ class DrawingPanel(Widget):
         config.pentool_width = self.pentool_pen.widthF()
         config.inpainter_width = self.inpaint_pen.widthF()
         if self.currentTool == self.handTool:
-            config.current_tool = 0
+            config.current_tool = ImageEditMode.HandTool
         elif self.currentTool == self.inpaintTool:
-            config.current_tool = 1
+            config.current_tool = ImageEditMode.InpaintTool
         elif self.currentTool == self.penTool:
-            config.current_tool = 2
+            config.current_tool = ImageEditMode.PenTool
+        elif self.currentTool == self.rectTool:
+            config.current_tool = ImageEditMode.RectTool
+        config.rectool_auto = self.rectPanel.autoChecker.isChecked()
+        config.rectool_method = self.rectPanel.methodComboBox.currentIndex()
         return config
 
     def set_config(self, config: DrawPanelConfig):
@@ -344,12 +380,17 @@ class DrawingPanel(Widget):
         self.inpaintConfigPanel.thicknessSlider.setValue(config.inpainter_width)
         self.setPenToolColor(config.pentool_color)
         self.penConfigPanel.colorPicker.setPickerColor(config.pentool_color)
-        if config.current_tool == 0:
+
+        self.rectPanel.autoChecker.setChecked(config.rectool_auto)
+        self.rectPanel.methodComboBox.setCurrentIndex(config.rectool_method)
+        if config.current_tool == ImageEditMode.HandTool:
             self.handTool.setChecked(True)
-        elif config.current_tool == 1:
+        elif config.current_tool == ImageEditMode.InpaintTool:
             self.inpaintTool.setChecked(True)
-        elif config.current_tool == 2:
+        elif config.current_tool == ImageEditMode.PenTool:
             self.penTool.setChecked(True)
+        elif config.current_tool == ImageEditMode.RectTool:
+            self.rectTool.setChecked(True)
 
     def get_pen_cursor(self, pen_color: QColor = None, pen_size = None, draw_circle=True) -> QCursor:
         cross_size = 31
@@ -493,6 +534,8 @@ class DrawingPanel(Widget):
         if self.inpaint_stroke is not None:
             self.canvas.removeItem(self.inpaint_stroke)
             self.inpaint_stroke = None
+        if self.inpaint_mask_item.scene() == self.canvas:
+            self.canvas.removeItem(self.inpaint_mask_item)
        
         self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
         if self.currentTool == self.inpaintTool:
@@ -616,22 +659,65 @@ class DrawingPanel(Widget):
             xyxy[[1, 3]] = np.clip(xyxy[[1, 3]], 0, im_h - 1)
             x1, y1, x2, y2 = xyxy.astype(np.int64)
             if y2 - y1 < 2 or x2 - x1 < 2:
-                self.canvas.txtblkShapeControl.showControls()
-                self.canvas.txtblkShapeControl.hide()
                 self.canvas.image_edit_mode = ImageEditMode.RectTool
                 return
 
-            im = img[y1: y2, x1: x2]
+            im = np.copy(img[y1: y2, x1: x2])
             maskseg_method = self.rectPanel.get_maskseg_method()
             mask, ballon_mask, bub_dict = maskseg_method(im)
+            bground_bgr = bub_dict['bground_bgr']
+            need_inpaint = bub_dict['need_inpaint']
+
             inpaint_dict = {'img': im, 'mask': mask, 'inpaint_rect': [x1, y1, x2, y2]}
+            inpaint_dict['need_inpaint'] = need_inpaint
+            inpaint_dict['bground_bgr'] = bground_bgr
+            inpaint_dict['ballon_mask'] = ballon_mask
+            user_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
+            user_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
+            self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_mask))
+            self.inpaint_mask_item.setParentItem(self.canvas.baseLayer)
+            self.inpaint_mask_item.setPos(x1, y1)
+            if self.rectPanel.auto():
+                self.inpaintRect(inpaint_dict)
+            else:
+                self.rect_inpaint_dict = inpaint_dict
+
+    def inpaintRect(self, inpaint_dict):
+        img = inpaint_dict['img']
+        mask = inpaint_dict['mask']
+        need_inpaint = inpaint_dict['need_inpaint']
+        bground_bgr = inpaint_dict['bground_bgr']
+        ballon_mask = inpaint_dict['ballon_mask']
+        if not need_inpaint and self.dl_manager.dl_config.check_need_inpaint:
+            img[np.where(ballon_mask > 0)] = bground_bgr
+            self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect']))
+            self.canvas.image_edit_mode = ImageEditMode.RectTool
+            self.canvas.removeItem(self.inpaint_mask_item)
+        else:
             self.runInpaint(inpaint_dict=inpaint_dict)
 
-            # self.canvas.image_edit_mode = ImageEditMode.RectTool
-            # cv2.imshow('img', im)
-            # cv2.imshow('mask', mask)
-            # cv2.imshow('ballon_mask', ballon_mask)
-            # cv2.waitKey(0)
+    def on_rect_inpaintbtn_clicked(self):
+        if self.rect_inpaint_dict is not None:
+            self.inpaintRect(self.rect_inpaint_dict)
+
+    def on_rect_deletebtn_clicked(self):
+        self.rect_inpaint_dict = None
+        self.canvas.image_edit_mode = ImageEditMode.RectTool
+        self.canvas.removeItem(self.inpaint_mask_item)
+
+    def on_rectchecker_changed(self):
+        if not self.rectTool.isChecked():
+            if self.rect_inpaint_dict is not None:
+                self.rect_inpaint_dict = None
+                if self.inpaint_mask_item.scene() == self.canvas:
+                    self.canvas.removeItem(self.inpaint_mask_item)
+
+    def hideEvent(self, e) -> None:
+        if self.inpaint_mask_item.scene() == self.canvas:
+            self.canvas.removeItem(self.inpaint_mask_item)
+        self.rect_inpaint_dict = None
+        return super().hideEvent(e)
+
 
 class InpaintUndoCommand(QUndoCommand):
     def __init__(self, canvas: Canvas, inpainted: np.ndarray, mask: np.ndarray, inpaint_rect: list):

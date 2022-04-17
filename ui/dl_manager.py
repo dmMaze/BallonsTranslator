@@ -506,7 +506,7 @@ class DLManager(QObject):
     def inpainterBusy(self):
         return self.inpaint_thread.isRunning()
 
-    def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect = None):
+    def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect = None, **kwargs):
         if self.inpaint_thread.isRunning():
             self.logger.warning('Waiting for inpainting to finish')
             return

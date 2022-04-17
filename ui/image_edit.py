@@ -1,5 +1,5 @@
 from PyQt5.QtCore import pyqtSignal, Qt, QPointF, QSize, QPoint
-from PyQt5.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QHBoxLayout, QGraphicsView, QUndoCommand, QGraphicsPathItem, QGraphicsScene
+from PyQt5.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsView, QUndoCommand, QGraphicsPathItem, QGraphicsScene
 from PyQt5.QtGui import QPen, QColor, QPainterPath, QCursor, QPainter, QPixmap
 from .misc import DrawPanelConfig, pixmap2ndarray, ndarray2pixmap
 from utils.io_utils import imread, imwrite
@@ -169,4 +169,17 @@ class PenCursor(QCursor):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.drawEllipse(self.thickness, self.thickness, size-2*self.thickness, size-2*self.thickness)
         painter.end()
+
+
+class PixmapItem(QGraphicsPixmapItem):
+    def __init__(self, border_pen: QPen, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.border_pen = border_pen
+
+    def paint(self, painter: QPainter, option: 'QStyleOptionGraphicsItem', widget: QWidget) -> None:
+        pen = painter.pen()
+        painter.setPen(self.border_pen)
+        painter.drawRect(self.boundingRect())
+        painter.setPen(pen)
+        return super().paint(painter, option, widget)
 

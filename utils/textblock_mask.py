@@ -69,7 +69,7 @@ def textbgr_calculator(img, text_mask, show_process=False):
         colored_text_board[np.where(text_mask==255)] = overall_meanbgr
         cv2.imshow("usm", usm_img)
         cv2.imshow("textcolor", colored_text_board)
-    return overall_meanbgr.astype(np.int).tolist()
+    return overall_meanbgr.astype(np.uint8)
 
 # 计算背景bgr均值和标准差
 def bground_calculator(buble_img, back_ground_mask, dilate=True):
@@ -199,7 +199,7 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10):
     else:
         inner_rect.append(-1)
     
-    bground_aver = bground_aver.astype(int).tolist()
+    bground_aver = bground_aver.astype(np.uint8)
     bub_dict = {"bgr": letter_aver,
                 "bground_bgr": bground_aver,
                 "inner_rect": inner_rect,
@@ -333,7 +333,7 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_st
         draw_connected_labels(num_labels, labels, stats, centroids)
         show_img_by_dict({"thresh": thresh, "ori": img, "outer": ballon_mask, "text": text_mask, "bgmask": bg_mask})
 
-    bground_aver = bground_aver.astype(int).tolist()
+    bground_aver = bground_aver.astype(np.uint8)
     bub_dict = {"bgr": text_color,
                 "bground_bgr": bground_aver,
                 "inner_rect": inner_rect,
