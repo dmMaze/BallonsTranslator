@@ -260,6 +260,12 @@ class MainWindow(QMainWindow):
             self.canvas.updateCanvas()
             self.st_manager.updateTextList()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
+            if self.dl_manager.run_canvas_inpaint:
+                self.dl_manager.inpaint_thread.terminate()
+                self.canvas.removeItems(self.drawingPanel.inpaint_stroke)
+                self.drawingPanel.inpaint_stroke = None
+                self.dl_manager.run_canvas_inpaint = False
+
 
     def setupShortcuts(self):
         shortcutNext = QShortcut(QKeySequence("D"), self)

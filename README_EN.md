@@ -43,10 +43,21 @@ preview
 
 
 ## Image editing
+
+### inpaint tool
 <img src="doc/src/imgedit_inpaint.gif">
 <p align = "center">
 Image editing mode, inpainting tool
 </p>
+
+### rect tool
+<img src="doc/src/rect_tool.gif">
+<p align = "center">
+rect tool
+</p>
+
+Drag the rectangle with left button pressed to erase the text inside the box, press right button and drag to clear inpainted result.  
+The result depends on how accurately the algorithm ("method 1" and "method 2" in the gif) extracts the text mask. It could perform worse on complex text & background.  
 
 ## Text editing
 <img src="doc/src/textedit.gif">
@@ -57,10 +68,12 @@ Text editing mode
 ## Shortcuts
 * A/D to turn the page
 * Ctrl+Z, Ctrl+Y to undo/redo most operations, note the undo stack will be cleared after you turn the page.
-* Click the "T" button on the bottom toolbar to enter/leave text-editing mode, press W to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
+* T to text-editting mode, (or the "T" button on the bottom toolbar) press W to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
+* P to image-editting mode.  
 * In the image editing mode, use the slider on the right bottom to control the original image transparency.
 * The "OCR" and "A" button in the bottom toolbar controls whether to enable OCR and translation, if you disable them, the program will only do the text detection and removal.  
 * Set parameters of automatic modules in the config panel.  
+* Ctrl++/ to resize image
   
 <img src="doc/src/configpanel.png">  
 

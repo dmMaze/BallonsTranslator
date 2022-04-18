@@ -68,7 +68,7 @@ class Canvas(QGraphicsScene):
 
     scalefactor_changed = pyqtSignal()
     end_create_textblock = pyqtSignal(QRectF)
-    end_create_rect = pyqtSignal(QRectF)
+    end_create_rect = pyqtSignal(QRectF, int)
     delete_textblks = pyqtSignal()
     finish_painting = pyqtSignal(StrokeItem)
     finish_erasing = pyqtSignal(StrokeItem)
@@ -253,12 +253,12 @@ class Canvas(QGraphicsScene):
             self.txtblkShapeControl.hideControls()
         self.txtblkShapeControl.show()
 
-    def endCreateTextblock(self):
+    def endCreateTextblock(self, btn=0):
         self.creating_textblock = False
         self.gv.setCursor(Qt.ArrowCursor)
         self.txtblkShapeControl.hide()
         if self.creating_normal_rect:
-            self.end_create_rect.emit(self.txtblkShapeControl.rect())
+            self.end_create_rect.emit(self.txtblkShapeControl.rect(), btn)
             self.txtblkShapeControl.showControls()
         else:
             self.end_create_textblock.emit(self.txtblkShapeControl.rect())
@@ -289,6 +289,8 @@ class Canvas(QGraphicsScene):
             if event.button() == Qt.RightButton:
                 if self.hovering_textblkitem is None:
                     return self.startCreateTextblock(event.scenePos())
+        elif self.creating_normal_rect:
+            return self.startCreateTextblock(event.scenePos(), hide_control=True)
         elif event.button() == Qt.MouseButton.LeftButton:
             if self.alt_pressed:
                 self.scale_tool_mode = True
@@ -296,9 +298,7 @@ class Canvas(QGraphicsScene):
             elif self.painting:
                 self.stroke_path_item = PenStrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
                 self.addStrokeItem(self.stroke_path_item)
-            elif self.creating_normal_rect:
-                return self.startCreateTextblock(event.scenePos(), hide_control=True)
-                
+
         elif event.button() == Qt.MouseButton.RightButton:
             if self.painting:
                 self.stroke_path_item = PenStrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
@@ -312,7 +312,8 @@ class Canvas(QGraphicsScene):
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.creating_textblock:
-            return self.endCreateTextblock()
+            btn = 0 if event.button() == Qt.MouseButton.LeftButton else 1
+            return self.endCreateTextblock(btn=btn)
         elif event.button() == Qt.RightButton:
             if self.stroke_path_item is not None:
                 self.finish_erasing.emit(self.stroke_path_item)

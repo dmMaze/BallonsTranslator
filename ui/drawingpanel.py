@@ -8,6 +8,7 @@ import cv2
 
 from utils.imgproc_utils import enlarge_window
 from utils.textblock_mask import canny_flood, connected_canny_flood
+from utils.logger import logger
 
 from .dl_manager import DLManager
 from .image_edit import ImageEditMode, StrokeItem, PixmapItem
@@ -499,6 +500,10 @@ class DrawingPanel(Widget):
         if inpaint_dict is None:
             if self.inpaint_stroke is None:
                 return
+            elif self.inpaint_stroke.parentItem() is None:
+                logger.warning("sth goes wrong")
+                self.canvas.removeItem(self.inpaint_stroke)
+                return
             mask = self.inpaint_stroke.getSubimg(convert_mask=True)
             pos = self.inpaint_stroke.subBlockPos()
             if mask is None:
@@ -648,7 +653,7 @@ class DrawingPanel(Widget):
         else:
             self.toolConfigStackwidget.show()
 
-    def on_end_create_rect(self, rect: QRectF):
+    def on_end_create_rect(self, rect: QRectF, mode: int):
         if self.currentTool == self.rectTool:
             self.canvas.image_edit_mode = ImageEditMode.NONE
             img = self.canvas.imgtrans_proj.inpainted_array
@@ -662,26 +667,31 @@ class DrawingPanel(Widget):
             if y2 - y1 < 2 or x2 - x1 < 2:
                 self.canvas.image_edit_mode = ImageEditMode.RectTool
                 return
+            if mode == 0:
+                im = np.copy(img[y1: y2, x1: x2])
+                maskseg_method = self.rectPanel.get_maskseg_method()
+                mask, ballon_mask, bub_dict = maskseg_method(im)
+                bground_bgr = bub_dict['bground_bgr']
+                need_inpaint = bub_dict['need_inpaint']
 
-            im = np.copy(img[y1: y2, x1: x2])
-            maskseg_method = self.rectPanel.get_maskseg_method()
-            mask, ballon_mask, bub_dict = maskseg_method(im)
-            bground_bgr = bub_dict['bground_bgr']
-            need_inpaint = bub_dict['need_inpaint']
-
-            inpaint_dict = {'img': im, 'mask': mask, 'inpaint_rect': [x1, y1, x2, y2]}
-            inpaint_dict['need_inpaint'] = need_inpaint
-            inpaint_dict['bground_bgr'] = bground_bgr
-            inpaint_dict['ballon_mask'] = ballon_mask
-            user_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
-            user_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
-            self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_mask))
-            self.inpaint_mask_item.setParentItem(self.canvas.baseLayer)
-            self.inpaint_mask_item.setPos(x1, y1)
-            if self.rectPanel.auto():
-                self.inpaintRect(inpaint_dict)
+                inpaint_dict = {'img': im, 'mask': mask, 'inpaint_rect': [x1, y1, x2, y2]}
+                inpaint_dict['need_inpaint'] = need_inpaint
+                inpaint_dict['bground_bgr'] = bground_bgr
+                inpaint_dict['ballon_mask'] = ballon_mask
+                user_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
+                user_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
+                self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_mask))
+                self.inpaint_mask_item.setParentItem(self.canvas.baseLayer)
+                self.inpaint_mask_item.setPos(x1, y1)
+                if self.rectPanel.auto():
+                    self.inpaintRect(inpaint_dict)
+                else:
+                    self.rect_inpaint_dict = inpaint_dict
             else:
-                self.rect_inpaint_dict = inpaint_dict
+                mask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
+                erased = self.canvas.imgtrans_proj.img_array[y1: y2, x1: x2]
+                self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased, mask, [x1, y1, x2, y2]))
+                self.canvas.image_edit_mode = ImageEditMode.RectTool
             self.setCrossCursor()
 
     def inpaintRect(self, inpaint_dict):
