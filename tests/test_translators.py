@@ -1,6 +1,6 @@
 import sys, os
 sys.path.append(os.getcwd())
-from dl.translators import TranslatorBase, GoogleTranslator, PapagoTranslator, TRANSLATORS, CaiyunTranslator
+from dl.translators import TranslatorBase, GoogleTranslator, PapagoTranslator, TRANSLATORS, CaiyunTranslator, DeeplTranslator
 
 def test_translator(translator: TranslatorBase, test_list):
     for test_dict in test_list:
@@ -49,5 +49,6 @@ if __name__ == '__main__':
     ptranslator = PapagoTranslator('简体中文', 'English')
     ptranslator = PapagoTranslator('简体中文', 'English')
     gtranslator = GoogleTranslator('简体中文', 'English')
+    dtranslator = DeeplTranslator('简体中文', 'English')
     test_translator(ptranslator, engchscht_test_list)
 
