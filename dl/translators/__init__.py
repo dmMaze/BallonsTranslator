@@ -8,6 +8,7 @@ from ..textdetector.textblock import TextBlock
 from ..moduleparamparser import ModuleParamParser, DEFAULT_DEVICE
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
+import deepl
 
 TRANSLATORS = Registry('translators')
 register_translator = TRANSLATORS.register_module
@@ -299,7 +300,53 @@ class CaiyunTranslator(TranslatorBase):
 
         return translations
 
+@register_translator('Deepl')
+class DeeplTranslator(TranslatorBase):
 
+    concate_text = True
+    setup_params: Dict = {
+        'api_key': '', 
+        'device': {
+            'type': 'selector',
+            'options': ['cpu', 'cuda'],
+            'select': 'cpu'
+        }
+    }
+
+    def _setup_translator(self):
+        self.lang_map['中国人'] = 'zh'
+        self.lang_map['日本語'] = 'ja'
+        self.lang_map['English'] = 'en'
+        self.lang_map['français'] = 'fr'
+        self.lang_map['Deutsch'] = 'de'
+        self.lang_map['italiano'] = 'it'
+        self.lang_map['português'] = 'pt'
+        self.lang_map['русский язык'] = 'ru'
+        self.lang_map['español'] = 'es'
+        self.lang_map['български език'] = 'bg'
+        self.lang_map['Český Jazyk'] = 'cs'
+        self.lang_map['Dansk'] = 'da'
+        self.lang_map['Ελληνικά'] = 'el'
+        self.lang_map['Eesti'] = 'et'
+        self.lang_map['Suomi'] = 'fi'
+        self.lang_map['Magyar'] = 'hu'
+        self.lang_map['Lietuvių'] = 'lt'
+        self.lang_map['latviešu'] = 'lv'
+        self.lang_map['Nederlands'] = 'nl'
+        self.lang_map['Język polski'] = 'pl'
+        self.lang_map['Română'] = 'ro'
+        self.lang_map['Slovenčina'] = 'sk'
+        self.lang_map['Slovenščina'] = 'sl'
+        self.lang_map['Svenska'] = 'sv' 
+        
+    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+        api_key = self.setup_params['api_key']
+        translator = deepl.Translator(api_key)
+        source = self.lang_map[self.lang_source]
+        target = self.lang_map[self.lang_target]
+        result = translator.translate_text(text, source_lang=source, target_lang=target)
+        return result.text
+    
 # # "dummy translator" is the name showed in the app
 # @register_translator('dummy translator')
 # class DummyTranslator(TranslatorBase):
