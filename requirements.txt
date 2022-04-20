@@ -6,3 +6,10 @@ fugashi
 unidic_lite
 tqdm
 opencv-python>=4.5.4
+PyQt5
+shapely
+pyclipper
+einops
+termcolor*
+bs4
+deepl
