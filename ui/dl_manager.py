@@ -728,6 +728,3 @@ class DLManager(QObject):
     def on_inpainter_checker_changed(self, is_checked: bool):
         self.dl_config.check_need_inpaint = is_checked
         InpainterBase.check_need_inpaint = is_checked
-        
-
-    

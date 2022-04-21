@@ -305,12 +305,7 @@ class DeeplTranslator(TranslatorBase):
 
     concate_text = True
     setup_params: Dict = {
-        'api_key': '', 
-        'device': {
-            'type': 'selector',
-            'options': ['cpu', 'cuda'],
-            'select': 'cpu'
-        }
+        'api_key': ''
     }
 
     def _setup_translator(self):

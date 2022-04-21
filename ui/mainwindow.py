@@ -174,7 +174,7 @@ class MainWindow(QMainWindow):
         self.dl_manager.page_trans_finished.connect(self.on_pagtrans_finished)
         self.dl_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
 
-        self.leftBar.run_imgtrans.connect(dl_manager.runImgtransPipeline)
+        self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
         self.bottomBar.ocrcheck_statechanged.connect(dl_manager.setOCRMode)
         self.bottomBar.transcheck_statechanged.connect(dl_manager.setTransMode)
         self.bottomBar.translatorStatusbtn.clicked.connect(self.translatorStatusBtnPressed)
@@ -387,9 +387,10 @@ class MainWindow(QMainWindow):
             
         img = QImage(self.canvas.imgLayer.pixmap().size(), QImage.Format.Format_ARGB32)
 
+        restore_textblock_mode = False
         if self.config.imgtrans_textblock:
-            self.bottomBar.textblockChecker.setChecked(False)
-            self.setTextBlockMode()
+            restore_textblock_mode = True
+            self.bottomBar.textblockChecker.click()
 
         hide_tsc = False
         if self.st_manager.txtblkShapeControl.isVisible():
@@ -406,6 +407,8 @@ class MainWindow(QMainWindow):
         imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
         self.imsave_thread.saveImg(imsave_path, img)
             
+        if restore_textblock_mode:
+            self.bottomBar.textblockChecker.click()
         if hide_tsc:
             self.st_manager.txtblkShapeControl.show()
         self.canvas.setProjSaveState(False)
@@ -473,3 +476,8 @@ class MainWindow(QMainWindow):
             mb.exec()
             return
         self.close()
+
+    def on_run_imgtrans(self):
+        if self.bottomBar.textblockChecker.isChecked():
+            self.bottomBar.textblockChecker.click()
+        self.dl_manager.runImgtransPipeline()
