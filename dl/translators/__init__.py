@@ -314,7 +314,7 @@ class DeeplTranslator(TranslatorBase):
     }
 
     def _setup_translator(self):
-        self.lang_map['中国人'] = 'zh'
+        self.lang_map['简体中文'] = 'zh'
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'
         self.lang_map['français'] = 'fr'
