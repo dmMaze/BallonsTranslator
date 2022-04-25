@@ -1,4 +1,4 @@
-from .ocr import OCR, OCRBase, OCRMIT32px
+from .ocr import OCR, OCRBase, OCRMIT32px, OCRMIT48pxCTC
 from .textdetector import TEXTDETECTORS, TextDetectorBase, ComicTextDetector
 from .translators import TRANSLATORS, TranslatorBase
 from .inpaint import INPAINTERS, InpainterBase, PatchmatchInpainter, AOTInpainter

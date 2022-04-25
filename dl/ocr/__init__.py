@@ -145,6 +145,71 @@ class MangaOCR(OCRBase):
         device = self.setup_params['device']['select']
         if self.device != device:
             self.model.to(device)
+
+
+
+
+from .mit48px_ctc import OCR48pxCTC
+OCR48PXMODEL: OCR48pxCTC = None
+OCR48PXMODEL_PATH = r'data/models/mit48pxctc_ocr.ckpt'
+
+def load_48px_model(model_path, device, chunk_size=16) -> OCR48pxCTC:
+    model = OCR48pxCTC(model_path, device, max_chunk_size=chunk_size)
+    return model
+
+@register_OCR('mit48px_ctc')
+class OCRMIT48pxCTC(OCRBase):
+    setup_params = {
+        'chunk_size': {
+            'type': 'selector',
+            'options': [
+                8,
+                16,
+                24,
+                32
+            ],
+            'select': 16
+        },
+        'device': {
+            'type': 'selector',
+            'options': [
+                'cpu',
+                'cuda'
+            ],
+            'select': DEFAULT_DEVICE
+        },
+        'description': 'mit48px_ctc'
+    }
+    device = DEFAULT_DEVICE
+    chunk_size = 16
+
+    def setup_ocr(self):
+        
+        global OCR48PXMODEL
+        self.device = self.setup_params['device']['select']
+        self.chunk_size = int(self.setup_params['chunk_size']['select'])
+        if OCR48PXMODEL is None:
+            self.model = OCR48PXMODEL = \
+                load_48px_model(OCR48PXMODEL_PATH, self.device, self.chunk_size)
+        else:
+            self.model = OCR48PXMODEL
+            self.model.to(self.device)
+            self.model.max_chunk_size = self.chunk_size
+
+    def ocr_img(self, img: np.ndarray) -> str:
+        return self.model.ocr_img(img)
+
+    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        return self.model(img, blk_list)
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        device = self.setup_params['device']['select']
+        chunk_size = int(self.setup_params['chunk_size']['select'])
+        if self.device != device:
+            self.model.to(device)
+        self.chunk_size = chunk_size
+        self.model.max_chunk_size = chunk_size
     
 
 
