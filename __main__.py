@@ -19,7 +19,7 @@ def main():
     translator = QTranslator()
     translator.load(
         QLocale.system().name(),
-        osp.dirname(osp.abspath(__file__)) + "/translate",
+        osp.dirname(osp.abspath(__file__)) + "/data/translate",
     )
     app.installTranslator(translator)
     ballontrans = MainWindow(app, open_dir=args.proj_dir)
