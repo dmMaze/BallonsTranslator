@@ -1,11 +1,11 @@
 # BallonTranslator
-<sup> [简体中文](README.md) | [English]</sup>  
+[简体中文](README.md) | English  
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.
 ## Download
 [国内网盘](https://cowtransfer.com/s/b336741eec834b)  | [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
 
-<img src="./src/ui0.jpg" div align=center>
+<img src="doc/src/ui0.jpg" div align=center>
 
 <p align=center>
 preview
@@ -28,30 +28,30 @@ preview
 
 ## Fully automated translation
 **It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.**, Please select the desired translator and set the source and target languages the first time you run the application. Open a folder containing images that need translation, click the "Run" button and wait for the process to complete.
-<img src="./src/run.gif">  
+<img src="doc/src/run.gif">  
 
 
 ### Previews of fully automated translation results
 |                                          Original                                           |         Translated          |
 | :-----------------------------------------------------------------------------------------: | :-------------------------: |
-|        ![Original](../data/testpacks/manga/original2.jpg 'https://twitter.com/mmd_96yuki/status/1320122899005460481')         | ![Output](./src/result2.png) |
-| ![Original](../data/testpacks/manga/original4.jpg 'https://amagi.fanbox.cc/posts/1904941') | ![Output](./src/result4.png) |
-| ![Original](../data/testpacks/manga/AisazuNihaIrarenai-003.jpg) | ![Output](./src/AisazuNihaIrarenai-003.png) |
-|           ![Original](../data/testpacks/comics/006049.jpg)           | ![Output](./src/006049.png) | 
-|           ![Original](../data/testpacks/comics/006058.jpg)           | ![Output](./src/006058.png) | 
+|        ![Original](ballontranslator/data//testpacks/manga/original2.jpg 'https://twitter.com/mmd_96yuki/status/1320122899005460481')         | ![Output](doc/src/result2.png) |
+| ![Original](ballontranslator/data//testpacks/manga/original4.jpg 'https://amagi.fanbox.cc/posts/1904941') | ![Output](doc/src/result4.png) |
+| ![Original](ballontranslator/data//testpacks/manga/AisazuNihaIrarenai-003.jpg) | ![Output](doc/src/AisazuNihaIrarenai-003.png) |
+|           ![Original](ballontranslator/data//testpacks/comics/006049.jpg)           | ![Output](doc/src/006049.png) | 
+|           ![Original](ballontranslator/data//testpacks/comics/006058.jpg)           | ![Output](doc/src/006058.png) | 
 
 
 
 ## Image editing
 
 ### inpaint tool
-<img src="./src/imgedit_inpaint.gif">
+<img src="doc/src/imgedit_inpaint.gif">
 <p align = "center">
 Image editing mode, inpainting tool
 </p>
 
 ### rect tool
-<img src="./src/rect_tool.gif">
+<img src="doc/src/rect_tool.gif">
 <p align = "center">
 rect tool
 </p>
@@ -60,7 +60,7 @@ Drag the rectangle with left button pressed to erase the text inside the box, pr
 The result depends on how accurately the algorithm ("method 1" and "method 2" in the gif) extracts the text mask. It could perform worse on complex text & background.  
 
 ## Text editing
-<img src="./src/textedit.gif">
+<img src="doc/src/textedit.gif">
 <p align = "center">
 Text editing mode
 </p>
@@ -75,7 +75,7 @@ Text editing mode
 * Set parameters of automatic modules in the config panel.  
 * Ctrl++/ to resize image
   
-<img src="./src/configpanel.png">  
+<img src="doc/src/configpanel.png">  
 
 ## Automation modules
 This project is heavily dependent upon [manga-image-translator](https://github.com/zyddnys/manga-image-translator), online service and model training is not cheap, please consider to donate the project:  

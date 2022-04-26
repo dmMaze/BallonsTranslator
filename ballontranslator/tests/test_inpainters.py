@@ -1,11 +1,15 @@
 import sys, os
-sys.path.append(os.getcwd())
+import os.path as osp
+sys.path.append(osp.dirname(osp.dirname(__file__)))
 
 from dl import InpainterBase, AOTInpainter, PatchmatchInpainter
 from utils.io_utils import imread, imwrite, find_all_imgs
 from ui.misc import ProjImgTrans
 
 from ui.misc import ProjImgTrans, DLModuleConfig
+from ui.constants import PROGRAM_PATH
+os.chdir(PROGRAM_PATH)
+
 import numpy as np
 import cv2
 from tqdm import tqdm
@@ -57,11 +61,8 @@ def test_patchmatch(proj: ProjImgTrans, inpaint_by_block=True, show=False):
 
 if __name__ == '__main__':
 
-    manga_dir = 'data/testpacks/testpacks/jpn'
-    comic_dir = 'data/testpacks/testpacks/eng'
-    comic_dir2 = 'data/testpacks/testpacks/eng2'
+    manga_dir = 'data/testpacks/manga'
     manga_proj = ProjImgTrans(manga_dir)
-    comic_proj = ProjImgTrans(comic_dir)
     # comic_proj = ProjImgTrans(comic_dir2)
-    test_aot(comic_proj, device='cpu', inpaint_by_block=True, inpaint_size=2048)
+    test_aot(manga_proj, device='cuda', inpaint_by_block=True, inpaint_size=2048)
     # test_patchmatch(comic_proj, inpaint_by_block=False)

@@ -1,12 +1,14 @@
 import sys, os
 import os.path as osp
-sys.path.append(os.getcwd())
+sys.path.append(osp.dirname(osp.dirname(__file__)))
 
 from tqdm import tqdm
 from dl import OCRBase, OCRMIT32px, OCRMIT48pxCTC
 from utils.io_utils import imread, imwrite
 
 from ui.misc import ProjImgTrans
+from ui.constants import PROGRAM_PATH
+os.chdir(PROGRAM_PATH)
 
 SAVE_DIR = 'tmp/ocr_test'
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -35,8 +37,6 @@ def test_mit48px(proj: ProjImgTrans, device: str = 'cpu', chunk_size: int = 16):
 
 if __name__ == '__main__':
     manga_dir = 'data/testpacks/manga'
-    comic_dir = 'data/testpacks/testpacks/eng'
-    comic_dir2 = 'data/testpacks/testpacks/eng2'
     manga_proj = ProjImgTrans(manga_dir)
 
     test_mit48px(manga_proj, 'cpu', 16)

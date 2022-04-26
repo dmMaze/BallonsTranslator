@@ -1,5 +1,6 @@
 import sys, os
-sys.path.append(os.getcwd())
+import os.path as osp
+sys.path.append(osp.dirname(osp.dirname(__file__)))
 from dl.translators import TranslatorBase, GoogleTranslator, PapagoTranslator, TRANSLATORS, CaiyunTranslator, DeeplTranslator
 
 def test_translator(translator: TranslatorBase, test_list):
@@ -46,7 +47,6 @@ if __name__ == '__main__':
         'token': 'invalidtoken',
     }
     # ctranslator = CaiyunTranslator('简体中文', 'English', **caiyun_setup_params)
-    ptranslator = PapagoTranslator('简体中文', 'English')
     ptranslator = PapagoTranslator('简体中文', 'English')
     gtranslator = GoogleTranslator('简体中文', 'English')
     dtranslator = DeeplTranslator('简体中文', 'English')

@@ -2,6 +2,8 @@ import os.path as osp
 
 UI_PATH = osp.dirname(osp.abspath(__file__))
 PROGRAM_PATH = osp.dirname(UI_PATH)
+
+
 LIBS_PATH = osp.join(PROGRAM_PATH, 'data/libs')
 
 STYLESHEET_PATH = osp.join(PROGRAM_PATH, 'data/config/stylesheet.css')

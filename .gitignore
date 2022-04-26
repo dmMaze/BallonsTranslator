@@ -2,9 +2,10 @@ __pycache__
 inpainted
 mask
 result
-data/models
-data/testpacks/eng_dontupload
-data/testpacks/testpacks
+ballontranslator/data/models
+ballontranslator/data/testpacks/eng_dontupload
+ballontranslator/data/testpacks/testpacks
+release
 
 tmp.py
 dummy_scripts.py

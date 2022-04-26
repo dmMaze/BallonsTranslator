@@ -1,5 +1,5 @@
 # BallonTranslator
-<sup> 简体中文 | [English](README_EN.md)</sup>  
+简体中文 | [English](README_EN.md)  
 
 深度学习辅助漫画翻译工具, 支持一键机翻和简单的图像/文本编辑  
 ## 下载
@@ -33,11 +33,11 @@
 ### 一键翻译结果预览
 |                                          Original                                           |         Translated          |
 | :-----------------------------------------------------------------------------------------: | :-------------------------: |
-|        ![Original](data/testpacks/manga/original2.jpg 'https://twitter.com/mmd_96yuki/status/1320122899005460481')         | ![Output](doc/src/result2.png) |
-| ![Original](data/testpacks/manga/original4.jpg 'https://amagi.fanbox.cc/posts/1904941') | ![Output](doc/src/result4.png) |
-| ![Original](data/testpacks/manga/AisazuNihaIrarenai-003.jpg) | ![Output](doc/src/AisazuNihaIrarenai-003.png) |
-|           ![Original](data/testpacks/comics/006049.jpg)           | ![Output](doc/src/006049.png) | 
-|           ![Original](data/testpacks/comics/006058.jpg)           | ![Output](doc/src/006058.png) | 
+|        ![Original](ballontranslator/data/testpacks/manga/original2.jpg 'https://twitter.com/mmd_96yuki/status/1320122899005460481')         | ![Output](doc/src/result2.png) |
+| ![Original](ballontranslator/data/testpacks/manga/original4.jpg 'https://amagi.fanbox.cc/posts/1904941') | ![Output](doc/src/result4.png) |
+| ![Original](ballontranslator/data/testpacks/manga/AisazuNihaIrarenai-003.jpg) | ![Output](doc/src/AisazuNihaIrarenai-003.png) |
+|           ![Original](ballontranslator/data/testpacks/comics/006049.jpg)           | ![Output](doc/src/006049.png) | 
+|           ![Original](ballontranslator/data/testpacks/comics/006058.jpg)           | ![Output](doc/src/006058.png) | 
 
 
 
