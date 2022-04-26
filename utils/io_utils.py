@@ -35,8 +35,6 @@ def find_all_imgs(img_dir, abs_path=False):
     return imglist
 
 def imread(imgpath, read_type=cv2.IMREAD_COLOR):
-    # img = cv2.imread(imgpath, read_type)
-    # if img is None:
     if not osp.exists(imgpath):
         return None
     img = cv2.imdecode(np.fromfile(imgpath, dtype=np.uint8), read_type)

@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QMenu, QSpacerItem, QPushButton, QHBoxLayout, QVBoxLayout, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
+from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStylePainter, QStyleOption, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
 from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, pyqtSignal, QSizeF, QObject, QEvent
 from PyQt5.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument
 from typing import List, Union, Tuple
@@ -92,20 +92,18 @@ class ProgressMessageBox(QDialog):
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
         self.setModal(True)
-        layout = QVBoxLayout(self)
-        self.label = QLabel(self)
+        
         self.detect_bar = TaskProgressBar('detect', self.tr('Detecting: '), self)
         self.ocr_bar = TaskProgressBar('ocr', self.tr('OCR: '), self)
         self.inpaint_bar = TaskProgressBar('inpaint', self.tr('Inpainting: '), self)
         self.translate_bar = TaskProgressBar('translate', self.tr('Translating: '), self)
 
+        layout = QVBoxLayout(self)
         layout.addWidget(self.detect_bar)
         layout.addWidget(self.ocr_bar)
         layout.addWidget(self.inpaint_bar)
         layout.addWidget(self.translate_bar)
-
         layout.setSpacing(0)
         layout.setContentsMargins(20, 10, 20, 30)
 

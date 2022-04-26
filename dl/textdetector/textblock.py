@@ -159,11 +159,6 @@ class TextBlock(object):
 
     def to_dict(self, extra_info=False):
         blk_dict = copy.deepcopy(vars(self))
-        # if not extra_info:
-            # blk_dict.pop('distance')
-            # blk_dict.pop('weight')
-            # blk_dict.pop('vec')
-            # blk_dict.pop('norm')
         return blk_dict
 
     def get_transformed_region(self, img, idx, textheight) -> np.ndarray :

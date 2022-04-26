@@ -1,3 +1,5 @@
+# modified from https://github.com/zyddnys/manga-image-translator/blob/main/ocr/model_48px_ctc.py
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
