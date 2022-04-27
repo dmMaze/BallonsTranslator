@@ -100,7 +100,7 @@ Support English and Japanese text detection, training code and more details can 
  * Please change the goolge translator url from *.cn to *.com if you are not blocked by GFW.  
  * Caiyun translator need to require a [token](https://dashboard.caiyunapp.com/)
  * papago  
- To add a new translator, please reference [加别的翻译器](./加别的翻译器.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
+ To add a new translator, please reference [加别的翻译器](doc/加别的翻译器.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
 
 ## Misc
 * The release package contains PyTorch and cuda. For future updates, if no changes are made to the dependencies, only the new exe and models will be released, copy them to the program folder to get the grogram updated. 
