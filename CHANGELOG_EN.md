@@ -1,5 +1,12 @@
 # Changelogs
 
+### 2022-05-19
+[v1.2.0](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.2.0) released
+
+1. Support DeepL, thanks to [@Snowad14](https://github.com/Snowad14)
+2. Add new ocr model from manga-image-translator, support korean recognition
+3. Bugfixes
+
 ### 2022-04-17
 
 [v1.1.0](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.1.0) released

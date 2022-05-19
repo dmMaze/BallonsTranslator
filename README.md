@@ -89,6 +89,7 @@
 
 ### OCR
  * mit_32px模型来自manga-image-translator, 支持日英汉识别和颜色提取
+ * mit48px_ctc模型来自manga-image-translator, 支持日英汉韩语识别和颜色提取
  * [manga_ocr](https://github.com/kha-white/manga-ocr)来自[kha-white](https://github.com/kha-white), 支持日语识别, 注意选用该模型程序不会提取颜色
 
 ### 图像修复

@@ -88,6 +88,7 @@ Support English and Japanese text detection, training code and more details can 
 
 ### OCR
  * mit_32px text recognition model is from manga-image-translator, support English and Japanese recognition and text color extraction.
+ * mit_48px text recognition model is from manga-image-translator, support English, Japanese and Korean recognition and text color extraction.
  * [manga_ocr](https://github.com/kha-white/manga-ocr) is from [kha-white](https://github.com/kha-white), 
 
 ### Inpainting

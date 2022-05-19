@@ -168,12 +168,12 @@ class MainWindow(QMainWindow):
         self.bottomBar.transChecker.setChecked(self.config.dl.enable_translate)
 
         self.dl_manager = dl_manager = DLManager(self.config.dl, self.imgtrans_proj, self.configPanel)
-        self.dl_manager.update_translator_status.connect(self.updateTranslatorStatus)
-        self.dl_manager.update_inpainter_status.connect(self.updateInpainterStatus)
-        self.dl_manager.finish_translate_page.connect(self.finishTranslatePage)
-        self.dl_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
-        self.dl_manager.page_trans_finished.connect(self.on_pagtrans_finished)
-        self.dl_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
+        dl_manager.update_translator_status.connect(self.updateTranslatorStatus)
+        dl_manager.update_inpainter_status.connect(self.updateInpainterStatus)
+        dl_manager.finish_translate_page.connect(self.finishTranslatePage)
+        dl_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
+        dl_manager.page_trans_finished.connect(self.on_pagtrans_finished)
+        dl_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
 
         self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
         self.bottomBar.ocrcheck_statechanged.connect(dl_manager.setOCRMode)

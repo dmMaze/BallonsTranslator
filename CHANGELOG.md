@@ -1,5 +1,13 @@
 # Changelogs
 
+### 2022-05-19
+[v1.2.0](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.2.0)发布
+
+1. 支持DeepL翻译器, 感谢[@Snowad14](https://github.com/Snowad14)
+2. 增加来自manga-image-translator的新OCR模型, 支持韩语识别
+3. 修bug
+
+
 ### 2022-04-17
 [v1.1.0](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.1.0)发布
 
