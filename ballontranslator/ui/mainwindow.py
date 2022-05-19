@@ -6,6 +6,8 @@ from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication,
 from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize, QThread
 from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QMouseEvent
 
+from utils.logger import logger as LOGGER
+
 from .misc import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -35,12 +37,11 @@ class MainWindow(QMainWindow):
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        global DPI, LDPI
-        DPI = QGuiApplication.primaryScreen().physicalDotsPerInch()
+
+        constants.DPI = QGuiApplication.primaryScreen().physicalDotsPerInch()
         constants.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
 
         self.app = app
-        self.setupLogger()
         self.setupUi()
         self.setupConfig()
         self.setupShortcuts()
@@ -148,8 +149,8 @@ class MainWindow(QMainWindow):
                 config_dict = json.loads(f.read())
             self.config.load_from_dict(config_dict)
         except Exception as e:
-            self.logger.exception(e)
-            self.logger.warning("Failed to load config file, using default config")
+            LOGGER.exception(e)
+            LOGGER.warning("Failed to load config file, using default config")
 
         self.bottomBar.originalSlider.setValue(self.config.original_transparency * 100)
         self.drawingPanel.maskTransperancySlider.setValue(self.config.mask_transparency * 100)
@@ -166,7 +167,7 @@ class MainWindow(QMainWindow):
         self.bottomBar.ocrChecker.setCheckState(self.config.dl.enable_ocr)
         self.bottomBar.transChecker.setChecked(self.config.dl.enable_translate)
 
-        self.dl_manager = dl_manager = DLManager(self.config.dl, self.imgtrans_proj, self.configPanel, self.logger)
+        self.dl_manager = dl_manager = DLManager(self.config.dl, self.imgtrans_proj, self.configPanel)
         self.dl_manager.update_translator_status.connect(self.updateTranslatorStatus)
         self.dl_manager.update_inpainter_status.connect(self.updateInpainterStatus)
         self.dl_manager.finish_translate_page.connect(self.finishTranslatePage)
@@ -186,10 +187,6 @@ class MainWindow(QMainWindow):
         if self.config.open_recent_on_startup:
             self.configPanel.open_on_startup_checker.setChecked(True)
 
-    def setupLogger(self):
-        from utils.logger import logger
-        self.logger = logger
-
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
         if self.leftBar.showPageListLabel.checkState() == 2:
@@ -202,8 +199,8 @@ class MainWindow(QMainWindow):
         try:
             self.imgtrans_proj.load(directory)
         except Exception as e:
-            self.logger.exception(e)
-            self.logger.warning("Failed to load project from " + directory)
+            LOGGER.exception(e)
+            LOGGER.warning("Failed to load project from " + directory)
             self.dl_manager.handleRunningException(self.tr('Failed to load project ') + directory, '')
             return
         self.proj_directory = directory

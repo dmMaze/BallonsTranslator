@@ -1,13 +1,16 @@
-from typing import List, Union, Tuple
+from typing import List
 
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QTreeView, QPlainTextEdit, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
-from PyQt5.QtCore import Qt, QModelIndex, pyqtSignal, QPointF, QPoint, QSize, QSizeF, QObject, QEvent
-from PyQt5.QtGui import QStandardItemModel, QFontMetricsF
-from .stylewidgets import ConfigComboBox
-from .constants import CONFIG_FONTSIZE_TABLE, CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QFontMetricsF
 
 from dl import VALID_INPAINTERS, VALID_TEXTDETECTORS, VALID_TRANSLATORS, VALID_OCR, \
     TranslatorBase, DEFAULT_DEVICE
+from utils.logger import logger as LOGGER
+
+from .stylewidgets import ConfigComboBox
+from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
+
 
 class ParamNameLabel(QLabel):
     def __init__(self, param_name: str, *args, **kwargs) -> None:
@@ -156,7 +159,7 @@ class ModuleConfigParseWidget(QWidget):
                 self.params_layout.addWidget(param_widget)
                 param_widget.hide()
         if len(invalid_module_keys) > 0:
-            print('Invalid module keys:', invalid_module_keys)
+            LOGGER.warning(F'Invalid module keys: {invalid_module_keys}')
             for ik in invalid_module_keys:
                 module_dict.pop(ik)
         self.on_module_changed()

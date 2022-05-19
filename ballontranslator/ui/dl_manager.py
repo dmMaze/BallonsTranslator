@@ -1,16 +1,11 @@
 import time
-from typing import List, Dict, Union
-from logging import Logger
+from typing import Union
 import numpy as np
-from collections import OrderedDict
 
-from .stylewidgets import ProgressMessageBox
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QLocale
-from PyQt5.QtWidgets import QMessageBox, QPushButton
+from PyQt5.QtCore import QThread, pyqtSignal, QObject, QLocale
+from PyQt5.QtWidgets import QMessageBox
 
-from .configpanel import TranslatorConfigPanel, InpaintConfigPanel, ConfigPanel
-from .misc import ProjImgTrans, DLModuleConfig
-
+from utils.logger import logger as LOGGER
 from utils.registry import Registry
 from dl.translators import MissingTranslatorParams, InvalidSourceOrTargetLanguage
 from dl import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
@@ -18,6 +13,10 @@ from dl import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     TranslatorBase, InpainterBase, TextDetectorBase, OCRBase
 import dl
 dl.translators.SYSTEM_LANG = QLocale.system().name()
+
+from .stylewidgets import ProgressMessageBox
+from .configpanel import ConfigPanel
+from .misc import ProjImgTrans, DLModuleConfig
 
 class ModuleThread(QThread):
 
@@ -391,11 +390,10 @@ class DLManager(QObject):
     def __init__(self, 
                  dl_config: DLModuleConfig, 
                  imgtrans_proj: ProjImgTrans,
-                 config_panel: ConfigPanel,
-                 logger: Logger, *args, **kwargs) -> None:
+                 config_panel: ConfigPanel, 
+                 *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.dl_config = dl_config
-        self.logger = logger
         self.imgtrans_proj = imgtrans_proj
 
         self.textdetect_thread = TextDetectThread(self.dl_config)
@@ -498,7 +496,7 @@ class DLManager(QObject):
     def translatePage(self, run_target: bool, page_key: str):
         if not run_target:
             if self.translate_thread.isRunning():
-                self.logger.warning('Terminating a running translation thread.')
+                LOGGER.warning('Terminating a running translation thread.')
                 self.translate_thread.terminate()
             return
         self.translate_thread.translatePage(self.imgtrans_proj.pages, page_key)
@@ -508,13 +506,13 @@ class DLManager(QObject):
 
     def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect = None, **kwargs):
         if self.inpaint_thread.isRunning():
-            self.logger.warning('Waiting for inpainting to finish')
+            LOGGER.warning('Waiting for inpainting to finish')
             return
         self.inpaint_thread.inpaint(img, mask, img_key, inpaint_rect)
 
     def runImgtransPipeline(self):
         if self.imgtrans_proj.is_empty:
-            self.logger.info('proj file is empty, nothing to do')
+            LOGGER.info('proj file is empty, nothing to do')
             self.progress_msgbox.hide()
             return
         self.last_finished_index = -1
@@ -589,7 +587,7 @@ class DLManager(QObject):
         if translator is None:
             translator = self.dl_config.translator
         if self.translate_thread.isRunning():
-            self.logger.warning('Terminating a running translation thread.')
+            LOGGER.warning('Terminating a running translation thread.')
             self.translate_thread.terminate()
         self.translate_thread.setTranslator(translator)
         self.update_translator_status.emit('...', self.dl_config.translate_source, self.dl_config.translate_target)
@@ -598,7 +596,7 @@ class DLManager(QObject):
         if inpainter is None:
             inpainter =self.dl_config.inpainter
         if self.inpaint_thread.isRunning():
-            self.logger.warning('Terminating a running inpaint thread.')
+            LOGGER.warning('Terminating a running inpaint thread.')
             self.inpaint_thread.terminate()
         self.inpaint_thread.setInpainter(inpainter)
 
@@ -606,7 +604,7 @@ class DLManager(QObject):
         if textdetector is None:
             textdetector = self.dl_config.textdetector
         if self.textdetect_thread.isRunning():
-            self.logger.warning('Terminating a running text detection thread.')
+            LOGGER.warning('Terminating a running text detection thread.')
             self.textdetect_thread.terminate()
         self.textdetect_thread.setTextDetector(textdetector)
 
@@ -614,27 +612,27 @@ class DLManager(QObject):
         if ocr is None:
             ocr = self.dl_config.ocr
         if self.ocr_thread.isRunning():
-            self.logger.warning('Terminating a running OCR thread.')
+            LOGGER.warning('Terminating a running OCR thread.')
             self.ocr_thread.terminate()
         self.ocr_thread.setOCR(ocr)
 
     def on_finish_setdetector(self):
         if self.textdetector is not None:
             self.dl_config.textdetector = self.textdetector.name
-            self.logger.info('Text detector set to {}'.format(self.textdetector.name))
+            LOGGER.info('Text detector set to {}'.format(self.textdetector.name))
 
     def on_finish_setocr(self):
         if self.ocr is not None:
             self.dl_config.ocr = self.ocr.name
             self.ocr_panel.setOCR(self.ocr.name)
-            self.logger.info('OCR set to {}'.format(self.ocr.name))
+            LOGGER.info('OCR set to {}'.format(self.ocr.name))
 
     def on_finish_setinpainter(self):
         if self.inpainter is not None:
             self.dl_config.inpainter = self.inpainter.name
             self.inpaint_panel.setInpainter(self.inpainter.name)
             self.update_inpainter_status.emit(self.dl_config.inpainter)
-            self.logger.info('Inpainter set to {}'.format(self.inpainter.name))
+            LOGGER.info('Inpainter set to {}'.format(self.inpainter.name))
 
     def on_finish_settranslator(self):
         translator = self.translator
@@ -642,7 +640,7 @@ class DLManager(QObject):
             self.dl_config.translator = translator.name
             self.update_translator_status.emit(self.dl_config.translator, self.dl_config.translate_source, self.dl_config.translate_target)
             self.translator_panel.finishSetTranslator(translator)
-            self.logger.info('Translator set to {}'.format(self.translator.name))
+            LOGGER.info('Translator set to {}'.format(self.translator.name))
         else:
             self.update_translator_status.emit(self.tr('Invalid'), '', '')
         
@@ -718,7 +716,7 @@ class DLManager(QObject):
             module.updateParam(param_key, param_content)
         
     def handleRunningException(self, msg: str, detail: str = None):
-        self.logger.error(msg + '\n' + detail)
+        LOGGER.error(msg + '\n' + detail)
         err = QMessageBox()
         err.setText(msg)
         if detail is not None:

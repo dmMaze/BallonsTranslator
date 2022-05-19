@@ -13,7 +13,6 @@ def main():
     parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
     args = parser.parse_args()
 
-
     os.chdir(PROGRAM_PATH)
     app = QApplication(sys.argv)
     translator = QTranslator()
