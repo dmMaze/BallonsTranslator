@@ -503,6 +503,7 @@ class DrawingPanel(Widget):
             elif self.inpaint_stroke.parentItem() is None:
                 logger.warning("sth goes wrong")
                 self.canvas.removeItem(self.inpaint_stroke)
+                self.inpaint_stroke = None
                 return
             mask = self.inpaint_stroke.getSubimg(convert_mask=True)
             pos = self.inpaint_stroke.subBlockPos()

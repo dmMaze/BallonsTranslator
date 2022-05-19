@@ -413,4 +413,9 @@ class Canvas(QGraphicsScene):
         else:
             self.projstate_unsaved = un_saved
             self.proj_savestate_changed.emit(un_saved)
+
+    def removeItem(self, item: QGraphicsItem) -> None:
+        if item == self.stroke_path_item:
+            self.stroke_path_item = None
+        return super().removeItem(item)
     
