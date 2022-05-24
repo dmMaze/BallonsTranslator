@@ -205,3 +205,118 @@ class AOTInpainter(InpainterBase):
 
         elif param_key == 'inpaint_size':
             self.inpaint_size = int(self.setup_params['inpaint_size']['select'])
+
+
+from .lama import LamaFourier
+LAMAMODEL: LamaFourier = None
+LAMAMODEL_PATH = 'data/models/accum4_l1m10_448px_last.ckpt'
+
+def load_lama_model(model_path, device) -> LamaFourier:
+    model = LamaFourier(build_discriminator=False)
+    sd = torch.load(model_path, map_location = 'cpu')
+    model.generator.load_state_dict(sd['gen_state_dict'] if 'gen_state_dict' in sd else sd)
+    model.eval().to(device)
+    return model
+
+
+@register_inpainter('lama')
+class LamaInpainter(InpainterBase):
+
+    setup_params = {
+        'inpaint_size': {
+            'type': 'selector',
+            'options': [
+                1024, 
+                2048
+            ], 
+            'select': 2048
+        }, 
+        'device': {
+            'type': 'selector',
+            'options': [
+                'cpu',
+                'cuda'
+            ],
+            'select': DEFAULT_DEVICE
+        }
+    }
+
+    device = DEFAULT_DEVICE
+    inpaint_size = 2048
+    LAMAMODEL: LamaFourier = None
+
+    def setup_inpainter(self):
+        global LAMAMODEL
+        self.device = self.setup_params['device']['select']
+        if LAMAMODEL is None:
+            self.model = LAMAMODEL = load_lama_model(LAMAMODEL_PATH, self.device)
+        else:
+            self.model = LAMAMODEL
+            self.model.to(self.device)
+        self.inpaint_by_block = True if self.device == 'cuda' else False
+        self.inpaint_size = int(self.setup_params['inpaint_size']['select'])
+
+    def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+
+        img_original = np.copy(img)
+        mask_original = np.copy(mask)
+        mask_original[mask_original < 127] = 0
+        mask_original[mask_original >= 127] = 1
+        mask_original = mask_original[:, :, None]
+
+        new_shape = self.inpaint_size if max(img.shape[0: 2]) > self.inpaint_size else None
+        new_shape = 640
+        img = resize_keepasp(img, new_shape, stride=64)
+        mask = resize_keepasp(mask, new_shape, stride=64)
+
+        im_h, im_w = img.shape[:2]
+        longer = max(im_h, im_w)
+        pad_bottom = longer - im_h if im_h < longer else 0
+        pad_right = longer - im_w if im_w < longer else 0
+        mask = cv2.copyMakeBorder(mask, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
+        img = cv2.copyMakeBorder(img, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
+
+        img_torch = torch.from_numpy(img).permute(2, 0, 1).unsqueeze_(0).float() / 255.0
+        mask_torch = torch.from_numpy(mask).unsqueeze_(0).unsqueeze_(0).float() / 255.0
+        mask_torch[mask_torch < 0.5] = 0
+        mask_torch[mask_torch >= 0.5] = 1
+
+        if self.device == 'cuda':
+            img_torch = img_torch.cuda()
+            mask_torch = mask_torch.cuda()
+        img_torch *= (1 - mask_torch)
+        return img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right
+
+    @torch.no_grad()
+    def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+
+        im_h, im_w = img.shape[:2]
+        img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
+        img_inpainted_torch = self.model(img_torch, mask_torch)
+        
+        img_inpainted = (img_inpainted_torch.cpu().squeeze_(0).permute(1, 2, 0).numpy()* 255).astype(np.uint8)
+        if pad_bottom > 0:
+            img_inpainted = img_inpainted[:-pad_bottom]
+        if pad_right > 0:
+            img_inpainted = img_inpainted[:, :-pad_right]
+        new_shape = img_inpainted.shape[:2]
+        if new_shape[0] != im_h or new_shape[1] != im_w :
+            img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation = cv2.INTER_LINEAR)
+        img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
+        
+        return img_inpainted
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+
+        if param_key == 'device':
+            param_device = self.setup_params['device']['select']
+            self.model.to(param_device)
+            self.device = param_device
+            if param_device == 'cuda':
+                self.inpaint_by_block = False
+            else:
+                self.inpaint_by_block = True
+
+        elif param_key == 'inpaint_size':
+            self.inpaint_size = int(self.setup_params['inpaint_size']['select'])
