@@ -339,6 +339,8 @@ class DeeplTranslator(TranslatorBase):
         translator = deepl.Translator(api_key)
         source = self.lang_map[self.lang_source]
         target = self.lang_map[self.lang_target]
+        if source == 'EN-US':
+            source = "EN"
         result = translator.translate_text(text, source_lang=source, target_lang=target)
         return result.text
     
