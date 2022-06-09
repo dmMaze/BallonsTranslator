@@ -2,17 +2,16 @@ import numpy as np
 import cv2
 from typing import Dict, List
 
-
-
 from utils.registry import Registry
-from utils.textblock_mask import canny_flood, connected_canny_flood, extract_ballon_mask
+from utils.textblock_mask import extract_ballon_mask
 from utils.imgproc_utils import enlarge_window
+
+from ..moduleparamparser import ModuleParamParser, DEFAULT_DEVICE
+from ..textdetector import TextBlock
 
 INPAINTERS = Registry('inpainters')
 register_inpainter = INPAINTERS.register_module
 
-from ..moduleparamparser import ModuleParamParser, DEFAULT_DEVICE
-from ..textdetector import TextBlock
 
 class InpainterBase(ModuleParamParser):
 
@@ -93,16 +92,9 @@ class PatchmatchInpainter(InpainterBase):
 
 import torch
 from utils.imgproc_utils import resize_keepasp
-from .aot import AOTGenerator
+from .aot import AOTGenerator, load_aot_model
 AOTMODEL: AOTGenerator = None
 AOTMODEL_PATH = 'data/models/aot_inpainter.ckpt'
-
-def load_aot_model(model_path, device) -> AOTGenerator:
-    model = AOTGenerator(in_ch=4, out_ch=3, ch=32, alpha=0.0)
-    sd = torch.load(model_path, map_location = 'cpu')
-    model.load_state_dict(sd['model'] if 'model' in sd else sd)
-    model.eval().to(device)
-    return model
 
 
 @register_inpainter('aot')
@@ -207,20 +199,11 @@ class AOTInpainter(InpainterBase):
             self.inpaint_size = int(self.setup_params['inpaint_size']['select'])
 
 
-from .lama import LamaFourier
-LAMAMODEL: LamaFourier = None
-LAMAMODEL_PATH = 'data/models/accum4_l1m10_448px_last.ckpt'
+from .lama import LamaFourier, load_lama_mpe
 
-def load_lama_model(model_path, device) -> LamaFourier:
-    model = LamaFourier(build_discriminator=False)
-    sd = torch.load(model_path, map_location = 'cpu')
-    model.generator.load_state_dict(sd['gen_state_dict'] if 'gen_state_dict' in sd else sd)
-    model.eval().to(device)
-    return model
-
-
-@register_inpainter('lama')
-class LamaInpainter(InpainterBase):
+LAMA_MPE: LamaFourier = None
+@register_inpainter('lama_mpe')
+class LamaInpainterMPE(InpainterBase):
 
     setup_params = {
         'inpaint_size': {
@@ -243,15 +226,15 @@ class LamaInpainter(InpainterBase):
 
     device = DEFAULT_DEVICE
     inpaint_size = 2048
-    LAMAMODEL: LamaFourier = None
 
     def setup_inpainter(self):
-        global LAMAMODEL
+        global LAMA_MPE
+
         self.device = self.setup_params['device']['select']
-        if LAMAMODEL is None:
-            self.model = LAMAMODEL = load_lama_model(LAMAMODEL_PATH, self.device)
+        if LAMA_MPE is None:
+            self.model = LAMA_MPE = load_lama_mpe(r'data/models/lama_mpe.ckpt', self.device)
         else:
-            self.model = LAMAMODEL
+            self.model = LAMA_MPE
             self.model.to(self.device)
         self.inpaint_by_block = True if self.device == 'cuda' else False
         self.inpaint_size = int(self.setup_params['inpaint_size']['select'])
@@ -265,7 +248,7 @@ class LamaInpainter(InpainterBase):
         mask_original = mask_original[:, :, None]
 
         new_shape = self.inpaint_size if max(img.shape[0: 2]) > self.inpaint_size else None
-        new_shape = 640
+        # high resolution input could produce cloudy artifacts
         img = resize_keepasp(img, new_shape, stride=64)
         mask = resize_keepasp(mask, new_shape, stride=64)
 
@@ -280,21 +263,26 @@ class LamaInpainter(InpainterBase):
         mask_torch = torch.from_numpy(mask).unsqueeze_(0).unsqueeze_(0).float() / 255.0
         mask_torch[mask_torch < 0.5] = 0
         mask_torch[mask_torch >= 0.5] = 1
+        rel_pos, _, direct = self.model.load_masked_position_encoding(mask_torch[0][0].numpy())
+        rel_pos = torch.LongTensor(rel_pos).unsqueeze_(0)
+        direct = torch.LongTensor(direct).unsqueeze_(0)
 
         if self.device == 'cuda':
             img_torch = img_torch.cuda()
             mask_torch = mask_torch.cuda()
+            rel_pos = rel_pos.cuda()
+            direct = direct.cuda()
         img_torch *= (1 - mask_torch)
-        return img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right
+        return img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right
 
     @torch.no_grad()
     def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
 
         im_h, im_w = img.shape[:2]
-        img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
-        img_inpainted_torch = self.model(img_torch, mask_torch)
+        img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
+        img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
         
-        img_inpainted = (img_inpainted_torch.cpu().squeeze_(0).permute(1, 2, 0).numpy()* 255).astype(np.uint8)
+        img_inpainted = (img_inpainted_torch.cpu().squeeze_(0).permute(1, 2, 0).numpy() * 255).astype(np.uint8)
         if pad_bottom > 0:
             img_inpainted = img_inpainted[:-pad_bottom]
         if pad_right > 0:
