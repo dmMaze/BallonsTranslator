@@ -1,6 +1,8 @@
 import time
 from typing import Union
 import numpy as np
+import traceback
+
 
 from PyQt5.QtCore import QThread, pyqtSignal, QObject, QLocale
 from PyQt5.QtWidgets import QMessageBox
@@ -48,7 +50,8 @@ class ModuleThread(QThread):
         except Exception as e:
             self.module = old_module
             msg = self.tr('Failed to set ') + module_name
-            self.exception_occurred.emit(msg, str(e))
+            
+            self.exception_occurred.emit(msg, str(e) + '\n' + f'exc: {traceback.format_exc()}')
         self.finish_set_module.emit()
 
     def pipeline_finished(self):
@@ -103,7 +106,8 @@ class InpaintThread(ModuleThread):
             }
             self.finish_inpaint.emit(inpaint_dict)
         except Exception as e:
-            self.exception_occurred.emit(self.tr('Inpainting Failed.'), repr(e))
+            # self.exception_occurred.emit(self.tr('Inpainting Failed.'), repr(e))
+            self.exception_occurred.emit(self.tr('Inpainting Failed.'), str(e) + '\n' + f'exc: {traceback.format_exc()}')
 
 
 class TextDetectThread(ModuleThread):

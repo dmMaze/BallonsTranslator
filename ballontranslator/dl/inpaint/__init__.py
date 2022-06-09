@@ -2,17 +2,16 @@ import numpy as np
 import cv2
 from typing import Dict, List
 
-
-
 from utils.registry import Registry
-from utils.textblock_mask import canny_flood, connected_canny_flood, extract_ballon_mask
+from utils.textblock_mask import extract_ballon_mask
 from utils.imgproc_utils import enlarge_window
+
+from ..moduleparamparser import ModuleParamParser, DEFAULT_DEVICE
+from ..textdetector import TextBlock
 
 INPAINTERS = Registry('inpainters')
 register_inpainter = INPAINTERS.register_module
 
-from ..moduleparamparser import ModuleParamParser, DEFAULT_DEVICE
-from ..textdetector import TextBlock
 
 class InpainterBase(ModuleParamParser):
 
@@ -93,16 +92,9 @@ class PatchmatchInpainter(InpainterBase):
 
 import torch
 from utils.imgproc_utils import resize_keepasp
-from .aot import AOTGenerator
+from .aot import AOTGenerator, load_aot_model
 AOTMODEL: AOTGenerator = None
 AOTMODEL_PATH = 'data/models/aot_inpainter.ckpt'
-
-def load_aot_model(model_path, device) -> AOTGenerator:
-    model = AOTGenerator(in_ch=4, out_ch=3, ch=32, alpha=0.0)
-    sd = torch.load(model_path, map_location = 'cpu')
-    model.load_state_dict(sd['model'] if 'model' in sd else sd)
-    model.eval().to(device)
-    return model
 
 
 @register_inpainter('aot')
@@ -180,6 +172,117 @@ class AOTInpainter(InpainterBase):
         img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
         img_inpainted_torch = self.model(img_torch, mask_torch)
         img_inpainted = ((img_inpainted_torch.cpu().squeeze_(0).permute(1, 2, 0).numpy() + 1.0) * 127.5).astype(np.uint8)
+        if pad_bottom > 0:
+            img_inpainted = img_inpainted[:-pad_bottom]
+        if pad_right > 0:
+            img_inpainted = img_inpainted[:, :-pad_right]
+        new_shape = img_inpainted.shape[:2]
+        if new_shape[0] != im_h or new_shape[1] != im_w :
+            img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation = cv2.INTER_LINEAR)
+        img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
+        
+        return img_inpainted
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+
+        if param_key == 'device':
+            param_device = self.setup_params['device']['select']
+            self.model.to(param_device)
+            self.device = param_device
+            if param_device == 'cuda':
+                self.inpaint_by_block = False
+            else:
+                self.inpaint_by_block = True
+
+        elif param_key == 'inpaint_size':
+            self.inpaint_size = int(self.setup_params['inpaint_size']['select'])
+
+
+from .lama import LamaFourier, load_lama_mpe
+
+LAMA_MPE: LamaFourier = None
+@register_inpainter('lama_mpe')
+class LamaInpainterMPE(InpainterBase):
+
+    setup_params = {
+        'inpaint_size': {
+            'type': 'selector',
+            'options': [
+                1024, 
+                2048
+            ], 
+            'select': 2048
+        }, 
+        'device': {
+            'type': 'selector',
+            'options': [
+                'cpu',
+                'cuda'
+            ],
+            'select': DEFAULT_DEVICE
+        }
+    }
+
+    device = DEFAULT_DEVICE
+    inpaint_size = 2048
+
+    def setup_inpainter(self):
+        global LAMA_MPE
+
+        self.device = self.setup_params['device']['select']
+        if LAMA_MPE is None:
+            self.model = LAMA_MPE = load_lama_mpe(r'data/models/lama_mpe.ckpt', self.device)
+        else:
+            self.model = LAMA_MPE
+            self.model.to(self.device)
+        self.inpaint_by_block = True if self.device == 'cuda' else False
+        self.inpaint_size = int(self.setup_params['inpaint_size']['select'])
+
+    def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+
+        img_original = np.copy(img)
+        mask_original = np.copy(mask)
+        mask_original[mask_original < 127] = 0
+        mask_original[mask_original >= 127] = 1
+        mask_original = mask_original[:, :, None]
+
+        new_shape = self.inpaint_size if max(img.shape[0: 2]) > self.inpaint_size else None
+        # high resolution input could produce cloudy artifacts
+        img = resize_keepasp(img, new_shape, stride=64)
+        mask = resize_keepasp(mask, new_shape, stride=64)
+
+        im_h, im_w = img.shape[:2]
+        longer = max(im_h, im_w)
+        pad_bottom = longer - im_h if im_h < longer else 0
+        pad_right = longer - im_w if im_w < longer else 0
+        mask = cv2.copyMakeBorder(mask, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
+        img = cv2.copyMakeBorder(img, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
+
+        img_torch = torch.from_numpy(img).permute(2, 0, 1).unsqueeze_(0).float() / 255.0
+        mask_torch = torch.from_numpy(mask).unsqueeze_(0).unsqueeze_(0).float() / 255.0
+        mask_torch[mask_torch < 0.5] = 0
+        mask_torch[mask_torch >= 0.5] = 1
+        rel_pos, _, direct = self.model.load_masked_position_encoding(mask_torch[0][0].numpy())
+        rel_pos = torch.LongTensor(rel_pos).unsqueeze_(0)
+        direct = torch.LongTensor(direct).unsqueeze_(0)
+
+        if self.device == 'cuda':
+            img_torch = img_torch.cuda()
+            mask_torch = mask_torch.cuda()
+            rel_pos = rel_pos.cuda()
+            direct = direct.cuda()
+        img_torch *= (1 - mask_torch)
+        return img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right
+
+    @torch.no_grad()
+    def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+
+        im_h, im_w = img.shape[:2]
+        img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
+        img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+        
+        img_inpainted = (img_inpainted_torch.cpu().squeeze_(0).permute(1, 2, 0).numpy() * 255).astype(np.uint8)
         if pad_bottom > 0:
             img_inpainted = img_inpainted[:-pad_bottom]
         if pad_right > 0:
