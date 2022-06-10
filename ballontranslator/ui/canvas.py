@@ -291,16 +291,17 @@ class Canvas(QGraphicsScene):
                     return self.startCreateTextblock(event.scenePos())
         elif self.creating_normal_rect:
             return self.startCreateTextblock(event.scenePos(), hide_control=True)
+
         elif event.button() == Qt.MouseButton.LeftButton:
             if self.alt_pressed:
                 self.scale_tool_mode = True
                 self.begin_scale_tool.emit(event.scenePos())
-            elif self.painting:
+            elif self.painting and self.stroke_path_item is None:
                 self.stroke_path_item = PenStrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
                 self.addStrokeItem(self.stroke_path_item)
 
         elif event.button() == Qt.MouseButton.RightButton:
-            if self.painting:
+            if self.painting and self.stroke_path_item is None:
                 self.stroke_path_item = PenStrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
                 self.addStrokeItem(self.stroke_path_item)
 
