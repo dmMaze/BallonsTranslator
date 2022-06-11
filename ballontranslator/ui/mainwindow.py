@@ -72,7 +72,7 @@ class MainWindow(QMainWindow):
 
     def setupUi(self):
         screen_size = QApplication.desktop().screenGeometry().size()
-        self.setMinimumWidth(screen_size.width()*0.5)
+        self.setMinimumWidth(screen_size.width() // 2)
 
         self.leftBar = LeftBar(self)
         self.leftBar.showPageListLabel.stateChanged.connect(self.pageLabelStateChanged)
