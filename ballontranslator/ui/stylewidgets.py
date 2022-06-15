@@ -5,19 +5,12 @@ from typing import List, Union, Tuple
 
 from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
 
+
 class Widget(QWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.style_option = QStyleOption()
-        self.style_painter = QStylePainter()
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-    # https://wiki.qt.io/How_to_Change_the_Background_Color_of_QWidget#Using_Style_Sheet
-    def paintEvent(self, event):
-        self.style_option.initFrom(self)
-        self.style_painter.begin(self)
-        self.style_painter.drawPrimitive(QStyle.PE_Widget, self.style_option)
-        self.style_painter.end()
-        super().paintEvent(event)
 
 class FadeLabel(QLabel):
     def __init__(self, *args, **kwargs):
@@ -49,11 +42,13 @@ class FadeLabel(QLabel):
             self.gv.wheelEvent(event)
         return super().wheelEvent(event)
 
+
 class SeparatorWidget(QFrame):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setFrameShape(QFrame.HLine)
         self.setFrameShadow(QFrame.Sunken)
+
 
 class TaskProgressBar(Widget):
     def __init__(self, task_name: str, description: str = '', *args, **kwargs) -> None:
@@ -69,7 +64,6 @@ class TaskProgressBar(Widget):
         layout.addWidget(self.progressbar)
         self.updateProgress(0)
 
-
     def updateProgress(self, progress: int, msg: str = ''):
         self.progressbar.setValue(progress)
         if self.description:
@@ -81,11 +75,13 @@ class TaskProgressBar(Widget):
         self.textlabel.setText(msg)
         self.progressbar.setValue(progress)
 
+
 class FrameLessMessageBox(QMessageBox):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         
+
 class ProgressMessageBox(QDialog):
     showed = pyqtSignal()
     def __init__(self, *args, **kwargs) -> None:
