@@ -152,39 +152,6 @@ class ProgressMessageBox(QDialog):
         self.showed.emit()
         return super().showEvent(e)
 
-class SliderStyle(QProxyStyle):
-
-    def subControlRect(self, control, option, subControl, widget=None):
-        rect = super(SliderStyle, self).subControlRect(
-            control, option, subControl, widget)
-        if subControl == QStyle.SC_SliderHandle:
-            if option.orientation == Qt.Horizontal:
-                # 高度1/3
-                radius = int(widget.height() / 2)
-                offset = int(radius / 2)
-                # if option.state & QStyle.State_MouseOver:
-                x = min(rect.x() - offset, widget.width() - radius)
-                x = x if x >= 0 else 0
-                # else:
-                #     radius = offset
-                #     x = min(rect.x(), widget.width() - radius)
-                rect = QRect(x, int((rect.height() - radius) / 2),
-                             radius, radius)
-            else:
-                # 宽度1/3
-                radius = int(widget.width() / 2)
-                offset = int(radius / 2)
-                # if option.state & QStyle.State_MouseOver:
-                y = min(rect.y() - offset, widget.height() - radius)
-                y = y if y >= 0 else 0
-                # else:
-                    # radius = offset
-                    # y = min(rect.y(), widget.height() - radius)
-                rect = QRect(int((rect.width() - radius) / 2),
-                             y, radius, radius)
-            return rect
-        return rect
-
 
 class ColorPicker(QLabel):
     colorChanged = pyqtSignal(bool)
@@ -218,14 +185,36 @@ class ColorPicker(QLabel):
         return [color.red(), color.green(), color.blue(), color.alpha()]
 
 
+class SliderProxyStyle(QProxyStyle):
+
+    def subControlRect(self, cc, opt, sc, widget):
+        r = super().subControlRect(cc, opt, sc, widget)
+        if widget.orientation() == Qt.Horizontal:
+            y = widget.height() // 4
+            h = y * 2
+            r = QRect(r.x(), y, r.width(), h)
+        else:
+            x = widget.width() // 4
+            w = x * 2
+            r = QRect(x, r.y(), w, r.height())
+
+        # seems a bit dumb, otherwise the handle is buggy
+        if r.height() < r.width():
+            r.setHeight(r.width())
+        else:
+            r.setWidth(r.height())
+        return r
+
+
 class PaintQSlider(QSlider):
 
     def __init__(self, draw_content, *args, **kwargs):
         super(PaintQSlider, self).__init__(*args, **kwargs)
         # 设置代理样式,主要用于计算和解决鼠标点击区域
-        self.setStyle(SliderStyle())
+        # self.setStyle(SliderStyle())
         self.draw_content = draw_content
         self.pressed: bool = False
+        self.setStyle(SliderProxyStyle())
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
@@ -243,11 +232,11 @@ class PaintQSlider(QSlider):
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-
+        
         # 中间圆圈的位置
         rect = self.style().subControlRect(
             QStyle.CC_Slider, option, QStyle.SC_SliderHandle, self)
-
+        
         # 画中间白色线条
         painter.setPen(QColor(85,85,96))
         painter.setBrush(QColor(85,85,96))
@@ -269,7 +258,6 @@ class PaintQSlider(QSlider):
             r = rect.height() / 2
             painter.setBrush(QColor(85,85,96,255))
             painter.drawRoundedRect(rect, r, r)
-            # 绘制文字
             if self.draw_content is not None:
                 painter.setPen(QColor(85,85,96,255))
                 font = painter.font()
@@ -280,11 +268,11 @@ class PaintQSlider(QSlider):
                 textw = fm.width(draw_content)
 
                 if self.orientation() == Qt.Horizontal:  # 在上方绘制文字
-                    x, y = rect.x() - textw/2 + rect.width()/2, rect.y() - rect.height() - 2
+                    x, y = rect.x() - textw/2 + rect.width()/2, rect.y() - rect.height()
                     x = min(max(0, x), self.width()-textw)
                     # x = rect.x()
                 else:  # 在左侧绘制文字
-                    x, y = rect.x() - rect.width() - 2, rect.y()
+                    x, y = rect.x() - rect.width(), rect.y()
                 painter.drawText(
                     x, y-10, textw, rect.height()+20,
                     Qt.AlignCenter, self.draw_content.replace("value", str(self.value()))
