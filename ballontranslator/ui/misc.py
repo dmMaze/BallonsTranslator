@@ -8,11 +8,13 @@ from collections import OrderedDict
 from typing import Tuple, Union, List, Dict
 from PyQt5.QtGui import QPixmap,  QColor, QImage
 
+from . import constants
 from .constants import DEFAULT_FONT_FAMILY
+from utils.logger import logger as LOGGER
 from utils.io_utils import find_all_imgs, NumpyEncoder, imread, imwrite
 from dl.textdetector.textblock import TextBlock
 
-from . import constants
+
 # return bgr tuple
 def qrgb2bgr(color: Union[QColor, Tuple, List] = None) -> Tuple[int, int, int]:
     if color is not None:
@@ -101,6 +103,7 @@ class Proj:
         proj.load_from_dict(proj_dict)
         return proj
 
+
 class ProjImgTrans:
 
     def __init__(self, directory: str = None):
@@ -166,7 +169,11 @@ class ProjImgTrans:
         except Exception as e:
             raise ProjectNotSupportedException(e)
         if 'current_img' in proj_dict:
-            self.set_current_img(proj_dict['current_img'])
+            current_img = proj_dict['current_img']
+            try:
+                self.set_current_img(current_img)
+            except ImgnameNotInProjectException:
+                LOGGER.warning(f'{current_img} not found.')
         else:
             self.set_current_img_byidx(0)
 

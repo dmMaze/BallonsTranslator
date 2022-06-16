@@ -3,7 +3,6 @@ from typing import Union
 import numpy as np
 import traceback
 
-
 from PyQt5.QtCore import QThread, pyqtSignal, QObject, QLocale
 from PyQt5.QtWidgets import QMessageBox
 
@@ -403,23 +402,23 @@ class DLManager(QObject):
         self.textdetect_thread = TextDetectThread(self.dl_config)
         self.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
         # self.textdetect_thread.finish_detect_page.connect(self.on_finish_detect_page)
-        self.textdetect_thread.exception_occurred.connect(self.handleRunningException)
+        self.textdetect_thread.exception_occurred.connect(self.handleRunTimeException)
 
         self.ocr_thread = OCRThread(self.dl_config)
         self.ocr_thread.finish_set_module.connect(self.on_finish_setocr)
         # self.ocr_thread.finish_ocr_page.connect(self.on_finish_ocr_page)
-        self.ocr_thread.exception_occurred.connect(self.handleRunningException)
+        self.ocr_thread.exception_occurred.connect(self.handleRunTimeException)
 
         self.translate_thread = TranslateThread(dl_config)
         self.translate_thread.progress_changed.connect(self.on_update_translate_progress)
         self.translate_thread.finish_set_module.connect(self.on_finish_settranslator)
         self.translate_thread.finish_translate_page.connect(self.on_finish_translate_page)
-        self.translate_thread.exception_occurred.connect(self.handleRunningException)        
+        self.translate_thread.exception_occurred.connect(self.handleRunTimeException)        
 
         self.inpaint_thread = InpaintThread(dl_config)
         self.inpaint_thread.finish_set_module.connect(self.on_finish_setinpainter)
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
-        self.inpaint_thread.exception_occurred.connect(self.handleRunningException)        
+        self.inpaint_thread.exception_occurred.connect(self.handleRunTimeException)        
 
         self.progress_msgbox = ProgressMessageBox()
 
@@ -428,7 +427,7 @@ class DLManager(QObject):
         self.imgtrans_thread.update_ocr_progress.connect(self.on_update_ocr_progress)
         self.imgtrans_thread.update_translate_progress.connect(self.on_update_translate_progress)
         self.imgtrans_thread.update_inpaint_progress.connect(self.on_update_inpaint_progress)
-        self.imgtrans_thread.exception_occurred.connect(self.handleRunningException)
+        self.imgtrans_thread.exception_occurred.connect(self.handleRunTimeException)
 
         self.translator_panel = translator_panel = config_panel.trans_config_panel        
         translator_setup_params = self.dl_config.translator_setup_params
@@ -661,10 +660,10 @@ class DLManager(QObject):
         self.inpaint(**inpaint_dict)
 
     def on_settranslator_failed(self, translator: str, msg: str):
-        self.handleRunningException(f'Failed to set translator {translator}', msg)
+        self.handleRunTimeException(f'Failed to set translator {translator}', msg)
 
     def on_setinpainter_failed(self, inpainter: str, msg: str):
-        self.handleRunningException(f'Failed to set inpainter {inpainter}', msg)
+        self.handleRunTimeException(f'Failed to set inpainter {inpainter}', msg)
 
     def on_translatorsource_changed(self):
         text = self.translator_panel.source_combobox.currentText()
@@ -719,12 +718,14 @@ class DLManager(QObject):
                                param_key: str, param_content: str):
             module.updateParam(param_key, param_content)
         
-    def handleRunningException(self, msg: str, detail: str = None):
-        LOGGER.error(msg + '\n' + detail)
+    def handleRunTimeException(self, msg: str, detail: str = None):
+        if detail is not None:
+            msg += ': ' + detail
+        verbose = traceback.format_exc()
+        LOGGER.error(msg + '\n' + verbose)
         err = QMessageBox()
         err.setText(msg)
-        if detail is not None:
-            err.setDetailedText(detail)
+        err.setDetailedText(verbose)
         err.exec()
 
     def on_inpainter_checker_changed(self, is_checked: bool):

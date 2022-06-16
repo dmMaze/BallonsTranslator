@@ -2,12 +2,11 @@ import os.path as osp
 import os
 import json
 
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QGraphicsDropShadowEffect, QCheckBox, QToolButton, QSplitter, QListWidget, QShortcut, QListWidgetItem
-from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize, QThread
-from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QMouseEvent
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
+from PyQt5.QtCore import Qt, QPoint, QSize
+from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
 
 from utils.logger import logger as LOGGER
-
 from .misc import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -18,7 +17,7 @@ from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
 from .stylewidgets import FrameLessMessageBox
-from .constants import STYLESHEET_PATH, CONFIG_PATH, DPI, LDPI, LANG_SUPPORT_VERTICAL, DRAWPANEL_WIDTH
+from .constants import STYLESHEET_PATH, CONFIG_PATH, LANG_SUPPORT_VERTICAL
 from . import constants
 
 class PageListView(QListWidget):    
@@ -38,7 +37,6 @@ class MainWindow(QMainWindow):
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
-        constants.DPI = QGuiApplication.primaryScreen().physicalDotsPerInch()
         constants.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
 
         self.app = app
@@ -201,7 +199,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             LOGGER.exception(e)
             LOGGER.warning("Failed to load project from " + directory)
-            self.dl_manager.handleRunningException(self.tr('Failed to load project ') + directory, '')
+            self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + directory, '')
             return
         self.proj_directory = directory
         self.titleBar.setTitleContent(osp.basename(directory))
@@ -427,8 +425,10 @@ class MainWindow(QMainWindow):
         self.bottomBar.inpainterStatBtn.updateStatus(inpainter)
 
     def on_transpagebtn_pressed(self, run_target: bool):
-        
         page_key = self.imgtrans_proj.current_img
+        if page_key is None:
+            self.bottomBar.transTranspageBtn.setRunText()
+            return
         if run_target:
             self.st_manager.updateTextBlkList()
         self.dl_manager.translatePage(run_target, page_key)

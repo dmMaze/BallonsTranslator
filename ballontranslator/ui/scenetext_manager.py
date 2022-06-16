@@ -417,6 +417,8 @@ class SceneTextManager(QObject):
 
     def updateTextBlkList(self):
         cbl = self.imgtrans_proj.current_block_list()
+        if cbl is None:
+            return
         cbl.clear()
         for blk_item, trans_pair in zip(self.textblk_item_list, self.pairwidget_list):
             if not blk_item.document().isEmpty():

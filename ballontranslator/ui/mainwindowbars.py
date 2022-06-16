@@ -8,7 +8,7 @@ from PyQt5.QtGui import QMouseEvent, QKeySequence
 from typing import List
 
 from .stylewidgets import Widget, PaintQSlider
-from .constants import WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, DRAG_DIR_NONE, DRAG_DIR_HOR, DRAG_DIR_VER, DRAG_DIR_BDIAG, DRAG_DIR_FDIAG
+from .constants import WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, DRAG_DIR_NONE, DRAG_DIR_VER, DRAG_DIR_BDIAG, DRAG_DIR_FDIAG
 
 
 class ShowPageListChecker(QCheckBox):
@@ -45,11 +45,11 @@ class RunStopTextBtn(StatusButton):
 
     def on_pressed(self):
         self.running = not self.running
-        self.run_target.emit(self.running)
         if self.running:
             self.setStopText()
         else:
             self.setRunText()
+        self.run_target.emit(self.running)
 
     def setRunText(self):
         self.setText(self.run_text)
@@ -266,7 +266,6 @@ class LeftBar(Widget):
 
     def onSaveProj(self):
         self.save_proj.emit()
-        pass
 
     def onExportAsDoc(self):
         raise NotImplementedError
