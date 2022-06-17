@@ -10,6 +10,10 @@ from typing import List, Union, Tuple
 from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern
 from .textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
 
+
+TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
+TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
+
 class TextBlkItem(QGraphicsTextItem):
     begin_edit = pyqtSignal(int)
     end_edit = pyqtSignal(int)
@@ -282,6 +286,7 @@ class TextBlkItem(QGraphicsTextItem):
         br = self.boundingRect()
         # mouse_over = option.state & QStyle.StateFlag.State_MouseOver
         # selected = option.state & QStyle.StateFlag.State_Selected
+        
         painter.save()
 
         # shadow effect not working ???
@@ -325,10 +330,12 @@ class TextBlkItem(QGraphicsTextItem):
         # painter.drawRect(self.boundingRect())
 
         draw_rect = self.draw_rect and not self.under_ctrl
-        if draw_rect:
-            pen = QPen(QColor(179, 182, 191), 2.5 / self.scale(), Qt.PenStyle.DashLine)
-            pen.setStyle(Qt.PenStyle.SolidLine)
-            pen.setColor(QColor(30, 147, 229))
+        if self.isSelected() and not self.is_editting():
+            pen = QPen(TEXTRECT_SELECTED_COLOR, 3.5 / self.scale(), Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.drawRect(br)
+        elif draw_rect:
+            pen = QPen(TEXTRECT_SHOW_COLOR, 3 / self.scale(), Qt.PenStyle.SolidLine)
             painter.setPen(pen)
             painter.drawRect(br)
         
