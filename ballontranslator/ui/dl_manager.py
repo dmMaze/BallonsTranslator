@@ -21,7 +21,7 @@ from .misc import ProjImgTrans, DLModuleConfig
 
 class ModuleThread(QThread):
 
-    exception_occurred = pyqtSignal(str, str)
+    exception_occurred = pyqtSignal(str, str, str)
     finish_set_module = pyqtSignal()
 
     def __init__(self, dl_config: DLModuleConfig, module_key: str, MODULE_REGISTER: Registry, *args, **kwargs) -> None:
@@ -50,7 +50,7 @@ class ModuleThread(QThread):
             self.module = old_module
             msg = self.tr('Failed to set ') + module_name
             
-            self.exception_occurred.emit(msg, str(e) + '\n' + f'exc: {traceback.format_exc()}')
+            self.exception_occurred.emit(msg, str(e), traceback.format_exc())
         self.finish_set_module.emit()
 
     def pipeline_finished(self):
@@ -105,8 +105,7 @@ class InpaintThread(ModuleThread):
             }
             self.finish_inpaint.emit(inpaint_dict)
         except Exception as e:
-            # self.exception_occurred.emit(self.tr('Inpainting Failed.'), repr(e))
-            self.exception_occurred.emit(self.tr('Inpainting Failed.'), str(e) + '\n' + f'exc: {traceback.format_exc()}')
+            self.exception_occurred.emit(self.tr('Inpainting Failed.'), str(e), traceback.format_exc())
 
 
 class TextDetectThread(ModuleThread):
@@ -170,11 +169,11 @@ class TranslateThread(ModuleThread):
             msg += self.tr('support list: ') + '\n'
             msg += e.message
             self.translator = old_translator
-            self.exception_occurred.emit(msg, '')
+            self.exception_occurred.emit(msg, '', traceback.format_exc())
         except Exception as e:
             self.translator = old_translator
             msg = self.tr('Failed to set translator ') + translator
-            self.exception_occurred.emit(msg, repr(e))
+            self.exception_occurred.emit(msg, repr(e), traceback.format_exc())
         self.module = self.translator
         self.finish_set_module.emit()
 
@@ -190,12 +189,12 @@ class TranslateThread(ModuleThread):
             if raise_exception:
                 raise e
             else:
-                self.exception_occurred.emit(e + self.tr(' is required for '), '')
+                self.exception_occurred.emit(e + self.tr(' is required for '), '', traceback.format_exc())
         except Exception as e:
             if raise_exception:
                 raise e
             else:
-                self.exception_occurred.emit(self.tr('Translation Failed.'), repr(e))
+                self.exception_occurred.emit(self.tr('Translation Failed.'), repr(e), traceback.format_exc())
         if emit_finished:
             self.finish_translate_page.emit(page_key)
 
@@ -229,7 +228,7 @@ class TranslateThread(ModuleThread):
                     msg = msg + '\n' + str(e) + self.tr(' is required for ' + self.translator.name)
                     
                 self.blockSignals(False)
-                self.exception_occurred.emit(msg, repr(e))
+                self.exception_occurred.emit(msg, repr(e), traceback.format_exc())
                 self.imgtrans_proj = None
                 self.finished_counter = 0
                 self.pipeline_pagekey_queue = []
@@ -718,10 +717,9 @@ class DLManager(QObject):
                                param_key: str, param_content: str):
             module.updateParam(param_key, param_content)
         
-    def handleRunTimeException(self, msg: str, detail: str = None):
+    def handleRunTimeException(self, msg: str, detail: str = None, verbose: str = ''):
         if detail is not None:
             msg += ': ' + detail
-        verbose = traceback.format_exc()
         LOGGER.error(msg + '\n' + verbose)
         err = QMessageBox()
         err.setText(msg)

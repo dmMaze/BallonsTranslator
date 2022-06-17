@@ -206,8 +206,6 @@ class PaintQSlider(QSlider):
 
     def __init__(self, draw_content, *args, **kwargs):
         super(PaintQSlider, self).__init__(*args, **kwargs)
-        # 设置代理样式,主要用于计算和解决鼠标点击区域
-        # self.setStyle(SliderStyle())
         self.draw_content = draw_content
         self.pressed: bool = False
         self.setStyle(SliderProxyStyle())

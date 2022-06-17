@@ -237,6 +237,8 @@ class MainWindow(QMainWindow):
         config_dict = self.config.to_dict()
         with open(CONFIG_PATH, 'w', encoding='utf8') as f:
             f.write(json.dumps(config_dict, ensure_ascii=False, indent=4, separators=(',', ':')))
+        if not self.imgtrans_proj.is_empty:
+            self.imgtrans_proj.save()
         return super().closeEvent(event)
 
     def onHideCanvas(self):

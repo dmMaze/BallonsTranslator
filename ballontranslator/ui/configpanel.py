@@ -86,7 +86,7 @@ class ConfigBlock(Widget):
     def addCombobox(self, sel: List[str], name: str, discription: str = None):
         combox = ConfigComboBox()
         combox.addItems(sel)
-        sublock = ConfigSubBlock(combox, name, discription)
+        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=False)
         self.addSublock(sublock)
 
     def addBlock(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None) -> ConfigSubBlock:
@@ -253,15 +253,17 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
+        label_lettering = self.tr('Lettering')
     
         dltableitem.appendRows([
             TableItem(label_text_det, CONFIG_FONTSIZE_TABLE),
             TableItem(label_text_ocr, CONFIG_FONTSIZE_TABLE),
             TableItem(label_inpaint, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_translator, CONFIG_FONTSIZE_TABLE)
+            TableItem(label_translator, CONFIG_FONTSIZE_TABLE),
         ])
         generalTableItem.appendRows([
-            TableItem(label_startup, CONFIG_FONTSIZE_TABLE)
+            TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_lettering, CONFIG_FONTSIZE_TABLE)
         ])
 
         dlConfigPanel.addTextLabel(label_text_det)
@@ -283,6 +285,11 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(self.tr('Startup'))
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
+
+        generalConfigPanel.addTextLabel(self.tr('Lettering'))
+        generalConfigPanel.addCombobox([self.tr('decide by program'),
+                                        self.tr('use global setting')], self.tr('font size'))
+
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.configTable)

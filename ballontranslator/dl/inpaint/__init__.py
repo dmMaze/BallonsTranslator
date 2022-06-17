@@ -30,7 +30,6 @@ class InpainterBase(ModuleParamParser):
         raise NotImplementedError
 
     def inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
-
         if not self.inpaint_by_block or textblock_list is None:
             return self._inpaint(img, mask)
         else:

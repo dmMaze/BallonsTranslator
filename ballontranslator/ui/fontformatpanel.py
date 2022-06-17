@@ -1,13 +1,15 @@
 import functools
 from typing import List, Tuple, Union
 
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QFontComboBox, QColorDialog, QComboBox, QApplication, QPushButton, QRadioButton, QCheckBox
-from PyQt5.QtCore import pyqtSignal, Qt, QSize, QEvent, QObject
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QRadioButton, QCheckBox
+from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtGui import QColor, QTextCharFormat, QIntValidator, QMouseEvent, QFont, QTextCursor, QTextFormat
 from .stylewidgets import Widget, ColorPicker, PaintQSlider
 
 from .misc import FontFormat, set_html_color
 from .textitem import TextBlkItem, TextBlock
+
+
 # restore text cursor status after formatting
 def restore_textcursor(formatting_func):
 
