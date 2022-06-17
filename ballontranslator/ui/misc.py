@@ -443,6 +443,9 @@ class ProgramConfig:
         self.global_fontformat = FontFormat()
         self.drawpanel = DrawPanelConfig()
         self.open_recent_on_startup = False
+        self.let_fntsize_flag = 0
+        self.let_fntstroke_flag = 0
+        self.let_fntcolor_flag = 0
         if config_dict is not None:
             self.load_from_dict(config_dict)
 
@@ -459,6 +462,9 @@ class ProgramConfig:
             self.global_fontformat = FontFormat(**config_dict['global_fontformat'])
             self.drawpanel = DrawPanelConfig(**config_dict['drawpanel'])
             self.open_recent_on_startup = config_dict['open_recent_on_startup']
+            self.let_fntsize_flag = config_dict['let_fntsize_flag']
+            self.let_fntstroke_flag = config_dict['let_fntstroke_flag']
+            self.let_fntcolor_flag = config_dict['let_fntcolor_flag']
         except Exception as e:
             raise InvalidProgramConfigException(e)
 
@@ -473,7 +479,10 @@ class ProgramConfig:
             'mask_transparency': self.mask_transparency,
             'original_transparency': self.original_transparency,
             'drawpanel': vars(self.drawpanel),
-            'open_recent_on_startup': self.open_recent_on_startup
+            'open_recent_on_startup': self.open_recent_on_startup,
+            'let_fntsize_flag': self.let_fntsize_flag,
+            'let_fntstroke_flag': self.let_fntstroke_flag,
+            'let_fntcolor_flag': self.let_fntcolor_flag
         }
 
 

@@ -87,7 +87,10 @@ class ConfigBlock(Widget):
         combox = ConfigComboBox()
         combox.addItems(sel)
         sublock = ConfigSubBlock(combox, name, discription, vertical_layout=False)
+        sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
+        sublock.layout().setSpacing(20)
         self.addSublock(sublock)
+        return combox
 
     def addBlock(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None) -> ConfigSubBlock:
         sublock = ConfigSubBlock(widget, name, discription)
@@ -279,17 +282,22 @@ class ConfigPanel(Widget):
         self.inpaint_sub_block = dlConfigPanel.addBlock(self.inpaint_config_panel)
 
         dlConfigPanel.addTextLabel(label_translator)
-        self.trans_config_panel = TranslatorConfigPanel(self.tr('Translator'))
+        self.trans_config_panel = TranslatorConfigPanel(label_translator)
         self.trans_sub_block = dlConfigPanel.addBlock(self.trans_config_panel)
 
-        generalConfigPanel.addTextLabel(self.tr('Startup'))
+        generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
-        generalConfigPanel.addTextLabel(self.tr('Lettering'))
-        generalConfigPanel.addCombobox([self.tr('decide by program'),
-                                        self.tr('use global setting')], self.tr('font size'))
-
+        generalConfigPanel.addTextLabel(label_lettering)
+        dec_program_str = self.tr('decide by program')
+        use_global_str = self.tr('use global setting')
+        self.let_fntsize_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font size'))
+        self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
+        self.let_fntstroke_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke'))
+        self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
+        self.let_fntcolor_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
+        self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.configTable)
@@ -321,6 +329,15 @@ class ConfigPanel(Widget):
 
     def on_open_onstartup_changed(self):
         self.config.open_recent_on_startup = self.open_on_startup_checker.isChecked()
+
+    def on_fntsize_flag_changed(self):
+        self.config.let_fntsize_flag = self.let_fntsize_combox.currentIndex()
+
+    def on_fntstroke_flag_changed(self):
+        self.config.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
+
+    def on_fontcolor_flag_changed(self):
+        self.config.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1

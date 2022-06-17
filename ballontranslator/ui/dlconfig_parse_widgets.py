@@ -1,6 +1,6 @@
 from typing import List
 
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFontMetricsF
 

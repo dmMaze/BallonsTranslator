@@ -185,6 +185,10 @@ class MainWindow(QMainWindow):
         if self.config.open_recent_on_startup:
             self.configPanel.open_on_startup_checker.setChecked(True)
 
+        self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
+        self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
+        self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)
+
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
         if self.leftBar.showPageListLabel.checkState() == 2:
@@ -444,6 +448,22 @@ class MainWindow(QMainWindow):
         self.pageListCurrentItemChanged()
 
     def on_pagtrans_finished(self, page_index: int):
+        
+        # override font format if necessary
+        override_fnt_size = self.config.let_fntsize_flag == 1
+        override_fnt_stroke = self.config.let_fntstroke_flag == 1
+        override_fnt_color = self.config.let_fntcolor_flag
+        if override_fnt_size or override_fnt_stroke:
+            gf = self.textPanel.formatpanel.global_format
+            blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
+            for blk in blk_list:
+                if override_fnt_size:
+                    blk.font_size = gf.size
+                if override_fnt_stroke:
+                    blk.default_stroke_width = gf.stroke_width
+                if override_fnt_color:
+                    blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
+
         if self.config.dl.translate_target not in LANG_SUPPORT_VERTICAL:
             for blk in self.imgtrans_proj.get_blklist_byidx(page_index):
                 blk.vertical = False
