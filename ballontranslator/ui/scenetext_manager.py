@@ -9,7 +9,7 @@ from .imgtranspanel import TransPairWidget
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly, rotate_polygons
 from .canvas import Canvas
 from .imgtranspanel import TextPanel, TextEditListScrollArea, SourceTextEdit, TransTextEdit
-from .texteditshapecontrol import TextBlkShapeControl
+from .misc import FontFormat
 
 
 class MoveBlkItemsCommand(QUndoCommand):
@@ -33,6 +33,32 @@ class MoveBlkItemsCommand(QUndoCommand):
 
     def mergeWith(self, command: QUndoCommand):
         if command.new_pos_lst == self.new_pos_lst:
+            return True
+        return False
+
+
+class ApplyFontformatCommand(QUndoCommand):
+    def __init__(self, items: List[TextBlkItem], fontformat: FontFormat):
+        super(ApplyFontformatCommand, self).__init__()
+        self.items = items
+        self.old_html_lst = []
+        self.old_fmt_lst = []
+        self.new_fmt = fontformat
+        for item in items:
+            self.old_html_lst.append(item.toHtml())
+            self.old_fmt_lst.append(item.get_fontformat())
+
+    def redo(self):
+        for item in self.items:
+            item.set_fontformat(self.new_fmt, set_char_format=True)
+
+    def undo(self):
+        for item, html, fmt in zip(self.items, self.old_html_lst, self.old_fmt_lst):
+            item.setHtml(html)
+            item.set_fontformat(fmt)
+
+    def mergeWith(self, command: QUndoCommand):
+        if command.new_fmt == self.new_fmt:
             return True
         return False
 
@@ -163,12 +189,14 @@ class SceneTextManager(QObject):
         self.canvas.scalefactor_changed.connect(self.adjustSceneTextRect)
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
         self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
+        self.canvas.format_textblks.connect(self.onFormatTextblks)
         self.canvasUndoStack = self.canvas.undoStack
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
 
         self.textEditList = textpanel.textEditList
         self.formatpanel = textpanel.formatpanel
+        self.formatpanel.global_format_changed.connect(self.onGlobalFormatChanged)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
         self.textblk_item_list: List[TextBlkItem] = []
@@ -344,11 +372,7 @@ class SceneTextManager(QObject):
         self.txtblkShapeControl.updateBoundingRect()
 
     def onTextBlkItemMoved(self):
-        selections = self.canvas.selectedItems()
-        selected_blks = []
-        for selection in selections:
-            if isinstance(selection, TextBlkItem):
-                selected_blks.append(selection)
+        selected_blks = self.get_selected_blkitems()
         if len(selected_blks) > 0:
             self.canvasUndoStack.push(MoveBlkItemsCommand(selected_blks, self))
         
@@ -361,13 +385,12 @@ class SceneTextManager(QObject):
             self.canvasUndoStack.push(RotateItemCommand(blk_item, new_angle))
 
     def onDeleteBlkItems(self):
-        selections = self.canvas.selectedItems()
-        selected_blks = []
-        for selection in selections:
-            if isinstance(selection, TextBlkItem):
-                selected_blks.append(selection)
+        selected_blks = self.get_selected_blkitems()
         if len(selected_blks) > 0:
             self.canvasUndoStack.push(DeleteBlkItemsCommand(selected_blks, self))
+
+    def onFormatTextblks(self):
+        self.apply_fontformat(self.formatpanel.global_format)
 
     def onEndCreateTextBlock(self, rect: QRectF):
         scale_f = self.canvas.scale_factor
@@ -398,9 +421,24 @@ class SceneTextManager(QObject):
         blk_item.setPlainText(text)
         self.canvas.setProjSaveState(True)
 
+    def onGlobalFormatChanged(self):
+        self.apply_fontformat(self.formatpanel.global_format)
+
+    def apply_fontformat(self, fontformat: FontFormat):
+        selected_blks = self.get_selected_blkitems()
+        if len(selected_blks) > 0:
+            self.canvasUndoStack.push(ApplyFontformatCommand(selected_blks, fontformat))
+
+    def get_selected_blkitems(self) -> List[TextBlkItem]:
+        selections = self.canvas.selectedItems()
+        selected_blks = []
+        for selection in selections:
+            if isinstance(selection, TextBlkItem):
+                selected_blks.append(selection)
+        return selected_blks
+
     def on_srcwidget_edited(self):
         self.canvas.setProjSaveState(True)
-        pass
 
     def updateTextBlkItemIdx(self):
         for ii, blk_item in enumerate(self.textblk_item_list):
@@ -439,3 +477,5 @@ class SceneTextManager(QObject):
         for blk_item in self.textblk_item_list:
             blk_item.draw_rect = draw_rect
             blk_item.update()
+
+

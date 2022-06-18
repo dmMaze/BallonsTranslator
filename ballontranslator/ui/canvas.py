@@ -1,8 +1,7 @@
-
 import numpy as np
-from PyQt5.QtWidgets import QMenu, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QLabel, QSizePolicy, QScrollBar, QListView, QGraphicsSceneWheelEvent, QGraphicsTextItem, QGraphicsPixmapItem, QStyle, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QUndoGroup, QUndoStack, QUndoView
+from PyQt5.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QUndoStack
 from PyQt5.QtCore import Qt, QRect, QRectF, QPointF, QPoint, pyqtSignal, QSizeF, QObject, QEvent
-from PyQt5.QtGui import QPixmap, QHideEvent, QMouseEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QFocusEvent, QPen, QColor, QTextFormat, QPainterPath
+from PyQt5.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QPen
 
 from typing import List, Union, Tuple
 from .misc import ndarray2pixmap, pixmap2ndarray, qrgb2bgr, ProjImgTrans
@@ -69,9 +68,10 @@ class Canvas(QGraphicsScene):
     scalefactor_changed = pyqtSignal()
     end_create_textblock = pyqtSignal(QRectF)
     end_create_rect = pyqtSignal(QRectF, int)
-    delete_textblks = pyqtSignal()
     finish_painting = pyqtSignal(StrokeItem)
     finish_erasing = pyqtSignal(StrokeItem)
+    delete_textblks = pyqtSignal()
+    format_textblks = pyqtSignal()
 
     begin_scale_tool = pyqtSignal(QPointF)
     scale_tool = pyqtSignal(QPointF)
@@ -133,7 +133,6 @@ class Canvas(QGraphicsScene):
         self.drawingLayer = QGraphicsPixmapItem()
         self.drawingLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         
-        # self.addItem(self.imgLayer)
         self.addItem(self.baseLayer)
         self.inpaintLayer.setParentItem(self.baseLayer)
         self.imgLayer.setParentItem(self.baseLayer)
@@ -198,7 +197,6 @@ class Canvas(QGraphicsScene):
         sbr = self.imgLayer.sceneBoundingRect()
         self.old_size = sbr.size()
         self.scale_factor = s_f
-        # self.imgLayer.setScale(self.scale_factor)
         self.baseLayer.setScale(self.scale_factor)
 
         self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
@@ -328,6 +326,7 @@ class Canvas(QGraphicsScene):
         return super().mouseReleaseEvent(event)
 
     def updateCanvas(self):
+        self.clearSelection()
         self.setProjSaveState(False)
         self.editing_textblkitem = None
         self.hovering_textblkitem = None
@@ -384,9 +383,12 @@ class Canvas(QGraphicsScene):
         if self.hovering_textblkitem or self.editing_textblkitem:
             menu = QMenu()
             delete_act = menu.addAction(self.tr("Delete"))
+            format_act = menu.addAction(self.tr("Apply font formatting"))
             rst = menu.exec_(event.screenPos())
             if rst == delete_act:
                 self.delete_textblks.emit()
+            elif rst == format_act:
+                self.format_textblks.emit()
     
     def on_hide_canvas(self):
         self.alt_pressed = False

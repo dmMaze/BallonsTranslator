@@ -482,7 +482,8 @@ class TextBlkItem(QGraphicsTextItem):
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False):
         
-        self.setVertical(ffmat.vertical)
+        if self.is_vertical != ffmat.vertical:
+            self.setVertical(ffmat.vertical)
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.Start)
         format = cursor.charFormat()

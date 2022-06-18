@@ -47,7 +47,6 @@ def set_textblk_color(blkitem: TextBlkItem, cursor: QTextCursor, rgb: List):
         fmt.setForeground(QColor(*rgb))
         cursor.setCharFormat(fmt)
     
-
 @restore_textcursor
 def set_textblk_fontsize(blkitem: TextBlkItem, cursor: QTextCursor, fontsize):
     format = QTextCharFormat()
@@ -161,7 +160,6 @@ class AlignmentBtnGroup(QFrame):
             self.alignLeftChecker.setChecked(False)
             self.alignRightChecker.setChecked(False)
             self.set_alignment.emit(1)
-        # btn.setChecked(True)
     
     def setAlignment(self, alignment: int):
         if alignment == 0:
@@ -273,11 +271,15 @@ class FontSizeBox(QFrame):
         return active
 
 class FontFormatPanel(Widget):
+    
     textblk_item: TextBlkItem = None
     text_cursor: QTextCursor = None
     active_format: FontFormat = None
     global_format: FontFormat = None
     restoring_textblk: bool = False
+    
+    global_format_changed = pyqtSignal()
+
     def __init__(self, app: QApplication, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.app = app
@@ -358,14 +360,16 @@ class FontFormatPanel(Widget):
         self.active_format = self.global_format
 
     def restoreTextBlkItem(self):
-        blkitem = self.textblk_item
-        self.restoring_textblk = True
-        if blkitem:
-            blkitem.startEdit()
-            blkitem.setTextCursor(self.text_cursor)
-            blkitem.scene().gv.setFocus(True)
-        self.restoring_textblk = False
-        return blkitem
+        if self.active_format == self.global_format:
+            self.global_format_changed.emit()
+        else:
+            blkitem = self.textblk_item
+            self.restoring_textblk = True
+            if blkitem:
+                blkitem.startEdit()
+                blkitem.setTextCursor(self.text_cursor)
+                blkitem.scene().gv.setFocus(True)
+            self.restoring_textblk = False
 
     def changingColor(self):
         self.focusOnColorDialog = True
