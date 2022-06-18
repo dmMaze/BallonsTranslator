@@ -247,8 +247,8 @@ class MPE(nn.Module):
         rel_pos_emb = self.rel_pos_emb(rel_pos).reshape(b, h, w, -1).permute(0, 3, 1, 2) * self.alpha5
         direct = direct.reshape(b, h * w, 4).to(torch.float32)
         direct_emb = self.direct_emb(direct).reshape(b, h, w, -1).permute(0, 3, 1, 2) * self.alpha6
-
         return rel_pos_emb, direct_emb
+
 
 class LamaFourier:
     def __init__(self, build_discriminator=True, use_mpe=False) -> None:
@@ -268,7 +268,6 @@ class LamaFourier:
                             'enable_lfu': False
                         }
                     )
-        self.enable_fp16 = False
         self.discriminator = NLayerDiscriminator() if build_discriminator else None
         self.inpaint_only = False
         if use_mpe:

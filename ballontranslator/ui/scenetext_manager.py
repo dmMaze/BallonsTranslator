@@ -12,28 +12,31 @@ from .imgtranspanel import TextPanel, TextEditListScrollArea, SourceTextEdit, Tr
 from .texteditshapecontrol import TextBlkShapeControl
 
 
-class MoveItemCommand(QUndoCommand):
-    def __init__(self, item: TextBlkItem, parent=None):
-        super(MoveItemCommand, self).__init__(parent)
-        self.item = item
-        self.oldPos = item.oldPos
-        self.newPos = item.pos()
+class MoveBlkItemsCommand(QUndoCommand):
+    def __init__(self, items: List[TextBlkItem], parent=None):
+        super(MoveBlkItemsCommand, self).__init__()
+        self.items = items
+        self.old_pos_lst = []
+        self.new_pos_lst = []
+        for item in items:
+            self.old_pos_lst.append(item.oldPos)
+            self.new_pos_lst.append(item.pos())
+            item.oldPos = item.pos()
 
     def redo(self):
-        self.item.setPos(self.newPos)
+        for item, new_pos in zip(self.items, self.new_pos_lst):
+            item.setPos(new_pos)
 
     def undo(self):
-        self.item.setPos(self.oldPos)
+        for item, old_pos in zip(self.items, self.old_pos_lst):
+            item.setPos(old_pos)
 
     def mergeWith(self, command: QUndoCommand):
-        item = command.item
-        if self.item != item:
-            return False
-        self.newPos = item.pos()
-        return True
+        if command.new_pos_lst == self.new_pos_lst:
+            return True
+        return False
 
-# according to https://doc.qt.io/qt-5/qundocommand.html
-# some of following commands are done twice after initialization
+
 class ReshapeItemCommand(QUndoCommand):
     def __init__(self, item: TextBlkItem, parent=None):
         super(ReshapeItemCommand, self).__init__(parent)
@@ -53,6 +56,7 @@ class ReshapeItemCommand(QUndoCommand):
             return False
         self.newRect = item.rect()
         return True
+
 
 class RotateItemCommand(QUndoCommand):
     def __init__(self, item: TextBlkItem, new_angle: float):
@@ -75,6 +79,7 @@ class RotateItemCommand(QUndoCommand):
             return False
         self.new_angle = item.angle
         return True
+
 
 class OrientationItemCommand(QUndoCommand):
     def __init__(self, item: TextBlkItem, ctrl):
@@ -100,26 +105,6 @@ class OrientationItemCommand(QUndoCommand):
         self.oldVertical = command.oldVertical
         return True
 
-class DeleteItemCommand(QUndoCommand):
-    def __init__(self, item: TextBlkItem, ctrl, parent=None):
-        super().__init__(parent)
-        self.item = item
-        self.p_widget = ctrl.pairwidget_list[item.idx]
-        self.ctrl: SceneTextManager = ctrl
-
-    def redo(self):
-        self.ctrl.deleteTextblkItem(self.item)
-
-    def undo(self):
-        self.ctrl.recoverTextblkItem(self.item, self.p_widget)
-
-    def mergeWith(self, command: QUndoCommand):
-        item = command.item
-        if self.item != item:
-            return False
-        self.item = item
-        self.p_widget = command.p_widget
-        return True
 
 class CreateItemCommand(QUndoCommand):
     def __init__(self, blk_item: TextBlkItem, ctrl, parent=None):
@@ -141,8 +126,9 @@ class CreateItemCommand(QUndoCommand):
         self.blk_item = blk_item
         return True
 
-class DeleteItemListCommand(QUndoCommand):
-    def __init__(self, blk_list: TextBlkItem, ctrl, parent=None):
+
+class DeleteBlkItemsCommand(QUndoCommand):
+    def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
         super().__init__(parent)
         self.blk_list = []
         self.pwidget_list = []
@@ -176,7 +162,7 @@ class SceneTextManager(QObject):
         self.canvas = canvas
         self.canvas.scalefactor_changed.connect(self.adjustSceneTextRect)
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
-        self.canvas.delete_textblks.connect(self.onDeleteTextBlks)
+        self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
         self.canvasUndoStack = self.canvas.undoStack
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
@@ -266,7 +252,6 @@ class SceneTextManager(QObject):
         textblk_item.moved.connect(self.onTextBlkItemMoved)
         textblk_item.reshaped.connect(self.onTextBlkItemReshaped)
         textblk_item.rotated.connect(self.onTextBlkItemRotated)
-        textblk_item.to_delete.connect(self.onDeleteTextBlkItem)
         textblk_item.content_changed.connect(self.onTextBlkItemContentChanged)
         textblk_item.doc_size_changed.connect(self.onTextBlkItemSizeChanged)
         return textblk_item
@@ -353,14 +338,19 @@ class SceneTextManager(QObject):
         self.canvas.hovering_textblkitem = blk_item
 
     def onTextBlkItemHoverLeave(self, blk_id: int):
-        blk_item = self.textblk_item_list[blk_id]
         self.canvas.hovering_textblkitem = None
 
     def onTextBlkItemMoving(self, item: TextBlkItem):
         self.txtblkShapeControl.updateBoundingRect()
 
-    def onTextBlkItemMoved(self, item: TextBlkItem):
-        self.canvasUndoStack.push(MoveItemCommand(item))
+    def onTextBlkItemMoved(self):
+        selections = self.canvas.selectedItems()
+        selected_blks = []
+        for selection in selections:
+            if isinstance(selection, TextBlkItem):
+                selected_blks.append(selection)
+        if len(selected_blks) > 0:
+            self.canvasUndoStack.push(MoveBlkItemsCommand(selected_blks, self))
         
     def onTextBlkItemReshaped(self, item: TextBlkItem):
         self.canvasUndoStack.push(ReshapeItemCommand(item))
@@ -370,12 +360,14 @@ class SceneTextManager(QObject):
         if blk_item:
             self.canvasUndoStack.push(RotateItemCommand(blk_item, new_angle))
 
-    def onDeleteTextBlkItem(self, item: TextBlkItem):
-        self.canvasUndoStack.push(DeleteItemCommand(item, self))
-
-    def onDeleteTextBlks(self):
+    def onDeleteBlkItems(self):
         selections = self.canvas.selectedItems()
-        self.canvasUndoStack.push(DeleteItemListCommand(selections, self))
+        selected_blks = []
+        for selection in selections:
+            if isinstance(selection, TextBlkItem):
+                selected_blks.append(selection)
+        if len(selected_blks) > 0:
+            self.canvasUndoStack.push(DeleteBlkItemsCommand(selected_blks, self))
 
     def onEndCreateTextBlock(self, rect: QRectF):
         scale_f = self.canvas.scale_factor

@@ -385,13 +385,8 @@ class Canvas(QGraphicsScene):
             menu = QMenu()
             delete_act = menu.addAction(self.tr("Delete"))
             rst = menu.exec_(event.screenPos())
-            blk_item = self.txtblkShapeControl.blk_item
-            selected = self.selectedItems()
             if rst == delete_act:
-                if selected:
-                    self.delete_textblks.emit()
-                elif blk_item:
-                    blk_item.delete()
+                self.delete_textblks.emit()
     
     def on_hide_canvas(self):
         self.alt_pressed = False

@@ -20,10 +20,9 @@ class TextBlkItem(QGraphicsTextItem):
     hover_enter = pyqtSignal(int)
     hover_leave = pyqtSignal(int)
     hover_move = pyqtSignal(int)
-    moved = pyqtSignal(QGraphicsTextItem)
+    moved = pyqtSignal()
     moving = pyqtSignal(QGraphicsTextItem)
     rotated = pyqtSignal(float)
-    to_delete = pyqtSignal(QGraphicsTextItem)
     reshaped = pyqtSignal(QGraphicsTextItem)
     content_changed = pyqtSignal(QGraphicsTextItem)
     leftbutton_pressed = pyqtSignal(int)
@@ -394,7 +393,7 @@ class TextBlkItem(QGraphicsTextItem):
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             if self.oldPos != self.pos():
-                self.moved.emit(self)
+                self.moved.emit()
         super().mouseReleaseEvent(event)
 
     def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
@@ -437,9 +436,6 @@ class TextBlkItem(QGraphicsTextItem):
 
     def alignment(self):
         return self.document().defaultTextOption().alignment()
-
-    def delete(self):
-        self.to_delete.emit(self)
 
     def get_fontformat(self) -> FontFormat:
         fmt = self.textCursor().charFormat()
