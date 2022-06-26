@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
         self.config = self.configPanel.config
 
         self.drawingPanel = DrawingPanel(self.canvas, self.configPanel.inpaint_config_panel)
-        self.textPanel = TextPanel(self.app)
+        self.textPanel = TextPanel(self.app, self.canvas)
         self.st_manager = SceneTextManager(self.app, self.canvas, self.textPanel)
 
         # comic trans pannel
@@ -287,6 +287,8 @@ class MainWindow(QMainWindow):
         shortcutCtrlD.activated.connect(self.shortcutCtrlD)
         shortcutSpace = QShortcut(QKeySequence("Space"), self)
         shortcutSpace.activated.connect(self.shortcutSpace)
+        shortcutCtrlA = QShortcut(QKeySequence("Ctrl+A"), self)
+        shortcutCtrlA.activated.connect(self.shortcutCtrlA)
 
     def shortcutNext(self):
         if self.centralStackWidget.currentIndex() == 0:
@@ -324,6 +326,11 @@ class MainWindow(QMainWindow):
             if self.drawingPanel.isVisible():
                 if self.drawingPanel.currentTool == self.drawingPanel.rectTool:
                     self.drawingPanel.rectPanel.delete_btn.click()
+
+    def shortcutCtrlA(self):
+        if self.centralStackWidget.currentIndex() == 0:
+            if self.textPanel.isVisible():
+                self.st_manager.set_blkitems_selection(True)
 
     def shortcutSpace(self):
         if self.centralStackWidget.currentIndex() == 0:

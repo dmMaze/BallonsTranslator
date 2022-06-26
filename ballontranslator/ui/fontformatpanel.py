@@ -1,13 +1,14 @@
 import functools
 from typing import List, Tuple, Union
 
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QRadioButton, QCheckBox
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QCheckBox
 from PyQt5.QtCore import pyqtSignal, Qt
-from PyQt5.QtGui import QColor, QTextCharFormat, QIntValidator, QMouseEvent, QFont, QTextCursor, QTextFormat
-from .stylewidgets import Widget, ColorPicker, PaintQSlider
+from PyQt5.QtGui import QColor, QTextCharFormat, QIntValidator, QMouseEvent, QFont, QTextCursor
 
+from .stylewidgets import Widget, ColorPicker, PaintQSlider
 from .misc import FontFormat, set_html_color
 from .textitem import TextBlkItem, TextBlock
+from .canvas import Canvas
 
 
 # restore text cursor status after formatting
@@ -111,17 +112,21 @@ def set_textblk_family(blkitem: TextBlkItem, cursor: QTextCursor, family: str):
 def set_textblk_linespacing(blkitem: TextBlkItem, cursor: QTextCursor, line_spacing: float):
     blkitem.setLineSpacing(line_spacing)
 
+
 class IncrementalBtn(QPushButton):
     pass
 
+
 class QFontChecker(QCheckBox):
     pass
+
 
 class AlignmentChecker(QCheckBox):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if self.isChecked():
             return event.accept()
         return super().mousePressEvent(event)
+
 
 class AlignmentBtnGroup(QFrame):
     set_alignment = pyqtSignal(int)
@@ -175,6 +180,7 @@ class AlignmentBtnGroup(QFrame):
             self.alignCenterChecker.setChecked(False)
             self.alignRightChecker.setChecked(True)
 
+
 class FormatGroupBtn(QFrame):
     set_bold = pyqtSignal(bool)
     set_italic = pyqtSignal(bool)
@@ -205,6 +211,7 @@ class FormatGroupBtn(QFrame):
     def setUnderline(self):
         self.set_underline.emit(self.underlineBtn.isChecked())
     
+
 class FontSizeBox(QFrame):
     fontsize_changed = pyqtSignal()
     def __init__(self, *args, **kwargs) -> None:
@@ -270,6 +277,7 @@ class FontSizeBox(QFrame):
         self.btn_clicked = False
         return active
 
+
 class FontFormatPanel(Widget):
     
     textblk_item: TextBlkItem = None
@@ -280,9 +288,11 @@ class FontFormatPanel(Widget):
     
     global_format_changed = pyqtSignal()
 
-    def __init__(self, app: QApplication, *args, **kwargs) -> None:
+    def __init__(self, app: QApplication, canvas: Canvas, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.app = app
+        self.canvas = canvas
+
         self.vlayout = QVBoxLayout(self)
         self.vlayout.setAlignment(Qt.AlignTop)
         self.familybox = QFontComboBox(self)
@@ -324,11 +334,13 @@ class FontFormatPanel(Widget):
         self.strokeWidthSlider.setFixedHeight(50)
         self.strokeWidthSlider.setRange(0, 100)
         self.strokeWidthSlider.valueChanged.connect(self.onSrokeWidthChanged)
+        self.strokeWidthSlider.mouse_released.connect(self.onStrokeSliderRealeased)
 
         self.lineSpacingSlider = PaintQSlider(self.tr("line spacing: ") + 'value%', Qt.Horizontal)
         self.lineSpacingSlider.setFixedHeight(50)
         self.lineSpacingSlider.setRange(0, 300)
         self.lineSpacingSlider.valueChanged.connect(self.onLinespacingChanged)
+        self.lineSpacingSlider.mouse_released.connect(self.onLinespacingSliderReleased)
 
         hl1 = QHBoxLayout()
         hl1.addWidget(self.familybox)
@@ -432,16 +444,34 @@ class FontFormatPanel(Widget):
             self.textblk_item.setVertical(self.active_format.vertical)
 
     def onSrokeWidthChanged(self):
+        if len(self.canvas.selectedItems()) > 1 and self.strokeWidthSlider.pressed:
+            return
         if self.strokeWidthSlider.pressed:
-            self.active_format.stroke_width = self.strokeWidthSlider.value() / 100
-            self.restoreTextBlkItem()
-            set_textblk_strokewidth(self.textblk_item, self.active_format.stroke_width)
+            self.update_stroke_width(self.strokeWidthSlider.value() / 100)
+
+    def onStrokeSliderRealeased(self):
+        if len(self.canvas.selectedItems()) > 1:
+            self.update_stroke_width(self.strokeWidthSlider.value() / 100)
+
+    def update_stroke_width(self, value: float):
+        self.active_format.stroke_width = value
+        self.restoreTextBlkItem()
+        set_textblk_strokewidth(self.textblk_item, self.active_format.stroke_width)
 
     def onLinespacingChanged(self):
+        if len(self.canvas.selectedItems()) > 1 and self.lineSpacingSlider.pressed:
+            return
         if self.lineSpacingSlider.pressed:
-            self.active_format.line_spacing = self.lineSpacingSlider.value() / 100
-            self.restoreTextBlkItem()
-            set_textblk_linespacing(self.textblk_item, self.active_format.line_spacing)
+            self.update_line_spacing(self.lineSpacingSlider.value() / 100)
+
+    def onLinespacingSliderReleased(self):
+        if len(self.canvas.selectedItems()) > 1:
+            self.update_line_spacing(self.lineSpacingSlider.value() / 100)
+
+    def update_line_spacing(self, value: float):
+        self.active_format.line_spacing = value
+        self.restoreTextBlkItem()
+        set_textblk_linespacing(self.textblk_item, self.active_format.line_spacing)
             
     def set_active_format(self, font_format: FontFormat):
         self.active_format = font_format

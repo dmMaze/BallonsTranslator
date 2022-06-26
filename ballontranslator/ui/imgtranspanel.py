@@ -1,12 +1,13 @@
-
-from PyQt5.QtWidgets import QSizePolicy, QLabel, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QFontComboBox, QColorDialog, QComboBox, QApplication, QPushButton, QRadioButton, QCheckBox
-from PyQt5.QtCore import pyqtSignal, Qt, QSize, QEvent, QObject
-from PyQt5.QtGui import QColor, QFocusEvent, QIntValidator, QMouseEvent, QFont, QTextCursor
-from .stylewidgets import Widget, SeparatorWidget, PaintQSlider
-
 from typing import List
+
+from PyQt5.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication
+from PyQt5.QtCore import pyqtSignal, Qt, QSize, QEvent
+from PyQt5.QtGui import QColor, QFocusEvent
+from .stylewidgets import Widget, SeparatorWidget
+
 from .textitem import TextBlock, TextBlkItem
 from .fontformatpanel import FontFormatPanel
+from .canvas import Canvas
 
 class SourceTextEdit(QTextEdit):
     hover_enter = pyqtSignal(int)
@@ -116,12 +117,12 @@ class TextEditListScrollArea(QScrollArea):
 
 
 class TextPanel(Widget):
-    def __init__(self, app: QApplication, *args, **kwargs) -> None:
+    def __init__(self, app: QApplication, canvas: Canvas, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         layout = QVBoxLayout(self)
         self.textEditList = TextEditListScrollArea(self)
         self.activePair: TransPairWidget = None
-        self.formatpanel = FontFormatPanel(app, self)
+        self.formatpanel = FontFormatPanel(app, canvas, self)
         layout.addWidget(self.formatpanel)
         layout.addWidget(self.textEditList)
         layout.setContentsMargins(10, 0, 10, 0)

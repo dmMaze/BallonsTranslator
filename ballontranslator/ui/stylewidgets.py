@@ -204,6 +204,8 @@ class SliderProxyStyle(QProxyStyle):
 
 class PaintQSlider(QSlider):
 
+    mouse_released = pyqtSignal()
+
     def __init__(self, draw_content, *args, **kwargs):
         super(PaintQSlider, self).__init__(*args, **kwargs)
         self.draw_content = draw_content
@@ -218,6 +220,7 @@ class PaintQSlider(QSlider):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             self.pressed = False
+            self.mouse_released.emit()
         return super().mouseReleaseEvent(event)
 
     def paintEvent(self, _):

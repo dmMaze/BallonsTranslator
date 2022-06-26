@@ -416,4 +416,3 @@ class Canvas(QGraphicsScene):
         if item == self.stroke_path_item:
             self.stroke_path_item = None
         return super().removeItem(item)
-    

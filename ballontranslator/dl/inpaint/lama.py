@@ -409,10 +409,11 @@ class LamaFourier:
 
         return rel_pos, abs_pos, direct
 
-def load_lama_mpe(model_path, device) -> LamaFourier:
-    model = LamaFourier(build_discriminator=False, use_mpe=True)
+def load_lama_mpe(model_path, device, use_mpe=True) -> LamaFourier:
+    model = LamaFourier(build_discriminator=False, use_mpe=use_mpe)
     sd = torch.load(model_path, map_location = 'cpu')
     model.generator.load_state_dict(sd['gen_state_dict'])
-    model.mpe.load_state_dict(sd['str_state_dict'])
+    if use_mpe:
+        model.mpe.load_state_dict(sd['str_state_dict'])
     model.eval().to(device)
     return model

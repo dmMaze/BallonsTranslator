@@ -3,12 +3,14 @@ from typing import List, Union
 import numpy as np
 
 from PyQt5.QtWidgets import QApplication, QUndoCommand
-from PyQt5.QtCore import pyqtSignal, QObject, QRectF, Qt
+from PyQt5.QtCore import QObject, QRectF, Qt
 from PyQt5.QtGui import QTextCursor
+
 from .imgtranspanel import TransPairWidget
-from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly, rotate_polygons
+from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
-from .imgtranspanel import TextPanel, TextEditListScrollArea, SourceTextEdit, TransTextEdit
+from .imgtranspanel import TextPanel, TransTextEdit
+from .stylewidgets import PaintQSlider
 from .misc import FontFormat
 
 
@@ -339,7 +341,6 @@ class SceneTextManager(QObject):
         self.txtblkShapeControl.setBlkItem(blk_item)
 
     def onTextBlkItemEndEdit(self, blk_id: int):
-        blkitem = self.textblk_item_list[blk_id]
         self.canvas.editing_textblkitem = None
         self.formatpanel.set_textblk_item(None)
         self.txtblkShapeControl.setCursor(Qt.CursorShape.SizeAllCursor)
@@ -422,6 +423,7 @@ class SceneTextManager(QObject):
         self.canvas.setProjSaveState(True)
 
     def onGlobalFormatChanged(self):
+        # if not isinstance(self.app.focusWidget(), PaintQSlider):
         self.apply_fontformat(self.formatpanel.global_format)
 
     def apply_fontformat(self, fontformat: FontFormat):
@@ -478,4 +480,9 @@ class SceneTextManager(QObject):
             blk_item.draw_rect = draw_rect
             blk_item.update()
 
+    def set_blkitems_selection(self, selected: bool, blk_items: List[TextBlkItem] = None):
+        if blk_items is None:
+            blk_items = self.textblk_item_list
+        for blk_item in blk_items:
+            blk_item.setSelected(selected)
 
