@@ -303,7 +303,7 @@ class CaiyunTranslator(TranslatorBase):
 @register_translator('Deepl')
 class DeeplTranslator(TranslatorBase):
 
-    concate_text = True
+    concate_text = False
     setup_params: Dict = {
         'api_key': ''
     }
@@ -342,7 +342,7 @@ class DeeplTranslator(TranslatorBase):
         if source == 'EN-US':
             source = "EN"
         result = translator.translate_text(text, source_lang=source, target_lang=target)
-        return result.text
+        return [i.text for i in result]
     
 # # "dummy translator" is the name showed in the app
 # @register_translator('dummy translator')
