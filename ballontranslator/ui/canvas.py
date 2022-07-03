@@ -266,19 +266,7 @@ class Canvas(QGraphicsScene):
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.creating_textblock:
-            epos, opos = event.scenePos(), self.create_block_origin
-            w, h = epos.x() - opos.x(), epos.y() - opos.y()
-            if w < 0:
-                x = epos.x()
-                w = -w
-            else:
-                x = opos.x()
-            if h < 0:
-                y = epos.y()
-                h = -h
-            else:
-                y = opos.y()
-            self.txtblkShapeControl.setRect(QRectF(x, y, w, h))
+            self.txtblkShapeControl.setRect(QRectF(self.create_block_origin, event.scenePos()).normalized())
         elif self.stroke_path_item is not None:
             self.stroke_path_item.addNewPoint(self.imgLayer.mapFromScene(event.scenePos()))
         elif self.scale_tool_mode:
