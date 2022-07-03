@@ -1,7 +1,7 @@
 import numpy as np
-from PyQt5.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QUndoStack
+from PyQt5.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QUndoStack, QRubberBand
 from PyQt5.QtCore import Qt, QRect, QRectF, QPointF, QPoint, pyqtSignal, QSizeF, QObject, QEvent
-from PyQt5.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QPen
+from PyQt5.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QPen, QPainterPath
 
 from typing import List, Union, Tuple
 from .misc import ndarray2pixmap, pixmap2ndarray, qrgb2bgr, ProjImgTrans
@@ -100,7 +100,7 @@ class Canvas(QGraphicsScene):
 
         self.gv = CustomGV(self)
         self.gv.setAlignment(Qt.AlignCenter)
-        self.gv.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.gv.scale_down_signal.connect(self.scaleDown)
         self.gv.scale_up_signal.connect(self.scaleUp)
         self.gv.view_resized.connect(self.onViewResized)
@@ -109,6 +109,9 @@ class Canvas(QGraphicsScene):
         self.ctrl_relesed = self.gv.ctrl_released
 
         self.default_cursor = self.gv.cursor()
+        self.rubber_band = self.addWidget(QRubberBand(QRubberBand.Shape.Rectangle))
+        self.rubber_band.hide()
+        self.rubber_band_origin = None
 
         self.undoStack = QUndoStack(self)
         self.undoStack.indexChanged.connect(self.on_undostack_changed)
@@ -280,17 +283,23 @@ class Canvas(QGraphicsScene):
             self.stroke_path_item.addNewPoint(self.imgLayer.mapFromScene(event.scenePos()))
         elif self.scale_tool_mode:
             self.scale_tool.emit(event.scenePos())
+        elif self.rubber_band.isVisible() and self.rubber_band_origin is not None:
+            self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, event.scenePos()).normalized())
+            sel_path = QPainterPath(self.rubber_band_origin)
+            sel_path.addRect(self.rubber_band.geometry())
+            self.setSelectionArea(sel_path, Qt.ItemSelectionMode.IntersectsItemBoundingRect, self.gv.viewportTransform())
         return super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.textblock_mode:
-            if event.button() == Qt.RightButton:
+            if event.button() == Qt.MouseButton.RightButton:
                 if self.hovering_textblkitem is None:
                     return self.startCreateTextblock(event.scenePos())
         elif self.creating_normal_rect:
             return self.startCreateTextblock(event.scenePos(), hide_control=True)
 
         elif event.button() == Qt.MouseButton.LeftButton:
+            # user is drawing using the pen/inpainting tool
             if self.alt_pressed:
                 self.scale_tool_mode = True
                 self.begin_scale_tool.emit(event.scenePos())
@@ -299,9 +308,15 @@ class Canvas(QGraphicsScene):
                 self.addStrokeItem(self.stroke_path_item)
 
         elif event.button() == Qt.MouseButton.RightButton:
+            # user is drawing using eraser
             if self.painting and self.stroke_path_item is None:
                 self.stroke_path_item = PenStrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
                 self.addStrokeItem(self.stroke_path_item)
+            else:   # rubber band selection
+                self.rubber_band_origin = event.scenePos()
+                self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, self.rubber_band_origin).normalized())
+                self.rubber_band.show()
+                self.rubber_band.setZValue(1)
 
         return super().mousePressEvent(event)
 
@@ -316,6 +331,9 @@ class Canvas(QGraphicsScene):
         elif event.button() == Qt.RightButton:
             if self.stroke_path_item is not None:
                 self.finish_erasing.emit(self.stroke_path_item)
+            if self.rubber_band.isVisible():
+                self.rubber_band.hide()
+                self.rubber_band_origin = None
         elif event.button() == Qt.MouseButton.LeftButton:
             if self.stroke_path_item is not None:
                 self.finish_painting.emit(self.stroke_path_item)
@@ -363,7 +381,7 @@ class Canvas(QGraphicsScene):
         else:
             self.maskLayer.setVisible(False)
             self.gv.setCursor(self.default_cursor)
-            self.gv.setDragMode(QGraphicsView.ScrollHandDrag)
+            self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             self.image_edit_mode = ImageEditMode.NONE
 
     @property

@@ -489,7 +489,6 @@ class FontFormatPanel(Widget):
 
     def set_textblk_item(self, textblk_item: TextBlkItem = None):
         if textblk_item is None:
-            # if self.textblk_item:
             focus_w = self.app.focusWidget()
             focus_p = None if focus_w is None else focus_w.parentWidget()
             focus_on_fmtoptions = False
@@ -504,8 +503,6 @@ class FontFormatPanel(Widget):
                 self.textblk_item = None
                 self.text_cursor = None
                 self.set_active_format(self.global_format)
-            return
-
         else:
             if not self.restoring_textblk:
                 blk_fmt = textblk_item.get_fontformat()
