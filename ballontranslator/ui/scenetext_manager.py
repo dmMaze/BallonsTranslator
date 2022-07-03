@@ -387,6 +387,8 @@ class SceneTextManager(QObject):
 
     def onDeleteBlkItems(self):
         selected_blks = self.get_selected_blkitems()
+        if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
+            selected_blks.append(self.txtblkShapeControl.blk_item)
         if len(selected_blks) > 0:
             self.canvasUndoStack.push(DeleteBlkItemsCommand(selected_blks, self))
 
