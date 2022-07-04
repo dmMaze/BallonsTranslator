@@ -3,8 +3,8 @@ from typing import Union
 import numpy as np
 import traceback
 
-from PyQt5.QtCore import QThread, pyqtSignal, QObject, QLocale
-from PyQt5.QtWidgets import QMessageBox
+from qtpy.QtCore import QThread, Signal, QObject, QLocale
+from qtpy.QtWidgets import QMessageBox
 
 from utils.logger import logger as LOGGER
 from utils.registry import Registry
@@ -21,8 +21,8 @@ from .misc import ProjImgTrans, DLModuleConfig
 
 class ModuleThread(QThread):
 
-    exception_occurred = pyqtSignal(str, str, str)
-    finish_set_module = pyqtSignal()
+    exception_occurred = Signal(str, str, str)
+    finish_set_module = Signal()
 
     def __init__(self, dl_config: DLModuleConfig, module_key: str, MODULE_REGISTER: Registry, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -75,7 +75,7 @@ class ModuleThread(QThread):
 
 class InpaintThread(ModuleThread):
 
-    finish_inpaint = pyqtSignal(dict)    
+    finish_inpaint = Signal(dict)    
     def __init__(self, dl_config: DLModuleConfig, *args, **kwargs) -> None:
         super().__init__(dl_config, 'inpainter', INPAINTERS, *args, **kwargs)
 
@@ -110,7 +110,7 @@ class InpaintThread(ModuleThread):
 
 class TextDetectThread(ModuleThread):
     
-    finish_detect_page = pyqtSignal(str)
+    finish_detect_page = Signal(str)
     def __init__(self, dl_config: DLModuleConfig, *args, **kwargs) -> None:
         super().__init__(dl_config, 'textdetector', TEXTDETECTORS, *args, **kwargs)
 
@@ -125,7 +125,7 @@ class TextDetectThread(ModuleThread):
 
 class OCRThread(ModuleThread):
 
-    finish_ocr_page = pyqtSignal(str)
+    finish_ocr_page = Signal(str)
     def __init__(self, dl_config: DLModuleConfig, *args, **kwargs) -> None:
         super().__init__(dl_config, 'ocr', OCR, *args, **kwargs)
 
@@ -139,8 +139,8 @@ class OCRThread(ModuleThread):
 
 
 class TranslateThread(ModuleThread):
-    finish_translate_page = pyqtSignal(str)
-    progress_changed = pyqtSignal(int)
+    finish_translate_page = Signal(str)
+    progress_changed = Signal(int)
 
     def __init__(self, dl_config: DLModuleConfig, *args, **kwargs) -> None:
         super().__init__(dl_config, 'translator', TRANSLATORS, *args, **kwargs)
@@ -239,19 +239,19 @@ class TranslateThread(ModuleThread):
 
 
 class ImgtransThread(QThread):
-    finished = pyqtSignal(object)
+    finished = Signal(object)
     imgtrans_proj: ProjImgTrans
     textdetect_thread: TextDetectThread = None
     ocr_thread: OCRThread = None
     translate_thread: TranslateThread = None
     inpaint_thread: InpaintThread = None
 
-    update_detect_progress = pyqtSignal(int)
-    update_ocr_progress = pyqtSignal(int)
-    update_translate_progress = pyqtSignal(int)
-    update_inpaint_progress = pyqtSignal(int)
+    update_detect_progress = Signal(int)
+    update_ocr_progress = Signal(int)
+    update_translate_progress = Signal(int)
+    update_inpaint_progress = Signal(int)
 
-    exception_occurred = pyqtSignal(str, str)
+    exception_occurred = Signal(str, str)
     def __init__(self, 
                  dl_config: DLModuleConfig, 
                  imgtrans_proj: ProjImgTrans, 
@@ -379,14 +379,14 @@ class ImgtransThread(QThread):
 class DLManager(QObject):
     imgtrans_proj: ProjImgTrans = None
 
-    update_translator_status = pyqtSignal(str, str, str)
-    update_inpainter_status = pyqtSignal(str)
-    finish_translate_page = pyqtSignal(str)
-    canvas_inpaint_finished = pyqtSignal(dict)
+    update_translator_status = Signal(str, str, str)
+    update_inpainter_status = Signal(str)
+    finish_translate_page = Signal(str)
+    canvas_inpaint_finished = Signal(dict)
 
-    imgtrans_pipeline_finished = pyqtSignal()
+    imgtrans_pipeline_finished = Signal()
 
-    page_trans_finished = pyqtSignal(int)
+    page_trans_finished = Signal(int)
 
     run_canvas_inpaint = False
     def __init__(self, 

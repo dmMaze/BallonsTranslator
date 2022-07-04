@@ -1,8 +1,8 @@
 from typing import List
 
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFontMetricsF
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QFontMetricsF
 
 from dl import VALID_INPAINTERS, VALID_TEXTDETECTORS, VALID_TRANSLATORS, VALID_OCR, \
     TranslatorBase, DEFAULT_DEVICE
@@ -21,14 +21,14 @@ class ParamNameLabel(QLabel):
         self.setFont(font)
         labelwidth = 120
         fm = QFontMetricsF(font)
-        fmw = fm.width(param_name)
+        fmw = fm.boundingRect(param_name).width()
         labelwidth = max(fmw, labelwidth)
         self.setFixedWidth(labelwidth)
         self.setText(param_name)
 
 class ParamEditor(QLineEdit):
     
-    paramwidget_edited = pyqtSignal(str, str)
+    paramwidget_edited = Signal(str, str)
     def __init__(self, param_key: str, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.param_key = param_key
@@ -41,7 +41,7 @@ class ParamEditor(QLineEdit):
 
 
 class ParamComboBox(QComboBox):
-    paramwidget_edited = pyqtSignal(str, str)
+    paramwidget_edited = Signal(str, str)
     def __init__(self, param_key: str, options: List[str], size=CONFIG_COMBOBOX_SHORT, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.param_key = param_key
@@ -56,7 +56,7 @@ class ParamComboBox(QComboBox):
 
 
 class ParamCheckerBox(QWidget):
-    checker_changed = pyqtSignal(bool)
+    checker_changed = Signal(bool)
     def __init__(self, param_key: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.param_key = param_key
@@ -74,7 +74,7 @@ class ParamCheckerBox(QWidget):
 
 class ParamWidget(QWidget):
 
-    paramwidget_edited = pyqtSignal(str, str)
+    paramwidget_edited = Signal(str, str)
     def __init__(self, params, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         param_layout = QVBoxLayout(self)
@@ -121,8 +121,8 @@ class ParamWidget(QWidget):
 
 
 class ModuleConfigParseWidget(QWidget):
-    module_changed = pyqtSignal(str)
-    paramwidget_edited = pyqtSignal(str, str)
+    module_changed = Signal(str)
+    paramwidget_edited = Signal(str, str)
     def __init__(self, module_name: str, valid_param_keys, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.valid_param_keys = valid_param_keys

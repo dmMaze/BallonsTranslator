@@ -6,7 +6,7 @@ import re
 import os
 from collections import OrderedDict
 from typing import Tuple, Union, List, Dict
-from PyQt5.QtGui import QPixmap,  QColor, QImage
+from qtpy.QtGui import QPixmap,  QColor, QImage
 
 from . import constants
 from .constants import DEFAULT_FONT_FAMILY

@@ -1,32 +1,33 @@
-import os.path as osp
 import math
 import numpy as np
-from PyQt5.QtWidgets import QTextEdit, QGraphicsPixmapItem, QGraphicsDropShadowEffect, QGraphicsView, QGraphicsPixmapItem, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QLabel, QSizePolicy, QScrollBar, QListView, QGraphicsSceneWheelEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent
-from PyQt5.QtCore import Qt, QRect, QRectF, QPointF, QPoint, pyqtSignal, QSizeF
-from PyQt5.QtGui import QTextCursor, QPixmap, QPainterPath, QTextDocument, QMouseEvent, QKeyEvent, QWheelEvent, QBrush, QFocusEvent, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QPen, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument, QTextBlockFormat
+from typing import List, Union, Tuple
+
+from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent
+from qtpy.QtCore import Qt, QRect, QRectF, QPointF, QPoint, Signal, QSizeF
+from qtpy.QtGui import QTextCursor, QPixmap, QPainterPath, QTextDocument, QFocusEvent, QPainter, QPen, QColor, QTextCursor, QTextCharFormat, QTextDocument
+
 from dl.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
-from typing import List, Union, Tuple
 from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern
 from .textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
-
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
 
+
 class TextBlkItem(QGraphicsTextItem):
-    begin_edit = pyqtSignal(int)
-    end_edit = pyqtSignal(int)
-    hover_enter = pyqtSignal(int)
-    hover_leave = pyqtSignal(int)
-    hover_move = pyqtSignal(int)
-    moved = pyqtSignal()
-    moving = pyqtSignal(QGraphicsTextItem)
-    rotated = pyqtSignal(float)
-    reshaped = pyqtSignal(QGraphicsTextItem)
-    content_changed = pyqtSignal(QGraphicsTextItem)
-    leftbutton_pressed = pyqtSignal(int)
-    doc_size_changed = pyqtSignal(int)
+    begin_edit = Signal(int)
+    end_edit = Signal(int)
+    hover_enter = Signal(int)
+    hover_leave = Signal(int)
+    hover_move = Signal(int)
+    moved = Signal()
+    moving = Signal(QGraphicsTextItem)
+    rotated = Signal(float)
+    reshaped = Signal(QGraphicsTextItem)
+    content_changed = Signal(QGraphicsTextItem)
+    leftbutton_pressed = Signal(int)
+    doc_size_changed = Signal(int)
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.blk = None
@@ -67,7 +68,7 @@ class TextBlkItem(QGraphicsTextItem):
         doc = self.document()
         sw = self.stroke_width * doc.defaultFont().pointSizeF()
         format = QTextCharFormat()
-        format.setTextOutline (QPen(self.stroke_color, sw, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        format.setTextOutline (QPen(self.stroke_color, sw, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         cursor = QTextCursor(doc)
         cursor.select(QTextCursor.Document)
         old_fmt = cursor.charFormat()
@@ -187,9 +188,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.blk.angle = angle
 
     def setVertical(self, vertical: bool, force=False):
-        
-        # if not force and self.is_vertical != vertical:
-        #     return
         if self.blk is not None:
             self.blk.vertical = vertical
         self.setTextInteractionFlags(Qt.NoTextInteraction)
@@ -206,7 +204,7 @@ class TextBlkItem(QGraphicsTextItem):
         else:
             layout = HorizontalTextDocumentLayout(doc)
         layout.setMaxSize(rect.width(), rect.height())
-        layout.sizeEnlarged.connect(self.on_document_enlarged)
+        layout.size_enlarged.connect(self.on_document_enlarged)
         layout.documentSizeChanged.connect(self.docSizeChanged)
         doc.setDocumentLayout(layout)
         doc.setDefaultFont(default_font)
@@ -310,7 +308,7 @@ class TextBlkItem(QGraphicsTextItem):
             # old_fmt = cursor.charFormat()
             # format = cursor.charFormat()
             # sw = sw * self.document().defaultFont().pointSizeF()
-            # format.setTextOutline(QPen(self.stroke_color, sw, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            # format.setTextOutline(QPen(self.stroke_color, sw, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
             
             # cursor.select(QTextCursor.Document)
             
@@ -385,13 +383,13 @@ class TextBlkItem(QGraphicsTextItem):
         return super().contextMenuEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.oldPos = self.pos()
             self.leftbutton_pressed.emit(self.idx)
         return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             if self.oldPos != self.pos():
                 self.moved.emit()
         super().mouseReleaseEvent(event)
@@ -410,7 +408,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def toPixmap(self) -> QPixmap:
         pixmap = QPixmap(self.boundingRect().size().toSize())
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         doc = self.document()
         doc.drawContents(painter)
@@ -444,9 +442,9 @@ class TextBlkItem(QGraphicsTextItem):
         frgb = [color.red(), color.green(), color.blue()]
         srgb = [self.stroke_color.red(), self.stroke_color.green(), self.stroke_color.blue()]
         alignment = self.alignment()
-        if alignment == Qt.AlignLeft:
+        if alignment == Qt.AlignmentFlag.AlignLeft:
             alignment = 0
-        elif alignment == Qt.AlignRight:
+        elif alignment == Qt.AlignmentFlag.AlignRight:
             alignment = 2
         else:
             alignment = 1
@@ -469,16 +467,6 @@ class TextBlkItem(QGraphicsTextItem):
             line_spacing=self.line_spacing
         )
         return font_format
-
-    def setPlainText(self, text: str) -> None:
-        # fmt = self.get_fontformat()
-        super().setPlainText(text)
-        # self.set_fontformat(fmt)
-
-    def setFont(self, font: QFont):
-        cursor = self.textCursor()
-        cursor.movePosition(QTextCursor.Start)
-        pass
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False):
         
@@ -513,7 +501,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.setStrokeWidth(ffmat.stroke_width)
         self.setStrokeColor(ffmat.srgb)
         
-        alignment = [Qt.AlignLeft, Qt.AlignCenter, Qt.AlignRight][ffmat.alignment]
+        alignment = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][ffmat.alignment]
         doc = self.document()
         op = doc.defaultTextOption()
         op.setAlignment(alignment)

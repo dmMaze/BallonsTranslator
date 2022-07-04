@@ -1,15 +1,21 @@
 import numpy as np
-from PyQt5.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QUndoStack, QRubberBand
-from PyQt5.QtCore import Qt, QRect, QRectF, QPointF, QPoint, pyqtSignal, QSizeF, QObject, QEvent
-from PyQt5.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QPen, QPainterPath
-
 from typing import List, Union, Tuple
-from .misc import ndarray2pixmap, pixmap2ndarray, qrgb2bgr, ProjImgTrans
 
+from qtpy.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtCore import Qt, QRect, QRectF, QPointF, QPoint, Signal, QSizeF, QObject, QEvent
+from qtpy.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QPen, QPainterPath
+
+try:
+    from qtpy.QtWidgets import QUndoStack
+
+except:
+    from PyQt6.QtGui import QUndoStack
+
+from .misc import ndarray2pixmap, ProjImgTrans
 from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
-from .image_edit import StrokeItem, PenStrokeItem, PenStrokeCommand, ImageEditMode
+from .image_edit import StrokeItem, StrokeItem, ImageEditMode
 
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
@@ -18,11 +24,11 @@ CANVAS_SCALE_SPEED = 0.1
 class CustomGV(QGraphicsView):
     do_scale = True
     ctrl_pressed = False
-    scale_up_signal = pyqtSignal()
-    scale_down_signal = pyqtSignal()
-    view_resized = pyqtSignal()
-    hide_canvas = pyqtSignal()
-    ctrl_released = pyqtSignal()
+    scale_up_signal = Signal()
+    scale_down_signal = Signal()
+    view_resized = Signal()
+    hide_canvas = Signal()
+    ctrl_released = Signal()
 
     def wheelEvent(self, event : QWheelEvent) -> None:
         # qgraphicsview always scroll content according to wheelevent
@@ -65,18 +71,18 @@ class CustomGV(QGraphicsView):
 
 class Canvas(QGraphicsScene):
 
-    scalefactor_changed = pyqtSignal()
-    end_create_textblock = pyqtSignal(QRectF)
-    end_create_rect = pyqtSignal(QRectF, int)
-    finish_painting = pyqtSignal(StrokeItem)
-    finish_erasing = pyqtSignal(StrokeItem)
-    delete_textblks = pyqtSignal()
-    format_textblks = pyqtSignal()
+    scalefactor_changed = Signal()
+    end_create_textblock = Signal(QRectF)
+    end_create_rect = Signal(QRectF, int)
+    finish_painting = Signal(StrokeItem)
+    finish_erasing = Signal(StrokeItem)
+    delete_textblks = Signal()
+    format_textblks = Signal()
 
-    begin_scale_tool = pyqtSignal(QPointF)
-    scale_tool = pyqtSignal(QPointF)
-    end_scale_tool = pyqtSignal()
-    canvas_undostack_changed = pyqtSignal()
+    begin_scale_tool = Signal(QPointF)
+    scale_tool = Signal(QPointF)
+    end_scale_tool = Signal()
+    canvas_undostack_changed = Signal()
     
     imgtrans_proj: ProjImgTrans = None
     painting_pen = QPen()
@@ -85,7 +91,7 @@ class Canvas(QGraphicsScene):
     scale_tool_mode = False
 
     projstate_unsaved = False
-    proj_savestate_changed = pyqtSignal(bool)
+    proj_savestate_changed = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -99,7 +105,7 @@ class Canvas(QGraphicsScene):
         self.hovering_textblkitem: TextBlkItem = None
 
         self.gv = CustomGV(self)
-        self.gv.setAlignment(Qt.AlignCenter)
+        self.gv.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.gv.scale_down_signal.connect(self.scaleDown)
         self.gv.scale_up_signal.connect(self.scaleUp)
@@ -116,7 +122,7 @@ class Canvas(QGraphicsScene):
         self.undoStack = QUndoStack(self)
         self.undoStack.indexChanged.connect(self.on_undostack_changed)
         self.scaleFactorLabel = FadeLabel(self.gv)
-        self.scaleFactorLabel.setAlignment(Qt.AlignCenter)
+        self.scaleFactorLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scaleFactorLabel.setText('100%')
         self.scaleFactorLabel.gv = self.gv
 
@@ -245,7 +251,7 @@ class Canvas(QGraphicsScene):
     def startCreateTextblock(self, pos: QPointF, hide_control: bool = False):
         self.creating_textblock = True
         self.create_block_origin = pos
-        self.gv.setCursor(Qt.CrossCursor)
+        self.gv.setCursor(Qt.CursorShape.CrossCursor)
         self.txtblkShapeControl.setBlkItem(None)
         self.txtblkShapeControl.setPos(0, 0)
         self.txtblkShapeControl.setRotation(0)
@@ -256,7 +262,7 @@ class Canvas(QGraphicsScene):
 
     def endCreateTextblock(self, btn=0):
         self.creating_textblock = False
-        self.gv.setCursor(Qt.ArrowCursor)
+        self.gv.setCursor(Qt.CursorShape.ArrowCursor)
         self.txtblkShapeControl.hide()
         if self.creating_normal_rect:
             self.end_create_rect.emit(self.txtblkShapeControl.rect(), btn)
@@ -292,13 +298,13 @@ class Canvas(QGraphicsScene):
                 self.scale_tool_mode = True
                 self.begin_scale_tool.emit(event.scenePos())
             elif self.painting and self.stroke_path_item is None:
-                self.stroke_path_item = PenStrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
+                self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
                 self.addStrokeItem(self.stroke_path_item)
 
         elif event.button() == Qt.MouseButton.RightButton:
             # user is drawing using eraser
             if self.painting and self.stroke_path_item is None:
-                self.stroke_path_item = PenStrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
+                self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
                 self.addStrokeItem(self.stroke_path_item)
             else:   # rubber band selection
                 self.rubber_band_origin = event.scenePos()
@@ -316,7 +322,7 @@ class Canvas(QGraphicsScene):
         if self.creating_textblock:
             btn = 0 if event.button() == Qt.MouseButton.LeftButton else 1
             return self.endCreateTextblock(btn=btn)
-        elif event.button() == Qt.RightButton:
+        elif event.button() == Qt.MouseButton.RightButton:
             if self.stroke_path_item is not None:
                 self.finish_erasing.emit(self.stroke_path_item)
             if self.rubber_band.isVisible():

@@ -1,9 +1,9 @@
 import functools
 from typing import List, Tuple, Union
 
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QCheckBox
-from PyQt5.QtCore import pyqtSignal, Qt
-from PyQt5.QtGui import QColor, QTextCharFormat, QIntValidator, QMouseEvent, QFont, QTextCursor
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QCheckBox
+from qtpy.QtCore import Signal, Qt
+from qtpy.QtGui import QColor, QTextCharFormat, QIntValidator, QMouseEvent, QFont, QTextCursor
 
 from .stylewidgets import Widget, ColorPicker, PaintQSlider
 from .misc import FontFormat, set_html_color
@@ -83,7 +83,7 @@ def set_textblk_underline(blkitem, cursor: QTextCursor, underline: bool):
 
 @restore_textcursor
 def set_textblk_alignment(blkitem: TextBlkItem, cursor: QTextCursor, alignment: int):
-    alignment = [Qt.AlignLeft, Qt.AlignCenter, Qt.AlignRight][alignment]
+    alignment = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][alignment]
     blkitem.setAlignment(alignment)
 
 @restore_textcursor
@@ -129,7 +129,7 @@ class AlignmentChecker(QCheckBox):
 
 
 class AlignmentBtnGroup(QFrame):
-    set_alignment = pyqtSignal(int)
+    set_alignment = Signal(int)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.alignLeftChecker = AlignmentChecker(self)
@@ -182,9 +182,9 @@ class AlignmentBtnGroup(QFrame):
 
 
 class FormatGroupBtn(QFrame):
-    set_bold = pyqtSignal(bool)
-    set_italic = pyqtSignal(bool)
-    set_underline = pyqtSignal(bool)
+    set_bold = Signal(bool)
+    set_italic = Signal(bool)
+    set_underline = Signal(bool)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.boldBtn = QFontChecker(self)
@@ -213,7 +213,7 @@ class FormatGroupBtn(QFrame):
     
 
 class FontSizeBox(QFrame):
-    fontsize_changed = pyqtSignal()
+    fontsize_changed = Signal()
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.upBtn = IncrementalBtn(self)
@@ -286,7 +286,7 @@ class FontFormatPanel(Widget):
     global_format: FontFormat = None
     restoring_textblk: bool = False
     
-    global_format_changed = pyqtSignal()
+    global_format_changed = Signal()
 
     def __init__(self, app: QApplication, canvas: Canvas, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -330,13 +330,13 @@ class FontFormatPanel(Widget):
         self.strokeColorPicker.colorChanged.connect(self.onStrokeColorChanged)
         self.strokeColorPicker.setObjectName("StrokeColorPicker")
         
-        self.strokeWidthSlider = PaintQSlider(self.tr("Stroke width: ") + 'value%', Qt.Horizontal)
+        self.strokeWidthSlider = PaintQSlider(self.tr("Stroke width: ") + 'value%', Qt.Orientation.Horizontal)
         self.strokeWidthSlider.setFixedHeight(50)
         self.strokeWidthSlider.setRange(0, 100)
         self.strokeWidthSlider.valueChanged.connect(self.onSrokeWidthChanged)
         self.strokeWidthSlider.mouse_released.connect(self.onStrokeSliderRealeased)
 
-        self.lineSpacingSlider = PaintQSlider(self.tr("line spacing: ") + 'value%', Qt.Horizontal)
+        self.lineSpacingSlider = PaintQSlider(self.tr("line spacing: ") + 'value%', Qt.Orientation.Horizontal)
         self.lineSpacingSlider.setFixedHeight(50)
         self.lineSpacingSlider.setRange(0, 300)
         self.lineSpacingSlider.valueChanged.connect(self.onLinespacingChanged)
@@ -347,7 +347,7 @@ class FontFormatPanel(Widget):
         hl1.addWidget(self.fontsizebox)
         hl1.setSpacing(10)
         hl2 = QHBoxLayout()
-        hl2.setAlignment(Qt.AlignCenter)
+        hl2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl2.addWidget(self.colorPicker)
         hl2.addWidget(self.alignBtnGroup)
         hl2.addWidget(self.formatBtnGroup)
@@ -355,7 +355,7 @@ class FontFormatPanel(Widget):
         hl2.setSpacing(10)
         hl2.setContentsMargins(0, 0, 0, 0)
         hl3 = QHBoxLayout()
-        hl3.setAlignment(Qt.AlignLeft)
+        hl3.setAlignment(Qt.AlignmentFlag.AlignLeft)
         hl3.addWidget(self.lineSpacingSlider)
         hl3.addWidget(self.strokeColorPicker)
         hl3.addWidget(self.strokeWidthSlider)
@@ -380,7 +380,7 @@ class FontFormatPanel(Widget):
             if blkitem:
                 blkitem.startEdit()
                 blkitem.setTextCursor(self.text_cursor)
-                blkitem.scene().gv.setFocus(True)
+                blkitem.scene().gv.setFocus(Qt.FocusReason.NoFocusReason)
             self.restoring_textblk = False
 
     def changingColor(self):

@@ -2,9 +2,9 @@ import os.path as osp
 import os
 import json
 
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
-from PyQt5.QtCore import Qt, QPoint, QSize
-from PyQt5.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
+from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
+from qtpy.QtCore import Qt, QPoint, QSize
+from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
 
 from utils.logger import logger as LOGGER
 from .misc import ProjImgTrans
@@ -69,7 +69,8 @@ class MainWindow(QMainWindow):
         self.comicTransSplitter.setStretchFactor(1, 10)
 
     def setupUi(self):
-        screen_size = QApplication.desktop().screenGeometry().size()
+        # screen_size = QApplication.desktop().screenGeometry().size()
+        screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
 
         self.leftBar = LeftBar(self)
@@ -121,7 +122,7 @@ class MainWindow(QMainWindow):
         self.rightComicTransStackPanel.addWidget(self.drawingPanel)
         self.rightComicTransStackPanel.addWidget(self.textPanel)
 
-        self.comicTransSplitter = QSplitter(Qt.Horizontal)
+        self.comicTransSplitter = QSplitter(Qt.Orientation.Horizontal)
         self.comicTransSplitter.addWidget(self.pageList)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
@@ -267,7 +268,6 @@ class MainWindow(QMainWindow):
                 self.drawingPanel.inpaint_stroke = None
                 self.dl_manager.run_canvas_inpaint = False
 
-
     def setupShortcuts(self):
         shortcutNext = QShortcut(QKeySequence("D"), self)
         shortcutNext.activated.connect(self.shortcutNext)
@@ -406,7 +406,7 @@ class MainWindow(QMainWindow):
             self.st_manager.txtblkShapeControl.hide()
 
         painter = QPainter(img)
-        painter.setRenderHint(QPainter.RenderHint.HighQualityAntialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.canvas.render(painter)
         painter.end()
         if not osp.exists(self.imgtrans_proj.result_dir()):

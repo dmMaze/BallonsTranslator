@@ -1,6 +1,11 @@
-from PyQt5.QtCore import pyqtSignal, Qt, QPointF, QSize, QLineF, QRect, QRectF
-from PyQt5.QtWidgets import QPushButton, QGraphicsPixmapItem, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QUndoCommand, QStackedWidget, QVBoxLayout, QLabel, QGraphicsEllipseItem
-from PyQt5.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QRect, QRectF
+from qtpy.QtWidgets import QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsEllipseItem
+from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
+
+try:
+    from qtpy.QtWidgets import QUndoCommand
+except:
+    from qtpy.QtGui import QUndoCommand
 
 from typing import Union, Tuple, List
 import numpy as np
@@ -24,7 +29,7 @@ MIN_PEN_SIZE = 1
 TOOLNAME_POINT_SIZE = 13
 
 class DrawToolCheckBox(QCheckBox):
-    checked = pyqtSignal()
+    checked = Signal()
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.stateChanged.connect(self.on_state_changed)
@@ -56,13 +61,13 @@ class ToolNameLabel(QLabel):
 
 class InpaintPanel(Widget):
 
-    thicknessChanged = pyqtSignal(int)
+    thicknessChanged = Signal(int)
 
     def __init__(self, inpainter_panel: InpaintConfigPanel, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.inpainter_panel = inpainter_panel
-        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Horizontal)
+        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Orientation.Horizontal)
         self.thicknessSlider.setFixedHeight(50)
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
@@ -97,15 +102,15 @@ class InpaintPanel(Widget):
 
 
 class PenConfigPanel(Widget):
-    thicknessChanged = pyqtSignal(int)
-    colorChanged = pyqtSignal(list)
+    thicknessChanged = Signal(int)
+    colorChanged = Signal(list)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Horizontal)
+        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Orientation.Horizontal)
         self.thicknessSlider.setFixedHeight(50)
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
-        self.alphaSlider = PaintQSlider(self.tr('alpha value'), Qt.Horizontal)
+        self.alphaSlider = PaintQSlider(self.tr('alpha value'), Qt.Orientation.Horizontal)
         self.alphaSlider.setFixedHeight(50)
         self.alphaSlider.setRange(0, 255)
         self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
@@ -151,9 +156,9 @@ class PenConfigPanel(Widget):
 
 
 class RectPanel(Widget):
-    method_changed = pyqtSignal(int)
-    delete_btn_clicked = pyqtSignal()
-    inpaint_btn_clicked = pyqtSignal()
+    method_changed = Signal(int)
+    delete_btn_clicked = Signal()
+    inpaint_btn_clicked = Signal()
     def __init__(self, inpainter_panel: InpaintConfigPanel, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.inpainter_panel = inpainter_panel
@@ -407,16 +412,16 @@ class DrawingPanel(Widget):
         cursor_center = map_size // 2
         pen_radius = pen_size // 2
         pen_color.setAlpha(127)
-        pen = QPen(pen_color, thickness, Qt.DotLine, Qt.RoundCap, Qt.RoundJoin)
+        pen = QPen(pen_color, thickness, Qt.PenStyle.DotLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         pen.setDashPattern([3, 6])
         if pen_size < 20:
-            pen.setStyle(Qt.SolidLine)
+            pen.setStyle(Qt.PenStyle.SolidLine)
 
         cur_pixmap = QPixmap(QSize(map_size, map_size))
-        cur_pixmap.fill(Qt.transparent)
+        cur_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(cur_pixmap)
         painter.setPen(pen)
-        painter.setRenderHint(QPainter.RenderHint.HighQualityAntialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if draw_circle:
             painter.drawEllipse(cursor_center-pen_radius + thickness, 
                                 cursor_center-pen_radius + thickness, 

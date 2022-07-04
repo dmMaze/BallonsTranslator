@@ -6,10 +6,7 @@ import termcolor
 
 if os.name == "nt":  # Windows
     import colorama
-
     colorama.init()
-
-# from . import __appname__
 
 
 COLORS = {
@@ -68,5 +65,4 @@ class ColoredLogger(logging.Logger):
 
 
 logging.setLoggerClass(ColoredLogger)
-
 logger = logging.getLogger('BallonTranslator')

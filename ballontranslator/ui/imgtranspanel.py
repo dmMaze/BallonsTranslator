@@ -1,8 +1,8 @@
 from typing import List
 
-from PyQt5.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication
-from PyQt5.QtCore import pyqtSignal, Qt, QSize, QEvent
-from PyQt5.QtGui import QColor, QFocusEvent
+from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication
+from qtpy.QtCore import Signal, Qt, QSize, QEvent
+from qtpy.QtGui import QColor, QFocusEvent
 from .stylewidgets import Widget, SeparatorWidget
 
 from .textitem import TextBlock, TextBlkItem
@@ -10,9 +10,9 @@ from .fontformatpanel import FontFormatPanel
 from .canvas import Canvas
 
 class SourceTextEdit(QTextEdit):
-    hover_enter = pyqtSignal(int)
-    hover_leave = pyqtSignal(int)
-    user_edited = pyqtSignal()
+    hover_enter = Signal(int)
+    hover_leave = Signal(int)
+    user_edited = Signal()
     def __init__(self, idx, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.idx = idx
@@ -60,7 +60,7 @@ class SourceTextEdit(QTextEdit):
         return super().focusOutEvent(event)
         
 class TransTextEdit(SourceTextEdit):
-    content_change = pyqtSignal(int, str)
+    content_change = Signal(int, str)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.document().contentsChange.connect(self.onContentChange)
@@ -92,7 +92,7 @@ class TransPairWidget(Widget):
 class TextEditListScrollArea(QScrollArea):
     textblock_list: List[TextBlock] = []
     pairwidget_list: List[TransPairWidget] = []
-    remove_textblock = pyqtSignal()
+    remove_textblock = Signal()
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.scrollContent = QFrame()
@@ -127,5 +127,5 @@ class TextPanel(Widget):
         layout.addWidget(self.textEditList)
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(20)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 

@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QPlainTextEdit, QWidget, QFileDialog, QLabel, QSizePolicy, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
-from PyQt5.QtCore import Qt, QModelIndex, pyqtSignal, QPointF, QPoint, QSize, QSizeF, QObject, QEvent
-from PyQt5.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QCloseEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QPen, QColor, QTextFormat, QTextCursor, QPalette, QTextDocument
+from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox
+from qtpy.QtCore import Qt, QModelIndex, Signal, QSize
+from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
 from PyQt5 import QtCore
 from typing import List, Union, Tuple
 
@@ -27,7 +27,7 @@ class ConfigTextLabel(QLabel):
 
 
 class ConfigSubBlock(Widget):
-    pressed = pyqtSignal(int, int)
+    pressed = Signal(int, int)
     def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout=True) -> None:
         super().__init__()
         self.idx0: int = None
@@ -58,7 +58,7 @@ class ConfigSubBlock(Widget):
 
 
 class ConfigBlock(Widget):
-    sublock_pressed = pyqtSignal(int, int)
+    sublock_pressed = Signal(int, int)
     def __init__(self, header: str, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.header = ConfigTextLabel(header, CONFIG_FONTSIZE_HEADER)
@@ -119,11 +119,11 @@ class ConfigContent(QScrollArea):
         super().__init__(*args, **kwargs)
         self.config_block_list: List[ConfigBlock] = []
         self.scrollContent = QGroupBox()
-        self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.setWidget(self.scrollContent)
         vlayout = QVBoxLayout()
         vlayout.setContentsMargins(32, 0, 0, 0)
-        vlayout.setAlignment(Qt.AlignTop)
+        vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scrollContent.setLayout(vlayout)
         self.setWidgetResizable(True)
         self.vlayout = vlayout
@@ -169,7 +169,7 @@ class TreeModel(QStandardItemModel):
     def data(self, index, role):
         if not index.isValid():
             return None
-        if role == Qt.SizeHintRole:
+        if role == Qt.ItemDataRole.SizeHintRole:
             size = QSize()
             item = self.itemFromIndex(index)
             size.setHeight(item.font().pointSize()+40)
@@ -179,7 +179,7 @@ class TreeModel(QStandardItemModel):
 
 
 class ConfigTable(QTreeView):
-    tableitem_pressed = pyqtSignal(int, int)
+    tableitem_pressed = Signal(int, int)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
@@ -299,7 +299,7 @@ class ConfigPanel(Widget):
         self.let_fntcolor_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
         self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
 
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.configTable)
         splitter.addWidget(self.configContent)
         splitter.setStretchFactor(0, 1)

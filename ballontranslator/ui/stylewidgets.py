@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStylePainter, QStyleOption, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
-from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, pyqtSignal, QSizeF, QObject, QEvent
-from PyQt5.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument
+from qtpy.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStylePainter, QStyleOption, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
+from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Signal, QSizeF, QObject, QEvent
+from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument
 from typing import List, Union, Tuple
 
 from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
@@ -83,7 +83,7 @@ class FrameLessMessageBox(QMessageBox):
         
 
 class ProgressMessageBox(QDialog):
-    showed = pyqtSignal()
+    showed = Signal()
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -150,8 +150,8 @@ class ProgressMessageBox(QDialog):
 
 
 class ColorPicker(QLabel):
-    colorChanged = pyqtSignal(bool)
-    changingColor = pyqtSignal()
+    colorChanged = Signal(bool)
+    changingColor = Signal()
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.color: QColor = None
@@ -185,7 +185,7 @@ class SliderProxyStyle(QProxyStyle):
 
     def subControlRect(self, cc, opt, sc, widget):
         r = super().subControlRect(cc, opt, sc, widget)
-        if widget.orientation() == Qt.Horizontal:
+        if widget.orientation() == Qt.Orientation.Horizontal:
             y = widget.height() // 4
             h = y * 2
             r = QRect(r.x(), y, r.width(), h)
@@ -204,7 +204,7 @@ class SliderProxyStyle(QProxyStyle):
 
 class PaintQSlider(QSlider):
 
-    mouse_released = pyqtSignal()
+    mouse_released = Signal()
 
     def __init__(self, draw_content, *args, **kwargs):
         super(PaintQSlider, self).__init__(*args, **kwargs)
@@ -213,12 +213,12 @@ class PaintQSlider(QSlider):
         self.setStyle(SliderProxyStyle())
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.pressed = True
         return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.pressed = False
             self.mouse_released.emit()
         return super().mouseReleaseEvent(event)
@@ -237,7 +237,7 @@ class PaintQSlider(QSlider):
         # 画中间白色线条
         painter.setPen(QColor(85,85,96))
         painter.setBrush(QColor(85,85,96))
-        if self.orientation() == Qt.Horizontal:
+        if self.orientation() == Qt.Orientation.Horizontal:
             y = self.height() / 2
             painter.drawLine(QPointF(0, y), QPointF(self.width(), y))
         else:
@@ -264,7 +264,7 @@ class PaintQSlider(QSlider):
                 draw_content = self.draw_content.replace("value", str(self.value()))
                 textw = fm.width(draw_content)
 
-                if self.orientation() == Qt.Horizontal:  # 在上方绘制文字
+                if self.orientation() == Qt.Orientation.Horizontal:  # 在上方绘制文字
                     x, y = rect.x() - textw/2 + rect.width()/2, rect.y() - rect.height()
                     x = min(max(0, x), self.width()-textw)
                     # x = rect.x()
@@ -272,7 +272,7 @@ class PaintQSlider(QSlider):
                     x, y = rect.x() - rect.width(), rect.y()
                 painter.drawText(
                     x, y-10, textw, rect.height()+20,
-                    Qt.AlignCenter, self.draw_content.replace("value", str(self.value()))
+                    Qt.AlignmentFlag.AlignCenter, self.draw_content.replace("value", str(self.value()))
                 )
 
         else:  # 实心圆

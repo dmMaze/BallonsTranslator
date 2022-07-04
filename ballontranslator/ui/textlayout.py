@@ -1,9 +1,8 @@
-from PyQt5.QtWidgets import QTextEdit, QMainWindow, QGraphicsScene, QGraphicsView, QGraphicsPixmapItem, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QLabel, QSizePolicy, QScrollBar, QListView, QGraphicsSceneWheelEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent, QGraphicsRectItem
-from PyQt5.QtCore import Qt, QRect, QRectF, QPointF, QPoint, pyqtSignal, QSizeF
-from PyQt5.QtGui import QCursor, QPixmap, QPalette, QGuiApplication, QMouseEvent, QKeyEvent, QWheelEvent, QBrush, QFocusEvent, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QPen, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument
+from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSizeF
+from qtpy.QtGui import QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFontMetrics, QTextOption, QTextLine, QTextFormat
 
 class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
-    sizeEnlarged = pyqtSignal()
+    size_enlarged = Signal()
     def __init__(self, textDocument):
         super().__init__(textDocument)
         self.max_height = 0
@@ -33,8 +32,9 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
     @property
     def align_right(self):
         return False
+        
         alignment = self.document().defaultTextOption().alignment()
-        if alignment == Qt.AlignRight | Qt.AlignCenter or alignment == Qt.AlignRight:
+        if alignment == Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignCenter or alignment == Qt.AlignmentFlag.AlignRight:
             return True
         else:
             return False
@@ -61,7 +61,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
             self.max_height = self.available_height + doc_margin * 2
             enlarged = True
         if enlarged:
-            self.sizeEnlarged.emit()
+            self.size_enlarged.emit()
             if x_shift != 0:
                 block = doc.firstBlock()
                 y_offset = x_shift
@@ -113,7 +113,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                     o.format = sel.format
                     selections.append(o)
             clip = context.clip if context.clip.isValid() else QRectF()
-            layout.draw(painter, QPoint(0, 0), selections, clip)
+            layout.draw(painter, QPointF(0, 0), selections, clip)
             block = block.next()
         
         if cursor_block is not None:
@@ -255,7 +255,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
 
 
 class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
-    sizeEnlarged = pyqtSignal()
+    size_enlarged = Signal()
     def __init__(self, textDocument):
         super().__init__(textDocument)
         self.max_height = 0
@@ -295,7 +295,7 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
         if new_height > self.available_height:
             self.max_height = new_height + doc_margin * 2
             self.available_height = new_height
-            self.sizeEnlarged.emit()
+            self.size_enlarged.emit()
 
         if doc.defaultTextOption().alignment() == Qt.AlignmentFlag.AlignCenter:
             block = doc.firstBlock()
@@ -421,11 +421,10 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
                     o.format = sel.format
                     selections.append(o)
             clip = context.clip if context.clip.isValid() else QRectF()
-            layout.draw(painter, QPoint(0, 0), selections, clip)
+            layout.draw(painter, QPointF(0, 0), selections, clip)
             block = block.next()
         
         if cursor_block is not None:
-            
             block = cursor_block
             blpos = block.position()
             bllen = block.length()

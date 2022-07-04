@@ -1,11 +1,16 @@
-from PyQt5.QtCore import pyqtSignal, Qt, QPointF, QSize, QPoint
-from PyQt5.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsView, QUndoCommand, QGraphicsPathItem, QGraphicsScene
-from PyQt5.QtGui import QPen, QColor, QPainterPath, QCursor, QPainter, QPixmap
+import numpy as np
+
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QPoint
+from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsPathItem, QGraphicsScene
+from qtpy.QtGui import QPen, QColor, QPainterPath, QCursor, QPainter, QPixmap
+
+try:
+    from qtpy.QtWidgets import QUndoCommand
+except:
+    from qtpy.QtGui import QUndoCommand
+
 from .misc import DrawPanelConfig, pixmap2ndarray, ndarray2pixmap
 from utils.io_utils import imread, imwrite
-import numpy as np
-from typing import Tuple
-import cv2
 
 SIZE_MAX = 2147483647
 
@@ -129,12 +134,8 @@ class StrokeItem(QGraphicsPathItem):
         return imgarray
 
 
-class PenStrokeItem(StrokeItem):
-    pass
-
-
 class PenStrokeCommand(QUndoCommand):
-    def __init__(self, canvas: QGraphicsScene, stroke_item: PenStrokeItem):
+    def __init__(self, canvas: QGraphicsScene, stroke_item: StrokeItem):
         super().__init__()
         self.stroke_item = stroke_item
         self.canvas = canvas
@@ -158,12 +159,13 @@ class PenCursor(QCursor):
         self.thickness = 2
 
     def updatePenCursor(self, size: int, color: QColor):
-        pen = QPen(color, self.thickness, Qt.DotLine, Qt.RoundCap, Qt.RoundJoin)
+        
+        pen = QPen(color, self.thickness, Qt.PenStyle.DotLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         if size < 20:
             pen.setWidth(3)
-            pen.setStyle(Qt.SolidLine)
+            pen.setStyle(Qt.PenStyle.SolidLine)
         cur_pixmap = QPixmap(QSize(int(size), int(size)))
-        cur_pixmap.fill(Qt.transparent)
+        cur_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(cur_pixmap)
         painter.setPen(pen)
         painter.setRenderHint(QPainter.Antialiasing)

@@ -1,9 +1,9 @@
 import os.path as osp
 from collections import OrderedDict
 
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton
-from PyQt5.QtCore import Qt, pyqtSignal, QPoint
-from PyQt5.QtGui import QMouseEvent, QKeySequence
+from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QAction, QCheckBox, QToolButton
+from qtpy.QtCore import Qt, Signal, QPoint
+from qtpy.QtGui import QMouseEvent, QKeySequence
 
 from typing import List
 
@@ -32,7 +32,7 @@ class StatusButton(QPushButton):
 
 
 class RunStopTextBtn(StatusButton):
-    run_target = pyqtSignal(bool)
+    run_target = Signal(bool)
     def __init__(self, run_text: str, stop_text: str, run_tool_tip: str = None, stop_tool_tip: str = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.running = False
@@ -75,12 +75,12 @@ class InpainterStatusButton(StatusButton):
 
 
 class StateChecker(QCheckBox):
-    checked = pyqtSignal(str)
+    checked = Signal(str)
     def __init__(self, checker_type: str, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.checker_type = checker_type
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             if not self.isChecked():
                 self.setChecked(True)
     def setChecked(self, check: bool) -> None:
@@ -90,12 +90,12 @@ class StateChecker(QCheckBox):
 
 
 class TextChecker(QLabel):
-    checkStateChanged = pyqtSignal(bool)
+    checkStateChanged = Signal(bool)
     def __init__(self, text: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setText(text)
         self.checked = False
-        self.setAlignment(Qt.AlignCenter)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
     def setCheckState(self, checked: bool):
         self.checked = checked
@@ -108,18 +108,18 @@ class TextChecker(QLabel):
         return self.checked
 
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.setCheckState(not self.checked)
             self.checkStateChanged.emit(self.checked)
 
 
 class LeftBar(Widget):
     recent_proj_list = []
-    imgTransChecked = pyqtSignal()
-    configChecked = pyqtSignal()
-    open_dir = pyqtSignal(str)
-    save_proj = pyqtSignal()
-    run_imgtrans = pyqtSignal()
+    imgTransChecked = Signal()
+    configChecked = Signal()
+    open_dir = Signal(str)
+    save_proj = Signal()
+    run_imgtrans = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.mainwindow: QMainWindow = mainwindow
@@ -192,7 +192,7 @@ class LeftBar(Widget):
         vlayout.addWidget(self.configChecker)
         vlayout.addWidget(self.runImgtransBtn)
         vlayout.setContentsMargins(padding, 0, padding, btn_width/2)
-        vlayout.setAlignment(Qt.AlignCenter)
+        vlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         vlayout.setSpacing(btn_width/2)
         self.setGeometry(0, 0, 300, 500)
         self.setMouseTracking(True)
@@ -356,7 +356,7 @@ class RightBar(Widget):
 
 
 class TitleBar(Widget):
-    closebtn_clicked = pyqtSignal()
+    closebtn_clicked = Signal()
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
         self.mainwindow : QMainWindow = parent
@@ -406,7 +406,7 @@ class TitleBar(Widget):
         self.mainwindow.showMinimized()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             if not self.mainwindow.isMaximized() and \
                 event.pos().y() < WINDOW_BORDER_WIDTH:
                 self.drag_resize_pos = event.globalPos()
@@ -505,11 +505,11 @@ class TitleBar(Widget):
 
 
 class BottomBar(Widget):
-    textedit_checkchanged = pyqtSignal()
-    paintmode_checkchanged = pyqtSignal()
-    textblock_checkchanged = pyqtSignal()
-    ocrcheck_statechanged = pyqtSignal(bool)
-    transcheck_statechanged = pyqtSignal(bool)
+    textedit_checkchanged = Signal()
+    paintmode_checkchanged = Signal()
+    textblock_checkchanged = Signal()
+    ocrcheck_statechanged = Signal(bool)
+    transcheck_statechanged = Signal(bool)
     def __init__(self, mainwindow: QMainWindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.setFixedHeight(BOTTOMBAR_HEIGHT)
@@ -547,7 +547,7 @@ class BottomBar(Widget):
         self.textblockChecker.setObjectName('TextblockChecker')
         self.textblockChecker.clicked.connect(self.onTextblockCheckerClicked)
         
-        self.originalSlider = PaintQSlider(self.tr("Original image transparency: ") + "value%", Qt.Horizontal, self, minimumWidth=90)
+        self.originalSlider = PaintQSlider(self.tr("Original image transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
         self.originalSlider.setFixedHeight(40)
         self.originalSlider.setFixedWidth(200)
         self.originalSlider.setRange(0, 100)

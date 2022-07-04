@@ -2,16 +2,25 @@ import sys
 import argparse
 import os.path as osp
 import os
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QTranslator, QLocale
-from ui.mainwindow import MainWindow
-from ui.constants import PROGRAM_PATH
 
+QT_APIS = ['pyqt5', 'pyqt6', 'pyside2', 'pyside6']
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
+    parser.add_argument("--qt-api", default='', choices=QT_APIS, help='Set qt api')
     args = parser.parse_args()
+
+    if not args.qt_api in QT_APIS:
+        os.environ['QT_API'] = 'pyqt5'
+    else:
+        os.environ['QT_API'] = args.qt_api
+
+    from qtpy.QtWidgets import QApplication
+    from qtpy.QtCore import QTranslator, QLocale
+
+    from ui.mainwindow import MainWindow
+    from ui.constants import PROGRAM_PATH
 
     os.chdir(PROGRAM_PATH)
     app = QApplication(sys.argv)

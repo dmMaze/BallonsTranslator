@@ -2,9 +2,14 @@
 from typing import List, Union
 import numpy as np
 
-from PyQt5.QtWidgets import QApplication, QUndoCommand
-from PyQt5.QtCore import QObject, QRectF, Qt
-from PyQt5.QtGui import QTextCursor
+from qtpy.QtWidgets import QApplication
+from qtpy.QtCore import QObject, QRectF, Qt
+from qtpy.QtGui import QTextCursor
+
+try:
+    from qtpy.QtWidgets import QUndoCommand
+except:
+    from qtpy.QtGui import QUndoCommand
 
 from .imgtranspanel import TransPairWidget
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly

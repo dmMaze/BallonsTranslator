@@ -1,12 +1,9 @@
 import sys, os
 sys.path.append(os.getcwd())
 
-
-from PyQt5.QtCore import Qt, QRectF, QRect
-from PyQt5.QtGui import QPixmap, QImage, QPainter, QFont, QColor
-
-import sys
-from PyQt5.QtWidgets import QApplication, QWidget
+from qtpy.QtCore import Qt, QRectF, QRect
+from qtpy.QtGui import QPixmap, QImage, QPainter, QFont, QColor
+from qtpy.QtWidgets import QApplication, QWidget
 
 from ui.constants import DPI, LDPI
 # PPI_LINUX
@@ -24,7 +21,7 @@ class MyWidget(QWidget):
         super().__init__()
         image = QImage(1000, 1000, QImage.Format_ARGB32)
         image.fill(Qt.GlobalColor.transparent)
-        from PyQt5.QtGui import QGuiApplication
+        from qtpy.QtGui import QGuiApplication
         DPI = QGuiApplication.primaryScreen().physicalDotsPerInch()
         LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
         print(f'DPI: {DPI}, LDPI: {LDPI}')

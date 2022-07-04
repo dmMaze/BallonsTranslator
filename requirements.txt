@@ -13,3 +13,4 @@ einops
 termcolor
 bs4
 deepl
+qtpy

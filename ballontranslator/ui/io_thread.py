@@ -1,8 +1,8 @@
 import numpy as np
 from utils.io_utils import imread, imwrite
 
-from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QSize, QThread
-from PyQt5.QtGui import QImage
+from qtpy.QtCore import Qt, Signal, QPoint, QSize, QThread
+from qtpy.QtGui import QImage
 
 
 class ImgSaveThread(QThread):

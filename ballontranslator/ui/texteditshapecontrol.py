@@ -1,14 +1,12 @@
-import re
-import os.path as osp
-import json
 import math
 import numpy as np
-from PyQt5.QtWidgets import QGraphicsSceneContextMenuEvent, QMenu, QGraphicsScene, QGraphicsView, QGraphicsPixmapItem, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QLabel, QSizePolicy, QScrollBar, QListView, QGraphicsSceneWheelEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent, QGraphicsRectItem, QGraphicsProxyWidget
-from PyQt5.QtCore import Qt, QRect, QRectF, QPointF, QPoint, pyqtSignal, QSizeF, QEvent, QObject
-from PyQt5.QtGui import QCursor, QPixmap, QPalette, QGuiApplication, QMouseEvent, QKeyEvent, QWheelEvent, QBrush, QFocusEvent, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QPen, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument
+
+from qtpy.QtWidgets import QGraphicsPixmapItem, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QLabel, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QGraphicsRectItem
+from qtpy.QtCore import Qt, QRect, QRectF, QPointF, QPoint
+from qtpy.QtGui import QPainter, QPen, QColor
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
 from typing import List, Union, Tuple
-from .misc import ndarray2pixmap, pixmap2ndarray, qrgb2bgr
+
 from .cursor import rotateCursorList, resizeCursorList
 from .textitem import TextBlkItem
 
@@ -25,7 +23,7 @@ class ControlBlockItem(QGraphicsRectItem):
         self.edge_len = edge_len
         self.visible_len = self.edge_len // 2
         self.pen_width = 2
-        self.setPen(QPen(QColor(75, 75, 75), self.pen_width, Qt.SolidLine, Qt.SquareCap))
+        self.setPen(QPen(QColor(75, 75, 75), self.pen_width, Qt.PenStyle.SolidLine, Qt.SquareCap))
         offset = self.edge_len // 4 + self.pen_width / 2
         self.visible_rect = QRectF(offset, offset, self.visible_len, self.visible_len)
         self.drag_mode = self.DRAG_NONE
@@ -36,7 +34,7 @@ class ControlBlockItem(QGraphicsRectItem):
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         rect = QRectF(self.visible_rect)
         rect.setTopLeft(self.boundingRect().topLeft()+rect.topLeft())
-        painter.setPen(QPen(QColor(75, 75, 75), self.pen_width, Qt.SolidLine, Qt.SquareCap))
+        painter.setPen(QPen(QColor(75, 75, 75), self.pen_width, Qt.PenStyle.SolidLine, Qt.SquareCap))
         painter.fillRect(rect, QColor(200, 200, 200, 125))
         painter.drawRect(rect)
 
@@ -60,7 +58,7 @@ class ControlBlockItem(QGraphicsRectItem):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         self.ctrl.ctrlblockPressed()
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.ctrl.reshaping = True
             if self.visible_rect.contains(event.pos()):
                 self.drag_mode = self.DRAG_RESHAPE
@@ -78,7 +76,6 @@ class ControlBlockItem(QGraphicsRectItem):
                 rotation = np.rad2deg(math.atan2(rotate_vec.y(), rotate_vec.x()))
                 self.rotate_start = - rotation + self.ctrl.rotation() 
         event.accept()
-        # return super().mousePressEvent(event)
 
     def updateAngleLabelPos(self):
         angleLabel = self.ctrl.angleLabel
@@ -167,7 +164,7 @@ class ControlBlockItem(QGraphicsRectItem):
         return idx
     
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.ctrl.reshaping = False
             if self.drag_mode == self.DRAG_RESHAPE:
                 self.ctrl.blk_item.endReshape()
@@ -204,7 +201,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         
         self.previewPixmap = QGraphicsPixmapItem(self)
         self.previewPixmap.setVisible(False)
-        pen = QPen(QColor(69, 71, 87), 2, Qt.SolidLine)
+        pen = QPen(QColor(69, 71, 87), 2, Qt.PenStyle.SolidLine)
         pen.setDashPattern([7, 14])
         self.setPen(pen)
         self.setVisible(False)
@@ -213,7 +210,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.angleLabel = QLabel(parent)
         self.angleLabel.setText("{:.1f}°".format(self.rotation()))
         self.angleLabel.setObjectName("angleLabel")
-        self.angleLabel.setAlignment(Qt.AlignCenter)
+        self.angleLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.angleLabel.setHidden(True)
 
         self.setCursor(Qt.CursorShape.SizeAllCursor)
@@ -223,7 +220,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             return
         if self.blk_item is not None:
             self.blk_item.under_ctrl = False
-            self.blk_item.setFocus(False)
+            self.blk_item.setFocus(Qt.FocusReason.NoFocusReason)
             self.blk_item.update()
             
         self.blk_item = blk_item
