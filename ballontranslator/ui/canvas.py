@@ -9,7 +9,7 @@ try:
     from qtpy.QtWidgets import QUndoStack
 
 except:
-    from PyQt6.QtGui import QUndoStack
+    from qtpy.QtGui import QUndoStack
 
 from .misc import ndarray2pixmap, ProjImgTrans
 from .textitem import TextBlkItem, TextBlock

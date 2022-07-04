@@ -92,7 +92,8 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
             blpos = block.position()
             bllen = block.length()
             selections = []
-            for sel in context.selections:
+            context_sel = context.selections
+            for sel in context_sel:
                 selStart = sel.cursor.selectionStart() - blpos 
                 selEnd = sel.cursor.selectionEnd() - blpos
                 if selStart < bllen and selEnd > 0 and selEnd > selStart:
