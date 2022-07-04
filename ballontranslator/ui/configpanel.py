@@ -154,6 +154,7 @@ class TableItem(QStandardItem):
     def __init__(self, text, fontsize):
         super().__init__()
         font = QFont('Arial', fontsize)
+        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         self.setFont(font)
         self.setText(text)
         self.setEditable(False)

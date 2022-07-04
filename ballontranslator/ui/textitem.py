@@ -3,8 +3,8 @@ import numpy as np
 from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent
-from qtpy.QtCore import Qt, QRect, QRectF, QPointF, QPoint, Signal, QSizeF
-from qtpy.QtGui import QTextCursor, QPixmap, QPainterPath, QTextDocument, QFocusEvent, QPainter, QPen, QColor, QTextCursor, QTextCharFormat, QTextDocument
+from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
+from qtpy.QtGui import QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, QFocusEvent, QPainter, QPen, QColor, QTextCursor, QTextCharFormat, QTextDocument
 
 from dl.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
@@ -469,13 +469,15 @@ class TextBlkItem(QGraphicsTextItem):
         return font_format
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False):
-        
+
         if self.is_vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.Start)
         format = cursor.charFormat()
         font = self.document().defaultFont()
+        
+        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setFamily(ffmat.family)
         font.setPointSize(ffmat.size)
         font.setBold(ffmat.bold)

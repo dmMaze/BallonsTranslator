@@ -1,12 +1,8 @@
 import sys, os
-sys.path.append(os.getcwd())
 
 from qtpy.QtCore import Qt, QRectF, QRect
 from qtpy.QtGui import QPixmap, QImage, QPainter, QFont, QColor
 from qtpy.QtWidgets import QApplication, QWidget
-
-from ui.constants import DPI, LDPI
-# PPI_LINUX
 
 def pt2px(pt):
     print(LDPI)
@@ -29,6 +25,7 @@ class MyWidget(QWidget):
         p = QPainter(image)
         p.setPen(Qt.GlobalColor.black)
         font = QFont("华文彩云")
+        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         px = 20
         font.setPixelSize(px)
         p.setFont(font)
