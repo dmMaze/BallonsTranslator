@@ -3,7 +3,7 @@ import argparse
 import os.path as osp
 import os
 
-QT_APIS = ['pyqt5', 'pyqt6', 'pyside2', 'pyside6']
+QT_APIS = ['pyqt5', 'pyqt6']
 
 def main():
     parser = argparse.ArgumentParser()
