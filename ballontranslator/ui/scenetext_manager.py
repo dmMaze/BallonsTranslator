@@ -31,6 +31,8 @@ class MoveBlkItemsCommand(QUndoCommand):
             item.oldPos = item.pos()
 
     def redo(self):
+        # if len(self.new_pos_lst) == 0:
+        #     return
         for item, new_pos in zip(self.items, self.new_pos_lst):
             item.setPos(new_pos)
 
@@ -39,7 +41,7 @@ class MoveBlkItemsCommand(QUndoCommand):
             item.setPos(old_pos)
 
     def mergeWith(self, command: QUndoCommand):
-        if command.new_pos_lst == self.new_pos_lst:
+        if command.old_pos_lst == self.old_pos_lst:
             return True
         return False
 
@@ -344,6 +346,10 @@ class SceneTextManager(QObject):
     def onLeftbuttonPressed(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]
         self.txtblkShapeControl.setBlkItem(blk_item)
+        selections: List[TextBlkItem] = self.canvas.selectedItems()
+        if len(selections) > 1:
+            for item in selections:
+                item.oldPos = item.pos()
 
     def onTextBlkItemEndEdit(self, blk_id: int):
         self.canvas.editing_textblkitem = None
