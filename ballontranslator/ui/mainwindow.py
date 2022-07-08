@@ -1,13 +1,14 @@
 import os.path as osp
 import os
 import json
+import cv2
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from qtpy.QtCore import Qt, QPoint, QSize
 from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
 
 from utils.logger import logger as LOGGER
-from .misc import ProjImgTrans
+from .misc import ProjImgTrans, ndarray2pixmap, pixmap2ndarray
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
@@ -405,13 +406,26 @@ class MainWindow(QMainWindow):
             hide_tsc = True
             self.st_manager.txtblkShapeControl.hide()
 
+        if not osp.exists(self.imgtrans_proj.result_dir()):
+            os.makedirs(self.imgtrans_proj.result_dir())
+
+        # save drawings to inpainted
+        ditems = self.canvas.drawingLayer.childItems()
+        if len(ditems) > 0:
+            inpainted = self.canvas.inpaintLayer.pixmap().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+            painter = QPainter(inpainted)
+            for ditem in ditems:
+                painter.drawPixmap(ditem.pos(), ditem.pixmap())
+            painter.end()
+            inpainted_array = pixmap2ndarray(inpainted, keep_alpha=False)
+            inpainted_path = self.imgtrans_proj.get_inpainted_path(self.imgtrans_proj.current_img)
+            self.imsave_thread.saveImg(inpainted_path, inpainted_array)
+
+        # save result: rendered text + inpainted
         painter = QPainter(img)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.canvas.render(painter)
         painter.end()
-        if not osp.exists(self.imgtrans_proj.result_dir()):
-            os.makedirs(self.imgtrans_proj.result_dir())
-
         imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
         self.imsave_thread.saveImg(imsave_path, img)
             

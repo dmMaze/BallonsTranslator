@@ -26,18 +26,24 @@ def qrgb2bgr(color: Union[QColor, Tuple, List] = None) -> Tuple[int, int, int]:
     return color
 
 # https://stackoverflow.com/questions/45020672/convert-pyqt5-qpixmap-to-numpy-ndarray
-def pixmap2ndarray(pixmap: QPixmap, keep_alpha=True):
+def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
     size = pixmap.size()
     h = size.width()
     w = size.height()
-    qimg = pixmap.toImage().convertToFormat(QImage.Format_RGBA8888)
+    if isinstance(pixmap, QPixmap):
+        qimg = pixmap.toImage().convertToFormat(QImage.Format_RGBA8888)
+    else:
+        qimg = pixmap
+
     byte_str = qimg.bits().asstring(h * w * 4)
-    # byte_str.setsize(h * w * 4)
     img = np.fromstring(byte_str, dtype=np.uint8).reshape((w,h,4))
+    
     if keep_alpha:
+        img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA)
         return img
     else:
-        return np.copy(img[:, :, 0:3])
+        return np.copy(img[:,:,:3])
+        return cv2.cvtColor(img[:, :, 0:3], cv2.COLOR_RGB2BGR)
 
 def ndarray2pixmap(img):
     if len(img.shape) == 2:

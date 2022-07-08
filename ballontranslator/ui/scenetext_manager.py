@@ -15,7 +15,6 @@ from .imgtranspanel import TransPairWidget
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
 from .imgtranspanel import TextPanel, TransTextEdit
-from .stylewidgets import PaintQSlider
 from .misc import FontFormat
 
 

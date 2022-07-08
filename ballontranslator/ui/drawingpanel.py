@@ -483,9 +483,8 @@ class DrawingPanel(Widget):
             self.canvas.removeItem(stroke_item)
             return
         if self.currentTool == self.penTool:
-            pass
+            self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas, stroke_item))
         elif self.currentTool == self.inpaintTool:
-            # stroke_item.convertToPixmapItem(remove_stroke=False, convert_mask=True)
             self.mergeInpaintStroke(stroke_item)
             if self.canvas.gv.ctrl_pressed:
                 return
@@ -554,6 +553,8 @@ class DrawingPanel(Widget):
             self.canvas.image_edit_mode = ImageEditMode.InpaintTool
         elif self.currentTool == self.rectTool:
             self.canvas.image_edit_mode = ImageEditMode.RectTool
+
+
 
     def on_finish_erasing(self, stroke_item: StrokeItem):
 
@@ -737,9 +738,20 @@ class DrawingPanel(Widget):
         self.rect_inpaint_dict = None
         return super().hideEvent(e)
 
+class StrokeItemUndoCommand(QUndoCommand):
+    def __init__(self, canvas: Canvas, stroke_item: StrokeItem):
+        super().__init__()
+        self.stroke_pixmap = stroke_item.convertToPixmapItem()
+        
+    def undo(self):
+        self.stroke_pixmap.hide()
+
+    def redo(self):
+        self.stroke_pixmap.show()
+
 
 class InpaintUndoCommand(QUndoCommand):
-    def __init__(self, canvas: Canvas, inpainted: np.ndarray, mask: np.ndarray, inpaint_rect: list):
+    def __init__(self, canvas: Canvas, inpainted: np.ndarray, mask: np.ndarray, inpaint_rect: List[int]):
         super().__init__()
         self.canvas = canvas
         img_array = self.canvas.imgtrans_proj.inpainted_array

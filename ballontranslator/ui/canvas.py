@@ -355,6 +355,11 @@ class Canvas(QGraphicsScene):
         self.inpaintLayer.setPixmap(pixmap)
 
     def setDrawingLayer(self, img: Union[QPixmap, np.ndarray] = None):
+        
+        ditems = self.drawingLayer.childItems()
+        for item in ditems:
+            self.removeItem(item)
+
         if not self.imgtrans_proj.img_valid:
             return
         if img is None:

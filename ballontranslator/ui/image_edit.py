@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 from qtpy.QtCore import Signal, Qt, QPointF, QSize, QPoint
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsPathItem, QGraphicsScene
