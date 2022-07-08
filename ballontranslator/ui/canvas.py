@@ -356,7 +356,7 @@ class Canvas(QGraphicsScene):
 
     def setDrawingLayer(self, img: Union[QPixmap, np.ndarray] = None):
         
-        ditems = self.drawingLayer.childItems()
+        ditems = self.get_drawings(visible=False)
         for item in ditems:
             self.removeItem(item)
 
@@ -433,3 +433,9 @@ class Canvas(QGraphicsScene):
         if item == self.stroke_path_item:
             self.stroke_path_item = None
         return super().removeItem(item)
+
+    def get_drawings(self, visible=False) -> List[QGraphicsItem]:
+        ditems = self.drawingLayer.childItems()
+        if visible:
+            ditems = [item for item in ditems if item.isVisible()]
+        return ditems

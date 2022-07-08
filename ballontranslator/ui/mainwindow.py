@@ -410,7 +410,7 @@ class MainWindow(QMainWindow):
             os.makedirs(self.imgtrans_proj.result_dir())
 
         # save drawings to inpainted
-        ditems = self.canvas.drawingLayer.childItems()
+        ditems = self.canvas.get_drawings(visible=True)
         if len(ditems) > 0:
             inpainted = self.canvas.inpaintLayer.pixmap().toImage().convertToFormat(QImage.Format.Format_ARGB32)
             painter = QPainter(inpainted)
