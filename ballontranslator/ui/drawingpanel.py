@@ -81,7 +81,6 @@ class InpaintPanel(Widget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(thickness_layout)
-        layout.addWidget(inpainter_panel)
         layout.setSpacing(20)
         self.vlayout = layout
 
@@ -182,7 +181,6 @@ class RectPanel(Widget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(hlayout)
-        layout.addWidget(inpainter_panel)
         layout.addLayout(self.btnlayout)
         layout.setSpacing(20)
         self.vlayout = layout

@@ -36,17 +36,16 @@ class MainWindow(QMainWindow):
     
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
         constants.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
-
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.app = app
+        self.imsave_thread = ImgSaveThread()
+        
         self.setupUi()
         self.setupConfig()
         self.setupShortcuts()
         self.showMaximized()
-
-        self.imsave_thread = ImgSaveThread()
 
         if open_dir != '' and osp.exists(open_dir):
             self.openDir(open_dir)
@@ -56,21 +55,7 @@ class MainWindow(QMainWindow):
                 if osp.exists(proj_dir):
                     self.openDir(proj_dir)
 
-        textblock_mode = self.config.imgtrans_textblock
-        self.bottomBar.texteditChecker.click()
-        self.bottomBar.paintChecker.click()
-        if self.config.imgtrans_textedit:
-            if textblock_mode:
-                self.bottomBar.textblockChecker.setChecked(True)
-            self.bottomBar.texteditChecker.click()
-
-        elif not self.config.imgtrans_paintmode:
-            self.bottomBar.paintChecker.click()
-        self.comicTransSplitter.setStretchFactor(2, 0.5)
-        self.comicTransSplitter.setStretchFactor(1, 10)
-
     def setupUi(self):
-        # screen_size = QApplication.desktop().screenGeometry().size()
         screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
 
@@ -141,6 +126,8 @@ class MainWindow(QMainWindow):
         mainVBoxLayout.setSpacing(0)
         self.mainvlayout = mainVBoxLayout
 
+        self.comicTransSplitter.setStretchFactor(1, 10)
+
     def setupConfig(self):
         with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
             self.setStyleSheet(f.read())
@@ -190,6 +177,14 @@ class MainWindow(QMainWindow):
         self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
         self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
         self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)
+
+        textblock_mode = self.config.imgtrans_textblock
+        if self.config.imgtrans_textedit:
+            if textblock_mode:
+                self.bottomBar.textblockChecker.setChecked(True)
+            self.bottomBar.texteditChecker.click()
+        elif self.config.imgtrans_paintmode:
+            self.bottomBar.paintChecker.click()
 
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
