@@ -112,7 +112,8 @@ class AOTInpainter(InpainterBase):
             'type': 'selector',
             'options': [
                 'cpu',
-                'cuda'
+                'cuda',
+                'dml'
             ],
             'select': DEFAULT_DEVICE
         },
@@ -158,9 +159,9 @@ class AOTInpainter(InpainterBase):
         mask_torch[mask_torch < 0.5] = 0
         mask_torch[mask_torch >= 0.5] = 1
 
-        if self.device == 'cuda':
-            img_torch = img_torch.cuda()
-            mask_torch = mask_torch.cuda()
+        if self.device != 'cpu':
+            img_torch = img_torch.to(self.device)
+            mask_torch = mask_torch.to(self.device)
         img_torch *= (1 - mask_torch)
         return img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right
 
@@ -217,7 +218,8 @@ class LamaInpainterMPE(InpainterBase):
             'type': 'selector',
             'options': [
                 'cpu',
-                'cuda'
+                'cuda',
+                'dml'
             ],
             'select': DEFAULT_DEVICE
         }
@@ -266,11 +268,11 @@ class LamaInpainterMPE(InpainterBase):
         rel_pos = torch.LongTensor(rel_pos).unsqueeze_(0)
         direct = torch.LongTensor(direct).unsqueeze_(0)
 
-        if self.device == 'cuda':
-            img_torch = img_torch.cuda()
-            mask_torch = mask_torch.cuda()
-            rel_pos = rel_pos.cuda()
-            direct = direct.cuda()
+        if self.device != 'cpu':
+            img_torch = img_torch.to(self.device)
+            mask_torch = mask_torch.to(self.device)
+            rel_pos = rel_pos.to(self.device)
+            direct = direct.to(self.device)
         img_torch *= (1 - mask_torch)
         return img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right
 
