@@ -54,7 +54,8 @@ class ComicTextDetector(TextDetectorBase):
             'type': 'selector',
             'options': [
                 'cpu',
-                'cuda'
+                'cuda',
+                'hip'
             ],
             'select': DEFAULT_DEVICE
         },
@@ -67,7 +68,7 @@ class ComicTextDetector(TextDetectorBase):
         global CTDMODEL_TORCH, CTDMODEL_ONNX
         self.device = self.setup_params['device']['select']
         self.detect_size = int(self.setup_params['detect_size']['select'])
-        if self.device == 'cuda':
+        if self.device != 'cpu':
             if CTDMODEL_TORCH is None:
                 self.detector = CTDMODEL_TORCH = load_ctd_model(CTD_TORCH_PATH, self.device, self.detect_size)
             else:

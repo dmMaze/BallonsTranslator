@@ -5,7 +5,6 @@ result
 ballontranslator/data/models
 ballontranslator/data/testpacks/eng_dontupload
 ballontranslator/data/testpacks/testpacks
-ballontranslator/data/*.png
 release
 
 tmp.py

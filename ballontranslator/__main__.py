@@ -16,13 +16,18 @@ def main():
     else:
         os.environ['QT_API'] = args.qt_api
 
+    import qtpy
     from qtpy.QtWidgets import QApplication
     from qtpy.QtCore import QTranslator, QLocale
 
     from ui.mainwindow import MainWindow
-    from ui.constants import PROGRAM_PATH
+    from ui import constants
 
-    os.chdir(PROGRAM_PATH)
+    
+    if qtpy.API_NAME[-1] == '6':
+        constants.FLAG_QT6 = True
+    
+    os.chdir(constants.PROGRAM_PATH)
     app = QApplication(sys.argv)
     translator = QTranslator()
     translator.load(

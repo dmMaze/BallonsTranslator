@@ -123,7 +123,6 @@ class TextDetector:
 
     def __init__(self, model_path, detect_size=1024, device='cpu', half=False, nms_thresh=0.35, conf_thresh=0.4):
         super(TextDetector, self).__init__()
-        cuda = device == 'cuda'
 
         self.net: Union[TextDetBase, TextDetBaseDNN] = None
         self.backend: str = None

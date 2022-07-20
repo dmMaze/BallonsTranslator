@@ -553,8 +553,8 @@ class OCR32pxModel:
         sd = torch.load(model_path, map_location = 'cpu')
         model.load_state_dict(sd['model'] if 'model' in sd else sd)
         model.eval()
-        if device == 'cuda':
-            model = model.cuda()
+        if device != 'cpu':
+            model = model.to(device)
         self.net = model
 
     def to(self, device: str) -> None:
@@ -586,8 +586,8 @@ class OCR32pxModel:
                 region[i, :, : W, :] = regions[idx]
             images = (torch.from_numpy(region).float() - 127.5) / 127.5
             images = einops.rearrange(images, 'N H W C -> N C H W')
-            if self.device == 'cuda':
-                images = images.cuda()
+            if self.device != 'cpu':
+                images = images.to(self.device)
             ret = self.net.infer_beam_batch(images, widths, beams_k = 5, max_seq_length = 255)
             
             for i, (pred_chars_index, prob, fr, fg, fb, br, bg, bb) in enumerate(ret) :
@@ -629,8 +629,8 @@ class OCR32pxModel:
         widths = [img.shape[1]]
         img = (torch.from_numpy(img[np.newaxis, ...]).float() - 127.5) / 127.5
         img = einops.rearrange(img, 'N H W C -> N C H W')
-        if self.device == 'cuda':
-            images = images.cuda()
+        if self.device != 'cpu':
+            images = images.to(self.device)
         ret = self.net.infer_beam_batch(img, widths, beams_k = 5, max_seq_length = 255)
         for i, (pred_chars_index, prob, fr, fg, fb, br, bg, bb) in enumerate(ret) :
             if prob < 0.5 :
