@@ -17,7 +17,6 @@ import requests
 import torch
 import torch.nn as nn
 from PIL import Image
-from torch.cuda import amp
 
 from .yolov5_utils import make_divisible, initialize_weights, check_anchor_order, check_version, fuse_conv_and_bn
 
