@@ -55,7 +55,7 @@ class ComicTextDetector(TextDetectorBase):
             'options': [
                 'cpu',
                 'cuda',
-                'dml'
+                'hip'
             ],
             'select': DEFAULT_DEVICE
         },
