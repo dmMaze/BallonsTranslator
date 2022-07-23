@@ -5,7 +5,7 @@ transformers
 fugashi
 unidic_lite
 tqdm
-opencv-python>=4.5.4
+opencv-python==4.5.*
 PyQt5<=5.15.4
 shapely
 pyclipper

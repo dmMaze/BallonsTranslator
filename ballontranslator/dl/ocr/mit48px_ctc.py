@@ -402,8 +402,8 @@ class OCR48pxCTC:
         sd = torch.load(model_path, map_location = 'cpu')
         model.load_state_dict(sd['model'] if 'model' in sd else sd)
         model.eval()
-        if self.device == 'cuda' :
-            model = model.cuda()
+        if self.device != 'cpu' :
+            model = model.to(self.device)
         self.net = model
 
     def to(self, device: str) -> None:
@@ -437,8 +437,8 @@ class OCR48pxCTC:
                 region[i, :, : W, :] = regions[idx]
             images = (torch.from_numpy(region).float() - 127.5) / 127.5
             images = einops.rearrange(images, 'N H W C -> N C H W')
-            if self.device == 'cuda':
-                images = images.cuda()
+            if self.device != 'cpu':
+                images = images.to(self.device)
             with torch.inference_mode() :
                 texts = self.net.decode(images, widths, 0)
             for i, single_line in enumerate(texts) :

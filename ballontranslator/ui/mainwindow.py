@@ -1,7 +1,6 @@
 import os.path as osp
 import os
 import json
-import cv2
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from qtpy.QtCore import Qt, QPoint, QSize
