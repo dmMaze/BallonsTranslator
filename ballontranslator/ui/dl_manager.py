@@ -18,9 +18,10 @@ dl.translators.SYSTEM_LANG = QLocale.system().name()
 from .stylewidgets import ProgressMessageBox
 from .configpanel import ConfigPanel
 from .misc import ProjImgTrans, DLModuleConfig
+from .pagesources import SourceBase, nhentai
+from .constants import PROGRAM_PATH
 
 class ModuleThread(QThread):
-
     exception_occurred = Signal(str, str, str)
     finish_set_module = Signal()
 
@@ -109,7 +110,6 @@ class InpaintThread(ModuleThread):
 
 
 class TextDetectThread(ModuleThread):
-    
     finish_detect_page = Signal(str)
     def __init__(self, dl_config: DLModuleConfig, *args, **kwargs) -> None:
         super().__init__(dl_config, 'textdetector', TEXTDETECTORS, *args, **kwargs)
@@ -124,7 +124,6 @@ class TextDetectThread(ModuleThread):
 
 
 class OCRThread(ModuleThread):
-
     finish_ocr_page = Signal(str)
     def __init__(self, dl_config: DLModuleConfig, *args, **kwargs) -> None:
         super().__init__(dl_config, 'ocr', OCR, *args, **kwargs)
@@ -214,7 +213,6 @@ class TranslateThread(ModuleThread):
         num_pages = len(self.imgtrans_proj.pages)
         while not self.pipeline_finished():
             if len(self.pipeline_pagekey_queue) == 0:
-                
                 time.sleep(0.1)
                 continue
             
@@ -397,6 +395,7 @@ class DLManager(QObject):
         super().__init__(*args, **kwargs)
         self.dl_config = dl_config
         self.imgtrans_proj = imgtrans_proj
+        self.config = config_panel.config
 
         self.textdetect_thread = TextDetectThread(self.dl_config)
         self.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
@@ -512,7 +511,28 @@ class DLManager(QObject):
             return
         self.inpaint_thread.inpaint(img, mask, img_key, inpaint_rect)
 
+    def source(self):
+        url = self.config.src_link_flag
+        SOURCEMAP = {
+            0: 'manual',
+            1: 'nhentai'
+        }
+        src = SOURCEMAP[self.config.src_choice_flag]
+        if src == 'manual':
+            LOGGER.info('Source download set to manual')
+            return
+        elif src == 'nhentai':
+            LOGGER.info('Source download set to nhentai')
+            doujin = nhentai()
+            LOGGER.info('Downloading images...')
+            doujin.run(url)
+            gallery_number = doujin.ReturnGalleryNumber()
+            self.imgtrans_proj.load(rf'{PROGRAM_PATH}\ui\pagesources\projects\{gallery_number}')
+        else:
+            raise NotImplementedError
+
     def runImgtransPipeline(self):
+        self.source()
         if self.imgtrans_proj.is_empty:
             LOGGER.info('proj file is empty, nothing to do')
             self.progress_msgbox.hide()

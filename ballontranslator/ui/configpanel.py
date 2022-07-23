@@ -1,4 +1,4 @@
-from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox
+from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
 from qtpy.QtCore import Qt, QModelIndex, Signal, QSize
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
 from PyQt5 import QtCore
@@ -59,6 +59,7 @@ class ConfigSubBlock(Widget):
 
 class ConfigBlock(Widget):
     sublock_pressed = Signal(int, int)
+
     def __init__(self, header: str, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.header = ConfigTextLabel(header, CONFIG_FONTSIZE_HEADER)
@@ -72,7 +73,16 @@ class ConfigBlock(Widget):
     def setIndex(self, index: int):
         self.index = index
 
-    def addTextLabel(self, text: str):
+    def addTextBox(self, discription: str = None):
+        if discription is not None:
+            self.vlayout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT))
+        textbox = QLineEdit()
+        textbox.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
+        textbox.setFixedHeight(45)
+        self.vlayout.addWidget(textbox)
+        return textbox
+
+    def addTextLabel(self, text: str = None):
         label = ConfigTextLabel(text, CONFIG_FONTSIZE_HEADER)
         self.vlayout.addWidget(label)
         self.label_list.append(label)
@@ -257,6 +267,7 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
+        label_sources = self.tr('Sources')
         label_lettering = self.tr('Lettering')
     
         dltableitem.appendRows([
@@ -267,6 +278,7 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_sources, CONFIG_FONTSIZE_TABLE),
             TableItem(label_lettering, CONFIG_FONTSIZE_TABLE)
         ])
 
@@ -289,6 +301,14 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
+
+        generalConfigPanel.addTextLabel(label_sources)
+        src_manual_str = self.tr('manual')
+        src_nhentai_str = self.tr('nhentai')
+        self.src_choice_combox = generalConfigPanel.addCombobox([src_manual_str, src_nhentai_str], self.tr('source'))
+        self.src_choice_combox.currentIndexChanged.connect(self.on_source_flag_changed)
+        self.src_link_textbox = generalConfigPanel.addTextBox('source url')
+        self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
@@ -339,6 +359,12 @@ class ConfigPanel(Widget):
 
     def on_fontcolor_flag_changed(self):
         self.config.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
+
+    def on_source_flag_changed(self):
+        self.config.src_choice_flag = self.src_choice_combox.currentIndex()
+
+    def on_source_link_changed(self):
+        self.config.src_link_flag = self.src_link_textbox.text()
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1

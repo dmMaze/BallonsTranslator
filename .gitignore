@@ -6,7 +6,12 @@ ballontranslator/data/models
 ballontranslator/data/testpacks/eng_dontupload
 ballontranslator/data/testpacks/testpacks
 ballontranslator/data/*.png
+ballontranslator/ui/pagesources/projects
 release
+.venv
+ballontranslator/.venv
+.idea
+
 
 tmp.py
 dummy_scripts.py
