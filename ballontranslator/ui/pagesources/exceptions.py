@@ -1,0 +1,2 @@
+class SourceNotImplemented(Exception):
+    pass

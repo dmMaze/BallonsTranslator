@@ -173,6 +173,10 @@ class MainWindow(QMainWindow):
         if self.config.open_recent_on_startup:
             self.configPanel.open_on_startup_checker.setChecked(True)
 
+        self.configPanel.src_choice_combox.setCurrentIndex(self.config.src_choice_flag)
+        self.configPanel.src_link_textbox.setText(self.config.src_link_flag)
+        self.configPanel.src_force_download_checker.setChecked(self.config.src_force_download_flag)
+
         self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
         self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
         self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)

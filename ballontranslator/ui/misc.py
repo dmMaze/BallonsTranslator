@@ -452,6 +452,9 @@ class ProgramConfig:
         self.let_fntsize_flag = 0
         self.let_fntstroke_flag = 0
         self.let_fntcolor_flag = 0
+        self.src_choice_flag = 0
+        self.src_link_flag = 0
+        self.src_force_download_flag = 0
         if config_dict is not None:
             self.load_from_dict(config_dict)
 
@@ -471,6 +474,9 @@ class ProgramConfig:
             self.let_fntsize_flag = config_dict['let_fntsize_flag']
             self.let_fntstroke_flag = config_dict['let_fntstroke_flag']
             self.let_fntcolor_flag = config_dict['let_fntcolor_flag']
+            self.src_choice_flag = config_dict['src_choice_flag']
+            self.src_link_flag = config_dict['src_link_flag']
+            self.src_force_download_flag = config_dict['src_force_download_flag']
         except Exception as e:
             raise InvalidProgramConfigException(e)
 
@@ -488,7 +494,10 @@ class ProgramConfig:
             'open_recent_on_startup': self.open_recent_on_startup,
             'let_fntsize_flag': self.let_fntsize_flag,
             'let_fntstroke_flag': self.let_fntstroke_flag,
-            'let_fntcolor_flag': self.let_fntcolor_flag
+            'let_fntcolor_flag': self.let_fntcolor_flag,
+            'src_choice_flag': self.src_choice_flag,
+            'src_link_flag': self.src_link_flag,
+            'src_force_download_flag': self.src_force_download_flag
         }
 
 
