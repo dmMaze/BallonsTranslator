@@ -309,6 +309,8 @@ class ConfigPanel(Widget):
         self.src_choice_combox.currentIndexChanged.connect(self.on_source_flag_changed)
         self.src_link_textbox = generalConfigPanel.addTextBox('source url')
         self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
+        self.src_force_download_checker = generalConfigPanel.addCheckBox(self.tr('Force download/redownload'))
+        self.src_force_download_checker.stateChanged.connect(self.on_source_force_download_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
@@ -365,6 +367,9 @@ class ConfigPanel(Widget):
 
     def on_source_link_changed(self):
         self.config.src_link_flag = self.src_link_textbox.text()
+
+    def on_source_force_download_changed(self):
+        self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1

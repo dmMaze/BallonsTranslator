@@ -513,6 +513,8 @@ class DLManager(QObject):
 
     def source(self):
         url = self.config.src_link_flag
+        skip_check = self.config.src_force_download_flag
+        LOGGER.info(f'Force download set to {skip_check}')
         SOURCEMAP = {
             0: 'manual',
             1: 'nhentai'
@@ -525,7 +527,7 @@ class DLManager(QObject):
             LOGGER.info('Source download set to nhentai')
             doujin = nhentai()
             LOGGER.info('Downloading images...')
-            doujin.run(url)
+            doujin.run(url, skip_check)
             gallery_number = doujin.ReturnGalleryNumber()
             self.imgtrans_proj.load(rf'{PROGRAM_PATH}\ui\pagesources\projects\{gallery_number}')
         else:
