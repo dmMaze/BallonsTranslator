@@ -453,8 +453,8 @@ class ProgramConfig:
         self.let_fntstroke_flag = 0
         self.let_fntcolor_flag = 0
         self.src_choice_flag = 0
-        self.src_link_flag = 0
-        self.src_force_download_flag = 0
+        self.src_link_flag = ''
+        self.src_force_download_flag = False
         if config_dict is not None:
             self.load_from_dict(config_dict)
 
