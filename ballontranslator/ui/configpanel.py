@@ -73,14 +73,16 @@ class ConfigBlock(Widget):
     def setIndex(self, index: int):
         self.index = index
 
-    def addTextBox(self, discription: str = None):
-        if discription is not None:
-            self.vlayout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT))
-        textbox = QLineEdit()
-        textbox.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
-        textbox.setFixedHeight(45)
-        self.vlayout.addWidget(textbox)
-        return textbox
+    def addLineEdit(self, name: str = None, discription: str = None, vertical_layout: bool = False):
+        le = QLineEdit()
+        le.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
+        le.setFixedHeight(45)
+        sublock = ConfigSubBlock(le, name, discription, vertical_layout)
+        if vertical_layout is False:
+            sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        self.addSublock(sublock)
+        sublock.layout().setSpacing(20)
+        return le
 
     def addTextLabel(self, text: str = None):
         label = ConfigTextLabel(text, CONFIG_FONTSIZE_HEADER)
@@ -93,17 +95,17 @@ class ConfigBlock(Widget):
         sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
         self.subblock_list.append(sublock)
 
-    def addCombobox(self, sel: List[str], name: str, discription: str = None):
+    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False):
         combox = ConfigComboBox()
         combox.addItems(sel)
-        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=False)
+        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
         sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
         sublock.layout().setSpacing(20)
         self.addSublock(sublock)
         return combox
 
-    def addBlock(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None) -> ConfigSubBlock:
-        sublock = ConfigSubBlock(widget, name, discription)
+    def addBlockWidget(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout: bool = False) -> ConfigSubBlock:
+        sublock = ConfigSubBlock(widget, name, discription, vertical_layout)
         self.addSublock(sublock)
         return sublock
 
@@ -284,19 +286,19 @@ class ConfigPanel(Widget):
 
         dlConfigPanel.addTextLabel(label_text_det)
         self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'))
-        self.detect_sub_block = dlConfigPanel.addBlock(self.detect_config_panel)
+        self.detect_sub_block = dlConfigPanel.addBlockWidget(self.detect_config_panel)
         
         dlConfigPanel.addTextLabel(label_text_ocr)
         self.ocr_config_panel = OCRConfigPanel(self.tr('OCR'))
-        self.ocr_sub_block = dlConfigPanel.addBlock(self.ocr_config_panel)
+        self.ocr_sub_block = dlConfigPanel.addBlockWidget(self.ocr_config_panel)
 
         dlConfigPanel.addTextLabel(label_inpaint)
         self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'))
-        self.inpaint_sub_block = dlConfigPanel.addBlock(self.inpaint_config_panel)
+        self.inpaint_sub_block = dlConfigPanel.addBlockWidget(self.inpaint_config_panel)
 
         dlConfigPanel.addTextLabel(label_translator)
         self.trans_config_panel = TranslatorConfigPanel(label_translator)
-        self.trans_sub_block = dlConfigPanel.addBlock(self.trans_config_panel)
+        self.trans_sub_block = dlConfigPanel.addBlockWidget(self.trans_config_panel)
 
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
@@ -307,7 +309,7 @@ class ConfigPanel(Widget):
         src_nhentai_str = self.tr('nhentai')
         self.src_choice_combox = generalConfigPanel.addCombobox([src_manual_str, src_nhentai_str], self.tr('source'))
         self.src_choice_combox.currentIndexChanged.connect(self.on_source_flag_changed)
-        self.src_link_textbox = generalConfigPanel.addTextBox('source url')
+        self.src_link_textbox = generalConfigPanel.addLineEdit('source url')
         self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
         self.src_force_download_checker = generalConfigPanel.addCheckBox(self.tr('Force download/redownload'))
         self.src_force_download_checker.stateChanged.connect(self.on_source_force_download_changed)
