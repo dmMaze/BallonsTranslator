@@ -72,8 +72,7 @@ class nhentai(SourceBase):
         These steps are necessary as I don't know of any methods to bypass cloudflare""")
 
     def FetchImages(self, skip_check: bool = False):
-        size = len(self.link)
-        url = self.link[:size - 5]
+        url = self.link
         number = (re.search('galleries/(.*)/', url)).group(1)
         self.gallery_number = number
         i = 1
@@ -87,7 +86,7 @@ class nhentai(SourceBase):
         if skip is False:
             while True:
                 try:
-                    img_data = requests.get(f'{url}{i}.jpg', proxies=PROXY).content
+                    img_data = requests.get(f'https://i3.nhentai.net/galleries/{number}/{i}.jpg', proxies=PROXY).content
                     if '404 Not Found' in str(img_data):
                         break
                     with open(rf'{self.path}\{i}.jpg', 'wb') as image:
