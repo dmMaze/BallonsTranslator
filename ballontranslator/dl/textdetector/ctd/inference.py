@@ -163,6 +163,11 @@ class TextDetector:
         im_h, im_w = img.shape[:2]
 
         blks, mask, lines_map = self.net(img_in)
+        if self.backend == 'opencv':
+            if mask.shape[1] == 2:     # some version of opencv spit out reversed result
+                tmp = mask
+                mask = lines_map
+                lines_map = tmp
         
         resize_ratio = (im_w / (detect_size[0] - dw), im_h / (detect_size[1] - dh))
         blks = postprocess_yolo(blks, self.conf_thresh, self.nms_thresh, resize_ratio)
