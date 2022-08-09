@@ -3,8 +3,9 @@ import numpy as np
 from shapely.geometry import Polygon
 import math
 import copy
-from utils.imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons
 import cv2
+
+from utils.imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
@@ -259,10 +260,8 @@ class TextBlock(object):
 
     @property
     def stroke_width(self):
-        var = np.array([self.fg_r, self.fg_g, self.fg_b]) \
-            - np.array([self.bg_r, self.bg_g, self.bg_b])
-        var = np.abs(var).sum()
-        if var > 40:
+        diff = color_difference(*self.get_font_colors())
+        if diff > 20:
             return self.default_stroke_width
         return 0
 

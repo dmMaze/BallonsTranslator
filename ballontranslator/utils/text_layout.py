@@ -1,8 +1,9 @@
-from typing import List
+from typing import List, Callable, Tuple
 import numpy as np
 import cv2
 
 from .text_processing import seg_ch, seg_eng, seg_to_chars
+from .imgproc_utils import extract_ballon_region, rotate_image
 
 class Line:
 
@@ -33,13 +34,19 @@ def layout_lines_with_mask(
     wl_list: List[int], 
     delimiter_len: int, 
     line_height: int,
+    alignment: int = 0,
+    vertical: bool = False,
     delimiter: str = ' ',
     word_break: bool = False)->List[Line]:
 
-    m = cv2.moments(mask)
+    region_x, region_y, region_w, region_h = cv2.boundingRect(cv2.findNonZero(mask))
+    centroid_x = region_x + region_w // 2
+    centroid_y = region_y + region_h // 2
+
+    # m = cv2.moments(mask)
     mask = 255 - mask
-    centroid_y = int(m['m01'] / m['m00'])
-    centroid_x = int(m['m10'] / m['m00'])
+    # centroid_y = int(m['m01'] / m['m00'])
+    # centroid_x = int(m['m10'] / m['m00'])
     
     # layout the central line, the center word is approximately aligned with the centroid of the mask
     num_words = len(words)
@@ -173,18 +180,74 @@ def layout_lines_with_mask(
 
     return lines
 
-def layout_text(text: str, lang: str, text_size_func) -> List[Line]:
+def layout_text(
+    text: str, 
+    lang: str,
+    angle: float,
+    line_spacing: float,
+    alignment: int,
+    vertical: bool,
+    text_size_func: Callable, 
+    padding: float = 0,
+    mask: np.ndarray = None, 
+    img: np.ndarray = None, bounding_rect: List = None) -> Tuple[str, List]:
 
     # preprocessing 
+    delimiter = ''
     if lang in ['简体中文', '繁体中文']:
-        words_list = seg_ch(text)
+        words = seg_ch(text)    
     elif lang in ['日本語', '한국어']:
-        words_list = seg_to_chars(text)
+        words = seg_to_chars(text)
     else:
-        words_list = seg_eng(text)
+        words = seg_eng(text)
+        delimiter = ' '
 
-    num_words = len(words_list)
+    delimiter_len = text_size_func(delimiter)[0]
+
+    num_words = len(words)
     if num_words == 0:
         return []
+    wl_list = []
+    for word in words:
+        w, h = text_size_func(word)
+        wl_list.append(w)
+
+    if mask is None:
+        assert img is not None
+        assert bounding_rect is not None
+        br = bounding_rect
+        enlarge_ratio = min(max(br[2] / br[3], br[3] / br[2]), 3.0)
+        mask, ballon_area, xyxy = extract_ballon_region(img, bounding_rect, enlarge_ratio=enlarge_ratio)
+    else:
+        xyxy = [bounding_rect[0], bounding_rect[1], bounding_rect[0]+bounding_rect[2], bounding_rect[1]+bounding_rect[3]]
+
+    region_x, region_y, region_w, region_h = cv2.boundingRect(cv2.findNonZero(mask))
+    if abs(angle) > 0:
+        mask = rotate_image(mask, angle)
+
+    line_height = int(h * line_spacing)
 
     
+    lines = layout_lines_with_mask(mask, words, wl_list, delimiter_len, line_height, alignment, vertical, delimiter)
+    center_x = xyxy[0] + region_x + region_w // 2
+    center_y = xyxy[1] + region_y + region_h // 2
+    
+    concated_text = []
+    pos_x_lst, pos_right_lst = [], []
+    for line in lines:
+        pos_x_lst.append(line.pos_x)
+        pos_right_lst.append(max(line.pos_x, 0) + line.length)
+        concated_text.append(line.text)
+    concated_text = '\n'.join(concated_text)
+
+    pos_x_lst = np.array(pos_x_lst)
+    pos_right_lst = np.array(pos_right_lst)
+    canvas_l, canvas_r = pos_x_lst.min() - padding, pos_right_lst.max() + padding
+    canvas_t, canvas_b = lines[0].pos_y - padding, lines[-1].pos_y + line_height + padding
+
+    canvas_h = int(canvas_b - canvas_t)
+    canvas_w = int(canvas_r - canvas_l)
+    abs_x = int(round(center_x - canvas_w / 2))
+    abs_y = int(round(center_y - canvas_h / 2))
+
+    return concated_text, [abs_x, abs_y, canvas_w, canvas_h]

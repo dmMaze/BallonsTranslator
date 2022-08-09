@@ -235,7 +235,7 @@ class ProjImgTrans:
         if not osp.exists(self.directory):
             raise ProjectDirNotExistException
         with open(self.proj_path, "w", encoding="utf-8") as f:
-            f.write(json.dumps(self.to_dict(), ensure_ascii=False, indent=4, separators=(',', ':'), cls=TextBlkEncoder))
+            f.write(json.dumps(self.to_dict(), ensure_ascii=False, cls=TextBlkEncoder))
         # if save_mask and self.mask_valid:
         #     self.save_mask(self.current_img, self.mask_array)
         # if save_inpainted and self.inpainted_valid:

@@ -170,6 +170,8 @@ class MainWindow(QMainWindow):
         self.drawingPanel.set_config(self.config.drawpanel)
         self.drawingPanel.initDLModule(dl_manager)
 
+        self.st_manager.dl_config = self.dl_manager.dl_config
+
         if self.config.open_recent_on_startup:
             self.configPanel.open_on_startup_checker.setChecked(True)
 
@@ -236,7 +238,7 @@ class MainWindow(QMainWindow):
         self.config.drawpanel = self.drawingPanel.get_config()
         config_dict = self.config.to_dict()
         with open(CONFIG_PATH, 'w', encoding='utf8') as f:
-            f.write(json.dumps(config_dict, ensure_ascii=False, indent=4, separators=(',', ':')))
+            f.write(json.dumps(config_dict, ensure_ascii=False))
         if not self.imgtrans_proj.is_empty:
             self.imgtrans_proj.save()
         return super().closeEvent(event)

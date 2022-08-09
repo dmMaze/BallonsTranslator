@@ -1,11 +1,11 @@
 
 from typing import List, Union
 import numpy as np
+import time
 
 from qtpy.QtWidgets import QApplication
 from qtpy.QtCore import QObject, QRectF, Qt
-from qtpy.QtGui import QTextCursor
-
+from qtpy.QtGui import QTextCursor, QFontMetrics, QFont
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -15,8 +15,10 @@ from .imgtranspanel import TransPairWidget
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
 from .imgtranspanel import TextPanel, TransTextEdit
-from .misc import FontFormat
+from .misc import FontFormat, DLModuleConfig, pt2px
 
+from utils.imgproc_utils import extract_ballon_region
+from utils.text_layout import layout_text
 
 class MoveBlkItemsCommand(QUndoCommand):
     def __init__(self, items: List[TextBlkItem], parent=None):
@@ -25,6 +27,14 @@ class MoveBlkItemsCommand(QUndoCommand):
         self.old_pos_lst = []
         self.new_pos_lst = []
         for item in items:
+            # color1 = np.array([item.blk.bg_r, item.blk.bg_g, item.blk.bg_b], dtype=np.uint8).reshape(1, 1, 3)
+            # color2 = np.array([item.blk.fg_r, item.blk.fg_g, item.blk.fg_b], dtype=np.uint8).reshape(1, 1, 3)
+            # import cv2
+            # diff = cv2.cvtColor(color1, cv2.COLOR_RGB2LAB).astype(np.float64) - cv2.cvtColor(color2, cv2.COLOR_RGB2LAB).astype(np.float64)
+            # diff[..., 0] *= 0.392
+            # diff = np.linalg.norm(diff, axis=2)
+            # print(diff, color1, color2)
+
             self.old_pos_lst.append(item.oldPos)
             self.new_pos_lst.append(item.pos())
             item.oldPos = item.pos()
@@ -198,6 +208,7 @@ class SceneTextManager(QObject):
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
         self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
         self.canvas.format_textblks.connect(self.onFormatTextblks)
+        self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvasUndoStack = self.canvas.undoStack
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
@@ -214,6 +225,8 @@ class SceneTextManager(QObject):
         self.hovering_transwidget : TransTextEdit = None
 
         self.prev_blkitem: TextBlkItem = None
+
+        self.dl_config: DLModuleConfig = None
 
     def setTextEditMode(self, edit: bool = False):
         self.editing = edit
@@ -405,6 +418,62 @@ class SceneTextManager(QObject):
     def onFormatTextblks(self):
         self.apply_fontformat(self.formatpanel.global_format)
 
+    def onAutoLayoutTextblks(self):
+        selected_blks = self.get_selected_blkitems()
+        for blkitem in selected_blks:
+            self.layout_textblk(blkitem)
+
+    def layout_textblk(self, blkitem: TextBlkItem, mask: np.ndarray = None, bounding_rect: List = None):
+        
+        def get_text_size(fm: QFontMetrics, text: str):
+            brt = fm.tightBoundingRect(text)
+            return brt.width(), brt.height()
+        
+        img = self.imgtrans_proj.img_array
+        if img is None:
+            return
+        
+        font_metrics = QFontMetrics(blkitem.font())
+        text_size_func = lambda text: get_text_size(font_metrics, text)
+        text = blkitem.toPlainText().upper()
+        
+        if bounding_rect is None:
+            bounding_rect = blkitem.absBoundingRect()
+        fmt = blkitem.get_fontformat()
+        padding = int(pt2px(blkitem.font().pointSize()) / 14)   # dummpy padding variable
+        new_text, xywh = layout_text(text, self.dl_config.translate_target, blkitem.blk.angle, fmt.line_spacing, fmt.alignment, fmt.vertical, text_size_func, padding, mask, img, bounding_rect)
+
+        char_fmts = blkitem.get_char_fmts()        
+        blkitem.setPlainText('')
+        blkitem.setRect(xywh)
+        blkitem.setPlainText(new_text)
+        
+        # restore char formats
+        cursor = blkitem.textCursor()
+        cpos = 0
+        num_text = len(new_text)
+        num_fmt = len(char_fmts)
+        for fmt_i in range(num_fmt):
+            fmt = char_fmts[fmt_i]
+            ori_char = text[fmt_i].strip()
+            if ori_char == '':
+                continue
+            else:
+                if cursor.atEnd():   
+                    break
+                matched = False
+                while cpos < num_text:
+                    if new_text[cpos] == ori_char:
+                        matched = True
+                        break
+                    cpos += 1
+                if matched:
+                    cursor.clearSelection()
+                    cursor.setPosition(cpos)
+                    cursor.setPosition(cpos+1, QTextCursor.KeepAnchor)
+                    cursor.setCharFormat(fmt)
+                    cpos += 1
+
     def onEndCreateTextBlock(self, rect: QRectF):
         scale_f = self.canvas.scale_factor
         if rect.width() > 1 and rect.height() > 1:
@@ -471,13 +540,7 @@ class SceneTextManager(QObject):
                 blk_item.blk.rich_text = ''
                 blk_item.blk.translation = ''
             blk_item.blk.text = [trans_pair.e_source.toPlainText()]
-            br = blk_item.boundingRect()
-            w, h = br.width(), br.height()
-            sc = blk_item.sceneBoundingRect().center()
-            x = sc.x() / blk_item.scale() - w / 2
-            y = sc.y() / blk_item.scale() - h / 2
-            xywh = [x, y, w, h]
-            blk_item.blk._bounding_rect = xywh
+            blk_item.blk._bounding_rect = blk_item.absBoundingRect()
             blk_item.updateBlkFormat()
             cbl.append(blk_item.blk)
 
