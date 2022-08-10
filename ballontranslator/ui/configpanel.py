@@ -1,4 +1,4 @@
-from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox
+from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
 from qtpy.QtCore import Qt, QModelIndex, Signal, QSize
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
 from PyQt5 import QtCore
@@ -59,6 +59,7 @@ class ConfigSubBlock(Widget):
 
 class ConfigBlock(Widget):
     sublock_pressed = Signal(int, int)
+
     def __init__(self, header: str, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.header = ConfigTextLabel(header, CONFIG_FONTSIZE_HEADER)
@@ -72,7 +73,18 @@ class ConfigBlock(Widget):
     def setIndex(self, index: int):
         self.index = index
 
-    def addTextLabel(self, text: str):
+    def addLineEdit(self, name: str = None, discription: str = None, vertical_layout: bool = False):
+        le = QLineEdit()
+        le.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
+        le.setFixedHeight(45)
+        sublock = ConfigSubBlock(le, name, discription, vertical_layout)
+        if vertical_layout is False:
+            sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        self.addSublock(sublock)
+        sublock.layout().setSpacing(20)
+        return le
+
+    def addTextLabel(self, text: str = None):
         label = ConfigTextLabel(text, CONFIG_FONTSIZE_HEADER)
         self.vlayout.addWidget(label)
         self.label_list.append(label)
@@ -83,17 +95,17 @@ class ConfigBlock(Widget):
         sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
         self.subblock_list.append(sublock)
 
-    def addCombobox(self, sel: List[str], name: str, discription: str = None):
+    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False):
         combox = ConfigComboBox()
         combox.addItems(sel)
-        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=False)
+        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
         sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
         sublock.layout().setSpacing(20)
         self.addSublock(sublock)
         return combox
 
-    def addBlock(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None) -> ConfigSubBlock:
-        sublock = ConfigSubBlock(widget, name, discription)
+    def addBlockWidget(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout: bool = False) -> ConfigSubBlock:
+        sublock = ConfigSubBlock(widget, name, discription, vertical_layout)
         self.addSublock(sublock)
         return sublock
 
@@ -257,6 +269,7 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
+        # label_sources = self.tr('Sources')
         label_lettering = self.tr('Lettering')
     
         dltableitem.appendRows([
@@ -267,28 +280,39 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
+            # TableItem(label_sources, CONFIG_FONTSIZE_TABLE),
             TableItem(label_lettering, CONFIG_FONTSIZE_TABLE)
         ])
 
         dlConfigPanel.addTextLabel(label_text_det)
         self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'))
-        self.detect_sub_block = dlConfigPanel.addBlock(self.detect_config_panel)
+        self.detect_sub_block = dlConfigPanel.addBlockWidget(self.detect_config_panel)
         
         dlConfigPanel.addTextLabel(label_text_ocr)
         self.ocr_config_panel = OCRConfigPanel(self.tr('OCR'))
-        self.ocr_sub_block = dlConfigPanel.addBlock(self.ocr_config_panel)
+        self.ocr_sub_block = dlConfigPanel.addBlockWidget(self.ocr_config_panel)
 
         dlConfigPanel.addTextLabel(label_inpaint)
         self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'))
-        self.inpaint_sub_block = dlConfigPanel.addBlock(self.inpaint_config_panel)
+        self.inpaint_sub_block = dlConfigPanel.addBlockWidget(self.inpaint_config_panel)
 
         dlConfigPanel.addTextLabel(label_translator)
         self.trans_config_panel = TranslatorConfigPanel(label_translator)
-        self.trans_sub_block = dlConfigPanel.addBlock(self.trans_config_panel)
+        self.trans_sub_block = dlConfigPanel.addBlockWidget(self.trans_config_panel)
 
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
+
+        # generalConfigPanel.addTextLabel(label_sources)
+        # src_manual_str = self.tr('manual')
+        # src_nhentai_str = self.tr('nhentai')
+        # self.src_choice_combox = generalConfigPanel.addCombobox([src_manual_str, src_nhentai_str], self.tr('source'))
+        # self.src_choice_combox.currentIndexChanged.connect(self.on_source_flag_changed)
+        # self.src_link_textbox = generalConfigPanel.addLineEdit('source url')
+        # self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
+        # self.src_force_download_checker = generalConfigPanel.addCheckBox(self.tr('Force download/redownload'))
+        # self.src_force_download_checker.stateChanged.connect(self.on_source_force_download_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
@@ -339,6 +363,15 @@ class ConfigPanel(Widget):
 
     def on_fontcolor_flag_changed(self):
         self.config.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
+
+    def on_source_flag_changed(self):
+        self.config.src_choice_flag = self.src_choice_combox.currentIndex()
+
+    def on_source_link_changed(self):
+        self.config.src_link_flag = self.src_link_textbox.text()
+
+    def on_source_force_download_changed(self):
+        self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
