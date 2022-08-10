@@ -17,7 +17,7 @@ dl.translators.SYSTEM_LANG = QLocale.system().name()
 
 from .stylewidgets import ProgressMessageBox
 from .configpanel import ConfigPanel
-from .misc import ProjImgTrans, DLModuleConfig
+from .misc import ProjImgTrans, DLModuleConfig, ProgramConfig
 
 class ModuleThread(QThread):
 
@@ -390,12 +390,13 @@ class DLManager(QObject):
 
     run_canvas_inpaint = False
     def __init__(self, 
-                 dl_config: DLModuleConfig, 
+                 config: ProgramConfig, 
                  imgtrans_proj: ProjImgTrans,
                  config_panel: ConfigPanel, 
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.dl_config = dl_config
+        self.config = config
+        self.dl_config = dl_config = config.dl
         self.imgtrans_proj = imgtrans_proj
 
         self.textdetect_thread = TextDetectThread(self.dl_config)

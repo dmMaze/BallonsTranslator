@@ -245,7 +245,7 @@ def color_difference(rgb1: List, rgb2: List) -> float:
     diff = np.linalg.norm(diff, axis=2) 
     return diff.item()
 
-def extract_ballon_region(img: np.ndarray, ballon_rect: List, show_process=False, enlarge_ratio=2.0) -> Tuple[np.ndarray, int, List]:
+def extract_ballon_region(img: np.ndarray, ballon_rect: List, show_process=False, enlarge_ratio=2.0, cal_region_rect=False) -> Tuple[np.ndarray, int, List]:
     WHITE = (255, 255, 255)
     BLACK = (0, 0, 0)
 
@@ -319,6 +319,7 @@ def extract_ballon_region(img: np.ndarray, ballon_rect: List, show_process=False
         cv2.imshow('ballon_mask', ballon_mask)
         cv2.imshow('img', img)
         cv2.waitKey(0)
-
+    if cal_region_rect:
+        return ballon_mask, (ballon_mask > 0).sum(), [x1, y1, x2, y2], cv2.boundingRect(ballon_mask)
     return ballon_mask, (ballon_mask > 0).sum(), [x1, y1, x2, y2]
 

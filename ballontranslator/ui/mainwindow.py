@@ -1,6 +1,5 @@
 import os.path as osp
 import os
-import json
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from qtpy.QtCore import Qt, QPoint, QSize
@@ -33,6 +32,7 @@ class MainWindow(QMainWindow):
     proj_directory = None
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
+    opening_dir = False
     
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -134,8 +134,8 @@ class MainWindow(QMainWindow):
 
         self.bottomBar.originalSlider.setValue(self.config.original_transparency * 100)
         self.drawingPanel.maskTransperancySlider.setValue(self.config.mask_transparency * 100)
-        self.leftBar.updateRecentProjList(self.config.recent_proj_list)
-        self.leftBar.recent_proj_list = self.config.recent_proj_list
+        self.leftBar.initRecentProjMenu(self.config.recent_proj_list)
+        self.leftBar.save_config.connect(self.save_config)
         self.leftBar.imgTransChecker.setChecked(True)
         self.st_manager.formatpanel.global_format = self.config.global_fontformat
         self.st_manager.formatpanel.set_active_format(self.config.global_fontformat)
@@ -147,7 +147,7 @@ class MainWindow(QMainWindow):
         self.bottomBar.ocrChecker.setCheckState(self.config.dl.enable_ocr)
         self.bottomBar.transChecker.setChecked(self.config.dl.enable_translate)
 
-        self.dl_manager = dl_manager = DLManager(self.config.dl, self.imgtrans_proj, self.configPanel)
+        self.dl_manager = dl_manager = DLManager(self.config, self.imgtrans_proj, self.configPanel)
         dl_manager.update_translator_status.connect(self.updateTranslatorStatus)
         dl_manager.update_inpainter_status.connect(self.updateInpainterStatus)
         dl_manager.finish_translate_page.connect(self.finishTranslatePage)
@@ -164,14 +164,18 @@ class MainWindow(QMainWindow):
         self.drawingPanel.set_config(self.config.drawpanel)
         self.drawingPanel.initDLModule(dl_manager)
 
-        self.st_manager.dl_config = self.dl_manager.dl_config
+        self.st_manager.config = self.config
 
+        self.configPanel.blockSignals(True)
         if self.config.open_recent_on_startup:
             self.configPanel.open_on_startup_checker.setChecked(True)
-
         self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
         self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
         self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)
+        self.configPanel.let_autolayout_checker.setChecked(self.config.let_autolayout_flag)
+        self.configPanel.let_uppercase_checker.setChecked(self.config.let_uppercase_flag)
+        self.configPanel.save_config.connect(self.save_config)
+        self.configPanel.blockSignals(False)
 
         textblock_mode = self.config.imgtrans_textblock
         if self.config.imgtrans_textedit:
@@ -190,9 +194,12 @@ class MainWindow(QMainWindow):
         self.centralStackWidget.setCurrentIndex(1)
 
     def openDir(self, directory: str):
+        self.opening_dir = True
         try:
+            self.st_manager.clearSceneTextitems()
             self.imgtrans_proj.load(directory)
         except Exception as e:
+            self.opening_dir = False
             LOGGER.exception(e)
             LOGGER.warning("Failed to load project from " + directory)
             self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + directory, '')
@@ -200,6 +207,7 @@ class MainWindow(QMainWindow):
         self.proj_directory = directory
         self.titleBar.setTitleContent(osp.basename(directory))
         self.updatePageList()
+        self.opening_dir = False
         
     def updatePageList(self):
         if self.pageList.count() != 0:
@@ -225,6 +233,12 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         self.canvas.disconnect()
         self.canvas.undoStack.disconnect()
+        self.save_config()
+        if not self.imgtrans_proj.is_empty:
+            self.imgtrans_proj.save()
+        return super().closeEvent(event)
+
+    def save_config(self):
         self.config.imgtrans_paintmode = self.bottomBar.paintChecker.isChecked()
         self.config.imgtrans_textedit = self.bottomBar.texteditChecker.isChecked()
         self.config.mask_transparency = self.canvas.mask_transparency
@@ -232,9 +246,6 @@ class MainWindow(QMainWindow):
         self.config.drawpanel = self.drawingPanel.get_config()
         with open(CONFIG_PATH, 'w', encoding='utf8') as f:
             f.write(json_dump_nested_obj(self.config))
-        if not self.imgtrans_proj.is_empty:
-            self.imgtrans_proj.save()
-        return super().closeEvent(event)
 
     def onHideCanvas(self):
         self.pageList.hide()
@@ -245,12 +256,12 @@ class MainWindow(QMainWindow):
         item = self.pageList.currentItem()
         if item is not None:
             if self.save_on_page_changed:
-                if self.canvas.projstate_unsaved:
+                if self.canvas.projstate_unsaved and not self.opening_dir:
                     self.saveCurrentPage()
             self.st_manager.canvasUndoStack.clear()
             self.imgtrans_proj.set_current_img(item.text())
             self.canvas.updateCanvas()
-            self.st_manager.updateTextList()
+            self.st_manager.updateSceneTextitems()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
             if self.dl_manager.run_canvas_inpaint:
                 self.dl_manager.inpaint_thread.terminate()
@@ -477,13 +488,18 @@ class MainWindow(QMainWindow):
         if self.config.dl.translate_target not in LANG_SUPPORT_VERTICAL:
             for blk in self.imgtrans_proj.get_blklist_byidx(page_index):
                 blk.vertical = False
+
+        self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
+        
         if page_index != 0:
             self.pageList.setCurrentRow(page_index)
         else:
             self.imgtrans_proj.set_current_img_byidx(0)
             self.canvas.updateCanvas()
-            self.st_manager.updateTextList()
+            self.st_manager.updateSceneTextitems()
         self.saveCurrentPage(False, False)
+        if page_index + 1 == self.imgtrans_proj.num_pages:
+            self.st_manager.auto_textlayout_flag = False
 
     def on_savestate_changed(self, unsaved: bool):
         save_state = self.tr('unsaved') if unsaved else self.tr('saved')

@@ -258,6 +258,9 @@ class GeneralPanel(QWidget):
 
 
 class ConfigPanel(Widget):
+
+    save_config = Signal()
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
@@ -329,15 +332,18 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
         use_global_str = self.tr('use global setting')
-        to_uppercase_str = self.tr('To uppercase')
+        
         self.let_fntsize_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font size'))
         self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
         self.let_fntstroke_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke'))
         self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
         self.let_fntcolor_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
         self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
-        self.let_uppercase_checker = generalConfigPanel.addCheckBox(to_uppercase_str)
+        self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'))
+        self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
+        self.let_uppercase_checker = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
+        
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.configTable)
         splitter.addWidget(self.configContent)
@@ -374,6 +380,9 @@ class ConfigPanel(Widget):
 
     def on_fntstroke_flag_changed(self):
         self.config.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
+
+    def on_autolayout_changed(self):
+        self.config.let_autolayout_flag = self.let_autolayout_checker.isChecked()
 
     def on_uppercase_changed(self):
         self.config.let_uppercase_flag = self.let_uppercase_checker.isChecked()

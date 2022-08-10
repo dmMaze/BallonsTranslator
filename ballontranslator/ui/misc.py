@@ -442,21 +442,23 @@ class DrawPanelConfig:
 
 
 class ProgramConfig:
-    def __init__(self, 
-                 dl: Union[Dict, DLModuleConfig] = None,
-                 drawpanel: Union[Dict, DrawPanelConfig] = None,
-                 global_fontformat: Union[Dict, FontFormat] = None,
-                 recent_proj_list: List[str] = list(),
-                 imgtrans_paintmode: bool = False,
-                 imgtrans_textedit: bool = True,
-                 imgtrans_textblock: bool = True,
-                 mask_transparency: float = 0.,
-                 original_transparency: float = 0.,
-                 open_recent_on_startup: bool = True, 
-                 let_fntsize_flag: int = 0,
-                 let_fntstroke_flag: int = 0,
-                 let_fntcolor_flag: int = 0,
-                 let_uppercase_flag: bool = True) -> None:
+    def __init__(
+        self, dl: Union[Dict, DLModuleConfig] = None,
+        drawpanel: Union[Dict, DrawPanelConfig] = None,
+        global_fontformat: Union[Dict, FontFormat] = None,
+        recent_proj_list: List[str] = list(),
+        imgtrans_paintmode: bool = False,
+        imgtrans_textedit: bool = True,
+        imgtrans_textblock: bool = True,
+        mask_transparency: float = 0.,
+        original_transparency: float = 0.,
+        open_recent_on_startup: bool = True, 
+        let_fntsize_flag: int = 0,
+        let_fntstroke_flag: int = 0,
+        let_fntcolor_flag: int = 0,
+        let_autolayout_flag: bool = True,
+        let_uppercase_flag: bool = True) -> None:
+
         if isinstance(dl, dict):
             self.dl = DLModuleConfig(**dl)
         elif dl is None:
@@ -485,6 +487,7 @@ class ProgramConfig:
         self.let_fntsize_flag = let_fntsize_flag
         self.let_fntstroke_flag = let_fntstroke_flag
         self.let_fntcolor_flag = let_fntcolor_flag
+        self.let_autolayout_flag = let_autolayout_flag
         self.let_uppercase_flag = let_uppercase_flag
 
 

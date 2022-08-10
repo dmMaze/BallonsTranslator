@@ -122,6 +122,7 @@ class LeftBar(Widget):
     configChecked = Signal()
     open_dir = Signal(str)
     save_proj = Signal()
+    save_config = Signal()
     run_imgtrans = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
@@ -200,11 +201,20 @@ class LeftBar(Widget):
         self.setGeometry(0, 0, 300, 500)
         self.setMouseTracking(True)
 
+    def initRecentProjMenu(self, proj_list: List[str]):
+        self.recent_proj_list = proj_list
+        for proj in proj_list:
+            action = QAction(proj, self)
+            self.recentMenu.addAction(action)
+            action.triggered.connect(self.recentActionTriggered)
+
     def updateRecentProjList(self, proj_list: List[str]):
         if len(proj_list) == 0:
             return
         if isinstance(proj_list, str):
             proj_list = [proj_list]
+        if self.recent_proj_list == proj_list:
+            return
         proj_list = list(OrderedDict.fromkeys(proj_list))
 
         actionlist = self.recentMenu.actions()
@@ -244,6 +254,7 @@ class LeftBar(Widget):
                 self.recentMenu.removeAction(action)
                 self.recent_proj_list.pop()
 
+        self.save_config.emit()
 
     def recentActionTriggered(self):
         path = self.sender().text()
@@ -260,8 +271,8 @@ class LeftBar(Widget):
         dialog.setDefaultSuffix('.jpg')
         folder_path = str(dialog.getExistingDirectory(self, "Select Directory"))
         if osp.exists(folder_path):
-            self.open_dir.emit(folder_path)
             self.updateRecentProjList(folder_path)
+            self.open_dir.emit(folder_path)
         # self.open_dir.emit(folder_path)
 
     def onOpenProj(self):
