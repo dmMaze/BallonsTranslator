@@ -86,29 +86,51 @@ class InvalidProgramConfigException(Exception):
     pass
 
 
+class FontFormat:
+    def __init__(self, 
+                 family: str = None,
+                 size: float = 24,
+                 stroke_width: float = 0,
+                 frgb=(0, 0, 0),
+                 srgb=(0, 0, 0),
+                 bold: bool = False,
+                 underline: bool = False,
+                 italic: bool = False, 
+                 alignment: int = 0,
+                 vertical: bool = False, 
+                 weight: int = 50, 
+                 alpha: int = 255,
+                 line_spacing: float = 1) -> None:
+        self.family = family if family is not None else DEFAULT_FONT_FAMILY
+        self.size = size
+        self.stroke_width = stroke_width
+        self.frgb = frgb                  # font color
+        self.srgb = srgb                    # stroke color
+        self.bold = bold
+        self.underline = underline
+        self.italic = italic
+        self.alpha = alpha
+        self.weight: int = weight
+        self.alignment: int = alignment
+        self.vertical: bool = vertical
+        self.line_spacing = line_spacing
+
+    def from_textblock(self, text_block: TextBlock):
+        self.family = text_block.font_family
+        self.size = px2pt(text_block.font_size)
+        self.stroke_width = text_block.stroke_width
+        self.frgb, self.srgb = text_block.get_font_colors()
+        self.bold = text_block.bold
+        self.weight = text_block.font_weight
+        self.underline = text_block.underline
+        self.italic = text_block.italic
+        self.alignment = text_block.alignment()
+        self.vertical = text_block.vertical
+        self.line_spacing = text_block.line_spacing
+
+
 PROJTYPE_IMGTRANS = 'imgtrans'
 PROJTYPE_HARDSUBEXTRACT = 'hardsubextract'
-
-class Proj:
-    def __init__(self) -> None:
-        pass
-    @staticmethod
-    def load(proj_path: str):
-        try:
-            with open(proj_path, 'r', encoding='utf8') as f:
-                proj_dict = json.loads(f.read())
-        except Exception as e:
-            raise ProjectLoadFailureException(e)
-        proj_type = proj_dict['type']
-        if proj_type == PROJTYPE_IMGTRANS:
-            proj = ProjImgTrans()
-        elif proj_type == PROJTYPE_HARDSUBEXTRACT:
-            proj = ProjHardSubExtract()
-        else:
-            raise NotImplementedProjException(proj_type)
-        proj.load_from_dict(proj_dict)
-        return proj
-
 
 class ProjImgTrans:
 
@@ -375,29 +397,10 @@ class DLModuleConfig:
         if inpainter_setup_params is None:
             self.inpainter_setup_params = dict()
         else:
-            inpainter_setup_params = inpainter_setup_params
+            self.inpainter_setup_params = inpainter_setup_params
         self.translate_source = translate_source
         self.translate_target = translate_target
         self.check_need_inpaint = check_need_inpaint
-
-    def load_from_dict(self, config_dict: dict):
-        try:
-            self.textdetector = config_dict['textdetector']
-            self.inpainter = config_dict['inpainter']
-            self.ocr = config_dict['ocr']
-            self.translator = config_dict['translator']
-            self.enable_ocr = config_dict['enable_ocr']
-            self.enable_translate = config_dict['enable_translate']
-            self.enable_inpaint = config_dict['enable_inpaint']
-            self.translator_setup_params = config_dict['translator_setup_params']
-            self.inpainter_setup_params = config_dict['inpainter_setup_params']
-            self.textdetector_setup_params = config_dict['textdetector_setup_params']
-            self.ocr_setup_params = config_dict['ocr_setup_params']
-            self.translate_source = config_dict['translate_source']
-            self.translate_target = config_dict['translate_target']
-            self.check_need_inpaint = config_dict['check_need_inpaint']
-        except Exception as e:
-            raise InvalidProgramConfigException(e)
 
     def __getitem__(self, item: str):
         if item == 'textdetector':
@@ -437,105 +440,53 @@ class DrawPanelConfig:
         self.rectool_auto = rectool_auto
         self.rectool_method = rectool_method
 
+
 class ProgramConfig:
-    def __init__(self, config_dict=None) -> None:
-        self.dl = DLModuleConfig()
-        self.recent_proj_list: list = []
-        self.imgtrans_paintmode = False
-        self.imgtrans_textedit = True
-        self.imgtrans_textblock = True
-        self.mask_transparency = 0
-        self.original_transparency = 0
-        self.global_fontformat = FontFormat()
-        self.drawpanel = DrawPanelConfig()
-        self.open_recent_on_startup = False
-        self.let_fntsize_flag = 0
-        self.let_fntstroke_flag = 0
-        self.let_fntcolor_flag = 0
-        if config_dict is not None:
-            self.load_from_dict(config_dict)
-
-    def load_from_dict(self, config_dict):
-        try:
-            # self.dl.load_from_dict(config_dict['dl'])
-            self.dl.load_from_dict(config_dict['dl'])
-            self.recent_proj_list = config_dict['recent_proj_list']
-            self.imgtrans_paintmode = config_dict['imgtrans_paintmode']
-            self.imgtrans_textedit = config_dict['imgtrans_textedit']
-            self.imgtrans_textblock = config_dict['imgtrans_textblock']
-            self.mask_transparency = config_dict['mask_transparency']
-            self.original_transparency = config_dict['original_transparency']
-            self.global_fontformat = FontFormat(**config_dict['global_fontformat'])
-            self.drawpanel = DrawPanelConfig(**config_dict['drawpanel'])
-            self.open_recent_on_startup = config_dict['open_recent_on_startup']
-            self.let_fntsize_flag = config_dict['let_fntsize_flag']
-            self.let_fntstroke_flag = config_dict['let_fntstroke_flag']
-            self.let_fntcolor_flag = config_dict['let_fntcolor_flag']
-        except Exception as e:
-            raise InvalidProgramConfigException(e)
-
-    def to_dict(self):
-        return {
-            'dl': vars(self.dl),
-            'recent_proj_list': self.recent_proj_list,
-            'imgtrans_textedit': self.imgtrans_textedit,
-            'imgtrans_paintmode': self.imgtrans_paintmode,
-            'imgtrans_textblock': self.imgtrans_textblock, 
-            'global_fontformat': self.global_fontformat.to_dict(),
-            'mask_transparency': self.mask_transparency,
-            'original_transparency': self.original_transparency,
-            'drawpanel': vars(self.drawpanel),
-            'open_recent_on_startup': self.open_recent_on_startup,
-            'let_fntsize_flag': self.let_fntsize_flag,
-            'let_fntstroke_flag': self.let_fntstroke_flag,
-            'let_fntcolor_flag': self.let_fntcolor_flag
-        }
-
-
-class FontFormat:
     def __init__(self, 
-                 family: str = None,
-                 size: float = 24,
-                 stroke_width: float = 0,
-                 frgb=(0, 0, 0),
-                 srgb=(0, 0, 0),
-                 bold: bool = False,
-                 underline: bool = False,
-                 italic: bool = False, 
-                 alignment: int = 0,
-                 vertical: bool = False, 
-                 weight: int = 50, 
-                 alpha: int = 255,
-                 line_spacing: float = 1) -> None:
-        self.family = family if family is not None else DEFAULT_FONT_FAMILY
-        self.size = size
-        self.stroke_width = stroke_width
-        self.frgb = frgb                  # font color
-        self.srgb = srgb                    # stroke color
-        self.bold = bold
-        self.underline = underline
-        self.italic = italic
-        self.alpha = alpha
-        self.weight: int = weight
-        self.alignment: int = alignment
-        self.vertical: bool = vertical
-        self.line_spacing = line_spacing
+                 dl: Union[Dict, DLModuleConfig] = None,
+                 drawpanel: Union[Dict, DrawPanelConfig] = None,
+                 global_fontformat: Union[Dict, FontFormat] = None,
+                 recent_proj_list: List[str] = list(),
+                 imgtrans_paintmode: bool = False,
+                 imgtrans_textedit: bool = True,
+                 imgtrans_textblock: bool = True,
+                 mask_transparency: float = 0.,
+                 original_transparency: float = 0.,
+                 open_recent_on_startup: bool = True, 
+                 let_fntsize_flag: int = 0,
+                 let_fntstroke_flag: int = 0,
+                 let_fntcolor_flag: int = 0,
+                 let_uppercase_flag: bool = True) -> None:
+        if isinstance(dl, dict):
+            self.dl = DLModuleConfig(**dl)
+        elif dl is None:
+            self.dl = DLModuleConfig()
+        else:
+            self.dl = dl
+        if isinstance(drawpanel, dict):
+            self.drawpanel = DrawPanelConfig(**drawpanel)
+        elif drawpanel is None:
+            self.drawpanel = DrawPanelConfig()
+        else:
+            self.drawpanel = drawpanel
+        if isinstance(global_fontformat, dict):
+            self.global_fontformat = FontFormat(**global_fontformat)
+        elif global_fontformat is None:
+            self.global_fontformat = FontFormat()
+        else:
+            self.global_fontformat = global_fontformat
+        self.recent_proj_list = recent_proj_list
+        self.imgtrans_paintmode = imgtrans_paintmode
+        self.imgtrans_textedit = imgtrans_textedit
+        self.imgtrans_textblock = imgtrans_textblock
+        self.mask_transparency = mask_transparency
+        self.original_transparency = original_transparency
+        self.open_recent_on_startup = open_recent_on_startup
+        self.let_fntsize_flag = let_fntsize_flag
+        self.let_fntstroke_flag = let_fntstroke_flag
+        self.let_fntcolor_flag = let_fntcolor_flag
+        self.let_uppercase_flag = let_uppercase_flag
 
-    def from_textblock(self, text_block: TextBlock):
-        self.family = text_block.font_family
-        self.size = px2pt(text_block.font_size)
-        self.stroke_width = text_block.stroke_width
-        self.frgb, self.srgb = text_block.get_font_colors()
-        self.bold = text_block.bold
-        self.weight = text_block.font_weight
-        self.underline = text_block.underline
-        self.italic = text_block.italic
-        self.alignment = text_block.alignment()
-        self.vertical = text_block.vertical
-        self.line_spacing = text_block.line_spacing
-
-    def to_dict(self):
-        return vars(self)
 
 span_pattern = re.compile(r'<span style=\"(.*?)\">', re.DOTALL)
 p_pattern = re.compile(r'<p style=\"(.*?)\">', re.DOTALL)

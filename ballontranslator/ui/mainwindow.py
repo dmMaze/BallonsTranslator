@@ -7,6 +7,7 @@ from qtpy.QtCore import Qt, QPoint, QSize
 from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
 
 from utils.logger import logger as LOGGER
+from utils.io_utils import json_dump_nested_obj
 from .misc import ProjImgTrans, ndarray2pixmap, pixmap2ndarray
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -130,13 +131,6 @@ class MainWindow(QMainWindow):
     def setupConfig(self):
         with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
             self.setStyleSheet(f.read())
-        try:
-            with open(CONFIG_PATH, 'r', encoding='utf8') as f:
-                config_dict = json.loads(f.read())
-            self.config.load_from_dict(config_dict)
-        except Exception as e:
-            LOGGER.exception(e)
-            LOGGER.warning("Failed to load config file, using default config")
 
         self.bottomBar.originalSlider.setValue(self.config.original_transparency * 100)
         self.drawingPanel.maskTransperancySlider.setValue(self.config.mask_transparency * 100)
@@ -236,9 +230,8 @@ class MainWindow(QMainWindow):
         self.config.mask_transparency = self.canvas.mask_transparency
         self.config.original_transparency = self.canvas.original_transparency
         self.config.drawpanel = self.drawingPanel.get_config()
-        config_dict = self.config.to_dict()
         with open(CONFIG_PATH, 'w', encoding='utf8') as f:
-            f.write(json.dumps(config_dict, ensure_ascii=False))
+            f.write(json_dump_nested_obj(self.config))
         if not self.imgtrans_proj.is_empty:
             self.imgtrans_proj.save()
         return super().closeEvent(event)
