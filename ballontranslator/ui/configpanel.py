@@ -98,14 +98,21 @@ class ConfigBlock(Widget):
         sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
         self.subblock_list.append(sublock)
 
-    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False):
+    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None) -> ConfigComboBox:
         combox = ConfigComboBox()
         combox.addItems(sel)
-        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
-        sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
-        sublock.layout().setSpacing(20)
-        self.addSublock(sublock)
-        return combox
+        if target_block is None:
+            sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
+            sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
+            sublock.layout().setSpacing(20)
+            self.addSublock(sublock)
+            return combox, sublock
+        else:
+            layout = target_block.layout()
+            layout.addSpacing(20)
+            layout.addWidget(ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal))
+            layout.addWidget(combox)
+            return combox, target_block
 
     def addBlockWidget(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout: bool = False) -> ConfigSubBlock:
         sublock = ConfigSubBlock(widget, name, discription, vertical_layout)
@@ -115,6 +122,9 @@ class ConfigBlock(Widget):
     def addCheckBox(self, name: str, discription: str = None) -> QCheckBox:
         checkbox = QCheckBox()
         if discription is not None:
+            font = checkbox.font()
+            font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
+            checkbox.setFont(font)
             checkbox.setText(discription)
             vertical_layout = True
         else:
@@ -333,13 +343,14 @@ class ConfigPanel(Widget):
         dec_program_str = self.tr('decide by program')
         use_global_str = self.tr('use global setting')
         
-        self.let_fntsize_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font size'))
+        self.let_fntsize_combox, letblk_0 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font size'))
         self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
-        self.let_fntstroke_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke'))
+        self.let_fntstroke_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke'), target_block=letblk_0)
         self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
-        self.let_fntcolor_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
+        self.let_fntcolor_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
         self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
-        self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'))
+        self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
+                discription=self.tr('Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to \"decide by program.\"'))
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
         self.let_uppercase_checker = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)

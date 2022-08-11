@@ -469,25 +469,42 @@ class SceneTextManager(QObject):
         delimiter_len = text_size_func(delimiter)[0]
 
         font_scale_ratio = 1.0
+
+        # 
         # if self.auto_textlayout_flag:
         #     if self.config.let_fntsize_flag == 0 and text:
-        area_ratio = ballon_area / (w * h)
-        ballon_area_thresh = 1.8
-        downscale_constraint = 0.6
-        resize_ratio = min(area_ratio / ballon_area_thresh, max(wl_list) / region_rect[2])
-        if resize_ratio < 1:
-            resize_ratio = max(resize_ratio, downscale_constraint)
-            new_font_size = blk_font.pointSizeF() * resize_ratio
-            blkitem.textCursor().clearSelection()
-            set_textblk_fontsize(blkitem, new_font_size)
-            blk_font.setPointSizeF(new_font_size)
-            wl_list = (np.array(wl_list, np.float64) * resize_ratio).astype(np.int32).tolist()
-            line_height = int(line_height * resize_ratio)
-            delimiter_len = int(delimiter_len * resize_ratio)
+        adaptive_fntsize = True
+        if adaptive_fntsize:
+            area_ratio = ballon_area / (w * h)
+            ballon_area_thresh = 1.8
+            downscale_constraint = 0.6
+            # downscale the font size if textarea exceeds the balloon_area / ballon_area_thresh
+            # or the longest word exceeds the region_width
+            resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, max(wl_list) / region_rect[2]), downscale_constraint, 1.0) 
+            if resize_ratio < 1:
+                new_font_size = blk_font.pointSizeF() * resize_ratio
+                blk_font.setPointSizeF(new_font_size)
+                wl_list = (np.array(wl_list, np.float64) * resize_ratio).astype(np.int32).tolist()
+                line_height = int(line_height * resize_ratio)
+                delimiter_len = int(delimiter_len * resize_ratio)
             
         padding = pt2px(blk_font.pointSize()) // 4   # dummpy padding variable
         new_text, xywh = layout_text(mask, mask_xyxy, region_rect, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, padding)
         
+        if adaptive_fntsize:
+            downscale_constraint = 0.7
+            post_resize_ratio = max(region_rect[2] / xywh[2], downscale_constraint)
+            if post_resize_ratio < 1:
+                resize_ratio *= post_resize_ratio
+                cx, cy = xywh[0] + xywh[2] / 2, xywh[1] + xywh[3] / 2
+                w, h = xywh[2] * post_resize_ratio, xywh[3] * post_resize_ratio
+                xywh = [int(cx - w / 2), int(cy - h / 2), int(w), int(h)]
+            if resize_ratio < 1:
+                new_font_size = blkitem.font().pointSizeF() * resize_ratio
+                blkitem.textCursor().clearSelection()
+                set_textblk_fontsize(blkitem, new_font_size)
+
+
         scale = blkitem.scale()
         if scale != 1:
             xywh = (np.array(xywh, np.float64) * blkitem.scale()).astype(np.int32).tolist()
