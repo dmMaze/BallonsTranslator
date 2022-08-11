@@ -347,8 +347,11 @@ class ConfigPanel(Widget):
         self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
         self.let_fntstroke_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke'), target_block=letblk_0)
         self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
-        self.let_fntcolor_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
+        self.let_fntcolor_combox, letblk_1 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
         self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
+        self.let_alignment_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('alignment'), target_block=letblk_1)
+        self.let_alignment_combox.currentIndexChanged.connect(self.on_alignment_flag_changed)
+
         self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to \"decide by program.\"'))
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
@@ -400,6 +403,9 @@ class ConfigPanel(Widget):
 
     def on_fontcolor_flag_changed(self):
         self.config.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
+
+    def on_alignment_flag_changed(self):
+        self.config.let_alignment_flag = self.let_alignment_combox.currentIndex()
 
     def on_source_flag_changed(self):
         self.config.src_choice_flag = self.src_choice_combox.currentIndex()

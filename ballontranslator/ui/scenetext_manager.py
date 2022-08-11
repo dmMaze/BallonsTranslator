@@ -447,7 +447,7 @@ class SceneTextManager(QObject):
 
         if mask is None:
             bounding_rect = blkitem.absBoundingRect()
-            enlarge_ratio = min(max(bounding_rect[2] / bounding_rect[3], bounding_rect[3] / bounding_rect[2]), 3.0)
+            enlarge_ratio = min(max(bounding_rect[2] / bounding_rect[3], bounding_rect[3] / bounding_rect[2]) * 1.5, 3)
             mask, ballon_area, mask_xyxy, region_rect = extract_ballon_region(img, bounding_rect, enlarge_ratio=enlarge_ratio, cal_region_rect=True)
         else:
             mask_xyxy = [bounding_rect[0], bounding_rect[1], bounding_rect[0]+bounding_rect[2], bounding_rect[1]+bounding_rect[3]]
@@ -467,13 +467,10 @@ class SceneTextManager(QObject):
         w, h = text_size_func(text)
         line_height = int(round(fmt.line_spacing * h))
         delimiter_len = text_size_func(delimiter)[0]
-
-        font_scale_ratio = 1.0
-
-        # 
-        # if self.auto_textlayout_flag:
-        #     if self.config.let_fntsize_flag == 0 and text:
-        adaptive_fntsize = True
+ 
+        adaptive_fntsize = False
+        if self.auto_textlayout_flag and self.config.let_fntsize_flag == 0:
+            adaptive_fntsize = True
         if adaptive_fntsize:
             area_ratio = ballon_area / (w * h)
             ballon_area_thresh = 1.8
@@ -488,12 +485,14 @@ class SceneTextManager(QObject):
                 line_height = int(line_height * resize_ratio)
                 delimiter_len = int(delimiter_len * resize_ratio)
             
-        padding = pt2px(blk_font.pointSize()) // 4   # dummpy padding variable
+        padding = pt2px(blk_font.pointSize()) + 20   # dummpy padding variable
         new_text, xywh = layout_text(mask, mask_xyxy, region_rect, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, padding)
         
+        # font size post adjustment
         if adaptive_fntsize:
-            downscale_constraint = 0.7
-            post_resize_ratio = max(region_rect[2] / xywh[2], downscale_constraint)
+            downscale_constraint = 0.6
+            w = xywh[2] - padding * 2
+            post_resize_ratio = max(region_rect[2] / w, downscale_constraint)
             if post_resize_ratio < 1:
                 resize_ratio *= post_resize_ratio
                 cx, cy = xywh[0] + xywh[2] / 2, xywh[1] + xywh[3] / 2
@@ -503,7 +502,6 @@ class SceneTextManager(QObject):
                 new_font_size = blkitem.font().pointSizeF() * resize_ratio
                 blkitem.textCursor().clearSelection()
                 set_textblk_fontsize(blkitem, new_font_size)
-
 
         scale = blkitem.scale()
         if scale != 1:
@@ -635,7 +633,8 @@ class SceneTextManager(QObject):
 
 def get_text_size(fm: QFontMetrics, text: str) -> Tuple[int, int]:
     brt = fm.tightBoundingRect(text)
-    return brt.width(), brt.height()
+    br = fm.boundingRect(text)
+    return br.width(), brt.height()
     
 def get_words_length_list(fm: QFontMetrics, words: List[str]) -> List[int]:
     return [fm.tightBoundingRect(word).width() for word in words]

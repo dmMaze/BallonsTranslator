@@ -30,8 +30,20 @@ def seg_eng(text: str) -> List[str]:
                 processed_text += c
         else:
             processed_text += c
-
-    return processed_text.split(' ')
+    word_list = processed_text.split(' ')
+    words = []
+    skip_next = False
+    word_num = len(word_list)
+    for ii, word in enumerate(word_list):
+        if skip_next:
+            skip_next = False
+            continue
+        if ii < word_num - 1:
+            if len(word) == 1 or len(word_list[ii + 1]) == 1:
+                skip_next = True
+                word = word + ' ' + word_list[ii + 1]
+        words.append(word)
+    return words
 
 def seg_text(text: str, lang: str) -> Tuple[List, str]:
     delimiter = ''

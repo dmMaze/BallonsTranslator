@@ -172,6 +172,7 @@ class MainWindow(QMainWindow):
         self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
         self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
         self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)
+        self.configPanel.let_alignment_combox.setCurrentIndex(self.config.let_alignment_flag)
         self.configPanel.let_autolayout_checker.setChecked(self.config.let_autolayout_flag)
         self.configPanel.let_uppercase_checker.setChecked(self.config.let_uppercase_flag)
         self.configPanel.save_config.connect(self.save_config)
@@ -469,32 +470,36 @@ class MainWindow(QMainWindow):
         self.pageListCurrentItemChanged()
 
     def on_pagtrans_finished(self, page_index: int):
-        
+        if self.config.dl.translate_target not in LANG_SUPPORT_VERTICAL:
+            for blk in self.imgtrans_proj.get_blklist_byidx(page_index):
+                if blk.vertical:
+                    blk._alignment = 1
+                blk.vertical = False
+                
         # override font format if necessary
         override_fnt_size = self.config.let_fntsize_flag == 1
         override_fnt_stroke = self.config.let_fntstroke_flag == 1
-        override_fnt_color = self.config.let_fntcolor_flag
-        if override_fnt_size or override_fnt_stroke:
-            gf = self.textPanel.formatpanel.global_format
-            blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
-            for blk in blk_list:
-                if override_fnt_size:
-                    blk.font_size = gf.size
-                if override_fnt_stroke:
-                    blk.default_stroke_width = gf.stroke_width
-                if override_fnt_color:
-                    blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
-
-        if self.config.dl.translate_target not in LANG_SUPPORT_VERTICAL:
-            for blk in self.imgtrans_proj.get_blklist_byidx(page_index):
-                blk.vertical = False
+        override_fnt_color = self.config.let_fntcolor_flag == 1
+        override_alignment = self.config.let_alignment_flag == 1
+        gf = self.textPanel.formatpanel.global_format
+        blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
+        for blk in blk_list:
+            if override_fnt_size:
+                blk.font_size = gf.size
+            if override_fnt_stroke:
+                blk.default_stroke_width = gf.stroke_width
+            if override_fnt_color:
+                blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
+            if override_alignment:
+                blk._alignment = gf.alignment
+            blk.line_spacing = gf.line_spacing
 
         self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
         
-        if page_index != 0:
+        if page_index != self.pageList.currentIndex().row():
             self.pageList.setCurrentRow(page_index)
         else:
-            self.imgtrans_proj.set_current_img_byidx(0)
+            self.imgtrans_proj.set_current_img_byidx(page_index)
             self.canvas.updateCanvas()
             self.st_manager.updateSceneTextitems()
         self.saveCurrentPage(False, False)

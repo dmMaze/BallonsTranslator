@@ -35,14 +35,14 @@ class TextBlock(object):
                        bold: bool = False,
                        underline: bool = False,
                        italic: bool = False,
-                       alignment: int = -1,
+                       _alignment: int = -1,
                        alpha: float = 255,
                        rich_text: str = "",
                        _bounding_rect: List = None,
                        accumulate_color = True,
                        default_stroke_width = 0.2,
                        font_weight = 50, 
-                       target_lang: str = "",
+                       _target_lang: str = "",
                        **kwargs) -> None:
         self.xyxy = [int(num) for num in xyxy]                    # boundingbox of textblock
         self.lines = [] if lines is None else lines     # polygons of textlines
@@ -78,9 +78,8 @@ class TextBlock(object):
         self.alpha = alpha
         self.rich_text = rich_text
         self.line_spacing = line_spacing
-        # self.alignment = alignment
-        self._alignment = alignment
-        self._target_lang = target_lang
+        self._alignment = _alignment
+        self._target_lang = _target_lang
 
         self._bounding_rect = _bounding_rect
         self.default_stroke_width = default_stroke_width
@@ -240,7 +239,7 @@ class TextBlock(object):
             return 0
         lines = self.lines_array()
         if len(lines) == 1:
-            return 0
+            return 1
         angled = self.angle != 0
         polygons = lines.reshape(-1, 8)
         if angled:
@@ -330,6 +329,8 @@ def examine_textblk(blk: TextBlock, im_w: int, im_h: int, eval_orientation: bool
     blk.angle = rotation_angle
     if vertical:
         blk.angle -= 90
+    if abs(blk.angle) < 3:
+        blk.angle = 0
     blk.font_size = font_size
     if eval_orientation:
         blk.vertical = vertical
