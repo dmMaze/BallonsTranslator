@@ -161,7 +161,7 @@ def expand_textwindow(img_size, xyxy, expand_r=8, shrink=False):
     x2, y2 = min(im_w-1, x2+paddings), min(im_h-1, y2+paddings)
     return [x1, y1, x2, y2]
 
-def enlarge_window(rect, im_w, im_h, ratio=2.5) -> List:
+def enlarge_window(rect, im_w, im_h, ratio=2.5, aspect_ratio=1.0) -> List:
     assert ratio > 1.0
     
     x1, y1, x2, y2 = rect
@@ -169,13 +169,14 @@ def enlarge_window(rect, im_w, im_h, ratio=2.5) -> List:
     h = y2 - y1
 
     # https://numpy.org/doc/stable/reference/generated/numpy.roots.html
-    coeff = [1, w+h, (1-ratio)*w*h]
+    coeff = [aspect_ratio, w+h*aspect_ratio, (1-ratio)*w*h]
     roots = np.roots(coeff)
     roots.sort()
     delta = int(round(roots[-1] / 2 ))
-    rect = np.array([x1-delta, y1-delta, x2+delta, y2+delta], dtype=np.int64)
-    rect[[0, 2]] = np.clip(rect[[0, 2]], 0, im_w)
-    rect[[1, 3]] = np.clip(rect[[1, 3]], 0, im_h)
+    delta_w = int(delta * aspect_ratio)
+    delta_w = min(x1, im_w - x2, delta_w)
+    delta = min(y1, im_h - y2, delta)
+    rect = np.array([x1-delta_w, y1-delta, x2+delta_w, y2+delta], dtype=np.int64)
     return rect.tolist()
 
 def draw_connected_labels(num_labels, labels, stats, centroids, names="draw_connected_labels", skip_background=True):
