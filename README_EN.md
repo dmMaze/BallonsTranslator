@@ -1,3 +1,4 @@
+# mangakakalot source does not work yet, because of cloudflare
 # BallonTranslator
 [简体中文](README.md) | English  
 
