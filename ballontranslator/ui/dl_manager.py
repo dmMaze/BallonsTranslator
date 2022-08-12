@@ -18,7 +18,7 @@ dl.translators.SYSTEM_LANG = QLocale.system().name()
 from .stylewidgets import ProgressMessageBox
 from .configpanel import ConfigPanel
 from .misc import ProjImgTrans, DLModuleConfig
-from .pagesources import SourceBase, nhentai
+from .pagesources import nhentai, mangakakalot
 from .constants import PROGRAM_PATH
 
 class ModuleThread(QThread):
@@ -517,7 +517,8 @@ class DLManager(QObject):
         LOGGER.info(f'Force download set to {skip_check}')
         SOURCEMAP = {
             0: 'manual',
-            1: 'nhentai'
+            1: 'nhentai',
+            2: 'mangakakalot'
         }
         src = SOURCEMAP[self.config.src_choice_flag]
         if src == 'manual':
@@ -528,8 +529,15 @@ class DLManager(QObject):
             doujin = nhentai()
             LOGGER.info('Downloading images...')
             doujin.run(url, skip_check)
-            gallery_number = doujin.ReturnGalleryNumber()
+            gallery_number = doujin.ReturnName()
             self.imgtrans_proj.load(rf'{PROGRAM_PATH}\ui\pagesources\projects\{gallery_number}')
+        elif src == 'mangakakalot':
+            LOGGER.info('Source download set to mangakakalot')
+            manga = mangakakalot()
+            LOGGER.info('Downloading images...')
+            manga.run(url, skip_check)
+            name = manga.ReturnName()
+            self.imgtrans_proj.load(rf'{PROGRAM_PATH}\ui\pagesources\projects\{name}')
         else:
             raise NotImplementedError
 

@@ -6,6 +6,7 @@ from .constants import SOURCE_DOWNLOAD_PATH
 from .exceptions import SourceNotImplemented
 import os
 
+
 PROXY = urllib.request.getproxies()
 
 
@@ -14,11 +15,14 @@ class SourceBase:
         self.link = ''
         self.SOURCEMAP = {
             0: 'manual',
-            1: 'nhentai'
+            1: 'nhentai',
+            2: 'mangakakalot'
         }
         self.source: str = ''
         self.number_of_pages: int = 0
         self.path: str = ''
+        self.path_to_txt: str = ''
+        self.name = ''
 
     def SetLink(self, link):
         self.link = link
@@ -58,11 +62,21 @@ class SourceBase:
         with open(path, 'w') as txt:
             txt.write(str(self.number_of_pages))
 
+    def txt_file(self, number, skip_check):
+        self.path = fr'{SOURCE_DOWNLOAD_PATH}\{number}'
+        self.path_to_txt = rf'{self.path}\pages.txt'
+        skip = False
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
+        elif os.path.exists(self.path) and skip_check is False:
+            skip = self.CheckFiles(self.path_to_txt)
+        return skip
+
+    def ReturnName(self):
+        return self.name
+
 
 class nhentai(SourceBase):
-    def __init__(self):
-        super().__init__()
-        self.gallery_number: int = 0
     def Help(self):
         print("""Please use gallery links. To get link follow these steps:
         + Go to desired doujin
@@ -74,15 +88,9 @@ class nhentai(SourceBase):
     def FetchImages(self, skip_check: bool = False):
         url = self.link
         number = (re.search('galleries/(.*)/', url)).group(1)
-        self.gallery_number = number
+        self.name = number
         i = 1
-        self.path = fr'{SOURCE_DOWNLOAD_PATH}\{number}'
-        path_to_txt = rf'{self.path}\pages.txt'
-        skip = False
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
-        elif os.path.exists(self.path) and skip_check is False:
-            skip = self.CheckFiles(path_to_txt)
+        skip = self.txt_file(number, skip_check)
         if skip is False:
             while True:
                 try:
@@ -97,10 +105,7 @@ class nhentai(SourceBase):
                     print(e)
                     break
             self.number_of_pages = i - 1
-            self.SaveNumberOfPages(path_to_txt)
-
-    def ReturnGalleryNumber(self):
-        return self.gallery_number
+            self.SaveNumberOfPages(self.path_to_txt)
 
     def run(self, url, skip_check: bool):
         self.SetLink(url)
@@ -108,7 +113,31 @@ class nhentai(SourceBase):
         self.FetchImages(skip_check)
 
 
+class mangakakalot(SourceBase):  # Does not work yet because of cloudflare
+    def FetchImages(self, skip_check: bool = False):
+        url = self.link
+        self.name = (re.search('chapter/(.*)/chapter', url)).group(1)
+        i = 1
+        skip = self.txt_file(self.name, skip_check)
+        jpg_link = requests.get(url, proxies=PROXY)
+        jpg_link = (re.search('img src="(.*)/1-o.jpg', jpg_link.text)).group(1)
+        if skip is False:
+            while True:
+                try:
+                    img_data = requests.get(f'{jpg_link}/{i}-o.jpg', proxies=PROXY).content
+                    if 'access denied' in str(img_data).lower():
+                        break
+                    with open(rf'{self.path}\{i}.jpg', 'wb') as image:
+                        image.write(img_data)
+                    i += 1
+                    time.sleep(1)  # Avoiding anti ddos ban
+                except Exception as e:
+                    print(e)
+                    break
+            self.number_of_pages = i - 1
+            self.SaveNumberOfPages(self.path_to_txt)
 
-
-
-
+    def run(self, url, skip_check: bool):
+        self.SetLink(url)
+        self.CheckLink()
+        self.FetchImages(skip_check)
