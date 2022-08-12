@@ -7,7 +7,7 @@ from .imgproc_utils import extract_ballon_region, rotate_image
 
 class Line:
 
-    def __init__(self, text: str = '', pos_x: int = 0, pos_y: int = 0, length: float = 0) -> None:
+    def __init__(self, text: str = '', pos_x: int = 0, pos_y: int = 0, length: float = 0, spacing: int = 0) -> None:
         self.text = text
         self.pos_x = pos_x
         self.pos_y = pos_y
@@ -15,6 +15,8 @@ class Line:
         self.num_words = 0
         if text:
             self.num_words += 1
+        self.spacing = 0
+        self.add_spacing(spacing)
 
     def append_right(self, word: str, w_len: int, delimiter: str = ''):
         self.text = self.text + delimiter + word
@@ -28,6 +30,16 @@ class Line:
             self.num_words += 1
         self.length += w_len
 
+    def add_spacing(self, spacing: int):
+        self.spacing = spacing
+        self.pos_x -= spacing
+        self.length += 2 * spacing
+
+    def strip_spacing(self):
+        self.length -= self.spacing * 2
+        self.pos_x += self.spacing
+        self.spacing = 0
+
 def layout_lines_with_mask(
     mask: np.ndarray, 
     words: List[str], 
@@ -35,6 +47,7 @@ def layout_lines_with_mask(
     wl_list: List[int], 
     delimiter_len: int, 
     line_height: int,
+    spacing: int = 0,
     alignment: int = 0,
     vertical: bool = False,
     delimiter: str = ' ',
@@ -75,7 +88,7 @@ def layout_lines_with_mask(
     pos_x = centroid_x - wl_list[central_index] // 2
 
     bh, bw = mask.shape[:2]
-    central_line = Line(words[central_index], pos_x, pos_y, wl_list[central_index])
+    central_line = Line(words[central_index], pos_x, pos_y, wl_list[central_index], spacing)
     line_bottom = pos_y + line_height
     while sum_left > 0 or sum_right > 0:
         left_valid, right_valid = False, False
@@ -112,7 +125,7 @@ def layout_lines_with_mask(
             central_line.append_right(wlst_right.pop(0), len_right[0] + delimiter_len, delimiter)
             sum_right -= len_right.pop(0)
             central_line.pos_x = new_x_r
-
+    central_line.strip_spacing()
     lines = [central_line]
 
     # layout bottom half
@@ -121,7 +134,7 @@ def layout_lines_with_mask(
         pos_x = centroid_x - wl // 2
         pos_y = centroid_y + line_height // 2
         line_bottom = pos_y + line_height
-        line = Line(w, pos_x, pos_y, wl)
+        line = Line(w, pos_x, pos_y, wl, spacing)
         lines.append(line)
         sum_right -= wl
         while sum_right > 0:
@@ -144,7 +157,8 @@ def layout_lines_with_mask(
                 pos_x = centroid_x - wl // 2
                 pos_y = line_bottom
                 line_bottom += line_height
-                line = Line(w, pos_x, pos_y, wl)
+                line.strip_spacing()
+                line = Line(w, pos_x, pos_y, wl, spacing)
                 lines.append(line)
 
     # layout top half
@@ -153,7 +167,7 @@ def layout_lines_with_mask(
         pos_x = centroid_x - wl // 2
         pos_y = centroid_y - line_height // 2 - line_height
         line_bottom = pos_y + line_height
-        line = Line(w, pos_x, pos_y, wl)
+        line = Line(w, pos_x, pos_y, wl, spacing)
         lines.insert(0, line)
         sum_left -= wl
         while sum_left > 0:
@@ -176,7 +190,8 @@ def layout_lines_with_mask(
                 pos_x = centroid_x - wl // 2
                 pos_y -= line_height
                 line_bottom = pos_y + line_height
-                line = Line(w, pos_x, pos_y, wl)
+                line.strip_spacing()
+                line = Line(w, pos_x, pos_y, wl, spacing)
                 lines.insert(0, line)
 
     return lines
@@ -193,6 +208,7 @@ def layout_text(
     line_height: int,
     alignment: int,
     vertical: bool,
+    spacing: int = 0,
     padding: float = 0) -> Tuple[str, List]:
 
     num_words = len(words)
@@ -202,7 +218,7 @@ def layout_text(
     if abs(angle) > 0:
         mask = rotate_image(mask, angle)
 
-    lines = layout_lines_with_mask(mask, words, region_rect, wl_list, delimiter_len, line_height, alignment, vertical, delimiter)
+    lines = layout_lines_with_mask(mask, words, region_rect, wl_list, delimiter_len, line_height, spacing, alignment, vertical, delimiter)
     
     region_x, region_y, region_w, region_h = region_rect
     center_x = mask_xyxy[0] + region_x + region_w // 2

@@ -19,7 +19,7 @@ from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
 
 from utils.imgproc_utils import extract_ballon_region
-from utils.text_processing import seg_text
+from utils.text_processing import seg_text, is_logogram
 from utils.text_layout import layout_text
 
 class MoveBlkItemsCommand(QUndoCommand):
@@ -462,6 +462,8 @@ class SceneTextManager(QObject):
         words, delimiter = seg_text(text, self.config.dl.translate_target)
         if len(words) == 0:
             return
+        tgt_is_logoram = is_logogram(self.config.dl.translate_target)
+        src_is_logoram = is_logogram(self.config.dl.translate_source)
 
         wl_list = get_words_length_list(QFontMetrics(blk_font), words)
         w, h = text_size_func(text)
@@ -473,11 +475,11 @@ class SceneTextManager(QObject):
             adaptive_fntsize = True
         if adaptive_fntsize:
             area_ratio = ballon_area / (w * h)
-            ballon_area_thresh = 1.8
+            ballon_area_thresh = 1.7
             downscale_constraint = 0.6
             # downscale the font size if textarea exceeds the balloon_area / ballon_area_thresh
             # or the longest word exceeds the region_width
-            resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, max(wl_list) / region_rect[2]), downscale_constraint, 1.0) 
+            resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, max(wl_list) / region_rect[2], blkitem.blk.font_size / line_height), downscale_constraint, 1.0) 
             if resize_ratio < 1:
                 new_font_size = blk_font.pointSizeF() * resize_ratio
                 blk_font.setPointSizeF(new_font_size)
@@ -485,12 +487,15 @@ class SceneTextManager(QObject):
                 line_height = int(line_height * resize_ratio)
                 delimiter_len = int(delimiter_len * resize_ratio)
             
+        spacing = 0
+        if tgt_is_logoram:
+            spacing = line_height
         padding = pt2px(blk_font.pointSize()) + 20   # dummpy padding variable
-        new_text, xywh = layout_text(mask, mask_xyxy, region_rect, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, padding)
+        new_text, xywh = layout_text(mask, mask_xyxy, region_rect, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, spacing, padding)
         
         # font size post adjustment
         if adaptive_fntsize:
-            downscale_constraint = 0.6
+            downscale_constraint = 0.5
             w = xywh[2] - padding * 2
             post_resize_ratio = max(region_rect[2] / w, downscale_constraint)
             if post_resize_ratio < 1:

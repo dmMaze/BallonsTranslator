@@ -166,12 +166,12 @@ class TextBlock(object):
         direction = 'v' if self.vertical else 'h'
         src_pts = np.array(self.lines[idx], dtype=np.float64)
 
-        if self.language == 'eng' or (self.language == 'unknown' and not self.vertical):
-            e_size = self.font_size / 3
-            src_pts[..., 0] += np.array([-e_size, e_size, e_size, -e_size])
-            src_pts[..., 1] += np.array([-e_size, -e_size, e_size, e_size])
-            src_pts[..., 0] = np.clip(src_pts[..., 0], 0, im_w)
-            src_pts[..., 1] = np.clip(src_pts[..., 1], 0, im_h)
+        # if self.language == 'eng' or (self.language == 'unknown' and not self.vertical):
+        #     e_size = self.font_size / 3
+        #     src_pts[..., 0] += np.array([-e_size, e_size, e_size, -e_size])
+        #     src_pts[..., 1] += np.array([-e_size, -e_size, e_size, e_size])
+        #     src_pts[..., 0] = np.clip(src_pts[..., 0], 0, im_w)
+        #     src_pts[..., 1] = np.clip(src_pts[..., 1], 0, im_h)
 
         middle_pnt = (src_pts[[1, 2, 3, 0]] + src_pts) / 2
         vec_v = middle_pnt[2] - middle_pnt[0]   # vertical vectors of textlines
@@ -260,7 +260,7 @@ class TextBlock(object):
     @property
     def stroke_width(self):
         diff = color_difference(*self.get_font_colors())
-        if diff > 20:
+        if diff > 15:
             return self.default_stroke_width
         return 0
 
@@ -479,6 +479,23 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
     final_blk_list += merge_textlines(scattered_lines['ver'])
     if sort_blklist:
         final_blk_list = sort_textblk_list(final_blk_list, im_w, im_h)
+
+    for blk in final_blk_list:
+        if blk.language == 'eng':
+            num_lines = len(blk.lines)
+            if num_lines == 0:
+                continue
+            # blk.line_spacing = blk.bounding_rect()[3] / num_lines / blk.font_size
+            resize_ratio = 1.1
+            rad = np.deg2rad(blk.angle)
+            shifted_vec = np.array([[[-1, -1],[1, -1],[1, 1],[-1, 1]]])
+            shifted_vec = shifted_vec * np.array([[[np.sin(rad), np.cos(rad)]]]) * blk.font_size * (resize_ratio - 1)
+            lines = blk.lines_array() + shifted_vec
+            lines[..., 0] = np.clip(lines[..., 0], 0, im_w-1)
+            lines[..., 1] = np.clip(lines[..., 1], 0, im_h-1)
+            blk.lines = lines.astype(np.int64).tolist()
+            blk.font_size = int(resize_ratio * blk.font_size)
+            
     return final_blk_list
 
 def visualize_textblocks(canvas, blk_list:  List[TextBlock]):

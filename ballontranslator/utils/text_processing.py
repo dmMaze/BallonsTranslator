@@ -38,10 +38,33 @@ def seg_eng(text: str) -> List[str]:
         if skip_next:
             skip_next = False
             continue
-        if ii < word_num - 1:
-            if len(word) == 1 or len(word_list[ii + 1]) == 1:
+        if len(word) < 3:
+            append_left, append_right = False, False
+            len_word, len_next, len_prev = len(word), -1, -1
+            if ii < word_num - 1:
+                len_next = len(word_list[ii + 1])
+            if ii > 0:
+                len_prev = len(word_list[ii - 1])
+            cond_next = (len_word == 2 and len_next <= 4) or len_word == 1
+            cond_prev = (len_word == 2 and len_prev <= 4) or len_word == 1
+            if len_next > 0 and len_prev > 0:
+                if len_next < len_prev:
+                    append_right = cond_next
+                else:
+                    append_left = cond_prev
+            elif len_next > 0:
+                append_right = cond_next
+            elif len_prev:
+                append_left = cond_prev
+
+            if append_left:
+                words[-1] = words[-1] + ' ' + word
+            elif append_right:
+                words.append(word + ' ' + word_list[ii + 1])
                 skip_next = True
-                word = word + ' ' + word_list[ii + 1]
+            else:
+                words.append(word)
+            continue
         words.append(word)
     return words
 
@@ -55,3 +78,8 @@ def seg_text(text: str, lang: str) -> Tuple[List, str]:
         words = seg_eng(text)
         delimiter = ' '
     return words, delimiter
+
+LOGORAMS = ['简体中文', '繁体中文', '日本語', '한국어']
+
+def is_logogram(lang: str) -> bool:
+    return lang in LOGORAMS
