@@ -14,3 +14,4 @@ termcolor
 bs4
 deepl
 qtpy
+pkuseg
