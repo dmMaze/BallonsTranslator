@@ -19,7 +19,7 @@ from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
 
 from utils.imgproc_utils import extract_ballon_region
-from utils.text_processing import seg_text, is_logogram
+from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
 
 class MoveBlkItemsCommand(QUndoCommand):
@@ -445,12 +445,20 @@ class SceneTextManager(QObject):
         fmt = blkitem.get_fontformat()
         text_size_func = lambda text: get_text_size(QFontMetrics(blk_font), text)
 
+        src_is_cjk = is_cjk(self.config.dl.translate_source)
+        tgt_is_cjk = is_cjk(self.config.dl.translate_target)
+
         if mask is None:
             bounding_rect = blkitem.absBoundingRect()
-            enlarge_ratio = min(max(bounding_rect[2] / bounding_rect[3], bounding_rect[3] / bounding_rect[2]) * 1.5, 3)
+            if tgt_is_cjk:
+                max_enlarge_ratio = 2.5
+            else:
+                max_enlarge_ratio = 3
+            enlarge_ratio = min(max(bounding_rect[2] / bounding_rect[3], bounding_rect[3] / bounding_rect[2]) * 1.5, max_enlarge_ratio)
             mask, ballon_area, mask_xyxy, region_rect = extract_ballon_region(img, bounding_rect, enlarge_ratio=enlarge_ratio, cal_region_rect=True)
         else:
             mask_xyxy = [bounding_rect[0], bounding_rect[1], bounding_rect[0]+bounding_rect[2], bounding_rect[1]+bounding_rect[3]]
+        region_x, region_y, region_w, region_h = region_rect
 
         restore_charfmts = False
         if text is None:
@@ -462,55 +470,106 @@ class SceneTextManager(QObject):
         words, delimiter = seg_text(text, self.config.dl.translate_target)
         if len(words) == 0:
             return
-        tgt_is_logoram = is_logogram(self.config.dl.translate_target)
-        src_is_logoram = is_logogram(self.config.dl.translate_source)
 
         wl_list = get_words_length_list(QFontMetrics(blk_font), words)
-        w, h = text_size_func(text)
-        line_height = int(round(fmt.line_spacing * h))
+        text_w, text_h = text_size_func(text)
+        text_area = text_w * text_h
+        line_height = int(round(fmt.line_spacing * text_h))
         delimiter_len = text_size_func(delimiter)[0]
  
         adaptive_fntsize = False
         if self.auto_textlayout_flag and self.config.let_fntsize_flag == 0:
-            adaptive_fntsize = True
+            if not tgt_is_cjk:
+                adaptive_fntsize = True
+            
+        resize_ratio = 1
         if adaptive_fntsize:
-            area_ratio = ballon_area / (w * h)
+            area_ratio = ballon_area / text_area
             ballon_area_thresh = 1.7
             downscale_constraint = 0.6
             # downscale the font size if textarea exceeds the balloon_area / ballon_area_thresh
             # or the longest word exceeds the region_width
             resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, max(wl_list) / region_rect[2], blkitem.blk.font_size / line_height), downscale_constraint, 1.0) 
-            if resize_ratio < 1:
-                new_font_size = blk_font.pointSizeF() * resize_ratio
-                blk_font.setPointSizeF(new_font_size)
-                wl_list = (np.array(wl_list, np.float64) * resize_ratio).astype(np.int32).tolist()
-                line_height = int(line_height * resize_ratio)
-                delimiter_len = int(delimiter_len * resize_ratio)
-            
-        spacing = 0
-        if tgt_is_logoram:
-            spacing = line_height
+
+        max_central_width = np.inf
+        if tgt_is_cjk:
+            if blkitem.blk.text:
+                _, _, brw, brh = blkitem.blk.bounding_rect()
+                br_area = brw * brh
+                if src_is_cjk:
+                    resize_ratio = np.sqrt(region_h * region_w / br_area)
+                else:
+                    resize_ratio = np.clip(max(np.sqrt(br_area / text_area) * 0.8, np.sqrt(ballon_area / text_area ) * 0.7), 1, 1.1)
+                if len(blkitem.blk) > 1:
+                    normalized_width_list = blkitem.blk.normalizd_width_list()
+                    max_central_width = max(normalized_width_list)
+            else:
+                resize_ratio = 1.1
+
+        if resize_ratio != 1:
+            new_font_size = blk_font.pointSizeF() * resize_ratio
+            blk_font.setPointSizeF(new_font_size)
+            wl_list = (np.array(wl_list, np.float64) * resize_ratio).astype(np.int32).tolist()
+            line_height = int(line_height * resize_ratio)
+            text_w = int(text_w * resize_ratio)
+            delimiter_len = int(delimiter_len * resize_ratio)
+
+        if max_central_width != np.inf:
+            max_central_width = int(max_central_width * text_w)
+
         padding = pt2px(blk_font.pointSize()) + 20   # dummpy padding variable
-        new_text, xywh = layout_text(mask, mask_xyxy, region_rect, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, spacing, padding)
+        if fmt.alignment == 1:
+            if len(blkitem.blk) > 0:
+                centroid = blkitem.blk.center().astype(np.int64).tolist()
+                centroid[0] -= mask_xyxy[0]
+                centroid[1] -= mask_xyxy[1]
+            else:
+                centroid = [bounding_rect[2] // 2, bounding_rect[3] // 2]
+        else:
+            max_central_width = np.inf
+            centroid = [0, 0]
+            abs_centroid = [bounding_rect[0], bounding_rect[1]]
+            if len(blkitem.blk) > 0:
+                blkitem.blk.lines[0]
+                abs_centroid = blkitem.blk.lines[0][0]
+                centroid[0] = int(abs_centroid[0] - mask_xyxy[0])
+                centroid[1] = int(abs_centroid[1] - mask_xyxy[1])
+                
+
+        new_text, xywh = layout_text(mask, mask_xyxy, centroid, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, 0, padding, max_central_width)
         
         # font size post adjustment
+        post_resize_ratio = 1
         if adaptive_fntsize:
             downscale_constraint = 0.5
             w = xywh[2] - padding * 2
-            post_resize_ratio = max(region_rect[2] / w, downscale_constraint)
-            if post_resize_ratio < 1:
-                resize_ratio *= post_resize_ratio
-                cx, cy = xywh[0] + xywh[2] / 2, xywh[1] + xywh[3] / 2
-                w, h = xywh[2] * post_resize_ratio, xywh[3] * post_resize_ratio
-                xywh = [int(cx - w / 2), int(cy - h / 2), int(w), int(h)]
-            if resize_ratio < 1:
-                new_font_size = blkitem.font().pointSizeF() * resize_ratio
-                blkitem.textCursor().clearSelection()
-                set_textblk_fontsize(blkitem, new_font_size)
+            post_resize_ratio = np.clip(max(region_rect[2] / w, downscale_constraint), 0, 1)
+            resize_ratio *= post_resize_ratio
+
+        if tgt_is_cjk:
+            resize_ratio = 1
+            post_resize_ratio = 1 / resize_ratio
+
+        if post_resize_ratio != 1:
+            cx, cy = xywh[0] + xywh[2] / 2, xywh[1] + xywh[3] / 2
+            w, h = xywh[2] * post_resize_ratio, xywh[3] * post_resize_ratio
+            xywh = [int(cx - w / 2), int(cy - h / 2), int(w), int(h)]
+
+        if resize_ratio != 1:
+            new_font_size = blkitem.font().pointSizeF() * resize_ratio
+            blkitem.textCursor().clearSelection()
+            set_textblk_fontsize(blkitem, new_font_size)
+
 
         scale = blkitem.scale()
-        if scale != 1:
-            xywh = (np.array(xywh, np.float64) * blkitem.scale()).astype(np.int32).tolist()
+        if scale != 1 and not fmt.alignment == 0:
+            xywh = (np.array(xywh, np.float64) * scale).astype(np.int32).tolist()
+
+        if fmt.alignment == 0:
+            x_shift = (scale - 1) * xywh[2] // 2 + xywh[0] * scale
+            y_shift = (scale - 1) * xywh[3] // 2 + xywh[1] * scale
+            xywh[0] = int(abs_centroid[0] * scale) + x_shift
+            xywh[1] = int(abs_centroid[1] * scale)  + y_shift
 
         if restore_charfmts:
             char_fmts = blkitem.get_char_fmts()        

@@ -40,22 +40,24 @@ class Line:
         self.pos_x += self.spacing
         self.spacing = 0
 
-def layout_lines_with_mask(
+def layout_lines_aligncenter(
     mask: np.ndarray, 
     words: List[str], 
-    region_rect: List[int],
+    centroid: List[int],
     wl_list: List[int], 
     delimiter_len: int, 
     line_height: int,
     spacing: int = 0,
-    alignment: int = 0,
-    vertical: bool = False,
     delimiter: str = ' ',
+    max_central_width: float = np.inf,
     word_break: bool = False)->List[Line]:
 
-    region_x, region_y, region_w, region_h = region_rect
-    centroid_x = region_x + region_w // 2
-    centroid_y = region_y + region_h // 2
+    centroid_x, centroid_y = centroid
+
+    # rbgmsk = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    # cv2.circle(rbgmsk, (centroid_x, centroid_y), 10, (255, 0, 0))
+    # cv2.imshow('mask', rbgmsk)
+    # cv2.waitKey(0)
 
     # m = cv2.moments(mask)
     mask = 255 - mask
@@ -125,6 +127,9 @@ def layout_lines_with_mask(
             central_line.append_right(wlst_right.pop(0), len_right[0] + delimiter_len, delimiter)
             sum_right -= len_right.pop(0)
             central_line.pos_x = new_x_r
+        if central_line.length > max_central_width:
+            break
+
     central_line.strip_spacing()
     lines = [central_line]
 
@@ -196,10 +201,53 @@ def layout_lines_with_mask(
 
     return lines
 
+def layout_lines_alignleft(
+    mask: np.ndarray, 
+    words: List[str], 
+    origin: List[int],
+    wl_list: List[int], 
+    delimiter_len: int, 
+    line_height: int,
+    spacing: int = 0,
+    delimiter: str = ' ',
+    word_break: bool = False)->List[Line]:
+
+    ox, oy = origin
+    bh, bw = mask.shape[:2]
+    mask = 255 - mask
+    num_words = len(words)
+
+    lines = []
+    if num_words > 0:
+        sum_right = np.array(wl_list).sum()
+        w, wl = words.pop(0), wl_list.pop(0)
+        line = Line(w, ox, oy, wl)
+        lines.append(line)
+        sum_right -= wl
+        line_bottom = oy + line_height
+        pos_y = oy
+        while sum_right > 0:
+            w, wl = words.pop(0), wl_list.pop(0)
+            sum_right -= wl
+            new_len = line.length + wl + delimiter_len
+            new_r = ox + new_len
+            line_valid = False
+            if new_r < bw:
+                if mask[pos_y: line_bottom, new_r].sum()==0:
+                    line_valid = True
+            if line_valid:
+                line.append_right(w, wl+delimiter_len, delimiter)
+            else:
+                pos_y = line_bottom
+                line_bottom += line_height
+                line = Line(w, ox, pos_y, wl)
+                lines.append(line)
+    return lines
+
 def layout_text(
     mask: np.ndarray, 
     mask_xyxy: List,
-    region_rect: List,
+    centroid: List,
     words: List[str],
     wl_list: List[int],
     delimiter: str,
@@ -209,20 +257,41 @@ def layout_text(
     alignment: int,
     vertical: bool,
     spacing: int = 0,
-    padding: float = 0) -> Tuple[str, List]:
+    padding: float = 0, 
+    max_central_width=np.inf) -> Tuple[str, List]:
 
     num_words = len(words)
     if num_words == 0:
         return []
 
+    centroid_x, centroid_y = centroid
+    center_x = mask_xyxy[0] + centroid_x
+    center_y = mask_xyxy[1] + centroid_y
+    shifted_x, shifted_y = 0, 0
     if abs(angle) > 0:
-        mask = rotate_image(mask, angle)
 
-    lines = layout_lines_with_mask(mask, words, region_rect, wl_list, delimiter_len, line_height, spacing, alignment, vertical, delimiter)
+        old_h, old_w = mask.shape[:2]
+        old_origin = (old_w // 2, old_h // 2)
+        rel_cx, rel_cy = centroid[0] - old_origin[0], centroid[1] - old_origin[1]
+        
+        mask = rotate_image(mask, angle)
+        rad = np.deg2rad(angle)
+        r_sin, r_cos = np.sin(rad), np.cos(rad)
+        new_rel_cy =  -rel_cx * r_sin + rel_cy * r_cos
+        new_rel_cx =  rel_cy * r_sin + rel_cx * r_cos
+
+        shifted_x, shifted_y = new_rel_cx - rel_cx, new_rel_cy - rel_cy
+        
+        new_h, new_w = mask.shape[:2]
+        new_origin = (new_w // 2, new_h // 2)
+        new_cx, new_cy = new_origin[0] + new_rel_cx, new_origin[1] + new_rel_cy
+        centroid = [int(new_cx), int(new_cy)]
+
+    if alignment == 1:
+        lines = layout_lines_aligncenter(mask, words, centroid, wl_list, delimiter_len, line_height, spacing, delimiter, max_central_width)    
+    else:
+        lines = layout_lines_alignleft(mask, words, centroid, wl_list, delimiter_len, line_height, spacing, delimiter)
     
-    region_x, region_y, region_w, region_h = region_rect
-    center_x = mask_xyxy[0] + region_x + region_w // 2
-    center_y = mask_xyxy[1] + region_y + region_h // 2
     
     concated_text = []
     pos_x_lst, pos_right_lst = [], []
@@ -239,7 +308,12 @@ def layout_text(
 
     canvas_h = int(canvas_b - canvas_t)
     canvas_w = int(canvas_r - canvas_l)
-    abs_x = int(round(center_x - canvas_w / 2))
-    abs_y = int(round(center_y - canvas_h / 2))
+
+    if alignment == 1:
+        abs_x = int(round(center_x - canvas_w / 2))
+        abs_y = int(round(center_y - canvas_h / 2))
+    else:
+        abs_x = shifted_x
+        abs_y = shifted_y
 
     return concated_text, [abs_x, abs_y, canvas_w, canvas_h]

@@ -116,16 +116,20 @@ class TextBlock(object):
         norm_h = np.linalg.norm(middle_pnts[:, 1] - middle_pnts[:, 3])
         return norm_v / norm_h
 
-    def center(self):
+    def center(self) -> np.ndarray:
         xyxy = np.array(self.xyxy)
         return (xyxy[:2] + xyxy[2:]) / 2
-    
-    def min_rect(self, rotate_back=True):
+
+    def unrotated_polygons(self) -> np.ndarray:
         angled = self.angle != 0
         center = self.center()
         polygons = self.lines_array().reshape(-1, 8)
         if angled:
             polygons = rotate_polygons(center, polygons, self.angle)
+        return angled, center, polygons
+    
+    def min_rect(self, rotate_back=True) -> List[int]:
+        angled, center, polygons = self.unrotated_polygons()
         min_x = polygons[:, ::2].min()
         min_y = polygons[:, 1::2].min()
         max_x = polygons[:, ::2].max()
@@ -135,8 +139,17 @@ class TextBlock(object):
             min_bbox = rotate_polygons(center, min_bbox, -self.angle)
         return min_bbox.reshape(-1, 4, 2)
 
+    def normalizd_width_list(self) -> List[float]:
+        angled, center, polygons = self.unrotated_polygons()
+        width_list = []
+        for polygon in polygons:
+            width_list.append((polygon[[2, 4]] - polygon[[0, 6]]).sum())
+        width_list = np.array(width_list)
+        width_list = width_list / np.sum(width_list)
+        return width_list.tolist()
+
     # equivalent to qt's boundingRect, ignore angle
-    def bounding_rect(self):
+    def bounding_rect(self) -> List[int]:
         if self._bounding_rect is None:
         # if True:
             min_bbox = self.min_rect(rotate_back=False)[0]
@@ -165,13 +178,6 @@ class TextBlock(object):
         im_h, im_w = img.shape[:2]
         direction = 'v' if self.vertical else 'h'
         src_pts = np.array(self.lines[idx], dtype=np.float64)
-
-        # if self.language == 'eng' or (self.language == 'unknown' and not self.vertical):
-        #     e_size = self.font_size / 3
-        #     src_pts[..., 0] += np.array([-e_size, e_size, e_size, -e_size])
-        #     src_pts[..., 1] += np.array([-e_size, -e_size, e_size, e_size])
-        #     src_pts[..., 0] = np.clip(src_pts[..., 0], 0, im_w)
-        #     src_pts[..., 1] = np.clip(src_pts[..., 1], 0, im_h)
 
         middle_pnt = (src_pts[[1, 2, 3, 0]] + src_pts) / 2
         vec_v = middle_pnt[2] - middle_pnt[0]   # vertical vectors of textlines
@@ -240,10 +246,7 @@ class TextBlock(object):
         lines = self.lines_array()
         if len(lines) == 1:
             return 1
-        angled = self.angle != 0
-        polygons = lines.reshape(-1, 8)
-        if angled:
-            polygons = rotate_polygons((0, 0), polygons, self.angle)
+        angled, center, polygons = self.unrotated_polygons()
         polygons = polygons.reshape(-1, 4, 2)
         
         left_std = np.std(polygons[:, 0, 0])

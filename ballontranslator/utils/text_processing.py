@@ -6,8 +6,9 @@ WIDE_MAP = {i: i + 0xFEE0 for i in range(0x21, 0x7F)}
 WIDE_MAP[0x20] = 0x3000
 FULL2HALF = dict((i + 0xFEE0, i) for i in range(0x21, 0x7F))
 FULL2HALF[0x3000] = 0x20
+FULL2HALF[0x3002] = 0x2E
 
-LOGORAMS = {'简体中文', '繁体中文', '日本語', '한국어'}
+LANGSET_CJK = {'简体中文', '繁体中文', '日本語', '한국어'}
 LANGSET_CH = {'简体中文', '繁体中文'}
 
 PUNSET_RIGHT_ENG = {'.', '?', '!', ':', ';', ')', '}', '\'', "\""}
@@ -124,19 +125,19 @@ def _seg_ch_pkg(text: str) -> List[str]:
                 word_next, tag_next = segments[ii + 1]
                 len_next = len(word_next)
                 next_valid = True
-                if tag_next != 'w':
+                if tag_next != 'w' and word_next != '.':    # somehow pkgseg take '.' as 'n'
                     score_next = PKUSEGSCORES[tag][tag_next]
             
             if ii > 0:
                 word_prev, tag_prev = words[-1], segments[ii - 1][1]
                 len_prev = len(word_prev)
                 prev_valid = True
-                if tag_prev != 'w':
+                if tag_prev != 'w' and word_prev[-1] != '.':
                     score_prev = PKUSEGSCORES[tag_prev][tag]
 
             append_prev, append_next = False, False
 
-            if tag == 'w':  # puntuation
+            if tag == 'w' or word == '.':  # puntuation
                 if word in PUNCTUATION_L:
                     append_next = next_valid
                 elif len_word  <= 1:
@@ -209,17 +210,15 @@ def seg_text(text: str, lang: str) -> Tuple[List, str]:
     delimiter = ''
     if lang in LANGSET_CH:
         words = seg_ch_pkg(text)    
-    elif lang in LOGORAMS:
+    elif lang in LANGSET_CJK:
         words = seg_to_chars(text)
     else:
         words = seg_eng(text)
         delimiter = ' '
     return words, delimiter
 
-def is_logogram(lang: str) -> bool:
-    return lang in LOGORAMS
-
-
+def is_cjk(lang: str) -> bool:
+    return lang in LANGSET_CJK
 
 
 
