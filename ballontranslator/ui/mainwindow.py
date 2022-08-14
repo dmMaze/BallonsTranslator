@@ -7,6 +7,7 @@ from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
+from utils.text_processing import is_cjk, full_len, half_len
 from .misc import ProjImgTrans, ndarray2pixmap, pixmap2ndarray
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -17,7 +18,7 @@ from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
 from .stylewidgets import FrameLessMessageBox
-from .constants import STYLESHEET_PATH, CONFIG_PATH, LANG_SUPPORT_VERTICAL
+from .constants import STYLESHEET_PATH, CONFIG_PATH
 from . import constants
 
 class PageListView(QListWidget):    
@@ -262,6 +263,7 @@ class MainWindow(QMainWindow):
             self.st_manager.canvasUndoStack.clear()
             self.imgtrans_proj.set_current_img(item.text())
             self.canvas.updateCanvas()
+            self.st_manager.hovering_transwidget = None
             self.st_manager.updateSceneTextitems()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
             if self.dl_manager.run_canvas_inpaint:
@@ -470,11 +472,18 @@ class MainWindow(QMainWindow):
         self.pageListCurrentItemChanged()
 
     def on_pagtrans_finished(self, page_index: int):
-        if self.config.dl.translate_target not in LANG_SUPPORT_VERTICAL:
+
+        src_is_cjk = is_cjk(self.config.dl.translate_source)
+        tgt_is_cjk = is_cjk(self.config.dl.translate_target)
+        if tgt_is_cjk:
             for blk in self.imgtrans_proj.get_blklist_byidx(page_index):
                 if blk.vertical:
                     blk._alignment = 1
                 blk.vertical = False
+                if src_is_cjk:
+                    blk.translation = full_len(blk.translation)
+                else:
+                    blk.translation = half_len(blk.translation)
                 
         # override font format if necessary
         override_fnt_size = self.config.let_fntsize_flag == 1
