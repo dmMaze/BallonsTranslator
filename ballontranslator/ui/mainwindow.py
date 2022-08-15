@@ -1,5 +1,6 @@
 import os.path as osp
-import os
+import os, re
+from typing import List
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from qtpy.QtCore import Qt, QPoint, QSize
@@ -8,6 +9,8 @@ from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
+from dl.textdetector import TextBlock
+
 from .misc import ProjImgTrans, ndarray2pixmap, pixmap2ndarray
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -471,19 +474,26 @@ class MainWindow(QMainWindow):
     def on_imgtrans_pipeline_finished(self):
         self.pageListCurrentItemChanged()
 
-    def on_pagtrans_finished(self, page_index: int):
-
+    def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
         src_is_cjk = is_cjk(self.config.dl.translate_source)
         tgt_is_cjk = is_cjk(self.config.dl.translate_target)
         if tgt_is_cjk:
-            for blk in self.imgtrans_proj.get_blklist_byidx(page_index):
-                if blk.vertical:
-                    blk._alignment = 1
-                blk.vertical = False
+            for blk in blk_list:
                 if src_is_cjk:
                     blk.translation = full_len(blk.translation)
                 else:
                     blk.translation = half_len(blk.translation)
+                    blk.translation = re.sub(r'([?.!"])\s+', r'\1', blk.translation)    # remove spaces following punctuations
+        elif src_is_cjk:
+            for blk in blk_list:
+                if blk.vertical:
+                    blk._alignment = 1
+                blk.translation = half_len(blk.translation)
+                blk.vertical = False
+
+    def on_pagtrans_finished(self, page_index: int):
+        blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
+        self.postprocess_translations(blk_list)
                 
         # override font format if necessary
         override_fnt_size = self.config.let_fntsize_flag == 1
@@ -491,7 +501,7 @@ class MainWindow(QMainWindow):
         override_fnt_color = self.config.let_fntcolor_flag == 1
         override_alignment = self.config.let_alignment_flag == 1
         gf = self.textPanel.formatpanel.global_format
-        blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
+        
         for blk in blk_list:
             if override_fnt_size:
                 blk.font_size = gf.size
@@ -511,6 +521,7 @@ class MainWindow(QMainWindow):
             self.imgtrans_proj.set_current_img_byidx(page_index)
             self.canvas.updateCanvas()
             self.st_manager.updateSceneTextitems()
+        
         self.saveCurrentPage(False, False)
         if page_index + 1 == self.imgtrans_proj.num_pages:
             self.st_manager.auto_textlayout_flag = False

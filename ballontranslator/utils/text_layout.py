@@ -54,11 +54,6 @@ def layout_lines_aligncenter(
 
     centroid_x, centroid_y = centroid
 
-    # rbgmsk = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-    # cv2.circle(rbgmsk, (centroid_x, centroid_y), 10, (255, 0, 0))
-    # cv2.imshow('mask', rbgmsk)
-    # cv2.waitKey(0)
-
     # m = cv2.moments(mask)
     mask = 255 - mask
     # centroid_y = int(m['m01'] / m['m00'])
@@ -70,11 +65,11 @@ def layout_lines_aligncenter(
     wlst_left, wlst_right = [], []
     sum_left, sum_right = 0, 0
     if num_words > 1:
-        wl_cumsums = np.cumsum(np.array(wl_list, dtype=np.float64))
-        wl_cumsums -= wl_cumsums[-1] / 2
+        wl_array = np.array(wl_list, dtype=np.float64)
+        wl_cumsums = np.cumsum(wl_array)
+        wl_cumsums = wl_cumsums - wl_cumsums[-1] / 2 - wl_array / 2
         central_index = np.argmin(np.abs(wl_cumsums))
-        if wl_list[central_index] < 0:
-            central_index += 1
+
         if central_index > 0:
             wlst_left = words[:central_index]
             len_left = wl_list[:central_index]
@@ -148,7 +143,7 @@ def layout_lines_aligncenter(
             new_len = line.length + wl + delimiter_len
             new_x = centroid_x - new_len // 2
             right_x = new_x + new_len
-            if new_x <= 0 or right_x >= bw or new_len > max_central_width:
+            if new_x <= 0 or right_x >= bw:
                 line_valid = False
             elif mask[pos_y: line_bottom, new_x].sum() > 0 or\
                 mask[pos_y: line_bottom, right_x].sum() > 0:
@@ -158,7 +153,16 @@ def layout_lines_aligncenter(
             if line_valid:
                 line.append_right(w, wl+delimiter_len, delimiter)
                 line.pos_x = new_x
-            else:
+                if new_len > max_central_width:
+                    line_valid = False
+                    if sum_right > 0:
+                        w, wl = wlst_right.pop(0), len_right.pop(0)
+                        sum_right -= wl
+                    else:
+                        line.strip_spacing()
+                        break
+
+            if not line_valid:
                 pos_x = centroid_x - wl // 2
                 pos_y = line_bottom
                 line_bottom += line_height
@@ -181,7 +185,7 @@ def layout_lines_aligncenter(
             new_len = line.length + wl + delimiter_len
             new_x = centroid_x - new_len // 2
             right_x = new_x + new_len
-            if new_x <= 0 or right_x >= bw or new_len > max_central_width:
+            if new_x <= 0 or right_x >= bw:
                 line_valid = False
             elif mask[pos_y: line_bottom, new_x].sum() > 0 or\
                 mask[pos_y: line_bottom, right_x].sum() > 0:
@@ -191,7 +195,16 @@ def layout_lines_aligncenter(
             if line_valid:
                 line.append_left(w, wl+delimiter_len, delimiter)
                 line.pos_x = new_x
-            else:
+                if new_len > max_central_width:
+                    line_valid = False
+                    if sum_left > 0:
+                        w, wl = wlst_left.pop(-1), len_left.pop(-1)
+                        sum_left -= wl
+                    else:
+                        line.strip_spacing()
+                        break
+
+            if not line_valid :
                 pos_x = centroid_x - wl // 2
                 pos_y -= line_height
                 line_bottom = pos_y + line_height
@@ -199,6 +212,13 @@ def layout_lines_aligncenter(
                 line = Line(w, pos_x, pos_y, wl, spacing)
                 lines.insert(0, line)
 
+    # rbgmsk = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    # cv2.circle(rbgmsk, (centroid_x, centroid_y), 10, (255, 0, 0))
+    # for line in lines:
+    #     cv2.rectangle(rbgmsk, (line.pos_x, line.pos_y), (line.pos_x + line.length, line.pos_y + line_height), (0, 255, 0))
+    # cv2.imshow('mask', rbgmsk)
+    # cv2.waitKey(0)
+    
     return lines
 
 def layout_lines_alignleft(

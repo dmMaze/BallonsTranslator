@@ -4,7 +4,7 @@ import json
 
 HALF2FULL = {i: i + 0xFEE0 for i in range(0x21, 0x7F)}
 HALF2FULL[0x20] = 0x3000
-HALF2FULL[0x2E] = 0x3002
+
 FULL2HALF = dict((i + 0xFEE0, i) for i in range(0x21, 0x7F))
 FULL2HALF[0x3000] = 0x20
 FULL2HALF[0x3002] = 0x2E
@@ -12,9 +12,10 @@ FULL2HALF[0x3002] = 0x2E
 LANGSET_CJK = {'简体中文', '繁体中文', '日本語', '한국어'}
 LANGSET_CH = {'简体中文', '繁体中文'}
 
-PUNSET_RIGHT_ENG = {'.', '?', '!', ':', ';', ')', '}', '\'', "\""}
+PUNSET_RIGHT_ENG = {'.', '?', '!', ':', ';', ')', '}', "\""}
 PUNCTUATION_L = {'「', '『', '【', '《', '〈', '〔', '［', '｛', '（', '(', '[', '{', '“', '‘'}
 
+PKUSEG_PUNCSET = {' ', '.', '　'}
 PKUSEGPATH = r'data/pkusegscores.json'
 PKUSEGSCORES = None
 CHSEG = None
@@ -126,19 +127,19 @@ def _seg_ch_pkg(text: str) -> List[str]:
                 word_next, tag_next = segments[ii + 1]
                 len_next = len(word_next)
                 next_valid = True
-                if tag_next != 'w':
+                if tag_next != 'w' and not word_next in PKUSEG_PUNCSET:
                     score_next = PKUSEGSCORES[tag][tag_next]
             
             if ii > 0:
                 word_prev, tag_prev = words[-1], segments[ii - 1][1]
                 len_prev = len(word_prev)
                 prev_valid = True
-                if tag_prev != 'w':
+                if tag_prev != 'w' and not word_prev[-1] in PKUSEG_PUNCSET:
                     score_prev = PKUSEGSCORES[tag_prev][tag]
 
             append_prev, append_next = False, False
 
-            if tag == 'w' or word == '.':  # puntuation
+            if tag == 'w' or word in PKUSEG_PUNCSET:  # puntuation
                 if word in PUNCTUATION_L:
                     append_next = next_valid
                 elif len_word  <= 1:
@@ -190,7 +191,7 @@ def seg_ch_pkg(text: str):
         CHSEG = pkuseg.pkuseg(postag=True)
 
     # pkuseg won't work with half-width punctuations
-    fullen_text = full_len(text)
+    fullen_text = full_len(text).replace('　', ' ')
     cvt_back = False
     if fullen_text != text:
         cvt_back = True
@@ -203,15 +204,14 @@ def seg_ch_pkg(text: str):
     
     text_list = text.replace('\n', '').replace('　', ' ').split(' ')
     result_list = []
-    for text in text_list:
+    for ii, text in enumerate(text_list):
         words = None
         if text:
             words = _seg_ch_pkg(text)
-        result_list.append(' ')
         if words is not None:
+            if ii > 0:
+                words[0] = ' ' + words[0]
             result_list.extend(words)
-    if len(result_list) > 0:
-        result_list = result_list[1:]
 
     if cvt_back:
         # pkuseg w
@@ -231,6 +231,3 @@ def seg_text(text: str, lang: str) -> Tuple[List, str]:
 
 def is_cjk(lang: str) -> bool:
     return lang in LANGSET_CJK
-
-
-

@@ -204,7 +204,14 @@ class TextBlock(object):
     def get_text(self):
         if isinstance(self.text, str):
             return self.text
-        return ' '.join(self.text).strip()
+        text = ''
+        for t in self.text:
+            if text and t:
+                if text[-1].isalpha() and t[0].isalpha():
+                    text += ' '
+            text += t
+
+        return text.strip()
 
     def set_font_colors(self, frgb, srgb, accumulate=True):
         self.accumulate_color = accumulate
@@ -490,14 +497,15 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
                 continue
             # blk.line_spacing = blk.bounding_rect()[3] / num_lines / blk.font_size
             resize_ratio = 1.1
+            expand_size = max(int(blk.font_size * 0.1), 2)
             rad = np.deg2rad(blk.angle)
             shifted_vec = np.array([[[-1, -1],[1, -1],[1, 1],[-1, 1]]])
-            shifted_vec = shifted_vec * np.array([[[np.sin(rad), np.cos(rad)]]]) * blk.font_size * (resize_ratio - 1)
+            shifted_vec = shifted_vec * np.array([[[np.sin(rad), np.cos(rad)]]]) * expand_size
             lines = blk.lines_array() + shifted_vec
             lines[..., 0] = np.clip(lines[..., 0], 0, im_w-1)
             lines[..., 1] = np.clip(lines[..., 1], 0, im_h-1)
             blk.lines = lines.astype(np.int64).tolist()
-            blk.font_size = int(resize_ratio * blk.font_size)
+            blk.font_size += expand_size
             
     return final_blk_list
 

@@ -467,6 +467,7 @@ class SceneTextManager(QObject):
 
         if self.config.let_uppercase_flag:
             text = text.upper()
+        
         words, delimiter = seg_text(text, self.config.dl.translate_target)
         if len(words) == 0:
             return
@@ -507,8 +508,10 @@ class SceneTextManager(QObject):
                 else:
                     resize_ratio = 1.1
             else:
-                if ballon_area / text_area < 1.8:   # default eng->cjk font_size = 1.1 * detected_size, because detected eng bboxes are a bit small
-                    resize_ratio = 0.9
+                if ballon_area / text_area < 1.5:   # default eng->cjk font_size = 1.1 * detected_size, because detected eng bboxes are a bit small
+                    # print(1.8 * text_area / ballon_area)
+                    resize_ratio = max(ballon_area / 1.5 / text_area, 0.5)
+                    
 
         if resize_ratio != 1:
             new_font_size = blk_font.pointSizeF() * resize_ratio
@@ -540,7 +543,7 @@ class SceneTextManager(QObject):
                 centroid[1] = int(abs_centroid[1] - mask_xyxy[1])
 
         new_text, xywh = layout_text(mask, mask_xyxy, centroid, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, 0, padding, max_central_width)
-        
+
         # font size post adjustment
         post_resize_ratio = 1
         if adaptive_fntsize:

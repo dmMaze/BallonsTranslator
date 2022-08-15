@@ -196,14 +196,19 @@ class ProjImgTrans:
                 self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
         except Exception as e:
             raise ProjectNotSupportedException(e)
+        set_img_failed = False
         if 'current_img' in proj_dict:
             current_img = proj_dict['current_img']
             try:
                 self.set_current_img(current_img)
             except ImgnameNotInProjectException:
-                LOGGER.warning(f'{current_img} not found.')
+                set_img_failed = True
         else:
-            self.set_current_img_byidx(0)
+            set_img_failed = True
+            LOGGER.warning(f'{current_img} not found.')
+        if set_img_failed:
+            if len(self.pages) > 0:
+                self.set_current_img_byidx(0)
 
     def set_current_img(self, imgname: str):
         if imgname is not None:
