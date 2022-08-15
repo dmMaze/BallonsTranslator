@@ -214,7 +214,6 @@ class TranslateThread(ModuleThread):
         num_pages = len(self.imgtrans_proj.pages)
         while not self.pipeline_finished():
             if len(self.pipeline_pagekey_queue) == 0:
-                
                 time.sleep(0.1)
                 continue
             
@@ -235,7 +234,7 @@ class TranslateThread(ModuleThread):
                 return
             self.blockSignals(False)
             self.finished_counter += 1
-            self.progress_changed.emit(self.finished_counter / num_pages * 100)
+            self.progress_changed.emit(self.finished_counter)
 
 
 class ImgtransThread(QThread):
@@ -306,32 +305,32 @@ class ImgtransThread(QThread):
             self.imgtrans_proj.save_mask(imgname, mask)
 
             self.detect_counter += 1
-            self.update_detect_progress.emit(int(self.detect_counter / num_pages * 100))
+            self.update_detect_progress.emit(self.detect_counter)
             self.imgtrans_proj.pages[imgname] = blk_list
 
             if self.dl_config.enable_ocr:
                 self.ocr.ocr_blk_list(img, blk_list)
                 self.ocr_counter += 1
-                self.update_ocr_progress.emit(int(self.ocr_counter * 100 / num_pages))
+                self.update_ocr_progress.emit(self.ocr_counter)
 
                 if self.dl_config.enable_translate:
                     try:
                         if self.translate_mode == 0:
                             self.translator.translate_textblk_lst(blk_list)
                             self.translate_counter += 1
-                            self.update_translate_progress.emit(int(self.translate_counter * 100 / num_pages))
+                            self.update_translate_progress.emit(self.translate_counter)
                         else:
                             self.translate_thread.push_pagekey_queue(imgname)
                     except Exception as e:
                         self.dl_config.enable_translate = False
-                        self.update_translate_progress.emit(100)
+                        self.update_translate_progress.emit(num_pages)
                         self.exception_occurred.emit(self.tr('Translation Failed.'), repr(e))
                         
             if self.dl_config.enable_inpaint:
                 inpainted = self.inpainter.inpaint(img, mask, blk_list)
                 self.inpaint_counter += 1
+                self.update_inpaint_progress.emit(self.inpaint_counter)
                 self.imgtrans_proj.save_inpainted(imgname, inpainted)
-                self.update_inpaint_progress.emit(int(self.inpaint_counter * 100 / num_pages))
         
     def detect_finished(self) -> bool:
         if self.imgtrans_proj is None:
@@ -362,7 +361,7 @@ class ImgtransThread(QThread):
             self.job()
         self.job = None
 
-    def recent_finished_index(self) -> int:
+    def recent_finished_index(self, ref_counter=None) -> int:
         counter = self.detect_counter
         if self.dl_config.enable_ocr:
             counter = min(counter, self.ocr_counter)
@@ -371,8 +370,12 @@ class ImgtransThread(QThread):
                     counter = min(counter, self.translate_counter)
                 else:
                     counter = min(counter, self.translate_thread.finished_counter)
+                    
         if self.dl_config.enable_inpaint:
             counter = min(counter, self.inpaint_counter)
+        
+        if ref_counter is not None:
+            return min(counter, ref_counter) - 1
         return counter - 1
 
 
@@ -541,8 +544,9 @@ class DLManager(QObject):
         self.imgtrans_thread.runImgtransPipeline(self.imgtrans_proj)
 
     def on_update_detect_progress(self, progress: int):
+        ri = self.imgtrans_thread.recent_finished_index(progress)
+        progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateDetectProgress(progress)
-        ri = self.imgtrans_thread.recent_finished_index()
         if ri != self.last_finished_index:
             self.last_finished_index = ri
             self.page_trans_finished.emit(ri)
@@ -550,8 +554,9 @@ class DLManager(QObject):
             self.finishImgtransPipeline()
 
     def on_update_ocr_progress(self, progress: int):
+        ri = self.imgtrans_thread.recent_finished_index(progress)
+        progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateOCRProgress(progress)
-        ri = self.imgtrans_thread.recent_finished_index()
         if ri != self.last_finished_index:
             self.last_finished_index = ri
             self.page_trans_finished.emit(ri)
@@ -559,8 +564,9 @@ class DLManager(QObject):
             self.finishImgtransPipeline()
 
     def on_update_translate_progress(self, progress: int):
+        ri = self.imgtrans_thread.recent_finished_index(progress)
+        progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateTranslateProgress(progress)
-        ri = self.imgtrans_thread.recent_finished_index()
         if ri != self.last_finished_index:
             self.last_finished_index = ri
             self.page_trans_finished.emit(ri)
@@ -568,8 +574,9 @@ class DLManager(QObject):
             self.finishImgtransPipeline()
 
     def on_update_inpaint_progress(self, progress: int):
+        ri = self.imgtrans_thread.recent_finished_index(progress)
+        progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateInpaintProgress(progress)
-        ri = self.imgtrans_thread.recent_finished_index()
         if ri != self.last_finished_index:
             self.last_finished_index = ri
             self.page_trans_finished.emit(ri)
