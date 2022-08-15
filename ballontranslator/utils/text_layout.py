@@ -148,7 +148,7 @@ def layout_lines_aligncenter(
             new_len = line.length + wl + delimiter_len
             new_x = centroid_x - new_len // 2
             right_x = new_x + new_len
-            if new_x <= 0 or right_x >= bw:
+            if new_x <= 0 or right_x >= bw or new_len > max_central_width:
                 line_valid = False
             elif mask[pos_y: line_bottom, new_x].sum() > 0 or\
                 mask[pos_y: line_bottom, right_x].sum() > 0:
@@ -181,7 +181,7 @@ def layout_lines_aligncenter(
             new_len = line.length + wl + delimiter_len
             new_x = centroid_x - new_len // 2
             right_x = new_x + new_len
-            if new_x <= 0 or right_x >= bw:
+            if new_x <= 0 or right_x >= bw or new_len > max_central_width:
                 line_valid = False
             elif mask[pos_y: line_bottom, new_x].sum() > 0 or\
                 mask[pos_y: line_bottom, right_x].sum() > 0:

@@ -2,8 +2,9 @@ from typing import List, Tuple
 from tqdm import tqdm
 import json
 
-WIDE_MAP = {i: i + 0xFEE0 for i in range(0x21, 0x7F)}
-WIDE_MAP[0x20] = 0x3000
+HALF2FULL = {i: i + 0xFEE0 for i in range(0x21, 0x7F)}
+HALF2FULL[0x20] = 0x3000
+HALF2FULL[0x2E] = 0x3002
 FULL2HALF = dict((i + 0xFEE0, i) for i in range(0x21, 0x7F))
 FULL2HALF[0x3000] = 0x20
 FULL2HALF[0x3002] = 0x2E
@@ -23,7 +24,7 @@ def full_len(s: str):
     Convert all ASCII characters to their full-width counterpart.
     https://stackoverflow.com/questions/2422177/python-how-can-i-replace-full-width-characters-with-half-width-characters 
     """
-    return s.translate(WIDE_MAP)
+    return s.translate(HALF2FULL)
 
 def half_len(s):
     '''
@@ -125,14 +126,14 @@ def _seg_ch_pkg(text: str) -> List[str]:
                 word_next, tag_next = segments[ii + 1]
                 len_next = len(word_next)
                 next_valid = True
-                if tag_next != 'w' and word_next != '.':    # somehow pkgseg take '.' as 'n'
+                if tag_next != 'w':
                     score_next = PKUSEGSCORES[tag][tag_next]
             
             if ii > 0:
                 word_prev, tag_prev = words[-1], segments[ii - 1][1]
                 len_prev = len(word_prev)
                 prev_valid = True
-                if tag_prev != 'w' and word_prev[-1] != '.':
+                if tag_prev != 'w':
                     score_prev = PKUSEGSCORES[tag_prev][tag]
 
             append_prev, append_next = False, False
@@ -188,6 +189,13 @@ def seg_ch_pkg(text: str):
         import pkuseg
         CHSEG = pkuseg.pkuseg(postag=True)
 
+    # pkuseg won't work with half-width punctuations
+    fullen_text = full_len(text)
+    cvt_back = False
+    if fullen_text != text:
+        cvt_back = True
+        text = fullen_text
+
     global PKUSEGSCORES
     if PKUSEGSCORES is None:
         with open(PKUSEGPATH, 'r', encoding='utf8') as f:
@@ -204,6 +212,10 @@ def seg_ch_pkg(text: str):
             result_list.extend(words)
     if len(result_list) > 0:
         result_list = result_list[1:]
+
+    if cvt_back:
+        # pkuseg w
+        result_list = [half_len(word) for word in result_list]
     return result_list
 
 def seg_text(text: str, lang: str) -> Tuple[List, str]:

@@ -493,18 +493,22 @@ class SceneTextManager(QObject):
 
         max_central_width = np.inf
         if tgt_is_cjk:
-            if blkitem.blk.text:
-                _, _, brw, brh = blkitem.blk.bounding_rect()
-                br_area = brw * brh
-                if src_is_cjk:
-                    resize_ratio = np.sqrt(region_h * region_w / br_area)
+            if ballon_area / text_area > 2:
+                if blkitem.blk.text:
+                    _, _, brw, brh = blkitem.blk.bounding_rect()
+                    br_area = brw * brh
+                    if src_is_cjk:
+                        resize_ratio = np.sqrt(region_h * region_w / br_area)
+                    else:
+                        resize_ratio = np.clip(max(np.sqrt(br_area / text_area) * 0.8, np.sqrt(ballon_area / text_area ) * 0.7), 1, 1.1)
+                    if len(blkitem.blk) > 1:
+                        normalized_width_list = blkitem.blk.normalizd_width_list()
+                        max_central_width = max(normalized_width_list)
                 else:
-                    resize_ratio = np.clip(max(np.sqrt(br_area / text_area) * 0.8, np.sqrt(ballon_area / text_area ) * 0.7), 1, 1.1)
-                if len(blkitem.blk) > 1:
-                    normalized_width_list = blkitem.blk.normalizd_width_list()
-                    max_central_width = max(normalized_width_list)
+                    resize_ratio = 1.1
             else:
-                resize_ratio = 1.1
+                if ballon_area / text_area < 1.8:   # default eng->cjk font_size = 1.1 * detected_size, because detected eng bboxes are a bit small
+                    resize_ratio = 0.9
 
         if resize_ratio != 1:
             new_font_size = blk_font.pointSizeF() * resize_ratio
@@ -515,7 +519,7 @@ class SceneTextManager(QObject):
             delimiter_len = int(delimiter_len * resize_ratio)
 
         if max_central_width != np.inf:
-            max_central_width = int(max_central_width * text_w)
+            max_central_width = max(int(max_central_width * text_w), 0.8 * region_rect[2])
 
         padding = pt2px(blk_font.pointSize()) + 20   # dummpy padding variable
         if fmt.alignment == 1:
@@ -534,7 +538,6 @@ class SceneTextManager(QObject):
                 abs_centroid = blkitem.blk.lines[0][0]
                 centroid[0] = int(abs_centroid[0] - mask_xyxy[0])
                 centroid[1] = int(abs_centroid[1] - mask_xyxy[1])
-                
 
         new_text, xywh = layout_text(mask, mask_xyxy, centroid, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, 0, padding, max_central_width)
         
