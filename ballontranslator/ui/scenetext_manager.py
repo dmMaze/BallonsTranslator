@@ -522,7 +522,7 @@ class SceneTextManager(QObject):
             delimiter_len = int(delimiter_len * resize_ratio)
 
         if max_central_width != np.inf:
-            max_central_width = max(int(max_central_width * text_w), 0.8 * region_rect[2])
+            max_central_width = max(int(max_central_width * text_w), 0.75 * region_rect[2])
 
         padding = pt2px(blk_font.pointSize()) + 20   # dummpy padding variable
         if fmt.alignment == 1:
