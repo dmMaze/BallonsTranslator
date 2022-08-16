@@ -78,6 +78,7 @@ class Canvas(QGraphicsScene):
     finish_erasing = Signal(StrokeItem)
     delete_textblks = Signal()
     format_textblks = Signal()
+    layout_textblks = Signal()
 
     begin_scale_tool = Signal(QPointF)
     scale_tool = Signal(QPointF)
@@ -401,11 +402,14 @@ class Canvas(QGraphicsScene):
             menu = QMenu()
             delete_act = menu.addAction(self.tr("Delete"))
             format_act = menu.addAction(self.tr("Apply font formatting"))
+            layout_act = menu.addAction(self.tr("Auto layout"))
             rst = menu.exec_(event.screenPos())
             if rst == delete_act:
                 self.delete_textblks.emit()
             elif rst == format_act:
                 self.format_textblks.emit()
+            elif rst == layout_act:
+                self.layout_textblks.emit()
     
     def on_hide_canvas(self):
         self.alt_pressed = False

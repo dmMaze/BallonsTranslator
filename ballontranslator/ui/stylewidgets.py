@@ -1,6 +1,6 @@
 from qtpy.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStylePainter, QStyleOption, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
 from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Signal, QSizeF, QObject, QEvent
-from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument
+from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QColor
 from typing import List, Union, Tuple
 
 from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT

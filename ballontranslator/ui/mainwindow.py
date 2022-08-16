@@ -1,12 +1,16 @@
 import os.path as osp
-import os
-import json
+import os, re
+from typing import List
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from qtpy.QtCore import Qt, QPoint, QSize
 from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
 
 from utils.logger import logger as LOGGER
+from utils.io_utils import json_dump_nested_obj
+from utils.text_processing import is_cjk, full_len, half_len
+from dl.textdetector import TextBlock
+
 from .misc import ProjImgTrans, ndarray2pixmap, pixmap2ndarray
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -17,7 +21,7 @@ from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
 from .stylewidgets import FrameLessMessageBox
-from .constants import STYLESHEET_PATH, CONFIG_PATH, LANG_SUPPORT_VERTICAL
+from .constants import STYLESHEET_PATH, CONFIG_PATH
 from . import constants
 
 class PageListView(QListWidget):    
@@ -32,6 +36,7 @@ class MainWindow(QMainWindow):
     proj_directory = None
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
+    opening_dir = False
     
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -130,18 +135,11 @@ class MainWindow(QMainWindow):
     def setupConfig(self):
         with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
             self.setStyleSheet(f.read())
-        try:
-            with open(CONFIG_PATH, 'r', encoding='utf8') as f:
-                config_dict = json.loads(f.read())
-            self.config.load_from_dict(config_dict)
-        except Exception as e:
-            LOGGER.exception(e)
-            LOGGER.warning("Failed to load config file, using default config")
 
         self.bottomBar.originalSlider.setValue(self.config.original_transparency * 100)
         self.drawingPanel.maskTransperancySlider.setValue(self.config.mask_transparency * 100)
-        self.leftBar.updateRecentProjList(self.config.recent_proj_list)
-        self.leftBar.recent_proj_list = self.config.recent_proj_list
+        self.leftBar.initRecentProjMenu(self.config.recent_proj_list)
+        self.leftBar.save_config.connect(self.save_config)
         self.leftBar.imgTransChecker.setChecked(True)
         self.st_manager.formatpanel.global_format = self.config.global_fontformat
         self.st_manager.formatpanel.set_active_format(self.config.global_fontformat)
@@ -153,7 +151,7 @@ class MainWindow(QMainWindow):
         self.bottomBar.ocrChecker.setCheckState(self.config.dl.enable_ocr)
         self.bottomBar.transChecker.setChecked(self.config.dl.enable_translate)
 
-        self.dl_manager = dl_manager = DLManager(self.config.dl, self.imgtrans_proj, self.configPanel)
+        self.dl_manager = dl_manager = DLManager(self.config, self.imgtrans_proj, self.configPanel)
         dl_manager.update_translator_status.connect(self.updateTranslatorStatus)
         dl_manager.update_inpainter_status.connect(self.updateInpainterStatus)
         dl_manager.finish_translate_page.connect(self.finishTranslatePage)
@@ -170,12 +168,19 @@ class MainWindow(QMainWindow):
         self.drawingPanel.set_config(self.config.drawpanel)
         self.drawingPanel.initDLModule(dl_manager)
 
+        self.st_manager.config = self.config
+
+        self.configPanel.blockSignals(True)
         if self.config.open_recent_on_startup:
             self.configPanel.open_on_startup_checker.setChecked(True)
-
         self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
         self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
         self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)
+        self.configPanel.let_alignment_combox.setCurrentIndex(self.config.let_alignment_flag)
+        self.configPanel.let_autolayout_checker.setChecked(self.config.let_autolayout_flag)
+        self.configPanel.let_uppercase_checker.setChecked(self.config.let_uppercase_flag)
+        self.configPanel.save_config.connect(self.save_config)
+        self.configPanel.blockSignals(False)
 
         textblock_mode = self.config.imgtrans_textblock
         if self.config.imgtrans_textedit:
@@ -194,9 +199,12 @@ class MainWindow(QMainWindow):
         self.centralStackWidget.setCurrentIndex(1)
 
     def openDir(self, directory: str):
+        self.opening_dir = True
         try:
+            self.st_manager.clearSceneTextitems()
             self.imgtrans_proj.load(directory)
         except Exception as e:
+            self.opening_dir = False
             LOGGER.exception(e)
             LOGGER.warning("Failed to load project from " + directory)
             self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + directory, '')
@@ -204,6 +212,7 @@ class MainWindow(QMainWindow):
         self.proj_directory = directory
         self.titleBar.setTitleContent(osp.basename(directory))
         self.updatePageList()
+        self.opening_dir = False
         
     def updatePageList(self):
         if self.pageList.count() != 0:
@@ -229,17 +238,19 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         self.canvas.disconnect()
         self.canvas.undoStack.disconnect()
+        self.save_config()
+        if not self.imgtrans_proj.is_empty:
+            self.imgtrans_proj.save()
+        return super().closeEvent(event)
+
+    def save_config(self):
         self.config.imgtrans_paintmode = self.bottomBar.paintChecker.isChecked()
         self.config.imgtrans_textedit = self.bottomBar.texteditChecker.isChecked()
         self.config.mask_transparency = self.canvas.mask_transparency
         self.config.original_transparency = self.canvas.original_transparency
         self.config.drawpanel = self.drawingPanel.get_config()
-        config_dict = self.config.to_dict()
         with open(CONFIG_PATH, 'w', encoding='utf8') as f:
-            f.write(json.dumps(config_dict, ensure_ascii=False, indent=4, separators=(',', ':')))
-        if not self.imgtrans_proj.is_empty:
-            self.imgtrans_proj.save()
-        return super().closeEvent(event)
+            f.write(json_dump_nested_obj(self.config))
 
     def onHideCanvas(self):
         self.pageList.hide()
@@ -250,12 +261,13 @@ class MainWindow(QMainWindow):
         item = self.pageList.currentItem()
         if item is not None:
             if self.save_on_page_changed:
-                if self.canvas.projstate_unsaved:
+                if self.canvas.projstate_unsaved and not self.opening_dir:
                     self.saveCurrentPage()
             self.st_manager.canvasUndoStack.clear()
             self.imgtrans_proj.set_current_img(item.text())
             self.canvas.updateCanvas()
-            self.st_manager.updateTextList()
+            self.st_manager.hovering_transwidget = None
+            self.st_manager.updateSceneTextitems()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
             if self.dl_manager.run_canvas_inpaint:
                 self.dl_manager.inpaint_thread.terminate()
@@ -462,33 +474,57 @@ class MainWindow(QMainWindow):
     def on_imgtrans_pipeline_finished(self):
         self.pageListCurrentItemChanged()
 
+    def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
+        src_is_cjk = is_cjk(self.config.dl.translate_source)
+        tgt_is_cjk = is_cjk(self.config.dl.translate_target)
+        if tgt_is_cjk:
+            for blk in blk_list:
+                if src_is_cjk:
+                    blk.translation = full_len(blk.translation)
+                else:
+                    blk.translation = half_len(blk.translation)
+                    blk.translation = re.sub(r'([?.!"])\s+', r'\1', blk.translation)    # remove spaces following punctuations
+        elif src_is_cjk:
+            for blk in blk_list:
+                if blk.vertical:
+                    blk._alignment = 1
+                blk.translation = half_len(blk.translation)
+                blk.vertical = False
+
     def on_pagtrans_finished(self, page_index: int):
-        
+        blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
+        self.postprocess_translations(blk_list)
+                
         # override font format if necessary
         override_fnt_size = self.config.let_fntsize_flag == 1
         override_fnt_stroke = self.config.let_fntstroke_flag == 1
-        override_fnt_color = self.config.let_fntcolor_flag
-        if override_fnt_size or override_fnt_stroke:
-            gf = self.textPanel.formatpanel.global_format
-            blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
-            for blk in blk_list:
-                if override_fnt_size:
-                    blk.font_size = gf.size
-                if override_fnt_stroke:
-                    blk.default_stroke_width = gf.stroke_width
-                if override_fnt_color:
-                    blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
+        override_fnt_color = self.config.let_fntcolor_flag == 1
+        override_alignment = self.config.let_alignment_flag == 1
+        gf = self.textPanel.formatpanel.global_format
+        
+        for blk in blk_list:
+            if override_fnt_size:
+                blk.font_size = gf.size
+            if override_fnt_stroke:
+                blk.default_stroke_width = gf.stroke_width
+            if override_fnt_color:
+                blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
+            if override_alignment:
+                blk._alignment = gf.alignment
+            blk.line_spacing = gf.line_spacing
 
-        if self.config.dl.translate_target not in LANG_SUPPORT_VERTICAL:
-            for blk in self.imgtrans_proj.get_blklist_byidx(page_index):
-                blk.vertical = False
-        if page_index != 0:
+        self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
+        
+        if page_index != self.pageList.currentIndex().row():
             self.pageList.setCurrentRow(page_index)
         else:
-            self.imgtrans_proj.set_current_img_byidx(0)
+            self.imgtrans_proj.set_current_img_byidx(page_index)
             self.canvas.updateCanvas()
-            self.st_manager.updateTextList()
+            self.st_manager.updateSceneTextitems()
+        
         self.saveCurrentPage(False, False)
+        if page_index + 1 == self.imgtrans_proj.num_pages:
+            self.st_manager.auto_textlayout_flag = False
 
     def on_savestate_changed(self, unsaved: bool):
         save_state = self.tr('unsaved') if unsaved else self.tr('saved')

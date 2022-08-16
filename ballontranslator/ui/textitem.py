@@ -57,8 +57,7 @@ class TextBlkItem(QGraphicsTextItem):
     def documentContentChanged(self):
         if self.hasFocus():   
             self.content_changed.emit(self)
-        sw = self.stroke_width * self.document().defaultFont().pointSizeF()
-        if sw != 0 and not self.repainting:
+        if self.stroke_width != 0 and not self.repainting:
             self.repaint_background()
         self.update()
 
@@ -66,7 +65,8 @@ class TextBlkItem(QGraphicsTextItem):
         
         self.repainting = True
         doc = self.document()
-        sw = self.stroke_width * doc.defaultFont().pointSizeF()
+        
+        sw = self.stroke_width * pt2px(self.document().defaultFont().pointSizeF())
         format = QTextCharFormat()
         format.setTextOutline (QPen(self.stroke_color, sw, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         cursor = QTextCursor(doc)
@@ -133,7 +133,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.reshaped.emit(self)
         self.reshaping = False
 
-    def setRect(self, rect: QRectF) -> None:
+    def setRect(self, rect: Union[List, QRectF]) -> None:
         if isinstance(rect, List):
             rect = QRectF(*rect)
         
@@ -158,6 +158,22 @@ class TextBlkItem(QGraphicsTextItem):
             br.setHeight(max(self._display_rect.height(), size.height()))
             br.setWidth(max(self._display_rect.width(), size.width()))
         return br
+
+    def absBoundingRect(self, max_h=None, max_w=None) -> List:
+        br = self.boundingRect()
+        w, h = br.width(), br.height()
+        sc = self.sceneBoundingRect().center()
+        x = sc.x() / self.scale() - w / 2
+        y = sc.y() / self.scale() - h / 2
+        if max_h is not None:
+            y = min(max(0, y), max_h)
+            y1 = y + h
+            h = min(max_h, y1) - y
+        if max_w is not None:
+            x = min(max(0, x), max_w)
+            x1 = x + w
+            w = min(max_w, x1) - x
+        return [x, y, w, h]
 
     def shape(self) -> QPainterPath:
         path = QPainterPath()
@@ -267,7 +283,8 @@ class TextBlkItem(QGraphicsTextItem):
             self.repaint_background()
         else:
             self.background_pixmap = None
-        sw = self.stroke_width * self.document().defaultFont().pointSizeF()
+        
+        sw = self.stroke_width * pt2px(self.document().defaultFont().pointSizeF())
         # self.document().setDocumentMargin(sw/2)
         self.documentLayout().updateDocumentMargin(sw/2)
         self.on_document_enlarged()
@@ -532,3 +549,17 @@ class TextBlkItem(QGraphicsTextItem):
         if self.background_pixmap is not None:
             self.repaint_background()
         self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+
+    def get_char_fmts(self) -> List[QTextCharFormat]:
+        cursor = self.textCursor()
+        
+        cursor.movePosition(QTextCursor.Start)
+        char_fmts = []
+        while True:
+            
+            cursor.movePosition(QTextCursor.NextCharacter)
+            cursor.clearSelection()
+            char_fmts.append(cursor.charFormat())
+            if cursor.atEnd():
+                break
+        return char_fmts

@@ -3,8 +3,9 @@ import numpy as np
 from shapely.geometry import Polygon
 import math
 import copy
-from utils.imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons
 import cv2
+
+from utils.imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
@@ -34,14 +35,14 @@ class TextBlock(object):
                        bold: bool = False,
                        underline: bool = False,
                        italic: bool = False,
-                       alignment: int = -1,
+                       _alignment: int = -1,
                        alpha: float = 255,
                        rich_text: str = "",
                        _bounding_rect: List = None,
                        accumulate_color = True,
                        default_stroke_width = 0.2,
                        font_weight = 50, 
-                       target_lang: str = "",
+                       _target_lang: str = "",
                        **kwargs) -> None:
         self.xyxy = [int(num) for num in xyxy]                    # boundingbox of textblock
         self.lines = [] if lines is None else lines     # polygons of textlines
@@ -77,9 +78,8 @@ class TextBlock(object):
         self.alpha = alpha
         self.rich_text = rich_text
         self.line_spacing = line_spacing
-        # self.alignment = alignment
-        self._alignment = alignment
-        self._target_lang = target_lang
+        self._alignment = _alignment
+        self._target_lang = _target_lang
 
         self._bounding_rect = _bounding_rect
         self.default_stroke_width = default_stroke_width
@@ -116,16 +116,20 @@ class TextBlock(object):
         norm_h = np.linalg.norm(middle_pnts[:, 1] - middle_pnts[:, 3])
         return norm_v / norm_h
 
-    def center(self):
+    def center(self) -> np.ndarray:
         xyxy = np.array(self.xyxy)
         return (xyxy[:2] + xyxy[2:]) / 2
-    
-    def min_rect(self, rotate_back=True):
+
+    def unrotated_polygons(self) -> np.ndarray:
         angled = self.angle != 0
         center = self.center()
         polygons = self.lines_array().reshape(-1, 8)
         if angled:
             polygons = rotate_polygons(center, polygons, self.angle)
+        return angled, center, polygons
+    
+    def min_rect(self, rotate_back=True) -> List[int]:
+        angled, center, polygons = self.unrotated_polygons()
         min_x = polygons[:, ::2].min()
         min_y = polygons[:, 1::2].min()
         max_x = polygons[:, ::2].max()
@@ -135,8 +139,17 @@ class TextBlock(object):
             min_bbox = rotate_polygons(center, min_bbox, -self.angle)
         return min_bbox.reshape(-1, 4, 2)
 
+    def normalizd_width_list(self) -> List[float]:
+        angled, center, polygons = self.unrotated_polygons()
+        width_list = []
+        for polygon in polygons:
+            width_list.append((polygon[[2, 4]] - polygon[[0, 6]]).sum())
+        width_list = np.array(width_list)
+        width_list = width_list / np.sum(width_list)
+        return width_list.tolist()
+
     # equivalent to qt's boundingRect, ignore angle
-    def bounding_rect(self):
+    def bounding_rect(self) -> List[int]:
         if self._bounding_rect is None:
         # if True:
             min_bbox = self.min_rect(rotate_back=False)[0]
@@ -166,13 +179,6 @@ class TextBlock(object):
         direction = 'v' if self.vertical else 'h'
         src_pts = np.array(self.lines[idx], dtype=np.float64)
 
-        if self.language == 'eng' or (self.language == 'unknown' and not self.vertical):
-            e_size = self.font_size / 3
-            src_pts[..., 0] += np.array([-e_size, e_size, e_size, -e_size])
-            src_pts[..., 1] += np.array([-e_size, -e_size, e_size, e_size])
-            src_pts[..., 0] = np.clip(src_pts[..., 0], 0, im_w)
-            src_pts[..., 1] = np.clip(src_pts[..., 1], 0, im_h)
-
         middle_pnt = (src_pts[[1, 2, 3, 0]] + src_pts) / 2
         vec_v = middle_pnt[2] - middle_pnt[0]   # vertical vectors of textlines
         vec_h = middle_pnt[1] - middle_pnt[3]   # horizontal vectors of textlines
@@ -198,7 +204,14 @@ class TextBlock(object):
     def get_text(self):
         if isinstance(self.text, str):
             return self.text
-        return ' '.join(self.text).strip()
+        text = ''
+        for t in self.text:
+            if text and t:
+                if text[-1].isalpha() and t[0].isalpha():
+                    text += ' '
+            text += t
+
+        return text.strip()
 
     def set_font_colors(self, frgb, srgb, accumulate=True):
         self.accumulate_color = accumulate
@@ -239,11 +252,8 @@ class TextBlock(object):
             return 0
         lines = self.lines_array()
         if len(lines) == 1:
-            return 0
-        angled = self.angle != 0
-        polygons = lines.reshape(-1, 8)
-        if angled:
-            polygons = rotate_polygons((0, 0), polygons, self.angle)
+            return 1
+        angled, center, polygons = self.unrotated_polygons()
         polygons = polygons.reshape(-1, 4, 2)
         
         left_std = np.std(polygons[:, 0, 0])
@@ -259,10 +269,8 @@ class TextBlock(object):
 
     @property
     def stroke_width(self):
-        var = np.array([self.fg_r, self.fg_g, self.fg_b]) \
-            - np.array([self.bg_r, self.bg_g, self.bg_b])
-        var = np.abs(var).sum()
-        if var > 40:
+        diff = color_difference(*self.get_font_colors())
+        if diff > 15:
             return self.default_stroke_width
         return 0
 
@@ -331,6 +339,8 @@ def examine_textblk(blk: TextBlock, im_w: int, im_h: int, eval_orientation: bool
     blk.angle = rotation_angle
     if vertical:
         blk.angle -= 90
+    if abs(blk.angle) < 3:
+        blk.angle = 0
     blk.font_size = font_size
     if eval_orientation:
         blk.vertical = vertical
@@ -479,6 +489,24 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
     final_blk_list += merge_textlines(scattered_lines['ver'])
     if sort_blklist:
         final_blk_list = sort_textblk_list(final_blk_list, im_w, im_h)
+
+    for blk in final_blk_list:
+        if blk.language == 'eng':
+            num_lines = len(blk.lines)
+            if num_lines == 0:
+                continue
+            # blk.line_spacing = blk.bounding_rect()[3] / num_lines / blk.font_size
+            resize_ratio = 1.1
+            expand_size = max(int(blk.font_size * 0.1), 2)
+            rad = np.deg2rad(blk.angle)
+            shifted_vec = np.array([[[-1, -1],[1, -1],[1, 1],[-1, 1]]])
+            shifted_vec = shifted_vec * np.array([[[np.sin(rad), np.cos(rad)]]]) * expand_size
+            lines = blk.lines_array() + shifted_vec
+            lines[..., 0] = np.clip(lines[..., 0], 0, im_w-1)
+            lines[..., 1] = np.clip(lines[..., 1], 0, im_h-1)
+            blk.lines = lines.astype(np.int64).tolist()
+            blk.font_size += expand_size
+            
     return final_blk_list
 
 def visualize_textblocks(canvas, blk_list:  List[TextBlock]):

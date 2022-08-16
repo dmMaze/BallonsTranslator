@@ -21,13 +21,6 @@ CONFIG_COMBOBOX_LONG = 700
 LDPI = 96.
 DPI = 188.75
 
-LANG_SUPPORT_VERTICAL = [
-    '简体中文',
-    '繁體中文',
-    '日本語',
-    '한국어'
-]
-
 DEFAULT_FONT_FAMILY = 'Arial'
 
 WINDOW_BORDER_WIDTH = 4

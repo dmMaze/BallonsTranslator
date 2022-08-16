@@ -1,11 +1,11 @@
 
-from typing import List, Union
+from typing import List, Union, Tuple
 import numpy as np
+import time, cv2
 
 from qtpy.QtWidgets import QApplication
 from qtpy.QtCore import QObject, QRectF, Qt
-from qtpy.QtGui import QTextCursor
-
+from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -15,8 +15,12 @@ from .imgtranspanel import TransPairWidget
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
 from .imgtranspanel import TextPanel, TransTextEdit
-from .misc import FontFormat
+from .fontformatpanel import set_textblk_fontsize
+from .misc import FontFormat, ProgramConfig, pt2px
 
+from utils.imgproc_utils import extract_ballon_region
+from utils.text_processing import seg_text, is_cjk
+from utils.text_layout import layout_text
 
 class MoveBlkItemsCommand(QUndoCommand):
     def __init__(self, items: List[TextBlkItem], parent=None):
@@ -25,6 +29,14 @@ class MoveBlkItemsCommand(QUndoCommand):
         self.old_pos_lst = []
         self.new_pos_lst = []
         for item in items:
+            # color1 = np.array([item.blk.bg_r, item.blk.bg_g, item.blk.bg_b], dtype=np.uint8).reshape(1, 1, 3)
+            # color2 = np.array([item.blk.fg_r, item.blk.fg_g, item.blk.fg_b], dtype=np.uint8).reshape(1, 1, 3)
+            # import cv2
+            # diff = cv2.cvtColor(color1, cv2.COLOR_RGB2LAB).astype(np.float64) - cv2.cvtColor(color2, cv2.COLOR_RGB2LAB).astype(np.float64)
+            # diff[..., 0] *= 0.392
+            # diff = np.linalg.norm(diff, axis=2)
+            # print(diff, color1, color2)
+
             self.old_pos_lst.append(item.oldPos)
             self.new_pos_lst.append(item.pos())
             item.oldPos = item.pos()
@@ -198,6 +210,7 @@ class SceneTextManager(QObject):
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
         self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
         self.canvas.format_textblks.connect(self.onFormatTextblks)
+        self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvasUndoStack = self.canvas.undoStack
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
@@ -210,13 +223,16 @@ class SceneTextManager(QObject):
         self.textblk_item_list: List[TextBlkItem] = []
         self.pairwidget_list: List[TransPairWidget] = []
 
-        self.editing = False
+        self.editing_flag = False
+        self.auto_textlayout_flag = False
         self.hovering_transwidget : TransTextEdit = None
 
         self.prev_blkitem: TextBlkItem = None
 
+        self.config: ProgramConfig = None
+
     def setTextEditMode(self, edit: bool = False):
-        self.editing = edit
+        self.editing_flag = edit
         if edit:
             self.textpanel.show()
             for blk_item in self.textblk_item_list:
@@ -236,7 +252,7 @@ class SceneTextManager(QObject):
             blk_item.setPos(blk_item.pos() + rel_pos - blk_item.scenePos())
         self.txtblkShapeControl.updateBoundingRect()
 
-    def clearTextList(self):
+    def clearSceneTextitems(self):
         self.txtblkShapeControl.setBlkItem(None)
         for blkitem in self.textblk_item_list:
             self.canvas.removeItem(blkitem)
@@ -245,22 +261,31 @@ class SceneTextManager(QObject):
             self.textEditList.removeWidget(textwidget)
         self.pairwidget_list.clear()
 
-    def updateTextList(self):
+    def updateSceneTextitems(self):
         self.txtblkShapeControl.setBlkItem(None)
-        self.clearTextList()
+        self.clearSceneTextitems()
         for textblock in self.imgtrans_proj.current_block_list():
             if textblock.font_family is None or textblock.font_family.strip() == '':
                 textblock.font_family = self.formatpanel.familybox.currentText()
             blk_item = self.addTextBlock(textblock)
-            if not self.editing:
+            if not self.editing_flag:
                 blk_item.hide()
+        if self.auto_textlayout_flag:
+            self.updateTextBlkList()
 
     def addTextBlock(self, blk: Union[TextBlock, TextBlkItem] = None) -> TextBlkItem:
         if isinstance(blk, TextBlkItem):
             blk_item = blk
             blk_item.idx = len(self.textblk_item_list)
         else:
+            translation = ''
+            if self.auto_textlayout_flag:
+                translation = blk.translation
+                blk.translation = ''
             blk_item = TextBlkItem(blk, len(self.textblk_item_list), show_rect=self.canvas.textblock_mode)
+            if translation:
+                blk.translation = translation
+                self.layout_textblk(blk_item, text=translation)
         self.addTextBlkItem(blk_item)
         rel_pos = blk_item.scenePos() * self.canvas.scale_factor
         blk_item.setScale(self.canvas.scale_factor)
@@ -405,6 +430,189 @@ class SceneTextManager(QObject):
     def onFormatTextblks(self):
         self.apply_fontformat(self.formatpanel.global_format)
 
+    def onAutoLayoutTextblks(self):
+        selected_blks = self.get_selected_blkitems()
+        for blkitem in selected_blks:
+            self.layout_textblk(blkitem)
+
+    def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
+        
+        img = self.imgtrans_proj.img_array
+        if img is None:
+            return
+
+        blk_font = blkitem.font()
+        fmt = blkitem.get_fontformat()
+        text_size_func = lambda text: get_text_size(QFontMetrics(blk_font), text)
+
+        src_is_cjk = is_cjk(self.config.dl.translate_source)
+        tgt_is_cjk = is_cjk(self.config.dl.translate_target)
+
+        if mask is None:
+            bounding_rect = blkitem.absBoundingRect()
+            if tgt_is_cjk:
+                max_enlarge_ratio = 2.5
+            else:
+                max_enlarge_ratio = 3
+            enlarge_ratio = min(max(bounding_rect[2] / bounding_rect[3], bounding_rect[3] / bounding_rect[2]) * 1.5, max_enlarge_ratio)
+            mask, ballon_area, mask_xyxy, region_rect = extract_ballon_region(img, bounding_rect, enlarge_ratio=enlarge_ratio, cal_region_rect=True)
+        else:
+            mask_xyxy = [bounding_rect[0], bounding_rect[1], bounding_rect[0]+bounding_rect[2], bounding_rect[1]+bounding_rect[3]]
+        region_x, region_y, region_w, region_h = region_rect
+
+        restore_charfmts = False
+        if text is None:
+            text = blkitem.toPlainText()
+            restore_charfmts = True
+
+        if self.config.let_uppercase_flag:
+            text = text.upper()
+        
+        words, delimiter = seg_text(text, self.config.dl.translate_target)
+        if len(words) == 0:
+            return
+
+        wl_list = get_words_length_list(QFontMetrics(blk_font), words)
+        text_w, text_h = text_size_func(text)
+        text_area = text_w * text_h
+        line_height = int(round(fmt.line_spacing * text_h))
+        delimiter_len = text_size_func(delimiter)[0]
+ 
+        adaptive_fntsize = False
+        if self.auto_textlayout_flag and self.config.let_fntsize_flag == 0:
+            if not tgt_is_cjk:
+                adaptive_fntsize = True
+            
+        resize_ratio = 1
+        if adaptive_fntsize:
+            area_ratio = ballon_area / text_area
+            ballon_area_thresh = 1.7
+            downscale_constraint = 0.6
+            # downscale the font size if textarea exceeds the balloon_area / ballon_area_thresh
+            # or the longest word exceeds the region_width
+            resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, max(wl_list) / region_rect[2], blkitem.blk.font_size / line_height), downscale_constraint, 1.0) 
+
+        max_central_width = np.inf
+        if tgt_is_cjk:
+            if ballon_area / text_area > 2:
+                if blkitem.blk.text:
+                    _, _, brw, brh = blkitem.blk.bounding_rect()
+                    br_area = brw * brh
+                    if src_is_cjk:
+                        resize_ratio = np.sqrt(region_h * region_w / br_area)
+                    else:
+                        resize_ratio = np.clip(max(np.sqrt(br_area / text_area) * 0.8, np.sqrt(ballon_area / text_area ) * 0.7), 1, 1.1)
+                    if len(blkitem.blk) > 1:
+                        normalized_width_list = blkitem.blk.normalizd_width_list()
+                        max_central_width = max(normalized_width_list)
+                else:
+                    resize_ratio = 1.1
+            else:
+                if ballon_area / text_area < 1.5:   # default eng->cjk font_size = 1.1 * detected_size, because detected eng bboxes are a bit small
+                    # print(1.8 * text_area / ballon_area)
+                    resize_ratio = max(ballon_area / 1.5 / text_area, 0.5)
+                    
+
+        if resize_ratio != 1:
+            new_font_size = blk_font.pointSizeF() * resize_ratio
+            blk_font.setPointSizeF(new_font_size)
+            wl_list = (np.array(wl_list, np.float64) * resize_ratio).astype(np.int32).tolist()
+            line_height = int(line_height * resize_ratio)
+            text_w = int(text_w * resize_ratio)
+            delimiter_len = int(delimiter_len * resize_ratio)
+
+        if max_central_width != np.inf:
+            max_central_width = max(int(max_central_width * text_w), 0.75 * region_rect[2])
+
+        padding = pt2px(blk_font.pointSize()) + 20   # dummpy padding variable
+        if fmt.alignment == 1:
+            if len(blkitem.blk) > 0:
+                centroid = blkitem.blk.center().astype(np.int64).tolist()
+                centroid[0] -= mask_xyxy[0]
+                centroid[1] -= mask_xyxy[1]
+            else:
+                centroid = [bounding_rect[2] // 2, bounding_rect[3] // 2]
+        else:
+            max_central_width = np.inf
+            centroid = [0, 0]
+            abs_centroid = [bounding_rect[0], bounding_rect[1]]
+            if len(blkitem.blk) > 0:
+                blkitem.blk.lines[0]
+                abs_centroid = blkitem.blk.lines[0][0]
+                centroid[0] = int(abs_centroid[0] - mask_xyxy[0])
+                centroid[1] = int(abs_centroid[1] - mask_xyxy[1])
+
+        new_text, xywh = layout_text(mask, mask_xyxy, centroid, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, 0, padding, max_central_width)
+
+        # font size post adjustment
+        post_resize_ratio = 1
+        if adaptive_fntsize:
+            downscale_constraint = 0.5
+            w = xywh[2] - padding * 2
+            post_resize_ratio = np.clip(max(region_rect[2] / w, downscale_constraint), 0, 1)
+            resize_ratio *= post_resize_ratio
+
+        if tgt_is_cjk:
+            resize_ratio = 1
+            post_resize_ratio = 1 / resize_ratio
+
+        if post_resize_ratio != 1:
+            cx, cy = xywh[0] + xywh[2] / 2, xywh[1] + xywh[3] / 2
+            w, h = xywh[2] * post_resize_ratio, xywh[3] * post_resize_ratio
+            xywh = [int(cx - w / 2), int(cy - h / 2), int(w), int(h)]
+
+        if resize_ratio != 1:
+            new_font_size = blkitem.font().pointSizeF() * resize_ratio
+            blkitem.textCursor().clearSelection()
+            set_textblk_fontsize(blkitem, new_font_size)
+
+
+        scale = blkitem.scale()
+        if scale != 1 and not fmt.alignment == 0:
+            xywh = (np.array(xywh, np.float64) * scale).astype(np.int32).tolist()
+
+        if fmt.alignment == 0:
+            x_shift = (scale - 1) * xywh[2] // 2 + xywh[0] * scale
+            y_shift = (scale - 1) * xywh[3] // 2 + xywh[1] * scale
+            xywh[0] = int(abs_centroid[0] * scale) + x_shift
+            xywh[1] = int(abs_centroid[1] * scale)  + y_shift
+
+        if restore_charfmts:
+            char_fmts = blkitem.get_char_fmts()        
+        blkitem.setPlainText('')
+        blkitem.setRect(xywh)
+        blkitem.setPlainText(new_text)
+        
+        if restore_charfmts:
+            self.restore_charfmts(blkitem, text, new_text, char_fmts)
+    
+    def restore_charfmts(self, blkitem: TextBlkItem, text: str, new_text: str, char_fmts: List[QTextCharFormat]):
+        cursor = blkitem.textCursor()
+        cpos = 0
+        num_text = len(new_text)
+        num_fmt = len(char_fmts)
+        for fmt_i in range(num_fmt):
+            fmt = char_fmts[fmt_i]
+            ori_char = text[fmt_i].strip()
+            if ori_char == '':
+                continue
+            else:
+                if cursor.atEnd():   
+                    break
+                matched = False
+                while cpos < num_text:
+                    if new_text[cpos] == ori_char:
+                        matched = True
+                        break
+                    cpos += 1
+                if matched:
+                    cursor.clearSelection()
+                    cursor.setPosition(cpos)
+                    cursor.setPosition(cpos+1, QTextCursor.KeepAnchor)
+                    cursor.setCharFormat(fmt)
+                    cpos += 1
+
+
     def onEndCreateTextBlock(self, rect: QRectF):
         scale_f = self.canvas.scale_factor
         if rect.width() > 1 and rect.height() > 1:
@@ -471,13 +679,7 @@ class SceneTextManager(QObject):
                 blk_item.blk.rich_text = ''
                 blk_item.blk.translation = ''
             blk_item.blk.text = [trans_pair.e_source.toPlainText()]
-            br = blk_item.boundingRect()
-            w, h = br.width(), br.height()
-            sc = blk_item.sceneBoundingRect().center()
-            x = sc.x() / blk_item.scale() - w / 2
-            y = sc.y() / blk_item.scale() - h / 2
-            xywh = [x, y, w, h]
-            blk_item.blk._bounding_rect = xywh
+            blk_item.blk._bounding_rect = blk_item.absBoundingRect()
             blk_item.updateBlkFormat()
             cbl.append(blk_item.blk)
 
@@ -498,3 +700,11 @@ class SceneTextManager(QObject):
         for blk_item in blk_items:
             blk_item.setSelected(selected)
 
+
+def get_text_size(fm: QFontMetrics, text: str) -> Tuple[int, int]:
+    brt = fm.tightBoundingRect(text)
+    br = fm.boundingRect(text)
+    return br.width(), brt.height()
+    
+def get_words_length_list(fm: QFontMetrics, words: List[str]) -> List[int]:
+    return [fm.tightBoundingRect(word).width() for word in words]

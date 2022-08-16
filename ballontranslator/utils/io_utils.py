@@ -8,6 +8,12 @@ NP_BOOL_TYPES = (np.bool_, np.bool8)
 NP_FLOAT_TYPES = (np.float_, np.float16, np.float32, np.float64)
 NP_INT_TYPES = (np.int_, np.int8, np.int16, np.int32, np.int64, np.uint, np.uint8, np.uint16, np.uint32, np.uint64)
 
+def to_dict(obj):
+    return json.loads(json.dumps(obj, default=lambda o: o.__dict__, ensure_ascii=False))
+
+def json_dump_nested_obj(obj):
+    return json.dumps(obj, default=lambda o: o.__dict__, ensure_ascii=False)
+
 # https://stackoverflow.com/questions/26646362/numpy-array-is-not-json-serializable
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
