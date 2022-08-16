@@ -100,7 +100,7 @@ class FontFormat:
                  vertical: bool = False, 
                  weight: int = 50, 
                  alpha: int = 255,
-                 line_spacing: float = 1) -> None:
+                 line_spacing: float = 1.2) -> None:
         self.family = family if family is not None else DEFAULT_FONT_FAMILY
         self.size = size
         self.stroke_width = stroke_width

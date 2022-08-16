@@ -492,6 +492,7 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
 
     for blk in final_blk_list:
         if blk.language == 'eng':
+            blk.vertical = False
             num_lines = len(blk.lines)
             if num_lines == 0:
                 continue

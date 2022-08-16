@@ -279,7 +279,7 @@ class SceneTextManager(QObject):
             blk_item.idx = len(self.textblk_item_list)
         else:
             translation = ''
-            if self.auto_textlayout_flag:
+            if self.auto_textlayout_flag and not blk.vertical:
                 translation = blk.translation
                 blk.translation = ''
             blk_item = TextBlkItem(blk, len(self.textblk_item_list), show_rect=self.canvas.textblock_mode)
