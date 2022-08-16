@@ -1,6 +1,6 @@
 from typing import List, Tuple
-from tqdm import tqdm
 import json
+import os.path as osp
 
 HALF2FULL = {i: i + 0xFEE0 for i in range(0x21, 0x7F)}
 HALF2FULL[0x20] = 0x3000
@@ -188,6 +188,8 @@ def seg_ch_pkg(text: str):
     global CHSEG
     if CHSEG is None:
         import pkuseg
+        if not osp.exists(pkuseg.config.pkuseg_home):
+            pkuseg.config.pkuseg_home = 'data/models/pkuseg'
         CHSEG = pkuseg.pkuseg(postag=True)
 
     # pkuseg won't work with half-width punctuations

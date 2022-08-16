@@ -29,14 +29,6 @@ class MoveBlkItemsCommand(QUndoCommand):
         self.old_pos_lst = []
         self.new_pos_lst = []
         for item in items:
-            # color1 = np.array([item.blk.bg_r, item.blk.bg_g, item.blk.bg_b], dtype=np.uint8).reshape(1, 1, 3)
-            # color2 = np.array([item.blk.fg_r, item.blk.fg_g, item.blk.fg_b], dtype=np.uint8).reshape(1, 1, 3)
-            # import cv2
-            # diff = cv2.cvtColor(color1, cv2.COLOR_RGB2LAB).astype(np.float64) - cv2.cvtColor(color2, cv2.COLOR_RGB2LAB).astype(np.float64)
-            # diff[..., 0] *= 0.392
-            # diff = np.linalg.norm(diff, axis=2)
-            # print(diff, color1, color2)
-
             self.old_pos_lst.append(item.oldPos)
             self.new_pos_lst.append(item.pos())
             item.oldPos = item.pos()
@@ -62,20 +54,23 @@ class ApplyFontformatCommand(QUndoCommand):
         super(ApplyFontformatCommand, self).__init__()
         self.items = items
         self.old_html_lst = []
+        self.old_rect_lst = []
         self.old_fmt_lst = []
         self.new_fmt = fontformat
         for item in items:
             self.old_html_lst.append(item.toHtml())
             self.old_fmt_lst.append(item.get_fontformat())
+            self.old_rect_lst.append(item.absBoundingRect())
 
     def redo(self):
         for item in self.items:
             item.set_fontformat(self.new_fmt, set_char_format=True)
 
     def undo(self):
-        for item, html, fmt in zip(self.items, self.old_html_lst, self.old_fmt_lst):
+        for rect, item, html, fmt in zip(self.old_rect_lst, self.items, self.old_html_lst, self.old_fmt_lst):
             item.setHtml(html)
             item.set_fontformat(fmt)
+            item.setRect(rect)
 
     def mergeWith(self, command: QUndoCommand):
         if command.new_fmt == self.new_fmt:
@@ -195,6 +190,32 @@ class DeleteBlkItemsCommand(QUndoCommand):
         if self.blk_list != blk_list:
             return False
         return True
+
+
+class AutoLayoutCommand(QUndoCommand):
+    def __init__(self, items: List[TextBlkItem], old_rect_lst: List, old_html_lst: List, trans_widget_lst: List[TransTextEdit]):
+        super(AutoLayoutCommand, self).__init__()
+        self.items = items
+        self.old_html_lst = old_html_lst
+        self.old_rect_lst = old_rect_lst
+        self.trans_widget_lst = trans_widget_lst
+        self.new_rect_lst = []
+        self.new_html_lst = []
+        for item in items:
+            self.new_html_lst.append(item.toHtml())
+            self.new_rect_lst.append(item.absBoundingRect())
+
+    def redo(self):
+        for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.new_html_lst, self.new_rect_lst):
+            item.setHtml(html)
+            trans_widget.setPlainText(item.toPlainText())
+            item.setRect(rect)
+
+    def undo(self):
+        for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.old_html_lst, self.old_rect_lst):
+            item.setHtml(html)
+            trans_widget.setPlainText(item.toPlainText())
+            item.setRect(rect)
 
 
 class SceneTextManager(QObject):
@@ -352,7 +373,6 @@ class SceneTextManager(QObject):
             if not trans_widget.hasFocus():
                 trans_widget.setText(blk_item.toPlainText())
             self.canvas.setProjSaveState(True)
-            
 
     def onTextBlkItemSizeChanged(self, idx: int):
         blk_item = self.textblk_item_list[idx]
@@ -432,8 +452,15 @@ class SceneTextManager(QObject):
 
     def onAutoLayoutTextblks(self):
         selected_blks = self.get_selected_blkitems()
+        old_html_lst, old_rect_lst, trans_widget_lst = [], [], []
         for blkitem in selected_blks:
+            old_html_lst.append(blkitem.toHtml())
+            old_rect_lst.append(blkitem.absBoundingRect())
+            trans_widget_lst.append(self.pairwidget_list[blkitem.idx].e_trans)
             self.layout_textblk(blkitem)
+
+        self.canvasUndoStack.push(AutoLayoutCommand(selected_blks, old_rect_lst, old_html_lst, trans_widget_lst))
+            
 
     def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
         
@@ -579,10 +606,10 @@ class SceneTextManager(QObject):
 
         if restore_charfmts:
             char_fmts = blkitem.get_char_fmts()        
-        blkitem.setPlainText('')
-        blkitem.setRect(xywh)
-        blkitem.setPlainText(new_text)
         
+        blkitem.setPlainText(new_text)
+        blkitem.setRect(xywh)
+        self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
         if restore_charfmts:
             self.restore_charfmts(blkitem, text, new_text, char_fmts)
     
