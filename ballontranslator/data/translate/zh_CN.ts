@@ -189,34 +189,39 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="301"/>
+        <location filename="../../ui/fontformatpanel.py" line="302"/>
         <source>Font Family</source>
         <translation>字体</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="305"/>
+        <location filename="../../ui/fontformatpanel.py" line="306"/>
         <source>Font Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="311"/>
+        <location filename="../../ui/fontformatpanel.py" line="312"/>
         <source>Change font color</source>
         <translation>改变文字颜色</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="328"/>
+        <location filename="../../ui/fontformatpanel.py" line="329"/>
         <source>Change stroke color</source>
         <translation>改变文字轮廓颜色</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="333"/>
+        <location filename="../../ui/fontformatpanel.py" line="334"/>
         <source>Stroke width: </source>
         <translation>轮廓宽度: </translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="339"/>
+        <location filename="../../ui/fontformatpanel.py" line="340"/>
         <source>line spacing: </source>
         <translation>行间距: </translation>
+    </message>
+    <message>
+        <location filename="../../ui/fontformatpanel.py" line="346"/>
+        <source>Global Font Format</source>
+        <translation type="unfinished">全局字体格式</translation>
     </message>
 </context>
 <context>

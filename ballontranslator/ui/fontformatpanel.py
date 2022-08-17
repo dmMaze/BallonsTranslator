@@ -1,7 +1,7 @@
 import functools
 from typing import List, Tuple, Union
 
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QCheckBox
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QColor, QTextCharFormat, QIntValidator, QMouseEvent, QFont, QTextCursor
 
@@ -9,6 +9,7 @@ from .stylewidgets import Widget, ColorPicker, PaintQSlider
 from .misc import FontFormat, set_html_color
 from .textitem import TextBlkItem, TextBlock
 from .canvas import Canvas
+from .constants import CONFIG_FONTSIZE_CONTENT
 
 
 # restore text cursor status after formatting
@@ -342,6 +343,17 @@ class FontFormatPanel(Widget):
         self.lineSpacingSlider.valueChanged.connect(self.onLinespacingChanged)
         self.lineSpacingSlider.mouse_released.connect(self.onLinespacingSliderReleased)
 
+        self.global_fontfmt_str = self.tr("Global Font Format")
+        self.fontfmtLabel = QLabel(self)
+        font = self.fontfmtLabel.font()
+        font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.7)
+        self.fontfmtLabel.setText(self.global_fontfmt_str)
+        self.fontfmtLabel.setFont(font)
+
+        hl0 = QHBoxLayout()
+        hl0.addStretch(1)
+        hl0.addWidget(self.fontfmtLabel)
+        hl0.addStretch(1)
         hl1 = QHBoxLayout()
         hl1.addWidget(self.familybox)
         hl1.addWidget(self.fontsizebox)
@@ -362,6 +374,7 @@ class FontFormatPanel(Widget):
         hl3.setContentsMargins(5, 5, 5, 5)
         hl3.setSpacing(20)
 
+        self.vlayout.addLayout(hl0)
         self.vlayout.addLayout(hl1)
         self.vlayout.addLayout(hl2)
         self.vlayout.addLayout(hl3)
@@ -503,9 +516,11 @@ class FontFormatPanel(Widget):
                 self.textblk_item = None
                 self.text_cursor = None
                 self.set_active_format(self.global_format)
+                self.fontfmtLabel.setText(self.global_fontfmt_str)
         else:
             if not self.restoring_textblk:
                 blk_fmt = textblk_item.get_fontformat()
                 self.textblk_item = textblk_item
                 self.text_cursor = QTextCursor(self.textblk_item.textCursor())
                 self.set_active_format(blk_fmt)
+                self.fontfmtLabel.setText(f'TextBlock #{textblk_item.idx}')
