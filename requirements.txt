@@ -1,6 +1,8 @@
+# To install pytorch cuda (gpu) version, please look https://pytorch.org/
 urllib3==1.25.11 # https://github.com/psf/requests/issues/5740
 jaconv
 torch
+torchvision
 transformers
 fugashi
 unidic_lite
@@ -15,3 +17,5 @@ bs4
 deepl
 qtpy
 pkuseg
+sentencepiece
+ctranslate2
