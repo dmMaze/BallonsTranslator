@@ -2,8 +2,6 @@
 简体中文 | [English](README_EN.md)  
 
 深度学习辅助漫画翻译工具, 支持一键机翻和简单的图像/文本编辑  
-## 下载
-[国内网盘](https://cowtransfer.com/s/b336741eec834b)  | [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
 
 <img src="doc/src/ui0.jpg" div align=center>
 
@@ -16,6 +14,8 @@
   - 译文回填参考对原文排版的估计, 包括颜色, 轮廓, 角度, 朝向, 对齐方式等
   - 最后效果取决于文本检测, 识别, 抹字, 机翻四个模块的整体表现  
   - 支持日漫和美漫
+  - 英译中, 日译英排版已优化, 文本布局以提取到的背景泡为参考, 中文基于pkuseg进行断句, 日译中竖排待改善
+  
 * 图像编辑  
   支持掩膜编辑和修复画笔
   
@@ -23,23 +23,42 @@
   支持富文本编辑和一些基础排版格式调整
 
 
-# 说明
+# 使用说明
+
+### 发布版
+
+Windows用户可从[腾讯云](https://share.weiyun.com/xoRhz9i4) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载发布包Ballonstranslator-x.x.x-core.7z, 如果分享文件夹内存在更高版本的Ballonstranslator-x.x.x-patch.7z, 下载patch并覆盖core即可.  
+
+### 运行源码
+
+```bash
+# 确保python<=3.9
+$ python --version
+
+# 克隆仓库
+$ git clone https://github.com/dmMaze/BallonsTranslator.git
+
+# 安装依赖
+$ pip install -r requirements.txt
+```
+
+如果有N卡可以安装torch-cuda启用GPU加速: 
+
+```bash
+pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+```
+
+从 https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing 下载**data**文件夹并移动到 ```BallonsTranslator/ballontranslator```目录, 最后运行
+```bash
+python ballontranslator/__main__.py
+```
 
 ## 一键翻译
 **建议在命令行终端下运行程序**, 首次运行请先配置好源语言/目标语言, 打开一个带图片的文件夹, 点击Run等待翻译完成  
 <img src="doc/src/run.gif">  
 
-
-### 一键翻译结果预览
-|                                          Original                                           |         Translated          |
-| :-----------------------------------------------------------------------------------------: | :-------------------------: |
-|        ![Original](ballontranslator/data/testpacks/manga/original2.jpg 'https://twitter.com/mmd_96yuki/status/1320122899005460481')         | ![Output](doc/src/result2.png) |
-| ![Original](ballontranslator/data/testpacks/manga/original4.jpg 'https://amagi.fanbox.cc/posts/1904941') | ![Output](doc/src/result4.png) |
-| ![Original](ballontranslator/data/testpacks/manga/AisazuNihaIrarenai-003.jpg) | ![Output](doc/src/AisazuNihaIrarenai-003.png) |
-|           ![Original](ballontranslator/data/testpacks/comics/006049.jpg)           | ![Output](doc/src/006049.png) | 
-|           ![Original](ballontranslator/data/testpacks/comics/006058.jpg)           | ![Output](doc/src/006058.png) | 
-
-
+一键机翻嵌字格式如大小、颜色等默认是由程序决定的, 可以在设置面板->嵌字菜单中改用全局设置. 全局字体格式就是未编辑任何文本块时右侧字体面板显示的格式:  
+<img src="doc/src/global_font_format.png"> 
 
 ## 画板
 
@@ -67,6 +86,11 @@
 文本编辑
 </p>
 
+<img src="doc/src/multisel_autolayout.gif" div align=center>
+<p align=center>
+批量文本格式调整及自动排版
+</p>
+
 ## 界面说明及快捷键
 * Ctrl+Z, Ctrl+Y可以撤销重做大部分操作，注意翻页后撤消重做栈会清空
 * A/D翻页, 如果当前页面未保存会自动保存
@@ -75,10 +99,11 @@
 * 底部左侧"OCR"和"A"按钮控制启用/禁用OCR翻译功能, 禁用后再Run程序就只做文本检测和抹字  
 * 设置面板配置各自动化模块参数
 * Ctrl++/-或滚轮缩放画布
+* Ctrl+A可选中界面中所有文本块
 
 <img src="doc/src/configpanel.png">  
 
-## 自动化模块
+# 自动化模块
 本项目重度依赖[manga-image-translator](https://github.com/zyddnys/manga-image-translator), 在线服务器和模型训练需要费用, 有条件请考虑支持一下
 - Ko-fi: <https://ko-fi.com/voilelabs>
 - Patreon: <https://www.patreon.com/voilelabs>
@@ -105,9 +130,12 @@
  如需添加新的翻译器请参考[加别的翻译器](doc/加别的翻译器.md), 本程序添加新翻译器只需要继承基类实现两个接口即可不需要理会代码其他部分, 欢迎大佬提pr
 
 ## 杂
-* 发布包包含pytorch和cuda所以那么大. 以后更新如果依赖库不做变动, 就只发布本体二进制/新配置文件/新模型, 下载后覆盖旧版本
 * 如果电脑带N卡, 程序默认对所有模型启用GPU加速, 默认配置下显存占用在6G左右. 4G显存调小修复器inpaint_size即可. 
 
-# TODO
-- 支持更多语言的OCR模型
-- ...
+## 一键翻译结果预览
+|            Original            |         Translated (CHS)         |         Translated (ENG)         |
+| :-----------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------: |
+|![Original](ballontranslator/data/testpacks/manga/original2.jpg 'https://twitter.com/mmd_96yuki/status/1320122899005460481')| ![Translated (CHS)](doc/src/result2.png) | ![Translated (ENG)](doc/src/original2_eng.png) |
+|![Original](ballontranslator/data/testpacks/manga/original3.jpg 'https://twitter.com/_taroshin_/status/1231099378779082754')| ![Translated (CHS)](doc/src/original3.png) | ![Translated (ENG)](doc/src/original3_eng.png) |
+| ![Original](ballontranslator/data//testpacks/manga/AisazuNihaIrarenai-003.jpg) | ![Translated (CHS)](doc/src/AisazuNihaIrarenai-003.png) | ![Translated (ENG)](doc/src/AisazuNihaIrarenai-003_eng.png) |
+|           ![Original](ballontranslator/data//testpacks/comics/006049.jpg)           | ![Translated (CHS)](doc/src/006049.png) | |
