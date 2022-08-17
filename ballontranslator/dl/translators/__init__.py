@@ -5,7 +5,7 @@ import functools
 import json
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
 from ..textdetector.textblock import TextBlock
-from ..moduleparamparser import ModuleParamParser, DEFAULT_DEVICE
+from ..moduleparamparser import ModuleParamParser
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
 import deepl
@@ -159,6 +159,7 @@ class TranslatorBase(ModuleParamParser):
                 return True
         return False
 
+
 @register_translator('google')
 class GoogleTranslator(TranslatorBase):
 
@@ -261,7 +262,6 @@ class PapagoTranslator(TranslatorBase):
         return translations
         
 
-
 @register_translator('caiyun')
 class CaiyunTranslator(TranslatorBase):
 
@@ -299,6 +299,7 @@ class CaiyunTranslator(TranslatorBase):
         translations = json.loads(response.text)["target"]
 
         return translations
+
 
 @register_translator('Deepl')
 class DeeplTranslator(TranslatorBase):
@@ -344,6 +345,7 @@ class DeeplTranslator(TranslatorBase):
         result = translator.translate_text(text, source_lang=source, target_lang=target)
         return [i.text for i in result]
     
+
 # # "dummy translator" is the name showed in the app
 # @register_translator('dummy translator')
 # class DummyTranslator(TranslatorBase):

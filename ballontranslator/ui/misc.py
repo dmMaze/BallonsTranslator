@@ -367,7 +367,7 @@ class DLModuleConfig:
     def __init__(self, 
                  textdetector: str = 'ctd',
                  ocr = "mit32px",
-                 inpainter: str = 'aot',
+                 inpainter: str = 'lama_mpe',
                  translator = "google",
                  enable_ocr = True,
                  enable_translate = True,

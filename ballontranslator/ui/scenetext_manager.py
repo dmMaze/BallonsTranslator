@@ -609,7 +609,8 @@ class SceneTextManager(QObject):
         
         blkitem.setPlainText(new_text)
         blkitem.setRect(xywh)
-        self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
+        if len(self.pairwidget_list) > blkitem.idx:
+            self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
         if restore_charfmts:
             self.restore_charfmts(blkitem, text, new_text, char_fmts)
     
