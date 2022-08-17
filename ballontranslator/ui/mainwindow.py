@@ -11,7 +11,7 @@ from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from dl.textdetector import TextBlock
 
-from .misc import ProjImgTrans, ndarray2pixmap, pixmap2ndarray
+from .misc import ProjImgTrans, pt2px, pixmap2ndarray
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
@@ -504,7 +504,7 @@ class MainWindow(QMainWindow):
         
         for blk in blk_list:
             if override_fnt_size:
-                blk.font_size = gf.size
+                blk.font_size = pt2px(gf.size)
             if override_fnt_stroke:
                 blk.default_stroke_width = gf.stroke_width
             if override_fnt_color:
