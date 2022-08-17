@@ -328,9 +328,9 @@ class ImgtransThread(QThread):
                         
             if self.dl_config.enable_inpaint:
                 inpainted = self.inpainter.inpaint(img, mask, blk_list)
+                self.imgtrans_proj.save_inpainted(imgname, inpainted)
                 self.inpaint_counter += 1
                 self.update_inpaint_progress.emit(self.inpaint_counter)
-                self.imgtrans_proj.save_inpainted(imgname, inpainted)
         
     def detect_finished(self) -> bool:
         if self.imgtrans_proj is None:
