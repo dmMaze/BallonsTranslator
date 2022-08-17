@@ -8,7 +8,6 @@ from ..moduleparamparser import ModuleParamParser
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
 
-
 TRANSLATORS = Registry('translators')
 register_translator = TRANSLATORS.register_module
 PROXY = urllib.request.getproxies()
