@@ -1,14 +1,13 @@
 import urllib.request
 from typing import Dict, List, Union
-import time, requests, re, uuid, base64, hmac
-import functools
-import json
+import time, requests, re, uuid, base64, hmac, functools, json, deepl
+import ctranslate2, sentencepiece as spm
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
 from ..textdetector.textblock import TextBlock
 from ..moduleparamparser import ModuleParamParser
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
-import deepl
+
 
 TRANSLATORS = Registry('translators')
 register_translator = TRANSLATORS.register_module
@@ -333,7 +332,7 @@ class DeeplTranslator(TranslatorBase):
         self.lang_map['Română'] = 'ro'
         self.lang_map['Slovenčina'] = 'sk'
         self.lang_map['Slovenščina'] = 'sl'
-        self.lang_map['Svenska'] = 'sv' 
+        self.lang_map['Svenska'] = 'sv'
         
     def _translate(self, text: Union[str, List]) -> Union[str, List]:
         api_key = self.setup_params['api_key']
@@ -345,6 +344,41 @@ class DeeplTranslator(TranslatorBase):
         result = translator.translate_text(text, source_lang=source, target_lang=target)
         return [i.text for i in result]
     
+SUGOIMODEL_TRANSLATOR_DIRPATH = 'data/models/sugoi_translator'
+SUGOIMODEL_TOKENIZATOR_PATH = SUGOIMODEL_TRANSLATOR_DIRPATH + "\\spm.ja.nopretok.model"
+
+@register_translator('Sugoi')
+class SugoiTranslator(TranslatorBase):
+
+    concate_text = False
+    setup_params: Dict = {
+        'device': {
+            'type': 'selector',
+            'options': ['cpu', 'cuda'],
+            'select': 'cpu'
+        }
+    }
+
+    def _setup_translator(self):
+        self.lang_map['日本語'] = 'ja'
+        self.lang_map['English'] = 'en'
+        
+        self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.setup_params['device']['select'])
+        self.tokenizator = spm.SentencePieceProcessor(model_file=SUGOIMODEL_TOKENIZATOR_PATH)
+
+    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+        text = [i.replace(".", "@") for i in text]
+        tokenized_text = self.tokenizator.encode(text, out_type=str, enable_sampling=True, alpha=0.1, nbest_size=-1)
+        tokenized_translated = self.translator.translate_batch(tokenized_text)
+        text_translated = [''.join(text[0]["tokens"]).replace('▁', ' ').replace("@", ".") for text in tokenized_translated]
+        return text_translated
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        if param_key == 'device':
+            if hasattr(self, 'translator'):
+                delattr(self, 'translator')
+            self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.setup_params['device']['select'])
 
 # # "dummy translator" is the name showed in the app
 # @register_translator('dummy translator')
