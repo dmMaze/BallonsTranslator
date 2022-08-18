@@ -366,7 +366,7 @@ class SugoiTranslator(TranslatorBase):
         self.tokenizator = spm.SentencePieceProcessor(model_file=SUGOIMODEL_TOKENIZATOR_PATH)
 
     def _translate(self, text: Union[str, List]) -> Union[str, List]:
-        text = [i.replace(".", "@") for i in text]
+        text = [i.replace(".", "@").replace("．", "@") for i in text]
         tokenized_text = self.tokenizator.encode(text, out_type=str, enable_sampling=True, alpha=0.1, nbest_size=-1)
         tokenized_translated = self.translator.translate_batch(tokenized_text)
         text_translated = [''.join(text[0]["tokens"]).replace('▁', ' ').replace("@", ".") for text in tokenized_translated]
