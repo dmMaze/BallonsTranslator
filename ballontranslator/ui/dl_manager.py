@@ -158,18 +158,12 @@ class TranslateThread(ModuleThread):
             setup_params = self.dl_config.translator_setup_params[translator]
             translator_module: TranslatorBase = TRANSLATORS.module_dict[translator]
             if setup_params is not None:
-                self.translator = translator_module(source, target, **setup_params)
+                self.translator = translator_module(source, target, raise_unsupported_lang=False, **setup_params)
             else:
-                self.translator = translator_module(source, target)
+                self.translator = translator_module(source, target, raise_unsupported_lang=False)
             self.dl_config.translate_source = self.translator.lang_source
             self.dl_config.translate_target = self.translator.lang_target
             self.dl_config.translator = self.translator.name
-        except InvalidSourceOrTargetLanguage as e:
-            msg = self.tr('The selected language is not supported by ') + translator + '.\n'
-            msg += self.tr('support list: ') + '\n'
-            msg += e.message
-            self.translator = old_translator
-            self.exception_occurred.emit(msg, '', traceback.format_exc())
         except Exception as e:
             self.translator = old_translator
             msg = self.tr('Failed to set translator ') + translator
@@ -253,7 +247,6 @@ class ImgtransThread(QThread):
     exception_occurred = Signal(str, str)
     def __init__(self, 
                  dl_config: DLModuleConfig, 
-                 imgtrans_proj: ProjImgTrans, 
                  textdetect_thread: TextDetectThread,
                  ocr_thread: OCRThread,
                  translate_thread: TranslateThread,
@@ -261,12 +254,12 @@ class ImgtransThread(QThread):
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.dl_config = dl_config
-        self.imgtrans_proj: ProjImgTrans = None
         self.textdetect_thread = textdetect_thread
         self.ocr_thread = ocr_thread
         self.translate_thread = translate_thread
         self.inpaint_thread = inpaint_thread
         self.job = None
+        self.imgtrans_proj: ProjImgTrans = None
         self.translate_mode = 1
 
     @property
@@ -425,7 +418,7 @@ class DLManager(QObject):
 
         self.progress_msgbox = ProgressMessageBox()
 
-        self.imgtrans_thread = ImgtransThread(dl_config, imgtrans_proj, self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread)
+        self.imgtrans_thread = ImgtransThread(dl_config, self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread)
         self.imgtrans_thread.update_detect_progress.connect(self.on_update_detect_progress)
         self.imgtrans_thread.update_ocr_progress.connect(self.on_update_ocr_progress)
         self.imgtrans_thread.update_translate_progress.connect(self.on_update_translate_progress)

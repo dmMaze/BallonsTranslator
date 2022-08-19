@@ -216,10 +216,8 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.source_combobox.clear()
         self.target_combobox.clear()
 
-        for lang in translator.lang_map:
-            if translator.lang_map[lang] != '':
-                self.source_combobox.addItem(lang)
-                self.target_combobox.addItem(lang)
+        self.source_combobox.addItems(translator.supported_src_list)
+        self.target_combobox.addItems(translator.supported_tgt_list)
         self.translator_combobox.setCurrentText(translator.name)
         self.source_combobox.setCurrentText(translator.lang_source)
         self.target_combobox.setCurrentText(translator.lang_target)
