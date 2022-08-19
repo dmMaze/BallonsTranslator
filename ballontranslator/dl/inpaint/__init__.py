@@ -77,6 +77,12 @@ class OpenCVInpainter(InpainterBase):
     def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
         return self.inpaint_method(img, mask)
 
+    def is_computational_intensive(self) -> bool:
+        return True
+    
+    def is_cpu_intensive(self) -> bool:
+        return True
+
 
 @register_inpainter('patchmatch')
 class PatchmatchInpainter(InpainterBase):
@@ -87,6 +93,12 @@ class PatchmatchInpainter(InpainterBase):
     
     def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
         return self.inpaint_method(img, mask)
+
+    def is_computational_intensive(self) -> bool:
+        return True
+    
+    def is_cpu_intensive(self) -> bool:
+        return True
 
 
 import torch

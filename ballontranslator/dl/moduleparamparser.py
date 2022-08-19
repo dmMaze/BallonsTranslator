@@ -1,5 +1,7 @@
 from typing import Dict
 
+GPUINTENSIVE_SET = {'cuda', 'hip'}
+
 class ModuleParamParser:
 
     setup_params: Dict = None
@@ -15,6 +17,21 @@ class ModuleParamParser:
             param_dict = self.setup_params[param_key]
             if param_dict['type'] == 'selector':
                 param_dict['select'] = param_content
+
+    def is_cpu_intensive(self)->bool:
+        if self.setup_params is not None and 'device' in self.setup_params:
+            return self.setup_params['device']['select'] == 'cpu'
+        return False
+
+    def is_gpu_intensive(self) -> bool:
+        if self.setup_params is not None and 'device' in self.setup_params:
+            return self.setup_params['device']['select'] in GPUINTENSIVE_SET
+        return False
+
+    def is_computational_intensive(self) -> bool:
+        if self.setup_params is not None and 'device' in self.setup_params:
+            return True
+        return False
 
 
 import torch

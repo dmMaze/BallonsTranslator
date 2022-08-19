@@ -1,14 +1,12 @@
 import urllib.request
-from typing import Dict, List, Union
-import time, requests, re, uuid, base64, hmac
-import functools
-import json
+from typing import Dict, List, Union, Set
+import time, requests, re, uuid, base64, hmac, functools, json, deepl
+import ctranslate2, sentencepiece as spm
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
 from ..textdetector.textblock import TextBlock
 from ..moduleparamparser import ModuleParamParser
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
-import deepl
 
 TRANSLATORS = Registry('translators')
 register_translator = TRANSLATORS.register_module
@@ -41,24 +39,34 @@ SYSTEM_LANGMAP = {
 }
 
 
-def check_language_support(set_lang_method):
-    @functools.wraps(set_lang_method)
-    def wrapper(self, lang: str):
-        if not lang in self.lang_map or not self.lang_map[lang]:
-            msg = '\n'.join(self.supported_languages())
-            raise InvalidSourceOrTargetLanguage(lang, message=msg)
-        return set_lang_method(self, lang)
-    return wrapper
+def check_language_support(check_type: str = 'source'):
+    
+    def decorator(set_lang_method):
+        @functools.wraps(set_lang_method)
+        def wrapper(self, lang: str = ''):
+            if check_type == 'source':
+                supported_lang_list = self.supported_src_list
+            else:
+                supported_lang_list = self.supported_tgt_list
+            if not lang in supported_lang_list:
+                msg = '\n'.join(supported_lang_list)
+                raise InvalidSourceOrTargetLanguage(f'Invalid {check_type}: {lang}\n', message=msg)
+            return set_lang_method(self, lang)
+        return wrapper
+
+    return decorator
 
 
 class TranslatorBase(ModuleParamParser):
+
     concate_text = True
+    
     def __init__(self,
-                 lang_source: str = None, 
-                 lang_target: str = None,
+                 lang_source: str, 
+                 lang_target: str,
+                 raise_unsupported_lang: bool = True,
                  **setup_params) -> None:
         super().__init__(**setup_params)
-        self.sys_lang = SYSTEM_LANGMAP[SYSTEM_LANG] if SYSTEM_LANG in SYSTEM_LANGMAP else ''
         self.name = ''
         for key in TRANSLATORS.module_dict:
             if TRANSLATORS.module_dict[key] == self.__class__:
@@ -77,23 +85,19 @@ class TranslatorBase(ModuleParamParser):
             else:
                 raise TranslatorSetupFailure(e)
 
-        if lang_source is None or lang_source == '':
-            lang_source = 'Auto' if self.support_auto_souce() else self.default_lang()
-        if lang_target is None or lang_target == '':
-            lang_target = self.default_lang()
+        self.valid_lang_list = [lang for lang in self.lang_map if self.lang_map[lang] != '']
 
-        self.set_source(lang_source)
-        self.set_target(lang_target)
-
-    def support_auto_souce(self):
-        if self.lang_map['Auto']:
-            return True
-        return False
-
-    def default_lang(self):
-        if self.sys_lang in self.lang_map:
-            return self.sys_lang
-        return self.supported_languages()[0]
+        try:
+            self.set_source(lang_source)
+            self.set_target(lang_target)
+        except InvalidSourceOrTargetLanguage as e:
+            if raise_unsupported_lang:
+                raise e
+            else:
+                lang_source = self.supported_src_list[0]
+                lang_target = self.supported_tgt_list[0]
+                self.set_source(lang_source)
+                self.set_target(lang_target)
 
     def _setup_translator(self):
         raise NotImplementedError
@@ -101,11 +105,11 @@ class TranslatorBase(ModuleParamParser):
     def setup_translator(self):
         self._setup_translator()
 
-    @check_language_support
+    @check_language_support(check_type='source')
     def set_source(self, lang: str):
         self.lang_source = lang
 
-    @check_language_support
+    @check_language_support(check_type='target')
     def set_target(self, lang: str):
         self.lang_target = lang
 
@@ -151,13 +155,15 @@ class TranslatorBase(ModuleParamParser):
             blk.translation = tr
 
     def supported_languages(self) -> List[str]:
-        return [lang for lang in self.lang_map if self.lang_map[lang]]
+        return self.valid_lang_list
 
-    def support_language(self, lang: str) -> bool:
-        if lang in self.lang_map:
-            if self.lang_map[lang]:
-                return True
-        return False
+    @property
+    def supported_tgt_list(self) -> List[str]:
+        return self.valid_lang_list
+
+    @property
+    def supported_src_list(self) -> List[str]:
+        return self.valid_lang_list
 
 
 @register_translator('google')
@@ -333,7 +339,7 @@ class DeeplTranslator(TranslatorBase):
         self.lang_map['Română'] = 'ro'
         self.lang_map['Slovenčina'] = 'sk'
         self.lang_map['Slovenščina'] = 'sl'
-        self.lang_map['Svenska'] = 'sv' 
+        self.lang_map['Svenska'] = 'sv'
         
     def _translate(self, text: Union[str, List]) -> Union[str, List]:
         api_key = self.setup_params['api_key']
@@ -345,6 +351,59 @@ class DeeplTranslator(TranslatorBase):
         result = translator.translate_text(text, source_lang=source, target_lang=target)
         return [i.text for i in result]
     
+
+
+SUGOIMODEL_TRANSLATOR_DIRPATH = 'data/models/sugoi_translator'
+SUGOIMODEL_TOKENIZATOR_PATH = SUGOIMODEL_TRANSLATOR_DIRPATH + "\\spm.ja.nopretok.model"
+@register_translator('Sugoi')
+class SugoiTranslator(TranslatorBase):
+
+    concate_text = False
+    setup_params: Dict = {
+        'device': {
+            'type': 'selector',
+            'options': ['cpu', 'cuda'],
+            'select': 'cpu'
+        }
+    }
+
+    def _setup_translator(self):
+        self.lang_map['日本語'] = 'ja'
+        self.lang_map['English'] = 'en'
+        
+        self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.setup_params['device']['select'])
+        self.tokenizator = spm.SentencePieceProcessor(model_file=SUGOIMODEL_TOKENIZATOR_PATH)
+
+    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+        input_is_lst = True
+        if isinstance(text, str):
+            text = [text]
+            input_is_lst = False
+        
+        text = [i.replace(".", "@").replace("．", "@") for i in text]
+        tokenized_text = self.tokenizator.encode(text, out_type=str, enable_sampling=True, alpha=0.1, nbest_size=-1)
+        tokenized_translated = self.translator.translate_batch(tokenized_text)
+        text_translated = [''.join(text[0]["tokens"]).replace('▁', ' ').replace("@", ".") for text in tokenized_translated]
+        
+        if not input_is_lst:
+            return text_translated[0]
+        return text_translated
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        if param_key == 'device':
+            if hasattr(self, 'translator'):
+                delattr(self, 'translator')
+            self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.setup_params['device']['select'])
+
+    @property
+    def supported_tgt_list(self) -> List[str]:
+        return ['English']
+
+    @property
+    def supported_src_list(self) -> List[str]:
+        return ['日本語']
+
 
 # # "dummy translator" is the name showed in the app
 # @register_translator('dummy translator')
