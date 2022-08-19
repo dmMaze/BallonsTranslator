@@ -260,7 +260,7 @@ class ImgtransThread(QThread):
         self.inpaint_thread = inpaint_thread
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
-        self.translate_mode = 1
+
 
     @property
     def textdetector(self) -> TextDetectorBase:
@@ -289,8 +289,11 @@ class ImgtransThread(QThread):
         self.translate_counter = 0
         self.inpaint_counter = 0
         self.num_pages = num_pages = len(self.imgtrans_proj.pages)
-        if self.dl_config.enable_translate and self.translate_mode == 1:
+
+        self.parallel_trans = not self.translator.is_computational_intensive()
+        if self.dl_config.enable_translate and self.parallel_trans:
             self.translate_thread.runTranslatePipeline(self.imgtrans_proj)
+
         for imgname in self.imgtrans_proj.pages:
             img = self.imgtrans_proj.read_img(imgname)
 
@@ -308,12 +311,12 @@ class ImgtransThread(QThread):
 
                 if self.dl_config.enable_translate:
                     try:
-                        if self.translate_mode == 0:
+                        if self.parallel_trans:
+                            self.translate_thread.push_pagekey_queue(imgname)
+                        else:
                             self.translator.translate_textblk_lst(blk_list)
                             self.translate_counter += 1
                             self.update_translate_progress.emit(self.translate_counter)
-                        else:
-                            self.translate_thread.push_pagekey_queue(imgname)
                     except Exception as e:
                         self.dl_config.enable_translate = False
                         self.update_translate_progress.emit(num_pages)
@@ -340,7 +343,7 @@ class ImgtransThread(QThread):
             or not self.dl_config.enable_ocr \
             or not self.dl_config.enable_translate:
             return True
-        if self.translate_mode == 1:
+        if self.parallel_trans:
             return self.translate_thread.pipeline_finished()
         return self.translate_counter == self.num_pages
 
@@ -359,10 +362,10 @@ class ImgtransThread(QThread):
         if self.dl_config.enable_ocr:
             counter = min(counter, self.ocr_counter)
             if self.dl_config.enable_translate:
-                if self.translate_mode == 0:
-                    counter = min(counter, self.translate_counter)
-                else:
+                if self.parallel_trans:
                     counter = min(counter, self.translate_thread.finished_counter)
+                else:
+                    counter = min(counter, self.translate_counter)
                     
         if self.dl_config.enable_inpaint:
             counter = min(counter, self.inpaint_counter)

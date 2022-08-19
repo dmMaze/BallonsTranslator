@@ -56,16 +56,9 @@ jaeng_test_list = [
         'target': 'English',
         'text_list': [
             '日本語のテスト',
-            ['日本語の...テスト']
+            ['日本語の...テスト', 'ククク…何かしらねぇ 当ててごらんなさい']
         ]
     },
-    # {
-    #     'source': 'English',
-    #     'target': '日本語',
-    #     'text_list': [
-    #         'English test',
-    #     ]
-    # }
 ]
 
 if __name__ == '__main__':
