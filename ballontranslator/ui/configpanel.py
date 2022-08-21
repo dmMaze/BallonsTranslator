@@ -4,7 +4,7 @@ import json
 from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
 from qtpy.QtCore import Qt, QModelIndex, Signal, QSize
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
-from PyQt5 import QtCore
+from qtpy import QtCore
 
 from utils.logger import logger as LOGGER
 from .stylewidgets import Widget, ConfigComboBox
