@@ -79,7 +79,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
         painter.save()
-        painter.setPen(context.palette.color(QPalette.Text))
+        painter.setPen(context.palette.color(QPalette.ColorRole.Text))
         block = doc.firstBlock()
         cursor_block = None
         while block.isValid():
@@ -388,7 +388,7 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
         painter.save()
-        painter.setPen(context.palette.color(QPalette.Text))
+        painter.setPen(context.palette.color(QPalette.ColorRole.Text))
         block = doc.firstBlock()
         cursor_block = None
         while block.isValid():

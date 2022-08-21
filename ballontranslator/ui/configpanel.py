@@ -25,7 +25,7 @@ class ConfigTextLabel(QLabel):
     def setActiveBackground(self):
         self.setAutoFillBackground(True)
         pal = self.palette()
-        pal.setColor(QPalette.Background, QColor(30, 147, 229, 51))
+        pal.setColor(QPalette.ColorRole.Window, QColor(30, 147, 229, 51))
         self.setPalette(pal)
 
 

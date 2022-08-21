@@ -192,7 +192,7 @@ class MainWindow(QMainWindow):
 
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
-        if self.leftBar.showPageListLabel.checkState() == 2:
+        if self.leftBar.showPageListLabel.isChecked():
             self.pageList.show()
 
     def setupConfigUI(self):
@@ -230,7 +230,7 @@ class MainWindow(QMainWindow):
 
     def pageLabelStateChanged(self):
         if self.centralStackWidget.currentIndex() == 0:
-            if self.leftBar.showPageListLabel.checkState() == 2:
+            if self.leftBar.showPageListLabel.isChecked():
                 self.pageList.show()
             else:
                 self.pageList.hide()
