@@ -187,7 +187,10 @@ def seg_ch_pkg(text: str):
 
     global CHSEG
     if CHSEG is None:
-        import pkuseg
+        try:
+            import pkuseg
+        except:
+            import spacy_pkuseg as pkuseg
         if not osp.exists(pkuseg.config.pkuseg_home):
             pkuseg.config.pkuseg_home = 'data/models/pkuseg'
         CHSEG = pkuseg.pkuseg(postag=True)
