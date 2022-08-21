@@ -103,12 +103,8 @@ class OCRMIT32px(OCRBase):
 
 
 
-from .manga_ocr import MangaOcr
-MANGA_OCR_MODEL: MangaOcr = None
-def load_manga_ocr(device='cpu') -> MangaOcr:
-    manga_ocr = MangaOcr(device=device)
-    return manga_ocr
 
+MANGA_OCR_MODEL = None
 @register_OCR('manga_ocr')
 class MangaOCR(OCRBase):
     setup_params = {
@@ -125,6 +121,11 @@ class MangaOCR(OCRBase):
     device = DEFAULT_DEVICE
 
     def setup_ocr(self):
+
+        from .manga_ocr import MangaOcr
+        def load_manga_ocr(device='cpu') -> MangaOcr:
+            manga_ocr = MangaOcr(device=device)
+            return manga_ocr
         
         global MANGA_OCR_MODEL
         self.device = self.setup_params['device']['select']
