@@ -1,0 +1,25 @@
+# To install pytorch cuda (gpu) version, please look https://pytorch.org/
+numpy
+urllib3==1.25.11 # https://github.com/psf/requests/issues/5740
+jaconv
+Mecab-python3
+torch
+torchvision
+transformers
+fugashi
+unidic_lite
+tqdm
+opencv-python==4.5.*
+PyQt6
+numpy
+tokenizers
+shapely
+pyclipper
+einops
+termcolor
+bs4
+deepl
+qtpy
+spacy-pkuseg
+sentencepiece
+ctranslate2
