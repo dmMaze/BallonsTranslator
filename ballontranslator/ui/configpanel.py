@@ -178,8 +178,8 @@ class ConfigContent(QScrollArea):
 class TableItem(QStandardItem):
     def __init__(self, text, fontsize):
         super().__init__()
-        font = QFont('Arial', fontsize)
-        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+        font = self.font()
+        font.setPointSizeF(fontsize)
         self.setFont(font)
         self.setText(text)
         self.setEditable(False)

@@ -4,7 +4,7 @@ from typing import List
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from qtpy.QtCore import Qt, QPoint, QSize
-from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
+from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
@@ -22,7 +22,7 @@ from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
 from .stylewidgets import FrameLessMessageBox
 from .constants import STYLESHEET_PATH, CONFIG_PATH
-from . import constants
+from . import constants as C
 
 class PageListView(QListWidget):    
     def __init__(self, *args, **kwargs) -> None:
@@ -41,7 +41,10 @@ class MainWindow(QMainWindow):
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        constants.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
+        C.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
+        yahei = QFont('Microsoft YaHei UI')
+        if yahei.exactMatch():
+            QGuiApplication.setFont(yahei)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.app = app
         self.imsave_thread = ImgSaveThread()

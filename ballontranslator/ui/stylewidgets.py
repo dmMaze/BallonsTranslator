@@ -105,7 +105,6 @@ class ProgressMessageBox(QDialog):
 
         self.setStyleSheet("""
             QWidget {
-                font-family: "Arial";
                 font-size: 13pt;
                 /* border-style: none; */
                 color: #5d5d5f;
