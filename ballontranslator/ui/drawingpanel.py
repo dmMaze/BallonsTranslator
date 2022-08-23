@@ -477,6 +477,9 @@ class DrawingPanel(Widget):
         return super().showEvent(event)
 
     def on_finish_painting(self, stroke_item: StrokeItem):
+        if stroke_item.isEmpty():
+            self.canvas.removeItem(stroke_item)
+            return
         if not self.canvas.imgtrans_proj.img_valid:
             self.canvas.removeItem(stroke_item)
             return
@@ -558,11 +561,12 @@ class DrawingPanel(Widget):
 
         # inpainted-erasing logic is essentially the same as inpainting
         if self.currentTool == self.inpaintTool:
-            mask = 255 - stroke_item.getSubimg(convert_mask=True)
-            pos = stroke_item.subBlockPos()
+            mask = stroke_item.getSubimg(convert_mask=True)
             self.canvas.removeItem(stroke_item)
             if mask is None:
                 return
+            mask = 255 - mask
+            pos = stroke_item.subBlockPos()
             mask_h, mask_w = mask.shape[:2]
             mask_x, mask_y = pos.x(), pos.y()
             inpaint_rect = [mask_x, mask_y, mask_w + mask_x, mask_h + mask_y]
