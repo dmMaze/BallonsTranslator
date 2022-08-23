@@ -275,7 +275,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.background_pixmap = None
         
         sw = self.stroke_width * pt2px(self.document().defaultFont().pointSizeF())
-        # self.document().setDocumentMargin(sw/2)
+        self.document().setDocumentMargin(sw/2)
         self.documentLayout().updateDocumentMargin(sw/2)
         self.on_document_enlarged()
         self.update()
