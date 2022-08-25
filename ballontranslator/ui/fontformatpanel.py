@@ -408,14 +408,6 @@ class FontFormatPanel(Widget):
     def restoreTextBlkItem(self):
         if self.active_format == self.global_format:
             self.global_format_changed.emit()
-        else:
-            blkitem = self.textblk_item
-            self.restoring_textblk = True
-            if blkitem:
-                blkitem.startEdit()
-                blkitem.setTextCursor(self.text_cursor)
-                blkitem.scene().gv.setFocus(Qt.FocusReason.NoFocusReason)
-            self.restoring_textblk = False
 
     def changingColor(self):
         self.focusOnColorDialog = True
@@ -530,17 +522,13 @@ class FontFormatPanel(Widget):
             elif focus_p:
                 if focus_p == self or focus_p.parentWidget() == self:
                     focus_on_fmtoptions = True
-            if focus_on_fmtoptions:
-                self.text_cursor = QTextCursor(self.textblk_item.textCursor())
-            else:
+            if not focus_on_fmtoptions:
                 self.textblk_item = None
-                self.text_cursor = None
                 self.set_active_format(self.global_format)
                 self.fontfmtLabel.setText(self.global_fontfmt_str)
         else:
             if not self.restoring_textblk:
                 blk_fmt = textblk_item.get_fontformat()
                 self.textblk_item = textblk_item
-                self.text_cursor = QTextCursor(self.textblk_item.textCursor())
                 self.set_active_format(blk_fmt)
                 self.fontfmtLabel.setText(f'TextBlock #{textblk_item.idx}')

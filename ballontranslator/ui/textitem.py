@@ -264,16 +264,6 @@ class TextBlkItem(QGraphicsTextItem):
                 pos.setY(pos.y() + delta_x * np.sin(rad))
             self.setPos(pos)
 
-
-    def focusOutEvent(self, event: QFocusEvent) -> None:
-        self.end_edit.emit(self.idx)
-        cursor = self.textCursor()
-        cursor.clearSelection()
-        self.setTextCursor(cursor)
-        self.setTextInteractionFlags(Qt.NoTextInteraction)
-        super().focusOutEvent(event)
-        self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
-
     def documentLayout(self) -> VerticalTextDocumentLayout:
         return self.document().documentLayout()
 
@@ -357,12 +347,23 @@ class TextBlkItem(QGraphicsTextItem):
         option.state = QStyle.State_None
         super().paint(painter, option, widget)
 
-    def startEdit(self):
+    def startEdit(self) -> None:
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
-
         self.setTextInteractionFlags(Qt.TextEditorInteraction)
         self.setFocus()
         self.begin_edit.emit(self.idx)
+
+    def endEdit(self) -> None:
+        self.end_edit.emit(self.idx)
+        cursor = self.textCursor()
+        cursor.clearSelection()
+        self.setTextCursor(cursor)
+        self.setTextInteractionFlags(Qt.NoTextInteraction)
+        self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+        self.setFocus()
+
+    def isEditing(self) -> bool:
+        return self.textInteractionFlags() == Qt.TextEditorInteraction
     
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:    
         self.startEdit()

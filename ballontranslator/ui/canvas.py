@@ -150,7 +150,8 @@ class Canvas(QGraphicsScene):
         self.drawingLayer.setParentItem(self.baseLayer)
         self.addItem(self.txtblkShapeControl)
 
-        self.scalefactor_changed.connect(self.onScaleFactorChanged)        
+        self.scalefactor_changed.connect(self.onScaleFactorChanged)
+        self.selectionChanged.connect(self.on_selection_changed)     
         self.stroke_path_item: StrokeItem = None
 
     def scaleUp(self):
@@ -225,6 +226,12 @@ class Canvas(QGraphicsScene):
         self.scaleFactorLabel.setText(f'{self.scale_factor*100:2.0f}%')
         self.scaleFactorLabel.raise_()
         self.scaleFactorLabel.startFadeAnimation()
+
+    def on_selection_changed(self):
+        if self.txtblkShapeControl.isVisible():
+            blk_item = self.txtblkShapeControl.blk_item
+            if blk_item is not None and blk_item.isEditing():
+                blk_item.endEdit()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.editing_textblkitem is not None:

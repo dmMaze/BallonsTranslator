@@ -220,7 +220,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
             return
         if self.blk_item is not None:
             self.blk_item.under_ctrl = False
-            self.blk_item.setFocus(Qt.FocusReason.NoFocusReason)
+            if self.blk_item.isEditing():
+                self.blk_item.endEdit()
             self.blk_item.update()
             
         self.blk_item = blk_item
@@ -271,6 +272,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
     def ctrlblockPressed(self):
         self.scene().clearSelection()
+        if self.blk_item is not None:
+            self.blk_item.endEdit()
 
     def paint(self, painter: QPainter, option: 'QStyleOptionGraphicsItem', widget = ...) -> None:
         painter.setCompositionMode(QPainter.RasterOp_NotDestination)
