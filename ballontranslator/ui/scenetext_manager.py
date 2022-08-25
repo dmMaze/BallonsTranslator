@@ -400,6 +400,11 @@ class SceneTextManager(QObject):
         self.formatpanel.set_textblk_item(None)
         self.txtblkShapeControl.setCursor(Qt.CursorShape.SizeAllCursor)
 
+    def editingTextItem(self) -> TextBlkItem:
+        if self.txtblkShapeControl.isVisible() and self.canvas.editing_textblkitem is not None:
+            return self.canvas.editing_textblkitem
+        return None
+
     def savePrevBlkItem(self, blkitem: TextBlkItem):
         self.prev_blkitem = blkitem
         self.prev_textCursor = QTextCursor(self.prev_blkitem.textCursor())

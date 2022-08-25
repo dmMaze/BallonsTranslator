@@ -279,10 +279,14 @@ class MainWindow(QMainWindow):
                 self.dl_manager.run_canvas_inpaint = False
 
     def setupShortcuts(self):
-        shortcutNext = QShortcut(QKeySequence("D"), self)
+        shortcutNext = QShortcut(QKeySequence.StandardKey.MoveToNextPage, self)
         shortcutNext.activated.connect(self.shortcutNext)
-        shortcutBefore = QShortcut(QKeySequence("A"), self)
+        shortcutD = QShortcut(QKeySequence("D"), self)
+        shortcutD.activated.connect(self.shortcutNext) 
+        shortcutBefore = QShortcut(QKeySequence.StandardKey.MoveToPreviousPage, self)
         shortcutBefore.activated.connect(self.shortcutBefore)
+        shortcutA = QShortcut(QKeySequence("A"), self)
+        shortcutA.activated.connect(self.shortcutBefore)         
         shortcutTextedit = QShortcut(QKeySequence("T"), self)
         shortcutTextedit.activated.connect(self.shortcutTextedit)
         shortcutTextblock = QShortcut(QKeySequence("W"), self)
@@ -297,8 +301,16 @@ class MainWindow(QMainWindow):
         shortcutCtrlD.activated.connect(self.shortcutCtrlD)
         shortcutSpace = QShortcut(QKeySequence("Space"), self)
         shortcutSpace.activated.connect(self.shortcutSpace)
-        shortcutCtrlA = QShortcut(QKeySequence("Ctrl+A"), self)
-        shortcutCtrlA.activated.connect(self.shortcutCtrlA)
+        shortcutSelectAll = QShortcut(QKeySequence.StandardKey.SelectAll, self)
+        shortcutSelectAll.activated.connect(self.shortcutSelectAll)
+
+        # font formatting
+        shortcutBold = QShortcut(QKeySequence.StandardKey.Bold, self)
+        shortcutBold.activated.connect(self.shortcutBold)
+        shortcutItalic = QShortcut(QKeySequence.StandardKey.Italic, self)
+        shortcutItalic.activated.connect(self.shortcutItalic)
+        shortcutUnderline = QShortcut(QKeySequence.StandardKey.Underline, self)
+        shortcutUnderline.activated.connect(self.shortcutUnderline)
 
     def shortcutNext(self):
         if self.centralStackWidget.currentIndex() == 0:
@@ -337,7 +349,7 @@ class MainWindow(QMainWindow):
                 if self.drawingPanel.currentTool == self.drawingPanel.rectTool:
                     self.drawingPanel.rectPanel.delete_btn.click()
 
-    def shortcutCtrlA(self):
+    def shortcutSelectAll(self):
         if self.centralStackWidget.currentIndex() == 0:
             if self.textPanel.isVisible():
                 self.st_manager.set_blkitems_selection(True)
@@ -347,6 +359,18 @@ class MainWindow(QMainWindow):
             if self.drawingPanel.isVisible():
                 if self.drawingPanel.currentTool == self.drawingPanel.rectTool:
                     self.drawingPanel.rectPanel.inpaint_btn.click()
+
+    def shortcutBold(self):
+        if self.textPanel.formatpanel.isVisible():
+            self.textPanel.formatpanel.formatBtnGroup.boldBtn.click()
+
+    def shortcutItalic(self):
+        if self.textPanel.formatpanel.isVisible():
+            self.textPanel.formatpanel.formatBtnGroup.italicBtn.click()
+
+    def shortcutUnderline(self):
+        if self.textPanel.formatpanel.isVisible():
+            self.textPanel.formatpanel.formatBtnGroup.underlineBtn.click()
 
     def setPaintMode(self):
         if self.bottomBar.paintChecker.isChecked():

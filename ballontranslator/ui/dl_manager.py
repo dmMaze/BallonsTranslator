@@ -232,19 +232,14 @@ class TranslateThread(ModuleThread):
 
 
 class ImgtransThread(QThread):
-    finished = Signal(object)
-    imgtrans_proj: ProjImgTrans
-    textdetect_thread: TextDetectThread = None
-    ocr_thread: OCRThread = None
-    translate_thread: TranslateThread = None
-    inpaint_thread: InpaintThread = None
 
+    finished = Signal(object)
     update_detect_progress = Signal(int)
     update_ocr_progress = Signal(int)
     update_translate_progress = Signal(int)
     update_inpaint_progress = Signal(int)
-
     exception_occurred = Signal(str, str)
+
     def __init__(self, 
                  dl_config: DLModuleConfig, 
                  textdetect_thread: TextDetectThread,
@@ -260,7 +255,6 @@ class ImgtransThread(QThread):
         self.inpaint_thread = inpaint_thread
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
-
 
     @property
     def textdetector(self) -> TextDetectorBase:
