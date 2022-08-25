@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QColor, QTextCharFormat, QIntValidator, QMouseEvent, QFont, QTextCursor
+from qtpy.QtGui import QColor, QTextCharFormat, QDoubleValidator, QMouseEvent, QFont, QTextCursor, QFocusEvent, QKeyEvent
 
 from .stylewidgets import Widget, ColorPicker, PaintQSlider
 from .misc import FontFormat, set_html_color
@@ -212,9 +212,32 @@ class FormatGroupBtn(QFrame):
     def setUnderline(self):
         self.set_underline.emit(self.underlineBtn.isChecked())
     
+class FontSizeComboBox(QComboBox):
+    
+    enter_pressed = Signal()
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.text_changed_by_user = False
+        self.editTextChanged.connect(self.on_text_changed)
+
+    def keyPressEvent(self, e: QKeyEvent) -> None:
+        key = e.key()
+        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
+            self.enter_pressed.emit()
+        super().keyPressEvent(e)
+
+    def focusInEvent(self, e: QFocusEvent) -> None:
+        super().focusInEvent(e)
+        self.text_changed_by_user = False
+
+    def on_text_changed(self):
+        if self.hasFocus():
+            self.text_changed_by_user = True
+
 
 class FontSizeBox(QFrame):
-    fontsize_changed = Signal()
+    apply_fontsize = Signal(float)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.upBtn = IncrementalBtn(self)
@@ -223,17 +246,17 @@ class FontSizeBox(QFrame):
         self.downBtn.setObjectName("FsizeIncrementDown")
         self.upBtn.clicked.connect(self.onUpBtnClicked)
         self.downBtn.clicked.connect(self.onDownBtnClicked)
-        self.fcombobox = QComboBox(self)
+        self.fcombobox = FontSizeComboBox(self)
+        self.fcombobox.enter_pressed.connect(self.on_fbox_enter_pressed)
         self.fcombobox.setFixedWidth(200)
         self.fcombobox.setEditable(True)
         self.fcombobox.setObjectName("FontSizeComboBox")
-        self.fcombobox.editTextChanged.connect(self.fontsize_changed)
         self.fcombobox.addItems([
             "5", "5.5", "6.5", "7.5", "8", "9", "10", "10.5",
             "11", "12", "14", "16", "18", "20", '22', "26", "28", 
             "36", "48", "56", "72"
         ])
-        validator = QIntValidator()
+        validator = QDoubleValidator()
         validator.setTop(1000)
         validator.setBottom(1)
         self.fcombobox.setValidator(validator)
@@ -248,35 +271,33 @@ class FontSizeBox(QFrame):
         hlayout.addWidget(self.fcombobox)
         hlayout.setSpacing(3)
 
-        self.btn_clicked = False
-
     def getFontSize(self):
         return float(self.fcombobox.currentText())
 
     def onUpBtnClicked(self):
-        self.btn_clicked = True
         size = self.getFontSize()
         newsize = int(round(size * 1.25))
         if newsize == size:
             newsize += 1
         newsize = min(1000, newsize)
         if newsize != size:
+            self.apply_fontsize.emit(newsize)
             self.fcombobox.setCurrentText(str(newsize))
         
     def onDownBtnClicked(self):
-        self.btn_clicked = True
         size = self.getFontSize()
         newsize = int(round(size * 0.75))
         if newsize == size:
             newsize -= 1
         newsize = max(1, newsize)
         if newsize != size:
+            self.apply_fontsize.emit(newsize)
             self.fcombobox.setCurrentText(str(newsize))
-        
-    def isActive(self):
-        active = self.btn_clicked or self.fcombobox.hasFocus()
-        self.btn_clicked = False
-        return active
+
+    def on_fbox_enter_pressed(self):
+        if self.fcombobox.text_changed_by_user:
+            self.fcombobox.text_changed_by_user = False
+            self.apply_fontsize.emit(self.getFontSize())
 
 
 class FontFormatPanel(Widget):
@@ -305,7 +326,7 @@ class FontFormatPanel(Widget):
         self.fontsizebox = FontSizeBox(self)
         self.fontsizebox.setToolTip(self.tr("Font Size"))
         self.fontsizebox.setObjectName("FontSizeBox")
-        self.fontsizebox.fcombobox.editTextChanged.connect(self.onfontSizeChanged)
+        self.fontsizebox.apply_fontsize.connect(self.onApplyFontsize)
         
         self.colorPicker = ColorPicker(self)
         self.colorPicker.setObjectName("FontColorPicker")
@@ -413,11 +434,10 @@ class FontFormatPanel(Widget):
         if is_valid:
             set_textblk_strokecolor(self.textblk_item, self.active_format.srgb)
 
-    def onfontSizeChanged(self):
-        if self.fontsizebox.isActive():
-            self.active_format.size = self.fontsizebox.getFontSize()
-            self.restoreTextBlkItem()
-            set_textblk_fontsize(self.textblk_item, self.active_format.size)
+    def onApplyFontsize(self, font_size: float):
+        self.active_format.size = font_size
+        self.restoreTextBlkItem()
+        set_textblk_fontsize(self.textblk_item, self.active_format.size)
 
     def onfontFamilyChanged(self):
         if self.familybox.hasFocus():
