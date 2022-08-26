@@ -45,7 +45,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.oldPos = QPointF()
         self.oldRect = QRectF()
 
-        self.setVertical(False, force=True)
+        self.setVertical(False)
         self.initTextBlock(blk, set_format=set_format)
         self.setBoundingRegionGranularity(0)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
@@ -100,6 +100,7 @@ class TextBlkItem(QGraphicsTextItem):
             bx1, by1, bx2, by2 = xyxy
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
+        self.setVertical(blk.vertical)
         self.setRect(blk.bounding_rect())
         if blk.angle != 0:
             self.setRotation(blk.angle)
@@ -203,7 +204,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.setRotation(angle)
         self.blk.angle = angle
 
-    def setVertical(self, vertical: bool, force=False):
+    def setVertical(self, vertical: bool):
         if self.blk is not None:
             self.blk.vertical = vertical
         self.setTextInteractionFlags(Qt.NoTextInteraction)

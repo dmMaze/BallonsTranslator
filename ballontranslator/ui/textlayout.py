@@ -1,7 +1,8 @@
 from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSizeF
-from qtpy.QtGui import QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFontMetrics, QTextOption, QTextLine, QTextFormat
+from qtpy.QtGui import QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
 
 from typing import List, Set
+from functools import lru_cache
 
 def print_transform(tr: QTransform):
     print(f'[[{tr.m11(), tr.m12(), tr.m13()}]\n [{tr.m21(), tr.m22(), tr.m23()}]\n [{tr.m31(), tr.m32(), tr.m33()}]]')
@@ -18,6 +19,24 @@ PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 
 PUNSET_VERNEEDROTATE = {'⸺', '…', '…', '⋯', '⋯', '～', '-', '–', '—', '＿', '﹏', '●', '•'}.union(PUNSET_BRACKET).union(PUNSET_HALF)
 
+@lru_cache(maxsize=256)
+def _font_metrics(ffamily: str, size: float) -> QFontMetrics:
+    font = QFont(ffamily)
+    font.setPointSizeF(size)
+    return QFontMetrics(font)
+
+@lru_cache(maxsize=2048)
+def get_punc_rect(char: str, ffamily: str, size: float) -> List[QRectF]:
+    fm = _font_metrics(ffamily, size)
+    br = [fm.tightBoundingRect(char), fm.boundingRect(char)]
+    return br
+
+@lru_cache(maxsize=2048)
+def get_char_width(char: str, ffamily: str, size: float) -> int:
+    fm = _font_metrics(ffamily, size)
+    return fm.widthChar(char)
+
+
 class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
     size_enlarged = Signal()
     def __init__(self, textDocument):
@@ -29,13 +48,14 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
         self.x_offset_lst = []
         self.y_offset_lst = []
         self.punt_lst: List[Set] = []
-        self.pun_rect_lst: List[List[QRectF]] = []
         self.line_spaces_lst = []
         self.line_spacing = 1.
         self.min_height = 0
         self.layout_left = 0
         self.force_single_char = True
         self.has_selection = False
+        self.punc_rect_cache = {} 
+        self.pun_align_center = False
 
     def setMaxSize(self, max_width: int, max_height: int):
         self.max_height = max_height
@@ -108,6 +128,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
             layout = block.layout()
             bllen = block.length()
             blk_text = block.text()
+            blk_text_len = len(blk_text)
             if context.cursorPosition >= blpos and context.cursorPosition < blpos + bllen:
                 cursor_block = block
             layout = block.layout()
@@ -117,13 +138,17 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
             blk_idx = block.blockNumber()
             rotate_pun_set = self.punt_lst[blk_idx]
             line_spaces_lst = self.line_spaces_lst[blk_idx]
-            fm = QFontMetrics(block.charFormat().font())
-            tbr = fm.tightBoundingRect('字fg')
-            width_comp = fm.boundingRect('演').width() - tbr.height()
+            font = block.charFormat().font()
+            fm = QFontMetrics(font)
+            tbr, br = get_punc_rect('字', font.family(), font.pointSizeF())
+            width_comp = br.width()
+            space_w = get_char_width(' ', font.family(), font.pointSizeF())
             for ii in range(layout.lineCount()):
                 line = layout.lineAt(ii)
                 num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
                 char_idx = line_pos + num_lspaces
+
+                char = None if char_idx >= blk_text_len else blk_text[char_idx]
                 o = None
                 if has_selection:
                     sel_start = selection.cursor.selectionStart() - blpos 
@@ -133,28 +158,26 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                         o.start = line.textStart()
                         o.length = line.textLength()
                         o.format = selection.format
-                        
+                
                 if char_idx in rotate_pun_set:
+                    char = blk_text[char_idx]
                     line_x, line_y = line.x(), line.y()
                     y_x = line_y - line_x
                     y_p_x = line_y + line_x
                     transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
                     inv_transform = QTransform(0, -1, 0, 1, 0, 0, -y_x, y_p_x, 1)
                     painter.setTransform(transform, True)
-                    char = blk_text[char_idx]
-                    if not char in PUNSET_BRACKET:
-                        line.draw(painter, QPointF(0, -tbr.top() - fm.ascent() - tbr.height() - width_comp), o)
-                    else:
-                        hight_comp = fm.boundingRectChar(char).width() - fm.boundingRect(char).width() + 2
-                        line.draw(painter, QPointF(hight_comp, -tbr.top() - fm.ascent() - tbr.height() - width_comp), o)
+                    pun_tbr, pun_br = get_punc_rect(char, font.family(), font.pointSizeF())
+                    hight_comp = pun_tbr.width() - pun_br.width() + 2 
+                    line.draw(painter, QPointF(hight_comp,  -pun_tbr.top() - fm.ascent() - pun_tbr.height() / 2 - width_comp / 2), o)
                     painter.setTransform(inv_transform, True)
+                elif char in PUNSET_PAUSEORSTOP:
+                    pun_tbr, pun_br = get_punc_rect(char, font.family(), font.pointSizeF())
+                    line.draw(painter, QPointF(0, pun_br.top() - pun_tbr.top()), o)
                 else:
-                    yoff = 0
-                    if num_lspaces > 0:
-                        yoff = num_lspaces * fm.width(' ')
-                        line.draw(painter, QPointF(-yoff, -tbr.top() - fm.ascent() + yoff), o)
-                    else:
-                        line.draw(painter, QPointF(0, -tbr.top() - fm.ascent()), o)
+                    yoff = num_lspaces * space_w
+                    line.draw(painter, QPointF(-yoff, -tbr.top() - fm.ascent() + yoff), o)
+                        
             block = block.next()
         
         if cursor_block is not None:
@@ -220,7 +243,6 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                     line_xy = line.position()
                     if not line_xy.x() <= x:
                         continue 
-                    ntr = line.naturalTextRect()
                     if line_top > y:
                         off = min(off, line.textStart())
                     elif line_bottom < y:
@@ -235,16 +257,16 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                                     break
                             break
                         else:
-                            if ntr.left() <= x and ntr.right() >= x:
-                                off = line.textStart()
-                                if line.textLength() != 1:
-                                    if line_bottom - y < y - line_top:
-                                        off += 2
-                                    elif ntr.right() - x < x - ntr.left():
-                                        off += 1
-                                elif line_bottom - y < y - line_top:
+                            ntr = line.naturalTextRect()
+                            off = line.textStart()
+                            if line.textLength() != 1:
+                                if line_bottom - y < y - line_top:
+                                    off += 2
+                                elif ntr.right() - x < x - ntr.left():
                                     off += 1
-                                break
+                            elif line_bottom - y < y - line_top:
+                                off += 1
+                            break
                 break
             blk = blk.next()
         return blk.position() + off
@@ -267,11 +289,11 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
         blk_char_yoffset = []
         blk_line_spaces = []
 
-        fm = QFontMetrics(block.charFormat().font())
-        fm_w = fm.width('字')
-        space_w = fm.width(' ')
-        line_width = fm_w
-        tbr = fm.tightBoundingRect('字fg')
+        font = block.charFormat().font()
+        fm = QFontMetrics(font)
+        space_w = get_char_width(' ', font.family(), font.pointSizeF())
+        tbr, br = get_punc_rect('字', font.family(), font.pointSizeF())
+        line_width = fm_w = br.width()
         TBRH = tbr.height()
 
         layout_first_block = block == doc.firstBlock()
@@ -291,7 +313,6 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
         tl.setTextOption(option)
         
         blk_text = block.text()
-        
         blk_text_len = len(blk_text)
         if blk_text_len == 0:
             TBRH = 0
@@ -311,12 +332,13 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
             text_len = line.textLength()
             num_rspaces, num_lspaces = 0, 0
             char_yoffset_lst = [line_y_offset]
-            if text_len > 1:
-                text = blk_text[char_idx: char_idx + text_len].replace('\n', '')
-                num_rspaces = text_len - len(text.rstrip())
-                num_lspaces = text_len - len(text.lstrip())
-                for _ in range(num_lspaces):
-                    char_yoffset_lst.append(min(self.available_height, char_yoffset_lst[-1] + space_w))
+
+            text = blk_text[char_idx: char_idx + text_len].replace('\n', '')
+            num_rspaces = text_len - len(text.rstrip())
+            num_lspaces = text_len - len(text.lstrip())
+            for _ in range(num_lspaces):
+                char_yoffset_lst.append(min(self.available_height, char_yoffset_lst[-1] + space_w))
+
             blk_line_spaces.append([num_rspaces, num_lspaces, char_yoffset_lst, char_idx])
             
             rotated = False
@@ -325,12 +347,12 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                 char = blk_text[char_idx]
                 if char in PUNSET_VERNEEDROTATE:
                     self.punt_lst[-1].add(char_idx)
-                    if char in PUNSET_BRACKET:
-                        tbr = fm.tightBoundingRect(char)
-                    else:
-                        tbr = fm.boundingRect(char)
+                    tbr, br = get_punc_rect(char, font.family(), font.pointSizeF())
                     tbr_h = tbr.width()
                     rotated = True
+                elif char in PUNSET_PAUSEORSTOP:
+                    tb, br = get_punc_rect(char, font.family(), font.pointSizeF())
+                    tbr_h = tb.height()
 
             center_align_offset = 0
             if ntw == 0:
@@ -349,10 +371,12 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                 else:
                     x_offset = x_offset - fm_w * self.line_spacing
                 line_y_offset = doc.documentMargin()
-                line_bottom = line_y_offset + tbr_h
-                char_yoffset_lst.append(line_bottom)
+                
+                char_yoffset_lst[-1] = line_y_offset
+                char_yoffset_lst.append(line_y_offset + tbr_h)
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, self.available_height))
+                line_bottom = char_yoffset_lst[-1]
             else:
                 char_yoffset_lst.append(char_bottom)
                 for _ in range(num_rspaces):
@@ -375,8 +399,10 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
         return QRectF(0, 0, max(self.document().pageSize().width(), self.max_width), 2147483647)
 
     def updateDocumentMargin(self, margin):
-        self.max_height = margin *2 + self.available_height
+        self.max_height = margin * 2 + self.available_height
         self.max_width = margin * 2 + self.available_width
+
+
 
 
 class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
@@ -479,9 +505,11 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
         option = doc.defaultTextOption()
         option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         tl.setTextOption(option)
-        fm = QFontMetrics(block.charFormat().font())
+        font = block.charFormat().font()
+        tbr = get_punc_rect('字fg', font.family(), font.pointSizeF())[0]
+        fm = QFontMetrics(font)
         doc_margin = self.document().documentMargin()
-        tbr = fm.tightBoundingRect('字fg')
+
         if block == doc.firstBlock():
             self.x_offset_lst = []
             self.y_offset_lst = []
@@ -497,7 +525,6 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
                 break
             line.setLeadingIncluded(False)
             line.setLineWidth(self.available_width)
-
             line.setPosition(QPointF(doc_margin, y_offset))
             self.y_bottom = tbr.height() + y_offset + line.descent()    #????
             y_offset += tbr.height() * self.line_spacing
