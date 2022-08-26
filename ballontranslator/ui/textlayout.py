@@ -47,7 +47,6 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
         self.available_height = 0
         self.x_offset_lst = []
         self.y_offset_lst = []
-        self.punt_lst: List[Set] = []
         self.line_spaces_lst = []
         self.line_spacing = 1.
         self.min_height = 0
@@ -77,13 +76,11 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
     def reLayout(self):
         self.min_height = 0
         self.layout_left = 0
-        self.punt_lst = []
         self.line_spaces_lst = []
         doc = self.document()
         doc_margin = doc.documentMargin()
         block = doc.firstBlock()
         while block.isValid():
-            self.punt_lst.append(set())
             self.layoutBlock(block)
             block = block.next()
 
@@ -136,7 +133,6 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
             bllen = block.length()
 
             blk_idx = block.blockNumber()
-            rotate_pun_set = self.punt_lst[blk_idx]
             line_spaces_lst = self.line_spaces_lst[blk_idx]
             font = block.charFormat().font()
             fm = QFontMetrics(font)
@@ -159,7 +155,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                         o.length = line.textLength()
                         o.format = selection.format
                 
-                if char_idx in rotate_pun_set:
+                if char in PUNSET_VERNEEDROTATE:
                     char = blk_text[char_idx]
                     line_x, line_y = line.x(), line.y()
                     y_x = line_y - line_x
@@ -203,7 +199,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                     if cpos >= len_text:
                         last_char = blk_text[-1]
                         tbr = fm.tightBoundingRect(last_char)
-                        if cpos - 1 in rotate_pun_set:
+                        if last_char in PUNSET_VERNEEDROTATE:
                             y += tbr.width()
                         else:
                             y += tbr.height()
@@ -346,7 +342,6 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
             if char_idx < blk_text_len:
                 char = blk_text[char_idx]
                 if char in PUNSET_VERNEEDROTATE:
-                    self.punt_lst[-1].add(char_idx)
                     tbr, br = get_punc_rect(char, font.family(), font.pointSizeF())
                     tbr_h = tbr.width()
                     rotated = True
