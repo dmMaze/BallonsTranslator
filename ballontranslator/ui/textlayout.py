@@ -1,8 +1,11 @@
-from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSizeF
-from qtpy.QtGui import QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat, QTextFragment
+from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSizeF, QSize
+from qtpy.QtGui import QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat, QTextFragment
 
-from typing import List, Set
+import cv2
+from typing import List, Set, Any
 from functools import lru_cache, cached_property
+
+from .misc import pixmap2ndarray, LruIgnoreArgs
 
 def print_transform(tr: QTransform):
     print(f'[[{tr.m11(), tr.m12(), tr.m13()}]\n [{tr.m21(), tr.m22(), tr.m23()}]\n [{tr.m31(), tr.m32(), tr.m33()}]]')
@@ -16,7 +19,7 @@ PUNSET_PAUSEORSTOP = {'。', '．', '，', '、', '：', '；', '！', '‼', '�
 PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛'}
 PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗', '〕', '］', '｝'}
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
-PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '●', '•'}
+PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '●', '•', '~'}
 PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF)
 
 
@@ -37,6 +40,18 @@ def get_char_width(char: str, ffamily: str, size: float) -> int:
     fm = _font_metrics(ffamily, size)
     return fm.width(char)
 
+# @lru_cache(maxsize=1024)  # buggy to work with lru
+def punc_actual_rect(line: LruIgnoreArgs, family: str, size: float, weight: int) -> List[int]:
+
+    # QtextLine line is invisibale to lru
+    line: QTextLine = line.line
+    pixmap = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pixmap)
+    line.draw(p, QPointF(-line.x(), -line.y()))
+    p.end()
+    mask = pixmap2ndarray(pixmap, keep_alpha=True)[..., -1]
+    return cv2.boundingRect(cv2.findNonZero(mask))
 
 class CharFontFormat:
     def __init__(self, font: QFont) -> None:
@@ -57,6 +72,23 @@ class CharFontFormat:
 
     def punc_rect(self, punc: str) -> List[QRectF]:
         return get_punc_rect(punc, self.font.family(), self.font.pointSizeF())
+
+    @property
+    def family(self) -> str:
+        return self.font.family()
+
+    @property
+    def weight(self) -> float:
+        return self.font.weight()
+
+    @property
+    def size(self) -> float:
+        return self.font.pointSizeF()
+
+    def punc_actual_rect(self, line: QTextLine) -> List[int]:
+        line = LruIgnoreArgs(line=line)
+        ar = punc_actual_rect(line, self.family, self.size, self.weight)
+        return ar
 
 
 class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
@@ -187,6 +219,10 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                 if char in PUNSET_VERNEEDROTATE:
                     char = blk_text[char_idx]
                     line_x, line_y = line.x(), line.y()
+
+                    if char in PUNSET_NONBRACKET:
+                        non_bracket_br = cfmt.punc_actual_rect(line)
+            
                     y_x = line_y - line_x
                     y_p_x = line_y + line_x
                     transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
@@ -194,16 +230,22 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                     painter.setTransform(transform, True)
                     pun_tbr, pun_br = cfmt.punc_rect(char)
                     hight_comp = pun_tbr.width() - pun_br.width() + 2
+
                     if char.isalpha():
                         yoff = -cfmt.tbr.top() - fm.ascent() - cfmt.tbr.width()
                         hight_comp = 0
+                    elif char in PUNSET_NONBRACKET:
+                        yoff =  -non_bracket_br[1] - non_bracket_br[3]
+                        if self.punc_align_center:
+                            yoff = yoff - cfmt.tbr.width() / 2 + non_bracket_br[3] / 3
+                        else:
+                            yoff = yoff - cfmt.tbr.width() + non_bracket_br[3]
                     else:
                         yoff = -pun_tbr.top() - fm.ascent() - pun_tbr.height() / 2 - cfmt.br.width() / 2
-                    if char in PUNSET_NONBRACKET:
-                        yoff = -cfmt.tbr.width() - pun_br.height() + cfmt.br.width()
-                        # line.draw(painter, QPointF(hight_comp,  yoff - pun_tbr.height()), o)
+                    
                     line.draw(painter, QPointF(hight_comp,  yoff), o)
                     painter.setTransform(inv_transform, True)
+
                 elif char in PUNSET_PAUSEORSTOP:
                     pun_tbr, pun_br = cfmt.punc_rect(char)
                     yoff = pun_br.top() - pun_tbr.top()
@@ -214,9 +256,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                         xoff -= line.naturalTextWidth() - cfmt.br.width()
                         xoff += cfmt.br.width() - pun_tbr.width()
                     line.draw(painter, QPointF(xoff, yoff), o)
-                    # p = QPainter()
                 else:
-                    yoff = 0
                     yoff = line.naturalTextWidth() - cfmt.br.width()
                     line.draw(painter, QPointF(-yoff, -cfmt.tbr.top() - fm.ascent() + yoff), o)
                         
