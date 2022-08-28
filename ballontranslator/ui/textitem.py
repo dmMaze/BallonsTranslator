@@ -9,7 +9,7 @@ from qtpy.QtGui import QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument,
 from dl.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
 from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern
-from .textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
+from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
@@ -301,9 +301,6 @@ class TextBlkItem(QGraphicsTextItem):
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         br = self.boundingRect()
-        # mouse_over = option.state & QStyle.StateFlag.State_MouseOver
-        # selected = option.state & QStyle.StateFlag.State_Selected
-        
         painter.save()
 
         # shadow effect not working ???
@@ -316,35 +313,6 @@ class TextBlkItem(QGraphicsTextItem):
         if self.background_pixmap is not None:
             painter.setRenderHint(QPainter.SmoothPixmapTransform)
             painter.drawPixmap(br.toRect(), self.background_pixmap)
-
-        # https://stackoverflow.com/questions/13966868/qt-outlined-text-without-thinning-font
-        # too slow
-
-        # if sw != 0 and self.tcursor:
-        #     old_fmt = self.tcursor.charFormat()
-        #     self.tcursor.setCharFormat(self.stroke_fmt)
-
-            # cursor = QTextCursor(self.document())
-            # old_fmt = cursor.charFormat()
-            # format = cursor.charFormat()
-            # sw = sw * self.document().defaultFont().pointSizeF()
-            # format.setTextOutline(QPen(self.stroke_color, sw, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            
-            # cursor.select(QTextCursor.Document)
-            
-            # cursor.setCharFormat(format)
-            # layout = self.document().documentLayout()   
-            # layout.draw(painter, layout.PaintContext())
-
-        # painter.setCompositionMode(QPainter.RasterOp_NotDestination)
-        # pen = painter.pen()
-        # pen.setWidth(1)
-        # pen.setStyle(Qt.DashLine)
-        # pen.setDashPattern([7, 5])
-        # # pen.setColor(QColor(0, 127, 127))
-        # painter.setPen(pen)
-        # painter.setBrush(Qt.NoBrush)
-        # painter.drawRect(self.boundingRect())
 
         draw_rect = self.draw_rect and not self.under_ctrl
         if self.isSelected() and not self.is_editting():
