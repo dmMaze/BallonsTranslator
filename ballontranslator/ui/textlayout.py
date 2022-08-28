@@ -475,7 +475,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
             if char_bottom > available_height:
                 # switch to next line
                 if char_idx == 0 and layout_first_block:
-                    self.min_height = line_bottom
+                    self.min_height = doc_margin + tbr_h
                 else:
                     x_offset = x_offset - block_width * self.line_spacing
                 line_y_offset = doc_margin

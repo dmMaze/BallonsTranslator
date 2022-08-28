@@ -65,15 +65,31 @@ class TextBlkItem(QGraphicsTextItem):
     def repaint_background(self):
         
         self.repainting = True
-        doc = self.document()
-        
-        sw = self.stroke_width * pt2px(self.document().defaultFont().pointSizeF())
-        format = QTextCharFormat()
-        format.setTextOutline (QPen(self.stroke_color, sw, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        doc = self.document().clone()
+        doc.setDocumentMargin(self.document().documentMargin())
+        layout = VerticalTextDocumentLayout(doc) if self.is_vertical else HorizontalTextDocumentLayout(doc)
+        rect = self.rect()
+        doc.setDocumentLayout(layout)
+        layout.setMaxSize(rect.width(), rect.height())
+
         cursor = QTextCursor(doc)
-        cursor.select(QTextCursor.Document)
-        old_fmt = cursor.charFormat()
-        cursor.mergeCharFormat(format)
+        block = doc.firstBlock()
+        stroke_pen = QPen(self.stroke_color, 0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                fragment = it.fragment()
+                cfmt = fragment.charFormat()
+                sw = pt2px(cfmt.fontPointSize()) * self.stroke_width
+                stroke_pen.setWidthF(sw)
+                pos1 = fragment.position()
+                pos2 = pos1 + fragment.length()
+                cursor.setPosition(pos1)
+                cursor.setPosition(pos2, QTextCursor.KeepAnchor)
+                cfmt.setTextOutline(stroke_pen)
+                cursor.mergeCharFormat(cfmt)
+                it += 1
+            block = block.next()
 
         size = self.boundingRect().size()
         self.background_pixmap = QPixmap(size.toSize())
@@ -84,8 +100,7 @@ class TextBlkItem(QGraphicsTextItem):
         painter.device()
         doc.drawContents(painter)
         painter.end()
-        
-        cursor.setCharFormat(old_fmt)
+
         self.repainting = False
         
     def docSizeChanged(self):
