@@ -9,7 +9,7 @@ from qtpy.QtGui import QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument,
 from dl.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
 from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern
-from .textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
+from .textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
@@ -63,14 +63,14 @@ class TextBlkItem(QGraphicsTextItem):
         self.update()
 
     def repaint_background(self):
-        
         self.repainting = True
         doc = self.document().clone()
         doc.setDocumentMargin(self.document().documentMargin())
         layout = VerticalTextDocumentLayout(doc) if self.is_vertical else HorizontalTextDocumentLayout(doc)
+        layout.line_spacing = self.line_spacing
         rect = self.rect()
+        layout.setMaxSize(rect.width(), rect.height(), False)
         doc.setDocumentLayout(layout)
-        layout.setMaxSize(rect.width(), rect.height())
 
         cursor = QTextCursor(doc)
         block = doc.firstBlock()
@@ -121,19 +121,20 @@ class TextBlkItem(QGraphicsTextItem):
         if blk.angle != 0:
             self.setRotation(blk.angle)
         
-        # blk.vertical = False
         set_char_fmt = False
-        if not blk.rich_text:
-            if blk.translation:
-                self.setPlainText(blk.translation)
-                set_char_fmt = True
-        else:
-            self.setHtml(blk.rich_text)
-            
+        if blk.translation:
+            set_char_fmt = True
+
         if set_format:
             font_fmt = FontFormat()
             font_fmt.from_textblock(blk)
             self.set_fontformat(font_fmt, set_char_format=set_char_fmt)
+
+        if not blk.rich_text:
+            if blk.translation:
+                self.setPlainText(blk.translation)
+        else:
+            self.setHtml(blk.rich_text)
 
     def setCenterTransform(self):
         center = self.boundingRect().center()
@@ -252,14 +253,6 @@ class TextBlkItem(QGraphicsTextItem):
         if self.background_pixmap is not None:
             self.repaint_background()
 
-        # cursor = QTextCursor(doc)
-        # format = cursor.charFormat()
-        # cursor.mergeCharFormat(format)
-        # cursor.select(QTextCursor.Document)
-        # cursor.mergeBlockCharFormat(format)
-        # cursor.clearSelection()
-        # # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
-        # self.setTextCursor(cursor)
         self.doc_size_changed.emit(self.idx)
 
     def on_document_enlarged(self):
@@ -282,21 +275,22 @@ class TextBlkItem(QGraphicsTextItem):
                 pos.setY(pos.y() + delta_x * np.sin(rad))
             self.setPos(pos)
 
-    def documentLayout(self) -> VerticalTextDocumentLayout:
+    def documentLayout(self) -> SceneTextLayout:
         return self.document().documentLayout()
 
-    def setStrokeWidth(self, stroke_width):
+    def setStrokeWidth(self, stroke_width: float):
+        if self.stroke_width == stroke_width:
+            return
+
         self.stroke_width = stroke_width
+        sw = stroke_width * pt2px(self.document().defaultFont().pointSizeF())
+        self.documentLayout().updateDocumentMargin(sw/2)
+        self.documentLayout().reLayout()
+        
         if stroke_width > 0:                
             self.repaint_background()
         else:
             self.background_pixmap = None
-    
-        sw = self.stroke_width * pt2px(self.document().defaultFont().pointSizeF())
-        
-        self.document().setDocumentMargin(sw/2)
-        self.documentLayout().updateDocumentMargin(sw/2)
-        self.on_document_enlarged()
         self.update()
 
     def setStrokeColor(self, scolor):
@@ -534,7 +528,6 @@ class TextBlkItem(QGraphicsTextItem):
         # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
         cursor.movePosition(QTextCursor.Start)
         self.setTextCursor(cursor)
-        self.stroke_width = ffmat.stroke_width
         self.setStrokeWidth(ffmat.stroke_width)
         self.setStrokeColor(ffmat.srgb)
         

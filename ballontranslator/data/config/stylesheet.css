@@ -64,7 +64,7 @@ TransTextEdit {
 QComboBox {
     height: 40px;
     font-size: 20px;
-    padding-left: 16px;
+    padding-left: 12px;
     border: 1px solid whitesmoke;
 }
 
@@ -85,9 +85,9 @@ QComboBox::down-arrow {
 }
 
 QFontComboBox#FontFamilyBox {
-    width: 200px;
+    width: 160px;
     height: 40px;
-    font-size: 24px;
+    font-size: 20px;
     padding-right: 20px;
     padding-left: 10px;
     border-color: #b3b6bf;
@@ -105,22 +105,32 @@ QFontComboBox#FontFamilyBox::down-arrow {
     margin-right: 10px;
 }
 
-QComboBox#FontSizeComboBox {
+SizeComboBox {
+    padding-left: 8px;
     padding-right: 5px;
-    font-size: 24px;
+    font-size: 20px;
+    width: 52px;
     border-color: #b3b6bf;
 }
 
-QComboBox#FontSizeComboBox::hover {
+SizeComboBox::hover {
     border: 1px solid rgb(30, 147, 229);
 }
 
-QComboBox#FontSizeComboBox::down-arrow {
+SizeComboBox::down-arrow {
     image: url(data/icons/combobox_arrow.svg);
     width: 42px;
     height: 16px;
     padding-right: 5px;
     margin-right: 5px;
+}
+
+QLabel#lineSpacingLabel {
+    image: url(data/icons/fontfmt_linespacing.svg);
+    max-width: 42px;
+    max-height: 42px;
+    min-width: 42px;
+    min-height: 42px;
 }
 
 ColorPicker {

@@ -1,5 +1,5 @@
-from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSizeF, QSize
-from qtpy.QtGui import QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat, QTextFragment
+from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF, QSize
+from qtpy.QtGui import QTextDocument, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
 
 import cv2
 from typing import List, Set, Any
@@ -24,20 +24,19 @@ PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF
 
 
 @lru_cache(maxsize=256)
-def _font_metrics(ffamily: str, size: float) -> QFontMetrics:
-    font = QFont(ffamily)
-    font.setPointSizeF(size)
+def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetrics:
+    font = QFont(ffamily, size, weight, italic)
     return QFontMetrics(font)
 
 @lru_cache(maxsize=2048)
-def get_punc_rect(char: str, ffamily: str, size: float) -> List[QRectF]:
-    fm = _font_metrics(ffamily, size)
+def get_punc_rect(char: str, ffamily: str, size: float, weight: int, italic: bool) -> List[QRectF]:
+    fm = _font_metrics(ffamily, size, weight, italic)
     br = [fm.tightBoundingRect(char), fm.boundingRect(char)]
     return br
 
 @lru_cache(maxsize=2048)
-def get_char_width(char: str, ffamily: str, size: float) -> int:
-    fm = _font_metrics(ffamily, size)
+def get_char_width(char: str, ffamily: str, size: float, weight: int, italic: bool) -> int:
+    fm = _font_metrics(ffamily, size, weight, italic)
     return fm.width(char)
 
 # @lru_cache(maxsize=1024)  # buggy to work with lru
@@ -60,18 +59,18 @@ class CharFontFormat:
 
     @cached_property
     def br(self) -> QRectF:
-        return get_punc_rect('啊', self.font.family(), self.font.pointSizeF())[1]
+        return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[1]
 
     @cached_property
     def tbr(self) -> QRectF:
-        return get_punc_rect('啊', self.font.family(), self.font.pointSizeF())[0]
+        return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[0]
 
     @cached_property
     def space_width(self) -> int:
-        return get_char_width(' ', self.font.family(), self.font.pointSizeF())
+        return get_char_width(' ', self.family, self.size, self.weight, self.font.italic())
 
     def punc_rect(self, punc: str) -> List[QRectF]:
-        return get_punc_rect(punc, self.font.family(), self.font.pointSizeF())
+        return get_punc_rect(punc, self.family, self.size, self.weight, self.font.italic())
 
     @property
     def family(self) -> str:
@@ -91,44 +90,69 @@ class CharFontFormat:
         return ar
 
 
-class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
+class SceneTextLayout(QAbstractTextDocumentLayout):
     size_enlarged = Signal()
-    def __init__(self, textDocument):
-        super().__init__(textDocument)
+    def __init__(self, doc: QTextDocument) -> None:
+        super().__init__(doc)
         self.max_height = 0
         self.max_width = 0
         self.available_width = 0
         self.available_height = 0
+        self.line_spacing = 1.
+
+    def setMaxSize(self, max_width: int, max_height: int, relayout=True):
+        self.max_height = max_height
+        self.max_width = max_width
+        doc_margin = self.document().documentMargin() * 2
+        self.available_width = max(max_width -  doc_margin, 0)
+        self.available_height = max(max_height - doc_margin, 0)
+        if relayout:
+            self.reLayout()
+
+    def setLineSpacing(self, line_spacing: float):
+        if self.line_spacing != line_spacing:
+            self.line_spacing = line_spacing
+            self.reLayout()
+
+    def blockBoundingRect(self, block: QTextBlock) -> QRectF:
+        if not block.isValid():
+            return QRectF()
+        br = block.layout().boundingRect()
+        rect = QRectF(0, 0, br.width(), br.height())
+        return rect
+
+    def updateDocumentMargin(self, margin):
+        doc_margin = self.document().documentMargin()
+        self.max_height = doc_margin * 2 + self.available_height
+        self.max_width = doc_margin * 2 + self.available_width
+        self.document().setDocumentMargin(margin)
+        margin *= 2
+        self.available_height = max(self.max_height -  margin, 0)
+        self.available_width = max(self.max_width - margin, 0)
+
+    def documentSize(self) -> QSizeF:
+        return QSizeF(self.max_width, self.max_height)
+
+
+class VerticalTextDocumentLayout(SceneTextLayout):
+
+    def __init__(self, doc: QTextDocument):
+        super().__init__(doc)
         self.x_offset_lst = []
         self.y_offset_lst = []
         self.line_spaces_lst = []
-        self.line_spacing = 1.
         self.min_height = 0
         self.layout_left = 0
         self.force_single_char = True
         self.has_selection = False
         self.punc_rect_cache = {} 
-        self.punc_align_center = True
+        self.punc_align_center = False
 
         self.block_charfmt_lst = []
         self.block_ideal_width = []
         self._map_charidx2frag = []
 
         self.draw_shifted = 0
-
-    def setMaxSize(self, max_width: int, max_height: int):
-        self.max_height = max_height
-        self.max_width = max_width
-        doc_margin = self.document().documentMargin() * 2
-        
-        self.available_width = max(max_width -  doc_margin, 0)
-        self.available_height = max(max_height - doc_margin, 0)
-        self.reLayout()
-    
-    def setLineSpacing(self, line_spacing: float):
-        if self.line_spacing != line_spacing:
-            self.line_spacing = line_spacing
-            self.reLayout()
 
     @property
     def align_right(self):
@@ -250,10 +274,13 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                     pun_tbr, pun_br = cfmt.punc_rect(char)
                     yoff = pun_br.top() - pun_tbr.top()
                     xoff = -pun_tbr.left()
+                    shifted = line.naturalTextWidth() - cfmt.br.width()
+                    if num_lspaces > 0:
+                        yoff += shifted
+                        xoff -= shifted
                     if self.punc_align_center:
                         xoff += (cfmt.br.width() - pun_tbr.width()) / 2
                     else:
-                        xoff -= line.naturalTextWidth() - cfmt.br.width()
                         xoff += cfmt.br.width() - pun_tbr.width()
                     line.draw(painter, QPointF(xoff, yoff), o)
                 else:
@@ -293,9 +320,6 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                     self.update.emit(QRectF(0, 0, self.max_width, self.max_height))
             self.has_selection = has_selection  # update this flag when drawing the cursor
         painter.restore()
-        
-    def documentSize(self) -> QSizeF:
-        return QSizeF(self.max_width, self.max_height)
 
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
         blk = self.document().firstBlock()
@@ -376,13 +400,6 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
     def get_char_fontfmt(self, block_number: int, char_idx: int) -> CharFontFormat:
         frag_idx = self._map_charidx2frag[block_number][char_idx]
         return self.block_charfmt_lst[block_number][frag_idx]
-        
-    def blockBoundingRect(self, block: QTextBlock) -> QRectF:
-        if not block.isValid():
-            return QRectF()
-        br = block.layout().boundingRect()
-        rect = QRectF(0, 0, br.width(), br.height())
-        return rect
 
     def layoutBlock(self, block: QTextBlock):
         doc = self.document()
@@ -451,7 +468,7 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
                         cw2 = cfmt.punc_rect(char+char)[1].width()
                         tbr_h = br.width() - (br.width() * 2 - cw2)
                     if char in {'…', '⋯'}:
-                        tbr_h = line.naturalTextWidth()
+                        tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                 elif char in PUNSET_PAUSEORSTOP:
                     tbr_h = cfmt.punc_rect(char)[0].height()
             elif char_idx - num_lspaces < blk_text_len:
@@ -505,35 +522,13 @@ class VerticalTextDocumentLayout(QAbstractTextDocumentLayout):
     def frameBoundingRect(self, frame: QTextFrame):
         return QRectF(0, 0, max(self.document().pageSize().width(), self.max_width), 2147483647)
 
-    def updateDocumentMargin(self, margin):
-        self.max_height = margin * 2 + self.available_height
-        self.max_width = margin * 2 + self.available_width
 
+class HorizontalTextDocumentLayout(SceneTextLayout):
 
-class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
-    size_enlarged = Signal()
-    def __init__(self, textDocument):
-        super().__init__(textDocument)
-        self.max_height = 0
-        self.max_width = 0
-        self.available_width = 0
-        self.available_height = 0
+    def __init__(self, doc: QTextDocument):
+        super().__init__(doc)
         self.x_offset_lst = []
         self.y_offset_lst = []
-        self.line_spacing = 1.
-
-    def setMaxSize(self, max_width: int, max_height: int):
-        self.max_height = max_height
-        self.max_width = max_width
-        doc_margin = self.document().documentMargin() * 2
-        self.available_width = max(max_width -  doc_margin, 0)
-        self.available_height = max(max_height - doc_margin, 0)
-        self.reLayout()
-
-    def setLineSpacing(self, line_spacing: float):
-        if self.line_spacing != line_spacing:
-            self.line_spacing = line_spacing
-            self.reLayout()
 
     def reLayout(self):
         doc = self.document()
@@ -569,13 +564,6 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
 
     def documentChanged(self, position: int, charsRemoved: int, charsAdded: int) -> None:
         self.reLayout()
-        
-    def blockBoundingRect(self, block: QTextBlock) -> QRectF:
-        if not block.isValid():
-            return QRectF()
-        br = block.layout().boundingRect()
-        rect = QRectF(0, 0, br.width(), br.height())
-        return rect
 
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
         blk = self.document().firstBlock()
@@ -611,7 +599,7 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
         option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         tl.setTextOption(option)
         font = block.charFormat().font()
-        tbr = get_punc_rect('字fg', font.family(), font.pointSizeF())[0]
+        tbr = get_punc_rect('字fg', font.family(), font.pointSizeF(), font.weight(), font.italic())[0]
         fm = QFontMetrics(font)
         doc_margin = self.document().documentMargin()
 
@@ -637,9 +625,6 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
         tl.endLayout()
         self.y_offset_lst.append(y_offset)     # vertical text need center alignment ???
         return 1
-
-    def documentSize(self) -> QSizeF:
-        return QSizeF(self.max_width, self.max_height)
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
@@ -692,7 +677,3 @@ class HorizontalTextDocumentLayout(QAbstractTextDocumentLayout):
                 cpos = context.cursorPosition - blpos
             layout.drawCursor(painter, QPointF(0, 0), cpos, 1)
         painter.restore()
-
-    def updateDocumentMargin(self, margin):
-        self.max_height = margin *2 + self.available_height
-        self.max_width = margin * 2 + self.available_width
