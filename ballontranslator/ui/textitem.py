@@ -45,6 +45,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.oldPos = QPointF()
         self.oldRect = QRectF()
 
+        self.document().setDocumentMargin(0)
         self.setVertical(False)
         self.initTextBlock(blk, set_format=set_format)
         self.setBoundingRegionGranularity(0)
@@ -209,6 +210,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.blk.vertical = vertical
         self.setTextInteractionFlags(Qt.NoTextInteraction)
         doc = self.document()
+        doc_margin = doc.documentMargin()
         doc.disconnect()
         doc.documentLayout().disconnect()
         html = doc.toHtml()
@@ -216,6 +218,7 @@ class TextBlkItem(QGraphicsTextItem):
         rect = self.rect()
 
         doc = QTextDocument()
+        doc.setDocumentMargin(doc_margin)
         if vertical:
             layout = VerticalTextDocumentLayout(doc)
         else:
@@ -226,7 +229,6 @@ class TextBlkItem(QGraphicsTextItem):
         doc.setDocumentLayout(layout)
         doc.setDefaultFont(default_font)
         doc.setHtml(html)
-        doc.setDocumentMargin(0)
         self.setDocument(doc)
         doc.contentsChanged.connect(self.documentContentChanged)
         
@@ -274,8 +276,9 @@ class TextBlkItem(QGraphicsTextItem):
             self.repaint_background()
         else:
             self.background_pixmap = None
-        
+    
         sw = self.stroke_width * pt2px(self.document().defaultFont().pointSizeF())
+        
         self.document().setDocumentMargin(sw/2)
         self.documentLayout().updateDocumentMargin(sw/2)
         self.on_document_enlarged()
@@ -488,7 +491,6 @@ class TextBlkItem(QGraphicsTextItem):
         return font_format
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False):
-
         if self.is_vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
         cursor = self.textCursor()
@@ -517,7 +519,6 @@ class TextBlkItem(QGraphicsTextItem):
         # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
         cursor.movePosition(QTextCursor.Start)
         self.setTextCursor(cursor)
-
         self.stroke_width = ffmat.stroke_width
         self.setStrokeWidth(ffmat.stroke_width)
         self.setStrokeColor(ffmat.srgb)

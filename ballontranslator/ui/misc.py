@@ -31,7 +31,7 @@ def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
     h = size.width()
     w = size.height()
     if isinstance(pixmap, QPixmap):
-        qimg = pixmap.toImage().convertToFormat(QImage.Format_RGBA8888)
+        qimg = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
     else:
         qimg = pixmap
 
@@ -51,9 +51,9 @@ def ndarray2pixmap(img):
     height, width, channel = img.shape
     bytesPerLine = channel * width
     if channel == 4:
-        img_format = QImage.Format_RGBA8888
+        img_format = QImage.Format.Format_RGBA8888
     else:
-        img_format = QImage.Format_RGB888
+        img_format = QImage.Format.Format_RGB888
     img = np.ascontiguousarray(img)
     qImg = QImage(img.data, width, height, bytesPerLine, img_format).rgbSwapped()
     return QPixmap(qImg)
