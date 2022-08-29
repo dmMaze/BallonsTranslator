@@ -539,6 +539,7 @@ class MainWindow(QMainWindow):
             if override_alignment:
                 blk._alignment = gf.alignment
             blk.line_spacing = gf.line_spacing
+            blk.letter_spacing = gf.letter_spacing
 
         self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
         

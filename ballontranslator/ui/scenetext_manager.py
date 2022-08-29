@@ -641,7 +641,7 @@ class SceneTextManager(QObject):
                 if matched:
                     cursor.clearSelection()
                     cursor.setPosition(cpos)
-                    cursor.setPosition(cpos+1, QTextCursor.KeepAnchor)
+                    cursor.setPosition(cpos+1, QTextCursor.MoveMode.KeepAnchor)
                     cursor.setCharFormat(fmt)
                     cpos += 1
 

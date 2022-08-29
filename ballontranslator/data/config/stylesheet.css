@@ -127,6 +127,14 @@ SizeComboBox::down-arrow {
 
 QLabel#lineSpacingLabel {
     image: url(data/icons/fontfmt_linespacing.svg);
+    max-width: 38px;
+    max-height: 38px;
+    min-width: 38px;
+    min-height: 38px;
+}
+
+QLabel#letterSpacingLabel {
+    image: url(data/icons/fontfmt_letterspacing.svg);
     max-width: 42px;
     max-height: 42px;
     min-width: 42px;
@@ -134,26 +142,26 @@ QLabel#lineSpacingLabel {
 }
 
 ColorPicker {
-    max-height: 46px;
-    min-height: 46px;
-    min-width: 46px;
-    max-width: 46px;
-    border: 4px solid #b3b6bf;
+    max-height: 38px;
+    min-height: 38px;
+    min-width: 38px;
+    max-width: 38px;
+    border: 3px solid #b3b6bf;
 }
 
 ColorPicker::hover {
-    border: 4px solid rgb(30, 147, 229);
+    border: 3px solid rgb(30, 147, 229);
 }
 
 AlignmentChecker {
     /* max-height: 30px; */
-    max-width: 52px;
+    /* max-width: 52px; */
     margin: 0px;
 }
 
 AlignmentChecker::indicator {
-    height: 50px;
-    width: 50px;
+    height: 42px;
+    width: 42px;
     border: 2px solid #b3b6bf;
 }
 
@@ -167,6 +175,8 @@ AlignmentChecker::indicator:hover {
 
 AlignmentChecker#AlignLeftChecker::indicator {
     border-right: none;
+    min-width: 54px;
+    max-width: 54px;
     image: url(data/icons/fontfmt_alignl.svg);
 }
 
@@ -177,7 +187,8 @@ AlignmentChecker#AlignLeftChecker::indicator:checked {
 AlignmentChecker#AlignCenterChecker::indicator {
     border-right: none;
     border-left: none;
-    width: 52px;
+    min-width: 54px;
+    max-width: 54px;
     image: url(data/icons/fontfmt_alignc.svg);
 }
 
@@ -187,6 +198,8 @@ AlignmentChecker#AlignCenterChecker::indicator:checked {
 
 AlignmentChecker#AlignRightChecker::indicator {
     border-left: none;
+    min-width: 52px;
+    max-width: 52px;
     image: url(data/icons/fontfmt_alignr.svg);
 }
 

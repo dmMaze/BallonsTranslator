@@ -100,7 +100,8 @@ class FontFormat:
                  vertical: bool = False, 
                  weight: int = 50, 
                  alpha: int = 255,
-                 line_spacing: float = 1.2) -> None:
+                 line_spacing: float = 1.2,
+                 letter_spacing: float = 1.) -> None:
         self.family = family if family is not None else DEFAULT_FONT_FAMILY
         self.size = size
         self.stroke_width = stroke_width
@@ -114,6 +115,7 @@ class FontFormat:
         self.alignment: int = alignment
         self.vertical: bool = vertical
         self.line_spacing = line_spacing
+        self.letter_spacing = letter_spacing
 
     def from_textblock(self, text_block: TextBlock):
         self.family = text_block.font_family
@@ -127,6 +129,7 @@ class FontFormat:
         self.alignment = text_block.alignment()
         self.vertical = text_block.vertical
         self.line_spacing = text_block.line_spacing
+        self.letter_spacing = text_block.letter_spacing
 
 
 PROJTYPE_IMGTRANS = 'imgtrans'
