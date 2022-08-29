@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](README.md) | English  
+[简体中文](README.md) | English | [Русский](README_RU.md)
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.
 
@@ -33,9 +33,9 @@ Windows users can download Ballonstranslator-x.x.x-core.7z from [腾讯云](http
 $ python --version
 
 # Clone this repo
-$ git clone https://github.com/dmMaze/BallonsTranslator.git
+$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
-# Install the dependencies
+# install requirements_macOS.txt on macOS
 $ pip install -r requirements.txt
 ```
 
@@ -47,8 +47,11 @@ pip install torch torchvision torchaudio --extra-index-url https://download.pyto
 
 Download the **data** folder from https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing and move it into BallonsTranslator/ballontranslator, finally run
 ```bash
-python ballontranslator/__main__.py
+python ballontranslator
 ```
+
+
+To use Sugoi translator(Japanese-English only), download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data.  
 
 ## Fully automated translation
 **It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.**, Please select the desired translator and set the source and target languages the first time you run the application. Open a folder containing images that need translation, click the "Run" button and wait for the process to complete.  
@@ -70,7 +73,7 @@ Image editing mode, inpainting tool
 rect tool
 </p>
 
-Drag the rectangle with left button pressed to erase the text inside the box, press right button and drag to clear inpainted result.  
+To 'erase' unwanted inpainted results, use the inpainting tool or rect tool with your **right button** pressed.  
 The result depends on how accurately the algorithm ("method 1" and "method 2" in the gif) extracts the text mask. It could perform worse on complex text & background.  
 
 ## Text editing
@@ -101,7 +104,9 @@ batch text formatting & auto layout
 This project is heavily dependent upon [manga-image-translator](https://github.com/zyddnys/manga-image-translator), online service and model training is not cheap, please consider to donate the project:  
 - Ko-fi: <https://ko-fi.com/voilelabs>
 - Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>
+- 爱发电: <https://afdian.net/@voilelabs>  
+
+Sugoi translator is created by [mingshiba](https://www.patreon.com/mingshiba).
   
 ## Text detection
 Support English and Japanese text detection, training code and more details can be found at [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
@@ -121,11 +126,14 @@ Support English and Japanese text detection, training code and more details can 
  * Please change the goolge translator url from *.cn to *.com if you are not blocked by GFW.  
  * Caiyun translator need to require a [token](https://dashboard.caiyunapp.com/)
  * papago  
+ * DeepL & Sugoi translator(and it's CT2 Translation conversion) thanks to [Snowad14](https://github.com/Snowad14)  
+
  To add a new translator, please reference [加别的翻译器](doc/加别的翻译器.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
 
 
 ## Misc
 * If your computer has an Nvidia GPU, the program will enable cuda acceleration for all models by default, which requires around 6G GPU memory, you can turn down the inpaint_size in the config panel to avoid OOM. 
+* Thanks to [bropines](https://github.com/bropines) for the Russian localisation.  
 
 ## Previews of fully automated translation results
 |            Original            |         Translated (CHS)         |         Translated (ENG)         |

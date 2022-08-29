@@ -33,7 +33,7 @@
 $ python --version
 
 # Клонируйте этот репозиторий
-$ git clone https://github.com/dmMaze/BallonsTranslator.git
+$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
 # Установка зависимостей
 $ pip install -r requirements.txt
@@ -48,7 +48,7 @@ pip install torch torchvision torchaudio --extra-index-url https://download.pyto
 Скачайте папку **data** с сайта https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing и переместите ее в BallonsTranslator/ballontranslator, наконец, выполните команду
 
 ```bash
-python ballontranslator/__main__.py
+python ballontranslator
 ```
 
 ## Полностью автоматизированный перевод

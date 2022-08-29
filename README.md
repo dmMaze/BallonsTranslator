@@ -36,9 +36,9 @@ Windows用户可从[腾讯云](https://share.weiyun.com/xoRhz9i4) 或 [Google Dr
 $ python --version
 
 # 克隆仓库
-$ git clone https://github.com/dmMaze/BallonsTranslator.git
+$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
-# 安装依赖
+# 安装依赖, macOS安装requirements_macOS.txt
 $ pip install -r requirements.txt
 ```
 
@@ -50,8 +50,10 @@ pip install torch torchvision torchaudio --extra-index-url https://download.pyto
 
 从 https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing 下载**data**文件夹并移动到 ```BallonsTranslator/ballontranslator```目录, 最后运行
 ```bash
-python ballontranslator/__main__.py
+python ballontranslator
 ```
+
+如果要使用Sugoi翻译器(仅英译日), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data.  
 
 ## 一键翻译
 **建议在命令行终端下运行程序**, 首次运行请先配置好源语言/目标语言, 打开一个带图片的文件夹, 点击Run等待翻译完成  
@@ -108,6 +110,8 @@ python ballontranslator/__main__.py
 - Ko-fi: <https://ko-fi.com/voilelabs>
 - Patreon: <https://www.patreon.com/voilelabs>
 - 爱发电: <https://afdian.net/@voilelabs>
+
+Sugoi翻译器作者: [mingshiba](https://www.patreon.com/mingshiba).
   
 ### 文本检测
 暂时仅支持日文(方块字都差不多)和英文检测, 训练代码和说明见https://github.com/dmMaze/comic-text-detector
@@ -127,10 +131,13 @@ python ballontranslator/__main__.py
  * 谷歌翻译能挂代理建议把url从cn改成com
  * 彩云, 需要申请[token](https://dashboard.caiyunapp.com/)
  * papago  
+ * DeepL 和 Sugoi(及它的CT2 Translation转换)翻译器, 感谢[Snowad14](https://github.com/Snowad14)  
+
  如需添加新的翻译器请参考[加别的翻译器](doc/加别的翻译器.md), 本程序添加新翻译器只需要继承基类实现两个接口即可不需要理会代码其他部分, 欢迎大佬提pr
 
 ## 杂
-* 如果电脑带N卡, 程序默认对所有模型启用GPU加速, 默认配置下显存占用在6G左右. 4G显存调小修复器inpaint_size即可. 
+* 如果电脑带N卡, 程序默认对所有模型启用GPU加速, 默认配置下显存占用在6G左右. 4G显存调小修复器inpaint_size即可.  
+* 感谢[bropines](https://github.com/bropines)提供俄语翻译
 
 ## 一键翻译结果预览
 |            Original            |         Translated (CHS)         |         Translated (ENG)         |
