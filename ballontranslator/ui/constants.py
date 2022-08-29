@@ -1,8 +1,9 @@
 import os.path as osp
 
+ICON_PATH = 'data/icons/[ICONNAME]'
+
 UI_PATH = osp.dirname(osp.abspath(__file__))
 PROGRAM_PATH = osp.dirname(UI_PATH)
-
 
 LIBS_PATH = osp.join(PROGRAM_PATH, 'data/libs')
 

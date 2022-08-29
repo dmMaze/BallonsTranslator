@@ -19,10 +19,15 @@ def main():
     import qtpy
     from qtpy.QtWidgets import QApplication
     from qtpy.QtCore import QTranslator, QLocale
+    from qtpy.QtGui import QIcon
 
     from ui.mainwindow import MainWindow
     from ui import constants
 
+    if sys.platform == 'win32':
+        import ctypes
+        myappid = u'BalloonsTranslator' # arbitrary string
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     
     if qtpy.API_NAME[-1] == '6':
         constants.FLAG_QT6 = True
@@ -35,8 +40,9 @@ def main():
         osp.dirname(osp.abspath(__file__)) + "/data/translate",
     )
     app.installTranslator(translator)
-    ballontrans = MainWindow(app, open_dir=args.proj_dir)
 
+    ballontrans = MainWindow(app, open_dir=args.proj_dir)
+    ballontrans.setWindowIcon(QIcon(constants.ICON_PATH))
     ballontrans.show()
     sys.exit(app.exec())
 
