@@ -46,6 +46,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.oldPos = QPointF()
         self.oldRect = QRectF()
 
+        self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
         self.setVertical(False)
         self.initTextBlock(blk, set_format=set_format)
@@ -160,18 +161,16 @@ class TextBlkItem(QGraphicsTextItem):
             rect = QRectF(*rect)
         
         self.setPos(rect.topLeft())
-        doc = self.document()
-        layout = doc.documentLayout()
         self._display_rect = rect
-        layout.setMaxSize(rect.width(), rect.height())
-        doc.setPageSize(QSizeF(rect.width(), rect.height()))
+        self.layout.setMaxSize(rect.width(), rect.height())
+        self.document().setPageSize(QSizeF(rect.width(), rect.height()))
 
         self.setCenterTransform()
         if self.background_pixmap is not None:
             self.repaint_background()
 
     def documentSize(self):
-        return self.document().documentLayout().documentSize()
+        return self.layout.documentSize()
 
     def boundingRect(self) -> QRectF:
         br = super().boundingRect()
@@ -210,7 +209,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     @property
     def is_vertical(self) -> bool:
-        return isinstance(self.document().documentLayout(), VerticalTextDocumentLayout)
+        return isinstance(self.layout, VerticalTextDocumentLayout)
 
     @property
     def angle(self) -> int:
@@ -228,14 +227,24 @@ class TextBlkItem(QGraphicsTextItem):
     def setVertical(self, vertical: bool):
         if self.blk is not None:
             self.blk.vertical = vertical
+
+        valid_layout = True
+        if self.layout is not None:
+            if self.is_vertical == vertical:
+                return
+        else:
+            valid_layout = False
+
+        if valid_layout:
+            rect = self.rect() if self.layout is not None else None
+        
         self.setTextInteractionFlags(Qt.NoTextInteraction)
         doc = self.document()
+        html = doc.toHtml()
         doc_margin = doc.documentMargin()
         doc.disconnect()
         doc.documentLayout().disconnect()
-        html = doc.toHtml()
         default_font = doc.defaultFont()
-        rect = self.rect()
 
         doc = QTextDocument()
         doc.setDocumentMargin(doc_margin)
@@ -243,19 +252,29 @@ class TextBlkItem(QGraphicsTextItem):
             layout = VerticalTextDocumentLayout(doc)
         else:
             layout = HorizontalTextDocumentLayout(doc)
-        layout.setMaxSize(rect.width(), rect.height())
+        
+        self.layout = layout
+        self.setDocument(doc)
+
         layout.size_enlarged.connect(self.on_document_enlarged)
         layout.documentSizeChanged.connect(self.docSizeChanged)
         doc.setDocumentLayout(layout)
         doc.setDefaultFont(default_font)
-        doc.setHtml(html)
-        self.setDocument(doc)
         doc.contentsChanged.connect(self.documentContentChanged)
         
-        self.setCenterTransform()
-        self.setLineSpacing(self.line_spacing)
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        if valid_layout:
+            layout.setMaxSize(rect.width(), rect.height())
+            doc.setHtml(html)
+
+            self.setCenterTransform()
+            self.setLineSpacing(self.line_spacing)
+            if self.background_pixmap is not None:
+                self.repaint_background()
+
+            if self.letter_spacing != 1:
+                ls = self.letter_spacing
+                self.letter_spacing = 1
+                self.setLetterSpacing(ls)
 
         self.doc_size_changed.emit(self.idx)
 
@@ -279,17 +298,14 @@ class TextBlkItem(QGraphicsTextItem):
                 pos.setY(pos.y() + delta_x * np.sin(rad))
             self.setPos(pos)
 
-    def documentLayout(self) -> SceneTextLayout:
-        return self.document().documentLayout()
-
     def setStrokeWidth(self, stroke_width: float):
         if self.stroke_width == stroke_width:
             return
 
         self.stroke_width = stroke_width
-        sw = self.documentLayout().max_font_size()
-        self.documentLayout().updateDocumentMargin(sw/2)
-        self.documentLayout().reLayout()
+        sw = self.layout.max_font_size()
+        self.layout.updateDocumentMargin(sw/2)
+        self.layout.reLayout()
         
         if stroke_width > 0:                
             self.repaint_background()
@@ -528,7 +544,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def setLineSpacing(self, line_spacing: float, cursor=None):
         self.line_spacing = line_spacing
-        self.document().documentLayout().setLineSpacing(self.line_spacing)
+        self.layout.setLineSpacing(self.line_spacing)
         if self.background_pixmap is not None:
             self.repaint_background()
 
@@ -536,7 +552,9 @@ class TextBlkItem(QGraphicsTextItem):
         if self.letter_spacing == letter_spacing:
             return
         self.letter_spacing = letter_spacing
-        if not self.is_vertical:
+        if self.is_vertical:
+            self.layout.setLetterSpacing(letter_spacing)
+        else:
             char_fmt = QTextCharFormat()
             char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
             char_fmt.setFontLetterSpacing(letter_spacing * 100)

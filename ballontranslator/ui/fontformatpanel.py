@@ -62,7 +62,7 @@ def set_textblk_fontsize(blkitem: TextBlkItem, cursor: QTextCursor, fontsize):
         font.setPointSizeF(fontsize)
         doc.setDefaultFont(font)
     cursor.mergeBlockCharFormat(format)
-    doc.documentLayout().reLayout()
+    blkitem.layout.reLayout()
 
 @restore_textcursor
 def set_textblk_weight(blkitem, cursor: QTextCursor, weight):

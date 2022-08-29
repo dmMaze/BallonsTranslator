@@ -309,7 +309,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     inv_transform = QTransform(0, -1, 0, 1, 0, 0, -y_x, y_p_x, 1)
                     painter.setTransform(transform, True)
                     pun_tbr, pun_br = cfmt.punc_rect(char)
-                    hight_comp = pun_tbr.width() - pun_br.width() + 2
+                    hight_comp = pun_tbr.width() - pun_br.width()
 
                     if char.isalpha():
                         yoff = -cfmt.tbr.top() - fm.ascent() - cfmt.tbr.width()
@@ -437,8 +437,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
     def layoutBlock(self, block: QTextBlock):
         doc = self.document()
-        block.clearLayout()
+        ls = self.letter_spacing
 
+        block.clearLayout()
         doc_margin = doc.documentMargin()
         line_y_offset = doc_margin
         blk_char_yoffset = []
@@ -559,6 +560,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
     def frameBoundingRect(self, frame: QTextFrame):
         return QRectF(0, 0, max(self.document().pageSize().width(), self.max_width), 2147483647)
+
+    def setLetterSpacing(self, letter_spacing: float):
+        self.letter_spacing = letter_spacing
 
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
