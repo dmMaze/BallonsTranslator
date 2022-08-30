@@ -64,6 +64,9 @@ class TextBlkItem(QGraphicsTextItem):
         self.update()
 
     def repaint_background(self):
+        if self.stroke_width == 0:
+            self.background_pixmap = None
+            return
         self.repainting = True
         doc = self.document().clone()
         doc.setDocumentMargin(self.document().documentMargin())
@@ -162,10 +165,8 @@ class TextBlkItem(QGraphicsTextItem):
         self._display_rect = rect
         self.layout.setMaxSize(rect.width(), rect.height())
         self.document().setPageSize(QSizeF(rect.width(), rect.height()))
-
         self.setCenterTransform()
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        self.repaint_background()
 
     def documentSize(self):
         return self.layout.documentSize()
@@ -181,9 +182,9 @@ class TextBlkItem(QGraphicsTextItem):
     def absBoundingRect(self, max_h=None, max_w=None) -> List:
         br = self.boundingRect()
         w, h = br.width(), br.height()
-        sc = self.sceneBoundingRect().center()
-        x = sc.x() / self.scale() - w / 2
-        y = sc.y() / self.scale() - h / 2
+        pos = self.pos()
+        x = pos.x()
+        y = pos.y()
         if max_h is not None:
             y = min(max(0, y), max_h)
             y1 = y + h
@@ -266,8 +267,7 @@ class TextBlkItem(QGraphicsTextItem):
 
             self.setCenterTransform()
             self.setLineSpacing(self.line_spacing)
-            if self.background_pixmap is not None:
-                self.repaint_background()
+            self.repaint_background()
 
             if self.letter_spacing != 1:
                 ls = self.letter_spacing
@@ -304,17 +304,14 @@ class TextBlkItem(QGraphicsTextItem):
         sw = self.layout.max_font_size()
         self.layout.updateDocumentMargin(sw/2)
         self.layout.reLayout()
+        self.on_document_enlarged()
         
-        if stroke_width > 0:                
-            self.repaint_background()
-        else:
-            self.background_pixmap = None
+        self.repaint_background()
         self.update()
 
     def setStrokeColor(self, scolor):
         self.stroke_color = scolor if isinstance(scolor, QColor) else QColor(*scolor)
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        self.repaint_background()
         self.update()
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
@@ -442,8 +439,7 @@ class TextBlkItem(QGraphicsTextItem):
         op = doc.defaultTextOption()
         op.setAlignment(alignment)
         doc.setDefaultTextOption(op)
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        self.repaint_background()
 
     def alignment(self):
         return self.document().defaultTextOption().alignment()
@@ -539,8 +535,7 @@ class TextBlkItem(QGraphicsTextItem):
     def setLineSpacing(self, line_spacing: float, cursor=None):
         self.line_spacing = line_spacing
         self.layout.setLineSpacing(self.line_spacing)
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        self.repaint_background()
 
     def setLetterSpacing(self, letter_spacing: float):
         if self.letter_spacing == letter_spacing:
@@ -556,14 +551,7 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.select(QTextCursor.SelectionType.Document)
             cursor.mergeCharFormat(char_fmt)
             # cursor.mergeBlockCharFormat(char_fmt)
-        if self.background_pixmap is not None:
-            self.repaint_background()
-
-    def scaleChanged(self) -> None:
-        super().scaleChanged()
-        if self.background_pixmap is not None:
-            self.repaint_background()
-        self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+        self.repaint_background()
 
     def get_char_fmts(self) -> List[QTextCharFormat]:
         cursor = self.textCursor()

@@ -410,8 +410,7 @@ class MainWindow(QMainWindow):
     def save_proj(self):
         if self.leftBar.imgTransChecker.isChecked()\
             and self.imgtrans_proj.directory is not None:
-            self.st_manager.updateTextBlkList()
-            self.saveCurrentPage()
+            self.saveCurrentPage(update_scene_text=True)
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True):
         if update_scene_text:

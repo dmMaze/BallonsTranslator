@@ -653,7 +653,7 @@ class DrawingPanel(Widget):
             im_h, im_w = img.shape[:2]
 
             xyxy = [rect.x(), rect.y(), rect.x() + rect.width(), rect.y() + rect.height()]
-            xyxy = np.array(xyxy) / self.canvas.scale_factor
+            xyxy = np.array(xyxy)
             xyxy[[0, 2]] = np.clip(xyxy[[0, 2]], 0, im_w - 1)
             xyxy[[1, 3]] = np.clip(xyxy[[1, 3]], 0, im_h - 1)
             x1, y1, x2, y2 = xyxy.astype(np.int64)
