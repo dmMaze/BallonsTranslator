@@ -348,6 +348,7 @@ class Canvas(QGraphicsScene):
         self.setProjSaveState(False)
         self.editing_textblkitem = None
         self.txtblkShapeControl.setBlkItem(None)
+        self.stroke_path_item
         self.setImageLayer()
         self.setInpaintLayer()
         self.setMaskLayer()

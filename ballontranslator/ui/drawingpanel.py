@@ -506,15 +506,13 @@ class DrawingPanel(Widget):
             if self.inpaint_stroke is None:
                 return
             elif self.inpaint_stroke.parentItem() is None:
-                logger.warning("sth goes wrong")
-                self.canvas.removeItem(self.inpaint_stroke)
-                self.inpaint_stroke = None
+                logger.warning("inpainting goes wrong")
+                self.clearInpaintItems()
                 return
             mask = self.inpaint_stroke.getSubimg(convert_mask=True)
             pos = self.inpaint_stroke.subBlockPos()
             if mask is None:
-                self.canvas.removeItem(self.inpaint_stroke)
-                self.inpaint_stroke = None
+                self.clearInpaintItems()
                 return
 
             # we need to enlarge the mask window a bit to get better results
@@ -542,20 +540,8 @@ class DrawingPanel(Widget):
         inpaint_rect = inpaint_dict['inpaint_rect']
         mask_array = self.canvas.imgtrans_proj.mask_array
         mask = cv2.bitwise_or(inpaint_dict['mask'], mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]])
-        
-        if self.inpaint_stroke is not None:
-            self.canvas.removeItem(self.inpaint_stroke)
-            self.inpaint_stroke = None
-        if self.inpaint_mask_item.scene() == self.canvas:
-            self.canvas.removeItem(self.inpaint_mask_item)
-       
         self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
-        if self.currentTool == self.inpaintTool:
-            self.canvas.image_edit_mode = ImageEditMode.InpaintTool
-        elif self.currentTool == self.rectTool:
-            self.canvas.image_edit_mode = ImageEditMode.RectTool
-
-
+        self.clearInpaintItems()
 
     def on_finish_erasing(self, stroke_item: StrokeItem):
 
@@ -586,9 +572,7 @@ class DrawingPanel(Widget):
 
     def on_inpaint_failed(self):
         if self.currentTool == self.inpaintTool and self.inpaint_stroke is not None:
-            self.canvas.image_edit_mode = ImageEditMode.InpaintTool
-            self.canvas.removeItem(self.inpaint_stroke)
-            self.inpaint_stroke = None
+            self.clearInpaintItems()
 
     def on_canvasctrl_released(self):
         if self.currentTool == self.inpaintTool:
@@ -712,8 +696,7 @@ class DrawingPanel(Widget):
         if not need_inpaint and self.dl_manager.dl_config.check_need_inpaint:
             img[np.where(ballon_mask > 0)] = bground_bgr
             self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect']))
-            self.canvas.image_edit_mode = ImageEditMode.RectTool
-            self.canvas.removeItem(self.inpaint_mask_item)
+            self.clearInpaintItems()
         else:
             self.runInpaint(inpaint_dict=inpaint_dict)
 
@@ -722,23 +705,31 @@ class DrawingPanel(Widget):
             self.inpaintRect(self.rect_inpaint_dict)
 
     def on_rect_deletebtn_clicked(self):
-        self.rect_inpaint_dict = None
-        self.canvas.image_edit_mode = ImageEditMode.RectTool
-        if self.inpaint_mask_item.scene() == self.canvas:
-            self.canvas.removeItem(self.inpaint_mask_item)
+        self.clearInpaintItems()
 
     def on_rectchecker_changed(self):
         if not self.rectTool.isChecked():
-            if self.rect_inpaint_dict is not None:
-                self.rect_inpaint_dict = None
-                if self.inpaint_mask_item.scene() == self.canvas:
-                    self.canvas.removeItem(self.inpaint_mask_item)
+            self.clearInpaintItems()
 
     def hideEvent(self, e) -> None:
-        if self.inpaint_mask_item.scene() == self.canvas:
-            self.canvas.removeItem(self.inpaint_mask_item)
-        self.rect_inpaint_dict = None
+        self.clearInpaintItems()
         return super().hideEvent(e)
+
+    def clearInpaintItems(self):
+
+        self.rect_inpaint_dict = None
+        if self.inpaint_mask_item is not None:
+            if self.inpaint_mask_item.scene() == self.canvas:
+                self.canvas.removeItem(self.inpaint_mask_item)
+            if self.rectTool.isChecked():
+                self.canvas.image_edit_mode = ImageEditMode.RectTool    
+            
+        if self.inpaint_stroke is not None:
+            if self.inpaint_stroke.scene() == self.canvas:
+                self.canvas.removeItem(self.inpaint_stroke)
+            self.inpaint_stroke = None
+            if self.inpaintTool.isChecked():
+                self.canvas.image_edit_mode = ImageEditMode.InpaintTool
 
 class StrokeItemUndoCommand(QUndoCommand):
     def __init__(self, canvas: Canvas, stroke_item: StrokeItem):

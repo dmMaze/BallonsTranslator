@@ -272,10 +272,9 @@ class MainWindow(QMainWindow):
             self.st_manager.hovering_transwidget = None
             self.st_manager.updateSceneTextitems()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
+            self.drawingPanel.clearInpaintItems()
             if self.dl_manager.run_canvas_inpaint:
                 self.dl_manager.inpaint_thread.terminate()
-                self.canvas.removeItems(self.drawingPanel.inpaint_stroke)
-                self.drawingPanel.inpaint_stroke = None
                 self.dl_manager.run_canvas_inpaint = False
 
     def setupShortcuts(self):
