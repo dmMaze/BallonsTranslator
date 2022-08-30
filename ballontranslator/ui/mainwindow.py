@@ -114,6 +114,7 @@ class MainWindow(QMainWindow):
         self.rightComicTransStackPanel = QStackedWidget(self)
         self.rightComicTransStackPanel.addWidget(self.drawingPanel)
         self.rightComicTransStackPanel.addWidget(self.textPanel)
+        self.rightComicTransStackPanel.currentChanged.connect(self.on_transpanel_changed)
 
         self.comicTransSplitter = QSplitter(Qt.Orientation.Horizontal)
         self.comicTransSplitter.addWidget(self.pageList)
@@ -578,3 +579,6 @@ class MainWindow(QMainWindow):
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
         self.dl_manager.runImgtransPipeline()
+
+    def on_transpanel_changed(self):
+        self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()

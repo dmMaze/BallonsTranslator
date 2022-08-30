@@ -153,6 +153,8 @@ class Canvas(QGraphicsScene):
         self.selectionChanged.connect(self.on_selection_changed)     
         self.stroke_path_item: StrokeItem = None
 
+        self.editor_index = 0 # 0: drawing 1: text editor
+
     def scaleUp(self):
         self.scaleImage(1 + CANVAS_SCALE_SPEED)
 
@@ -322,7 +324,7 @@ class Canvas(QGraphicsScene):
 
     @property
     def creating_normal_rect(self):
-        return self.image_edit_mode == ImageEditMode.RectTool
+        return self.image_edit_mode == ImageEditMode.RectTool and self.editor_index == 0
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.creating_textblock:
