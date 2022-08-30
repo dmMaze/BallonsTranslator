@@ -103,7 +103,6 @@ class Canvas(QGraphicsScene):
         self.creating_textblock = False
         self.create_block_origin: QPointF = None
         self.editing_textblkitem: TextBlkItem = None
-        self.hovering_textblkitem: TextBlkItem = None
 
         self.gv = CustomGV(self)
         self.gv.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -293,10 +292,9 @@ class Canvas(QGraphicsScene):
         return super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.textblock_mode:
+        if self.textblock_mode and len(self.selectedItems()) == 0:
             if event.button() == Qt.MouseButton.RightButton:
-                if self.hovering_textblkitem is None:
-                    return self.startCreateTextblock(event.scenePos())
+                return self.startCreateTextblock(event.scenePos())
         elif self.creating_normal_rect:
             return self.startCreateTextblock(event.scenePos(), hide_control=True)
 
@@ -349,7 +347,6 @@ class Canvas(QGraphicsScene):
         self.clearSelection()
         self.setProjSaveState(False)
         self.editing_textblkitem = None
-        self.hovering_textblkitem = None
         self.txtblkShapeControl.setBlkItem(None)
         self.setImageLayer()
         self.setInpaintLayer()
@@ -382,7 +379,6 @@ class Canvas(QGraphicsScene):
     def setPaintMode(self, painting: bool):
         if painting:
             self.editing_textblkitem = None
-            self.hovering_textblkitem = None
             self.textblock_mode = False
             self.maskLayer.setVisible(True)
         else:
@@ -405,7 +401,7 @@ class Canvas(QGraphicsScene):
         self.textblock_mode = mode
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent):
-        if self.hovering_textblkitem or self.editing_textblkitem:
+        if len(self.selectedItems()) != 0:
             menu = QMenu()
             delete_act = menu.addAction(self.tr("Delete"))
             format_act = menu.addAction(self.tr("Apply font formatting"))
@@ -424,7 +420,6 @@ class Canvas(QGraphicsScene):
         self.creating_textblock = False
         self.create_block_origin = None
         self.editing_textblkitem = None
-        self.hovering_textblkitem = None
         if self.stroke_path_item is not None:
             self.removeItem(self.stroke_path_item)
             self.stroke_path_item = None

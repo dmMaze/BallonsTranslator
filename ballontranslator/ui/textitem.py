@@ -19,7 +19,6 @@ class TextBlkItem(QGraphicsTextItem):
     begin_edit = Signal(int)
     end_edit = Signal(int)
     hover_enter = Signal(int)
-    hover_leave = Signal(int)
     hover_move = Signal(int)
     moved = Signal()
     moving = Signal(QGraphicsTextItem)
@@ -420,10 +419,6 @@ class TextBlkItem(QGraphicsTextItem):
     def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
         self.hover_enter.emit(self.idx)
         return super().hoverEnterEvent(event)
-
-    def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        self.hover_leave.emit(self.idx)
-        return super().hoverLeaveEvent(event)
 
     def toPixmap(self) -> QPixmap:
         pixmap = QPixmap(self.boundingRect().size().toSize())

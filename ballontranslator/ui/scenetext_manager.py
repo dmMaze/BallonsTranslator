@@ -328,7 +328,6 @@ class SceneTextManager(QObject):
         textblk_item.begin_edit.connect(self.onTextBlkItemBeginEdit)
         textblk_item.end_edit.connect(self.onTextBlkItemEndEdit)
         textblk_item.hover_enter.connect(self.onTextBlkItemHoverEnter)
-        textblk_item.hover_leave.connect(self.onTextBlkItemHoverLeave)
         textblk_item.leftbutton_pressed.connect(self.onLeftbuttonPressed)
         textblk_item.moving.connect(self.onTextBlkItemMoving)
         textblk_item.moved.connect(self.onTextBlkItemMoved)
@@ -424,10 +423,6 @@ class SceneTextManager(QObject):
         self.hovering_transwidget = self.pairwidget_list[blk_id].e_trans
         self.hovering_transwidget.setHoverEffect(True)
         self.textpanel.textEditList.ensureWidgetVisible(self.hovering_transwidget)
-        self.canvas.hovering_textblkitem = blk_item
-
-    def onTextBlkItemHoverLeave(self, blk_id: int):
-        self.canvas.hovering_textblkitem = None
 
     def onTextBlkItemMoving(self, item: TextBlkItem):
         self.txtblkShapeControl.updateBoundingRect()
