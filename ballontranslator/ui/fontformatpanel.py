@@ -11,6 +11,8 @@ from .textitem import TextBlkItem, TextBlock
 from .canvas import Canvas
 from .constants import CONFIG_FONTSIZE_CONTENT, WIDGET_SPACING_CLOSE
 
+from utils.logger import logger as LOGGER
+
 
 # restore text cursor status after formatting
 def restore_textcursor(formatting_func):
@@ -244,14 +246,23 @@ class FormatGroupBtn(QFrame):
 class SizeComboBox(QComboBox):
     
     apply_change = Signal(float)
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, val_range: List = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.text_changed_by_user = False
         self.editTextChanged.connect(self.on_text_changed)
         self.currentIndexChanged.connect(self.on_current_index_changed)
         self.setEditable(True)
+        self.min_val = val_range[0]
+        self.max_val = val_range[1]
         validator = QDoubleValidator()
+        if val_range is not None:
+            validator.setTop(val_range[1])
+            validator.setBottom(val_range[0])
+        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+
         self.setValidator(validator)
+        self.lineEdit().setValidator(validator)
+        self._value = 0
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
         key = e.key()
@@ -272,10 +283,18 @@ class SizeComboBox(QComboBox):
             self.check_change()
 
     def value(self) -> float:
-        return float(self.currentText())
+        txt = self.currentText()
+        try:
+            val = float(txt)
+            self._value = val
+            return val
+        except:
+            LOGGER.warning(f'SizeComboBox invalid input: {txt}, return {self._value}')
+            return self._value
 
     def setValue(self, value: float):
-        self.setCurrentText(str(value))
+        value = min(self.max_val, max(self.min_val, value))
+        self.setCurrentText(str(round(value, 2)))
 
     def check_change(self):
         if self.text_changed_by_user:
@@ -293,7 +312,7 @@ class FontSizeBox(QFrame):
         self.downBtn.setObjectName("FsizeIncrementDown")
         self.upBtn.clicked.connect(self.onUpBtnClicked)
         self.downBtn.clicked.connect(self.onDownBtnClicked)
-        self.fcombobox = SizeComboBox(self)
+        self.fcombobox = SizeComboBox([0, 10000], self)
         self.fcombobox.addItems([
             "5", "5.5", "6.5", "7.5", "8", "9", "10", "10.5",
             "11", "12", "14", "16", "18", "20", '22', "26", "28", 
@@ -342,6 +361,41 @@ class FontSizeBox(QFrame):
     def on_fbox_apply_change(self, value: float):
         self.apply_fontsize.emit(value)
 
+class SizeControlLabel(QLabel):
+    
+    btn_released = Signal()
+    size_ctrl_changed = Signal(int)
+    
+    def __init__(self, parent=None, direction=0, text=''):
+        super().__init__(parent)
+        if text:
+            self.setText(text)
+        if direction == 0:
+            self.setCursor(Qt.CursorShape.SizeHorCursor)
+        else:
+            self.setCursor(Qt.CursorShape.SizeVerCursor)
+        self.cur_pos = 0
+        self.direction = direction
+        self.mouse_pressed = False
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.mouse_pressed = True
+            self.cur_pos = e.globalPos().x() if self.direction == 0 else e.globalPos().y()
+        return super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.mouse_pressed = False
+            self.btn_released.emit()
+        return super().mouseReleaseEvent(e)
+
+    def mouseMoveEvent(self, e: QMouseEvent) -> None:
+        if self.mouse_pressed:
+            new_pos = e.globalPos().x() if self.direction == 0 else e.globalPos().y()
+            self.size_ctrl_changed.emit(new_pos - self.cur_pos)
+            self.cur_pos = new_pos
+        return super().mouseMoveEvent(e)
 
 class FontFormatPanel(Widget):
     
@@ -376,7 +430,7 @@ class FontFormatPanel(Widget):
         self.lineSpacingLabel = QLabel(self)
         self.lineSpacingLabel.setObjectName("lineSpacingLabel")
 
-        self.lineSpacingBox = SizeComboBox(self)
+        self.lineSpacingBox = SizeComboBox([0, 10], self)
         self.lineSpacingBox.addItems(["1.0", "1.1", "1.2"])
         self.lineSpacingBox.setToolTip("Change line spacing")
         self.lineSpacingBox.apply_change.connect(self.update_line_spacing)
@@ -400,12 +454,13 @@ class FontFormatPanel(Widget):
         self.verticalChecker.setObjectName("FontVerticalChecker")
         self.verticalChecker.clicked.connect(self.onOrientationChanged)
 
-        self.fontStrokeLabel = QLabel(self)
+        self.fontStrokeLabel = SizeControlLabel(self, 0, self.tr("Stroke"))
         self.fontStrokeLabel.setObjectName("fontStrokeLabel")
-        self.fontStrokeLabel.setText(self.tr("Stroke"))
         font = self.fontStrokeLabel.font()
         font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.95)
-        self.fontStrokeLabel.setFont(font)       
+        self.fontStrokeLabel.setFont(font)
+        self.fontStrokeLabel.size_ctrl_changed.connect(self.onStrokeCtrlChanged)
+        self.fontStrokeLabel.btn_released.connect(self.onStrokeCtrlReleased)
         
         self.strokeColorPicker = ColorPicker(self)
         self.strokeColorPicker.setToolTip(self.tr("Change stroke color"))
@@ -413,7 +468,7 @@ class FontFormatPanel(Widget):
         self.strokeColorPicker.colorChanged.connect(self.onStrokeColorChanged)
         self.strokeColorPicker.setObjectName("StrokeColorPicker")
 
-        self.strokeWidthBox = SizeComboBox(self)
+        self.strokeWidthBox = SizeComboBox([0, 10], self)
         self.strokeWidthBox.addItems(["0.1"])
         self.strokeWidthBox.setToolTip(self.tr("Change stroke width"))
         self.strokeWidthBox.apply_change.connect(self.update_stroke_width)
@@ -427,7 +482,7 @@ class FontFormatPanel(Widget):
 
         self.letterSpacingLabel = QLabel(self)
         self.letterSpacingLabel.setObjectName("letterSpacingLabel")
-        self.letterSpacingBox = SizeComboBox(self)
+        self.letterSpacingBox = SizeComboBox([0, 10], self)
         self.letterSpacingBox.addItems(["0.0"])
         self.letterSpacingBox.setToolTip(self.tr("Change letter spacing"))
         self.letterSpacingBox.setMinimumWidth(self.letterSpacingBox.height() * 2.5)
@@ -559,6 +614,12 @@ class FontFormatPanel(Widget):
         self.restoreTextBlkItem()
         if self.textblk_item is not None:
             self.textblk_item.setVertical(self.active_format.vertical)
+
+    def onStrokeCtrlChanged(self, delta: int):
+        self.strokeWidthBox.setValue(self.strokeWidthBox.value() + delta * 0.01)
+
+    def onStrokeCtrlReleased(self):
+        self.update_stroke_width(self.strokeWidthBox.value())
 
     def update_stroke_width(self, value: float):
         self.active_format.stroke_width = value

@@ -41,7 +41,6 @@ def get_char_width(char: str, ffamily: str, size: float, weight: int, italic: bo
     fm = _font_metrics(ffamily, size, weight, italic)
     return fm.width(char)
 
-# @lru_cache(maxsize=1024)  # buggy to work with lru
 def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, italic: bool, stroke_width: float) -> List[int]:
     pixmap = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -62,6 +61,7 @@ def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, ita
 def punc_actual_rect_cached(line: LruIgnoreArgs, char: str, family: str, size: float, weight: int, italic: bool, stroke_width: float) -> List[int]:
     # QtextLine line is invisibale to lru
     return punc_actual_rect(line.line, family, size, weight, italic, stroke_width)
+
 
 class CharFontFormat:
     def __init__(self, fcmt: QTextCharFormat) -> None:
@@ -571,7 +571,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.letter_spacing = letter_spacing
             self.reLayout()
         
-
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
 

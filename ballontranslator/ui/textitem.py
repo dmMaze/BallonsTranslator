@@ -158,7 +158,6 @@ class TextBlkItem(QGraphicsTextItem):
     def setRect(self, rect: Union[List, QRectF]) -> None:
         if isinstance(rect, List):
             rect = QRectF(*rect)
-        
         self.setPos(rect.topLeft())
         self._display_rect = rect
         self.layout.setMaxSize(rect.width(), rect.height())

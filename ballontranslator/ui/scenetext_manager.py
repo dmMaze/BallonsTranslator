@@ -86,6 +86,7 @@ class ReshapeItemCommand(QUndoCommand):
         self.newRect = item.rect()
 
     def redo(self):
+        print("new rect: ", self.newRect)
         self.item.setRect(self.newRect)
 
     def undo(self):
