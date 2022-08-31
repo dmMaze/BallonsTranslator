@@ -316,7 +316,7 @@ class SceneTextManager(QObject):
 
     def addTextBlkItem(self, textblk_item: TextBlkItem) -> TextBlkItem:
         self.textblk_item_list.append(textblk_item)
-        textblk_item.setParentItem(self.canvas.inpaintLayer)
+        textblk_item.setParentItem(self.canvas.textLayer)
         textblk_item.begin_edit.connect(self.onTextBlkItemBeginEdit)
         textblk_item.end_edit.connect(self.onTextBlkItemEndEdit)
         textblk_item.hover_enter.connect(self.onTextBlkItemHoverEnter)
@@ -351,7 +351,7 @@ class SceneTextManager(QObject):
         blkitem.idx = len(self.textblk_item_list)
         p_widget.idx = len(self.pairwidget_list)
         self.textblk_item_list.append(blkitem)
-        blkitem.setParentItem(self.canvas.inpaintLayer)
+        blkitem.setParentItem(self.canvas.textLayer)
         self.pairwidget_list.append(p_widget)
         self.textEditList.addPairWidget(p_widget)
 

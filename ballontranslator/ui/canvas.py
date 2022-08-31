@@ -141,13 +141,16 @@ class Canvas(QGraphicsScene):
         self.maskLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         self.drawingLayer = QGraphicsPixmapItem()
         self.drawingLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        self.textLayer = QGraphicsPixmapItem()
+        self.textLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         
         self.addItem(self.baseLayer)
         self.inpaintLayer.setParentItem(self.baseLayer)
         self.imgLayer.setParentItem(self.baseLayer)
         self.maskLayer.setParentItem(self.baseLayer)
         self.drawingLayer.setParentItem(self.baseLayer)
-        self.txtblkShapeControl.setParentItem(self.inpaintLayer)
+        self.textLayer.setParentItem(self.baseLayer)
+        self.txtblkShapeControl.setParentItem(self.textLayer)
 
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
@@ -363,6 +366,9 @@ class Canvas(QGraphicsScene):
             return
         pixmap = ndarray2pixmap(self.imgtrans_proj.inpainted_array)
         self.inpaintLayer.setPixmap(pixmap)
+
+        pixmap.fill(Qt.GlobalColor.transparent)
+        self.textLayer.setPixmap(pixmap)
 
     def setDrawingLayer(self, img: Union[QPixmap, np.ndarray] = None):
         

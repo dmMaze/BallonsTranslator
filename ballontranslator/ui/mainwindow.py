@@ -410,11 +410,23 @@ class MainWindow(QMainWindow):
     def save_proj(self):
         if self.leftBar.imgTransChecker.isChecked()\
             and self.imgtrans_proj.directory is not None:
-            self.saveCurrentPage(update_scene_text=True)
+            self.saveCurrentPage(update_scene_text=True, restore_interface=True)
 
-    def saveCurrentPage(self, update_scene_text=True, save_proj=True):
+    def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False):
         if update_scene_text:
             self.st_manager.updateTextBlkList()
+        
+        if self.rightComicTransStackPanel.isHidden():
+            self.bottomBar.texteditChecker.click()
+        trans_idx = self.rightComicTransStackPanel.currentIndex()
+        if trans_idx != 1:
+            self.bottomBar.texteditChecker.click()
+
+        restore_original_transparency = None
+        if self.bottomBar.originalSlider.value() != 0:
+            restore_original_transparency = self.bottomBar.originalSlider.value()
+            self.bottomBar.originalSlider.setValue(0)
+
         if save_proj:
             self.imgtrans_proj.save()
             mask_path = self.imgtrans_proj.get_mask_path()
@@ -466,6 +478,12 @@ class MainWindow(QMainWindow):
         if hide_tsc:
             self.st_manager.txtblkShapeControl.show()
         self.canvas.setProjSaveState(False)
+
+        if restore_interface:
+            if restore_original_transparency is not None:
+                self.bottomBar.originalSlider.setValue(restore_original_transparency)
+            if trans_idx != 1:
+                self.bottomBar.paintChecker.click()
         
     def translatorStatusBtnPressed(self):
         self.leftBar.configChecker.setChecked(True)
