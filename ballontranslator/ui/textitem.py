@@ -301,7 +301,7 @@ class TextBlkItem(QGraphicsTextItem):
             return
 
         self.stroke_width = stroke_width
-        sw = self.layout.max_font_size()
+        sw = pt2px(self.layout.max_font_size()) * stroke_width
         self.layout.updateDocumentMargin(sw/2)
         self.layout.reLayout()
         self.on_document_enlarged()

@@ -392,8 +392,12 @@ class SizeControlLabel(QLabel):
 
     def mouseMoveEvent(self, e: QMouseEvent) -> None:
         if self.mouse_pressed:
-            new_pos = e.globalPos().x() if self.direction == 0 else e.globalPos().y()
-            self.size_ctrl_changed.emit(new_pos - self.cur_pos)
+            if self.direction == 0:
+                new_pos = e.globalPos().x()
+                self.size_ctrl_changed.emit(new_pos - self.cur_pos)
+            else:
+                new_pos = e.globalPos().y()
+                self.size_ctrl_changed.emit(self.cur_pos - new_pos)
             self.cur_pos = new_pos
         return super().mouseMoveEvent(e)
 
@@ -427,8 +431,10 @@ class FontFormatPanel(Widget):
         self.fontsizebox.apply_fontsize.connect(self.onApplyFontsize)
         self.fontsizebox.fcombobox.editTextChanged.connect(self.onSizeEditorChanged)
 
-        self.lineSpacingLabel = QLabel(self)
+        self.lineSpacingLabel = SizeControlLabel(self, direction=1)
         self.lineSpacingLabel.setObjectName("lineSpacingLabel")
+        self.lineSpacingLabel.size_ctrl_changed.connect(self.onLineSpacingCtrlChanged)
+        self.lineSpacingLabel.btn_released.connect(self.onLineSpacingCtrlReleased)
 
         self.lineSpacingBox = SizeComboBox([0, 10], self)
         self.lineSpacingBox.addItems(["1.0", "1.1", "1.2"])
@@ -480,8 +486,11 @@ class FontFormatPanel(Widget):
         stroke_hlayout.addWidget(self.strokeColorPicker)
         stroke_hlayout.setSpacing(WIDGET_SPACING_CLOSE)
 
-        self.letterSpacingLabel = QLabel(self)
+        self.letterSpacingLabel = SizeControlLabel(self, direction=0)
         self.letterSpacingLabel.setObjectName("letterSpacingLabel")
+        self.letterSpacingLabel.size_ctrl_changed.connect(self.onLetterSpacingCtrlChanged)
+        self.letterSpacingLabel.btn_released.connect(self.onLetterSpacingCtrlReleased)
+
         self.letterSpacingBox = SizeComboBox([0, 10], self)
         self.letterSpacingBox.addItems(["0.0"])
         self.letterSpacingBox.setToolTip(self.tr("Change letter spacing"))
@@ -620,6 +629,18 @@ class FontFormatPanel(Widget):
 
     def onStrokeCtrlReleased(self):
         self.update_stroke_width(self.strokeWidthBox.value())
+
+    def onLetterSpacingCtrlChanged(self, delta: int):
+        self.letterSpacingBox.setValue(self.letterSpacingBox.value() + delta * 0.01)
+
+    def onLetterSpacingCtrlReleased(self):
+        self.update_letter_spacing(self.letterSpacingBox.value())
+
+    def onLineSpacingCtrlChanged(self, delta: int):
+        self.lineSpacingBox.setValue(self.lineSpacingBox.value() + delta * 0.01)
+
+    def onLineSpacingCtrlReleased(self):
+        self.update_line_spacing(self.lineSpacingBox.value())
 
     def update_stroke_width(self, value: float):
         self.active_format.stroke_width = value

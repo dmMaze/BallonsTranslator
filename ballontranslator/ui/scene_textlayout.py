@@ -72,11 +72,11 @@ class CharFontFormat:
 
     @cached_property
     def br(self) -> QRectF:
-        return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[1]
+        return get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())[1]
 
     @cached_property
     def tbr(self) -> QRectF:
-        return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[0]
+        return get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())[0]
 
     @cached_property
     def space_width(self) -> int:
@@ -144,9 +144,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         return rect
 
     def updateDocumentMargin(self, margin):
-        doc_margin = self.document().documentMargin()
-        self.max_height = doc_margin * 2 + self.available_height
-        self.max_width = doc_margin * 2 + self.available_width
+        doc_margin = self.document().documentMargin() * 2
+        self.max_height = doc_margin + self.available_height
+        self.max_width = doc_margin + self.available_width
         self.document().setDocumentMargin(margin)
         margin *= 2
         self.available_height = max(self.max_height -  margin, 0)
