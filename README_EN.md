@@ -88,7 +88,7 @@ batch text formatting & auto layout
 </p>
 
 ## Shortcuts
-* A/D to turn the page
+* A/D or pageUp/Down to turn the page
 * Ctrl+Z, Ctrl+Y to undo/redo most operations, note the undo stack will be cleared after you turn the page.
 * T to text-editting mode, (or the "T" button on the bottom toolbar) press W to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
 * P to image-editting mode.  
