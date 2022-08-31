@@ -31,7 +31,7 @@ def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
     h = size.width()
     w = size.height()
     if isinstance(pixmap, QPixmap):
-        qimg = pixmap.toImage().convertToFormat(QImage.Format_RGBA8888)
+        qimg = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
     else:
         qimg = pixmap
 
@@ -51,9 +51,9 @@ def ndarray2pixmap(img):
     height, width, channel = img.shape
     bytesPerLine = channel * width
     if channel == 4:
-        img_format = QImage.Format_RGBA8888
+        img_format = QImage.Format.Format_RGBA8888
     else:
-        img_format = QImage.Format_RGB888
+        img_format = QImage.Format.Format_RGB888
     img = np.ascontiguousarray(img)
     qImg = QImage(img.data, width, height, bytesPerLine, img_format).rgbSwapped()
     return QPixmap(qImg)
@@ -100,7 +100,8 @@ class FontFormat:
                  vertical: bool = False, 
                  weight: int = 50, 
                  alpha: int = 255,
-                 line_spacing: float = 1.2) -> None:
+                 line_spacing: float = 1.2,
+                 letter_spacing: float = 1.) -> None:
         self.family = family if family is not None else DEFAULT_FONT_FAMILY
         self.size = size
         self.stroke_width = stroke_width
@@ -114,6 +115,7 @@ class FontFormat:
         self.alignment: int = alignment
         self.vertical: bool = vertical
         self.line_spacing = line_spacing
+        self.letter_spacing = letter_spacing
 
     def from_textblock(self, text_block: TextBlock):
         self.family = text_block.font_family
@@ -127,6 +129,7 @@ class FontFormat:
         self.alignment = text_block.alignment()
         self.vertical = text_block.vertical
         self.line_spacing = text_block.line_spacing
+        self.letter_spacing = text_block.letter_spacing
 
 
 PROJTYPE_IMGTRANS = 'imgtrans'
@@ -496,6 +499,19 @@ class ProgramConfig:
         self.let_alignment_flag = let_alignment_flag
         self.let_autolayout_flag = let_autolayout_flag
         self.let_uppercase_flag = let_uppercase_flag
+
+
+class LruIgnoreArgs:
+
+    def __init__(self, **kwargs) -> None:
+        for key in kwargs:
+            setattr(self, key, kwargs[key])
+
+    def __hash__(self) -> int:
+        return hash(type(self))
+
+    def __eq__(self, other):
+        return isinstance(other, type(self))
 
 
 span_pattern = re.compile(r'<span style=\"(.*?)\">', re.DOTALL)

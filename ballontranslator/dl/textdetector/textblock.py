@@ -31,6 +31,7 @@ class TextBlock(object):
                        bg_g = 0,
                        bg_b = 0,                
                        line_spacing = 1.,
+                       letter_spacing = 1.,
                        font_family: str = "",
                        bold: bool = False,
                        underline: bool = False,
@@ -78,6 +79,7 @@ class TextBlock(object):
         self.alpha = alpha
         self.rich_text = rich_text
         self.line_spacing = line_spacing
+        self.letter_spacing = letter_spacing
         self._alignment = _alignment
         self._target_lang = _target_lang
 

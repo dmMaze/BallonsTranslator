@@ -103,7 +103,6 @@ class Canvas(QGraphicsScene):
         self.creating_textblock = False
         self.create_block_origin: QPointF = None
         self.editing_textblkitem: TextBlkItem = None
-        self.hovering_textblkitem: TextBlkItem = None
 
         self.gv = CustomGV(self)
         self.gv.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -148,11 +147,13 @@ class Canvas(QGraphicsScene):
         self.imgLayer.setParentItem(self.baseLayer)
         self.maskLayer.setParentItem(self.baseLayer)
         self.drawingLayer.setParentItem(self.baseLayer)
-        self.addItem(self.txtblkShapeControl)
+        self.txtblkShapeControl.setParentItem(self.inpaintLayer)
 
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
         self.stroke_path_item: StrokeItem = None
+
+        self.editor_index = 0 # 0: drawing 1: text editor
 
     def scaleUp(self):
         self.scaleImage(1 + CANVAS_SCALE_SPEED)
@@ -209,6 +210,7 @@ class Canvas(QGraphicsScene):
         self.old_size = sbr.size()
         self.scale_factor = s_f
         self.baseLayer.setScale(self.scale_factor)
+        self.txtblkShapeControl.updateScale(self.scale_factor)
 
         self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
         self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
@@ -257,6 +259,7 @@ class Canvas(QGraphicsScene):
         item.setParentItem(self.drawingLayer)
 
     def startCreateTextblock(self, pos: QPointF, hide_control: bool = False):
+        pos = pos / self.scale_factor
         self.creating_textblock = True
         self.create_block_origin = pos
         self.gv.setCursor(Qt.CursorShape.CrossCursor)
@@ -280,7 +283,7 @@ class Canvas(QGraphicsScene):
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.creating_textblock:
-            self.txtblkShapeControl.setRect(QRectF(self.create_block_origin, event.scenePos()).normalized())
+            self.txtblkShapeControl.setRect(QRectF(self.create_block_origin, event.scenePos() / self.scale_factor).normalized())
         elif self.stroke_path_item is not None:
             self.stroke_path_item.addNewPoint(self.imgLayer.mapFromScene(event.scenePos()))
         elif self.scale_tool_mode:
@@ -293,10 +296,9 @@ class Canvas(QGraphicsScene):
         return super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.textblock_mode:
+        if self.textblock_mode and len(self.selectedItems()) == 0:
             if event.button() == Qt.MouseButton.RightButton:
-                if self.hovering_textblkitem is None:
-                    return self.startCreateTextblock(event.scenePos())
+                return self.startCreateTextblock(event.scenePos())
         elif self.creating_normal_rect:
             return self.startCreateTextblock(event.scenePos(), hide_control=True)
 
@@ -324,7 +326,7 @@ class Canvas(QGraphicsScene):
 
     @property
     def creating_normal_rect(self):
-        return self.image_edit_mode == ImageEditMode.RectTool
+        return self.image_edit_mode == ImageEditMode.RectTool and self.editor_index == 0
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.creating_textblock:
@@ -349,8 +351,8 @@ class Canvas(QGraphicsScene):
         self.clearSelection()
         self.setProjSaveState(False)
         self.editing_textblkitem = None
-        self.hovering_textblkitem = None
         self.txtblkShapeControl.setBlkItem(None)
+        self.stroke_path_item
         self.setImageLayer()
         self.setInpaintLayer()
         self.setMaskLayer()
@@ -382,7 +384,6 @@ class Canvas(QGraphicsScene):
     def setPaintMode(self, painting: bool):
         if painting:
             self.editing_textblkitem = None
-            self.hovering_textblkitem = None
             self.textblock_mode = False
             self.maskLayer.setVisible(True)
         else:
@@ -405,7 +406,7 @@ class Canvas(QGraphicsScene):
         self.textblock_mode = mode
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent):
-        if self.hovering_textblkitem or self.editing_textblkitem:
+        if len(self.selectedItems()) != 0:
             menu = QMenu()
             delete_act = menu.addAction(self.tr("Delete"))
             format_act = menu.addAction(self.tr("Apply font formatting"))
@@ -424,7 +425,6 @@ class Canvas(QGraphicsScene):
         self.creating_textblock = False
         self.create_block_origin = None
         self.editing_textblkitem = None
-        self.hovering_textblkitem = None
         if self.stroke_path_item is not None:
             self.removeItem(self.stroke_path_item)
             self.stroke_path_item = None

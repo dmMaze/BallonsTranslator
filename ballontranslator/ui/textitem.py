@@ -9,7 +9,7 @@ from qtpy.QtGui import QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument,
 from dl.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
 from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern
-from .textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
+from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
@@ -19,7 +19,6 @@ class TextBlkItem(QGraphicsTextItem):
     begin_edit = Signal(int)
     end_edit = Signal(int)
     hover_enter = Signal(int)
-    hover_leave = Signal(int)
     hover_move = Signal(int)
     moved = Signal()
     moving = Signal(QGraphicsTextItem)
@@ -39,13 +38,16 @@ class TextBlkItem(QGraphicsTextItem):
         self.stroke_width = 0
         self.idx = idx
         self.line_spacing: float = 1.
+        self.letter_spacing: float = 1.
         self.background_pixmap: QPixmap = None
         self.stroke_color = QColor(0, 0, 0)
         self.bound_checking = False # not used
         self.oldPos = QPointF()
         self.oldRect = QRectF()
 
-        self.setVertical(False, force=True)
+        self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
+        self.document().setDocumentMargin(0)
+        self.setVertical(False)
         self.initTextBlock(blk, set_format=set_format)
         self.setBoundingRegionGranularity(0)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
@@ -62,17 +64,37 @@ class TextBlkItem(QGraphicsTextItem):
         self.update()
 
     def repaint_background(self):
-        
+        if self.stroke_width == 0:
+            self.background_pixmap = None
+            return
         self.repainting = True
-        doc = self.document()
-        
-        sw = self.stroke_width * pt2px(self.document().defaultFont().pointSizeF())
-        format = QTextCharFormat()
-        format.setTextOutline (QPen(self.stroke_color, sw, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        doc = self.document().clone()
+        doc.setDocumentMargin(self.document().documentMargin())
+        layout = VerticalTextDocumentLayout(doc) if self.is_vertical else HorizontalTextDocumentLayout(doc)
+        layout.line_spacing = self.line_spacing
+        layout.letter_spacing = self.letter_spacing
+        rect = self.rect()
+        layout.setMaxSize(rect.width(), rect.height(), False)
+        doc.setDocumentLayout(layout)
+
         cursor = QTextCursor(doc)
-        cursor.select(QTextCursor.Document)
-        old_fmt = cursor.charFormat()
-        cursor.mergeCharFormat(format)
+        block = doc.firstBlock()
+        stroke_pen = QPen(self.stroke_color, 0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                fragment = it.fragment()
+                cfmt = fragment.charFormat()
+                sw = pt2px(cfmt.fontPointSize()) * self.stroke_width
+                stroke_pen.setWidthF(sw)
+                pos1 = fragment.position()
+                pos2 = pos1 + fragment.length()
+                cursor.setPosition(pos1)
+                cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
+                cfmt.setTextOutline(stroke_pen)
+                cursor.mergeCharFormat(cfmt)
+                it += 1
+            block = block.next()
 
         size = self.boundingRect().size()
         self.background_pixmap = QPixmap(size.toSize())
@@ -83,8 +105,7 @@ class TextBlkItem(QGraphicsTextItem):
         painter.device()
         doc.drawContents(painter)
         painter.end()
-        
-        cursor.setCharFormat(old_fmt)
+
         self.repainting = False
         
     def docSizeChanged(self):
@@ -100,23 +121,27 @@ class TextBlkItem(QGraphicsTextItem):
             bx1, by1, bx2, by2 = xyxy
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
+        self.setVertical(blk.vertical)
         self.setRect(blk.bounding_rect())
         if blk.angle != 0:
             self.setRotation(blk.angle)
         
-        # blk.vertical = False
         set_char_fmt = False
-        if not blk.rich_text:
-            if blk.translation:
-                self.setPlainText(blk.translation)
-                set_char_fmt = True
-        else:
-            self.setHtml(blk.rich_text)
-            
+        if blk.translation:
+            set_char_fmt = True
+
         if set_format:
             font_fmt = FontFormat()
             font_fmt.from_textblock(blk)
             self.set_fontformat(font_fmt, set_char_format=set_char_fmt)
+
+        if not blk.rich_text:
+            if blk.translation:
+                self.setPlainText(blk.translation)
+        else:
+            self.setHtml(blk.rich_text)
+            self.letter_spacing = 1.
+            self.setLetterSpacing(font_fmt.letter_spacing)
 
     def setCenterTransform(self):
         center = self.boundingRect().center()
@@ -136,20 +161,15 @@ class TextBlkItem(QGraphicsTextItem):
     def setRect(self, rect: Union[List, QRectF]) -> None:
         if isinstance(rect, List):
             rect = QRectF(*rect)
-        
         self.setPos(rect.topLeft())
-        doc = self.document()
-        layout = doc.documentLayout()
         self._display_rect = rect
-        layout.setMaxSize(rect.width(), rect.height())
-        doc.setPageSize(QSizeF(rect.width(), rect.height()))
-
+        self.layout.setMaxSize(rect.width(), rect.height())
+        self.document().setPageSize(QSizeF(rect.width(), rect.height()))
         self.setCenterTransform()
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        self.repaint_background()
 
     def documentSize(self):
-        return self.document().documentLayout().documentSize()
+        return self.layout.documentSize()
 
     def boundingRect(self) -> QRectF:
         br = super().boundingRect()
@@ -162,9 +182,9 @@ class TextBlkItem(QGraphicsTextItem):
     def absBoundingRect(self, max_h=None, max_w=None) -> List:
         br = self.boundingRect()
         w, h = br.width(), br.height()
-        sc = self.sceneBoundingRect().center()
-        x = sc.x() / self.scale() - w / 2
-        y = sc.y() / self.scale() - h / 2
+        pos = self.pos()
+        x = pos.x()
+        y = pos.y()
         if max_h is not None:
             y = min(max(0, y), max_h)
             y1 = y + h
@@ -188,7 +208,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     @property
     def is_vertical(self) -> bool:
-        return isinstance(self.document().documentLayout(), VerticalTextDocumentLayout)
+        return isinstance(self.layout, VerticalTextDocumentLayout)
 
     @property
     def angle(self) -> int:
@@ -203,45 +223,57 @@ class TextBlkItem(QGraphicsTextItem):
             self.setRotation(angle)
         self.blk.angle = angle
 
-    def setVertical(self, vertical: bool, force=False):
+    def setVertical(self, vertical: bool):
         if self.blk is not None:
             self.blk.vertical = vertical
+
+        valid_layout = True
+        if self.layout is not None:
+            if self.is_vertical == vertical:
+                return
+        else:
+            valid_layout = False
+
+        if valid_layout:
+            rect = self.rect() if self.layout is not None else None
+        
         self.setTextInteractionFlags(Qt.NoTextInteraction)
         doc = self.document()
+        html = doc.toHtml()
+        doc_margin = doc.documentMargin()
         doc.disconnect()
         doc.documentLayout().disconnect()
-        html = doc.toHtml()
         default_font = doc.defaultFont()
-        rect = self.rect()
 
         doc = QTextDocument()
+        doc.setDocumentMargin(doc_margin)
         if vertical:
             layout = VerticalTextDocumentLayout(doc)
         else:
             layout = HorizontalTextDocumentLayout(doc)
-        layout.setMaxSize(rect.width(), rect.height())
+        
+        self.layout = layout
+        self.setDocument(doc)
+
         layout.size_enlarged.connect(self.on_document_enlarged)
         layout.documentSizeChanged.connect(self.docSizeChanged)
         doc.setDocumentLayout(layout)
         doc.setDefaultFont(default_font)
-        doc.setHtml(html)
-        doc.setDocumentMargin(0)
-        self.setDocument(doc)
         doc.contentsChanged.connect(self.documentContentChanged)
         
-        self.setCenterTransform()
-        self.setLineSpacing(self.line_spacing)
-        if self.background_pixmap is not None:
+        if valid_layout:
+            layout.setMaxSize(rect.width(), rect.height())
+            doc.setHtml(html)
+
+            self.setCenterTransform()
+            self.setLineSpacing(self.line_spacing)
             self.repaint_background()
 
-        # cursor = QTextCursor(doc)
-        # format = cursor.charFormat()
-        # cursor.mergeCharFormat(format)
-        # cursor.select(QTextCursor.Document)
-        # cursor.mergeBlockCharFormat(format)
-        # cursor.clearSelection()
-        # # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
-        # self.setTextCursor(cursor)
+            if self.letter_spacing != 1:
+                ls = self.letter_spacing
+                self.letter_spacing = 1
+                self.setLetterSpacing(ls)
+
         self.doc_size_changed.emit(self.idx)
 
     def on_document_enlarged(self):
@@ -264,33 +296,26 @@ class TextBlkItem(QGraphicsTextItem):
                 pos.setY(pos.y() + delta_x * np.sin(rad))
             self.setPos(pos)
 
-    def documentLayout(self) -> VerticalTextDocumentLayout:
-        return self.document().documentLayout()
+    def setStrokeWidth(self, stroke_width: float):
+        if self.stroke_width == stroke_width:
+            return
 
-    def setStrokeWidth(self, stroke_width):
         self.stroke_width = stroke_width
-        if stroke_width > 0:                
-            self.repaint_background()
-        else:
-            self.background_pixmap = None
-        
-        sw = self.stroke_width * pt2px(self.document().defaultFont().pointSizeF())
-        # self.document().setDocumentMargin(sw/2)
-        self.documentLayout().updateDocumentMargin(sw/2)
+        sw = pt2px(self.layout.max_font_size()) * stroke_width
+        self.layout.updateDocumentMargin(sw/2)
+        self.layout.reLayout()
         self.on_document_enlarged()
+        
+        self.repaint_background()
         self.update()
 
     def setStrokeColor(self, scolor):
         self.stroke_color = scolor if isinstance(scolor, QColor) else QColor(*scolor)
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        self.repaint_background()
         self.update()
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         br = self.boundingRect()
-        # mouse_over = option.state & QStyle.StateFlag.State_MouseOver
-        # selected = option.state & QStyle.StateFlag.State_Selected
-        
         painter.save()
 
         # shadow effect not working ???
@@ -303,35 +328,6 @@ class TextBlkItem(QGraphicsTextItem):
         if self.background_pixmap is not None:
             painter.setRenderHint(QPainter.SmoothPixmapTransform)
             painter.drawPixmap(br.toRect(), self.background_pixmap)
-
-        # https://stackoverflow.com/questions/13966868/qt-outlined-text-without-thinning-font
-        # too slow
-
-        # if sw != 0 and self.tcursor:
-        #     old_fmt = self.tcursor.charFormat()
-        #     self.tcursor.setCharFormat(self.stroke_fmt)
-
-            # cursor = QTextCursor(self.document())
-            # old_fmt = cursor.charFormat()
-            # format = cursor.charFormat()
-            # sw = sw * self.document().defaultFont().pointSizeF()
-            # format.setTextOutline(QPen(self.stroke_color, sw, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            
-            # cursor.select(QTextCursor.Document)
-            
-            # cursor.setCharFormat(format)
-            # layout = self.document().documentLayout()   
-            # layout.draw(painter, layout.PaintContext())
-
-        # painter.setCompositionMode(QPainter.RasterOp_NotDestination)
-        # pen = painter.pen()
-        # pen.setWidth(1)
-        # pen.setStyle(Qt.DashLine)
-        # pen.setDashPattern([7, 5])
-        # # pen.setColor(QColor(0, 127, 127))
-        # painter.setPen(pen)
-        # painter.setBrush(Qt.NoBrush)
-        # painter.drawRect(self.boundingRect())
 
         draw_rect = self.draw_rect and not self.under_ctrl
         if self.isSelected() and not self.is_editting():
@@ -420,10 +416,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.hover_enter.emit(self.idx)
         return super().hoverEnterEvent(event)
 
-    def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        self.hover_leave.emit(self.idx)
-        return super().hoverLeaveEvent(event)
-
     def toPixmap(self) -> QPixmap:
         pixmap = QPixmap(self.boundingRect().size().toSize())
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -447,8 +439,7 @@ class TextBlkItem(QGraphicsTextItem):
         op = doc.defaultTextOption()
         op.setAlignment(alignment)
         doc.setDefaultTextOption(op)
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        self.repaint_background()
 
     def alignment(self):
         return self.document().defaultTextOption().alignment()
@@ -482,16 +473,16 @@ class TextBlkItem(QGraphicsTextItem):
             alignment, 
             self.is_vertical,
             weight, 
-            line_spacing=self.line_spacing
+            line_spacing=self.line_spacing,
+            letter_spacing=self.letter_spacing
         )
         return font_format
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False):
-
         if self.is_vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
         cursor = self.textCursor()
-        cursor.movePosition(QTextCursor.Start)
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
         format = cursor.charFormat()
         font = self.document().defaultFont()
         
@@ -506,18 +497,17 @@ class TextBlkItem(QGraphicsTextItem):
         format.setFontWeight(ffmat.weight)
         format.setFontItalic(ffmat.italic)
         format.setFontUnderline(ffmat.underline)
-        
+        format.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+        format.setFontLetterSpacing(ffmat.letter_spacing * 100)
         cursor.setCharFormat(format)
-        cursor.select(QTextCursor.Document)
+        cursor.select(QTextCursor.SelectionType.Document)
         cursor.setBlockCharFormat(format)
         if set_char_format:
             cursor.setCharFormat(format)
         cursor.clearSelection()
         # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
-        cursor.movePosition(QTextCursor.Start)
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
         self.setTextCursor(cursor)
-
-        self.stroke_width = ffmat.stroke_width
         self.setStrokeWidth(ffmat.stroke_width)
         self.setStrokeColor(ffmat.srgb)
         
@@ -527,11 +517,14 @@ class TextBlkItem(QGraphicsTextItem):
         op.setAlignment(alignment)
         doc.setDefaultTextOption(op)
         self.setLineSpacing(ffmat.line_spacing)
+        self.letter_spacing = ffmat.letter_spacing
+        # self.setLetterSpacing(ffmat.letter_spacing)
 
     def updateBlkFormat(self):
         fmt = self.get_fontformat()
         self.blk.default_stroke_width = fmt.stroke_width
         self.blk.line_spacing = fmt.line_spacing
+        self.blk.letter_spacing = fmt.letter_spacing
         self.blk.font_family = fmt.family
         self.blk.font_size = pt2px(fmt.size)
         self.blk.font_weight = fmt.weight
@@ -539,26 +532,35 @@ class TextBlkItem(QGraphicsTextItem):
         # self.blk._alignment = self.blk.alignment()
         self.blk.set_font_colors(fmt.frgb, fmt.srgb, accumulate=False)
 
-    def setLineSpacing(self, line_spacing, cursor=None):
+    def setLineSpacing(self, line_spacing: float, cursor=None):
         self.line_spacing = line_spacing
-        self.document().documentLayout().setLineSpacing(self.line_spacing)
-        if self.background_pixmap is not None:
-            self.repaint_background()
+        self.layout.setLineSpacing(self.line_spacing)
+        self.repaint_background()
 
-    def scaleChanged(self) -> None:
-        super().scaleChanged()
-        if self.background_pixmap is not None:
-            self.repaint_background()
-        self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+    def setLetterSpacing(self, letter_spacing: float):
+        if self.letter_spacing == letter_spacing:
+            return
+        self.letter_spacing = letter_spacing
+        if self.is_vertical:
+            self.layout.setLetterSpacing(letter_spacing)
+        else:
+            char_fmt = QTextCharFormat()
+            char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+            char_fmt.setFontLetterSpacing(letter_spacing * 100)
+            cursor = QTextCursor(self.document())
+            cursor.select(QTextCursor.SelectionType.Document)
+            cursor.mergeCharFormat(char_fmt)
+            # cursor.mergeBlockCharFormat(char_fmt)
+        self.repaint_background()
 
     def get_char_fmts(self) -> List[QTextCharFormat]:
         cursor = self.textCursor()
         
-        cursor.movePosition(QTextCursor.Start)
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
         char_fmts = []
         while True:
             
-            cursor.movePosition(QTextCursor.NextCharacter)
+            cursor.movePosition(QTextCursor.MoveOperation.NextCharacter)
             cursor.clearSelection()
             char_fmts.append(cursor.charFormat())
             if cursor.atEnd():

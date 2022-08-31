@@ -266,11 +266,6 @@ class SceneTextManager(QObject):
 
     def adjustSceneTextRect(self):
         new_size = self.canvas.imgLayer.sceneBoundingRect().size()
-        scale_factor = new_size.width() / self.canvas.old_size.width()
-        for blk_item in self.textblk_item_list:
-            rel_pos = blk_item.scenePos() * scale_factor
-            blk_item.setScale(self.canvas.scale_factor)
-            blk_item.setPos(blk_item.pos() + rel_pos - blk_item.scenePos())
         self.txtblkShapeControl.updateBoundingRect()
 
     def clearSceneTextitems(self):
@@ -308,9 +303,6 @@ class SceneTextManager(QObject):
                 blk.translation = translation
                 self.layout_textblk(blk_item, text=translation)
         self.addTextBlkItem(blk_item)
-        rel_pos = blk_item.scenePos() * self.canvas.scale_factor
-        blk_item.setScale(self.canvas.scale_factor)
-        blk_item.setPos(blk_item.pos() + rel_pos - blk_item.scenePos())
 
         pair_widget = TransPairWidget(blk, len(self.pairwidget_list))
         self.pairwidget_list.append(pair_widget)
@@ -324,11 +316,10 @@ class SceneTextManager(QObject):
 
     def addTextBlkItem(self, textblk_item: TextBlkItem) -> TextBlkItem:
         self.textblk_item_list.append(textblk_item)
-        self.canvas.addItem(textblk_item)
+        textblk_item.setParentItem(self.canvas.inpaintLayer)
         textblk_item.begin_edit.connect(self.onTextBlkItemBeginEdit)
         textblk_item.end_edit.connect(self.onTextBlkItemEndEdit)
         textblk_item.hover_enter.connect(self.onTextBlkItemHoverEnter)
-        textblk_item.hover_leave.connect(self.onTextBlkItemHoverLeave)
         textblk_item.leftbutton_pressed.connect(self.onLeftbuttonPressed)
         textblk_item.moving.connect(self.onTextBlkItemMoving)
         textblk_item.moved.connect(self.onTextBlkItemMoved)
@@ -359,7 +350,7 @@ class SceneTextManager(QObject):
         blkitem.idx = len(self.textblk_item_list)
         p_widget.idx = len(self.pairwidget_list)
         self.textblk_item_list.append(blkitem)
-        self.canvas.addItem(blkitem)
+        blkitem.setParentItem(self.canvas.inpaintLayer)
         self.pairwidget_list.append(p_widget)
         self.textEditList.addPairWidget(p_widget)
 
@@ -424,10 +415,6 @@ class SceneTextManager(QObject):
         self.hovering_transwidget = self.pairwidget_list[blk_id].e_trans
         self.hovering_transwidget.setHoverEffect(True)
         self.textpanel.textEditList.ensureWidgetVisible(self.hovering_transwidget)
-        self.canvas.hovering_textblkitem = blk_item
-
-    def onTextBlkItemHoverLeave(self, blk_id: int):
-        self.canvas.hovering_textblkitem = None
 
     def onTextBlkItemMoving(self, item: TextBlkItem):
         self.txtblkShapeControl.updateBoundingRect()
@@ -641,16 +628,15 @@ class SceneTextManager(QObject):
                 if matched:
                     cursor.clearSelection()
                     cursor.setPosition(cpos)
-                    cursor.setPosition(cpos+1, QTextCursor.KeepAnchor)
+                    cursor.setPosition(cpos+1, QTextCursor.MoveMode.KeepAnchor)
                     cursor.setCharFormat(fmt)
                     cpos += 1
 
 
     def onEndCreateTextBlock(self, rect: QRectF):
-        scale_f = self.canvas.scale_factor
         if rect.width() > 1 and rect.height() > 1:
             xyxy = np.array([rect.x(), rect.y(), rect.right(), rect.bottom()])        
-            xyxy = np.round(xyxy / scale_f).astype(np.int)
+            xyxy = np.round(xyxy).astype(np.int)
             block = TextBlock(xyxy)
             xywh = np.copy(xyxy)
             xywh[[2, 3]] -= xywh[[0, 1]]

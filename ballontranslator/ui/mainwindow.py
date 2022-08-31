@@ -114,6 +114,7 @@ class MainWindow(QMainWindow):
         self.rightComicTransStackPanel = QStackedWidget(self)
         self.rightComicTransStackPanel.addWidget(self.drawingPanel)
         self.rightComicTransStackPanel.addWidget(self.textPanel)
+        self.rightComicTransStackPanel.currentChanged.connect(self.on_transpanel_changed)
 
         self.comicTransSplitter = QSplitter(Qt.Orientation.Horizontal)
         self.comicTransSplitter.addWidget(self.pageList)
@@ -272,10 +273,9 @@ class MainWindow(QMainWindow):
             self.st_manager.hovering_transwidget = None
             self.st_manager.updateSceneTextitems()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
+            self.drawingPanel.clearInpaintItems()
             if self.dl_manager.run_canvas_inpaint:
                 self.dl_manager.inpaint_thread.terminate()
-                self.canvas.removeItems(self.drawingPanel.inpaint_stroke)
-                self.drawingPanel.inpaint_stroke = None
                 self.dl_manager.run_canvas_inpaint = False
 
     def setupShortcuts(self):
@@ -410,8 +410,7 @@ class MainWindow(QMainWindow):
     def save_proj(self):
         if self.leftBar.imgTransChecker.isChecked()\
             and self.imgtrans_proj.directory is not None:
-            self.st_manager.updateTextBlkList()
-            self.saveCurrentPage()
+            self.saveCurrentPage(update_scene_text=True)
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True):
         if update_scene_text:
@@ -539,6 +538,7 @@ class MainWindow(QMainWindow):
             if override_alignment:
                 blk._alignment = gf.alignment
             blk.line_spacing = gf.line_spacing
+            blk.letter_spacing = gf.letter_spacing
 
         self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
         
@@ -578,3 +578,6 @@ class MainWindow(QMainWindow):
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
         self.dl_manager.runImgtransPipeline()
+
+    def on_transpanel_changed(self):
+        self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()

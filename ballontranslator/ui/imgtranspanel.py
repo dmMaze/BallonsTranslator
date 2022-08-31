@@ -19,6 +19,7 @@ class SourceTextEdit(QTextEdit):
         self.setMinimumHeight(75)
         self.document().contentsChanged.connect(self.on_content_changed)
         self.document().documentLayout().documentSizeChanged.connect(self.adjustSize)
+        self.setAcceptRichText(False)
 
     def adjustSize(self):
         h = self.document().documentLayout().documentSize().toSize().height()
