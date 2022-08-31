@@ -438,7 +438,7 @@ class FontFormatPanel(Widget):
 
         self.lineSpacingBox = SizeComboBox([0, 10], self)
         self.lineSpacingBox.addItems(["1.0", "1.1", "1.2"])
-        self.lineSpacingBox.setToolTip("Change line spacing")
+        self.lineSpacingBox.setToolTip(self.tr("Change line spacing"))
         self.lineSpacingBox.apply_change.connect(self.update_line_spacing)
         self.lineSpacingBox.editTextChanged.connect(self.onLineSpacingEditorChanged)
         

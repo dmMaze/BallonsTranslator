@@ -438,8 +438,6 @@ class MainWindow(QMainWindow):
         else:
             mask_path = inpainted_path = None
             
-        img = QImage(self.canvas.imgLayer.pixmap().size(), QImage.Format.Format_ARGB32)
-
         restore_textblock_mode = False
         if self.config.imgtrans_textblock:
             restore_textblock_mode = True
@@ -466,6 +464,7 @@ class MainWindow(QMainWindow):
             self.imsave_thread.saveImg(inpainted_path, inpainted_array)
 
         # save result: rendered text + inpainted
+        img = QImage(self.canvas.imgLayer.pixmap().size(), QImage.Format.Format_ARGB32)
         painter = QPainter(img)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.canvas.render(painter)
@@ -516,7 +515,8 @@ class MainWindow(QMainWindow):
             self.st_manager.updateTranslation()
 
     def on_imgtrans_pipeline_finished(self):
-        self.pageListCurrentItemChanged()
+        # self.pageListCurrentItemChanged()
+        pass
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
         src_is_cjk = is_cjk(self.config.dl.translate_source)

@@ -498,8 +498,9 @@ class TextBlkItem(QGraphicsTextItem):
         format.setFontWeight(ffmat.weight)
         format.setFontItalic(ffmat.italic)
         format.setFontUnderline(ffmat.underline)
-        format.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-        format.setFontLetterSpacing(ffmat.letter_spacing * 100)
+        if not ffmat.vertical:
+            format.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+            format.setFontLetterSpacing(ffmat.letter_spacing * 100)
         cursor.setCharFormat(format)
         cursor.select(QTextCursor.SelectionType.Document)
         cursor.setBlockCharFormat(format)
@@ -517,9 +518,10 @@ class TextBlkItem(QGraphicsTextItem):
         op = doc.defaultTextOption()
         op.setAlignment(alignment)
         doc.setDefaultTextOption(op)
+        
+        if ffmat.vertical:
+            self.setLetterSpacing(ffmat.letter_spacing)
         self.setLineSpacing(ffmat.line_spacing)
-        self.letter_spacing = ffmat.letter_spacing
-        # self.setLetterSpacing(ffmat.letter_spacing)
 
     def updateBlkFormat(self):
         fmt = self.get_fontformat()
@@ -533,7 +535,7 @@ class TextBlkItem(QGraphicsTextItem):
         # self.blk._alignment = self.blk.alignment()
         self.blk.set_font_colors(fmt.frgb, fmt.srgb, accumulate=False)
 
-    def setLineSpacing(self, line_spacing: float, cursor=None):
+    def setLineSpacing(self, line_spacing: float):
         self.line_spacing = line_spacing
         self.layout.setLineSpacing(self.line_spacing)
         self.repaint_background()

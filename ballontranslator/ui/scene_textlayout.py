@@ -467,7 +467,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         tl.beginLayout()
         option = doc.defaultTextOption()
         option.setWrapMode(QTextOption.WrapAnywhere)
-        # option.setFlags(QTextOption.Flag.IncludeTrailingSpaces)
         tl.setTextOption(option)
         
         while True:
@@ -488,12 +487,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             num_rspaces = text_len - len(text.rstrip())
             num_lspaces = text_len - len(text.lstrip())
 
-            tbr_h = space_w = 0
+            tbr_h = space_w = let_sp_offset = 0
             char_idx += num_lspaces
             if char_idx < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 space_w = cfmt.space_width
-                tbr_h = cfmt.tbr.height() * ls
+                let_sp_offset = cfmt.tbr.height() * (ls - 1)
+                tbr_h = cfmt.tbr.height() + let_sp_offset
                 char = blk_text[char_idx]
                 if char in PUNSET_VERNEEDROTATE:
                     tbr, br = cfmt.punc_rect(char)
@@ -505,15 +505,15 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                         next_char_idx = char_idx + 1
                         if next_char_idx < blk_text_len and blk_text[next_char_idx] == char:
-                            tbr_h -= cfmt.tbr.height() * (ls - 1)
-                    tbr_h += cfmt.tbr.height() * (ls - 1)
+                            tbr_h -= let_sp_offset
+                    tbr_h += let_sp_offset
                 elif char in PUNSET_PAUSEORSTOP:
                     if char in {'⁇', '⁉', '⁈', '‼'}:
                         tbr_h = cfmt.punc_actual_rect(line, char, cache=True)[3]
                     else:
                         tbr, br = cfmt.punc_rect(char)
                         tbr_h = tbr.height() + cfmt.font_metrics.descent()
-                    tbr_h += cfmt.tbr.height() * (ls - 1)
+                    tbr_h += let_sp_offset
             elif char_idx - num_lspaces < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx - num_lspaces)
                 tbr_h = cfmt.tbr.height() + cfmt.font_metrics.descent()
@@ -526,14 +526,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if is_final_block:
                     self.draw_shifted = max(self.draw_shifted, shifted)
 
-            
             char_yoffset_lst = [line_y_offset]
             for _ in range(num_lspaces):
                 char_yoffset_lst.append(min(available_height - tbr_h, char_yoffset_lst[-1] + space_w))
             blk_line_spaces.append([num_rspaces, num_lspaces, char_yoffset_lst, char_idx - num_lspaces])
             
             char_bottom = char_yoffset_lst[-1] + tbr_h
-            if char_bottom > available_height:
+            if char_bottom - max(let_sp_offset, 0) > available_height:
                 # switch to next line
                 if char_idx == 0 and layout_first_block:
                     self.min_height = doc_margin + tbr_h
