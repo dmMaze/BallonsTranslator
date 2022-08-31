@@ -52,17 +52,17 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ui/canvas.py" line="403"/>
+        <location filename="../../ui/canvas.py" line="411"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="404"/>
+        <location filename="../../ui/canvas.py" line="412"/>
         <source>Apply font formatting</source>
         <translation>应用字体格式</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="405"/>
+        <location filename="../../ui/canvas.py" line="413"/>
         <source>Auto layout</source>
         <translation>自动排版</translation>
     </message>
@@ -173,7 +173,7 @@
 <context>
     <name>DLManager</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="655"/>
+        <location filename="../../ui/dl_manager.py" line="645"/>
         <source>Invalid</source>
         <translation>不可用</translation>
     </message>
@@ -189,45 +189,60 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="302"/>
+        <location filename="../../ui/fontformatpanel.py" line="424"/>
         <source>Font Family</source>
         <translation>字体</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="306"/>
+        <location filename="../../ui/fontformatpanel.py" line="428"/>
         <source>Font Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="312"/>
+        <location filename="../../ui/fontformatpanel.py" line="447"/>
         <source>Change font color</source>
         <translation>改变文字颜色</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="329"/>
+        <location filename="../../ui/fontformatpanel.py" line="472"/>
         <source>Change stroke color</source>
         <translation>改变文字轮廓颜色</translation>
     </message>
     <message>
         <location filename="../../ui/fontformatpanel.py" line="334"/>
         <source>Stroke width: </source>
-        <translation>轮廓宽度: </translation>
+        <translation type="obsolete">轮廓宽度: </translation>
     </message>
     <message>
         <location filename="../../ui/fontformatpanel.py" line="340"/>
         <source>line spacing: </source>
-        <translation>行间距: </translation>
+        <translation type="obsolete">行间距: </translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="346"/>
+        <location filename="../../ui/fontformatpanel.py" line="506"/>
         <source>Global Font Format</source>
-        <translation type="unfinished">全局字体格式</translation>
+        <translation>全局字体格式</translation>
+    </message>
+    <message>
+        <location filename="../../ui/fontformatpanel.py" line="463"/>
+        <source>Stroke</source>
+        <translation>轮廓</translation>
+    </message>
+    <message>
+        <location filename="../../ui/fontformatpanel.py" line="479"/>
+        <source>Change stroke width</source>
+        <translation>修改轮廓宽度</translation>
+    </message>
+    <message>
+        <location filename="../../ui/fontformatpanel.py" line="496"/>
+        <source>Change letter spacing</source>
+        <translation>修改字符间距</translation>
     </message>
 </context>
 <context>
     <name>ImgtransThread</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="327"/>
+        <location filename="../../ui/dl_manager.py" line="317"/>
         <source>Translation Failed.</source>
         <translation>翻译失败.</translation>
     </message>
@@ -235,7 +250,7 @@
 <context>
     <name>InpaintConfigPanel</name>
     <message>
-        <location filename="../../ui/dlconfig_parse_widgets.py" line="238"/>
+        <location filename="../../ui/dlconfig_parse_widgets.py" line="236"/>
         <source>Let the program decide whether it is necessary to use the selected inpaint method.</source>
         <translation>由程序决定是否调用修复方法</translation>
     </message>
@@ -305,22 +320,22 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../ui/mainwindow.py" line="210"/>
+        <location filename="../../ui/mainwindow.py" line="214"/>
         <source>Failed to load project </source>
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="530"/>
+        <location filename="../../ui/mainwindow.py" line="557"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="530"/>
+        <location filename="../../ui/mainwindow.py" line="557"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="544"/>
+        <location filename="../../ui/mainwindow.py" line="571"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
     </message>
@@ -422,25 +437,25 @@
     <message>
         <location filename="../../ui/dl_manager.py" line="168"/>
         <source>The selected language is not supported by </source>
-        <translation>所选语言不被目标翻译器支持</translation>
+        <translation type="obsolete">所选语言不被目标翻译器支持</translation>
     </message>
     <message>
         <location filename="../../ui/dl_manager.py" line="169"/>
         <source>support list: </source>
-        <translation>支持语言列表: </translation>
+        <translation type="obsolete">支持语言列表: </translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="175"/>
+        <location filename="../../ui/dl_manager.py" line="169"/>
         <source>Failed to set translator </source>
         <translation>翻译器设置失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="227"/>
+        <location filename="../../ui/dl_manager.py" line="221"/>
         <source> is required for </source>
         <translation>是翻译器必填项</translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="225"/>
+        <location filename="../../ui/dl_manager.py" line="219"/>
         <source>Translation Failed.</source>
         <translation>翻译失败.</translation>
     </message>
