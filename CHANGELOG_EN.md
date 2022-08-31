@@ -1,5 +1,13 @@
 # Changelogs
 
+### 2022-08-31
+[v1.3.4](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.4) released
+
+1. Add Sugoi Translator(Japanese-English only, created & authorized by [mingshiba](https://www.patreon.com/mingshiba)): download the [model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm) converted by [@Snowad14](https://github.com/Snowad14) and put "sugoi_translator" in the "data" folder.
+2. Add support for russian, thanks to [bropines](https://github.com/bropines)
+3. Support letter spacing adjustment.
+4. Vertical type rework & text rendering bug fixes: https://github.com/dmMaze/BallonsTranslator/pull/30
+
 ### 2022-08-17
 [v1.3.0](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.0) released
 

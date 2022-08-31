@@ -1,5 +1,13 @@
 # Changelogs
 
+### 2022-08-31
+[v1.3.4](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.4)发布
+
+1. 添加离线日译英模型Sugoi Translator(仅日译英, 作者[mingshiba](https://www.patreon.com/mingshiba), 已获得集成授权), 感谢[@Snowad14](https://github.com/Snowad14)提供CT2转换模型
+2. 来自[bropines](https://github.com/bropines)的俄语本地化支持
+3. 文本编辑支持字距调节
+4. 调整竖排符号及半角字符位置规则, 详见https://github.com/dmMaze/BallonsTranslator/pull/30
+
 ### 2022-08-17
 [v1.3.0](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.0)发布
 

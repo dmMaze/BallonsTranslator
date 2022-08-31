@@ -327,6 +327,7 @@ class SceneTextManager(QObject):
         textblk_item.rotated.connect(self.onTextBlkItemRotated)
         textblk_item.content_changed.connect(self.onTextBlkItemContentChanged)
         textblk_item.doc_size_changed.connect(self.onTextBlkItemSizeChanged)
+        textblk_item.pasted.connect(self.onBlkitemPaste)
         return textblk_item
 
     def deleteTextblkItem(self, blkitem: TextBlkItem):
@@ -370,6 +371,12 @@ class SceneTextManager(QObject):
         if not self.txtblkShapeControl.reshaping:
             if self.txtblkShapeControl.blk_item == blk_item:
                 self.txtblkShapeControl.updateBoundingRect()
+
+    def onBlkitemPaste(self, idx: int):
+        blk_item = self.textblk_item_list[idx]
+        text = self.app.clipboard().text()
+        cursor = blk_item.textCursor()
+        cursor.insertText(text)
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]

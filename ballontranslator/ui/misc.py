@@ -139,7 +139,7 @@ class ProjImgTrans:
 
     def __init__(self, directory: str = None):
         self.type = PROJTYPE_IMGTRANS
-        self.directory: str
+        self.directory: str = None
         self.pages: OrderedDict[List[TextBlock]] = OrderedDict()
         self.not_found_pages: Dict[List[TextBlock]] = {}
         self.new_pages: List[str] = []

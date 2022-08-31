@@ -4,7 +4,7 @@ from typing import List
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
 from qtpy.QtCore import Qt, QPoint, QSize
-from qtpy.QtGui import QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont
+from qtpy.QtGui import QKeyEvent, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj

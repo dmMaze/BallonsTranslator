@@ -5,17 +5,10 @@ from dl import VALID_INPAINTERS, VALID_TEXTDETECTORS, VALID_TRANSLATORS, VALID_O
 from utils.logger import logger as LOGGER
 from .stylewidgets import ConfigComboBox
 from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
-from . import constants as c
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QFontMetricsF
-if c.FLAG_QT6:
-    from qtpy.QtGui import QAction
-else:
-    from qtpy.QtWidgets import QAction
-
-
 
 
 class ParamNameLabel(QLabel):

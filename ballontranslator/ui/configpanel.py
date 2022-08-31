@@ -2,9 +2,18 @@ from typing import List, Union, Tuple
 import json
 
 from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
-from qtpy.QtCore import Qt, QModelIndex, Signal, QSize
+from qtpy.QtCore import Qt, QModelIndex, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
-from qtpy import QtCore
+
+from . import constants as C
+
+
+# nuitka seems to require import QtCore explicitly 
+if C.FLAG_QT6:
+    from PyQt6 import QtCore
+else:
+    from PyQt5 import QtCore
+
 
 from utils.logger import logger as LOGGER
 from .stylewidgets import Widget, ConfigComboBox
@@ -55,9 +64,9 @@ class ConfigSubBlock(Widget):
         self.idx0 = idx0
         self.idx1 = idx1
 
-    def enterEvent(self, a0: QtCore.QEvent) -> None:
+    def enterEvent(self, e: QEvent) -> None:
         self.pressed.emit(self.idx0, self.idx1)
-        return super().enterEvent(a0)
+        return super().enterEvent(e)
 
 
 class ConfigBlock(Widget):
@@ -224,7 +233,7 @@ class ConfigTable(QTreeView):
         rootNode.appendRow(ti)
         return ti
 
-    def selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection) -> None:
+    def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         dis = deselected.indexes()
         sel = selected.indexes()
         model = self.model()

@@ -4,7 +4,7 @@ from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent
 from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
-from qtpy.QtGui import QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, QFocusEvent, QPainter, QPen, QColor, QTextCursor, QTextCharFormat, QTextDocument
+from qtpy.QtGui import QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, QFocusEvent, QPainter, QPen, QColor, QTextCursor, QTextCharFormat, QTextDocument
 
 from dl.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
@@ -27,6 +27,7 @@ class TextBlkItem(QGraphicsTextItem):
     content_changed = Signal(QGraphicsTextItem)
     leftbutton_pressed = Signal(int)
     doc_size_changed = Signal(int)
+    pasted = Signal(int)
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.blk = None
@@ -566,3 +567,11 @@ class TextBlkItem(QGraphicsTextItem):
             if cursor.atEnd():
                 break
         return char_fmts
+
+    def keyPressEvent(self, e: QKeyEvent) -> None:
+        if e.key() == Qt.Key.Key_V and e.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if self.isEditing() is not None:
+                e.accept()
+                self.pasted.emit(self.idx)
+                return
+        return super().keyPressEvent(e)

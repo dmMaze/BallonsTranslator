@@ -16,21 +16,21 @@ def main():
     else:
         os.environ['QT_API'] = args.qt_api
 
+    if sys.platform == 'win32':
+        import ctypes
+        myappid = u'BalloonsTranslator' # arbitrary string
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
     import qtpy
     from qtpy.QtWidgets import QApplication
     from qtpy.QtCore import QTranslator, QLocale
     from qtpy.QtGui import QIcon
 
-    from ui.mainwindow import MainWindow
     from ui import constants
-
-    if sys.platform == 'win32':
-        import ctypes
-        myappid = u'BalloonsTranslator' # arbitrary string
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    
     if qtpy.API_NAME[-1] == '6':
         constants.FLAG_QT6 = True
+
+    from ui.mainwindow import MainWindow
     
     os.chdir(constants.PROGRAM_PATH)
     app = QApplication(sys.argv)

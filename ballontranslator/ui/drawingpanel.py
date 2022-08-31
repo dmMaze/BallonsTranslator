@@ -575,7 +575,7 @@ class DrawingPanel(Widget):
             self.clearInpaintItems()
 
     def on_canvasctrl_released(self):
-        if self.currentTool == self.inpaintTool:
+        if self.isVisible() and self.currentTool == self.inpaintTool:
             self.runInpaint()
 
     def on_begin_scale_tool(self, pos: QPointF):

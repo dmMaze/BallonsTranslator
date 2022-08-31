@@ -4,12 +4,14 @@ from typing import List
 
 from .stylewidgets import Widget, PaintQSlider
 from .constants import WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, DRAG_DIR_NONE, DRAG_DIR_VER, DRAG_DIR_BDIAG, DRAG_DIR_FDIAG
-from . import constants as c
+
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton
 from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QMouseEvent, QKeySequence
-if c.FLAG_QT6:
+
+from . import constants as C
+if C.FLAG_QT6:
     from qtpy.QtGui import QAction
 else:
     from qtpy.QtWidgets import QAction
@@ -297,7 +299,7 @@ class LeftBar(Widget):
 
     def mouseMoveEvent(self, e: QMouseEvent) -> None:
         if not self.mainwindow.isMaximized():
-            if c.FLAG_QT6:
+            if C.FLAG_QT6:
                 g_pos = e.globalPosition().toPoint()
             else:
                 g_pos = e.globalPos()
@@ -317,7 +319,7 @@ class LeftBar(Widget):
         return super().mouseMoveEvent(e)
 
     def mousePressEvent(self, e: QMouseEvent) -> None:
-        if c.FLAG_QT6:
+        if C.FLAG_QT6:
             g_pos = e.globalPosition().toPoint()
         else:
             g_pos = e.globalPos()
@@ -346,7 +348,7 @@ class RightBar(Widget):
 
     def mouseMoveEvent(self, e:  QMouseEvent) -> None:
         if not self.mainwindow.isMaximized():
-            if c.FLAG_QT6:
+            if C.FLAG_QT6:
                 g_pos = e.globalPosition().toPoint()
             else:
                 g_pos = e.globalPos()
@@ -366,7 +368,7 @@ class RightBar(Widget):
         return super().mouseMoveEvent(e)
 
     def mousePressEvent(self, e: QMouseEvent) -> None:
-        if c.FLAG_QT6:
+        if C.FLAG_QT6:
             g_pos = e.globalPosition().toPoint()
         else:
             g_pos = e.globalPos()
@@ -436,7 +438,7 @@ class TitleBar(Widget):
         self.mainwindow.showMinimized()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if c.FLAG_QT6:
+        if C.FLAG_QT6:
             g_pos = event.globalPosition().toPoint()
         else:
             g_pos = event.globalPos()
@@ -466,7 +468,7 @@ class TitleBar(Widget):
         return super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if c.FLAG_QT6:
+        if C.FLAG_QT6:
             g_pos = event.globalPosition().toPoint()
         else:
             g_pos = event.globalPos()
@@ -624,7 +626,7 @@ class BottomBar(Widget):
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if not self.mainwindow.isMaximized():
-            if c.FLAG_QT6:
+            if C.FLAG_QT6:
                 g_pos = event.globalPosition().toPoint()
             else:
                 g_pos = event.globalPos()
@@ -661,7 +663,7 @@ class BottomBar(Widget):
         return super().mouseMoveEvent(event)
 
     def mousePressEvent(self, e: QMouseEvent) -> None:
-        if c.FLAG_QT6:
+        if C.FLAG_QT6:
             g_pos = e.globalPosition().toPoint()
         else:
             g_pos = e.globalPos()
