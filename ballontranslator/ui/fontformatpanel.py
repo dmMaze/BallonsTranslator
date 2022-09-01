@@ -10,6 +10,7 @@ from .misc import FontFormat, set_html_color
 from .textitem import TextBlkItem, TextBlock
 from .canvas import Canvas
 from .constants import CONFIG_FONTSIZE_CONTENT, WIDGET_SPACING_CLOSE
+from . import constants as C
 
 from utils.logger import logger as LOGGER
 
@@ -381,7 +382,11 @@ class SizeControlLabel(QLabel):
     def mousePressEvent(self, e: QMouseEvent) -> None:
         if e.button() == Qt.MouseButton.LeftButton:
             self.mouse_pressed = True
-            self.cur_pos = e.globalPos().x() if self.direction == 0 else e.globalPos().y()
+            if C.FLAG_QT6:
+                g_pos = e.globalPosition().toPoint()
+            else:
+                g_pos = e.globalPos()
+            self.cur_pos = g_pos.x() if self.direction == 0 else g_pos.y()
         return super().mousePressEvent(e)
 
     def mouseReleaseEvent(self, e: QMouseEvent) -> None:
@@ -392,11 +397,15 @@ class SizeControlLabel(QLabel):
 
     def mouseMoveEvent(self, e: QMouseEvent) -> None:
         if self.mouse_pressed:
+            if C.FLAG_QT6:
+                g_pos = e.globalPosition().toPoint()
+            else:
+                g_pos = e.globalPos()
             if self.direction == 0:
-                new_pos = e.globalPos().x()
+                new_pos = g_pos.x()
                 self.size_ctrl_changed.emit(new_pos - self.cur_pos)
             else:
-                new_pos = e.globalPos().y()
+                new_pos = g_pos.y()
                 self.size_ctrl_changed.emit(self.cur_pos - new_pos)
             self.cur_pos = new_pos
         return super().mouseMoveEvent(e)

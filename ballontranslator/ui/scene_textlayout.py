@@ -3,10 +3,11 @@ from qtpy.QtGui import QTextCharFormat, QTextDocument, QImage, QTransform, QPale
 
 import cv2
 import numpy as np
-from typing import List, Set, Any
+from typing import List
 from functools import lru_cache, cached_property
 
-from .misc import pixmap2ndarray, LruIgnoreArgs, pt2px
+from .misc import pixmap2ndarray, ndarray2pixmap, LruIgnoreArgs
+from . import constants as C
 
 def print_transform(tr: QTransform):
     print(f'[[{tr.m11(), tr.m12(), tr.m13()}]\n [{tr.m21(), tr.m22(), tr.m23()}]\n [{tr.m31(), tr.m32(), tr.m33()}]]')
@@ -192,6 +193,29 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             return self._max_font_size
         return self.document().defaultFont().pointSizeF()
 
+def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
+    # some how qt6 line.draw doesn't allow pass FormatRange
+    if selected:    
+        qimg = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
+        qimg.fill(Qt.GlobalColor.transparent)
+        p = QPainter(qimg)
+        line.draw(p, QPointF(-line.x(), -line.y()), )
+        img = pixmap2ndarray(qimg, keep_alpha=True)[..., -1]
+        img = ndarray2pixmap(img, return_qimg=True)
+        p.drawImage(0, 0, img)
+        p.end()
+        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg)
+    else:
+        line.draw(painter, QPointF(x, y))
+
+def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
+    o = None
+    if selected:
+        o = QTextLayout.FormatRange()
+        o.start = line.textStart()
+        o.length = line.textLength()
+        o.format = selection.format
+    line.draw(painter, QPointF(x, y), o)
 
 class VerticalTextDocumentLayout(SceneTextLayout):
 
@@ -206,8 +230,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.has_selection = False
         self.punc_rect_cache = {} 
         self.punc_align_center = True
-
         self.draw_shifted = 0
+
+        self.line_draw = line_draw_qt6 if C.FLAG_QT6 else line_draw_qt5
 
     @property
     def align_right(self):
@@ -257,6 +282,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         cursor_block = None
         context_sel = context.selections
         has_selection = False
+        selection = None
         if len(context_sel) > 0:
             has_selection = True
             selection = context_sel[0]
@@ -285,15 +311,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 char = blk_text[char_idx]
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 fm = cfmt.font_metrics
-                o = None
+                selected = False
                 if has_selection:
                     sel_start = selection.cursor.selectionStart() - blpos 
                     sel_end = selection.cursor.selectionEnd() - blpos
                     if char_idx < sel_end and char_idx >= sel_start:
-                        o = QTextLayout.FormatRange()
-                        o.start = line.textStart()
-                        o.length = line.textLength()
-                        o.format = selection.format
+                        selected = True
                 
                 natral_shifted = max(line.naturalTextWidth() - cfmt.br.width(), 0)
                 if char in PUNSET_VERNEEDROTATE:
@@ -322,19 +345,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             yoff = yoff - cfmt.tbr.width() + non_bracket_br[3]
                     else:
                         yoff = -pun_tbr.top() - fm.ascent() - pun_tbr.height() / 2 - cfmt.br.width() / 2
-                    
-                    line.draw(painter, QPointF(hight_comp,  yoff), o)
+
+                    self.line_draw(painter, line, hight_comp,  yoff, selected, selection)
                     painter.setTransform(inv_transform, True)
 
                 elif char in PUNSET_PAUSEORSTOP:
                     pun_tbr, pun_br = cfmt.punc_rect(char)
                     act_rect = cfmt.punc_actual_rect(line, char, cache=True)
-                    # yoff = 0
-                    # yoff = pun_br.top() - pun_tbr.top()
                     yoff = -act_rect[1]
                     xoff = -pun_tbr.left()
                     yoff += self.draw_shifted
-                    # xoff -= self.draw_shifted
                     if num_lspaces > 0:
                         if natral_shifted == 0:
                             natral_shifted = num_lspaces * cfmt.space_width
@@ -347,9 +367,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     else:
                         xoff += cfmt.br.width() - pun_tbr.width()
                         xoff -= self.draw_shifted
-                    line.draw(painter, QPointF(xoff, yoff), o)
+                    self.line_draw(painter, line, xoff, yoff, selected, selection)
+
                 else:
-                    line.draw(painter, QPointF(-natral_shifted, -cfmt.tbr.top() - fm.ascent() + natral_shifted), o)
+                    yoff = -cfmt.tbr.top() - fm.ascent() + natral_shifted
+                    self.line_draw(painter, line, -natral_shifted, yoff, selected, selection)
+
             block = block.next()
         
         if cursor_block is not None:

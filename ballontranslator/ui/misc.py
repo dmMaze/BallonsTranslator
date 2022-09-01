@@ -43,9 +43,8 @@ def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
         return img
     else:
         return np.copy(img[:,:,:3])
-        return cv2.cvtColor(img[:, :, 0:3], cv2.COLOR_RGB2BGR)
 
-def ndarray2pixmap(img):
+def ndarray2pixmap(img, return_qimg=False):
     if len(img.shape) == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     height, width, channel = img.shape
@@ -56,6 +55,8 @@ def ndarray2pixmap(img):
         img_format = QImage.Format.Format_RGB888
     img = np.ascontiguousarray(img)
     qImg = QImage(img.data, width, height, bytesPerLine, img_format).rgbSwapped()
+    if return_qimg:
+        return qImg
     return QPixmap(qImg)
 
 class TextBlkEncoder(NumpyEncoder):
