@@ -199,12 +199,10 @@ def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, select
         qimg = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
         qimg.fill(Qt.GlobalColor.transparent)
         p = QPainter(qimg)
-        line.draw(p, QPointF(-line.x(), -line.y()), )
-        img = pixmap2ndarray(qimg, keep_alpha=True)[..., -1]
-        img = ndarray2pixmap(img, return_qimg=True)
-        p.drawImage(0, 0, img)
+        line.draw(p, QPointF(-line.x(), -line.y()))
         p.end()
-        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg)
+        qimg.invertPixels(QImage.InvertMode.InvertRgba)
+        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg.createAlphaMask())
     else:
         line.draw(painter, QPointF(x, y))
 
