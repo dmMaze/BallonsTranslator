@@ -113,7 +113,8 @@ class Canvas(QGraphicsScene):
         self.gv.hide_canvas.connect(self.on_hide_canvas)
         self.gv.setRenderHint(QPainter.Antialiasing)
         self.ctrl_relesed = self.gv.ctrl_released
-
+        self.vscroll_bar = self.gv.verticalScrollBar()
+        self.hscroll_bar = self.gv.horizontalScrollBar()
         self.default_cursor = self.gv.cursor()
         self.rubber_band = self.addWidget(QRubberBand(QRubberBand.Shape.Rectangle))
         self.rubber_band.hide()
@@ -157,6 +158,8 @@ class Canvas(QGraphicsScene):
         self.stroke_path_item: StrokeItem = None
 
         self.editor_index = 0 # 0: drawing 1: text editor
+        self.mid_btn_pressed = False
+        self.pan_initial_pos = QPoint(0, 0)
 
     def scaleUp(self):
         self.scaleImage(1 + CANVAS_SCALE_SPEED)
@@ -285,7 +288,14 @@ class Canvas(QGraphicsScene):
             self.end_create_textblock.emit(self.txtblkShapeControl.rect())
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.creating_textblock:
+        if self.mid_btn_pressed:
+            new_pos = event.screenPos()
+            delta_pos = new_pos - self.pan_initial_pos
+            self.pan_initial_pos = new_pos
+            self.hscroll_bar.setValue(int(self.hscroll_bar.value() - delta_pos.x()))
+            self.vscroll_bar.setValue(int(self.vscroll_bar.value() - delta_pos.y()))
+            
+        elif self.creating_textblock:
             self.txtblkShapeControl.setRect(QRectF(self.create_block_origin, event.scenePos() / self.scale_factor).normalized())
         elif self.stroke_path_item is not None:
             self.stroke_path_item.addNewPoint(self.imgLayer.mapFromScene(event.scenePos()))
@@ -299,13 +309,20 @@ class Canvas(QGraphicsScene):
         return super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        btn = event.button()
+        if btn == Qt.MouseButton.MiddleButton:
+            self.mid_btn_pressed = True
+            self.pan_initial_pos = event.screenPos()
+            return
+
         if self.textblock_mode and len(self.selectedItems()) == 0:
-            if event.button() == Qt.MouseButton.RightButton:
+            if btn == Qt.MouseButton.RightButton:
                 return self.startCreateTextblock(event.scenePos())
         elif self.creating_normal_rect:
-            return self.startCreateTextblock(event.scenePos(), hide_control=True)
+            if btn == Qt.MouseButton.RightButton or btn == Qt.MouseButton.LeftButton:
+                return self.startCreateTextblock(event.scenePos(), hide_control=True)
 
-        elif event.button() == Qt.MouseButton.LeftButton:
+        elif btn == Qt.MouseButton.LeftButton:
             # user is drawing using the pen/inpainting tool
             if self.alt_pressed:
                 self.scale_tool_mode = True
@@ -314,7 +331,7 @@ class Canvas(QGraphicsScene):
                 self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
                 self.addStrokeItem(self.stroke_path_item)
 
-        elif event.button() == Qt.MouseButton.RightButton:
+        elif btn == Qt.MouseButton.RightButton:
             # user is drawing using eraser
             if self.painting and self.stroke_path_item is None:
                 self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
@@ -332,16 +349,19 @@ class Canvas(QGraphicsScene):
         return self.image_edit_mode == ImageEditMode.RectTool and self.editor_index == 0
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.creating_textblock:
-            btn = 0 if event.button() == Qt.MouseButton.LeftButton else 1
+        btn = event.button()
+        if btn == Qt.MouseButton.MiddleButton:
+            self.mid_btn_pressed = False
+        elif self.creating_textblock:
+            btn = 0 if btn == Qt.MouseButton.LeftButton else 1
             return self.endCreateTextblock(btn=btn)
-        elif event.button() == Qt.MouseButton.RightButton:
+        elif btn == Qt.MouseButton.RightButton:
             if self.stroke_path_item is not None:
                 self.finish_erasing.emit(self.stroke_path_item)
             if self.rubber_band.isVisible():
                 self.rubber_band.hide()
                 self.rubber_band_origin = None
-        elif event.button() == Qt.MouseButton.LeftButton:
+        elif btn == Qt.MouseButton.LeftButton:
             if self.stroke_path_item is not None:
                 self.finish_painting.emit(self.stroke_path_item)
             elif self.scale_tool_mode:
@@ -351,11 +371,13 @@ class Canvas(QGraphicsScene):
         return super().mouseReleaseEvent(event)
 
     def updateCanvas(self):
+        self.editing_textblkitem = None
+        self.stroke_path_item = None
+        self.txtblkShapeControl.setBlkItem(None)
+        self.mid_btn_pressed = False
+
         self.clearSelection()
         self.setProjSaveState(False)
-        self.editing_textblkitem = None
-        self.txtblkShapeControl.setBlkItem(None)
-        self.stroke_path_item
         self.setImageLayer()
         self.setInpaintLayer()
         self.setMaskLayer()
