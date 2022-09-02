@@ -5,9 +5,9 @@ from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QCom
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QColor, QTextCharFormat, QDoubleValidator, QMouseEvent, QFont, QTextCursor, QFocusEvent, QKeyEvent
 
-from .stylewidgets import Widget, ColorPicker, PaintQSlider
+from .stylewidgets import Widget, ColorPicker
 from .misc import FontFormat, set_html_color
-from .textitem import TextBlkItem, TextBlock
+from .textitem import TextBlkItem
 from .canvas import Canvas
 from .constants import CONFIG_FONTSIZE_CONTENT, WIDGET_SPACING_CLOSE
 from . import constants as C

@@ -58,7 +58,7 @@ class StrokeItem(QGraphicsPathItem):
 
         pixmap_item.setParentItem(target_layer)
         pos = self.subBlockPos()
-        pixmap_item.setPos(pos)
+        pixmap_item.setPos(pos.x(), pos.y())
         if self.scene() is not None:
             if remove_stroke:
                 self.scene().removeItem(self)

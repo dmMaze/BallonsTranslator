@@ -1,7 +1,6 @@
 
 from typing import List, Union, Tuple
 import numpy as np
-import time, cv2
 
 from qtpy.QtWidgets import QApplication
 from qtpy.QtCore import QObject, QRectF, Qt
@@ -310,7 +309,7 @@ class SceneTextManager(QObject):
         pair_widget.e_source.setPlainText(blk_item.blk.get_text())
         pair_widget.e_source.user_edited.connect(self.on_srcwidget_edited)
         pair_widget.e_trans.setPlainText(blk_item.toPlainText())
-        pair_widget.e_trans.hover_enter.connect(self.onTransWidgetHoverEnter)
+        pair_widget.e_trans.focus_in.connect(self.onTransWidgetHoverEnter)
         pair_widget.e_trans.content_change.connect(self.onTransWidgetContentchange)
         return blk_item
 

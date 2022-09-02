@@ -12,6 +12,7 @@ from .canvas import Canvas
 class SourceTextEdit(QTextEdit):
     hover_enter = Signal(int)
     hover_leave = Signal(int)
+    focus_in = Signal(int)
     user_edited = Signal()
     def __init__(self, idx, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -54,6 +55,7 @@ class SourceTextEdit(QTextEdit):
 
     def focusInEvent(self, event: QFocusEvent) -> None:
         self.setHoverEffect(True)
+        self.focus_in.emit(self.idx)
         return super().focusInEvent(event)
 
     def focusOutEvent(self, event: QFocusEvent) -> None:
