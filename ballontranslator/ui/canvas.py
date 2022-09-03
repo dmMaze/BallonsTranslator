@@ -15,7 +15,7 @@ from .misc import ndarray2pixmap, ProjImgTrans
 from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
-from .image_edit import StrokeItem, StrokeItem, ImageEditMode
+from .image_edit import StrokeItem, StrokeItem, ImageEditMode, DrawingLayer
 
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
@@ -87,6 +87,7 @@ class Canvas(QGraphicsScene):
     
     imgtrans_proj: ProjImgTrans = None
     painting_pen = QPen()
+    erasing_pen = QPen()
     image_edit_mode = ImageEditMode.NONE
     alt_pressed = False
     scale_tool_mode = False
@@ -111,7 +112,7 @@ class Canvas(QGraphicsScene):
         self.gv.scale_up_signal.connect(self.scaleUp)
         self.gv.view_resized.connect(self.onViewResized)
         self.gv.hide_canvas.connect(self.on_hide_canvas)
-        self.gv.setRenderHint(QPainter.Antialiasing)
+        self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.ctrl_relesed = self.gv.ctrl_released
         self.vscroll_bar = self.gv.verticalScrollBar()
         self.hscroll_bar = self.gv.horizontalScrollBar()
@@ -139,9 +140,8 @@ class Canvas(QGraphicsScene):
         self.inpaintLayer = QGraphicsPixmapItem()
         self.inpaintLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         self.maskLayer = QGraphicsPixmapItem()
-        self.maskLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-        self.drawingLayer = QGraphicsPixmapItem()
-        self.drawingLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        self.drawingLayer = DrawingLayer()
+        self.drawingLayer.setTransformationMode(Qt.TransformationMode.FastTransformation)
         self.textLayer = QGraphicsPixmapItem()
         self.textLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         
@@ -259,9 +259,9 @@ class Canvas(QGraphicsScene):
             self.alt_pressed = False
         return super().keyReleaseEvent(event)
 
-    def addStrokeItem(self, item: StrokeItem):
+    def addStrokeItem(self, item: StrokeItem, pen: QPen):
         self.addItem(item)
-        item.setPen(self.painting_pen)
+        item.setPen(pen)
         item.setParentItem(self.drawingLayer)
 
     def startCreateTextblock(self, pos: QPointF, hide_control: bool = False):
@@ -329,13 +329,14 @@ class Canvas(QGraphicsScene):
                 self.begin_scale_tool.emit(event.scenePos())
             elif self.painting and self.stroke_path_item is None:
                 self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
-                self.addStrokeItem(self.stroke_path_item)
+                self.addStrokeItem(self.stroke_path_item, self.painting_pen)
 
         elif btn == Qt.MouseButton.RightButton:
             # user is drawing using eraser
             if self.painting and self.stroke_path_item is None:
-                self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
-                self.addStrokeItem(self.stroke_path_item)
+                erasing = self.image_edit_mode == ImageEditMode.PenTool
+                self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()), erasing)
+                self.addStrokeItem(self.stroke_path_item, self.erasing_pen)
             else:   # rubber band selection
                 self.rubber_band_origin = event.scenePos()
                 self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, self.rubber_band_origin).normalized())

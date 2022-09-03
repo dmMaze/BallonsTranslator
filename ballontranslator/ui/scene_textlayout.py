@@ -396,7 +396,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     num_rspaces, num_lspaces, char_yoffset_lst, line_pos = self.line_spaces_lst[blk_no][line.lineNumber()]
                     y = char_yoffset_lst[cpos - line_pos]
 
-                painter.setCompositionMode(QPainter.RasterOp_NotDestination)
+                painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
                 painter.fillRect(QRectF(x, y, fm.height(), 2), painter.pen().brush())
                 if self.has_selection == has_selection:
                     self.update.emit(QRectF(x, y, fm.height(), 2))

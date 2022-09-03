@@ -1,9 +1,8 @@
 import numpy as np
-import cv2
 
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QPoint
-from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsPathItem, QGraphicsScene
-from qtpy.QtGui import QPen, QColor, QPainterPath, QCursor, QPainter, QPixmap
+from qtpy.QtCore import QRectF, Qt, QPointF, QSize, QPoint, QDateTime
+from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsPathItem, QGraphicsItem
+from qtpy.QtGui import QPen, QColor, QPainterPath, QCursor, QPainter, QPixmap, QImage, QBrush
 
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -22,11 +21,38 @@ class ImageEditMode:
     PenTool = 2
     RectTool = 3
 
+
+class StrokeImgItem(QGraphicsItem):
+    def __init__(self, pen: QPen, point: QPointF, size: QSize, format: QImage.Format = QImage.Format.Format_ARGB32, ):
+        self._img = QImage(size, format)
+        self._img.fill(Qt.GlobalColor.transparent)
+        self.pen = pen
+        self.painter = QPainter()
+        self.painter.setPen(pen)
+        self.setBoundingRegionGranularity(0)
+        self.cur_point = point
+        self.drawLine(point, point)
+        self._br = QRectF(0, 0, size.width(), size.height())
+
+    def boundingRect(self) -> QRectF:
+        return self._br
+
+    def drawLine(self, new_pnt: QPointF):
+        self.painter.begin(self._img)
+        self.painter.drawLine(self.cur_point, new_pnt)
+        self.painter.end()
+        self.cur_point = new_pnt
+
+    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
+        painter.drawImage(0, 0, self._img)
+    
+
 class StrokeItem(QGraphicsPathItem):
-    def __init__(self, origin_point: QPointF):
+    def __init__(self, origin_point: QPointF, erasing: bool = False):
         super().__init__()
         # self.stroke = QPainterPath(QPointF(0, 0))
         self.stroke = QPainterPath(QPointF(origin_point))
+        self.erasing = erasing
         self.last_point = origin_point
         self.setPath(self.stroke)
         self.setBoundingRegionGranularity(0)
@@ -48,12 +74,12 @@ class StrokeItem(QGraphicsPathItem):
     def convertToPixmapItem(self, convert_mask=False, remove_stroke=True, target_layer: QGraphicsPixmapItem = None) -> QGraphicsPixmapItem:
         if target_layer is None:
             target_layer = self.parentItem()
-        # layer_size = target_layer.pixmap().size()
-        img_array = self.getSubimg(convert_mask)
-        if img_array is None:
+
+        pixmap = self.getSubimg(convert_mask, return_pixmap=True)
+        if pixmap is None:
             self.scene().removeItem(self)
             return None, None, None
-        pixmap = ndarray2pixmap(img_array)
+        # pixmap = ndarray2pixmap(img_array)
         pixmap_item = QGraphicsPixmapItem(pixmap)
 
         pixmap_item.setParentItem(target_layer)
@@ -66,6 +92,13 @@ class StrokeItem(QGraphicsPathItem):
                 self.setZValue(3)
         return pixmap_item
 
+    def convertToQImg(self, convert_mask=False) -> QImage:
+        img_array = self.getSubimg(convert_mask)
+        if img_array is None:
+            return None
+        qimg = ndarray2pixmap(img_array, return_qimg=True)
+        return qimg
+
     def originOffset(self) -> QPointF:
         thickness = self.pen().widthF() / 2
         return QPointF(thickness, thickness) - self.stroke.boundingRect().topLeft() - self.clip_offset
@@ -76,7 +109,7 @@ class StrokeItem(QGraphicsPathItem):
         pos.setY(int(round(max(0, pos.y()))))
         return pos.toPoint()
 
-    def getSubimg(self, convert_mask=False) -> np.ndarray:
+    def getSubimg(self, convert_mask=False, return_pixmap=False) -> np.ndarray:
         if self.isEmpty():
             return None
 
@@ -109,23 +142,28 @@ class StrokeItem(QGraphicsPathItem):
         if xyxy_clip[0] >= xyxy_clip[2] or xyxy_clip[1] >= xyxy_clip[3]:
             return None
 
-        stroke_clip = xyxy_clip - xyxy
-        stroke_clip[2] += stroke_size.width()
-        stroke_clip[3] += stroke_size.height()
-        
         pixmap = QPixmap(stroke_size)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
-        painter.translate(self.originOffset())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.translate(self.originOffset())
         painter.setPen(self.pen())
+        painter.setBrush(self.brush())
         painter.drawPath(self.stroke)
         painter.end()
-        
+
+        stroke_clip = xyxy_clip - xyxy
+        stroke_clip[2] += stroke_size.width()
+        stroke_clip[3] += stroke_size.height()
+        self.clip_offset = QPointF(stroke_clip[0], stroke_clip[1])
+
+        if return_pixmap:
+            return pixmap
+            
         imgarray = pixmap2ndarray(pixmap, keep_alpha=True)
         imgarray = imgarray[stroke_clip[1]: stroke_clip[3], stroke_clip[0]: stroke_clip[2]]
         # print(imgarray.shape, stroke_clip)
-        self.clip_offset = QPointF(stroke_clip[0], stroke_clip[1])
+        
         if convert_mask:
             mask = imgarray[..., -1]
             mask[mask > 0] = 255
@@ -133,25 +171,6 @@ class StrokeItem(QGraphicsPathItem):
             return mask
             
         return imgarray
-
-
-class PenStrokeCommand(QUndoCommand):
-    def __init__(self, canvas: QGraphicsScene, stroke_item: StrokeItem):
-        super().__init__()
-        self.stroke_item = stroke_item
-        self.canvas = canvas
-        
-    def redo(self) -> None:
-        self.canvas.addItem(self.stroke_item)
-        self.stroke_item.setParentItem(self.canvas.imgLayer)
-        
-    def undo(self):
-        self.canvas.removeItem(self.stroke_item)
-
-    def mergeWith(self, command: QUndoCommand) -> bool:
-        if self.stroke_item == command.stroke_item:
-            return True
-        return False
 
 
 class PenCursor(QCursor):
@@ -169,7 +188,7 @@ class PenCursor(QCursor):
         cur_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(cur_pixmap)
         painter.setPen(pen)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.drawEllipse(self.thickness, self.thickness, size-2*self.thickness, size-2*self.thickness)
         painter.end()
 
@@ -185,4 +204,35 @@ class PixmapItem(QGraphicsPixmapItem):
         painter.drawRect(self.boundingRect())
         painter.setPen(pen)
         return super().paint(painter, option, widget)
+
+
+class DrawingLayer(QGraphicsPixmapItem):
+
+    def __init__(self):
+        super().__init__()
+        self.qimg_dict = {}
+        self.drawing_items_info = {}
+
+    def addQImage(self, x: int, y: int, qimg: QImage, compose_mode, key: str):
+        self.qimg_dict[key] = qimg
+        self.drawing_items_info[key] = {'pos': [x, y], 'compose': compose_mode}
+        self.update()
+
+    def removeQImage(self, key: str):
+        if key in self.qimg_dict:
+            self.qimg_dict.pop(key)
+            # self.drawing_items_pos.pop(key)
+
+    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget):
+        pixmap = self.pixmap()
+        p = QPainter()
+        p.begin(pixmap)
+        for key in self.qimg_dict:
+            item = self.qimg_dict[key]
+            info = self.drawing_items_info[key]
+            if isinstance(item, QImage):
+                p.setCompositionMode(info['compose'])
+                p.drawImage(info['pos'][0], info['pos'][1], item)
+        p.end()
+        painter.drawPixmap(self.offset(), pixmap)
 

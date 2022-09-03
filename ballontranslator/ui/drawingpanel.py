@@ -1,6 +1,6 @@
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QRect, QRectF
-from qtpy.QtWidgets import QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsEllipseItem
-from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QDateTime, QRectF
+from qtpy.QtWidgets import QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
+from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
 
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -16,7 +16,7 @@ from utils.textblock_mask import canny_flood, connected_canny_flood
 from utils.logger import logger
 
 from .dl_manager import DLManager
-from .image_edit import ImageEditMode, StrokeItem, PixmapItem
+from .image_edit import ImageEditMode, StrokeItem, PixmapItem, DrawingLayer
 from .configpanel import InpaintConfigPanel
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
@@ -213,7 +213,6 @@ class RectPanel(Widget):
         return self.autoChecker.isChecked()
 
 
-
 class DrawingPanel(Widget):
 
     scale_tool_pos: QPointF = None
@@ -273,9 +272,9 @@ class DrawingPanel(Widget):
 
         self.canvas.painting_pen = self.pentool_pen = \
             QPen(Qt.GlobalColor.black, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-
+        self.canvas.erasing_pen = self.erasing_pen = QPen(Qt.GlobalColor.black, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         self.inpaint_pen = QPen(INPAINT_BRUSH_COLOR, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-
+        
         self.setPenToolWidth(10)
         self.setPenToolColor([0, 0, 0, 127])
 
@@ -312,6 +311,7 @@ class DrawingPanel(Widget):
 
     def setPenToolWidth(self, width):
         self.pentool_pen.setWidthF(width)
+        self.erasing_pen.setWidthF(width)
         if self.isVisible():
             self.setPenCursor()
 
@@ -335,6 +335,7 @@ class DrawingPanel(Widget):
         self.currentTool = self.inpaintTool
         self.canvas.image_edit_mode = ImageEditMode.InpaintTool
         self.canvas.painting_pen = self.inpaint_pen
+        self.canvas.erasing_pen = self.inpaint_pen
         self.toolConfigStackwidget.setCurrentWidget(self.inpaintConfigPanel)
         if self.isVisible():
             self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -345,6 +346,7 @@ class DrawingPanel(Widget):
             self.currentTool.setChecked(False)
         self.currentTool = self.penTool
         self.canvas.painting_pen = self.pentool_pen
+        self.canvas.erasing_pen = self.erasing_pen
         self.canvas.image_edit_mode = ImageEditMode.PenTool
         self.toolConfigStackwidget.setCurrentWidget(self.penConfigPanel)
         if self.isVisible():
@@ -484,7 +486,7 @@ class DrawingPanel(Widget):
             self.canvas.removeItem(stroke_item)
             return
         if self.currentTool == self.penTool:
-            self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas, stroke_item))
+            self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, stroke_item))
         elif self.currentTool == self.inpaintTool:
             self.mergeInpaintStroke(stroke_item)
             if self.canvas.gv.ctrl_pressed:
@@ -569,6 +571,9 @@ class DrawingPanel(Widget):
             inpaint_mask[mask > 0] = 1
             erased_img = inpaint_mask * inpainted + (1 - inpaint_mask) * origin
             self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased_img, mask, inpaint_rect))
+
+        elif self.currentTool == self.penTool:
+            self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, self.canvas.stroke_path_item, True))
 
     def on_inpaint_failed(self):
         if self.currentTool == self.inpaintTool and self.inpaint_stroke is not None:
@@ -732,15 +737,31 @@ class DrawingPanel(Widget):
                 self.canvas.image_edit_mode = ImageEditMode.InpaintTool
 
 class StrokeItemUndoCommand(QUndoCommand):
-    def __init__(self, canvas: Canvas, stroke_item: StrokeItem):
+    def __init__(self, target_layer: DrawingLayer, stroke_item: StrokeItem, erasing=False):
         super().__init__()
-        self.stroke_pixmap = stroke_item.convertToPixmapItem()
+
+        self.qimg = stroke_item.convertToQImg().convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+        pos = stroke_item.subBlockPos()
+        self.x = pos.x()
+        self.y = pos.y()
+        self.target_layer = target_layer
+        self.key = str(QDateTime.currentMSecsSinceEpoch())
+        target_layer.scene().removeItem(stroke_item)
+        if erasing:
+            self.compose_mode = QPainter.CompositionMode.CompositionMode_DestinationOut
+        else:
+            self.compose_mode = QPainter.CompositionMode.CompositionMode_SourceOver
         
     def undo(self):
-        self.stroke_pixmap.hide()
+        if self.qimg is not None:
+            self.target_layer.removeQImage(self.key)
+            self.target_layer.update()
+        # self.stroke_pixmap.hide()
 
     def redo(self):
-        self.stroke_pixmap.show()
+        if self.qimg is not None:
+            self.target_layer.addQImage(self.x, self.y, self.qimg, self.compose_mode, self.key)
+            self.target_layer.scene().update()
 
 
 class InpaintUndoCommand(QUndoCommand):

@@ -227,7 +227,7 @@ class PaintQSlider(QSlider):
         self.initStyleOption(option)
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # 中间圆圈的位置
         rect = self.style().subControlRect(
