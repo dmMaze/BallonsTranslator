@@ -152,7 +152,7 @@ class ControlBlockItem(QGraphicsRectItem):
         elif self.drag_mode == self.DRAG_ROTATE:   # rotating
             rotate_vec = event.scenePos() - self.ctrl.sceneBoundingRect().center()
             rotation = np.rad2deg(math.atan2(rotate_vec.y(), rotate_vec.x()))
-            self.ctrl.setAngle((rotation+self.rotate_start) % 360)
+            self.ctrl.setAngle((rotation+self.rotate_start))
             # angle = self.ctrl.rotation()
             angle = self.ctrl.rotation() + 45 * self.idx
             idx = self.get_angle_idx(angle)
@@ -273,7 +273,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self.blk_item.endEdit()
 
     def paint(self, painter: QPainter, option: 'QStyleOptionGraphicsItem', widget = ...) -> None:
-        painter.setCompositionMode(QPainter.RasterOp_NotDestination)
+        painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
         super().paint(painter, option, widget)
 
     def hideControls(self):

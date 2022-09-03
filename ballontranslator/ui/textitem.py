@@ -163,6 +163,7 @@ class TextBlkItem(QGraphicsTextItem):
         if isinstance(rect, List):
             rect = QRectF(*rect)
         self.setPos(rect.topLeft())
+        self.prepareGeometryChange()
         self._display_rect = rect
         self.layout.setMaxSize(rect.width(), rect.height())
         self.document().setPageSize(QSizeF(rect.width(), rect.height()))
@@ -327,7 +328,7 @@ class TextBlkItem(QGraphicsTextItem):
         # self.setGraphicsEffect(se)
 
         if self.background_pixmap is not None:
-            painter.setRenderHint(QPainter.SmoothPixmapTransform)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             painter.drawPixmap(br.toRect(), self.background_pixmap)
 
         draw_rect = self.draw_rect and not self.under_ctrl
