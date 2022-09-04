@@ -16,6 +16,7 @@ from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
+from . import constants as C
 
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
@@ -113,6 +114,12 @@ class Canvas(QGraphicsScene):
         self.gv.view_resized.connect(self.onViewResized)
         self.gv.hide_canvas.connect(self.on_hide_canvas)
         self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        if not C.FLAG_QT6:
+            # mitigate https://bugreports.qt.io/browse/QTBUG-93417
+            # produce blurred result, saving imgs remain unaffected
+            self.gv.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        
         self.ctrl_relesed = self.gv.ctrl_released
         self.vscroll_bar = self.gv.verticalScrollBar()
         self.hscroll_bar = self.gv.horizontalScrollBar()
@@ -143,7 +150,6 @@ class Canvas(QGraphicsScene):
         self.drawingLayer = DrawingLayer()
         self.drawingLayer.setTransformationMode(Qt.TransformationMode.FastTransformation)
         self.textLayer = QGraphicsPixmapItem()
-        self.textLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         
         self.addItem(self.baseLayer)
         self.inpaintLayer.setParentItem(self.baseLayer)

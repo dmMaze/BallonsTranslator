@@ -16,8 +16,6 @@ def main():
     else:
         os.environ['QT_API'] = args.qt_api
 
-    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
-
     if sys.platform == 'win32':
         import ctypes
         myappid = u'BalloonsTranslator' # arbitrary string
@@ -28,14 +26,14 @@ def main():
     from qtpy.QtCore import QTranslator, QLocale, Qt
     from qtpy.QtGui import QIcon
 
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-
     from ui import constants
     if qtpy.API_NAME[-1] == '6':
         constants.FLAG_QT6 = True
+    else:
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
+        QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
-    from ui.mainwindow import MainWindow
-    
     os.chdir(constants.PROGRAM_PATH)
     app = QApplication(sys.argv)
     translator = QTranslator()
@@ -44,7 +42,9 @@ def main():
         osp.dirname(osp.abspath(__file__)) + "/data/translate",
     )
     app.installTranslator(translator)
+    # app.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
 
+    from ui.mainwindow import MainWindow
     ballontrans = MainWindow(app, open_dir=args.proj_dir)
     ballontrans.setWindowIcon(QIcon(constants.ICON_PATH))
     ballontrans.show()
