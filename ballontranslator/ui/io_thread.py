@@ -2,7 +2,7 @@ import numpy as np
 from utils.io_utils import imread, imwrite
 
 from qtpy.QtCore import Qt, Signal, QPoint, QSize, QThread
-from qtpy.QtGui import QImage
+from qtpy.QtGui import QImage, QPixmap
 
 
 class ImgSaveThread(QThread):
@@ -23,7 +23,7 @@ class ImgSaveThread(QThread):
             if len(self.im_save_list) == 0:
                 break
             save_path, img = self.im_save_list.pop(0)
-            if isinstance(img, QImage):
+            if isinstance(img, QImage) or isinstance(img, QPixmap):
                 img.save(save_path)
             elif isinstance(img, np.ndarray):
                 imwrite(save_path, img)

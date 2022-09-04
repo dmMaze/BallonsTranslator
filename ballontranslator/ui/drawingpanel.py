@@ -1,4 +1,4 @@
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QDateTime, QRectF
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QDateTime, QRectF, QPoint
 from qtpy.QtWidgets import QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
 
@@ -16,7 +16,7 @@ from utils.textblock_mask import canny_flood, connected_canny_flood
 from utils.logger import logger
 
 from .dl_manager import DLManager
-from .image_edit import ImageEditMode, StrokeItem, PixmapItem, DrawingLayer
+from .image_edit import ImageEditMode, PixmapItem, DrawingLayer, StrokeImgItem
 from .configpanel import InpaintConfigPanel
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
@@ -221,7 +221,7 @@ class DrawingPanel(Widget):
         super().__init__(*args, **kwargs)
         self.dl_manager: DLManager = None
         self.canvas = canvas
-        self.inpaint_stroke: StrokeItem = None
+        self.inpaint_stroke: StrokeImgItem = None
         self.rect_inpaint_dict: dict = None
 
         border_pen = QPen(INPAINT_BRUSH_COLOR, 3, Qt.PenStyle.DashLine)
@@ -478,29 +478,54 @@ class DrawingPanel(Widget):
             self.currentTool.setChecked(True)
         return super().showEvent(event)
 
-    def on_finish_painting(self, stroke_item: StrokeItem):
-        if stroke_item.isEmpty():
-            self.canvas.removeItem(stroke_item)
-            return
+    def on_finish_painting(self, stroke_item: StrokeImgItem):
+        stroke_item.finishPainting()
         if not self.canvas.imgtrans_proj.img_valid:
             self.canvas.removeItem(stroke_item)
             return
         if self.currentTool == self.penTool:
-            self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, stroke_item))
+            rect, _, qimg = stroke_item.clip()
+            if rect is not None:
+                self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg))
+            self.canvas.removeItem(stroke_item)
         elif self.currentTool == self.inpaintTool:
-            self.mergeInpaintStroke(stroke_item)
+            self.inpaint_stroke = stroke_item
             if self.canvas.gv.ctrl_pressed:
                 return
             else:
                 self.runInpaint()
 
-    def mergeInpaintStroke(self, inpaint_stroke: StrokeItem):
-        if self.inpaint_stroke is None:
-            self.inpaint_stroke = inpaint_stroke
-        else:
-            if not inpaint_stroke.isEmpty():
-                self.inpaint_stroke.addStroke(inpaint_stroke.stroke)
-            self.canvas.removeItem(inpaint_stroke)
+    def on_finish_erasing(self, stroke_item: StrokeImgItem):
+        stroke_item.finishPainting()
+        # inpainted-erasing logic is essentially the same as inpainting
+        if self.currentTool == self.inpaintTool:
+            rect, mask, _ = stroke_item.clip(mask_only=True)
+            if mask is None:
+                self.canvas.removeItem(stroke_item)
+                return
+            mask = 255 - mask
+            mask_h, mask_w = mask.shape[:2]
+            mask_x, mask_y = rect[0], rect[1]
+            inpaint_rect = [mask_x, mask_y, mask_w + mask_x, mask_h + mask_y]
+            origin = self.canvas.imgtrans_proj.img_array
+            origin = origin[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+            inpainted = self.canvas.imgtrans_proj.inpainted_array
+            inpainted = inpainted[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+            inpaint_mask = self.canvas.imgtrans_proj.mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+            # no inpainted need to be erased
+            if inpaint_mask.sum() == 0:
+                return
+            mask = cv2.bitwise_and(mask, inpaint_mask)
+            inpaint_mask = np.zeros_like(inpainted)
+            inpaint_mask[mask > 0] = 1
+            erased_img = inpaint_mask * inpainted + (1 - inpaint_mask) * origin
+            self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased_img, mask, inpaint_rect))
+
+        elif self.currentTool == self.penTool:
+            rect, _, qimg = stroke_item.clip()
+            if rect is not None:
+                self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg, True))
+        self.canvas.removeItem(stroke_item)
 
     def runInpaint(self, inpaint_dict=None):
 
@@ -511,15 +536,14 @@ class DrawingPanel(Widget):
                 logger.warning("inpainting goes wrong")
                 self.clearInpaintItems()
                 return
-            mask = self.inpaint_stroke.getSubimg(convert_mask=True)
-            pos = self.inpaint_stroke.subBlockPos()
+                
+            rect, mask, _ = self.inpaint_stroke.clip(mask_only=True)
             if mask is None:
                 self.clearInpaintItems()
                 return
-
             # we need to enlarge the mask window a bit to get better results
             mask_h, mask_w = mask.shape[:2]
-            mask_x, mask_y = pos.x(), pos.y()
+            mask_x, mask_y = rect[0], rect[1]
             img = self.canvas.imgtrans_proj.inpainted_array
             inpaint_rect = [mask_x, mask_y, mask_w + mask_x, mask_h + mask_y]
             rect_enlarged = enlarge_window(inpaint_rect, img.shape[1], img.shape[0])
@@ -544,36 +568,6 @@ class DrawingPanel(Widget):
         mask = cv2.bitwise_or(inpaint_dict['mask'], mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]])
         self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
         self.clearInpaintItems()
-
-    def on_finish_erasing(self, stroke_item: StrokeItem):
-
-        # inpainted-erasing logic is essentially the same as inpainting
-        if self.currentTool == self.inpaintTool:
-            mask = stroke_item.getSubimg(convert_mask=True)
-            self.canvas.removeItem(stroke_item)
-            if mask is None:
-                return
-            mask = 255 - mask
-            pos = stroke_item.subBlockPos()
-            mask_h, mask_w = mask.shape[:2]
-            mask_x, mask_y = pos.x(), pos.y()
-            inpaint_rect = [mask_x, mask_y, mask_w + mask_x, mask_h + mask_y]
-            origin = self.canvas.imgtrans_proj.img_array
-            origin = origin[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-            inpainted = self.canvas.imgtrans_proj.inpainted_array
-            inpainted = inpainted[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-            inpaint_mask = self.canvas.imgtrans_proj.mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-            # no inpainted need to be erased
-            if inpaint_mask.sum() == 0:
-                return
-            mask = cv2.bitwise_and(mask, inpaint_mask)
-            inpaint_mask = np.zeros_like(inpainted)
-            inpaint_mask[mask > 0] = 1
-            erased_img = inpaint_mask * inpainted + (1 - inpaint_mask) * origin
-            self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased_img, mask, inpaint_rect))
-
-        elif self.currentTool == self.penTool:
-            self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, self.canvas.stroke_path_item, True))
 
     def on_inpaint_failed(self):
         if self.currentTool == self.inpaintTool and self.inpaint_stroke is not None:
@@ -737,16 +731,13 @@ class DrawingPanel(Widget):
                 self.canvas.image_edit_mode = ImageEditMode.InpaintTool
 
 class StrokeItemUndoCommand(QUndoCommand):
-    def __init__(self, target_layer: DrawingLayer, stroke_item: StrokeItem, erasing=False):
+    def __init__(self, target_layer: DrawingLayer, rect: Tuple[int], qimg: QImage, erasing=False):
         super().__init__()
-
-        self.qimg = stroke_item.convertToQImg().convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
-        pos = stroke_item.subBlockPos()
-        self.x = pos.x()
-        self.y = pos.y()
+        self.qimg = qimg
+        self.x = rect[0]
+        self.y = rect[1]
         self.target_layer = target_layer
         self.key = str(QDateTime.currentMSecsSinceEpoch())
-        target_layer.scene().removeItem(stroke_item)
         if erasing:
             self.compose_mode = QPainter.CompositionMode.CompositionMode_DestinationOut
         else:

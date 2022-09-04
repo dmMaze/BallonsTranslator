@@ -433,8 +433,14 @@ class MainWindow(QMainWindow):
             mask_array = self.imgtrans_proj.mask_array
             self.imsave_thread.saveImg(mask_path, mask_array)
             inpainted_path = self.imgtrans_proj.get_inpainted_path()
-            inpainted_array = self.imgtrans_proj.inpainted_array
-            self.imsave_thread.saveImg(inpainted_path, inpainted_array)
+            if self.canvas.drawingLayer.drawed():
+                inpainted = self.canvas.inpaintLayer.pixmap()
+                painter = QPainter(inpainted)
+                painter.drawPixmap(0, 0, self.canvas.drawingLayer.get_drawed_pixmap())
+                painter.end()
+            else:
+                inpainted = self.imgtrans_proj.inpainted_array
+            self.imsave_thread.saveImg(inpainted_path, inpainted)
         else:
             mask_path = inpainted_path = None
             
@@ -452,16 +458,16 @@ class MainWindow(QMainWindow):
             os.makedirs(self.imgtrans_proj.result_dir())
 
         # save drawings to inpainted
-        ditems = self.canvas.get_drawings(visible=True)
-        if len(ditems) > 0:
-            inpainted = self.canvas.inpaintLayer.pixmap().toImage().convertToFormat(QImage.Format.Format_ARGB32)
-            painter = QPainter(inpainted)
-            for ditem in ditems:
-                painter.drawPixmap(ditem.pos(), ditem.pixmap())
-            painter.end()
-            inpainted_array = pixmap2ndarray(inpainted, keep_alpha=False)
-            inpainted_path = self.imgtrans_proj.get_inpainted_path(self.imgtrans_proj.current_img)
-            self.imsave_thread.saveImg(inpainted_path, inpainted_array)
+        # ditems = self.canvas.get_drawings(visible=True)
+        # if len(ditems) > 0:
+        #     inpainted = self.canvas.inpaintLayer.pixmap().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+        #     painter = QPainter(inpainted)
+        #     for ditem in ditems:
+        #         painter.drawPixmap(ditem.pos(), ditem.pixmap())
+        #     painter.end()
+        #     inpainted_array = pixmap2ndarray(inpainted, keep_alpha=False)
+        #     inpainted_path = self.imgtrans_proj.get_inpainted_path(self.imgtrans_proj.current_img)
+        #     self.imsave_thread.saveImg(inpainted_path, inpainted_array)
 
         # save result: rendered text + inpainted
         img = QImage(self.canvas.imgLayer.pixmap().size(), QImage.Format.Format_ARGB32)

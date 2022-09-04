@@ -15,7 +15,7 @@ from .misc import ndarray2pixmap, ProjImgTrans
 from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
-from .image_edit import StrokeItem, StrokeItem, ImageEditMode, DrawingLayer
+from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
@@ -74,8 +74,8 @@ class Canvas(QGraphicsScene):
     scalefactor_changed = Signal()
     end_create_textblock = Signal(QRectF)
     end_create_rect = Signal(QRectF, int)
-    finish_painting = Signal(StrokeItem)
-    finish_erasing = Signal(StrokeItem)
+    finish_painting = Signal(StrokeImgItem)
+    finish_erasing = Signal(StrokeImgItem)
     delete_textblks = Signal()
     format_textblks = Signal()
     layout_textblks = Signal()
@@ -155,7 +155,8 @@ class Canvas(QGraphicsScene):
 
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
-        self.stroke_path_item: StrokeItem = None
+        self.stroke_img_item: StrokeImgItem = None
+        self.stroke_path_item = None
 
         self.editor_index = 0 # 0: drawing 1: text editor
         self.mid_btn_pressed = False
@@ -259,10 +260,15 @@ class Canvas(QGraphicsScene):
             self.alt_pressed = False
         return super().keyReleaseEvent(event)
 
-    def addStrokeItem(self, item: StrokeItem, pen: QPen):
-        self.addItem(item)
-        item.setPen(pen)
-        item.setParentItem(self.drawingLayer)
+    def addStrokeImageItem(self, pos: QPointF, pen: QPen, erasing: bool = False):
+        if self.stroke_img_item is not None:
+            self.stroke_img_item.startNewPoint(pos)
+        else:
+            self.stroke_img_item = StrokeImgItem(pen, pos, self.imgLayer.pixmap().size())
+            self.stroke_img_item.setParentItem(self.baseLayer)
+
+    def updateStrokeImgItem(self, pos: QPointF):
+        self.stroke_img_item.lineTo(pos)
 
     def startCreateTextblock(self, pos: QPointF, hide_control: bool = False):
         pos = pos / self.scale_factor
@@ -297,8 +303,9 @@ class Canvas(QGraphicsScene):
             
         elif self.creating_textblock:
             self.txtblkShapeControl.setRect(QRectF(self.create_block_origin, event.scenePos() / self.scale_factor).normalized())
-        elif self.stroke_path_item is not None:
-            self.stroke_path_item.addNewPoint(self.imgLayer.mapFromScene(event.scenePos()))
+        elif self.stroke_img_item is not None:
+            if self.stroke_img_item.is_painting:
+                self.stroke_img_item.lineTo(self.imgLayer.mapFromScene(event.scenePos()))
         elif self.scale_tool_mode:
             self.scale_tool.emit(event.scenePos())
         elif self.rubber_band.isVisible() and self.rubber_band_origin is not None:
@@ -327,16 +334,14 @@ class Canvas(QGraphicsScene):
             if self.alt_pressed:
                 self.scale_tool_mode = True
                 self.begin_scale_tool.emit(event.scenePos())
-            elif self.painting and self.stroke_path_item is None:
-                self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()))
-                self.addStrokeItem(self.stroke_path_item, self.painting_pen)
+            elif self.painting:
+                self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.painting_pen)
 
         elif btn == Qt.MouseButton.RightButton:
             # user is drawing using eraser
-            if self.painting and self.stroke_path_item is None:
+            if self.painting:
                 erasing = self.image_edit_mode == ImageEditMode.PenTool
-                self.stroke_path_item = StrokeItem(self.imgLayer.mapFromScene(event.scenePos()), erasing)
-                self.addStrokeItem(self.stroke_path_item, self.erasing_pen)
+                self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.painting_pen, erasing)
             else:   # rubber band selection
                 self.rubber_band_origin = event.scenePos()
                 self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, self.rubber_band_origin).normalized())
@@ -357,23 +362,22 @@ class Canvas(QGraphicsScene):
             btn = 0 if btn == Qt.MouseButton.LeftButton else 1
             return self.endCreateTextblock(btn=btn)
         elif btn == Qt.MouseButton.RightButton:
-            if self.stroke_path_item is not None:
-                self.finish_erasing.emit(self.stroke_path_item)
+            if self.stroke_img_item is not None:
+                self.finish_erasing.emit(self.stroke_img_item)
             if self.rubber_band.isVisible():
                 self.rubber_band.hide()
                 self.rubber_band_origin = None
         elif btn == Qt.MouseButton.LeftButton:
-            if self.stroke_path_item is not None:
-                self.finish_painting.emit(self.stroke_path_item)
+            if self.stroke_img_item is not None:
+                self.finish_painting.emit(self.stroke_img_item)
             elif self.scale_tool_mode:
                 self.scale_tool_mode = False
                 self.end_scale_tool.emit()
-            self.stroke_path_item = None
         return super().mouseReleaseEvent(event)
 
     def updateCanvas(self):
         self.editing_textblkitem = None
-        self.stroke_path_item = None
+        self.stroke_img_item = None
         self.txtblkShapeControl.setBlkItem(None)
         self.mid_btn_pressed = False
 
@@ -395,9 +399,7 @@ class Canvas(QGraphicsScene):
 
     def setDrawingLayer(self, img: Union[QPixmap, np.ndarray] = None):
         
-        ditems = self.get_drawings(visible=False)
-        for item in ditems:
-            self.removeItem(item)
+        self.drawingLayer.clearAllDrawings()
 
         if not self.imgtrans_proj.img_valid:
             return
@@ -454,9 +456,8 @@ class Canvas(QGraphicsScene):
         self.creating_textblock = False
         self.create_block_origin = None
         self.editing_textblkitem = None
-        if self.stroke_path_item is not None:
-            self.removeItem(self.stroke_path_item)
-            self.stroke_path_item = None
+        if self.stroke_img_item is not None:
+            self.removeItem(self.stroke_img_item)
 
     def on_undostack_changed(self):
         if self.undoStack.count() != 0:
@@ -470,12 +471,7 @@ class Canvas(QGraphicsScene):
             self.proj_savestate_changed.emit(un_saved)
 
     def removeItem(self, item: QGraphicsItem) -> None:
-        if item == self.stroke_path_item:
-            self.stroke_path_item = None
-        return super().removeItem(item)
-
-    def get_drawings(self, visible=False) -> List[QGraphicsItem]:
-        ditems = self.drawingLayer.childItems()
-        if visible:
-            ditems = [item for item in ditems if item.isVisible()]
-        return ditems
+        super().removeItem(item)
+        if isinstance(item, StrokeImgItem):
+            item.setParentItem(None)
+            self.stroke_img_item = None
