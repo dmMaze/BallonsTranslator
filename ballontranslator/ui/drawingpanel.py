@@ -73,15 +73,15 @@ class InpaintPanel(Widget):
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         
         thickness_layout = QHBoxLayout()
-        thickness_label = ToolNameLabel(150, self.tr('Thickness'))
+        thickness_label = ToolNameLabel(100, self.tr('Thickness'))
         thickness_layout.addWidget(thickness_label)
         thickness_layout.addWidget(self.thicknessSlider)
-        thickness_layout.setSpacing(15)
+        thickness_layout.setSpacing(10)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(thickness_layout)
-        layout.setSpacing(20)
+        layout.setSpacing(14)
         self.vlayout = layout
 
     def on_thickness_changed(self):
@@ -106,11 +106,11 @@ class PenConfigPanel(Widget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Orientation.Horizontal)
-        self.thicknessSlider.setFixedHeight(50)
+        self.thicknessSlider.setFixedHeight(32)
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         self.alphaSlider = PaintQSlider(self.tr('alpha value'), Qt.Orientation.Horizontal)
-        self.alphaSlider.setFixedHeight(50)
+        self.alphaSlider.setFixedHeight(32)
         self.alphaSlider.setRange(0, 255)
         self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
 
@@ -126,16 +126,16 @@ class PenConfigPanel(Widget):
         color_layout.addWidget(self.alphaSlider)
         
         thickness_layout = QHBoxLayout()
-        thickness_label = ToolNameLabel(150, self.tr('Thickness'))
+        thickness_label = ToolNameLabel(100, self.tr('Thickness'))
         thickness_layout.addWidget(thickness_label)
         thickness_layout.addWidget(self.thicknessSlider)
-        thickness_layout.setSpacing(15)
+        thickness_layout.setSpacing(10)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(color_layout)
         layout.addLayout(thickness_layout)
-        layout.setSpacing(30)
+        layout.setSpacing(20)
 
     def on_thickness_changed(self):
         if self.thicknessSlider.hasFocus():
@@ -182,7 +182,7 @@ class RectPanel(Widget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(hlayout)
         layout.addLayout(self.btnlayout)
-        layout.setSpacing(20)
+        layout.setSpacing(14)
         self.vlayout = layout
 
     def showEvent(self, e) -> None:
@@ -285,7 +285,7 @@ class DrawingPanel(Widget):
         self.toolConfigStackwidget.addWidget(self.rectPanel)
 
         self.maskTransperancySlider = PaintQSlider(' value%', Qt.Orientation.Horizontal)
-        self.maskTransperancySlider.setFixedHeight(40)
+        self.maskTransperancySlider.setFixedHeight(32)
         self.maskTransperancySlider.valueChanged.connect(self.canvas.setMaskTransparencyBySlider)
         masklayout = QHBoxLayout()
         masklayout.addWidget(ToolNameLabel(220, self.tr('Mask Transparency')))

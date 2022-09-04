@@ -3,8 +3,7 @@ from collections import OrderedDict
 from typing import List
 
 from .stylewidgets import Widget, PaintQSlider
-from .constants import WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, DRAG_DIR_NONE, DRAG_DIR_VER, DRAG_DIR_BDIAG, DRAG_DIR_FDIAG
-
+from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, DRAG_DIR_NONE, DRAG_DIR_VER, DRAG_DIR_BDIAG, DRAG_DIR_FDIAG, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton
 from qtpy.QtCore import Qt, Signal, QPoint
@@ -22,7 +21,7 @@ class ShowPageListChecker(QCheckBox):
 
 
 class OpenBtn(QToolButton):
-    def __init__(self, btn_width, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
 
@@ -131,10 +130,8 @@ class LeftBar(Widget):
         self.mainwindow: QMainWindow = mainwindow
         self.drag_resize_pos: QPoint = None
 
-        bar_width = 90
-        btn_width = 56
-        padding = (bar_width - btn_width) // 2
-        self.setFixedWidth(bar_width)
+        padding = (LEFTBAR_WIDTH - LEFTBTN_WIDTH) // 2
+        self.setFixedWidth(LEFTBAR_WIDTH)
         self.showPageListLabel = ShowPageListChecker()
 
         self.imgTransChecker = StateChecker('imgtrans')
@@ -177,17 +174,17 @@ class LeftBar(Widget):
             actionExportAsDoc,
             actionImportFromDoc
         ])
-        self.openBtn = OpenBtn(btn_width)
-        self.openBtn.setFixedSize(btn_width, btn_width)
+        self.openBtn = OpenBtn()
+        self.openBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.openBtn.setMenu(openMenu)
         self.openBtn.setPopupMode(QToolButton.InstantPopup)
     
         openBtnToolBar = QToolBar(self)
-        openBtnToolBar.setFixedSize(btn_width, btn_width)
+        openBtnToolBar.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         openBtnToolBar.addWidget(self.openBtn)
         
         self.runImgtransBtn = RunBtn()
-        self.runImgtransBtn.setFixedSize(btn_width, btn_width)
+        self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.runImgtransBtn.clicked.connect(self.run_imgtrans)
 
         vlayout = QVBoxLayout(self)
@@ -197,9 +194,9 @@ class LeftBar(Widget):
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
         vlayout.addWidget(self.configChecker)
         vlayout.addWidget(self.runImgtransBtn)
-        vlayout.setContentsMargins(padding, 0, padding, btn_width/2)
+        vlayout.setContentsMargins(padding, 0, padding, LEFTBTN_WIDTH / 2)
         vlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        vlayout.setSpacing(btn_width/2)
+        vlayout.setSpacing(LEFTBTN_WIDTH / 2)
         self.setGeometry(0, 0, 300, 500)
         self.setMouseTracking(True)
 
@@ -399,7 +396,7 @@ class TitleBar(Widget):
         self.proj_name = ''
         self.page_name = ''
         self.save_state = ''
-        self.setFixedHeight(40)
+        self.setFixedHeight(TITLEBAR_HEIGHT)
         self.setMouseTracking(True)
 
         self.titleLabel = QLabel('BallonTranslator')
@@ -414,7 +411,7 @@ class TitleBar(Widget):
         self.closeBtn = QPushButton()
         self.closeBtn.setObjectName('closeBtn')
         self.closeBtn.clicked.connect(self.closebtn_clicked)
-        self.maxBtn.setFixedSize(72, 40)
+        self.maxBtn.setFixedSize(48, 27)
         hlayout = QHBoxLayout(self)
         hlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hlayout.addItem(QSpacerItem(0, 0,  QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
@@ -588,8 +585,8 @@ class BottomBar(Widget):
         self.textblockChecker.clicked.connect(self.onTextblockCheckerClicked)
         
         self.originalSlider = PaintQSlider(self.tr("Original image transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
-        self.originalSlider.setFixedHeight(40)
-        self.originalSlider.setFixedWidth(200)
+        self.originalSlider.setFixedHeight(32)
+        self.originalSlider.setFixedWidth(130)
         self.originalSlider.setRange(0, 100)
         
         self.hlayout.addWidget(self.ocrChecker)
@@ -602,7 +599,7 @@ class BottomBar(Widget):
         self.hlayout.addWidget(self.paintChecker)
         self.hlayout.addWidget(self.texteditChecker)
         self.hlayout.addWidget(self.textblockChecker)
-        self.hlayout.setContentsMargins(90, 0, 15, WINDOW_BORDER_WIDTH)
+        self.hlayout.setContentsMargins(60, 0, 10, WINDOW_BORDER_WIDTH)
 
 
     def onPaintCheckerPressed(self):

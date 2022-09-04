@@ -16,6 +16,8 @@ def main():
     else:
         os.environ['QT_API'] = args.qt_api
 
+    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+
     if sys.platform == 'win32':
         import ctypes
         myappid = u'BalloonsTranslator' # arbitrary string
@@ -23,8 +25,10 @@ def main():
 
     import qtpy
     from qtpy.QtWidgets import QApplication
-    from qtpy.QtCore import QTranslator, QLocale
+    from qtpy.QtCore import QTranslator, QLocale, Qt
     from qtpy.QtGui import QIcon
+
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     from ui import constants
     if qtpy.API_NAME[-1] == '6':

@@ -207,7 +207,7 @@ class TreeModel(QStandardItemModel):
         if role == Qt.ItemDataRole.SizeHintRole:
             size = QSize()
             item = self.itemFromIndex(index)
-            size.setHeight(item.font().pointSize()+40)
+            size.setHeight(item.font().pointSize()+26)
             return size
         else:
             return super().data(index, role)
@@ -224,7 +224,7 @@ class ConfigTable(QTreeView):
         self.selected: TableItem = None
         self.last_selected: TableItem = None
         self.setHeaderHidden(True)
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(260)
         self.expandAll()
 
     def addHeader(self, header: str) -> TableItem:

@@ -4,7 +4,7 @@ from dl import VALID_INPAINTERS, VALID_TEXTDETECTORS, VALID_TRANSLATORS, VALID_O
     TranslatorBase, DEFAULT_DEVICE
 from utils.logger import logger as LOGGER
 from .stylewidgets import ConfigComboBox
-from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
+from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
 from qtpy.QtCore import Qt, Signal
@@ -32,7 +32,7 @@ class ParamEditor(QLineEdit):
         super().__init__( *args, **kwargs)
         self.param_key = param_key
         self.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
-        self.setFixedHeight(45)
+        self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.textChanged.connect(self.on_text_changed)
 
     def on_text_changed(self):
@@ -45,7 +45,7 @@ class ParamComboBox(QComboBox):
         super().__init__( *args, **kwargs)
         self.param_key = param_key
         self.setFixedWidth(size)
-        self.setFixedHeight(45)
+        self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         options = [str(opt) for opt in options]
         self.addItems(options)
         self.currentTextChanged.connect(self.on_select_changed)
@@ -80,7 +80,7 @@ class ParamWidget(QWidget):
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
         param_layout.setContentsMargins(0, 0, 0, 0)
-        param_layout.setSpacing(20)
+        param_layout.setSpacing(14)
         for param_key in params:
             param_label = ParamNameLabel(param_key)
             if param_key == 'description':
@@ -112,7 +112,7 @@ class ParamWidget(QWidget):
                     param_widget.paramwidget_edited.connect(self.paramwidget_edited)
             layout = QHBoxLayout()
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(15)
+            layout.setSpacing(10)
             layout.addWidget(param_label)
             layout.addWidget(param_widget)
             layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)

@@ -542,14 +542,14 @@ class FontFormatPanel(Widget):
         hl3.addLayout(stroke_hlayout)
         hl3.addLayout(lettersp_hlayout)
         hl3.setContentsMargins(5, 5, 5, 5)
-        hl3.setSpacing(20)
+        hl3.setSpacing(13)
 
         self.vlayout.addLayout(hl0)
         self.vlayout.addLayout(hl1)
         self.vlayout.addLayout(hl2)
         self.vlayout.addLayout(hl3)
         self.vlayout.setContentsMargins(10, 10, 10, 10)
-        self.setFixedWidth(520)
+        self.setFixedWidth(C.TEXTEDIT_FIXWIDTH)
 
         self.focusOnColorDialog = False
         self.active_format = self.global_format

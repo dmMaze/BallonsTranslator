@@ -17,14 +17,14 @@ class SourceTextEdit(QTextEdit):
     def __init__(self, idx, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.idx = idx
-        self.setMinimumHeight(75)
+        self.setMinimumHeight(50)
         self.document().contentsChanged.connect(self.on_content_changed)
         self.document().documentLayout().documentSizeChanged.connect(self.adjustSize)
         self.setAcceptRichText(False)
 
     def adjustSize(self):
         h = self.document().documentLayout().documentSize().toSize().height()
-        self.setFixedHeight(max(h, 75))
+        self.setFixedHeight(max(h, 50))
 
     def on_content_changed(self):
         if self.hasFocus():
@@ -85,7 +85,7 @@ class TransPairWidget(Widget):
         vlayout.addWidget(self.e_source)
         vlayout.addWidget(self.e_trans)
         vlayout.addWidget(SeparatorWidget(self))
-        vlayout.setSpacing(20)
+        vlayout.setSpacing(14)
 
     def updateIndex(self, idx):
         self.idx = idx
@@ -129,6 +129,6 @@ class TextPanel(Widget):
         layout.addWidget(self.formatpanel)
         layout.addWidget(self.textEditList)
         layout.setContentsMargins(10, 0, 10, 0)
-        layout.setSpacing(20)
+        layout.setSpacing(14)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
