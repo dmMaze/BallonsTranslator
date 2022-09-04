@@ -520,12 +520,17 @@ class DrawingPanel(Widget):
             inpaint_mask[mask > 0] = 1
             erased_img = inpaint_mask * inpainted + (1 - inpaint_mask) * origin
             self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased_img, mask, inpaint_rect))
+            self.canvas.removeItem(stroke_item)
 
         elif self.currentTool == self.penTool:
             rect, _, qimg = stroke_item.clip()
+            if self.canvas.erase_img_key is not None:
+                self.canvas.drawingLayer.removeQImage(self.canvas.erase_img_key)
+                self.canvas.erase_img_key = None
+                self.canvas.stroke_img_item = None
             if rect is not None:
                 self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg, True))
-        self.canvas.removeItem(stroke_item)
+        
 
     def runInpaint(self, inpaint_dict=None):
 

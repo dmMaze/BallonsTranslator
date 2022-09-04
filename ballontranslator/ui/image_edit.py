@@ -69,9 +69,10 @@ class StrokeImgItem(QGraphicsItem):
     def boundingRect(self) -> QRectF:
         return self._br
 
-    def lineTo(self, new_pnt: QPointF):
+    def lineTo(self, new_pnt: QPointF, update=True) -> QRectF:
         delta = self.cur_point - new_pnt
         delta_w, delta_h = abs(delta.x()),  abs(delta.y())
+        rect = None
         if delta_w + delta_h > 2:
             min_x = min(self.cur_point.x(), new_pnt.x()) - self._r
             min_y = min(self.cur_point.y(), new_pnt.y()) - self._r
@@ -80,7 +81,9 @@ class StrokeImgItem(QGraphicsItem):
             rect = QRectF(min_x, min_y, delta_w, delta_h)
             self.painter.drawLine(self.cur_point, new_pnt)
             self.cur_point = new_pnt
-            self.update(rect)
+            if update:
+                self.update(rect)
+        return rect
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         painter.drawImage(0, 0, self._img)
@@ -135,7 +138,7 @@ class DrawingLayer(QGraphicsPixmapItem):
     def removeQImage(self, key: str):
         if key in self.qimg_dict:
             self.qimg_dict.pop(key)
-            # self.drawing_items_pos.pop(key)
+            self.drawing_items_info.pop(key)
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget):
         pixmap = self.pixmap()

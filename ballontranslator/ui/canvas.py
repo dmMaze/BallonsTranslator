@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
-from qtpy.QtCore import Qt, QRect, QRectF, QPointF, QPoint, Signal, QSizeF, QObject, QEvent
+from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QObject, QEvent
 from qtpy.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QPen, QPainterPath
 
 try:
@@ -156,7 +156,7 @@ class Canvas(QGraphicsScene):
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
         self.stroke_img_item: StrokeImgItem = None
-        self.stroke_path_item = None
+        self.erase_img_key = None
 
         self.editor_index = 0 # 0: drawing 1: text editor
         self.mid_btn_pressed = False
@@ -265,10 +265,12 @@ class Canvas(QGraphicsScene):
             self.stroke_img_item.startNewPoint(pos)
         else:
             self.stroke_img_item = StrokeImgItem(pen, pos, self.imgLayer.pixmap().size())
-            self.stroke_img_item.setParentItem(self.baseLayer)
-
-    def updateStrokeImgItem(self, pos: QPointF):
-        self.stroke_img_item.lineTo(pos)
+            if not erasing:
+                self.stroke_img_item.setParentItem(self.baseLayer)
+            else:
+                self.erase_img_key = str(QDateTime.currentMSecsSinceEpoch())
+                compose_mode = QPainter.CompositionMode.CompositionMode_DestinationOut
+                self.drawingLayer.addQImage(0, 0, self.stroke_img_item._img, compose_mode, self.erase_img_key)
 
     def startCreateTextblock(self, pos: QPointF, hide_control: bool = False):
         pos = pos / self.scale_factor
@@ -305,7 +307,13 @@ class Canvas(QGraphicsScene):
             self.txtblkShapeControl.setRect(QRectF(self.create_block_origin, event.scenePos() / self.scale_factor).normalized())
         elif self.stroke_img_item is not None:
             if self.stroke_img_item.is_painting:
-                self.stroke_img_item.lineTo(self.imgLayer.mapFromScene(event.scenePos()))
+                pos = self.imgLayer.mapFromScene(event.scenePos())
+                if self.erase_img_key is None:
+                    self.stroke_img_item.lineTo(pos)
+                else:
+                    rect = self.stroke_img_item.lineTo(pos, update=False)
+                    if rect is not None:
+                        self.drawingLayer.update(rect)
         elif self.scale_tool_mode:
             self.scale_tool.emit(event.scenePos())
         elif self.rubber_band.isVisible() and self.rubber_band_origin is not None:
@@ -341,7 +349,7 @@ class Canvas(QGraphicsScene):
             # user is drawing using eraser
             if self.painting:
                 erasing = self.image_edit_mode == ImageEditMode.PenTool
-                self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.painting_pen, erasing)
+                self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.erasing_pen, erasing)
             else:   # rubber band selection
                 self.rubber_band_origin = event.scenePos()
                 self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, self.rubber_band_origin).normalized())
@@ -378,6 +386,7 @@ class Canvas(QGraphicsScene):
     def updateCanvas(self):
         self.editing_textblkitem = None
         self.stroke_img_item = None
+        self.erase_img_key = None
         self.txtblkShapeControl.setBlkItem(None)
         self.mid_btn_pressed = False
 
@@ -475,3 +484,4 @@ class Canvas(QGraphicsScene):
         if isinstance(item, StrokeImgItem):
             item.setParentItem(None)
             self.stroke_img_item = None
+            self.erase_img_key = None
