@@ -100,8 +100,9 @@ QFontComboBox#FontFamilyBox::hover {
 SizeComboBox {
     padding-left: 6px;
     padding-right: 3px;
-    font-size: 14px;
-    width: 34px;
+    font-size: 13px;
+    min-width: 43px;
+    max-width: 43px;
     border-color: #b3b6bf;
 }
 

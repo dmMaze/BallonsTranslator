@@ -410,6 +410,7 @@ class SizeControlLabel(QLabel):
             self.cur_pos = new_pos
         return super().mouseMoveEvent(e)
 
+
 class FontFormatPanel(Widget):
     
     textblk_item: TextBlkItem = None
@@ -519,6 +520,8 @@ class FontFormatPanel(Widget):
         self.fontfmtLabel.setText(self.global_fontfmt_str)
         self.fontfmtLabel.setFont(font)
 
+        FONTFORMAT_SPACING = 6
+
         hl0 = QHBoxLayout()
         hl0.addStretch(1)
         hl0.addWidget(self.fontfmtLabel)
@@ -528,20 +531,20 @@ class FontFormatPanel(Widget):
         hl1.addWidget(self.fontsizebox)
         hl1.addWidget(self.lineSpacingLabel)
         hl1.addWidget(self.lineSpacingBox)
-        hl1.setSpacing(10)
+        hl1.setSpacing(4)
         hl2 = QHBoxLayout()
         hl2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl2.addWidget(self.colorPicker)
         hl2.addWidget(self.alignBtnGroup)
         hl2.addWidget(self.formatBtnGroup)
         hl2.addWidget(self.verticalChecker)
-        hl2.setSpacing(10)
+        hl2.setSpacing(FONTFORMAT_SPACING)
         hl2.setContentsMargins(0, 0, 0, 0)
         hl3 = QHBoxLayout()
         hl3.setAlignment(Qt.AlignmentFlag.AlignLeft)
         hl3.addLayout(stroke_hlayout)
         hl3.addLayout(lettersp_hlayout)
-        hl3.setContentsMargins(5, 5, 5, 5)
+        hl3.setContentsMargins(3, 3, 3, 3)
         hl3.setSpacing(13)
 
         self.vlayout.addLayout(hl0)
