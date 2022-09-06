@@ -326,7 +326,10 @@ class Canvas(QGraphicsScene):
             self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, event.scenePos()).normalized())
             sel_path = QPainterPath(self.rubber_band_origin)
             sel_path.addRect(self.rubber_band.geometry())
-            self.setSelectionArea(sel_path, Qt.ItemSelectionMode.IntersectsItemBoundingRect, self.gv.viewportTransform())
+            if C.FLAG_QT6:
+                self.setSelectionArea(sel_path, deviceTransform=self.gv.viewportTransform())
+            else:
+                self.setSelectionArea(sel_path, Qt.ItemSelectionMode.IntersectsItemBoundingRect, self.gv.viewportTransform())
         return super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:

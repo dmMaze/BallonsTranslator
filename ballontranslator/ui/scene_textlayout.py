@@ -63,6 +63,27 @@ def punc_actual_rect_cached(line: LruIgnoreArgs, char: str, family: str, size: f
     # QtextLine line is invisibale to lru
     return punc_actual_rect(line.line, family, size, weight, italic, stroke_width)
 
+def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
+    # some how qt6 line.draw doesn't allow pass FormatRange
+    if selected:    
+        qimg = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
+        qimg.fill(Qt.GlobalColor.transparent)
+        p = QPainter(qimg)
+        line.draw(p, QPointF(-line.x(), -line.y()))
+        p.end()
+        qimg.invertPixels(QImage.InvertMode.InvertRgba)
+        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg.createAlphaMask())
+    else:
+        line.draw(painter, QPointF(x, y))
+
+def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
+    o = None
+    if selected:
+        o = QTextLayout.FormatRange()
+        o.start = line.textStart()
+        o.length = line.textLength()
+        o.format = selection.format
+    line.draw(painter, QPointF(x, y), o)
 
 class CharFontFormat:
     def __init__(self, fcmt: QTextCharFormat) -> None:
@@ -118,6 +139,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.line_spacing = 1.
         self.letter_spacing = 1.
 
+        self.x_offset_lst = []
+        self.y_offset_lst = []
+
         self.block_charfmt_lst = []
         self.block_ideal_width = []
         self._map_charidx2frag = []
@@ -145,13 +169,15 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         return rect
 
     def updateDocumentMargin(self, margin):
-        doc_margin = self.document().documentMargin() * 2
-        self.max_height = doc_margin + self.available_height
-        self.max_width = doc_margin + self.available_width
+        doc_margin = self.document().documentMargin()
+        dm = margin - doc_margin
+        doc_margin *= 2
         self.document().setDocumentMargin(margin)
         margin *= 2
-        self.available_height = max(self.max_height -  margin, 0)
-        self.available_width = max(self.max_width - margin, 0)
+        self.max_height = margin + self.available_height
+        self.max_width = margin + self.available_width
+        # self.adjustLayoutPos(dm, dm)
+        # self.update.emit(QRectF(0, 0, 1000, 1000))
 
     def documentSize(self) -> QSizeF:
         return QSizeF(self.max_width, self.max_height)
@@ -188,45 +214,34 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             block = block.next()
         self.reLayout()
 
+    def adjustLayoutPos(self, dx, dy):
+        block = self.document().firstBlock()
+        while block.isValid():
+            tl = block.layout()
+            for ii in range(tl.lineCount()):
+                line = tl.lineAt(ii)
+                line_pos = line.position()
+                line_pos.setY(dy + line_pos.y())
+                line_pos.setX(dx + line_pos.x())
+                line.setPosition(line_pos)
+            block = block.next()
+
     def max_font_size(self) -> float:
         if self._max_font_size > 0:
             return self._max_font_size
         return self.document().defaultFont().pointSizeF()
 
-def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
-    # some how qt6 line.draw doesn't allow pass FormatRange
-    if selected:    
-        qimg = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
-        qimg.fill(Qt.GlobalColor.transparent)
-        p = QPainter(qimg)
-        line.draw(p, QPointF(-line.x(), -line.y()))
-        p.end()
-        qimg.invertPixels(QImage.InvertMode.InvertRgba)
-        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg.createAlphaMask())
-    else:
-        line.draw(painter, QPointF(x, y))
-
-def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
-    o = None
-    if selected:
-        o = QTextLayout.FormatRange()
-        o.start = line.textStart()
-        o.length = line.textLength()
-        o.format = selection.format
-    line.draw(painter, QPointF(x, y), o)
 
 class VerticalTextDocumentLayout(SceneTextLayout):
 
     def __init__(self, doc: QTextDocument):
         super().__init__(doc)
-        self.x_offset_lst = []
-        self.y_offset_lst = []
+
         self.line_spaces_lst = []
         self.min_height = 0
         self.layout_left = 0
         self.force_single_char = True
         self.has_selection = False
-        self.punc_rect_cache = {} 
         self.punc_align_center = True
         self.draw_shifted = 0
 
@@ -477,6 +492,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
         layout_first_block = block == doc.firstBlock()
         if layout_first_block:
+            
             x_offset = self.max_width - doc_margin - block_width
             self.x_offset_lst = [self.max_width - doc_margin]
             self.y_offset_lst = []
@@ -501,7 +517,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             else:
                 line.setLineWidth(block_width)
             
-            available_height = self.available_height
+            available_height = self.available_height + doc_margin
             text_len = line.textLength()
             num_rspaces, num_lspaces = 0, 0
             text = blk_text[char_idx: char_idx + text_len].replace('\n', '')
@@ -590,14 +606,21 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if self.letter_spacing != letter_spacing:
             self.letter_spacing = letter_spacing
             self.reLayout()
-        
+
+    def adjustLayoutPos(self, dx, dy):
+        pass
+        # dx = -dx
+        # super().adjustLayoutPos(dx, dy)
+        # if len(self.x_offset_lst) > 0:
+        #     self.x_offset_lst = (np.array(self.x_offset_lst) + dx).tolist()
+        #     for ii, blk_char_yoffset in enumerate(self.y_offset_lst):
+        #         if len(blk_char_yoffset) > 0:
+        #             self.y_offset_lst[ii] = (np.array(blk_char_yoffset) + dy).tolist()
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def __init__(self, doc: QTextDocument):
         super().__init__(doc)
-        self.x_offset_lst = []
-        self.y_offset_lst = []
 
     def reLayout(self):
         doc = self.document()
@@ -689,7 +712,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             y_offset += tbr.height() * self.line_spacing
             line_idx += 1
         tl.endLayout()
-        self.y_offset_lst.append(y_offset)     # vertical text need center alignment ???
+        self.y_offset_lst.append(y_offset)
         return 1
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:

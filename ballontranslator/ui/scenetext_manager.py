@@ -82,7 +82,7 @@ class ReshapeItemCommand(QUndoCommand):
         super(ReshapeItemCommand, self).__init__(parent)
         self.item = item
         self.oldRect = item.oldRect
-        self.newRect = item.rect()
+        self.newRect = item.absBoundingRect()
 
     def redo(self):
         self.item.setRect(self.newRect)

@@ -521,6 +521,7 @@ fragment_pattern = re.compile(r'<!--(.*?)Fragment-->', re.DOTALL)
 color_pattern = re.compile(r'color:(.*?);', re.DOTALL)
 td_pattern = re.compile(r'<td(.*?)>(.*?)</td>', re.DOTALL)
 table_pattern = re.compile(r'(.*?)<table', re.DOTALL)
+fontsize_pattern = re.compile(r'font-size:(.*?)pt;', re.DOTALL)
 
 
 def span_repl_func(matched, color):
@@ -545,3 +546,11 @@ def pt2px(pt):
 
 def px2pt(px):
     return px / constants.LDPI * 72.
+
+def html_max_fontsize(html:  str) -> float:
+    size_list = fontsize_pattern.findall(html)
+    size_list = [float(size) for size in size_list]
+    if len(size_list) > 0:
+        return max(size_list)
+    else:
+        return None

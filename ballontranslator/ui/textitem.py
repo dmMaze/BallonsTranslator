@@ -1,4 +1,4 @@
-import math
+import math, re
 import numpy as np
 from typing import List, Union, Tuple
 
@@ -8,7 +8,7 @@ from qtpy.QtGui import QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTe
 
 from dl.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
-from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern
+from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern, html_max_fontsize
 from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
@@ -46,6 +46,8 @@ class TextBlkItem(QGraphicsTextItem):
         self.oldPos = QPointF()
         self.oldRect = QRectF()
 
+        self._padding = 0
+
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
         self.setVertical(False)
@@ -70,7 +72,7 @@ class TextBlkItem(QGraphicsTextItem):
             return
         self.repainting = True
         doc = self.document().clone()
-        doc.setDocumentMargin(self.document().documentMargin())
+        doc.setDocumentMargin(self.padding())
         layout = VerticalTextDocumentLayout(doc) if self.is_vertical else HorizontalTextDocumentLayout(doc)
         layout.line_spacing = self.line_spacing
         layout.letter_spacing = self.letter_spacing
@@ -124,6 +126,7 @@ class TextBlkItem(QGraphicsTextItem):
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
         self.setVertical(blk.vertical)
         self.setRect(blk.bounding_rect())
+        
         if blk.angle != 0:
             self.setRotation(blk.angle)
         
@@ -138,11 +141,20 @@ class TextBlkItem(QGraphicsTextItem):
 
         if not blk.rich_text:
             if blk.translation:
+                self.setPadding(blk.font_size)
                 self.setPlainText(blk.translation)
         else:
             self.setHtml(blk.rich_text)
             self.letter_spacing = 1.
             self.setLetterSpacing(font_fmt.letter_spacing)
+
+    def setHtml(self, html: str) -> None:
+        fs = html_max_fontsize(html)
+        if fs is None:
+            fs = self.document().defaultFont().pointSizeF()
+        fs = pt2px(fs)
+        self.setPadding(fs)
+        return super().setHtml(html)
 
     def setCenterTransform(self):
         center = self.boundingRect().center()
@@ -152,16 +164,29 @@ class TextBlkItem(QGraphicsTextItem):
         return QRectF(self.pos(), self.boundingRect().size())
 
     def startReshape(self):
-        self.oldRect = self.rect()
+        self.oldRect = self.absBoundingRect()
         self.reshaping = True
 
     def endReshape(self):
         self.reshaped.emit(self)
         self.reshaping = False
 
-    def setRect(self, rect: Union[List, QRectF]) -> None:
+    def padRect(self, rect: QRectF) -> QRectF:
+        p = self.padding()
+        P = p * 2
+        return QRectF(rect.x() - p, rect.y() - p, rect.width() + P, rect.height() + P)
+    
+    def unpadRect(self, rect: QRectF) -> QRectF:
+        p = -self.padding()
+        P = p * 2
+        return QRectF(rect.x() - p, rect.y() - p, rect.width() + P, rect.height() + P)
+
+    def setRect(self, rect: Union[List, QRectF], padding=True) -> None:
+        
         if isinstance(rect, List):
             rect = QRectF(*rect)
+        if padding:
+            rect = self.padRect(rect)
         self.setPos(rect.topLeft())
         self.prepareGeometryChange()
         self._display_rect = rect
@@ -181,12 +206,27 @@ class TextBlkItem(QGraphicsTextItem):
             br.setWidth(max(self._display_rect.width(), size.width()))
         return br
 
-    def absBoundingRect(self, max_h=None, max_w=None) -> List:
+    def padding(self) -> float:
+        return self.document().documentMargin()
+
+    def setPadding(self, p: float):
+        _p = self.padding()
+        if _p > p:
+            return
+        abr = self.absBoundingRect()
+        if self.layout is not None:
+            self.layout.updateDocumentMargin(p)
+        else:
+            self.document().setDocumentMargin(p)
+        self.setRect(abr)
+
+    def absBoundingRect(self, max_h=None, max_w=None, qrect=False) -> Union[List, QRectF]:
         br = self.boundingRect()
-        w, h = br.width(), br.height()
+        P = 2 * self.padding()
+        w, h = br.width() - P, br.height() - P
         pos = self.pos()
-        x = pos.x()
-        y = pos.y()
+        x = pos.x() + self.padding()
+        y = pos.y() + self.padding()
         if max_h is not None:
             y = min(max(0, y), max_h)
             y1 = y + h
@@ -195,6 +235,8 @@ class TextBlkItem(QGraphicsTextItem):
             x = min(max(0, x), max_w)
             x1 = x + w
             w = min(max_w, x1) - x
+        if qrect:
+            return QRectF(x, y, w, h)
         return [x, y, w, h]
 
     def shape(self) -> QPainterPath:
@@ -256,7 +298,6 @@ class TextBlkItem(QGraphicsTextItem):
         
         self.layout = layout
         self.setDocument(doc)
-
         layout.size_enlarged.connect(self.on_document_enlarged)
         layout.documentSizeChanged.connect(self.docSizeChanged)
         doc.setDocumentLayout(layout)
@@ -303,11 +344,6 @@ class TextBlkItem(QGraphicsTextItem):
             return
 
         self.stroke_width = stroke_width
-        sw = pt2px(self.layout.max_font_size()) * stroke_width
-        self.layout.updateDocumentMargin(sw/2)
-        self.layout.reLayout()
-        self.on_document_enlarged()
-        
         self.repaint_background()
         self.update()
 
@@ -336,10 +372,11 @@ class TextBlkItem(QGraphicsTextItem):
             pen = QPen(TEXTRECT_SELECTED_COLOR, 3.5 / self.scale(), Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.drawRect(br)
+            painter.drawRect(self.unpadRect(br))
         elif draw_rect:
             pen = QPen(TEXTRECT_SHOW_COLOR, 3 / self.scale(), Qt.PenStyle.SolidLine)
             painter.setPen(pen)
-            painter.drawRect(br)
+            painter.drawRect(self.unpadRect(br))
         
         painter.restore()
         option.state = QStyle.State_None

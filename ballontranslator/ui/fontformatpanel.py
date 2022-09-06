@@ -6,7 +6,7 @@ from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QColor, QTextCharFormat, QDoubleValidator, QMouseEvent, QFont, QTextCursor, QFocusEvent, QKeyEvent
 
 from .stylewidgets import Widget, ColorPicker
-from .misc import FontFormat, set_html_color
+from .misc import FontFormat, set_html_color, pt2px
 from .textitem import TextBlkItem
 from .canvas import Canvas
 from .constants import CONFIG_FONTSIZE_CONTENT, WIDGET_SPACING_CLOSE
@@ -65,7 +65,7 @@ def set_textblk_fontsize(blkitem: TextBlkItem, cursor: QTextCursor, fontsize):
         font.setPointSizeF(fontsize)
         doc.setDefaultFont(font)
     cursor.mergeBlockCharFormat(format)
-    blkitem.layout.reLayout()
+    blkitem.setPadding(pt2px(fontsize))
 
 @restore_textcursor
 def set_textblk_weight(blkitem, cursor: QTextCursor, weight):
