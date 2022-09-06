@@ -176,8 +176,6 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         margin *= 2
         self.max_height = margin + self.available_height
         self.max_width = margin + self.available_width
-        # self.adjustLayoutPos(dm, dm)
-        # self.update.emit(QRectF(0, 0, 1000, 1000))
 
     def documentSize(self) -> QSizeF:
         return QSizeF(self.max_width, self.max_height)
@@ -213,18 +211,6 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             self._map_charidx2frag.append(charidx_map)
             block = block.next()
         self.reLayout()
-
-    def adjustLayoutPos(self, dx, dy):
-        block = self.document().firstBlock()
-        while block.isValid():
-            tl = block.layout()
-            for ii in range(tl.lineCount()):
-                line = tl.lineAt(ii)
-                line_pos = line.position()
-                line_pos.setY(dy + line_pos.y())
-                line_pos.setX(dx + line_pos.x())
-                line.setPosition(line_pos)
-            block = block.next()
 
     def max_font_size(self) -> float:
         if self._max_font_size > 0:
@@ -607,15 +593,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.letter_spacing = letter_spacing
             self.reLayout()
 
-    def adjustLayoutPos(self, dx, dy):
-        pass
-        # dx = -dx
-        # super().adjustLayoutPos(dx, dy)
-        # if len(self.x_offset_lst) > 0:
-        #     self.x_offset_lst = (np.array(self.x_offset_lst) + dx).tolist()
-        #     for ii, blk_char_yoffset in enumerate(self.y_offset_lst):
-        #         if len(blk_char_yoffset) > 0:
-        #             self.y_offset_lst[ii] = (np.array(blk_char_yoffset) + dy).tolist()
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
 

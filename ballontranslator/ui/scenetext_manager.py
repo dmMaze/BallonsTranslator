@@ -33,8 +33,6 @@ class MoveBlkItemsCommand(QUndoCommand):
             item.oldPos = item.pos()
 
     def redo(self):
-        # if len(self.new_pos_lst) == 0:
-        #     return
         for item, new_pos in zip(self.items, self.new_pos_lst):
             item.setPos(new_pos)
 

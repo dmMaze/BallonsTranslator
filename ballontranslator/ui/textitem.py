@@ -140,8 +140,8 @@ class TextBlkItem(QGraphicsTextItem):
             self.set_fontformat(font_fmt, set_char_format=set_char_fmt)
 
         if not blk.rich_text:
+            self.setPadding(blk.font_size)
             if blk.translation:
-                self.setPadding(blk.font_size)
                 self.setPlainText(blk.translation)
         else:
             self.setHtml(blk.rich_text)
@@ -520,6 +520,9 @@ class TextBlkItem(QGraphicsTextItem):
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False):
         if self.is_vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
+
+        self.setPadding(pt2px(ffmat.size))
+
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         format = cursor.charFormat()

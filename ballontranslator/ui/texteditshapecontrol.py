@@ -80,7 +80,7 @@ class ControlBlockItem(QGraphicsRectItem):
                 preview.setPixmap(blk_item.toPixmap().copy(blk_item.unpadRect(blk_item.boundingRect()).toRect()))
                 preview.setOpacity(0.7)
                 preview.setVisible(True)
-                rotate_vec = event.scenePos() - self.ctrl.pos() - self.ctrl.boundingRect().center()
+                rotate_vec = event.scenePos() - self.ctrl.sceneBoundingRect().center()
                 self.updateAngleLabelPos()
                 rotation = np.rad2deg(math.atan2(rotate_vec.y(), rotate_vec.x()))
                 self.rotate_start = - rotation + self.ctrl.rotation() 
