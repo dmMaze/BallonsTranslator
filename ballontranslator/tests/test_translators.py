@@ -39,14 +39,6 @@ engchscht_test_list = [
         'text_list': [
             ['', '', 'test ', '', '', ' English', '']
         ]
-    },
-    {
-        'source': 'English',
-        'target': '繁體中文',
-        'text_list': [
-            '中文测试',
-            ['', '', 'test ', '', '', ' English', '']
-        ]
     }
 ]
 
@@ -72,6 +64,11 @@ if __name__ == '__main__':
     # ptranslator = PapagoTranslator('简体中文', 'English')
     # gtranslator = GoogleTranslator('简体中文', 'English')
     # dtranslator = DeeplTranslator('简体中文', 'English')
-    sugoi_translator = SugoiTranslator('日本語', 'English', device= {'select': device})
-    test_translator(sugoi_translator, jaeng_test_list)
+    # sugoi_translator = SugoiTranslator('日本語', 'English', device= {'select': device})
+
+    yandex_setup_params = {
+        'api_key': 'invalidtoken'
+    }
+    yandex_translator = YandexTranslator('日本語', 'English', **yandex_setup_params)
+    test_translator(yandex_translator, engchscht_test_list)
 
