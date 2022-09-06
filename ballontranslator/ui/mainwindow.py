@@ -557,12 +557,16 @@ class MainWindow(QMainWindow):
                 blk.font_size = pt2px(gf.size)
             if override_fnt_stroke:
                 blk.default_stroke_width = gf.stroke_width
+                
             if override_fnt_color:
                 blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
             if override_alignment:
                 blk._alignment = gf.alignment
             blk.line_spacing = gf.line_spacing
             blk.letter_spacing = gf.letter_spacing
+            sw = blk.stroke_width
+            if sw > 0:
+                blk.font_size -= int(blk.font_size * sw)
 
         self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
         
