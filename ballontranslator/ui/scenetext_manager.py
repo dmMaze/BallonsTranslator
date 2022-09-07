@@ -201,18 +201,29 @@ class AutoLayoutCommand(QUndoCommand):
         for item in items:
             self.new_html_lst.append(item.toHtml())
             self.new_rect_lst.append(item.absBoundingRect())
+        self.counter = 0
 
     def redo(self):
+        self.counter += 1
+        if self.counter <= 1:
+            return
         for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.new_html_lst, self.new_rect_lst):
-            item.setHtml(html)
             trans_widget.setPlainText(item.toPlainText())
-            item.setRect(rect)
+            item.setPlainText('')
+            item.setRect(rect, repaint=False)
+            item.setHtml(html)
+            if item.letter_spacing != 1:
+                item.setLetterSpacing(item.letter_spacing, force=True)
+            
 
     def undo(self):
         for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.old_html_lst, self.old_rect_lst):
-            item.setHtml(html)
             trans_widget.setPlainText(item.toPlainText())
-            item.setRect(rect)
+            item.setPlainText('')
+            item.setRect(rect, repaint=False)
+            item.setHtml(html)
+            if item.letter_spacing != 1:
+                item.setLetterSpacing(item.letter_spacing, force=True)
 
 
 class SceneTextManager(QObject):
@@ -466,8 +477,9 @@ class SceneTextManager(QObject):
 
         blk_font = blkitem.font()
         fmt = blkitem.get_fontformat()
+        blk_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, fmt.letter_spacing * 100)
         text_size_func = lambda text: get_text_size(QFontMetrics(blk_font), text)
-
+        
         src_is_cjk = is_cjk(self.config.dl.translate_source)
         tgt_is_cjk = is_cjk(self.config.dl.translate_target)
 
@@ -603,8 +615,8 @@ class SceneTextManager(QObject):
         if restore_charfmts:
             char_fmts = blkitem.get_char_fmts()        
         
+        blkitem.setRect(xywh, repaint=False)
         blkitem.setPlainText(new_text)
-        blkitem.setRect(xywh)
         if len(self.pairwidget_list) > blkitem.idx:
             self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
         if restore_charfmts:
@@ -615,6 +627,8 @@ class SceneTextManager(QObject):
         cpos = 0
         num_text = len(new_text)
         num_fmt = len(char_fmts)
+        blkitem.layout.relayout_on_changed = False
+        blkitem.repaint_on_changed = False
         for fmt_i in range(num_fmt):
             fmt = char_fmts[fmt_i]
             ori_char = text[fmt_i].strip()
@@ -634,7 +648,12 @@ class SceneTextManager(QObject):
                     cursor.setPosition(cpos)
                     cursor.setPosition(cpos+1, QTextCursor.MoveMode.KeepAnchor)
                     cursor.setCharFormat(fmt)
+                    cursor.setBlockCharFormat(fmt)
                     cpos += 1
+        blkitem.repaint_on_changed = True
+        blkitem.layout.relayout_on_changed = True
+        blkitem.layout.reLayout()
+        blkitem.repaint_background()
 
 
     def onEndCreateTextBlock(self, rect: QRectF):

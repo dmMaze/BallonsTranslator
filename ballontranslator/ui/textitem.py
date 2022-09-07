@@ -45,6 +45,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.bound_checking = False # not used
         self.oldPos = QPointF()
         self.oldRect = QRectF()
+        self.repaint_on_changed = True
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
@@ -60,8 +61,9 @@ class TextBlkItem(QGraphicsTextItem):
     def onDocumentContentChanged(self):
         if self.hasFocus():   
             self.content_changed.emit(self)
-        if self.stroke_width != 0 and not self.repainting:
-            self.repaint_background()
+        if self.repaint_on_changed:
+            if self.stroke_width != 0 and not self.repainting:
+                self.repaint_background()
         self.update()
 
     def repaint_background(self):
@@ -305,9 +307,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.repaint_background()
 
             if self.letter_spacing != 1:
-                ls = self.letter_spacing
-                self.letter_spacing = 1
-                self.setLetterSpacing(ls)
+                self.setLetterSpacing(self.letter_spacing, force=True)
 
         self.doc_size_changed.emit(self.idx)
 
@@ -496,6 +496,7 @@ class TextBlkItem(QGraphicsTextItem):
         # https://doc.qt.io/qt-5/qfont.html#Weight-enum, 50 is normal
         if weight == 0:
             weight = 50
+        
         font_format = FontFormat(
             font.family(),
             font.pointSizeF(),
@@ -557,6 +558,7 @@ class TextBlkItem(QGraphicsTextItem):
         
         if ffmat.vertical:
             self.setLetterSpacing(ffmat.letter_spacing)
+        self.letter_spacing = ffmat.letter_spacing
         self.setLineSpacing(ffmat.line_spacing)
 
     def updateBlkFormat(self):
@@ -576,8 +578,8 @@ class TextBlkItem(QGraphicsTextItem):
         self.layout.setLineSpacing(self.line_spacing)
         self.repaint_background()
 
-    def setLetterSpacing(self, letter_spacing: float, repaint_background=True):
-        if self.letter_spacing == letter_spacing:
+    def setLetterSpacing(self, letter_spacing: float, repaint_background=True, force=False):
+        if self.letter_spacing == letter_spacing and not force:
             return
         self.letter_spacing = letter_spacing
         if self.is_vertical:

@@ -144,6 +144,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
         self.block_charfmt_lst = []
         self.block_ideal_width = []
+        self.need_ideal_width = False
+        self.block_ideal_height = []
+        self.need_ideal_height = False
         self._map_charidx2frag = []
         self._max_font_size = -1
 
@@ -192,9 +195,11 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         block = self.document().firstBlock()
         self.block_charfmt_lst = []
         self.block_ideal_width = []
+        self.block_ideal_height = []
         self._map_charidx2frag = []
         while block.isValid():
             charfmt_lst, ideal_width, char_idx = [], -1, 0
+            ideal_height = 0
             charidx_map = {}
             it = block.begin()
             frag_idx = 0
@@ -202,11 +207,20 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                 fragment = it.fragment()
                 fcmt = fragment.charFormat()
                 cfmt = CharFontFormat(fcmt)
+                charfmt_lst.append(cfmt)
                 if cfmt.size > self._max_font_size:
                     self._max_font_size = cfmt.size
-                if ideal_width < cfmt.br.width():
-                    ideal_width = cfmt.br.width()
-                charfmt_lst.append(cfmt)
+
+                if self.need_ideal_width:
+                    w_ = cfmt.br.width()
+                    if ideal_width < w_:
+                        ideal_width = w_
+
+                if self.need_ideal_height:
+                    h_ = cfmt.punc_rect('fg')[0].height()
+                    if ideal_height < h_:
+                        ideal_height = h_
+
                 text_len = fragment.length()
                 for _ in range(text_len):
                     charidx_map[char_idx] = frag_idx
@@ -215,6 +229,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                 frag_idx += 1
             self.block_charfmt_lst.append(charfmt_lst)
             self.block_ideal_width.append(ideal_width)
+            self.block_ideal_height.append(ideal_height)
             self._map_charidx2frag.append(charidx_map)
             block = block.next()
         self.reLayout()
@@ -238,6 +253,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.punc_align_center = True
         self.draw_shifted = 0
 
+        self.need_ideal_width = True
         self.line_draw = line_draw_qt6 if C.FLAG_QT6 else line_draw_qt5
 
     @property
@@ -608,6 +624,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def __init__(self, doc: QTextDocument):
         super().__init__(doc)
+        self.need_ideal_height = True
 
     def reLayout(self):
         doc = self.document()
@@ -679,6 +696,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         fm = QFontMetrics(font)
         doc_margin = self.document().documentMargin()
 
+        idea_height = self.block_ideal_height[block.blockNumber()]
         if block == doc.firstBlock():
             self.x_offset_lst = []
             self.y_offset_lst = []
@@ -695,8 +713,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             line.setLeadingIncluded(False)
             line.setLineWidth(self.available_width)
             line.setPosition(QPointF(doc_margin, y_offset))
-            self.y_bottom = tbr.height() + y_offset + line.descent()    #????
-            y_offset += tbr.height() * self.line_spacing
+            self.y_bottom = idea_height + y_offset + line.descent()    #????
+            y_offset += idea_height * self.line_spacing
             line_idx += 1
         tl.endLayout()
         self.y_offset_lst.append(y_offset)
