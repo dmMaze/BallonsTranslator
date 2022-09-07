@@ -54,6 +54,12 @@ def set_textblk_color(blkitem: TextBlkItem, cursor: QTextCursor, rgb: List):
     
 @restore_textcursor
 def set_textblk_fontsize(blkitem: TextBlkItem, cursor: QTextCursor, fontsize):
+    need_repaint = blkitem.stroke_width != 0
+    if need_repaint:
+        fs = pt2px(max(blkitem.layout.max_font_size(), fontsize))
+        blkitem.layout.relayout_on_changed = False
+        blkitem.setPadding(fs * blkitem.stroke_width / 2)
+        blkitem.layout.relayout_on_changed = True
     format = QTextCharFormat()
     format.setFontPointSize(fontsize)
     cursor.mergeCharFormat(format)
@@ -65,7 +71,6 @@ def set_textblk_fontsize(blkitem: TextBlkItem, cursor: QTextCursor, fontsize):
         font.setPointSizeF(fontsize)
         doc.setDefaultFont(font)
     cursor.mergeBlockCharFormat(format)
-    # blkitem.setPadding(pt2px(fontsize))
 
 @restore_textcursor
 def set_textblk_weight(blkitem, cursor: QTextCursor, weight):

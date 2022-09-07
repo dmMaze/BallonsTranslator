@@ -57,7 +57,7 @@ class TextBlkItem(QGraphicsTextItem):
     def is_editting(self):
         return self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
 
-    def documentContentChanged(self):
+    def onDocumentContentChanged(self):
         if self.hasFocus():   
             self.content_changed.emit(self)
         if self.stroke_width != 0 and not self.repainting:
@@ -78,6 +78,7 @@ class TextBlkItem(QGraphicsTextItem):
         layout.setMaxSize(rect.width(), rect.height(), False)
         doc.setDocumentLayout(layout)
 
+        layout.relayout_on_changed = False
         cursor = QTextCursor(doc)
         block = doc.firstBlock()
         stroke_pen = QPen(self.stroke_color, 0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
@@ -132,18 +133,21 @@ class TextBlkItem(QGraphicsTextItem):
         if blk.translation:
             set_char_fmt = True
 
+        font_fmt = FontFormat()
+        font_fmt.from_textblock(blk)
         if set_format:
-            font_fmt = FontFormat()
-            font_fmt.from_textblock(blk)
-            self.set_fontformat(font_fmt, set_char_format=set_char_fmt)
+            self.set_fontformat(font_fmt, set_char_format=set_char_fmt, set_stroke_width=False)
 
         if not blk.rich_text:
             if blk.translation:
                 self.setPlainText(blk.translation)
+            
+            self.setStrokeWidth(font_fmt.stroke_width)
         else:
             self.setHtml(blk.rich_text)
             self.letter_spacing = 1.
-            self.setLetterSpacing(font_fmt.letter_spacing)
+            self.setLetterSpacing(font_fmt.letter_spacing, repaint_background=False)
+            self.setStrokeWidth(font_fmt.stroke_width)
 
     def setCenterTransform(self):
         center = self.boundingRect().center()
@@ -170,7 +174,7 @@ class TextBlkItem(QGraphicsTextItem):
         P = p * 2
         return QRectF(rect.x() - p, rect.y() - p, rect.width() + P, rect.height() + P)
 
-    def setRect(self, rect: Union[List, QRectF], padding=True) -> None:
+    def setRect(self, rect: Union[List, QRectF], padding=True, repaint=True) -> None:
         
         if isinstance(rect, List):
             rect = QRectF(*rect)
@@ -180,9 +184,9 @@ class TextBlkItem(QGraphicsTextItem):
         self.prepareGeometryChange()
         self._display_rect = rect
         self.layout.setMaxSize(rect.width(), rect.height())
-        self.document().setPageSize(QSizeF(rect.width(), rect.height()))
         self.setCenterTransform()
-        self.repaint_background()
+        if repaint:
+            self.repaint_background()
 
     def documentSize(self):
         return self.layout.documentSize()
@@ -199,15 +203,14 @@ class TextBlkItem(QGraphicsTextItem):
         return self.document().documentMargin()
 
     def setPadding(self, p: float):
-        # _p = self.padding()
-        # if _p > p:
-        #     return
+        _p = self.padding()
+        if _p == p:
+            return
         abr = self.absBoundingRect()
-        if self.layout is not None:
-            self.layout.updateDocumentMargin(p)
-        else:
-            self.document().setDocumentMargin(p)
-        self.setRect(abr)
+        self.layout.relayout_on_changed = False
+        self.layout.updateDocumentMargin(p)
+        self.layout.relayout_on_changed = True
+        self.setRect(abr, repaint=False)
 
     def absBoundingRect(self, max_h=None, max_w=None, qrect=False) -> Union[List, QRectF]:
         br = self.boundingRect()
@@ -291,7 +294,7 @@ class TextBlkItem(QGraphicsTextItem):
         layout.documentSizeChanged.connect(self.docSizeChanged)
         doc.setDocumentLayout(layout)
         doc.setDefaultFont(default_font)
-        doc.contentsChanged.connect(self.documentContentChanged)
+        doc.contentsChanged.connect(self.onDocumentContentChanged)
         
         if valid_layout:
             layout.setMaxSize(rect.width(), rect.height())
@@ -328,11 +331,11 @@ class TextBlkItem(QGraphicsTextItem):
                 pos.setY(pos.y() + delta_x * np.sin(rad))
             self.setPos(pos)
 
-    def setStrokeWidth(self, stroke_width: float):
+    def setStrokeWidth(self, stroke_width: float, padding=True):
         if self.stroke_width == stroke_width:
             return
 
-        if stroke_width > 0:
+        if stroke_width > 0 and padding:
             p = self.layout.max_font_size(to_px=True) * stroke_width / 2
             self.setPadding(p)
 
@@ -510,7 +513,7 @@ class TextBlkItem(QGraphicsTextItem):
         )
         return font_format
 
-    def set_fontformat(self, ffmat: FontFormat, set_char_format=False):
+    def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True):
         if self.is_vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
 
@@ -543,7 +546,8 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         self.setTextCursor(cursor)
         self.stroke_color = QColor(ffmat.srgb[0], ffmat.srgb[1], ffmat.srgb[2])
-        self.setStrokeWidth(ffmat.stroke_width)
+        if set_stroke_width:
+            self.setStrokeWidth(ffmat.stroke_width)
         
         alignment = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][ffmat.alignment]
         doc = self.document()
@@ -572,7 +576,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.layout.setLineSpacing(self.line_spacing)
         self.repaint_background()
 
-    def setLetterSpacing(self, letter_spacing: float):
+    def setLetterSpacing(self, letter_spacing: float, repaint_background=True):
         if self.letter_spacing == letter_spacing:
             return
         self.letter_spacing = letter_spacing
@@ -586,7 +590,8 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.select(QTextCursor.SelectionType.Document)
             cursor.mergeCharFormat(char_fmt)
             # cursor.mergeBlockCharFormat(char_fmt)
-        self.repaint_background()
+        if repaint_background:
+            self.repaint_background()
 
     def get_char_fmts(self) -> List[QTextCharFormat]:
         cursor = self.textCursor()

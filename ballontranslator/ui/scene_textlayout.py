@@ -150,6 +150,8 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.foreground_pixmap: QPixmap = None
         self.draw_foreground_only = False
 
+        self.relayout_on_changed = True
+
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
         self.max_width = max_width
@@ -184,6 +186,8 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         return QSizeF(self.max_width, self.max_height)
 
     def documentChanged(self, position: int, charsRemoved: int, charsAdded: int) -> None:
+        if not self.relayout_on_changed:
+            return
         self._max_font_size = -1
         block = self.document().firstBlock()
         self.block_charfmt_lst = []
