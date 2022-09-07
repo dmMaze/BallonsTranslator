@@ -1,12 +1,12 @@
 from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF, QSize
-from qtpy.QtGui import QTextCharFormat, QTextDocument, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
+from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
 
 import cv2
 import numpy as np
 from typing import List
 from functools import lru_cache, cached_property
 
-from .misc import pixmap2ndarray, ndarray2pixmap, LruIgnoreArgs
+from .misc import pixmap2ndarray, pt2px, LruIgnoreArgs
 from . import constants as C
 
 def print_transform(tr: QTransform):
@@ -147,6 +147,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self._map_charidx2frag = []
         self._max_font_size = -1
 
+        self.foreground_pixmap: QPixmap = None
+        self.draw_foreground_only = False
+
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
         self.max_width = max_width
@@ -212,11 +215,11 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             block = block.next()
         self.reLayout()
 
-    def max_font_size(self) -> float:
-        if self._max_font_size > 0:
-            return self._max_font_size
-        return self.document().defaultFont().pointSizeF()
-
+    def max_font_size(self, to_px=False) -> float:
+        fs = self._max_font_size if self._max_font_size > 0 else self.document().defaultFont().pointSizeF()
+        if to_px:
+            fs = pt2px(fs)
+        return fs
 
 class VerticalTextDocumentLayout(SceneTextLayout):
 
@@ -373,7 +376,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     self.line_draw(painter, line, -natral_shifted, yoff, selected, selection)
 
             block = block.next()
-        
+
+        if self.foreground_pixmap is not None:
+            painter.drawPixmap(0, 0, self.foreground_pixmap)
+
         if cursor_block is not None:
             block = cursor_block
             blk_text = block.text()
@@ -732,6 +738,9 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             layout.draw(painter, QPointF(0, 0), selections, clip)
             block = block.next()
         
+        if self.foreground_pixmap is not None:
+            painter.drawPixmap(0, 0, self.foreground_pixmap)
+
         if cursor_block is not None:
             block = cursor_block
             blpos = block.position()

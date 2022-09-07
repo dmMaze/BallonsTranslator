@@ -46,8 +46,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.oldPos = QPointF()
         self.oldRect = QRectF()
 
-        self._padding = 0
-
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
         self.setVertical(False)
@@ -140,21 +138,12 @@ class TextBlkItem(QGraphicsTextItem):
             self.set_fontformat(font_fmt, set_char_format=set_char_fmt)
 
         if not blk.rich_text:
-            self.setPadding(blk.font_size)
             if blk.translation:
                 self.setPlainText(blk.translation)
         else:
             self.setHtml(blk.rich_text)
             self.letter_spacing = 1.
             self.setLetterSpacing(font_fmt.letter_spacing)
-
-    def setHtml(self, html: str) -> None:
-        fs = html_max_fontsize(html)
-        if fs is None:
-            fs = self.document().defaultFont().pointSizeF()
-        fs = pt2px(fs)
-        self.setPadding(fs)
-        return super().setHtml(html)
 
     def setCenterTransform(self):
         center = self.boundingRect().center()
@@ -210,9 +199,9 @@ class TextBlkItem(QGraphicsTextItem):
         return self.document().documentMargin()
 
     def setPadding(self, p: float):
-        _p = self.padding()
-        if _p > p:
-            return
+        # _p = self.padding()
+        # if _p > p:
+        #     return
         abr = self.absBoundingRect()
         if self.layout is not None:
             self.layout.updateDocumentMargin(p)
@@ -342,6 +331,10 @@ class TextBlkItem(QGraphicsTextItem):
     def setStrokeWidth(self, stroke_width: float):
         if self.stroke_width == stroke_width:
             return
+
+        if stroke_width > 0:
+            p = self.layout.max_font_size(to_px=True) * stroke_width / 2
+            self.setPadding(p)
 
         self.stroke_width = stroke_width
         self.repaint_background()
@@ -521,8 +514,6 @@ class TextBlkItem(QGraphicsTextItem):
         if self.is_vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
 
-        self.setPadding(pt2px(ffmat.size))
-
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         format = cursor.charFormat()
@@ -551,8 +542,8 @@ class TextBlkItem(QGraphicsTextItem):
         # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         self.setTextCursor(cursor)
+        self.stroke_color = QColor(ffmat.srgb[0], ffmat.srgb[1], ffmat.srgb[2])
         self.setStrokeWidth(ffmat.stroke_width)
-        self.setStrokeColor(ffmat.srgb)
         
         alignment = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][ffmat.alignment]
         doc = self.document()

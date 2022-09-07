@@ -199,7 +199,7 @@ AlignmentChecker#AlignRightChecker::indicator:checked {
 }
 
 QFontChecker {
-    max-width: 32px;
+    max-width: 34px;
 }
 
 QFontChecker::indicator {

@@ -65,7 +65,7 @@ def set_textblk_fontsize(blkitem: TextBlkItem, cursor: QTextCursor, fontsize):
         font.setPointSizeF(fontsize)
         doc.setDefaultFont(font)
     cursor.mergeBlockCharFormat(format)
-    blkitem.setPadding(pt2px(fontsize))
+    # blkitem.setPadding(pt2px(fontsize))
 
 @restore_textcursor
 def set_textblk_weight(blkitem, cursor: QTextCursor, weight):
@@ -551,7 +551,7 @@ class FontFormatPanel(Widget):
         self.vlayout.addLayout(hl1)
         self.vlayout.addLayout(hl2)
         self.vlayout.addLayout(hl3)
-        self.vlayout.setContentsMargins(10, 10, 10, 10)
+        self.vlayout.setContentsMargins(7, 7, 7, 7)
         self.setFixedWidth(C.TEXTEDIT_FIXWIDTH)
 
         self.focusOnColorDialog = False
