@@ -10,6 +10,7 @@ from .misc import FontFormat, set_html_color, pt2px
 from .textitem import TextBlkItem
 from .canvas import Canvas
 from .constants import CONFIG_FONTSIZE_CONTENT, WIDGET_SPACING_CLOSE
+from .text_graphical_effect import EffectBtn
 from . import constants as C
 
 from utils.logger import logger as LOGGER
@@ -525,6 +526,10 @@ class FontFormatPanel(Widget):
         self.fontfmtLabel.setText(self.global_fontfmt_str)
         self.fontfmtLabel.setFont(font)
 
+        self.effectBtn = EffectBtn(self)
+        self.effectBtn.setText(self.tr("Effect"))
+        self.effectBtn.clicked.connect(self.on_effectbtn_clicked)
+
         FONTFORMAT_SPACING = 6
 
         hl0 = QHBoxLayout()
@@ -546,9 +551,10 @@ class FontFormatPanel(Widget):
         hl2.setSpacing(FONTFORMAT_SPACING)
         hl2.setContentsMargins(0, 0, 0, 0)
         hl3 = QHBoxLayout()
-        hl3.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        hl3.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl3.addLayout(stroke_hlayout)
         hl3.addLayout(lettersp_hlayout)
+        hl3.addWidget(self.effectBtn)
         hl3.setContentsMargins(3, 3, 3, 3)
         hl3.setSpacing(13)
 
@@ -709,3 +715,6 @@ class FontFormatPanel(Widget):
                 self.textblk_item = textblk_item
                 self.set_active_format(blk_fmt)
                 self.fontfmtLabel.setText(f'TextBlock #{textblk_item.idx}')
+
+    def on_effectbtn_clicked(self):
+        print('eff cliced!')

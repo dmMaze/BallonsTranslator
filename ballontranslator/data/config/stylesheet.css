@@ -675,6 +675,14 @@ QLabel#angleLabel {
     color: rgba(255, 255, 255, 150);
 }
 
+.EffectBtn {
+    font-size: 22px;
+}
+
+.EffectBtn::hover {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
 DrawToolCheckBox::indicator {
     height: 34px;
     width: 34px;
