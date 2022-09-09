@@ -28,7 +28,7 @@ class PageListView(QListWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setMaximumWidth(512)
-        self.setIconSize(QSize(70, 70))
+        self.setIconSize(QSize(C.PAGELIST_THUMBNAIL_SIZE, C.PAGELIST_THUMBNAIL_SIZE))
 
 
 class MainWindow(QMainWindow):
@@ -221,7 +221,7 @@ class MainWindow(QMainWindow):
     def updatePageList(self):
         if self.pageList.count() != 0:
             self.pageList.clear()
-        if len(self.imgtrans_proj.pages) >= 50:
+        if len(self.imgtrans_proj.pages) >= C.PAGELIST_THUMBNAIL_MAXNUM:
             item_func = lambda imgname: QListWidgetItem(imgname)
         else:
             item_func = lambda imgname:\

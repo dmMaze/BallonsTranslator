@@ -59,6 +59,7 @@ class RunStopTextBtn(StatusButton):
         self.setText(self.run_text)
         if self.run_tool_tip is not None:
             self.setToolTip(self.run_tool_tip)
+        self.running = False
 
     def setStopText(self):
         self.setText(self.stop_text)
