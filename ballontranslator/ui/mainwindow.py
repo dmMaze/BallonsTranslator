@@ -11,7 +11,7 @@ from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from dl.textdetector import TextBlock
 
-from .misc import ProjImgTrans, pt2px, pixmap2ndarray
+from .misc import ProjImgTrans, pt2px, FontFormat
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
@@ -21,6 +21,7 @@ from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
 from .stylewidgets import FrameLessMessageBox
+from .preset_widget import PresetPanel, PresetListWidget
 from .constants import STYLESHEET_PATH, CONFIG_PATH
 from . import constants as C
 
@@ -110,6 +111,13 @@ class MainWindow(QMainWindow):
         self.textPanel = TextPanel(self.app, self.canvas)
         self.textPanel.formatpanel.effect_panel.setParent(self)
         self.textPanel.formatpanel.effect_panel.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.CustomizeWindowHint)
+        self.textPanel.formatpanel.fontfmtLabel.clicked.connect(self.show_presets)
+        self.presetPanel = PresetPanel(self)
+        self.presetPanel.setParent(self)
+        self.presetPanel.setWindowFlags(Qt.WindowType.Window)
+        self.presetPanel.hide()
+        self.presetPanel.hide_signal.connect(self.save_config)
+        self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
         self.st_manager = SceneTextManager(self.app, self.canvas, self.textPanel)
 
         # comic trans pannel
@@ -196,6 +204,8 @@ class MainWindow(QMainWindow):
             self.bottomBar.texteditChecker.click()
         elif self.config.imgtrans_paintmode:
             self.bottomBar.paintChecker.click()
+
+        self.presetPanel.initPresets(self.config.font_presets)
 
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
@@ -619,3 +629,11 @@ class MainWindow(QMainWindow):
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
+
+    def show_presets(self):
+        fmt = self.textPanel.formatpanel.active_format
+        fmt_name = self.textPanel.formatpanel.fontfmtLabel.text()
+        self.presetPanel.updateCurrentFontFormat(fmt, fmt_name)
+        self.presetPanel.show()
+
+

@@ -6,12 +6,12 @@ from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApp
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QColor, QTextCharFormat, QMouseEvent, QFont, QTextCursor
 
-from .stylewidgets import Widget, ColorPicker
+from .stylewidgets import Widget, ColorPicker, ClickableLabel
 from .misc import FontFormat, set_html_color, pt2px
 from .textitem import TextBlkItem
 from .canvas import Canvas
 from .constants import CONFIG_FONTSIZE_CONTENT, WIDGET_SPACING_CLOSE
-from .text_graphical_effect import EffectBtn, TextEffectPanel
+from .text_graphical_effect import TextEffectPanel
 from .combobox import SizeComboBox
 from . import constants as C
 
@@ -456,14 +456,12 @@ class FontFormatPanel(Widget):
         lettersp_hlayout.setSpacing(WIDGET_SPACING_CLOSE)
         
         self.global_fontfmt_str = self.tr("Global Font Format")
-        self.fontfmtLabel = QLabel(self)
+        self.fontfmtLabel = ClickableLabel(self.global_fontfmt_str, self)
         font = self.fontfmtLabel.font()
-        font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.7)
-        self.fontfmtLabel.setText(self.global_fontfmt_str)
+        font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.75)
         self.fontfmtLabel.setFont(font)
 
-        self.effectBtn = EffectBtn(self)
-        self.effectBtn.setText(self.tr("Effect"))
+        self.effectBtn = ClickableLabel(self.tr("Effect"), self)
         self.effectBtn.clicked.connect(self.on_effectbtn_clicked)
         self.effect_panel = TextEffectPanel()
         self.effect_panel.hide()
@@ -660,7 +658,11 @@ class FontFormatPanel(Widget):
         self.effect_panel.updatePanels()
         self.effect_panel.show()
 
-    # def on_apply_effect(self):
-    #     if self.textblk_item is not None:
-    #         self.textblk_item.update_effect(self.active_format)
+    def on_load_preset(self, preset: FontFormat):
+        self.global_format = preset
+        if self.textblk_item is not None:
+            self.set_textblk_item(None)
+                
+        self.set_active_format(preset)
+        self.fontfmtLabel.setText(self.global_fontfmt_str)
         

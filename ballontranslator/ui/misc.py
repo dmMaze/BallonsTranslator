@@ -483,6 +483,7 @@ class ProgramConfig:
         let_alignment_flag: int = 0,
         let_autolayout_flag: bool = True,
         let_uppercase_flag: bool = True,
+        font_presets: dict = None,
         **kwargs) -> None:
 
         if isinstance(dl, dict):
@@ -517,7 +518,7 @@ class ProgramConfig:
         self.let_alignment_flag = let_alignment_flag
         self.let_autolayout_flag = let_autolayout_flag
         self.let_uppercase_flag = let_uppercase_flag
-
+        self.font_presets = {} if font_presets is None else font_presets
 
 class LruIgnoreArg:
 

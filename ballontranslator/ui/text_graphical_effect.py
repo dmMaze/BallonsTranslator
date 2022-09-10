@@ -1,10 +1,9 @@
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout, QScrollArea, QGroupBox, QPushButton, QLabel
-from qtpy.QtCore import Signal, Qt, QRectF, QPoint, QPointF
-from qtpy.QtGui import QColor, QShowEvent, QMouseEvent, QPixmap, QImage, QPainter, QFontMetricsF
+from qtpy.QtCore import Signal, Qt, QPoint
+from qtpy.QtGui import QColor, QShowEvent, QPixmap, QImage, QPainter, QFontMetricsF
 
 from .misc import pixmap2ndarray, ndarray2pixmap, FontFormat, pt2px
 from .stylewidgets import Widget, ColorPicker, PaintQSlider
-from .combobox import SizeComboBox
 from . import constants as C
 
 from typing import Union, Tuple
@@ -224,16 +223,3 @@ class TextEffectPanel(Widget):
         self.shadow_radius_slider.setValue(int(self.fontfmt.shadow_radius * 100))
         self.shadow_strength_slider.setValue(int(self.fontfmt.shadow_strength * 100))
 
-class EffectBtn(QLabel):
-
-    clicked = Signal()
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.text = self.tr('Effect')
-        self.setText(self.text)
-
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        if e.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-        return super().mousePressEvent(e)

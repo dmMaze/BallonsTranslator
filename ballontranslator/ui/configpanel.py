@@ -441,6 +441,7 @@ class ConfigPanel(Widget):
 
     def hideEvent(self, e) -> None:
         self.inpaint_sub_block.layout().removeWidget(self.inpaint_config_panel)
+        self.save_config.emit()
         return super().hideEvent(e)
         
     
