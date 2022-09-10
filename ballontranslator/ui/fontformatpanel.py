@@ -1,5 +1,6 @@
 import functools
 from typing import List, Tuple, Union
+import copy
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt
@@ -22,7 +23,6 @@ def restore_textcursor(formatting_func):
     def wrapper(blkitem: TextBlkItem, *args, **kwargs):
         if blkitem is None:
             return
-        stroke_width_before = blkitem.stroke_width
         cursor = blkitem.textCursor()
         set_all = not cursor.hasSelection()
         pos1 = cursor.position()
@@ -38,8 +38,7 @@ def restore_textcursor(formatting_func):
         else:
             cursor.setPosition(pos1)
         blkitem.setTextCursor(cursor)
-        if blkitem.stroke_width != stroke_width_before:
-            blkitem.repaint_background()
+        blkitem.repaint_background()
     return wrapper
 
 @restore_textcursor
@@ -466,8 +465,8 @@ class FontFormatPanel(Widget):
         self.effectBtn = EffectBtn(self)
         self.effectBtn.setText(self.tr("Effect"))
         self.effectBtn.clicked.connect(self.on_effectbtn_clicked)
-        self.effect_widget = TextEffectPanel()
-        self.effect_widget.hide()
+        self.effect_panel = TextEffectPanel()
+        self.effect_panel.hide()
 
         FONTFORMAT_SPACING = 6
 
@@ -656,4 +655,12 @@ class FontFormatPanel(Widget):
                 self.fontfmtLabel.setText(f'TextBlock #{textblk_item.idx}')
 
     def on_effectbtn_clicked(self):
-        self.effect_widget.show()
+        self.effect_panel.active_fontfmt = self.active_format
+        self.effect_panel.fontfmt = copy.deepcopy(self.active_format)
+        self.effect_panel.updatePanels()
+        self.effect_panel.show()
+
+    # def on_apply_effect(self):
+    #     if self.textblk_item is not None:
+    #         self.textblk_item.update_effect(self.active_format)
+        

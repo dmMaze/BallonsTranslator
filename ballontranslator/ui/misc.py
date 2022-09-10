@@ -100,14 +100,14 @@ class FontFormat:
                  alignment: int = 0,
                  vertical: bool = False, 
                  weight: int = 50, 
-                 alpha: int = 255,
                  line_spacing: float = 1.2,
                  letter_spacing: float = 1.,
                  opacity: float = 1.,
                  shadow_radius: float = 0.,
                  shadow_strength: float = 1.,
                  shadow_color: Tuple = (0, 0, 0),
-                 shadow_offset: List = [0, 0]) -> None:
+                 shadow_offset: List = [0, 0],
+                 **kwargs) -> None:
         self.family = family if family is not None else DEFAULT_FONT_FAMILY
         self.size = size
         self.stroke_width = stroke_width
@@ -116,7 +116,6 @@ class FontFormat:
         self.bold = bold
         self.underline = underline
         self.italic = italic
-        self.alpha = alpha
         self.weight: int = weight
         self.alignment: int = alignment
         self.vertical: bool = vertical

@@ -20,7 +20,7 @@ def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, 
     if not isinstance(img, np.ndarray):
         img = pixmap2ndarray(img, keep_alpha=True)
 
-    mask = img[..., -1]
+    mask = img[..., -1].copy()
     ksize = radius * 2 + 1
     mask = cv2.GaussianBlur(mask, (ksize, ksize), ksize // 6)
     if strength != 1:
@@ -30,7 +30,7 @@ def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, 
     bg_img[..., 3] = mask
 
     result = ndarray2pixmap(bg_img)
-    return result, img, mask
+    return result, img
     
 
 def effect_require_repaint(fontfmt: FontFormat) -> bool:
@@ -48,7 +48,7 @@ def text_effect_preview_pipe(target:  QPixmap, font_size: float, fontfmt: FontFo
         # shadow
         if fontfmt.shadow_radius != 0 and fontfmt.shadow_strength > 0:
             r = int(round(fontfmt.shadow_radius * font_size))
-            shadow_map, _, _ = apply_shadow_effect(target, fontfmt.shadow_color, fontfmt.shadow_strength, r)
+            shadow_map, _ = apply_shadow_effect(target, fontfmt.shadow_color, fontfmt.shadow_strength, r)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOver)
             xoffset = int(fontfmt.shadow_offset[0] * font_size)
             yoffset = int(fontfmt.shadow_offset[1] * font_size)
@@ -69,7 +69,7 @@ def text_effect_preview_pipe(target:  QPixmap, font_size: float, fontfmt: FontFo
 
 class TextEffectPanel(Widget):
 
-    apply_clicked = Signal()
+    apply = Signal()
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -183,7 +183,7 @@ class TextEffectPanel(Widget):
         self.active_fontfmt.shadow_radius = self.fontfmt.shadow_radius
         self.active_fontfmt.shadow_strength = self.fontfmt.shadow_strength
         self.active_fontfmt.shadow_offset = self.fontfmt.shadow_offset
-        self.apply_clicked.emit()
+        self.apply.emit()
 
     def on_cancel_clicked(self):
         self.hide()
@@ -218,7 +218,7 @@ class TextEffectPanel(Widget):
         self.updatePreviewPixmap()
         return super().showEvent(e)
 
-    def updateWidgets(self):
+    def updatePanels(self):
         self.opacity_slider.setValue(int(self.fontfmt.opacity * 100))
         self.shadow_color_picker.setPickerColor(self.fontfmt.shadow_color)
         self.shadow_radius_slider.setValue(int(self.fontfmt.shadow_radius * 100))

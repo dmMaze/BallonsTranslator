@@ -37,7 +37,6 @@ class TextBlock(object):
                  underline: bool = False,
                  italic: bool = False,
                  _alignment: int = -1,
-                 alpha: float = 255,
                  rich_text: str = "",
                  _bounding_rect: List = None,
                  accumulate_color = True,
@@ -81,7 +80,6 @@ class TextBlock(object):
         self.bold: bool = bold
         self.underline: bool = underline
         self.italic: bool = italic
-        self.alpha = alpha
         self.rich_text = rich_text
         self.line_spacing = line_spacing
         self.letter_spacing = letter_spacing

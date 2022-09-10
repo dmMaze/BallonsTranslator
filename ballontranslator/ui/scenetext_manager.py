@@ -75,6 +75,25 @@ class ApplyFontformatCommand(QUndoCommand):
         return False
 
 
+class ApplyEffectCommand(QUndoCommand):
+    def __init__(self, items: List[TextBlkItem], fontformat: FontFormat):
+        super(ApplyEffectCommand, self).__init__()
+        self.items = items
+        self.old_fmt_lst: List[FontFormat] = []
+        self.new_fmt = fontformat
+        for item in items:
+            self.old_fmt_lst.append(item.get_fontformat())
+
+    def redo(self):
+        for item in self.items:
+            item.update_effect(self.new_fmt)
+            item.update()
+
+    def undo(self):
+        for item, fmt in zip(self.items, self.old_fmt_lst):
+            item.update_effect(fmt)
+            item.update()
+
 class ReshapeItemCommand(QUndoCommand):
     def __init__(self, item: TextBlkItem, parent=None):
         super(ReshapeItemCommand, self).__init__(parent)
@@ -246,6 +265,7 @@ class SceneTextManager(QObject):
 
         self.textEditList = textpanel.textEditList
         self.formatpanel = textpanel.formatpanel
+        self.formatpanel.effect_panel.apply.connect(self.on_apply_effect)
         self.formatpanel.global_format_changed.connect(self.onGlobalFormatChanged)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
@@ -692,6 +712,12 @@ class SceneTextManager(QObject):
         selected_blks = self.get_selected_blkitems()
         if len(selected_blks) > 0:
             self.canvasUndoStack.push(ApplyFontformatCommand(selected_blks, fontformat))
+
+    def on_apply_effect(self):
+        format = self.formatpanel.active_format
+        selected_blks = self.get_selected_blkitems()
+        if len(selected_blks) > 0:
+            self.canvasUndoStack.push(ApplyEffectCommand(selected_blks, format))
 
     def get_selected_blkitems(self) -> List[TextBlkItem]:
         selections = self.canvas.selectedItems()
