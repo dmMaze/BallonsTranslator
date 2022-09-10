@@ -6,7 +6,7 @@ import numpy as np
 from typing import List
 from functools import lru_cache, cached_property
 
-from .misc import pixmap2ndarray, pt2px, LruIgnoreArgs
+from .misc import pixmap2ndarray, pt2px, LruIgnoreArg
 from . import constants as C
 
 def print_transform(tr: QTransform):
@@ -59,7 +59,7 @@ def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, ita
     return ar
 
 @lru_cache(maxsize=2048)
-def punc_actual_rect_cached(line: LruIgnoreArgs, char: str, family: str, size: float, weight: int, italic: bool, stroke_width: float) -> List[int]:
+def punc_actual_rect_cached(line: LruIgnoreArg, char: str, family: str, size: float, weight: int, italic: bool, stroke_width: float) -> List[int]:
     # QtextLine line is invisibale to lru
     return punc_actual_rect(line.line, family, size, weight, italic, stroke_width)
 
@@ -121,7 +121,7 @@ class CharFontFormat:
 
     def punc_actual_rect(self, line: QTextLine, char: str, cache=False) -> List[int]:
         if cache:
-            line = LruIgnoreArgs(line=line)
+            line = LruIgnoreArg(line=line)
             ar = punc_actual_rect_cached(line, char, self.family, self.size, self.weight, self.font.italic(), self.stroke_width)
         else:
             ar =  punc_actual_rect(line, self.family, self.size, self.weight, self.font.italic(), self.stroke_width)

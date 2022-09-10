@@ -179,6 +179,7 @@ class MainWindow(QMainWindow):
         self.configPanel.blockSignals(True)
         if self.config.open_recent_on_startup:
             self.configPanel.open_on_startup_checker.setChecked(True)
+        self.configPanel.let_effect_combox.setCurrentIndex(self.config.let_fnteffect_flag)
         self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
         self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
         self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)
@@ -552,6 +553,7 @@ class MainWindow(QMainWindow):
         override_fnt_stroke = self.config.let_fntstroke_flag == 1
         override_fnt_color = self.config.let_fntcolor_flag == 1
         override_alignment = self.config.let_alignment_flag == 1
+        override_effect = self.config.let_fnteffect_flag == 1
         gf = self.textPanel.formatpanel.global_format
         
         for blk in blk_list:
@@ -559,11 +561,17 @@ class MainWindow(QMainWindow):
                 blk.font_size = pt2px(gf.size)
             if override_fnt_stroke:
                 blk.default_stroke_width = gf.stroke_width
-                
             if override_fnt_color:
                 blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
             if override_alignment:
                 blk._alignment = gf.alignment
+            if override_effect:
+                blk.opacity = gf.opacity
+                blk.shadow_color = gf.shadow_color
+                blk.shadow_radius = gf.shadow_radius
+                blk.shadow_strength = gf.shadow_strength
+                blk.shadow_offset = gf.shadow_offset
+            
             blk.line_spacing = gf.line_spacing
             blk.letter_spacing = gf.letter_spacing
             sw = blk.stroke_width

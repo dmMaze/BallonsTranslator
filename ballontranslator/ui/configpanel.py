@@ -107,7 +107,7 @@ class ConfigBlock(Widget):
         sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
         self.subblock_list.append(sublock)
 
-    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None) -> ConfigComboBox:
+    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None) -> Tuple[ConfigComboBox, QWidget]:
         combox = ConfigComboBox()
         combox.addItems(sel)
         if target_block is None:
@@ -360,6 +360,8 @@ class ConfigPanel(Widget):
         self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
         self.let_alignment_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('alignment'), target_block=letblk_1)
         self.let_alignment_combox.currentIndexChanged.connect(self.on_alignment_flag_changed)
+        self.let_effect_combox, letblk_2 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('effect'))
+        self.let_effect_combox.currentIndexChanged.connect(self.on_effect_flag_changed)
 
         self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to \"decide by program.\"'))
@@ -415,6 +417,9 @@ class ConfigPanel(Widget):
 
     def on_alignment_flag_changed(self):
         self.config.let_alignment_flag = self.let_alignment_combox.currentIndex()
+
+    def on_effect_flag_changed(self):
+        self.config.let_fnteffect_flag = self.let_effect_combox.currentIndex()
 
     def on_source_flag_changed(self):
         self.config.src_choice_flag = self.src_choice_combox.currentIndex()
