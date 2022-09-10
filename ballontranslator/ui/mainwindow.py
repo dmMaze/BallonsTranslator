@@ -410,6 +410,7 @@ class MainWindow(QMainWindow):
     def save_proj(self):
         if self.leftBar.imgTransChecker.isChecked()\
             and self.imgtrans_proj.directory is not None:
+            self.canvas.clearSelection()
             self.saveCurrentPage(update_scene_text=True, restore_interface=True)
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False):
@@ -457,19 +458,6 @@ class MainWindow(QMainWindow):
         if not osp.exists(self.imgtrans_proj.result_dir()):
             os.makedirs(self.imgtrans_proj.result_dir())
 
-        # save drawings to inpainted
-        # ditems = self.canvas.get_drawings(visible=True)
-        # if len(ditems) > 0:
-        #     inpainted = self.canvas.inpaintLayer.pixmap().toImage().convertToFormat(QImage.Format.Format_ARGB32)
-        #     painter = QPainter(inpainted)
-        #     for ditem in ditems:
-        #         painter.drawPixmap(ditem.pos(), ditem.pixmap())
-        #     painter.end()
-        #     inpainted_array = pixmap2ndarray(inpainted, keep_alpha=False)
-        #     inpainted_path = self.imgtrans_proj.get_inpainted_path(self.imgtrans_proj.current_img)
-        #     self.imsave_thread.saveImg(inpainted_path, inpainted_array)
-
-        # save result: rendered text + inpainted
         img = QImage(self.canvas.imgLayer.pixmap().size(), QImage.Format.Format_ARGB32)
         painter = QPainter(img)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -521,7 +509,6 @@ class MainWindow(QMainWindow):
             self.st_manager.updateTranslation()
 
     def on_imgtrans_pipeline_finished(self):
-        # self.pageListCurrentItemChanged()
         pass
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
