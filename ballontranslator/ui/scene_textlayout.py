@@ -571,7 +571,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             if num_lspaces == 0 and tbr_h != 0:
                 ntw = line.naturalTextWidth()
                 shifted = ntw - cfmt.br.width()
-                available_height = available_height - shifted
                 if is_final_block:
                     self.draw_shifted = max(self.draw_shifted, shifted)
 
