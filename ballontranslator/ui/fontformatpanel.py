@@ -1,19 +1,18 @@
 import functools
 from typing import List, Tuple, Union
 
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QCheckBox, QLabel
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QColor, QTextCharFormat, QDoubleValidator, QMouseEvent, QFont, QTextCursor, QFocusEvent, QKeyEvent
+from qtpy.QtGui import QColor, QTextCharFormat, QMouseEvent, QFont, QTextCursor
 
 from .stylewidgets import Widget, ColorPicker
 from .misc import FontFormat, set_html_color, pt2px
 from .textitem import TextBlkItem
 from .canvas import Canvas
 from .constants import CONFIG_FONTSIZE_CONTENT, WIDGET_SPACING_CLOSE
-from .text_graphical_effect import EffectBtn
+from .text_graphical_effect import EffectBtn, TextEffectPanel
+from .combobox import SizeComboBox
 from . import constants as C
-
-from utils.logger import logger as LOGGER
 
 
 # restore text cursor status after formatting
@@ -250,64 +249,6 @@ class FormatGroupBtn(QFrame):
     def setUnderline(self):
         self.set_underline.emit(self.underlineBtn.isChecked())
     
-class SizeComboBox(QComboBox):
-    
-    apply_change = Signal(float)
-    def __init__(self, val_range: List = None, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.text_changed_by_user = False
-        self.editTextChanged.connect(self.on_text_changed)
-        self.currentIndexChanged.connect(self.on_current_index_changed)
-        self.setEditable(True)
-        self.min_val = val_range[0]
-        self.max_val = val_range[1]
-        validator = QDoubleValidator()
-        if val_range is not None:
-            validator.setTop(val_range[1])
-            validator.setBottom(val_range[0])
-        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-
-        self.setValidator(validator)
-        self.lineEdit().setValidator(validator)
-        self._value = 0
-
-    def keyPressEvent(self, e: QKeyEvent) -> None:
-        key = e.key()
-        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-            self.check_change()
-        super().keyPressEvent(e)
-
-    def focusInEvent(self, e: QFocusEvent) -> None:
-        super().focusInEvent(e)
-        self.text_changed_by_user = False
-
-    def on_text_changed(self):
-        if self.hasFocus():
-            self.text_changed_by_user = True
-
-    def on_current_index_changed(self):
-        if self.hasFocus():
-            self.check_change()
-
-    def value(self) -> float:
-        txt = self.currentText()
-        try:
-            val = float(txt)
-            self._value = val
-            return val
-        except:
-            LOGGER.warning(f'SizeComboBox invalid input: {txt}, return {self._value}')
-            return self._value
-
-    def setValue(self, value: float):
-        value = min(self.max_val, max(self.min_val, value))
-        self.setCurrentText(str(round(value, 2)))
-
-    def check_change(self):
-        if self.text_changed_by_user:
-            self.text_changed_by_user = False
-            self.apply_change.emit(self.value())
-
 
 class FontSizeBox(QFrame):
     apply_fontsize = Signal(float)
@@ -319,17 +260,13 @@ class FontSizeBox(QFrame):
         self.downBtn.setObjectName("FsizeIncrementDown")
         self.upBtn.clicked.connect(self.onUpBtnClicked)
         self.downBtn.clicked.connect(self.onDownBtnClicked)
-        self.fcombobox = SizeComboBox([0, 10000], self)
+        self.fcombobox = SizeComboBox([1, 1000], self)
         self.fcombobox.addItems([
             "5", "5.5", "6.5", "7.5", "8", "9", "10", "10.5",
             "11", "12", "14", "16", "18", "20", '22', "26", "28", 
             "36", "48", "56", "72"
         ])
         self.fcombobox.apply_change.connect(self.on_fbox_apply_change)
-        validator = QDoubleValidator()
-        validator.setTop(1000)
-        validator.setBottom(1)
-        self.fcombobox.setValidator(validator)
 
         hlayout = QHBoxLayout(self)
         vlayout = QVBoxLayout()
@@ -529,6 +466,8 @@ class FontFormatPanel(Widget):
         self.effectBtn = EffectBtn(self)
         self.effectBtn.setText(self.tr("Effect"))
         self.effectBtn.clicked.connect(self.on_effectbtn_clicked)
+        self.effect_widget = TextEffectPanel()
+        self.effect_widget.hide()
 
         FONTFORMAT_SPACING = 6
 
@@ -717,4 +656,4 @@ class FontFormatPanel(Widget):
                 self.fontfmtLabel.setText(f'TextBlock #{textblk_item.idx}')
 
     def on_effectbtn_clicked(self):
-        print('eff cliced!')
+        self.effect_widget.show()

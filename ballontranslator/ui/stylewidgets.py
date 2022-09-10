@@ -3,7 +3,7 @@ from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Si
 from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPainter, QFontMetrics, QColor
 from typing import List, Union, Tuple
 
-from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
+from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
 
 
 class Widget(QWidget):
@@ -205,11 +205,13 @@ class PaintQSlider(QSlider):
 
     mouse_released = Signal()
 
-    def __init__(self, draw_content, *args, **kwargs):
-        super(PaintQSlider, self).__init__(*args, **kwargs)
+    def __init__(self, draw_content, orientation=Qt.Orientation.Horizontal, *args, **kwargs):
+        super(PaintQSlider, self).__init__(orientation, *args, **kwargs)
         self.draw_content = draw_content
         self.pressed: bool = False
         self.setStyle(SliderProxyStyle())
+        if orientation == Qt.Orientation.Horizontal:
+            self.setFixedHeight(HORSLIDER_FIXHEIGHT)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

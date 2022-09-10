@@ -108,6 +108,8 @@ class MainWindow(QMainWindow):
 
         self.drawingPanel = DrawingPanel(self.canvas, self.configPanel.inpaint_config_panel)
         self.textPanel = TextPanel(self.app, self.canvas)
+        self.textPanel.formatpanel.effect_widget.setParent(self)
+        self.textPanel.formatpanel.effect_widget.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.CustomizeWindowHint)
         self.st_manager = SceneTextManager(self.app, self.canvas, self.textPanel)
 
         # comic trans pannel

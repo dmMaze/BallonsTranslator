@@ -36,6 +36,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.under_ctrl = False
         self.draw_rect = show_rect
         self._display_rect: QRectF = QRectF(0, 0, 1, 1)
+        
         self.stroke_width = 0
         self.idx = idx
         self.line_spacing: float = 1.
@@ -67,6 +68,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.update()
 
     def repaint_background(self):
+
         if self.stroke_width == 0:
             self.background_pixmap = None
             return
@@ -351,13 +353,6 @@ class TextBlkItem(QGraphicsTextItem):
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         br = self.boundingRect()
         painter.save()
-
-        # shadow effect not working ???
-        # se = QGraphicsDropShadowEffect()
-        # se.setBlurRadius(12)
-        # se.setOffset(0, 0)
-        # se.setColor(QColor(30, 147, 229))
-        # self.setGraphicsEffect(se)
 
         if self.background_pixmap is not None:
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)

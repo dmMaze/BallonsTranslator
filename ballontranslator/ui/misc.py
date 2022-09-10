@@ -102,7 +102,12 @@ class FontFormat:
                  weight: int = 50, 
                  alpha: int = 255,
                  line_spacing: float = 1.2,
-                 letter_spacing: float = 1.) -> None:
+                 letter_spacing: float = 1.,
+                 opacity: float = 1.,
+                 shadow_radius: float = 0.,
+                 shadow_strength: float = 1.,
+                 shadow_color: Tuple = (0, 0, 0),
+                 shadow_offset: List = [0, 0]) -> None:
         self.family = family if family is not None else DEFAULT_FONT_FAMILY
         self.size = size
         self.stroke_width = stroke_width
@@ -117,6 +122,11 @@ class FontFormat:
         self.vertical: bool = vertical
         self.line_spacing = line_spacing
         self.letter_spacing = letter_spacing
+        self.opacity = opacity
+        self.shadow_radius = shadow_radius
+        self.shadow_strength = shadow_strength
+        self.shadow_color = shadow_color
+        self.shadow_offset = shadow_offset
 
     def from_textblock(self, text_block: TextBlock):
         self.family = text_block.font_family
@@ -131,6 +141,11 @@ class FontFormat:
         self.vertical = text_block.vertical
         self.line_spacing = text_block.line_spacing
         self.letter_spacing = text_block.letter_spacing
+        self.opacity = text_block.opacity
+        self.shadow_radius = text_block.shadow_radius
+        self.shadow_strength = text_block.shadow_strength
+        self.shadow_color = text_block.shadow_color
+        self.shadow_offset = text_block.shadow_offset
 
 
 PROJTYPE_IMGTRANS = 'imgtrans'
