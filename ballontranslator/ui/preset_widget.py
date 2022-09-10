@@ -1,5 +1,5 @@
 from qtpy.QtWidgets import QMenu, QAbstractItemView, QListWidget, QListWidgetItem, QWidget, QGridLayout, QPushButton, QVBoxLayout
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import Qt, Signal, QModelIndex, QEvent, QObject
 from qtpy.QtGui import QContextMenuEvent, QShowEvent, QHideEvent
 from typing import List, Union
 
@@ -25,21 +25,23 @@ class PresetListWidget(QListWidget):
         super().__init__(parent)
         self.presets = {}
         self.current_fmt = {}
+        self.last_editing_item = None
         self.default_preset_name = self.tr('preset')
+        self.itemDoubleClicked.connect(self.on_edit_item)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.itemDelegate().commitData.connect(self.on_commit_data)
 
+    def on_edit_item(self):
+        self.last_editing_item = self.currentItem()
+
     def on_commit_data(self, editor: QWidget):
+        item = self.last_editing_item
         text = editor.text()
-        item = self.findItems(text, Qt.MatchFlag.MatchExactly)
-
-        # remove duplicates
-        if len(item) > 1:
-            preset = self.presets[text]
-            self.removeItems(item[:-1])
-            self.presets[text] = preset
-
-        item = item[-1]
+        founds = self.findItems(text, Qt.MatchFlag.MatchExactly)
+        
+        if len(founds) > 1:
+            text = self.handle_duplicate_name(text)
+            item.setText(text)
         mutate_dict_key(self.presets, self.row(item), text)
 
     def removeItems(self, items: List[QListWidgetItem]):
@@ -64,14 +66,29 @@ class PresetListWidget(QListWidget):
 
         return super().contextMenuEvent(e)
 
+    def handle_duplicate_name(self, name: str, preset_num=0) -> str:
+        dd_name = name
+        while True:
+            if not dd_name in self.presets:
+                break
+            preset_num += 1
+            dd_name = name + '_' + str(preset_num).zfill(3)
+        return dd_name
+
     def add_new_preset(self, preset_name: str = None):
         if preset_name is None:
-            preset_name = self.default_preset_name + '_' + str(self.count()).zfill(3)
+            preset_num = self.count() + 1
+            preset_name = self.default_preset_name + '_' + str(preset_num).zfill(3)
+            preset_name = self.handle_duplicate_name(preset_name)
         item = QListWidgetItem(preset_name)
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
         self.addItem(item)
         self.presets[preset_name] = self.current_fmt.copy()
         self.editItem(item)
+
+    def editItem(self, item: QListWidgetItem) -> None:
+        self.last_editing_item = item
+        return super().editItem(item)
 
 
 class PresetPanel(Widget):
@@ -95,7 +112,7 @@ class PresetPanel(Widget):
         self.exit_btn.clicked.connect(self.on_exit_clicked)
 
         self.editing_item: QListWidgetItem = None
-        
+        self.global_fmt_str = ''
         
         layout = QGridLayout()
         layout.addWidget(self.new_btn, 0, 0)
@@ -126,6 +143,7 @@ class PresetPanel(Widget):
             preset = self.list_widget.presets[sel.text()]
             preset = FontFormat(**preset)
             self.list_widget.current_fmt = vars(preset)
+            self.new_btn.setToolTip(self.new_tip + self.global_fmt_str)
             self.load_preset.emit(preset)
 
     def on_exit_clicked(self):

@@ -383,7 +383,6 @@ class TextBlkItem(QGraphicsTextItem):
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         br = self.boundingRect()
         painter.save()
-
         if self.background_pixmap is not None:
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             painter.drawPixmap(br.toRect(), self.background_pixmap)

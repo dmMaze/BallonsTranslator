@@ -661,6 +661,8 @@ class FontFormatPanel(Widget):
     def on_load_preset(self, preset: FontFormat):
         self.global_format = preset
         if self.textblk_item is not None:
+            if self.textblk_item.isEditing():
+                self.textblk_item.endEdit()
             self.set_textblk_item(None)
                 
         self.set_active_format(preset)

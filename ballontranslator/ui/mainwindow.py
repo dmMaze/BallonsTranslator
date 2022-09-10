@@ -115,6 +115,7 @@ class MainWindow(QMainWindow):
         self.presetPanel = PresetPanel(self)
         self.presetPanel.setParent(self)
         self.presetPanel.setWindowFlags(Qt.WindowType.Window)
+        self.presetPanel.global_fmt_str = self.textPanel.formatpanel.global_fontfmt_str
         self.presetPanel.hide()
         self.presetPanel.hide_signal.connect(self.save_config)
         self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
