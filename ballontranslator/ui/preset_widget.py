@@ -1,5 +1,5 @@
 from qtpy.QtWidgets import QMenu, QAbstractItemView, QListWidget, QListWidgetItem, QWidget, QGridLayout, QPushButton, QVBoxLayout
-from qtpy.QtCore import Qt, Signal, QModelIndex, QEvent, QObject
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QContextMenuEvent, QShowEvent, QHideEvent
 from typing import List, Union
 
@@ -77,14 +77,19 @@ class PresetListWidget(QListWidget):
 
     def add_new_preset(self, preset_name: str = None):
         if preset_name is None:
-            preset_num = self.count() + 1
-            preset_name = self.default_preset_name + '_' + str(preset_num).zfill(3)
+            preset_name = self.default_preset_name + '_' + str(self.count() + 1).zfill(3)
             preset_name = self.handle_duplicate_name(preset_name)
         item = QListWidgetItem(preset_name)
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
         self.addItem(item)
         self.presets[preset_name] = self.current_fmt.copy()
         self.editItem(item)
+
+    def addItem(self, item: QListWidgetItem) -> None:
+        font = item.font()
+        font.setPointSizeF(12)
+        item.setFont(font)
+        return super().addItem(item)
 
     def editItem(self, item: QListWidgetItem) -> None:
         self.last_editing_item = item
@@ -98,8 +103,9 @@ class PresetPanel(Widget):
 
     def __init__(self, parent: QWidget = None, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
+
+        self.setWindowTitle(self.tr('Presets'))
         self.list_widget = PresetListWidget(self)
-        
         self.new_btn = QPushButton(self.tr('New'))
         self.new_tip = self.tr('Create new preset: ')
         self.new_btn.clicked.connect(self.on_new_clicked)

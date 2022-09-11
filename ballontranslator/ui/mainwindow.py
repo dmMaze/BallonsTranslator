@@ -21,7 +21,7 @@ from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
 from .stylewidgets import FrameLessMessageBox
-from .preset_widget import PresetPanel, PresetListWidget
+from .preset_widget import PresetPanel
 from .constants import STYLESHEET_PATH, CONFIG_PATH
 from . import constants as C
 

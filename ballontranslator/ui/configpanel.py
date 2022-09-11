@@ -267,15 +267,6 @@ class ConfigTable(QTreeView):
             self.tableitem_pressed.emit(idx0, idx1)
 
 
-class GeneralPanel(QWidget):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-
-        layout = QVBoxLayout(self)
-        
-
-
 class ConfigPanel(Widget):
 
     save_config = Signal()
@@ -303,7 +294,6 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
-        # label_sources = self.tr('Sources')
         label_lettering = self.tr('Lettering')
     
         dltableitem.appendRows([
@@ -314,7 +304,6 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
-            # TableItem(label_sources, CONFIG_FONTSIZE_TABLE),
             TableItem(label_lettering, CONFIG_FONTSIZE_TABLE)
         ])
 
@@ -337,16 +326,6 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
-
-        # generalConfigPanel.addTextLabel(label_sources)
-        # src_manual_str = self.tr('manual')
-        # src_nhentai_str = self.tr('nhentai')
-        # self.src_choice_combox = generalConfigPanel.addCombobox([src_manual_str, src_nhentai_str], self.tr('source'))
-        # self.src_choice_combox.currentIndexChanged.connect(self.on_source_flag_changed)
-        # self.src_link_textbox = generalConfigPanel.addLineEdit('source url')
-        # self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
-        # self.src_force_download_checker = generalConfigPanel.addCheckBox(self.tr('Force download/redownload'))
-        # self.src_force_download_checker.stateChanged.connect(self.on_source_force_download_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
