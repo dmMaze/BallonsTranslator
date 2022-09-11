@@ -380,6 +380,13 @@ class TextBlkItem(QGraphicsTextItem):
         self.repaint_background()
         self.update()
 
+    def get_scale(self) -> float:
+        tl = self.topLevelItem()
+        if tl is not None:
+            return tl.scale()
+        else:
+            return self.scale()
+
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         br = self.boundingRect()
         painter.save()
@@ -389,12 +396,12 @@ class TextBlkItem(QGraphicsTextItem):
 
         draw_rect = self.draw_rect and not self.under_ctrl
         if self.isSelected() and not self.is_editting():
-            pen = QPen(TEXTRECT_SELECTED_COLOR, 3.5 / self.scale(), Qt.PenStyle.DashLine)
+            pen = QPen(TEXTRECT_SELECTED_COLOR, 3.5 / self.get_scale(), Qt.PenStyle.DashLine)
             painter.setPen(pen)
             # painter.drawRect(br)
             painter.drawRect(self.unpadRect(br))
         elif draw_rect:
-            pen = QPen(TEXTRECT_SHOW_COLOR, 3 / self.scale(), Qt.PenStyle.SolidLine)
+            pen = QPen(TEXTRECT_SHOW_COLOR, 3 / self.get_scale(), Qt.PenStyle.SolidLine)
             painter.setPen(pen)
             painter.drawRect(self.unpadRect(br))
         
