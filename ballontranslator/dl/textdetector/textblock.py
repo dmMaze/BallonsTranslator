@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 import numpy as np
 from shapely.geometry import Polygon
 import math
@@ -12,39 +12,43 @@ LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
 
 class TextBlock(object):
     def __init__(self, xyxy: List, 
-                       lines: List = None, 
-                       language: str = 'unknown',
-                       vertical: bool = False, 
-                       font_size: float = -1,
-                       distance: List = None,
-                       angle: int = 0,
-                       vec: List = None,
-                       norm: float = -1,
-                       merged: bool = False,
-                       sort_weight: float = -1,
-                       text: List = None,
-                       translation: str = "",
-                       fg_r = 0,
-                       fg_g = 0,
-                       fg_b = 0,
-                       bg_r = 0,
-                       bg_g = 0,
-                       bg_b = 0,                
-                       line_spacing = 1.,
-                       letter_spacing = 1.,
-                       font_family: str = "",
-                       bold: bool = False,
-                       underline: bool = False,
-                       italic: bool = False,
-                       _alignment: int = -1,
-                       alpha: float = 255,
-                       rich_text: str = "",
-                       _bounding_rect: List = None,
-                       accumulate_color = True,
-                       default_stroke_width = 0.2,
-                       font_weight = 50, 
-                       _target_lang: str = "",
-                       **kwargs) -> None:
+                 lines: List = None, 
+                 language: str = 'unknown',
+                 vertical: bool = False, 
+                 font_size: float = -1,
+                 distance: List = None,
+                 angle: int = 0,
+                 vec: List = None,
+                 norm: float = -1,
+                 merged: bool = False,
+                 sort_weight: float = -1,
+                 text: List = None,
+                 translation: str = "",
+                 fg_r = 0,
+                 fg_g = 0,
+                 fg_b = 0,
+                 bg_r = 0,
+                 bg_g = 0,
+                 bg_b = 0,                
+                 line_spacing = 1.,
+                 letter_spacing = 1.,
+                 font_family: str = "",
+                 bold: bool = False,
+                 underline: bool = False,
+                 italic: bool = False,
+                 _alignment: int = -1,
+                 rich_text: str = "",
+                 _bounding_rect: List = None,
+                 accumulate_color = True,
+                 default_stroke_width = 0.2,
+                 font_weight = 50, 
+                 _target_lang: str = "",
+                 opacity: float = 1.,
+                 shadow_radius: float = 0.,
+                 shadow_strength: float = 1.,
+                 shadow_color: Tuple = (0, 0, 0),
+                 shadow_offset: List = [0, 0],
+                 **kwargs) -> None:
         self.xyxy = [int(num) for num in xyxy]                    # boundingbox of textblock
         self.lines = [] if lines is None else lines     # polygons of textlines
         self.vertical = vertical            # orientation of textlines
@@ -76,7 +80,6 @@ class TextBlock(object):
         self.bold: bool = bold
         self.underline: bool = underline
         self.italic: bool = italic
-        self.alpha = alpha
         self.rich_text = rich_text
         self.line_spacing = line_spacing
         self.letter_spacing = letter_spacing
@@ -87,6 +90,12 @@ class TextBlock(object):
         self.default_stroke_width = default_stroke_width
         self.font_weight = font_weight
         self.accumulate_color = accumulate_color
+
+        self.opacity = opacity
+        self.shadow_radius = shadow_radius
+        self.shadow_strength = shadow_strength
+        self.shadow_color = shadow_color
+        self.shadow_offset = shadow_offset
 
     def adjust_bbox(self, with_bbox=False):
         lines = self.lines_array().astype(np.int32)

@@ -107,7 +107,7 @@ class ConfigBlock(Widget):
         sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
         self.subblock_list.append(sublock)
 
-    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None) -> ConfigComboBox:
+    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None) -> Tuple[ConfigComboBox, QWidget]:
         combox = ConfigComboBox()
         combox.addItems(sel)
         if target_block is None:
@@ -267,15 +267,6 @@ class ConfigTable(QTreeView):
             self.tableitem_pressed.emit(idx0, idx1)
 
 
-class GeneralPanel(QWidget):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-
-        layout = QVBoxLayout(self)
-        
-
-
 class ConfigPanel(Widget):
 
     save_config = Signal()
@@ -303,7 +294,6 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
-        # label_sources = self.tr('Sources')
         label_lettering = self.tr('Lettering')
     
         dltableitem.appendRows([
@@ -314,7 +304,6 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
-            # TableItem(label_sources, CONFIG_FONTSIZE_TABLE),
             TableItem(label_lettering, CONFIG_FONTSIZE_TABLE)
         ])
 
@@ -338,16 +327,6 @@ class ConfigPanel(Widget):
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
-        # generalConfigPanel.addTextLabel(label_sources)
-        # src_manual_str = self.tr('manual')
-        # src_nhentai_str = self.tr('nhentai')
-        # self.src_choice_combox = generalConfigPanel.addCombobox([src_manual_str, src_nhentai_str], self.tr('source'))
-        # self.src_choice_combox.currentIndexChanged.connect(self.on_source_flag_changed)
-        # self.src_link_textbox = generalConfigPanel.addLineEdit('source url')
-        # self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
-        # self.src_force_download_checker = generalConfigPanel.addCheckBox(self.tr('Force download/redownload'))
-        # self.src_force_download_checker.stateChanged.connect(self.on_source_force_download_changed)
-
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
         use_global_str = self.tr('use global setting')
@@ -360,6 +339,8 @@ class ConfigPanel(Widget):
         self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
         self.let_alignment_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('alignment'), target_block=letblk_1)
         self.let_alignment_combox.currentIndexChanged.connect(self.on_alignment_flag_changed)
+        self.let_effect_combox, letblk_2 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('effect'))
+        self.let_effect_combox.currentIndexChanged.connect(self.on_effect_flag_changed)
 
         self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to \"decide by program.\"'))
@@ -416,6 +397,9 @@ class ConfigPanel(Widget):
     def on_alignment_flag_changed(self):
         self.config.let_alignment_flag = self.let_alignment_combox.currentIndex()
 
+    def on_effect_flag_changed(self):
+        self.config.let_fnteffect_flag = self.let_effect_combox.currentIndex()
+
     def on_source_flag_changed(self):
         self.config.src_choice_flag = self.src_choice_combox.currentIndex()
 
@@ -436,6 +420,7 @@ class ConfigPanel(Widget):
 
     def hideEvent(self, e) -> None:
         self.inpaint_sub_block.layout().removeWidget(self.inpaint_config_panel)
+        self.save_config.emit()
         return super().hideEvent(e)
         
     

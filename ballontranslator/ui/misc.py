@@ -100,9 +100,14 @@ class FontFormat:
                  alignment: int = 0,
                  vertical: bool = False, 
                  weight: int = 50, 
-                 alpha: int = 255,
                  line_spacing: float = 1.2,
-                 letter_spacing: float = 1.) -> None:
+                 letter_spacing: float = 1.,
+                 opacity: float = 1.,
+                 shadow_radius: float = 0.,
+                 shadow_strength: float = 1.,
+                 shadow_color: Tuple = (0, 0, 0),
+                 shadow_offset: List = [0, 0],
+                 **kwargs) -> None:
         self.family = family if family is not None else DEFAULT_FONT_FAMILY
         self.size = size
         self.stroke_width = stroke_width
@@ -111,12 +116,16 @@ class FontFormat:
         self.bold = bold
         self.underline = underline
         self.italic = italic
-        self.alpha = alpha
         self.weight: int = weight
         self.alignment: int = alignment
         self.vertical: bool = vertical
         self.line_spacing = line_spacing
         self.letter_spacing = letter_spacing
+        self.opacity = opacity
+        self.shadow_radius = shadow_radius
+        self.shadow_strength = shadow_strength
+        self.shadow_color = shadow_color
+        self.shadow_offset = shadow_offset
 
     def from_textblock(self, text_block: TextBlock):
         self.family = text_block.font_family
@@ -131,6 +140,11 @@ class FontFormat:
         self.vertical = text_block.vertical
         self.line_spacing = text_block.line_spacing
         self.letter_spacing = text_block.letter_spacing
+        self.opacity = text_block.opacity
+        self.shadow_radius = text_block.shadow_radius
+        self.shadow_strength = text_block.shadow_strength
+        self.shadow_color = text_block.shadow_color
+        self.shadow_offset = text_block.shadow_offset
 
 
 PROJTYPE_IMGTRANS = 'imgtrans'
@@ -465,9 +479,12 @@ class ProgramConfig:
         let_fntsize_flag: int = 0,
         let_fntstroke_flag: int = 0,
         let_fntcolor_flag: int = 0,
+        let_fnteffect_flag: int = 1,
         let_alignment_flag: int = 0,
         let_autolayout_flag: bool = True,
-        let_uppercase_flag: bool = True) -> None:
+        let_uppercase_flag: bool = True,
+        font_presets: dict = None,
+        **kwargs) -> None:
 
         if isinstance(dl, dict):
             self.dl = DLModuleConfig(**dl)
@@ -497,12 +514,13 @@ class ProgramConfig:
         self.let_fntsize_flag = let_fntsize_flag
         self.let_fntstroke_flag = let_fntstroke_flag
         self.let_fntcolor_flag = let_fntcolor_flag
+        self.let_fnteffect_flag = let_fnteffect_flag
         self.let_alignment_flag = let_alignment_flag
         self.let_autolayout_flag = let_autolayout_flag
         self.let_uppercase_flag = let_uppercase_flag
+        self.font_presets = {} if font_presets is None else font_presets
 
-
-class LruIgnoreArgs:
+class LruIgnoreArg:
 
     def __init__(self, **kwargs) -> None:
         for key in kwargs:
@@ -521,6 +539,7 @@ fragment_pattern = re.compile(r'<!--(.*?)Fragment-->', re.DOTALL)
 color_pattern = re.compile(r'color:(.*?);', re.DOTALL)
 td_pattern = re.compile(r'<td(.*?)>(.*?)</td>', re.DOTALL)
 table_pattern = re.compile(r'(.*?)<table', re.DOTALL)
+fontsize_pattern = re.compile(r'font-size:(.*?)pt;', re.DOTALL)
 
 
 def span_repl_func(matched, color):
@@ -545,3 +564,11 @@ def pt2px(pt):
 
 def px2pt(px):
     return px / constants.LDPI * 72.
+
+def html_max_fontsize(html:  str) -> float:
+    size_list = fontsize_pattern.findall(html)
+    size_list = [float(size) for size in size_list]
+    if len(size_list) > 0:
+        return max(size_list)
+    else:
+        return None

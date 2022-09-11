@@ -67,8 +67,7 @@ class InpaintPanel(Widget):
         super().__init__(*args, **kwargs)
 
         self.inpainter_panel = inpainter_panel
-        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Orientation.Horizontal)
-        self.thicknessSlider.setFixedHeight(50)
+        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px')
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         
@@ -105,12 +104,10 @@ class PenConfigPanel(Widget):
     colorChanged = Signal(list)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Orientation.Horizontal)
-        self.thicknessSlider.setFixedHeight(32)
+        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px')
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
-        self.alphaSlider = PaintQSlider(self.tr('alpha value'), Qt.Orientation.Horizontal)
-        self.alphaSlider.setFixedHeight(32)
+        self.alphaSlider = PaintQSlider(self.tr('alpha value'))
         self.alphaSlider.setRange(0, 255)
         self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
 
@@ -284,8 +281,7 @@ class DrawingPanel(Widget):
         self.toolConfigStackwidget.addWidget(self.penConfigPanel)
         self.toolConfigStackwidget.addWidget(self.rectPanel)
 
-        self.maskTransperancySlider = PaintQSlider(' value%', Qt.Orientation.Horizontal)
-        self.maskTransperancySlider.setFixedHeight(32)
+        self.maskTransperancySlider = PaintQSlider(' value%')
         self.maskTransperancySlider.valueChanged.connect(self.canvas.setMaskTransparencyBySlider)
         masklayout = QHBoxLayout()
         masklayout.addWidget(ToolNameLabel(220, self.tr('Mask Transparency')))

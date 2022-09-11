@@ -1,12 +1,12 @@
 from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF, QSize
-from qtpy.QtGui import QTextCharFormat, QTextDocument, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
+from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
 
 import cv2
 import numpy as np
 from typing import List
 from functools import lru_cache, cached_property
 
-from .misc import pixmap2ndarray, ndarray2pixmap, LruIgnoreArgs
+from .misc import pixmap2ndarray, pt2px, LruIgnoreArg
 from . import constants as C
 
 def print_transform(tr: QTransform):
@@ -59,10 +59,31 @@ def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, ita
     return ar
 
 @lru_cache(maxsize=2048)
-def punc_actual_rect_cached(line: LruIgnoreArgs, char: str, family: str, size: float, weight: int, italic: bool, stroke_width: float) -> List[int]:
+def punc_actual_rect_cached(line: LruIgnoreArg, char: str, family: str, size: float, weight: int, italic: bool, stroke_width: float) -> List[int]:
     # QtextLine line is invisibale to lru
     return punc_actual_rect(line.line, family, size, weight, italic, stroke_width)
 
+def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
+    # some how qt6 line.draw doesn't allow pass FormatRange
+    if selected:    
+        qimg = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
+        qimg.fill(Qt.GlobalColor.transparent)
+        p = QPainter(qimg)
+        line.draw(p, QPointF(-line.x(), -line.y()))
+        p.end()
+        qimg.invertPixels(QImage.InvertMode.InvertRgba)
+        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg.createAlphaMask())
+    else:
+        line.draw(painter, QPointF(x, y))
+
+def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
+    o = None
+    if selected:
+        o = QTextLayout.FormatRange()
+        o.start = line.textStart()
+        o.length = line.textLength()
+        o.format = selection.format
+    line.draw(painter, QPointF(x, y), o)
 
 class CharFontFormat:
     def __init__(self, fcmt: QTextCharFormat) -> None:
@@ -100,7 +121,7 @@ class CharFontFormat:
 
     def punc_actual_rect(self, line: QTextLine, char: str, cache=False) -> List[int]:
         if cache:
-            line = LruIgnoreArgs(line=line)
+            line = LruIgnoreArg(line=line)
             ar = punc_actual_rect_cached(line, char, self.family, self.size, self.weight, self.font.italic(), self.stroke_width)
         else:
             ar =  punc_actual_rect(line, self.family, self.size, self.weight, self.font.italic(), self.stroke_width)
@@ -118,10 +139,21 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.line_spacing = 1.
         self.letter_spacing = 1.
 
+        self.x_offset_lst = []
+        self.y_offset_lst = []
+
         self.block_charfmt_lst = []
         self.block_ideal_width = []
+        self.need_ideal_width = False
+        self.block_ideal_height = []
+        self.need_ideal_height = False
         self._map_charidx2frag = []
         self._max_font_size = -1
+
+        self.foreground_pixmap: QPixmap = None
+        self.draw_foreground_only = False
+
+        self.relayout_on_changed = True
 
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
@@ -145,25 +177,29 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         return rect
 
     def updateDocumentMargin(self, margin):
-        doc_margin = self.document().documentMargin() * 2
-        self.max_height = doc_margin + self.available_height
-        self.max_width = doc_margin + self.available_width
+        doc_margin = self.document().documentMargin()
+        dm = margin - doc_margin
+        doc_margin *= 2
         self.document().setDocumentMargin(margin)
         margin *= 2
-        self.available_height = max(self.max_height -  margin, 0)
-        self.available_width = max(self.max_width - margin, 0)
+        self.max_height = margin + self.available_height
+        self.max_width = margin + self.available_width
 
     def documentSize(self) -> QSizeF:
         return QSizeF(self.max_width, self.max_height)
 
     def documentChanged(self, position: int, charsRemoved: int, charsAdded: int) -> None:
+        if not self.relayout_on_changed:
+            return
         self._max_font_size = -1
         block = self.document().firstBlock()
         self.block_charfmt_lst = []
         self.block_ideal_width = []
+        self.block_ideal_height = []
         self._map_charidx2frag = []
         while block.isValid():
             charfmt_lst, ideal_width, char_idx = [], -1, 0
+            ideal_height = 0
             charidx_map = {}
             it = block.begin()
             frag_idx = 0
@@ -171,11 +207,20 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                 fragment = it.fragment()
                 fcmt = fragment.charFormat()
                 cfmt = CharFontFormat(fcmt)
+                charfmt_lst.append(cfmt)
                 if cfmt.size > self._max_font_size:
                     self._max_font_size = cfmt.size
-                if ideal_width < cfmt.br.width():
-                    ideal_width = cfmt.br.width()
-                charfmt_lst.append(cfmt)
+
+                if self.need_ideal_width:
+                    w_ = cfmt.br.width()
+                    if ideal_width < w_:
+                        ideal_width = w_
+
+                if self.need_ideal_height:
+                    h_ = cfmt.punc_rect('fg')[0].height()
+                    if ideal_height < h_:
+                        ideal_height = h_
+
                 text_len = fragment.length()
                 for _ in range(text_len):
                     charidx_map[char_idx] = frag_idx
@@ -184,52 +229,31 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                 frag_idx += 1
             self.block_charfmt_lst.append(charfmt_lst)
             self.block_ideal_width.append(ideal_width)
+            self.block_ideal_height.append(ideal_height)
             self._map_charidx2frag.append(charidx_map)
             block = block.next()
         self.reLayout()
 
-    def max_font_size(self) -> float:
-        if self._max_font_size > 0:
-            return self._max_font_size
-        return self.document().defaultFont().pointSizeF()
-
-def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
-    # some how qt6 line.draw doesn't allow pass FormatRange
-    if selected:    
-        qimg = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
-        qimg.fill(Qt.GlobalColor.transparent)
-        p = QPainter(qimg)
-        line.draw(p, QPointF(-line.x(), -line.y()))
-        p.end()
-        qimg.invertPixels(QImage.InvertMode.InvertRgba)
-        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg.createAlphaMask())
-    else:
-        line.draw(painter, QPointF(x, y))
-
-def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
-    o = None
-    if selected:
-        o = QTextLayout.FormatRange()
-        o.start = line.textStart()
-        o.length = line.textLength()
-        o.format = selection.format
-    line.draw(painter, QPointF(x, y), o)
+    def max_font_size(self, to_px=False) -> float:
+        fs = self._max_font_size if self._max_font_size > 0 else self.document().defaultFont().pointSizeF()
+        if to_px:
+            fs = pt2px(fs)
+        return fs
 
 class VerticalTextDocumentLayout(SceneTextLayout):
 
     def __init__(self, doc: QTextDocument):
         super().__init__(doc)
-        self.x_offset_lst = []
-        self.y_offset_lst = []
+
         self.line_spaces_lst = []
         self.min_height = 0
         self.layout_left = 0
         self.force_single_char = True
         self.has_selection = False
-        self.punc_rect_cache = {} 
         self.punc_align_center = True
         self.draw_shifted = 0
 
+        self.need_ideal_width = True
         self.line_draw = line_draw_qt6 if C.FLAG_QT6 else line_draw_qt5
 
     @property
@@ -372,7 +396,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     self.line_draw(painter, line, -natral_shifted, yoff, selected, selection)
 
             block = block.next()
-        
+
+        if self.foreground_pixmap is not None:
+            painter.drawPixmap(0, 0, self.foreground_pixmap)
+
         if cursor_block is not None:
             block = cursor_block
             blk_text = block.text()
@@ -477,6 +504,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
         layout_first_block = block == doc.firstBlock()
         if layout_first_block:
+            
             x_offset = self.max_width - doc_margin - block_width
             self.x_offset_lst = [self.max_width - doc_margin]
             self.y_offset_lst = []
@@ -501,7 +529,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             else:
                 line.setLineWidth(block_width)
             
-            available_height = self.available_height
+            available_height = self.available_height + doc_margin
             text_len = line.textLength()
             num_rspaces, num_lspaces = 0, 0
             text = blk_text[char_idx: char_idx + text_len].replace('\n', '')
@@ -543,7 +571,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             if num_lspaces == 0 and tbr_h != 0:
                 ntw = line.naturalTextWidth()
                 shifted = ntw - cfmt.br.width()
-                available_height = available_height - shifted
                 if is_final_block:
                     self.draw_shifted = max(self.draw_shifted, shifted)
 
@@ -590,14 +617,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if self.letter_spacing != letter_spacing:
             self.letter_spacing = letter_spacing
             self.reLayout()
-        
+
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def __init__(self, doc: QTextDocument):
         super().__init__(doc)
-        self.x_offset_lst = []
-        self.y_offset_lst = []
+        self.need_ideal_height = True
 
     def reLayout(self):
         doc = self.document()
@@ -669,6 +695,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         fm = QFontMetrics(font)
         doc_margin = self.document().documentMargin()
 
+        idea_height = self.block_ideal_height[block.blockNumber()]
         if block == doc.firstBlock():
             self.x_offset_lst = []
             self.y_offset_lst = []
@@ -685,11 +712,11 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             line.setLeadingIncluded(False)
             line.setLineWidth(self.available_width)
             line.setPosition(QPointF(doc_margin, y_offset))
-            self.y_bottom = tbr.height() + y_offset + line.descent()    #????
-            y_offset += tbr.height() * self.line_spacing
+            self.y_bottom = idea_height + y_offset + line.descent()    #????
+            y_offset += idea_height * self.line_spacing
             line_idx += 1
         tl.endLayout()
-        self.y_offset_lst.append(y_offset)     # vertical text need center alignment ???
+        self.y_offset_lst.append(y_offset)
         return 1
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
@@ -732,6 +759,9 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             layout.draw(painter, QPointF(0, 0), selections, clip)
             block = block.next()
         
+        if self.foreground_pixmap is not None:
+            painter.drawPixmap(0, 0, self.foreground_pixmap)
+
         if cursor_block is not None:
             block = cursor_block
             blpos = block.position()

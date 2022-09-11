@@ -33,8 +33,6 @@ class MoveBlkItemsCommand(QUndoCommand):
             item.oldPos = item.pos()
 
     def redo(self):
-        # if len(self.new_pos_lst) == 0:
-        #     return
         for item, new_pos in zip(self.items, self.new_pos_lst):
             item.setPos(new_pos)
 
@@ -77,12 +75,31 @@ class ApplyFontformatCommand(QUndoCommand):
         return False
 
 
+class ApplyEffectCommand(QUndoCommand):
+    def __init__(self, items: List[TextBlkItem], fontformat: FontFormat):
+        super(ApplyEffectCommand, self).__init__()
+        self.items = items
+        self.old_fmt_lst: List[FontFormat] = []
+        self.new_fmt = fontformat
+        for item in items:
+            self.old_fmt_lst.append(item.get_fontformat())
+
+    def redo(self):
+        for item in self.items:
+            item.update_effect(self.new_fmt)
+            item.update()
+
+    def undo(self):
+        for item, fmt in zip(self.items, self.old_fmt_lst):
+            item.update_effect(fmt)
+            item.update()
+
 class ReshapeItemCommand(QUndoCommand):
     def __init__(self, item: TextBlkItem, parent=None):
         super(ReshapeItemCommand, self).__init__(parent)
         self.item = item
         self.oldRect = item.oldRect
-        self.newRect = item.rect()
+        self.newRect = item.absBoundingRect()
 
     def redo(self):
         self.item.setRect(self.newRect)
@@ -203,18 +220,29 @@ class AutoLayoutCommand(QUndoCommand):
         for item in items:
             self.new_html_lst.append(item.toHtml())
             self.new_rect_lst.append(item.absBoundingRect())
+        self.counter = 0
 
     def redo(self):
+        self.counter += 1
+        if self.counter <= 1:
+            return
         for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.new_html_lst, self.new_rect_lst):
-            item.setHtml(html)
             trans_widget.setPlainText(item.toPlainText())
-            item.setRect(rect)
+            item.setPlainText('')
+            item.setRect(rect, repaint=False)
+            item.setHtml(html)
+            if item.letter_spacing != 1:
+                item.setLetterSpacing(item.letter_spacing, force=True)
+            
 
     def undo(self):
         for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.old_html_lst, self.old_rect_lst):
-            item.setHtml(html)
             trans_widget.setPlainText(item.toPlainText())
-            item.setRect(rect)
+            item.setPlainText('')
+            item.setRect(rect, repaint=False)
+            item.setHtml(html)
+            if item.letter_spacing != 1:
+                item.setLetterSpacing(item.letter_spacing, force=True)
 
 
 class SceneTextManager(QObject):
@@ -237,6 +265,7 @@ class SceneTextManager(QObject):
 
         self.textEditList = textpanel.textEditList
         self.formatpanel = textpanel.formatpanel
+        self.formatpanel.effect_panel.apply.connect(self.on_apply_effect)
         self.formatpanel.global_format_changed.connect(self.onGlobalFormatChanged)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
@@ -468,8 +497,9 @@ class SceneTextManager(QObject):
 
         blk_font = blkitem.font()
         fmt = blkitem.get_fontformat()
+        blk_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, fmt.letter_spacing * 100)
         text_size_func = lambda text: get_text_size(QFontMetrics(blk_font), text)
-
+        
         src_is_cjk = is_cjk(self.config.dl.translate_source)
         tgt_is_cjk = is_cjk(self.config.dl.translate_target)
 
@@ -605,8 +635,8 @@ class SceneTextManager(QObject):
         if restore_charfmts:
             char_fmts = blkitem.get_char_fmts()        
         
+        blkitem.setRect(xywh, repaint=False)
         blkitem.setPlainText(new_text)
-        blkitem.setRect(xywh)
         if len(self.pairwidget_list) > blkitem.idx:
             self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
         if restore_charfmts:
@@ -617,6 +647,8 @@ class SceneTextManager(QObject):
         cpos = 0
         num_text = len(new_text)
         num_fmt = len(char_fmts)
+        blkitem.layout.relayout_on_changed = False
+        blkitem.repaint_on_changed = False
         for fmt_i in range(num_fmt):
             fmt = char_fmts[fmt_i]
             ori_char = text[fmt_i].strip()
@@ -636,7 +668,12 @@ class SceneTextManager(QObject):
                     cursor.setPosition(cpos)
                     cursor.setPosition(cpos+1, QTextCursor.MoveMode.KeepAnchor)
                     cursor.setCharFormat(fmt)
+                    cursor.setBlockCharFormat(fmt)
                     cpos += 1
+        blkitem.repaint_on_changed = True
+        blkitem.layout.relayout_on_changed = True
+        blkitem.layout.reLayout()
+        blkitem.repaint_background()
 
 
     def onEndCreateTextBlock(self, rect: QRectF):
@@ -675,6 +712,12 @@ class SceneTextManager(QObject):
         selected_blks = self.get_selected_blkitems()
         if len(selected_blks) > 0:
             self.canvasUndoStack.push(ApplyFontformatCommand(selected_blks, fontformat))
+
+    def on_apply_effect(self):
+        format = self.formatpanel.active_format
+        selected_blks = self.get_selected_blkitems()
+        if len(selected_blks) > 0:
+            self.canvasUndoStack.push(ApplyEffectCommand(selected_blks, format))
 
     def get_selected_blkitems(self) -> List[TextBlkItem]:
         selections = self.canvas.selectedItems()

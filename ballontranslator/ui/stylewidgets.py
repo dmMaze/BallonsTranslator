@@ -1,9 +1,9 @@
 from qtpy.QtWidgets import QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
-from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Signal, QSizeF, QObject, QEvent
+from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Signal
 from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPainter, QFontMetrics, QColor
 from typing import List, Union, Tuple
 
-from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
+from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
 
 
 class Widget(QWidget):
@@ -205,11 +205,13 @@ class PaintQSlider(QSlider):
 
     mouse_released = Signal()
 
-    def __init__(self, draw_content, *args, **kwargs):
-        super(PaintQSlider, self).__init__(*args, **kwargs)
+    def __init__(self, draw_content, orientation=Qt.Orientation.Horizontal, *args, **kwargs):
+        super(PaintQSlider, self).__init__(orientation, *args, **kwargs)
         self.draw_content = draw_content
         self.pressed: bool = False
         self.setStyle(SliderProxyStyle())
+        if orientation == Qt.Orientation.Horizontal:
+            self.setFixedHeight(HORSLIDER_FIXHEIGHT)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -305,3 +307,20 @@ class ConfigComboBox(QComboBox):
             self.setFixedWidth(width)
         else:
             self.setMaximumWidth(width)
+
+
+class ClickableLabel(QLabel):
+
+    clicked = Signal()
+
+    def __init__(self, text=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if text is not None:
+            self.setText(text)
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        return super().mousePressEvent(e)          
+
+

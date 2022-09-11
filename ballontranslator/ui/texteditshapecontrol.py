@@ -65,20 +65,22 @@ class ControlBlockItem(QGraphicsRectItem):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         self.ctrl.ctrlblockPressed()
+        blk_item = self.ctrl.blk_item
         if event.button() == Qt.MouseButton.LeftButton:
             if self.visible_rect.contains(event.pos()):
                 self.ctrl.reshaping = True
                 self.drag_mode = self.DRAG_RESHAPE
                 self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
-                self.ctrl.blk_item.startReshape()
+                blk_item.startReshape()
             else:
                 self.drag_mode = self.DRAG_ROTATE
                 self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
                 preview = self.ctrl.previewPixmap
-                preview.setPixmap(self.ctrl.blk_item.toPixmap())
+
+                preview.setPixmap(blk_item.toPixmap().copy(blk_item.unpadRect(blk_item.boundingRect()).toRect()))
                 preview.setOpacity(0.7)
                 preview.setVisible(True)
-                rotate_vec = event.scenePos() - self.ctrl.pos() - self.ctrl.boundingRect().center()
+                rotate_vec = event.scenePos() - self.ctrl.sceneBoundingRect().center()
                 self.updateAngleLabelPos()
                 rotation = np.rad2deg(math.atan2(rotate_vec.y(), rotate_vec.x()))
                 self.rotate_start = - rotation + self.ctrl.rotation() 
@@ -88,7 +90,7 @@ class ControlBlockItem(QGraphicsRectItem):
         angleLabel = self.ctrl.angleLabel
         sp = self.scenePos()
         gv = angleLabel.parent()
-        pos = gv.mapFromScene(sp.toPoint())
+        pos = gv.mapFromScene(sp)
         x = max(min(pos.x(), gv.width() - angleLabel.width()), 0)
         y = max(min(pos.y(), gv.height() - angleLabel.height()), 0)
         angleLabel.move(QPoint(x, y))
@@ -239,11 +241,12 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def updateBoundingRect(self):
         if self.blk_item is None:
             return
-        br = self.blk_item.boundingRect()
+        abr = self.blk_item.absBoundingRect(qrect=True)
+        br = QRectF(0, 0, abr.width(), abr.height())
         self.setRect(br)
         self.blk_item.setCenterTransform()
         self.setTransformOriginPoint(self.blk_item.transformOriginPoint())
-        self.setPos(self.blk_item.pos())
+        self.setPos(abr.x(), abr.y())
         self.setAngle(self.blk_item.angle)
 
     def setRect(self, *args): 
@@ -304,3 +307,4 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if self.need_rescale:
             self.updateScale(self.current_scale)
             self.need_rescale = False
+        self.setZValue(1)

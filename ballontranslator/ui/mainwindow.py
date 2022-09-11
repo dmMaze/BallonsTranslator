@@ -11,7 +11,7 @@ from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from dl.textdetector import TextBlock
 
-from .misc import ProjImgTrans, pt2px, pixmap2ndarray
+from .misc import ProjImgTrans, pt2px, FontFormat
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
@@ -21,6 +21,7 @@ from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
 from .io_thread import ImgSaveThread
 from .stylewidgets import FrameLessMessageBox
+from .preset_widget import PresetPanel
 from .constants import STYLESHEET_PATH, CONFIG_PATH
 from . import constants as C
 
@@ -108,6 +109,16 @@ class MainWindow(QMainWindow):
 
         self.drawingPanel = DrawingPanel(self.canvas, self.configPanel.inpaint_config_panel)
         self.textPanel = TextPanel(self.app, self.canvas)
+        self.textPanel.formatpanel.effect_panel.setParent(self)
+        self.textPanel.formatpanel.effect_panel.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.CustomizeWindowHint)
+        self.textPanel.formatpanel.fontfmtLabel.clicked.connect(self.show_presets)
+        self.presetPanel = PresetPanel(self)
+        self.presetPanel.setParent(self)
+        self.presetPanel.setWindowFlags(Qt.WindowType.Window)
+        self.presetPanel.global_fmt_str = self.textPanel.formatpanel.global_fontfmt_str
+        self.presetPanel.hide()
+        self.presetPanel.hide_signal.connect(self.save_config)
+        self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
         self.st_manager = SceneTextManager(self.app, self.canvas, self.textPanel)
 
         # comic trans pannel
@@ -177,6 +188,7 @@ class MainWindow(QMainWindow):
         self.configPanel.blockSignals(True)
         if self.config.open_recent_on_startup:
             self.configPanel.open_on_startup_checker.setChecked(True)
+        self.configPanel.let_effect_combox.setCurrentIndex(self.config.let_fnteffect_flag)
         self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
         self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
         self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)
@@ -193,6 +205,8 @@ class MainWindow(QMainWindow):
             self.bottomBar.texteditChecker.click()
         elif self.config.imgtrans_paintmode:
             self.bottomBar.paintChecker.click()
+
+        self.presetPanel.initPresets(self.config.font_presets)
 
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
@@ -537,6 +551,7 @@ class MainWindow(QMainWindow):
         override_fnt_stroke = self.config.let_fntstroke_flag == 1
         override_fnt_color = self.config.let_fntcolor_flag == 1
         override_alignment = self.config.let_alignment_flag == 1
+        override_effect = self.config.let_fnteffect_flag == 1
         gf = self.textPanel.formatpanel.global_format
         
         for blk in blk_list:
@@ -548,8 +563,18 @@ class MainWindow(QMainWindow):
                 blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
             if override_alignment:
                 blk._alignment = gf.alignment
+            if override_effect:
+                blk.opacity = gf.opacity
+                blk.shadow_color = gf.shadow_color
+                blk.shadow_radius = gf.shadow_radius
+                blk.shadow_strength = gf.shadow_strength
+                blk.shadow_offset = gf.shadow_offset
+            
             blk.line_spacing = gf.line_spacing
             blk.letter_spacing = gf.letter_spacing
+            sw = blk.stroke_width
+            if sw > 0:
+                blk.font_size -= int(blk.font_size * sw)
 
         self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
         
@@ -592,3 +617,11 @@ class MainWindow(QMainWindow):
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
+
+    def show_presets(self):
+        fmt = self.textPanel.formatpanel.active_format
+        fmt_name = self.textPanel.formatpanel.fontfmtLabel.text()
+        self.presetPanel.updateCurrentFontFormat(fmt, fmt_name)
+        self.presetPanel.show()
+
+
