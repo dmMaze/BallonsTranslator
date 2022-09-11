@@ -104,7 +104,7 @@ class PresetPanel(Widget):
     def __init__(self, parent: QWidget = None, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
 
-        self.setWindowTitle(self.tr('Presets'))
+        self.setWindowTitle(self.tr('Text Style Presets'))
         self.list_widget = PresetListWidget(self)
         self.new_btn = QPushButton(self.tr('New'))
         self.new_tip = self.tr('Create new preset: ')
