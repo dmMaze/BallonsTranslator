@@ -51,7 +51,7 @@ class SeparatorWidget(QFrame):
 
 
 class TaskProgressBar(Widget):
-    def __init__(self, task_name: str, description: str = '', *args, **kwargs) -> None:
+    def __init__(self, description: str = '', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.progressbar = QProgressBar(self)
@@ -84,24 +84,20 @@ class FrameLessMessageBox(QMessageBox):
 
 class ProgressMessageBox(QDialog):
     showed = Signal()
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, task_name: str = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setModal(True)
-        
-        self.detect_bar = TaskProgressBar('detect', self.tr('Detecting: '), self)
-        self.ocr_bar = TaskProgressBar('ocr', self.tr('OCR: '), self)
-        self.inpaint_bar = TaskProgressBar('inpaint', self.tr('Inpainting: '), self)
-        self.translate_bar = TaskProgressBar('translate', self.tr('Translating: '), self)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self.detect_bar)
-        layout.addWidget(self.ocr_bar)
-        layout.addWidget(self.inpaint_bar)
-        layout.addWidget(self.translate_bar)
         layout.setSpacing(0)
         layout.setContentsMargins(20, 10, 20, 30)
+
+        self.task_progress_bar: TaskProgressBar = None
+        if task_name is not None:
+            self.task_progress_bar = TaskProgressBar(task_name)
+            layout.addWidget(self.task_progress_bar)
 
         self.setStyleSheet("""
             QWidget {
@@ -125,6 +121,34 @@ class ProgressMessageBox(QDialog):
             }
         """)
 
+    def updateTaskProgress(self, value: int, msg: str = ''):
+        if self.task_progress_bar is not None:
+            self.task_progress_bar.updateProgress(value, msg)
+
+    def setTaskName(self, task_name: str):
+        if self.task_progress_bar is not None:
+            self.task_progress_bar.description = task_name
+
+    def showEvent(self, e: QShowEvent) -> None:
+        self.showed.emit()
+        return super().showEvent(e)
+
+
+class ImgtransProgressMessageBox(ProgressMessageBox):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(None, *args, **kwargs)
+        
+        self.detect_bar = TaskProgressBar(self.tr('Detecting: '), self)
+        self.ocr_bar = TaskProgressBar(self.tr('OCR: '), self)
+        self.inpaint_bar = TaskProgressBar(self.tr('Inpainting: '), self)
+        self.translate_bar = TaskProgressBar(self.tr('Translating: '), self)
+
+        layout = self.layout()
+        layout.addWidget(self.detect_bar)
+        layout.addWidget(self.ocr_bar)
+        layout.addWidget(self.inpaint_bar)
+        layout.addWidget(self.translate_bar)
+
     def updateDetectProgress(self, value: int, msg: str = ''):
         self.detect_bar.updateProgress(value, msg)
 
@@ -142,10 +166,6 @@ class ProgressMessageBox(QDialog):
         self.updateOCRProgress(0)
         self.updateInpaintProgress(0)
         self.updateTranslateProgress(0)
-
-    def showEvent(self, e: QShowEvent) -> None:
-        self.showed.emit()
-        return super().showEvent(e)
 
 
 class ColorPicker(QLabel):

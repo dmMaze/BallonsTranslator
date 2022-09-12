@@ -4,47 +4,47 @@
 <context>
     <name>BottomBar</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="560"/>
+        <location filename="../../ui/mainwindowbars.py" line="558"/>
         <source>Enable/disable ocr</source>
         <translation>启用/禁用OCR</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="564"/>
+        <location filename="../../ui/mainwindowbars.py" line="562"/>
         <source>Enable/disable translation</source>
         <translation>启用/禁用机翻</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="568"/>
+        <location filename="../../ui/mainwindowbars.py" line="566"/>
         <source>translate page</source>
         <translation>翻译本页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="568"/>
+        <location filename="../../ui/mainwindowbars.py" line="566"/>
         <source>stop</source>
         <translation>停止</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="568"/>
+        <location filename="../../ui/mainwindowbars.py" line="566"/>
         <source>translate current page</source>
         <translation>翻译本页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="568"/>
+        <location filename="../../ui/mainwindowbars.py" line="566"/>
         <source>stop translation</source>
         <translation>停止翻译</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="577"/>
+        <location filename="../../ui/mainwindowbars.py" line="575"/>
         <source>Enable/disable paint mode</source>
         <translation>启用/禁用画板</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="581"/>
+        <location filename="../../ui/mainwindowbars.py" line="579"/>
         <source>Enable/disable text edit mode</source>
         <translation>启用/禁用文本编辑</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="587"/>
+        <location filename="../../ui/mainwindowbars.py" line="585"/>
         <source>Original image transparency: </source>
         <translation>原图透明度: </translation>
     </message>
@@ -52,17 +52,17 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ui/canvas.py" line="460"/>
+        <location filename="../../ui/canvas.py" line="461"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="461"/>
+        <location filename="../../ui/canvas.py" line="462"/>
         <source>Apply font formatting</source>
         <translation>应用字体格式</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="462"/>
+        <location filename="../../ui/canvas.py" line="463"/>
         <source>Auto layout</source>
         <translation>自动排版</translation>
     </message>
@@ -178,7 +178,7 @@
 <context>
     <name>DLManager</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="645"/>
+        <location filename="../../ui/dl_manager.py" line="646"/>
         <source>Invalid</source>
         <translation>不可用</translation>
     </message>
@@ -189,6 +189,19 @@
         <location filename="../../ui/drawingpanel.py" line="287"/>
         <source>Mask Transparency</source>
         <translation>掩膜透明度</translation>
+    </message>
+</context>
+<context>
+    <name>ExportDocThread</name>
+    <message>
+        <location filename="../../ui/io_thread.py" line="91"/>
+        <source>Export as doc...</source>
+        <translation>导出word文档...</translation>
+    </message>
+    <message>
+        <location filename="../../ui/io_thread.py" line="97"/>
+        <source>Overwrite </source>
+        <translation>覆盖</translation>
     </message>
 </context>
 <context>
@@ -255,11 +268,47 @@
     </message>
 </context>
 <context>
+    <name>ImgtransProgressMessageBox</name>
+    <message>
+        <location filename="../../ui/stylewidgets.py" line="141"/>
+        <source>Detecting: </source>
+        <translation>检测: </translation>
+    </message>
+    <message>
+        <location filename="../../ui/stylewidgets.py" line="142"/>
+        <source>OCR: </source>
+        <translation>OCR: </translation>
+    </message>
+    <message>
+        <location filename="../../ui/stylewidgets.py" line="143"/>
+        <source>Inpainting: </source>
+        <translation>修复: </translation>
+    </message>
+    <message>
+        <location filename="../../ui/stylewidgets.py" line="144"/>
+        <source>Translating: </source>
+        <translation>翻译: </translation>
+    </message>
+</context>
+<context>
     <name>ImgtransThread</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="317"/>
+        <location filename="../../ui/dl_manager.py" line="318"/>
         <source>Translation Failed.</source>
         <translation>翻译失败.</translation>
+    </message>
+</context>
+<context>
+    <name>ImportDocThread</name>
+    <message>
+        <location filename="../../ui/io_thread.py" line="125"/>
+        <source>Import doc...</source>
+        <translation>导入word文档...</translation>
+    </message>
+    <message>
+        <location filename="../../ui/io_thread.py" line="132"/>
+        <source>Import *.docx</source>
+        <translation>导入*.docx</translation>
     </message>
 </context>
 <context>
@@ -286,7 +335,7 @@
 <context>
     <name>InpaintThread</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="108"/>
+        <location filename="../../ui/dl_manager.py" line="109"/>
         <source>Inpainting Failed.</source>
         <translation>修复失败.</translation>
     </message>
@@ -294,7 +343,7 @@
 <context>
     <name>InpainterStatusButton</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="78"/>
+        <location filename="../../ui/mainwindowbars.py" line="79"/>
         <source>Inpainter: </source>
         <translation>修复工具: </translation>
     </message>
@@ -302,63 +351,78 @@
 <context>
     <name>LeftBar</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="146"/>
+        <location filename="../../ui/mainwindowbars.py" line="150"/>
         <source>Open Folder ...</source>
         <translation>打开文件夹...</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="151"/>
+        <location filename="../../ui/mainwindowbars.py" line="155"/>
         <source>Open Project ... *.json</source>
         <translation>打开项目文件...*.json</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="155"/>
+        <location filename="../../ui/mainwindowbars.py" line="159"/>
         <source>Save Project</source>
         <translation>保存项目</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="160"/>
+        <location filename="../../ui/mainwindowbars.py" line="164"/>
         <source>Export as Doc</source>
-        <translation type="unfinished"></translation>
+        <translation>导出为word文档</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="163"/>
+        <location filename="../../ui/mainwindowbars.py" line="167"/>
         <source>Import from Doc</source>
-        <translation type="unfinished"></translation>
+        <translation>导入word文档</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="166"/>
+        <location filename="../../ui/mainwindowbars.py" line="170"/>
         <source>Open Recent</source>
         <translation>打开最近</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="273"/>
+        <source>Select Directory</source>
+        <translation>选择文件夹</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="280"/>
+        <source>Import *.docx</source>
+        <translation>导入*.docx</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../ui/mainwindow.py" line="228"/>
+        <location filename="../../ui/mainwindow.py" line="262"/>
         <source>Failed to load project </source>
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="606"/>
+        <location filename="../../ui/mainwindow.py" line="622"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="606"/>
+        <location filename="../../ui/mainwindow.py" line="622"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="620"/>
+        <location filename="../../ui/mainwindow.py" line="636"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindow.py" line="667"/>
+        <source>Export to </source>
+        <translation>导出至</translation>
     </message>
 </context>
 <context>
     <name>ModuleThread</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="51"/>
+        <location filename="../../ui/dl_manager.py" line="52"/>
         <source>Failed to set </source>
         <translation>无法设置 </translation>
     </message>
@@ -457,22 +521,22 @@
     <message>
         <location filename="../../ui/stylewidgets.py" line="93"/>
         <source>Detecting: </source>
-        <translation>检测: </translation>
+        <translation type="obsolete">检测: </translation>
     </message>
     <message>
         <location filename="../../ui/stylewidgets.py" line="94"/>
         <source>OCR: </source>
-        <translation>OCR: </translation>
+        <translation type="obsolete">OCR: </translation>
     </message>
     <message>
         <location filename="../../ui/stylewidgets.py" line="95"/>
         <source>Inpainting: </source>
-        <translation>修复: </translation>
+        <translation type="obsolete">修复: </translation>
     </message>
     <message>
         <location filename="../../ui/stylewidgets.py" line="96"/>
         <source>Translating: </source>
-        <translation>翻译: </translation>
+        <translation type="obsolete">翻译: </translation>
     </message>
 </context>
 <context>
@@ -567,6 +631,14 @@
     </message>
 </context>
 <context>
+    <name>ThreadBase</name>
+    <message>
+        <location filename="../../ui/io_thread.py" line="27"/>
+        <source>Execution error</source>
+        <translation>执行错误</translation>
+    </message>
+</context>
+<context>
     <name>TranslateThread</name>
     <message>
         <location filename="../../ui/dl_manager.py" line="168"/>
@@ -579,17 +651,17 @@
         <translation type="obsolete">支持语言列表: </translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="169"/>
+        <location filename="../../ui/dl_manager.py" line="170"/>
         <source>Failed to set translator </source>
         <translation>翻译器设置失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="221"/>
+        <location filename="../../ui/dl_manager.py" line="222"/>
         <source> is required for </source>
         <translation>是翻译器必填项</translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="219"/>
+        <location filename="../../ui/dl_manager.py" line="220"/>
         <source>Translation Failed.</source>
         <translation>翻译失败.</translation>
     </message>
@@ -610,17 +682,17 @@
 <context>
     <name>TranslatorStatusButton</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="71"/>
+        <location filename="../../ui/mainwindowbars.py" line="72"/>
         <source>Translator: </source>
         <translation>翻译器： </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="71"/>
+        <location filename="../../ui/mainwindowbars.py" line="72"/>
         <source>Source: </source>
         <translation>源语言: </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="71"/>
+        <location filename="../../ui/mainwindowbars.py" line="72"/>
         <source>Target: </source>
         <translation>目标语言: </translation>
     </message>

@@ -2,7 +2,7 @@ import os.path as osp
 import os, re
 from typing import List
 
-from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem
+from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox
 from qtpy.QtCore import Qt, QPoint, QSize
 from qtpy.QtGui import QKeyEvent, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont
 
@@ -11,7 +11,8 @@ from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from dl.textdetector import TextBlock
 
-from .misc import ProjImgTrans, pt2px, FontFormat
+from .misc import pt2px
+from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
@@ -19,7 +20,7 @@ from .imgtranspanel import TextPanel
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
-from .io_thread import ImgSaveThread
+from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .stylewidgets import FrameLessMessageBox
 from .preset_widget import PresetPanel
 from .constants import STYLESHEET_PATH, CONFIG_PATH
@@ -34,7 +35,6 @@ class PageListView(QListWidget):
 
 class MainWindow(QMainWindow):
 
-    proj_directory = None
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
     opening_dir = False
@@ -48,20 +48,26 @@ class MainWindow(QMainWindow):
             QGuiApplication.setFont(yahei)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.app = app
-        self.imsave_thread = ImgSaveThread()
-        
+        self.setupThread()
         self.setupUi()
         self.setupConfig()
         self.setupShortcuts()
         self.showMaximized()
 
         if open_dir != '' and osp.exists(open_dir):
-            self.openDir(open_dir)
+            self.openProj(open_dir)
         elif self.config.open_recent_on_startup:
             if len(self.leftBar.recent_proj_list) > 0:
                 proj_dir = self.leftBar.recent_proj_list[0]
                 if osp.exists(proj_dir):
-                    self.openDir(proj_dir)
+                    self.OpenProj(proj_dir)
+
+    def setupThread(self):
+        self.imsave_thread = ImgSaveThread()
+        self.export_doc_thread = ExportDocThread()
+        self.export_doc_thread.fin_io.connect(self.on_fin_export_doc)
+        self.import_doc_thread = ImportDocThread(self)
+        self.import_doc_thread.fin_io.connect(self.on_fin_import_doc)
 
     def setupUi(self):
         screen_size = QGuiApplication.primaryScreen().geometry().size()
@@ -73,7 +79,10 @@ class MainWindow(QMainWindow):
         self.leftBar.configChecked.connect(self.setupConfigUI)
         
         self.leftBar.open_dir.connect(self.openDir)
+        self.leftBar.open_json_proj.connect(self.openJsonProj)
         self.leftBar.save_proj.connect(self.save_proj)
+        self.leftBar.export_doc.connect(self.on_export_doc)
+        self.leftBar.import_doc.connect(self.on_import_doc)
 
         self.pageList = PageListView()
         self.pageList.setHidden(True)
@@ -216,21 +225,41 @@ class MainWindow(QMainWindow):
     def setupConfigUI(self):
         self.centralStackWidget.setCurrentIndex(1)
 
+    def OpenProj(self, proj_path: str):
+        if osp.isdir(proj_path):
+            self.openDir(proj_path)
+        else:
+            self.openJsonProj(proj_path)
+
     def openDir(self, directory: str):
-        self.opening_dir = True
         try:
-            self.st_manager.clearSceneTextitems()
+            self.opening_dir = True
             self.imgtrans_proj.load(directory)
+            self.st_manager.clearSceneTextitems()
+            self.titleBar.setTitleContent(osp.basename(directory))
+            self.updatePageList()
+            self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
             LOGGER.exception(e)
             LOGGER.warning("Failed to load project from " + directory)
             self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + directory, '')
             return
-        self.proj_directory = directory
-        self.titleBar.setTitleContent(osp.basename(directory))
-        self.updatePageList()
-        self.opening_dir = False
+
+    def openJsonProj(self, json_path: str):
+        try:
+            self.opening_dir = True
+            self.imgtrans_proj.load_from_json(json_path)
+            self.st_manager.clearSceneTextitems()
+            self.leftBar.updateRecentProjList(self.imgtrans_proj.proj_path)
+            self.updatePageList()
+            self.titleBar.setTitleContent(osp.basename(self.imgtrans_proj.proj_path))
+            self.opening_dir = False
+        except Exception as e:
+            self.opening_dir = False
+            LOGGER.exception(e)
+            LOGGER.warning("Failed to load project from " + json_path)
+            self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + json_path, '')
         
     def updatePageList(self):
         if self.pageList.count() != 0:
@@ -239,7 +268,7 @@ class MainWindow(QMainWindow):
             item_func = lambda imgname: QListWidgetItem(imgname)
         else:
             item_func = lambda imgname:\
-                QListWidgetItem(QIcon(osp.join(self.proj_directory, imgname)), imgname)
+                QListWidgetItem(QIcon(osp.join(self.imgtrans_proj.directory, imgname)), imgname)
         for imgname in self.imgtrans_proj.pages:
             lstitem =  item_func(imgname)
             self.pageList.addItem(lstitem)
@@ -623,5 +652,23 @@ class MainWindow(QMainWindow):
         fmt_name = self.textPanel.formatpanel.fontfmtLabel.text()
         self.presetPanel.updateCurrentFontFormat(fmt, fmt_name)
         self.presetPanel.show()
+
+    def on_export_doc(self):
+        self.export_doc_thread.exportAsDoc(self.imgtrans_proj)
+        pass
+
+    def on_import_doc(self):
+        self.st_manager.updateTextBlkList()
+
+        self.import_doc_thread.importDoc(self.imgtrans_proj)
+
+    def on_fin_export_doc(self):
+        msg = QMessageBox()
+        msg.setText(self.tr('Export to ') + self.imgtrans_proj.doc_path())
+        msg.exec_()
+
+    def on_fin_import_doc(self):
+        self.st_manager.updateSceneTextitems()
+
 
 

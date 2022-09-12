@@ -18,3 +18,5 @@ tmp
 *.zip
 *.ipynb
 *.dll
+*.docx
+*.doc

@@ -4,7 +4,7 @@ sys.path.append(os.getcwd())
 
 from dl import ComicTextDetector
 from utils.io_utils import imread, imwrite
-from ui.misc import ProjImgTrans
+from ui.imgtrans_proj import ProjImgTrans
 
 if __name__ == '__main__':
 

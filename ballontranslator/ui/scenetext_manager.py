@@ -743,6 +743,7 @@ class SceneTextManager(QObject):
         for blk_item, trans_pair in zip(self.textblk_item_list, self.pairwidget_list):
             if not blk_item.document().isEmpty():
                 blk_item.blk.rich_text = blk_item.toHtml()
+                blk_item.blk.translation = blk_item.toPlainText()
             else:
                 blk_item.blk.rich_text = ''
                 blk_item.blk.translation = ''

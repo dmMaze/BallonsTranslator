@@ -11,7 +11,8 @@ try:
 except:
     from qtpy.QtGui import QUndoStack
 
-from .misc import ndarray2pixmap, ProjImgTrans
+from .misc import ndarray2pixmap
+from .imgtrans_proj import ProjImgTrans
 from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel

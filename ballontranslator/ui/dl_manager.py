@@ -15,9 +15,10 @@ from dl import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
 import dl
 dl.translators.SYSTEM_LANG = QLocale.system().name()
 
-from .stylewidgets import ProgressMessageBox
+from .stylewidgets import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
-from .misc import ProjImgTrans, DLModuleConfig, ProgramConfig
+from .misc import DLModuleConfig, ProgramConfig
+from .imgtrans_proj import ProjImgTrans
 
 class ModuleThread(QThread):
 
@@ -413,7 +414,7 @@ class DLManager(QObject):
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
         self.inpaint_thread.exception_occurred.connect(self.handleRunTimeException)        
 
-        self.progress_msgbox = ProgressMessageBox()
+        self.progress_msgbox = ImgtransProgressMessageBox()
 
         self.imgtrans_thread = ImgtransThread(dl_config, self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread)
         self.imgtrans_thread.update_detect_progress.connect(self.on_update_detect_progress)

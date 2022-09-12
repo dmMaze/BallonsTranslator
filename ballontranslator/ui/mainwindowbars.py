@@ -1,6 +1,6 @@
 import os.path as osp
 from collections import OrderedDict
-from typing import List
+from typing import List, Union
 
 from .stylewidgets import Widget, PaintQSlider
 from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, DRAG_DIR_NONE, DRAG_DIR_VER, DRAG_DIR_BDIAG, DRAG_DIR_FDIAG, LEFTBAR_WIDTH, LEFTBTN_WIDTH
@@ -123,9 +123,12 @@ class LeftBar(Widget):
     imgTransChecked = Signal()
     configChecked = Signal()
     open_dir = Signal(str)
+    open_json_proj = Signal(str)
     save_proj = Signal()
     save_config = Signal()
     run_imgtrans = Signal()
+    export_doc = Signal()
+    import_doc = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.mainwindow: QMainWindow = mainwindow
@@ -159,10 +162,10 @@ class LeftBar(Widget):
 
         actionExportAsDoc = QAction(self)
         actionExportAsDoc.setText(self.tr("Export as Doc"))
-        actionExportAsDoc.triggered.connect(self.onExportAsDoc)
+        actionExportAsDoc.triggered.connect(self.export_doc)
         actionImportFromDoc = QAction(self)
         actionImportFromDoc.setText(self.tr("Import from Doc"))
-        actionImportFromDoc.triggered.connect(self.onImportFromDoc)
+        actionImportFromDoc.triggered.connect(self.import_doc)
 
         self.recentMenu = QMenu(self.tr("Open Recent"), self)
         
@@ -208,7 +211,7 @@ class LeftBar(Widget):
             self.recentMenu.addAction(action)
             action.triggered.connect(self.recentActionTriggered)
 
-    def updateRecentProjList(self, proj_list: List[str]):
+    def updateRecentProjList(self, proj_list: Union[str, List[str]]):
         if len(proj_list) == 0:
             return
         if isinstance(proj_list, str):
@@ -266,26 +269,20 @@ class LeftBar(Widget):
             self.recentMenu.removeAction(self.sender())
         
     def onOpenFolder(self) -> None:
-        # newdir = str(QFileDialog.getExistingDirectory(self, "Select Directory")).replace("/", "\\")
         dialog = QFileDialog()
-        dialog.setDefaultSuffix('.jpg')
-        folder_path = str(dialog.getExistingDirectory(self, "Select Directory"))
+        folder_path = str(dialog.getExistingDirectory(self, self.tr("Select Directory")))
         if osp.exists(folder_path):
             self.updateRecentProjList(folder_path)
             self.open_dir.emit(folder_path)
-        # self.open_dir.emit(folder_path)
 
     def onOpenProj(self):
-        self.open_dir.emit()
+        dialog = QFileDialog()
+        json_path = str(dialog.getOpenFileUrl(self.parent(), self.tr('Import *.docx'), filter="*.json")[0].toLocalFile())
+        if osp.exists(json_path):
+            self.open_json_proj.emit(json_path)
 
     def onSaveProj(self):
         self.save_proj.emit()
-
-    def onExportAsDoc(self):
-        raise NotImplementedError
-
-    def onImportFromDoc(self):
-        raise NotImplementedError
 
     def stateCheckerChanged(self, checker_type: str):
         if checker_type == 'imgtrans':
