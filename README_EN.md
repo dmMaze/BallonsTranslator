@@ -51,7 +51,7 @@ python ballontranslator
 ```
 
 
-To use Sugoi translator(Japanese-English only), download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data.  
+To use Sugoi translator(Japanese-English only), download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data/models.  
 
 ## Fully automated translation
 **It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.**, Please select the desired translator and set the source and target languages the first time you run the application. Open a folder containing images that need translation, click the "Run" button and wait for the process to complete.  
@@ -128,7 +128,7 @@ Support English and Japanese text detection, training code and more details can 
  * papago  
  * DeepL & Sugoi translator(and it's CT2 Translation conversion) thanks to [Snowad14](https://github.com/Snowad14)  
 
- To add a new translator, please reference [加别的翻译器](doc/加别的翻译器.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
+ To add a new translator, please reference [how_to_add_new_translator](doc/how_to_add_new_translator.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
 
 
 ## Misc

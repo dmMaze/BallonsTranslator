@@ -53,7 +53,7 @@ pip install torch torchvision torchaudio --extra-index-url https://download.pyto
 python ballontranslator
 ```
 
-如果要使用Sugoi翻译器(仅英译日), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data.  
+如果要使用Sugoi翻译器(仅英译日), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data/models.  
 
 ## 一键翻译
 **建议在命令行终端下运行程序**, 首次运行请先配置好源语言/目标语言, 打开一个带图片的文件夹, 点击Run等待翻译完成  

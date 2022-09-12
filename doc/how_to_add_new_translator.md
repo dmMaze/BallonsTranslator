@@ -1,4 +1,4 @@
-If know how to to call the target translator api or translation model in python, implement a class in ballontranslator/dl/translators.__init__.py as follows to use it in the app.      
+If you know how to to call the target translator api or translation model in python, implement a class in ballontranslator/dl/translators.__init__.py as follows to use it in the app.      
 
 The following example DummyTranslator is commented out of ballontranslator/dl/translator/__init__.py and can be uncommented to test in the program.
 
