@@ -9,7 +9,7 @@ fugashi
 unidic_lite
 tqdm
 opencv-python==4.5.*
-PyQt5<=5.15.4
+PyQt5<=5.15.4   # or PyQt6>=6.3.1
 shapely
 pyclipper
 einops
@@ -20,3 +20,6 @@ qtpy
 pkuseg
 sentencepiece
 ctranslate2
+python-docx
+docx2txt
+piexif

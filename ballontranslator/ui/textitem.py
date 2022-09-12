@@ -261,7 +261,7 @@ class TextBlkItem(QGraphicsTextItem):
             w = min(max_w, x1) - x
         if qrect:
             return QRectF(x, y, w, h)
-        return [x, y, w, h]
+        return [int(x), int(y), (w), int(h)]
 
     def shape(self) -> QPainterPath:
         path = QPainterPath()

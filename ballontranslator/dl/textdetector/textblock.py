@@ -166,7 +166,7 @@ class TextBlock(object):
             min_bbox = self.min_rect(rotate_back=False)[0]
             x, y = min_bbox[0]
             w, h = min_bbox[2] - min_bbox[0]
-            return [x, y, w, h]
+            return [int(x), int(y), int(w), int(h)]
         return self._bounding_rect
 
     def __getattribute__(self, name: str):

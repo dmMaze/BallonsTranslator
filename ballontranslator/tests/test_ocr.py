@@ -4,9 +4,8 @@ sys.path.append(osp.dirname(osp.dirname(__file__)))
 
 from tqdm import tqdm
 from dl import OCRBase, OCRMIT32px, OCRMIT48pxCTC
-from utils.io_utils import imread, imwrite
 
-from ui.misc import ProjImgTrans
+from ui.imgtrans_proj import ProjImgTrans
 from ui.constants import PROGRAM_PATH
 os.chdir(PROGRAM_PATH)
 

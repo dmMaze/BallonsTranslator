@@ -126,6 +126,8 @@ class LeftBar(Widget):
     save_proj = Signal()
     save_config = Signal()
     run_imgtrans = Signal()
+    export_doc = Signal()
+    import_doc = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.mainwindow: QMainWindow = mainwindow
@@ -159,10 +161,10 @@ class LeftBar(Widget):
 
         actionExportAsDoc = QAction(self)
         actionExportAsDoc.setText(self.tr("Export as Doc"))
-        actionExportAsDoc.triggered.connect(self.onExportAsDoc)
+        actionExportAsDoc.triggered.connect(self.export_doc)
         actionImportFromDoc = QAction(self)
         actionImportFromDoc.setText(self.tr("Import from Doc"))
-        actionImportFromDoc.triggered.connect(self.onImportFromDoc)
+        actionImportFromDoc.triggered.connect(self.import_doc)
 
         self.recentMenu = QMenu(self.tr("Open Recent"), self)
         
@@ -280,12 +282,6 @@ class LeftBar(Widget):
 
     def onSaveProj(self):
         self.save_proj.emit()
-
-    def onExportAsDoc(self):
-        raise NotImplementedError
-
-    def onImportFromDoc(self):
-        raise NotImplementedError
 
     def stateCheckerChanged(self, checker_type: str):
         if checker_type == 'imgtrans':

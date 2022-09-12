@@ -4,9 +4,7 @@ sys.path.append(osp.dirname(osp.dirname(__file__)))
 
 from dl import InpainterBase, AOTInpainter, PatchmatchInpainter
 from utils.io_utils import imread, imwrite, find_all_imgs
-from ui.misc import ProjImgTrans
-
-from ui.misc import ProjImgTrans, DLModuleConfig
+from ui.imgtrans_proj import ProjImgTrans
 from ui.constants import PROGRAM_PATH
 os.chdir(PROGRAM_PATH)
 
