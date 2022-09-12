@@ -95,6 +95,12 @@ The value of the parameter can also be a dictionary, in which case it must be de
         }
     }
 ```  
+<p align = "center">
+<img src="./src/new_translator.png">
+</p>
+<p align = "center">
+setup_params displayed in the app's config panel.
+</p>  
 
 Implement ```_setup_translator```: initialized the translator here. 
 
