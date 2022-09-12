@@ -44,9 +44,12 @@ class ProjImgTrans:
     def proj_name(self) -> str:
         return self.type+'_'+osp.basename(self.directory)
 
-    def load(self, directory: str) -> bool:
+    def load(self, directory: str, json_path: str = None) -> bool:
         self.directory = directory
-        self.proj_path = osp.join(self.directory, self.proj_name() + '.json')
+        if json_path is None:
+            self.proj_path = osp.join(self.directory, self.proj_name() + '.json')
+        else:
+            self.proj_path = json_path
         new_proj = False
         if not osp.exists(self.proj_path):
             new_proj = True
@@ -104,6 +107,15 @@ class ProjImgTrans:
         if set_img_failed:
             if len(self.pages) > 0:
                 self.set_current_img_byidx(0)
+
+    def load_from_json(self, json_path: str):
+        old_dir = self.directory
+        directory = osp.dirname(json_path)
+        try:
+            self.load(directory, json_path=json_path)
+        except Exception as e:
+            self.load(old_dir)
+            raise ProjectLoadFailureException(e)
 
     def set_current_img(self, imgname: str):
         if imgname is not None:

@@ -35,7 +35,6 @@ class PageListView(QListWidget):
 
 class MainWindow(QMainWindow):
 
-    proj_directory = None
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
     opening_dir = False
@@ -56,12 +55,12 @@ class MainWindow(QMainWindow):
         self.showMaximized()
 
         if open_dir != '' and osp.exists(open_dir):
-            self.openDir(open_dir)
+            self.openProj(open_dir)
         elif self.config.open_recent_on_startup:
             if len(self.leftBar.recent_proj_list) > 0:
                 proj_dir = self.leftBar.recent_proj_list[0]
                 if osp.exists(proj_dir):
-                    self.openDir(proj_dir)
+                    self.OpenProj(proj_dir)
 
     def setupThread(self):
         self.imsave_thread = ImgSaveThread()
@@ -80,6 +79,7 @@ class MainWindow(QMainWindow):
         self.leftBar.configChecked.connect(self.setupConfigUI)
         
         self.leftBar.open_dir.connect(self.openDir)
+        self.leftBar.open_json_proj.connect(self.openJsonProj)
         self.leftBar.save_proj.connect(self.save_proj)
         self.leftBar.export_doc.connect(self.on_export_doc)
         self.leftBar.import_doc.connect(self.on_import_doc)
@@ -225,21 +225,41 @@ class MainWindow(QMainWindow):
     def setupConfigUI(self):
         self.centralStackWidget.setCurrentIndex(1)
 
+    def OpenProj(self, proj_path: str):
+        if osp.isdir(proj_path):
+            self.openDir(proj_path)
+        else:
+            self.openJsonProj(proj_path)
+
     def openDir(self, directory: str):
-        self.opening_dir = True
         try:
-            self.st_manager.clearSceneTextitems()
+            self.opening_dir = True
             self.imgtrans_proj.load(directory)
+            self.st_manager.clearSceneTextitems()
+            self.titleBar.setTitleContent(osp.basename(directory))
+            self.updatePageList()
+            self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
             LOGGER.exception(e)
             LOGGER.warning("Failed to load project from " + directory)
             self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + directory, '')
             return
-        self.proj_directory = directory
-        self.titleBar.setTitleContent(osp.basename(directory))
-        self.updatePageList()
-        self.opening_dir = False
+
+    def openJsonProj(self, json_path: str):
+        try:
+            self.opening_dir = True
+            self.imgtrans_proj.load_from_json(json_path)
+            self.st_manager.clearSceneTextitems()
+            self.leftBar.updateRecentProjList(self.imgtrans_proj.proj_path)
+            self.updatePageList()
+            self.titleBar.setTitleContent(osp.basename(self.imgtrans_proj.proj_path))
+            self.opening_dir = False
+        except Exception as e:
+            self.opening_dir = False
+            LOGGER.exception(e)
+            LOGGER.warning("Failed to load project from " + json_path)
+            self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + json_path, '')
         
     def updatePageList(self):
         if self.pageList.count() != 0:
@@ -248,7 +268,7 @@ class MainWindow(QMainWindow):
             item_func = lambda imgname: QListWidgetItem(imgname)
         else:
             item_func = lambda imgname:\
-                QListWidgetItem(QIcon(osp.join(self.proj_directory, imgname)), imgname)
+                QListWidgetItem(QIcon(osp.join(self.imgtrans_proj.directory, imgname)), imgname)
         for imgname in self.imgtrans_proj.pages:
             lstitem =  item_func(imgname)
             self.pageList.addItem(lstitem)
@@ -649,5 +669,6 @@ class MainWindow(QMainWindow):
 
     def on_fin_import_doc(self):
         self.st_manager.updateSceneTextitems()
+
 
 
