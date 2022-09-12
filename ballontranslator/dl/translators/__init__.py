@@ -458,7 +458,7 @@ class YandexTranslator(TranslatorBase):
                 tr_list.append('')
         return tr_list
 
-# # "dummy translator" is the name showed in the app
+# "dummy translator" is the name showed in the app
 # @register_translator('dummy translator')
 # class DummyTranslator(TranslatorBase):
 
@@ -482,9 +482,9 @@ class YandexTranslator(TranslatorBase):
 #         do the setup here.  
 #         keys of lang_map are those languages options showed in the app, 
 #         assign corresponding language keys accepted by API to supported languages.  
-#         This translator only supports Chinese, Japanese, and English.
+#         Only the languages supported by the translator are assigned here, this translator only supports Japanese, and English.
+#         For a full list of languages see LANGMAP_GLOBAL in translator.__init__
 #         '''
-#         self.lang_map['简体中文'] = 'zh'
 #         self.lang_map['日本語'] = 'ja'
 #         self.lang_map['English'] = 'en'  
         
@@ -495,7 +495,9 @@ class YandexTranslator(TranslatorBase):
 #         '''
 #         source = self.lang_map[self.lang_source]
 #         target = self.lang_map[self.lang_target]
-#         return text 
+        
+#         translation = text
+#         return translation
 
 #     def updateParam(self, param_key: str, param_content):
 #         '''
@@ -504,6 +506,21 @@ class YandexTranslator(TranslatorBase):
 #         '''
 #         super().updateParam(param_key, param_content)
 #         if param_key == 'device':
+#             # get current state from setup_params
 #             # self.model.to(self.setup_params['device']['select'])
 #             pass
 
+#     @property
+#     def supported_tgt_list(self) -> List[str]:
+#         '''
+#         required only if the translator's language supporting is asymmetric, 
+#         for example, this translator only supports English -> Japanese, no Japanese -> English.
+#         '''
+#         return ['English']
+
+#     @property
+#     def supported_src_list(self) -> List[str]:
+#         '''
+#         required only if the translator's language supporting is asymmetric.
+#         '''
+#         return ['日本語']
