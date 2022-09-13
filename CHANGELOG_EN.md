@@ -1,5 +1,13 @@
 # Changelogs
 
+### 2022-09-13
+[v1.3.8](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.8)发布
+
+1. Pen tool bug fixes & optimization
+2. Fix scaling
+3. Support making font style presets, text graphical effects(shadow & opacity), see https://github.com/dmMaze/BallonsTranslator/pull/38
+4. Support word document(*.docx) import/export: https://github.com/dmMaze/BallonsTranslator/pull/40
+
 ### 2022-08-31
 [v1.3.4](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.4) released
 
