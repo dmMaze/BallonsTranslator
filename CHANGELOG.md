@@ -1,5 +1,13 @@
 # Changelogs
 
+### 2022-09-13
+[v1.3.8](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.8)发布
+
+1. 画笔工具修复及优化
+2. 修正界面缩放
+3. 支持添加自定义字体样式预设, 支持调整文字透明度和阴影, 详见https://github.com/dmMaze/BallonsTranslator/pull/38
+4. 支持导入导出word文档, 支持打开*.json项目文件, 详见https://github.com/dmMaze/BallonsTranslator/pull/40
+
 ### 2022-08-31
 [v1.3.4](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.4)发布
 
