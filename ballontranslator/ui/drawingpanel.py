@@ -492,6 +492,7 @@ class DrawingPanel(Widget):
                 self.runInpaint()
 
     def on_finish_erasing(self, stroke_item: StrokeImgItem):
+        print("fin erasing")
         stroke_item.finishPainting()
         # inpainted-erasing logic is essentially the same as inpainting
         if self.currentTool == self.inpaintTool:
@@ -510,6 +511,7 @@ class DrawingPanel(Widget):
             inpaint_mask = self.canvas.imgtrans_proj.mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
             # no inpainted need to be erased
             if inpaint_mask.sum() == 0:
+                self.canvas.removeItem(stroke_item)
                 return
             mask = cv2.bitwise_and(mask, inpaint_mask)
             inpaint_mask = np.zeros_like(inpainted)

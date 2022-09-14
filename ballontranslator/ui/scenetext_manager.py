@@ -480,14 +480,15 @@ class SceneTextManager(QObject):
     def onAutoLayoutTextblks(self):
         selected_blks = self.get_selected_blkitems()
         old_html_lst, old_rect_lst, trans_widget_lst = [], [], []
-        for blkitem in selected_blks:
-            old_html_lst.append(blkitem.toHtml())
-            old_rect_lst.append(blkitem.absBoundingRect())
-            trans_widget_lst.append(self.pairwidget_list[blkitem.idx].e_trans)
-            self.layout_textblk(blkitem)
+        selected_blks = [blk for blk in selected_blks if not blk.is_vertical]
+        if len(selected_blks) > 0:
+            for blkitem in selected_blks:
+                old_html_lst.append(blkitem.toHtml())
+                old_rect_lst.append(blkitem.absBoundingRect())
+                trans_widget_lst.append(self.pairwidget_list[blkitem.idx].e_trans)
+                self.layout_textblk(blkitem)
 
-        self.canvasUndoStack.push(AutoLayoutCommand(selected_blks, old_rect_lst, old_html_lst, trans_widget_lst))
-            
+            self.canvasUndoStack.push(AutoLayoutCommand(selected_blks, old_rect_lst, old_html_lst, trans_widget_lst))
 
     def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
         
