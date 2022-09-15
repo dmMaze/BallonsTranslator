@@ -347,6 +347,10 @@ class MainWindow(QMainWindow):
         shortcutSpace.activated.connect(self.shortcutSpace)
         shortcutSelectAll = QShortcut(QKeySequence.StandardKey.SelectAll, self)
         shortcutSelectAll.activated.connect(self.shortcutSelectAll)
+        shortcutSearch = QShortcut(QKeySequence("Ctrl+F"), self)
+        shortcutSearch.activated.connect(self.shortcutSearch)
+        shortcutGlobalSearch = QShortcut(QKeySequence("Ctrl+Shift+F"), self)
+        shortcutGlobalSearch.activated.connect(self.shortcutGlobalSearch)
 
         # font formatting
         shortcutBold = QShortcut(QKeySequence.StandardKey.Bold, self)
@@ -415,6 +419,13 @@ class MainWindow(QMainWindow):
     def shortcutUnderline(self):
         if self.textPanel.formatpanel.isVisible():
             self.textPanel.formatpanel.formatBtnGroup.underlineBtn.click()
+
+    def shortcutSearch(self):
+        if self.canvas.gv.isVisible():
+            self.canvas.search_widget.show()
+
+    def shortcutGlobalSearch(self):
+        pass
 
     def setPaintMode(self):
         if self.bottomBar.paintChecker.isChecked():

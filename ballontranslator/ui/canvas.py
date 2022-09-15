@@ -17,6 +17,7 @@ from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
+from .search_replace_widgets import SearchWidget
 from . import constants as C
 
 CANVAS_SCALE_MAX = 3.0
@@ -120,6 +121,8 @@ class Canvas(QGraphicsScene):
             # mitigate https://bugreports.qt.io/browse/QTBUG-93417
             # produce blurred result, saving imgs remain unaffected
             self.gv.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        self.search_widget = SearchWidget(self.gv, is_floating=True)
         
         self.ctrl_relesed = self.gv.ctrl_released
         self.vscroll_bar = self.gv.verticalScrollBar()
@@ -232,11 +235,18 @@ class Canvas(QGraphicsScene):
         self.scalefactor_changed.emit()
 
     def onViewResized(self):
-        x = self.gv.geometry().width() - self.scaleFactorLabel.width()
-        y = self.gv.geometry().height() - self.scaleFactorLabel.height()
+        gv_w, gv_h = self.gv.geometry().width(), self.gv.geometry().height()
+
+        x = gv_w - self.scaleFactorLabel.width()
+        y = gv_h - self.scaleFactorLabel.height()
         pos_new = (QPointF(x, y) / 2).toPoint()
         if self.scaleFactorLabel.pos() != pos_new:
             self.scaleFactorLabel.move(pos_new)
+        
+        x = gv_w - self.search_widget.width()
+        pos = self.search_widget.pos()
+        pos.setX(x-30)
+        self.search_widget.move(pos)
         
     def onScaleFactorChanged(self):
         self.scaleFactorLabel.setText(f'{self.scale_factor*100:2.0f}%')
