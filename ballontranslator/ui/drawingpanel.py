@@ -492,7 +492,6 @@ class DrawingPanel(Widget):
                 self.runInpaint()
 
     def on_finish_erasing(self, stroke_item: StrokeImgItem):
-        print("fin erasing")
         stroke_item.finishPainting()
         # inpainted-erasing logic is essentially the same as inpainting
         if self.currentTool == self.inpaintTool:

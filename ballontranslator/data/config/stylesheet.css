@@ -763,3 +763,66 @@ TextEditListScrollArea {
 PresetListWidget {
     min-height: 280px;
 }
+
+ClickableLabel#PrevMatchBtn {
+    image: url(data/icons/arrow-up.svg);
+    min-width: 24px;
+}
+
+ClickableLabel#NextMatchBtn {
+    image: url(data/icons/arrow-down.svg);
+    min-width: 24px;
+}
+
+
+ClickableLabel#SearchCloseBtn {
+    image: url(data/icons/chrome-close.svg);
+    min-width: 24px;
+}
+
+QCheckBox#CaseSensitiveToggle::indicator {
+    height: 28px;
+    width: 28px;
+    padding-top: 3px;
+    image: url(data/icons/case-sensitive.svg);
+}
+
+QCheckBox#CaseSensitiveToggle::indicator:hover {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QCheckBox#CaseSensitiveToggle::indicator:checked {
+    image: url(data/icons/case-sensitive_activated.svg);
+}
+
+QCheckBox#ReplaceToggle::indicator {
+    height: 24px;
+    width: 24px;
+    image: url(data/icons/chevron-right.svg)
+}
+
+QCheckBox#ReplaceToggle::indicator:hover {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QCheckBox#ReplaceToggle::indicator:checked {
+    image: url(data/icons/chevron-down.svg)
+}
+
+SearchEditor {
+    height: 32px;
+}
+
+ClickableLabel#ReplaceBtn {
+    image: url(data/icons/replace.svg);
+    min-width: 24px;
+    min-height: 24px;
+}
+
+ClickableLabel#ReplaceAllBtn {
+    image: url(data/icons/replace-all.svg);
+    min-width: 24px;
+    min-height: 24px;
+}
+
+
