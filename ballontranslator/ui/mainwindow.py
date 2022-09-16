@@ -2,7 +2,7 @@ import os.path as osp
 import os, re
 from typing import List
 
-from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox
+from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QLineEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize
 from qtpy.QtGui import QColor, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont, QTextDocument
 
@@ -16,7 +16,7 @@ from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
-from .imgtranspanel import TextPanel
+from .imgtranspanel import TextPanel, SourceTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
@@ -354,6 +354,8 @@ class MainWindow(QMainWindow):
         shortcutSearch.activated.connect(self.shortcutSearch)
         shortcutGlobalSearch = QShortcut(QKeySequence("Ctrl+Shift+F"), self)
         shortcutGlobalSearch.activated.connect(self.shortcutGlobalSearch)
+        shortcutEscape = QShortcut(QKeySequence("Escape"), self)
+        shortcutEscape.activated.connect(self.shortcutEscape)
 
         # font formatting
         shortcutBold = QShortcut(QKeySequence.StandardKey.Bold, self)
@@ -425,10 +427,34 @@ class MainWindow(QMainWindow):
 
     def shortcutSearch(self):
         if self.canvas.gv.isVisible():
-            self.canvas.search_widget.show()
+            if self.canvas.search_widget.isHidden():
+                self.canvas.search_widget.show()
+            fo = self.app.focusObject()
+            sel_text = ''
+            tgt_edit = None
+            blkitem = self.canvas.editing_textblkitem
+            if fo == self.canvas.gv and blkitem is not None:
+                sel_text = blkitem.textCursor().selectedText()
+                tgt_edit = self.st_manager.pairwidget_list[blkitem.idx].e_trans
+            elif isinstance(fo, QTextEdit) or isinstance(fo, QPlainTextEdit):
+                sel_text = fo.textCursor().selectedText()
+                if isinstance(fo, SourceTextEdit):
+                    tgt_edit = fo
+            se = self.canvas.search_widget.search_editor
+            se.setFocus()
+            if sel_text != '':
+                se.setPlainText(sel_text)
+                cursor = se.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+                se.setTextCursor(cursor)
+            self.canvas.search_widget.setCurrentEditor(tgt_edit)
 
     def shortcutGlobalSearch(self):
         pass
+
+    def shortcutEscape(self):
+        if self.canvas.search_widget.isVisible():
+            self.canvas.search_widget.hide()
 
     def setPaintMode(self):
         if self.bottomBar.paintChecker.isChecked():

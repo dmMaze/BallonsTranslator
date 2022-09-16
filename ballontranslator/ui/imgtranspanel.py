@@ -2,7 +2,7 @@ from typing import List
 
 from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication
 from qtpy.QtCore import Signal, Qt, QSize, QEvent
-from qtpy.QtGui import QColor, QFocusEvent
+from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent
 from .stylewidgets import Widget, SeparatorWidget
 
 from .textitem import TextBlock, TextBlkItem
@@ -20,6 +20,7 @@ class SourceTextEdit(QTextEdit):
         self.document().contentsChanged.connect(self.on_content_changed)
         self.document().documentLayout().documentSizeChanged.connect(self.adjustSize)
         self.setAcceptRichText(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
 
     def adjustSize(self):
         h = self.document().documentLayout().documentSize().toSize().height()
@@ -60,6 +61,13 @@ class SourceTextEdit(QTextEdit):
     def focusOutEvent(self, event: QFocusEvent) -> None:
         self.setHoverEffect(False)
         return super().focusOutEvent(event)
+
+    def inputMethodEvent(self, e: QInputMethodEvent) -> None:
+        if e.preeditString() == '':
+            self.pre_editing = False
+        else:
+            self.pre_editing = True
+        return super().inputMethodEvent(e)
         
 class TransTextEdit(SourceTextEdit):
     content_change = Signal(int, str)
