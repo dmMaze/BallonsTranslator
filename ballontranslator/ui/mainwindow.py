@@ -4,7 +4,7 @@ from typing import List
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox
 from qtpy.QtCore import Qt, QPoint, QSize
-from qtpy.QtGui import QKeyEvent, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont
+from qtpy.QtGui import QColor, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont, QTextDocument
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
@@ -117,10 +117,11 @@ class MainWindow(QMainWindow):
         self.config = self.configPanel.config
 
         self.drawingPanel = DrawingPanel(self.canvas, self.configPanel.inpaint_config_panel)
-        self.textPanel = TextPanel(self.app, self.canvas)
+        self.textPanel = TextPanel(self.app)
         self.textPanel.formatpanel.effect_panel.setParent(self)
         self.textPanel.formatpanel.effect_panel.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.CustomizeWindowHint)
         self.textPanel.formatpanel.fontfmtLabel.clicked.connect(self.show_presets)
+        
         self.presetPanel = PresetPanel(self)
         self.presetPanel.setParent(self)
         self.presetPanel.setWindowFlags(Qt.WindowType.Window)
@@ -129,6 +130,8 @@ class MainWindow(QMainWindow):
         self.presetPanel.hide_signal.connect(self.save_config)
         self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
         self.st_manager = SceneTextManager(self.app, self.canvas, self.textPanel)
+        self.canvas.search_widget.pairwidget_list = self.st_manager.pairwidget_list
+        self.canvas.search_widget.textblk_item_list = self.st_manager.textblk_item_list
 
         # comic trans pannel
         self.rightComicTransStackPanel = QStackedWidget(self)
@@ -681,6 +684,7 @@ class MainWindow(QMainWindow):
 
     def on_fin_import_doc(self):
         self.st_manager.updateSceneTextitems()
+
 
 
 
