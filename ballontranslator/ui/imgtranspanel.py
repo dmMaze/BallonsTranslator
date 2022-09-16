@@ -7,7 +7,6 @@ from .stylewidgets import Widget, SeparatorWidget
 
 from .textitem import TextBlock, TextBlkItem
 from .fontformatpanel import FontFormatPanel
-from .canvas import Canvas
 
 class SourceTextEdit(QTextEdit):
     hover_enter = Signal(int)
@@ -120,12 +119,12 @@ class TextEditListScrollArea(QScrollArea):
 
 
 class TextPanel(Widget):
-    def __init__(self, app: QApplication, canvas: Canvas, *args, **kwargs) -> None:
+    def __init__(self, app: QApplication, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         layout = QVBoxLayout(self)
         self.textEditList = TextEditListScrollArea(self)
         self.activePair: TransPairWidget = None
-        self.formatpanel = FontFormatPanel(app, canvas, self)
+        self.formatpanel = FontFormatPanel(app, self)
         layout.addWidget(self.formatpanel)
         layout.addWidget(self.textEditList)
         layout.setContentsMargins(0, 0, 0, 0)

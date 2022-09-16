@@ -795,20 +795,6 @@ QCheckBox#CaseSensitiveToggle::indicator:checked {
     image: url(data/icons/case-sensitive_activated.svg);
 }
 
-QCheckBox#ReplaceToggle::indicator {
-    height: 24px;
-    width: 24px;
-    image: url(data/icons/chevron-right.svg)
-}
-
-QCheckBox#ReplaceToggle::indicator:hover {
-    background-color: rgba(30, 147, 229, 20%);
-}
-
-QCheckBox#ReplaceToggle::indicator:checked {
-    image: url(data/icons/chevron-down.svg)
-}
-
 SearchEditor {
     height: 32px;
 }

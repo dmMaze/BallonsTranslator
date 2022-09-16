@@ -409,6 +409,7 @@ class Canvas(QGraphicsScene):
         self.erase_img_key = None
         self.txtblkShapeControl.setBlkItem(None)
         self.mid_btn_pressed = False
+        self.search_widget.reInitialize()
 
         self.clearSelection()
         self.setProjSaveState(False)
