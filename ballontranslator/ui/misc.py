@@ -222,13 +222,16 @@ class DrawPanelConfig:
                  inpainter_width: float = 30.,
                  current_tool: int = 0,
                  rectool_auto: bool = False, 
-                 rectool_method: int = 0) -> None:
+                 rectool_method: int = 0,
+                 recttool_dilate_ksize: int = 0,
+                 **kwargs) -> None:
         self.pentool_color = pentool_color if pentool_color is not None else [0, 0, 0]
         self.pentool_width = pentool_width
         self.inpainter_width = inpainter_width
         self.current_tool = current_tool
         self.rectool_auto = rectool_auto
         self.rectool_method = rectool_method
+        self.recttool_dilate_ksize = recttool_dilate_ksize
 
 
 class ProgramConfig:
