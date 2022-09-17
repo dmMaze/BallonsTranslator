@@ -223,7 +223,6 @@ class RectPanel(Widget):
         ksize = self.dilate_slider.value()
         if ksize == 0:
             return mask
-        ksize = ksize * 2 + 1
         element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1),(ksize, ksize))
         return cv2.dilate(mask, element)
 
@@ -515,7 +514,6 @@ class DrawingPanel(Widget):
                 self.runInpaint()
 
     def on_finish_erasing(self, stroke_item: StrokeImgItem):
-        print("fin erasing")
         stroke_item.finishPainting()
         # inpainted-erasing logic is essentially the same as inpainting
         if self.currentTool == self.inpaintTool:
