@@ -182,6 +182,7 @@ class MainWindow(QMainWindow):
         dl_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         dl_manager.page_trans_finished.connect(self.on_pagtrans_finished)
         dl_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
+        dl_manager.imgtrans_thread.mask_postprocess = self.drawingPanel.rectPanel.post_process_mask
 
         self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
         self.bottomBar.ocrcheck_statechanged.connect(dl_manager.setOCRMode)

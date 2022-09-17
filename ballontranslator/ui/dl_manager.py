@@ -256,6 +256,7 @@ class ImgtransThread(QThread):
         self.inpaint_thread = inpaint_thread
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
+        self.mask_postprocess = None
 
     @property
     def textdetector(self) -> TextDetectorBase:
@@ -293,6 +294,9 @@ class ImgtransThread(QThread):
             img = self.imgtrans_proj.read_img(imgname)
 
             mask, blk_list = self.textdetector.detect(img)
+            if self.mask_postprocess is not None:
+                mask = self.mask_postprocess(mask)
+                
             self.imgtrans_proj.save_mask(imgname, mask)
 
             self.detect_counter += 1
