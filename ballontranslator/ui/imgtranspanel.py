@@ -16,6 +16,7 @@ class SourceTextEdit(QTextEdit):
     def __init__(self, idx, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.idx = idx
+        self.pre_editing = False
         self.setMinimumHeight(50)
         self.document().contentsChanged.connect(self.on_content_changed)
         self.document().documentLayout().documentSizeChanged.connect(self.adjustSize)

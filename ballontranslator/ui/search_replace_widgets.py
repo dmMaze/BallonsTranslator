@@ -1,8 +1,9 @@
 from qtpy.QtWidgets import QHBoxLayout, QComboBox, QTextEdit, QLabel, QTreeView, QPlainTextEdit, QCheckBox, QMessageBox, QVBoxLayout, QStyle, QSlider, QProxyStyle, QStyle,  QGraphicsDropShadowEffect, QWidget
 from qtpy.QtCore import Qt, QTimer, QEasingCurve, QPointF, QRect, Signal
-from qtpy.QtGui import QKeyEvent, QTextDocument, QTextCursor, QHideEvent, QInputMethodEvent, QFontMetrics, QColor
+from qtpy.QtGui import QKeyEvent, QTextDocument, QTextCursor, QHideEvent, QInputMethodEvent, QFontMetrics, QColor, QShowEvent
 from typing import List, Union, Tuple, Dict
 
+from .misc import ProgramConfig
 from .stylewidgets import Widget, ClickableLabel
 from .textitem import TextBlkItem
 from .imgtranspanel import TransPairWidget, SourceTextEdit, TransTextEdit
@@ -105,8 +106,8 @@ class SearchWidget(Widget):
         self.search_editor.height_changed.connect(self.on_editor_height_changed)
         
         self.no_result_str = self.tr('No result')
-        self.result_counter = QLabel(self.no_result_str)
-        self.result_counter.setMaximumHeight(32)
+        self.result_counter_label = QLabel(self.no_result_str)
+        self.result_counter_label.setMaximumHeight(32)
         self.prev_match_btn = ClickableLabel(None, self)
         self.prev_match_btn.setObjectName('PrevMatchBtn')
         self.prev_match_btn.clicked.connect(self.on_prev_search_result)
@@ -116,12 +117,20 @@ class SearchWidget(Widget):
         self.next_match_btn.setObjectName('NextMatchBtn')
         self.next_match_btn.clicked.connect(self.on_next_search_result)
         self.next_match_btn.setToolTip(self.tr('Next Match (Enter)'))
+
         self.case_sensitive_toggle = QCheckBox(self)
         self.case_sensitive_toggle.setObjectName('CaseSensitiveToggle')
-        self.case_sensitive_toggle.clicked.connect(self.on_page_search)
+        self.case_sensitive_toggle.setToolTip(self.tr('Match Case'))
+        self.case_sensitive_toggle.clicked.connect(self.on_case_clicked)
+
+        self.whole_word_toggle = QCheckBox(self)
+        self.whole_word_toggle.setObjectName('WholeWordToggle')
+        self.whole_word_toggle.setToolTip(self.tr('Match Whole Word'))
+        self.whole_word_toggle.clicked.connect(self.on_whole_word_clicked)
+
         self.range_combobox = QComboBox(self)
         self.range_combobox.addItems([self.tr('Translation'), self.tr('Source'), self.tr('All')])
-        self.range_combobox.currentIndexChanged.connect(self.on_page_search)
+        self.range_combobox.currentIndexChanged.connect(self.on_range_changed)
         self.range_label = QLabel(self)
         self.range_label.setText(self.tr('Range'))
 
@@ -134,12 +143,13 @@ class SearchWidget(Widget):
 
         hlayout_bar1_0 = QHBoxLayout()
         hlayout_bar1_0.addWidget(self.search_editor)
-        hlayout_bar1_0.addWidget(self.result_counter)
+        hlayout_bar1_0.addWidget(self.result_counter_label)
         hlayout_bar1_0.setAlignment(Qt.AlignmentFlag.AlignTop)
         hlayout_bar1_0.setSpacing(10)
 
         hlayout_bar1_1 = QHBoxLayout()
         hlayout_bar1_1.addWidget(self.case_sensitive_toggle)
+        hlayout_bar1_1.addWidget(self.whole_word_toggle)
         hlayout_bar1_1.addWidget(self.prev_match_btn)
         hlayout_bar1_1.addWidget(self.next_match_btn)
         hlayout_bar1_1.setAlignment(hlayout_bar1_1.alignment() | Qt.AlignmentFlag.AlignTop)
@@ -163,10 +173,10 @@ class SearchWidget(Widget):
         vlayout.addLayout(hlayout_bar2)
 
         if self.is_floating:
-            self.search_editor.commit.connect(self.on_page_search)
-
+            self.search_editor.commit.connect(self.on_commit_search)
             self.close_btn = ClickableLabel(None, self)
             self.close_btn.setObjectName('SearchCloseBtn')
+            self.close_btn.setToolTip(self.tr('Close (Escape)'))
             self.close_btn.clicked.connect(self.on_close_button_clicked)
             hlayout_bar1_1.addWidget(self.close_btn)
             e = QGraphicsDropShadowEffect(self)
@@ -180,13 +190,25 @@ class SearchWidget(Widget):
             self.search_editor.shift_enter_pressed.connect(self.on_prev_search_result)
 
         self.adjustSize()
+        self.config: ProgramConfig = None
 
     def on_close_button_clicked(self):
         self.hide()
 
     def hideEvent(self, e: QHideEvent) -> None:
         self.clean_highted()
+        self.clearSearchResult()
         return super().hideEvent(e)
+
+    def showEvent(self, e: QShowEvent) -> None:
+        self.search_editor.setFocus()
+        cursor = self.search_editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+        self.search_editor.setTextCursor(cursor)
+        text = self.search_editor.toPlainText()
+        if text != '':
+            self.on_commit_search()
+        return super().showEvent(e)
 
     def on_editor_height_changed(self):
         self.adjustSize()
@@ -226,20 +248,50 @@ class SearchWidget(Widget):
 
     def on_rst_text_changed(self):
         edit: SourceTextEdit = self.sender()
+        if edit.pre_editing:
+            return
         idx = self.get_result_edit_index(edit)
-        if idx < 0 or edit.pre_editing:
+        if idx < 0:
             return
         self.clean_editor_highted(edit)
         counter, pos_map = self._find_page_text(edit, self.search_editor.toPlainText(), self.get_find_flag())
-        self.counter_sum += counter - self.search_counter_list[idx]
-        self.search_counter_list[idx] = counter
-        self.search_cursorpos_map[idx] = pos_map
+        delta_count = counter - self.search_counter_list[idx]
+        self.counter_sum += delta_count
+        
+        is_current_edit = False
+        before_current = False
+        if edit == self.current_edit:
+            is_current_edit = True
+        elif self.current_edit is not None and self.current_edit_index() > idx:
+            before_current = True
+
+        if counter > 0:
+            self.search_counter_list[idx] = counter
+            self.search_cursorpos_map[idx] = pos_map
+            if is_current_edit:
+                self.setCurrentEditor(self.current_edit)
+            elif before_current:
+                self.result_pos += delta_count
+        else:
+            self.search_rstedit_list.pop(idx)
+            self.search_cursorpos_map.pop(idx)
+            if len(self.search_rstedit_list) == 0:
+                self.clearSearchResult()
+            elif self.current_edit is not None:
+                if is_current_edit:
+                    if idx >= len(self.search_rstedit_list):
+                        self.setCurrentEditor(self.search_rstedit_list[0])
+                    else:
+                        self.setCurrentEditor(self.search_rstedit_list[idx])
+                elif before_current:
+                    self.result_pos += delta_count
+        self.updateCounterText()
 
     def reInitialize(self):
         self.clearSearchResult()
         self.reinit.emit()
 
-    def on_page_search(self):
+    def page_search(self, update_cursor=True):
 
         self.clean_highted()
         self.clearSearchResult()
@@ -272,29 +324,40 @@ class SearchWidget(Widget):
         else:
             self.counter_sum = 0
 
+        if update_cursor:
+            if len(self.search_rstedit_list) > 0:
+                self.current_edit = self.search_rstedit_list[0]
+                self.updateCurrentCursor()
+            self.updateCounterText()
+
     def get_find_flag(self) -> QTextDocument.FindFlag:
         find_flag = QTextDocument.FindFlags()
         if self.case_sensitive_toggle.isChecked():
             find_flag |= QTextDocument.FindFlag.FindCaseSensitively
+        if self.whole_word_toggle.isChecked():
+            find_flag |= QTextDocument.FindFlag.FindWholeWords
         return find_flag
 
     def _find_page_text(self, text_edit: QTextEdit, text: str, find_flag: QTextDocument.FindFlag) -> Tuple[int, Dict]:
         text_edit.blockSignals(True)
         doc = text_edit.document()
-        text_edit.textCursor().beginEditBlock()
+        text_cursor = text_edit.textCursor()
+        text_cursor.beginEditBlock()
         cursor = QTextCursor(doc)
         found_counter = 0
         pos_map = {}
+        find_pos = 0
         while True:
-            cursor: QTextCursor = doc.find(text, cursor, options=find_flag)
+            cursor: QTextCursor = doc.find(text, find_pos, options=find_flag)
             if cursor.isNull():
                 break
+            find_pos = cursor.position() - len(text) + 1
             pos_map[cursor.position()] = found_counter
             found_counter += 1
             cf = cursor.charFormat()
             cf.setBackground(HIGHLIGHT_COLOR)
             cursor.mergeCharFormat(cf)
-        text_edit.textCursor().endEditBlock()
+        text_cursor.endEditBlock()
         text_edit.blockSignals(False)
         return found_counter, pos_map
 
@@ -330,51 +393,63 @@ class SearchWidget(Widget):
 
         if self.current_edit is not None:
             self.updateCurrentCursor()
-            self.result_pos = self.current_cursor.selectionStart()
             idx = self.current_edit_index()
+            self.result_pos = self.search_cursorpos_map[idx][self.current_cursor.position()]
             if idx > 0:
-                self.result_pos += sum(self.result_counter[ :idx])
+                self.result_pos += sum(self.search_counter_list[ :idx])
         else:
             self.current_cursor = None
         
         self.updateCounterText()
+        self.highlight_current_text()
 
-    def updateCurrentCursor(self):
+    def updateCurrentCursor(self, intro_cursor=False, backward=False):
         cursor = self.current_edit.textCursor()
         text = self.search_editor.toPlainText()
-        if cursor.selectedText() != text:
+        if intro_cursor or cursor.selectedText() != text:
             cursor.clearSelection()
-            cursor.movePosition(QTextCursor.MoveOperation.Start)
+            
+        doc = self.current_edit.document()
+        find_flag = self.get_find_flag()
         if not cursor.hasSelection():
-            doc = self.current_edit.document()
-            cursor: QTextCursor = doc.find(text, cursor, options=self.get_find_flag())
+            if backward:
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                find_flag |= QTextDocument.FindFlag.FindBackward
+            else:
+                cursor.movePosition(QTextCursor.MoveOperation.Start)
+            cursor: QTextCursor = doc.find(text, cursor, options=find_flag)
+        else:
+            sel_start = cursor.selectionStart()
+            cursor: QTextCursor = doc.find(text, sel_start, options=find_flag)
         self.current_cursor = cursor
 
     def updateCounterText(self):
-        if self.current_cursor is None:
-            self.result_counter.setText(self.no_result_str)
+        if self.current_cursor is None or len(self.search_rstedit_list) == 0:
+            self.result_counter_label.setText(self.no_result_str)
         else:
-            self.result_counter.setText(f'{self.result_pos + 1} of {self.counter_sum}')
+            self.result_counter_label.setText(f'{self.result_pos + 1} of {self.counter_sum}')
 
-    def on_next_search_result(self):
-        
-        if self.current_cursor is None:
-            return
-
+    def move_cursor(self, step: int = 1) -> int:
         old_cursor = self.current_cursor
         old_edit = self.current_edit
         doc = self.current_edit.document()
         text = self.search_editor.toPlainText()
-        next_cursor: QTextCursor = doc.find(text, self.current_cursor, self.get_find_flag())
-        if next_cursor.isNull():
-            idx = self.current_edit_index()
-            if idx >= len(self.search_rstedit_list):
-                return
-            idx += 1
-            self.current_edit = self.search_rstedit_list[idx]
-            self.updateCurrentCursor()
+
+        find_flag = self.get_find_flag()
+        if step < 0:
+            find_flag |= QTextDocument.FindFlag.FindBackward
+            new_cursor: QTextCursor = doc.find(text, self.current_cursor, find_flag)
         else:
-            self.current_cursor = next_cursor
+            find_pos = self.current_cursor.position() - len(text) + 1
+            new_cursor: QTextCursor = doc.find(text, find_pos, find_flag)
+        if new_cursor.isNull():
+            idx = self.current_edit_index() + step
+            if idx >= len(self.search_rstedit_list) or idx < 0:
+                return step     # return step value if next move will be out of page
+            self.current_edit = self.search_rstedit_list[idx]
+            self.updateCurrentCursor(intro_cursor=True, backward=step < 0)
+        else:
+            self.current_cursor = new_cursor
 
         old_edit.blockSignals(True)
         cf = old_cursor.charFormat()
@@ -382,15 +457,57 @@ class SearchWidget(Widget):
         old_cursor.setCharFormat(cf)
         old_edit.blockSignals(False)
 
+        self.highlight_current_text()
+        return 0
+
+    def highlight_current_text(self):
+        if self.current_edit is None or not self.current_cursor.hasSelection():
+            return
         self.current_edit.blockSignals(True)
+        text_cursor = self.current_edit.textCursor()
+        if text_cursor.hasSelection():
+            text_cursor.clearSelection()
+            self.current_edit.setTextCursor(text_cursor)
         cf = self.current_cursor.charFormat()
         cf.setBackground(CURRENT_TEXT_COLOR)
         self.current_cursor.setCharFormat(cf)
         self.current_edit.blockSignals(False)
-        
-        self.result_pos = min(self.result_pos + 1, self.counter_sum - 1)
-        self.updateCounterText()
+
+    def on_next_search_result(self):
+        if self.current_cursor is None:
+            return
+        move = self.move_cursor(1)
+        if move == 0:
+            self.result_pos = min(self.result_pos + 1, self.counter_sum - 1)
+            self.updateCounterText()
 
     def on_prev_search_result(self):
-        print('prev')
-        pass
+        if self.current_cursor is None:
+            return
+        move = self.move_cursor(-1)
+        if move == 0:
+            self.result_pos = max(self.result_pos - 1, 0)
+            self.updateCounterText()
+
+    def on_whole_word_clicked(self):
+        self.config.fsearch_whole_word = self.whole_word_toggle.isChecked()
+        self.page_search()
+
+    def on_case_clicked(self):
+        self.config.fsearch_case = self.case_sensitive_toggle.isChecked()
+        self.page_search()
+
+    def on_range_changed(self):
+        self.config.fsearch_range = self.range_combobox.currentIndex()
+        self.page_search()
+    
+    def set_config(self, config: ProgramConfig):
+        self.config = config
+        self.whole_word_toggle.setChecked(config.fsearch_whole_word)
+        self.case_sensitive_toggle.setChecked(config.fsearch_case)
+        self.range_combobox.setCurrentIndex(config.fsearch_range)
+
+    def on_commit_search(self):
+        self.page_search()
+
+    

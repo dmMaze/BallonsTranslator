@@ -254,6 +254,9 @@ class ProgramConfig:
         let_autolayout_flag: bool = True,
         let_uppercase_flag: bool = True,
         font_presets: dict = None,
+        fsearch_case: bool = False,
+        fsearch_whole_word: bool = False,
+        fsearch_range: int = 0,
         **kwargs) -> None:
 
         if isinstance(dl, dict):
@@ -289,6 +292,9 @@ class ProgramConfig:
         self.let_autolayout_flag = let_autolayout_flag
         self.let_uppercase_flag = let_uppercase_flag
         self.font_presets = {} if font_presets is None else font_presets
+        self.fsearch_case = fsearch_case
+        self.fsearch_whole_word = fsearch_whole_word
+        self.fsearch_range = fsearch_range
 
 class LruIgnoreArg:
 

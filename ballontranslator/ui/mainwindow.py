@@ -221,6 +221,8 @@ class MainWindow(QMainWindow):
 
         self.presetPanel.initPresets(self.config.font_presets)
 
+        self.canvas.search_widget.set_config(self.config)
+
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
         if self.leftBar.showPageListLabel.isChecked():
@@ -427,8 +429,6 @@ class MainWindow(QMainWindow):
 
     def shortcutSearch(self):
         if self.canvas.gv.isVisible():
-            if self.canvas.search_widget.isHidden():
-                self.canvas.search_widget.show()
             fo = self.app.focusObject()
             sel_text = ''
             tgt_edit = None
@@ -441,12 +441,15 @@ class MainWindow(QMainWindow):
                 if isinstance(fo, SourceTextEdit):
                     tgt_edit = fo
             se = self.canvas.search_widget.search_editor
-            se.setFocus()
             if sel_text != '':
+                # se.setFocus()
                 se.setPlainText(sel_text)
-                cursor = se.textCursor()
-                cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
-                se.setTextCursor(cursor)
+                # cursor = se.textCursor()
+                # cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+                # se.setTextCursor(cursor)
+
+            if self.canvas.search_widget.isHidden():
+                self.canvas.search_widget.show()
             self.canvas.search_widget.setCurrentEditor(tgt_edit)
 
     def shortcutGlobalSearch(self):
