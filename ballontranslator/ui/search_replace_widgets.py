@@ -269,7 +269,22 @@ class SearchWidget(Widget):
             self.search_counter_list[idx] = counter
             self.search_cursorpos_map[idx] = pos_map
             if is_current_edit:
-                self.setCurrentEditor(self.current_edit)
+                text = self.search_editor.toPlainText()
+                if self.current_cursor.selectedText() != text:
+                    new_cursor: QTextCursor = edit.document().find(self.search_editor.toPlainText(), self.current_cursor, self.get_find_flag() | QTextDocument.FindFlag.FindBackward)
+                    if new_cursor.isNull():
+                        self.setCurrentEditor(self.current_edit)
+                    else:
+                        self.current_cursor = new_cursor
+                        self.result_pos = pos_map[new_cursor.position()]
+                        if idx > 0:
+                            self.result_pos += sum(self.search_counter_list[ :idx])
+                        self.highlight_current_text()
+                else:
+                    self.result_pos = pos_map[self.current_cursor.position()]
+                    if idx > 0:
+                        self.result_pos += sum(self.search_counter_list[ :idx])
+                    self.highlight_current_text()
             elif before_current:
                 self.result_pos += delta_count
         else:
