@@ -13,6 +13,7 @@ class SourceTextEdit(QTextEdit):
     hover_leave = Signal(int)
     focus_in = Signal(int)
     user_edited = Signal()
+    ensure_visible = Signal()
     def __init__(self, idx, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.idx = idx
@@ -57,6 +58,7 @@ class SourceTextEdit(QTextEdit):
     def focusInEvent(self, event: QFocusEvent) -> None:
         self.setHoverEffect(True)
         self.focus_in.emit(self.idx)
+        self.pre_editing = False
         return super().focusInEvent(event)
 
     def focusOutEvent(self, event: QFocusEvent) -> None:
@@ -71,15 +73,14 @@ class SourceTextEdit(QTextEdit):
         return super().inputMethodEvent(e)
         
 class TransTextEdit(SourceTextEdit):
-    content_change = Signal(int, str)
+    content_change = Signal(int)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.document().contentsChange.connect(self.onContentChange)
 
     def onContentChange(self, pos: int, delete: int, add: int):
         if self.hasFocus():
-            text = self.toPlainText()
-            self.content_change.emit(self.idx, text)
+            self.content_change.emit(self.idx)
 
 class TransPairWidget(Widget):
     def __init__(self, textblock: TextBlock = None, idx: int = None, *args, **kwargs) -> None:
@@ -116,15 +117,18 @@ class TextEditListScrollArea(QScrollArea):
         self.setWidgetResizable(True)
         self.vlayout = vlayout
         
-        
-    def addPairWidget(self, pairwidget):
-        
+    def addPairWidget(self, pairwidget: TransPairWidget):
         self.vlayout.addWidget(pairwidget)
         pairwidget.setVisible(True)
+        pairwidget.e_trans.ensure_visible.connect(self.on_ensure_visible)
+        pairwidget.e_source.ensure_visible.connect(self.on_ensure_visible)
 
     def removeWidget(self, widget: TransPairWidget):
         widget.setVisible(False)
         self.vlayout.removeWidget(widget)
+
+    def on_ensure_visible(self):
+        self.ensureWidgetVisible(self.sender())
 
 
 class TextPanel(Widget):

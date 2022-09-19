@@ -3,7 +3,7 @@ from typing import List, Union, Tuple
 import numpy as np
 
 from qtpy.QtWidgets import QApplication
-from qtpy.QtCore import QObject, QRectF, Qt
+from qtpy.QtCore import QObject, QRectF, Qt, Signal
 from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -246,6 +246,7 @@ class AutoLayoutCommand(QUndoCommand):
 
 
 class SceneTextManager(QObject):
+    new_textblk = Signal(int)
     def __init__(self, 
                  app: QApplication,
                  canvas: Canvas, 
@@ -293,7 +294,6 @@ class SceneTextManager(QObject):
                 blk_item.hide()
 
     def adjustSceneTextRect(self):
-        new_size = self.canvas.imgLayer.sceneBoundingRect().size()
         self.txtblkShapeControl.updateBoundingRect()
 
     def clearSceneTextitems(self):
@@ -340,6 +340,7 @@ class SceneTextManager(QObject):
         pair_widget.e_trans.setPlainText(blk_item.toPlainText())
         pair_widget.e_trans.focus_in.connect(self.onTransWidgetHoverEnter)
         pair_widget.e_trans.content_change.connect(self.onTransWidgetContentchange)
+        self.new_textblk.emit(blk_item.idx)
         return blk_item
 
     def addTextBlkItem(self, textblk_item: TextBlkItem) -> TextBlkItem:
@@ -699,10 +700,10 @@ class SceneTextManager(QObject):
         self.canvas.gv.ensureVisible(blk_item)
         self.txtblkShapeControl.setBlkItem(blk_item)
 
-    def onTransWidgetContentchange(self, idx: int, text: str):
+    def onTransWidgetContentchange(self, idx: int):
         blk_item = self.textblk_item_list[idx]
         blk_item.setTextInteractionFlags(Qt.NoTextInteraction)
-        blk_item.setPlainText(text)
+        blk_item.setPlainText(self.pairwidget_list[idx].e_trans.toPlainText())
         self.canvas.setProjSaveState(True)
 
     def onGlobalFormatChanged(self):

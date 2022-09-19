@@ -4,7 +4,7 @@ from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent
 from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
-from qtpy.QtGui import QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, QFocusEvent, QPainter, QPen, QColor, QTextCursor, QTextCharFormat, QTextDocument
+from qtpy.QtGui import QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, QInputMethodEvent, QPainter, QPen, QColor, QTextCursor, QTextCharFormat, QTextDocument
 
 from dl.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
@@ -31,6 +31,7 @@ class TextBlkItem(QGraphicsTextItem):
     pasted = Signal(int)
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.pre_editing = False
         self.blk = None
         self.repainting = False
         self.reshaping = False
@@ -61,12 +62,19 @@ class TextBlkItem(QGraphicsTextItem):
         self.setBoundingRegionGranularity(0)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
         self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+
+    def inputMethodEvent(self, e: QInputMethodEvent):
+        if e.preeditString() == '':
+            self.pre_editing = False
+        else:
+            self.pre_editing = True
+        super().inputMethodEvent(e)
         
     def is_editting(self):
         return self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
 
     def onDocumentContentChanged(self):
-        if self.hasFocus():   
+        if self.hasFocus() and not self.pre_editing:   
             self.content_changed.emit(self)
         if self.repaint_on_changed:
             if not self.repainting:
@@ -410,6 +418,7 @@ class TextBlkItem(QGraphicsTextItem):
         super().paint(painter, option, widget)
 
     def startEdit(self) -> None:
+        self.pre_editing = False
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
         self.setTextInteractionFlags(Qt.TextEditorInteraction)
         self.setFocus()

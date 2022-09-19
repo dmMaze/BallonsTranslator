@@ -130,6 +130,7 @@ class MainWindow(QMainWindow):
         self.presetPanel.hide_signal.connect(self.save_config)
         self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
         self.st_manager = SceneTextManager(self.app, self.canvas, self.textPanel)
+        self.st_manager.new_textblk.connect(self.canvas.search_widget.on_new_textblk)
         self.canvas.search_widget.pairwidget_list = self.st_manager.pairwidget_list
         self.canvas.search_widget.textblk_item_list = self.st_manager.textblk_item_list
 
