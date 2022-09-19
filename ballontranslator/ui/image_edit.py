@@ -5,11 +5,6 @@ from qtpy.QtCore import QRectF, Qt, QPointF, QSize, QPoint, QDateTime
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsPathItem, QGraphicsItem
 from qtpy.QtGui import QPen, QColor, QPainterPath, QCursor, QPainter, QPixmap, QImage, QBrush
 
-try:
-    from qtpy.QtWidgets import QUndoCommand
-except:
-    from qtpy.QtGui import QUndoCommand
-
 from .misc import DrawPanelConfig, pixmap2ndarray, ndarray2pixmap
 from utils.io_utils import imread, imwrite
 

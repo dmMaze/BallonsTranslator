@@ -17,7 +17,7 @@ from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
-from .search_replace_widgets import SearchWidget
+from .search_replace_widgets import SearchWidget, ReplaceOneCommand, ReplaceAllCommand
 from . import constants as C
 
 CANVAS_SCALE_MAX = 3.0
@@ -123,6 +123,8 @@ class Canvas(QGraphicsScene):
             self.gv.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
         self.search_widget = SearchWidget(self.gv, is_floating=True)
+        self.search_widget.replace_one.connect(self.on_search_replace_one)
+        self.search_widget.replace_all.connect(self.on_search_replace_all)
         
         self.ctrl_relesed = self.gv.ctrl_released
         self.vscroll_bar = self.gv.verticalScrollBar()
@@ -506,3 +508,10 @@ class Canvas(QGraphicsScene):
             item.setParentItem(None)
             self.stroke_img_item = None
             self.erase_img_key = None
+
+    def on_search_replace_one(self):
+        self.undoStack.push(ReplaceOneCommand(self.search_widget))
+        pass
+
+    def on_search_replace_all(self):
+        pass

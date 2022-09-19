@@ -10,10 +10,9 @@ try:
 except:
     from qtpy.QtGui import QUndoCommand
 
-from .imgtranspanel import TransPairWidget
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
-from .imgtranspanel import TextPanel, TransTextEdit
+from .imgtranspanel import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget, TextEditCommand
 from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
 
@@ -337,9 +336,19 @@ class SceneTextManager(QObject):
         self.textEditList.addPairWidget(pair_widget)
         pair_widget.e_source.setPlainText(blk_item.blk.get_text())
         pair_widget.e_source.user_edited.connect(self.on_srcwidget_edited)
+        pair_widget.e_source.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
+        pair_widget.e_source.push_undo_stack.connect(self.on_push_edit_stack)
+        pair_widget.e_source.redo_signal.connect(self.canvasUndoStack.redo)
+        pair_widget.e_source.undo_signal.connect(self.canvasUndoStack.undo)
+
         pair_widget.e_trans.setPlainText(blk_item.toPlainText())
         pair_widget.e_trans.focus_in.connect(self.onTransWidgetHoverEnter)
-        pair_widget.e_trans.content_change.connect(self.onTransWidgetContentchange)
+        pair_widget.e_trans.user_edited.connect(self.onTransWidgetUserEdited)
+        pair_widget.e_trans.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
+        pair_widget.e_trans.push_undo_stack.connect(self.on_push_edit_stack)
+        pair_widget.e_trans.redo_signal.connect(self.canvasUndoStack.redo)
+        pair_widget.e_trans.undo_signal.connect(self.canvasUndoStack.undo)
+        
         self.new_textblk.emit(blk_item.idx)
         return blk_item
 
@@ -700,7 +709,9 @@ class SceneTextManager(QObject):
         self.canvas.gv.ensureVisible(blk_item)
         self.txtblkShapeControl.setBlkItem(blk_item)
 
-    def onTransWidgetContentchange(self, idx: int):
+    def onTransWidgetUserEdited(self):
+        edit: TransTextEdit = self.sender()
+        idx = edit.idx
         blk_item = self.textblk_item_list[idx]
         blk_item.setTextInteractionFlags(Qt.NoTextInteraction)
         blk_item.setPlainText(self.pairwidget_list[idx].e_trans.toPlainText())
@@ -770,6 +781,15 @@ class SceneTextManager(QObject):
             blk_items = self.textblk_item_list
         for blk_item in blk_items:
             blk_item.setSelected(selected)
+
+    def on_ensure_textitem_svisible(self):
+        edit: Union[TransTextEdit, SourceTextEdit] = self.sender()
+        self.textEditList.ensureWidgetVisible(edit)
+        self.canvas.gv.ensureVisible(self.textblk_item_list[edit.idx])
+        self.txtblkShapeControl.setBlkItem(self.textblk_item_list[edit.idx])
+
+    def on_push_edit_stack(self):
+        self.canvasUndoStack.push(TextEditCommand(self.sender()))
 
 
 def get_text_size(fm: QFontMetrics, text: str) -> Tuple[int, int]:

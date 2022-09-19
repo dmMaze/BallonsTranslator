@@ -1,19 +1,29 @@
-from typing import List
+from typing import List, Union
 
 from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication
 from qtpy.QtCore import Signal, Qt, QSize, QEvent
-from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent
-from .stylewidgets import Widget, SeparatorWidget
+from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QKeyEvent
+try:
+    from qtpy.QtWidgets import QUndoCommand
+except:
+    from qtpy.QtGui import QUndoCommand
 
+from .stylewidgets import Widget, SeparatorWidget
 from .textitem import TextBlock, TextBlkItem
 from .fontformatpanel import FontFormatPanel
+
+
 
 class SourceTextEdit(QTextEdit):
     hover_enter = Signal(int)
     hover_leave = Signal(int)
     focus_in = Signal(int)
     user_edited = Signal()
-    ensure_visible = Signal()
+    ensure_scene_visible = Signal()
+    redo_signal = Signal()
+    undo_signal = Signal()
+    push_undo_stack = Signal()
+
     def __init__(self, idx, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.idx = idx
@@ -23,14 +33,22 @@ class SourceTextEdit(QTextEdit):
         self.document().documentLayout().documentSizeChanged.connect(self.adjustSize)
         self.setAcceptRichText(False)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
+        self.old_undo_steps = self.document().availableUndoSteps()
+        self.in_redo_undo = False
 
     def adjustSize(self):
         h = self.document().documentLayout().documentSize().toSize().height()
         self.setFixedHeight(max(h, 50))
 
     def on_content_changed(self):
-        if self.hasFocus():
+        if self.hasFocus() and not self.pre_editing:
             self.user_edited.emit()
+
+            if not self.in_redo_undo:
+                undo_steps = self.document().availableUndoSteps()
+                if undo_steps != self.old_undo_steps:
+                    self.old_undo_steps = undo_steps
+                    self.push_undo_stack.emit()
 
     def setHoverEffect(self, hover: bool):
         try:
@@ -71,16 +89,34 @@ class SourceTextEdit(QTextEdit):
         else:
             self.pre_editing = True
         return super().inputMethodEvent(e)
+
+    def keyPressEvent(self, e: QKeyEvent) -> None:
+        if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if e.key() == Qt.Key.Key_Z:
+                e.accept()
+                self.undo_signal.emit()
+                return
+            elif e.key() == Qt.Key.Key_Y:
+                e.accept()
+                self.redo_signal.emit()
+                return
+        return super().keyPressEvent(e)
+
+    def undo(self) -> None:
+        self.in_redo_undo = True
+        self.document().undo()
+        self.in_redo_undo = False
+        self.old_undo_steps = self.document().availableUndoSteps()
+
+    def redo(self) -> None:
+        self.in_redo_undo = True
+        self.document().redo()
+        self.in_redo_undo = False
+        self.old_undo_steps = self.document().availableUndoSteps()
         
 class TransTextEdit(SourceTextEdit):
-    content_change = Signal(int)
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.document().contentsChange.connect(self.onContentChange)
+    pass
 
-    def onContentChange(self, pos: int, delete: int, add: int):
-        if self.hasFocus():
-            self.content_change.emit(self.idx)
 
 class TransPairWidget(Widget):
     def __init__(self, textblock: TextBlock = None, idx: int = None, *args, **kwargs) -> None:
@@ -120,15 +156,10 @@ class TextEditListScrollArea(QScrollArea):
     def addPairWidget(self, pairwidget: TransPairWidget):
         self.vlayout.addWidget(pairwidget)
         pairwidget.setVisible(True)
-        pairwidget.e_trans.ensure_visible.connect(self.on_ensure_visible)
-        pairwidget.e_source.ensure_visible.connect(self.on_ensure_visible)
 
     def removeWidget(self, widget: TransPairWidget):
         widget.setVisible(False)
         self.vlayout.removeWidget(widget)
-
-    def on_ensure_visible(self):
-        self.ensureWidgetVisible(self.sender())
 
 
 class TextPanel(Widget):
@@ -143,4 +174,20 @@ class TextPanel(Widget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+
+class TextEditCommand(QUndoCommand):
+    def __init__(self, edit: Union[SourceTextEdit, TransTextEdit]) -> None:
+        super().__init__()
+        self.edit = edit
+        self.op_counter = -1
+
+    def redo(self):
+        self.op_counter += 1
+        if self.op_counter <= 0:
+            return
+        self.edit.redo()
+
+    def undo(self):
+        self.edit.undo()
 
