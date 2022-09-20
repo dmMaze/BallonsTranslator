@@ -313,7 +313,7 @@ class TextBlkItem(QGraphicsTextItem):
         if valid_layout:
             rect = self.rect() if self.layout is not None else None
         
-        self.setTextInteractionFlags(Qt.NoTextInteraction)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         doc = self.document()
         html = doc.toHtml()
         doc_margin = doc.documentMargin()
@@ -420,7 +420,7 @@ class TextBlkItem(QGraphicsTextItem):
     def startEdit(self) -> None:
         self.pre_editing = False
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
-        self.setTextInteractionFlags(Qt.TextEditorInteraction)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self.setFocus()
         self.begin_edit.emit(self.idx)
 
@@ -429,12 +429,12 @@ class TextBlkItem(QGraphicsTextItem):
         cursor = self.textCursor()
         cursor.clearSelection()
         self.setTextCursor(cursor)
-        self.setTextInteractionFlags(Qt.NoTextInteraction)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
         self.setFocus()
 
     def isEditing(self) -> bool:
-        return self.textInteractionFlags() == Qt.TextEditorInteraction
+        return self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
     
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:    
         self.startEdit()
@@ -442,7 +442,7 @@ class TextBlkItem(QGraphicsTextItem):
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if not self.bound_checking or \
-            self.textInteractionFlags() == Qt.TextEditorInteraction:
+            self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
             super().mouseMoveEvent(event)
         else:
             b_rect = self.boundingRect()

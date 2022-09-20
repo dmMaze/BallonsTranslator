@@ -2,7 +2,7 @@ from typing import List, Union
 
 from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication
 from qtpy.QtCore import Signal, Qt, QSize, QEvent
-from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QKeyEvent
+from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QKeyEvent, QTextCursor
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -19,10 +19,12 @@ class SourceTextEdit(QTextEdit):
     hover_leave = Signal(int)
     focus_in = Signal(int)
     user_edited = Signal()
+    user_edited_verbose = Signal(int, str, bool)
     ensure_scene_visible = Signal()
     redo_signal = Signal()
     undo_signal = Signal()
-    push_undo_stack = Signal()
+    push_undo_stack = Signal(int)
+    text_changed = Signal()
 
     def __init__(self, idx, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -31,24 +33,70 @@ class SourceTextEdit(QTextEdit):
         self.setMinimumHeight(50)
         self.document().contentsChanged.connect(self.on_content_changed)
         self.document().documentLayout().documentSizeChanged.connect(self.adjustSize)
+        self.document().contentsChange.connect(self.on_content_changing)
         self.setAcceptRichText(False)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.old_undo_steps = self.document().availableUndoSteps()
         self.in_redo_undo = False
+        self.change_from: int = 0
+        self.change_removed: int = 0
+        self.change_added: int = 0
+        self.input_method_from = -1
+        self.input_method_text = ''
+        self.text_content_changed = False
+        self.high_lighting = False
+
+    def on_content_changing(self, from_: int, removed: int, added: int):
+        if not self.pre_editing:
+            self.text_content_changed = True
+        if self.hasFocus() and not self.pre_editing:
+            self.change_from = from_
+            self.change_added = added
+    
 
     def adjustSize(self):
         h = self.document().documentLayout().documentSize().toSize().height()
         self.setFixedHeight(max(h, 50))
 
     def on_content_changed(self):
+        if self.text_content_changed:
+            self.text_content_changed = False
+            if not self.high_lighting:
+                self.text_changed.emit()
         if self.hasFocus() and not self.pre_editing:
             self.user_edited.emit()
 
             if not self.in_redo_undo:
+
+                change_from = self.change_from
+                added_text = ''
+                input_method_used = False
+                if self.input_method_from != -1:
+                    added_text = self.input_method_text
+                    change_from = self.input_method_from
+                    input_method_used = True
+        
+                elif self.change_added > 0:
+                    len_text = len(self.toPlainText())
+                    cursor = self.textCursor()
+                    
+                    if self.change_added >  len_text:
+                        self.change_added = 1
+                        change_from = self.textCursor().position() - 1
+                        input_method_used = True
+                    cursor.setPosition(change_from)
+                    cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
+                    
+                    added_text = cursor.selectedText()
+                self.user_edited_verbose.emit(change_from, added_text, input_method_used)
+                
+
                 undo_steps = self.document().availableUndoSteps()
-                if undo_steps != self.old_undo_steps:
+                new_steps = undo_steps - self.old_undo_steps
+                if new_steps > 0:
                     self.old_undo_steps = undo_steps
-                    self.push_undo_stack.emit()
+                    self.push_undo_stack.emit(new_steps)
+
 
     def setHoverEffect(self, hover: bool):
         try:
@@ -84,11 +132,17 @@ class SourceTextEdit(QTextEdit):
         return super().focusOutEvent(event)
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
+        cursor = self.textCursor()
+        
         if e.preeditString() == '':
             self.pre_editing = False
+            self.input_method_text = e.commitString()
         else:
+            if self.pre_editing is False:
+                self.input_method_from = cursor.selectionStart()
             self.pre_editing = True
-        return super().inputMethodEvent(e)
+        self.input_method_event = e
+        super().inputMethodEvent(e)
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
@@ -113,6 +167,10 @@ class SourceTextEdit(QTextEdit):
         self.document().redo()
         self.in_redo_undo = False
         self.old_undo_steps = self.document().availableUndoSteps()
+
+    def block_all_signals(self, block: bool):
+        self.blockSignals(block)
+        self.document().blockSignals(block)
         
 class TransTextEdit(SourceTextEdit):
     pass
@@ -177,17 +235,30 @@ class TextPanel(Widget):
 
 
 class TextEditCommand(QUndoCommand):
-    def __init__(self, edit: Union[SourceTextEdit, TransTextEdit]) -> None:
+    def __init__(self, edit: Union[SourceTextEdit, TransTextEdit], blkitem: TextBlkItem, num_steps: int) -> None:
         super().__init__()
         self.edit = edit
+        self.blkitem = blkitem
         self.op_counter = -1
+        self.change_from = edit.change_from
+        self.change_added = edit.change_added
+        self.change_removed = edit.change_removed
+        self.num_steps = min(num_steps, 2)
+        if edit.input_method_from == -1:
+            self.num_steps = 1
+        else:
+            edit.input_method_from = -1
 
     def redo(self):
         self.op_counter += 1
         if self.op_counter <= 0:
             return
-        self.edit.redo()
+        for _ in range(self.num_steps):
+            self.edit.redo()
+        self.blkitem.document().redo()
 
     def undo(self):
-        self.edit.undo()
+        for _ in range(self.num_steps):
+            self.edit.undo()
+        self.blkitem.document().undo()
 

@@ -4,7 +4,7 @@ import numpy as np
 
 from qtpy.QtWidgets import QApplication
 from qtpy.QtCore import QObject, QRectF, Qt, Signal
-from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat
+from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat, QInputMethodEvent
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -15,6 +15,7 @@ from .canvas import Canvas
 from .imgtranspanel import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget, TextEditCommand
 from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
+from .search_replace_widgets import SearchWidget
 
 from utils.imgproc_utils import extract_ballon_region
 from utils.text_processing import seg_text, is_cjk
@@ -186,19 +187,90 @@ class CreateItemCommand(QUndoCommand):
 class DeleteBlkItemsCommand(QUndoCommand):
     def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
         super().__init__(parent)
+        self.op_counter = -1
         self.blk_list = []
-        self.pwidget_list = []
+        self.pwidget_list: List[TransPairWidget] = []
         self.ctrl: SceneTextManager = ctrl
+        self.sw = self.ctrl.canvas.search_widget
+
+        self.search_rstedit_list: List[SourceTextEdit] = []
+        self.search_counter_list = []
+        self.highlighter_list = []
+        self.old_counter_sum = self.sw.counter_sum
+        self.sw_changed = False
+        
         for blkitem in blk_list:
-            if isinstance(blkitem, TextBlkItem):
-                self.blk_list.append(blkitem)
-                self.pwidget_list.append(ctrl.pairwidget_list[blkitem.idx])
+            if not isinstance(blkitem, TextBlkItem):
+                continue
+            self.blk_list.append(blkitem)
+            pw: TransPairWidget = ctrl.pairwidget_list[blkitem.idx]
+            self.pwidget_list.append(pw)
+
+            rst_idx = self.sw.get_result_edit_index(pw.e_trans)
+            if rst_idx != -1:
+                self.sw_changed = True
+                highlighter = self.sw.highlighter_list.pop(rst_idx)
+                counter = self.sw.search_counter_list.pop(rst_idx)
+                self.sw.counter_sum -= counter
+                if self.sw.current_edit == pw.e_trans:
+                    highlighter.set_current_start(-1)
+                self.search_rstedit_list.append(self.sw.search_rstedit_list.pop(rst_idx))
+                self.search_counter_list.append(counter)
+                self.highlighter_list.append(highlighter)
+
+            rst_idx = self.sw.get_result_edit_index(pw.e_source)
+            if rst_idx != -1:
+                self.sw_changed = True
+                highlighter = self.sw.highlighter_list.pop(rst_idx)
+                counter = self.sw.search_counter_list.pop(rst_idx)
+                self.sw.counter_sum -= counter
+                if self.sw.current_edit == pw.e_trans:
+                    highlighter.set_current_start(-1)
+                self.search_rstedit_list.append(self.sw.search_rstedit_list.pop(rst_idx))
+                self.search_counter_list.append(counter)
+                self.highlighter_list.append(highlighter)
+
+        self.new_counter_sum = self.sw.counter_sum
+        if self.sw_changed:
+            if self.sw.counter_sum > 0:
+                self.sw.setCurrentEditor(self.sw.search_rstedit_list[0])
+            else:
+                self.sw.setCurrentEditor(None)
+
+        self.ctrl.deleteTextblkItemList(self.blk_list, self.pwidget_list)
 
     def redo(self):
+        self.op_counter += 1
+        if self.op_counter <= 0:
+            return
+
         self.ctrl.deleteTextblkItemList(self.blk_list, self.pwidget_list)
+        if self.sw_changed:
+            self.sw.counter_sum = self.new_counter_sum
+            for edit in self.search_rstedit_list:
+                idx = self.sw.get_result_edit_index(edit)
+                if idx != -1:
+                    self.sw.search_rstedit_list.pop(idx)
+                    self.sw.search_counter_list.pop(idx)
+                    self.sw.highlighter_list.pop(idx)
+            if self.sw.counter_sum > 0:
+                self.sw.setCurrentEditor(self.sw.search_rstedit_list[0])
+            else:
+                self.sw.setCurrentEditor(None)
+
 
     def undo(self):
         self.ctrl.recoverTextblkItemList(self.blk_list, self.pwidget_list)
+        if self.sw_changed:
+            self.sw.counter_sum = self.old_counter_sum
+            for edit in self.search_rstedit_list:
+                self.sw.search_rstedit_list += self.search_rstedit_list
+                self.sw.search_counter_list += self.search_counter_list
+                self.sw.highlighter_list += self.highlighter_list
+            if self.sw.counter_sum > 0:
+                self.sw.setCurrentEditor(self.sw.search_rstedit_list[0])
+            else:
+                self.sw.setCurrentEditor(None)
 
     def mergeWith(self, command: QUndoCommand):
         blk_list = command.blk_list
@@ -343,12 +415,12 @@ class SceneTextManager(QObject):
 
         pair_widget.e_trans.setPlainText(blk_item.toPlainText())
         pair_widget.e_trans.focus_in.connect(self.onTransWidgetHoverEnter)
-        pair_widget.e_trans.user_edited.connect(self.onTransWidgetUserEdited)
+        pair_widget.e_trans.user_edited_verbose.connect(self.onTransWidgetUserEditedVerbose)
         pair_widget.e_trans.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
         pair_widget.e_trans.push_undo_stack.connect(self.on_push_edit_stack)
         pair_widget.e_trans.redo_signal.connect(self.canvasUndoStack.redo)
         pair_widget.e_trans.undo_signal.connect(self.canvasUndoStack.undo)
-        
+
         self.new_textblk.emit(blk_item.idx)
         return blk_item
 
@@ -386,12 +458,14 @@ class SceneTextManager(QObject):
         self.txtblkShapeControl.setBlkItem(None)
 
     def recoverTextblkItem(self, blkitem: TextBlkItem, p_widget: TransPairWidget):
+        # recovered order is different from before
         blkitem.idx = len(self.textblk_item_list)
         p_widget.idx = len(self.pairwidget_list)
         self.textblk_item_list.append(blkitem)
         blkitem.setParentItem(self.canvas.textLayer)
         self.pairwidget_list.append(p_widget)
         self.textEditList.addPairWidget(p_widget)
+        self.updateTextBlkItemIdx()
 
     def recoverTextblkItemList(self, blkitem_list: List[TextBlkItem], p_widget_list: List[TransPairWidget]):
         for blkitem, p_widget in zip(blkitem_list, p_widget_list):
@@ -709,12 +783,27 @@ class SceneTextManager(QObject):
         self.canvas.gv.ensureVisible(blk_item)
         self.txtblkShapeControl.setBlkItem(blk_item)
 
-    def onTransWidgetUserEdited(self):
+    def onTransWidgetUserEditedVerbose(self, pos: int, added_text: str, input_method_used: bool):
         edit: TransTextEdit = self.sender()
         idx = edit.idx
         blk_item = self.textblk_item_list[idx]
-        blk_item.setTextInteractionFlags(Qt.NoTextInteraction)
-        blk_item.setPlainText(self.pairwidget_list[idx].e_trans.toPlainText())
+        if blk_item.isEditing():
+            blk_item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+
+        ori_count = blk_item.document().characterCount()
+        new_count = edit.document().characterCount()
+        removed = ori_count + len(added_text) - new_count
+        # if not input_method_used:
+
+        cursor = blk_item.textCursor()
+        cursor.setPosition(pos)
+        if removed > 0:
+            cursor.setPosition(pos + removed, QTextCursor.MoveMode.KeepAnchor)
+        if input_method_used:
+            cursor.beginEditBlock()
+        cursor.insertText((added_text))
+        if input_method_used:
+            cursor.endEditBlock()
         self.canvas.setProjSaveState(True)
 
     def onGlobalFormatChanged(self):
@@ -788,8 +877,10 @@ class SceneTextManager(QObject):
         self.canvas.gv.ensureVisible(self.textblk_item_list[edit.idx])
         self.txtblkShapeControl.setBlkItem(self.textblk_item_list[edit.idx])
 
-    def on_push_edit_stack(self):
-        self.canvasUndoStack.push(TextEditCommand(self.sender()))
+    def on_push_edit_stack(self, num_steps: int):
+        edit: Union[TransTextEdit, SourceTextEdit] = self.sender()
+        blkitem = self.textblk_item_list[edit.idx]
+        self.canvasUndoStack.push(TextEditCommand(self.sender(), blkitem, num_steps))
 
 
 def get_text_size(fm: QFontMetrics, text: str) -> Tuple[int, int]:
