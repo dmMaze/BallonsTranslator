@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](README.md) | English | [Русский](README_RU.md)
+[简体中文](README.md) | English | [Русский](README_RU.md) | [日本語](README_JA.md)
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.
 
