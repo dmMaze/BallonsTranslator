@@ -1,4 +1,4 @@
-from qtpy.QtWidgets import QHBoxLayout, QComboBox, QTextEdit, QLabel, QTreeView, QPlainTextEdit, QCheckBox, QMessageBox, QVBoxLayout, QStyle, QSlider, QProxyStyle, QStyle,  QGraphicsDropShadowEffect, QWidget
+from qtpy.QtWidgets import QHBoxLayout, QComboBox, QTextEdit, QLabel, QTreeView, QPlainTextEdit, QCheckBox, QMessageBox, QVBoxLayout, QStyle, QSlider, QStyle,  QGraphicsDropShadowEffect, QWidget
 from qtpy.QtCore import Qt, QTimer, QPointF, QRect, Signal
 from qtpy.QtGui import QKeyEvent, QTextDocument, QTextCursor, QHideEvent, QInputMethodEvent, QFontMetrics, QColor, QShowEvent, QSyntaxHighlighter, QTextCharFormat
 try:
@@ -34,14 +34,14 @@ class HighlightMatched(QSyntaxHighlighter):
     def setEditor(self, edit: SourceTextEdit):
         old_edit = self.edit
         if old_edit is not None:
-            old_edit.high_lighting = True
+            old_edit.highlighting = True
         if edit is not None:
             self.setDocument(edit.document())
         else:
             self.setDocument(None)
         self.edit = edit
         if old_edit is not None:
-            old_edit.high_lighting = False
+            old_edit.highlighting = False
 
     def set_matched_map(self, matched_map: dict):
         self.matched_map = matched_map
@@ -53,10 +53,10 @@ class HighlightMatched(QSyntaxHighlighter):
 
     def rehighlight(self) -> None:
         if self.edit is not None:
-            self.edit.high_lighting = True
+            self.edit.highlighting = True
         super().rehighlight()
         if self.edit is not None:
-            self.edit.high_lighting = False
+            self.edit.highlighting = False
 
     def set_current_start(self, start: int):
         self.current_start = start
@@ -65,7 +65,7 @@ class HighlightMatched(QSyntaxHighlighter):
     def highlightBlock(self, text: str) -> None:
         if self.edit is None:
             return
-        self.edit.high_lighting = True
+        self.edit.highlighting = True
         fmt = QTextCharFormat()
         fmt.setBackground(HIGHLIGHT_COLOR)
         block = self.currentBlock()
@@ -87,7 +87,7 @@ class HighlightMatched(QSyntaxHighlighter):
                 fmt.setBackground(CURRENT_TEXT_COLOR)
                 self.setFormat(intersect_start, length, fmt)
         
-        self.edit.high_lighting = False
+        self.edit.highlighting = False
 
 
 
@@ -632,7 +632,8 @@ class SearchWidget(Widget):
         self.highlight_current_text()
 
     def on_replaceall_btn_clicked(self):
-        pass
+        if self.counter_sum > 0:
+            self.replace_all.emit()
 
     def on_replace_btn_clicked(self):
         if self.current_cursor is not None:
@@ -687,7 +688,7 @@ class SearchWidget(Widget):
 class ReplaceOneCommand(QUndoCommand):
     def __init__(self, se: SearchWidget, parent=None):
         super(ReplaceOneCommand, self).__init__(parent)
-        self.op_counter = -1
+        self.op_counter = 0
         self.sw = se
         self.reptxt = self.sw.replace_editor.toPlainText()
         self.repl_len = len(self.reptxt)
@@ -718,10 +719,11 @@ class ReplaceOneCommand(QUndoCommand):
         self.rep_cursor.setPosition(self.sel_start)
         self.rep_cursor.setPosition(self.sel_start+self.ori_len, QTextCursor.MoveMode.KeepAnchor)
         self.rep_cursor.insertText(self.reptxt)
+        self.edit.updateUndoSteps()
 
     def redo(self):
-        self.op_counter += 1
-        if self.op_counter <= 0:
+        if self.op_counter == 0:
+            self.op_counter += 1
             return
 
         if self.sw.current_edit is not None and self.sw.isVisible():
@@ -751,4 +753,73 @@ class ReplaceOneCommand(QUndoCommand):
         self.edit.user_edited.emit()
 
 class ReplaceAllCommand(QUndoCommand):
-    pass
+
+    def __init__(self, search_widget: SearchWidget) -> None:
+        super().__init__()
+        self.op_counter = 0
+        self.sw = search_widget
+
+        self.rstedit_list: List[SourceTextEdit] = []
+        self.blkitem_list: List[TextBlkItem] = []
+        for edit in self.sw.search_rstedit_list:
+            self.rstedit_list.append(edit)
+
+        find_flag = self.sw.get_find_flag()
+        text = self.sw.search_editor.toPlainText()
+        replace = self.sw.replace_editor.toPlainText()
+        for edit in self.rstedit_list:
+            redo_blk = type(edit) == TransTextEdit
+            if redo_blk:
+                blkitem = self.sw.textblk_item_list[edit.idx]
+                self.blkitem_list.append(blkitem)
+                sel_list = []
+
+            doc = edit.document()
+            cursor = edit.textCursor()
+            cursor.clearSelection()
+            cursor.setPosition(0)
+            # cursor.beginEditBlock()
+            counter = 0
+            while True:
+                counter += 1
+                cursor: QTextCursor = doc.find(text, cursor, find_flag)
+                if cursor.isNull():
+                    break
+                if redo_blk:
+                    sel_list.append([cursor.selectionStart(), cursor.selectionEnd()])
+                if counter > 1:
+                    cursor.joinPreviousEditBlock()
+                cursor.insertText(replace)
+                if counter > 1:
+                    cursor.endEditBlock()
+            
+            # cursor.endEditBlock()
+            edit.updateUndoSteps()
+
+            if redo_blk:
+                cursor = blkitem.textCursor()
+                cursor.beginEditBlock()
+                for sel in sel_list:
+                    cursor.setPosition(sel[0])
+                    cursor.setPosition(sel[1], QTextCursor.MoveMode.KeepAnchor)
+                    cursor.insertText(replace)
+                cursor.endEditBlock()
+            edit.show()
+
+    def redo(self):
+        if self.op_counter == 0:
+            self.op_counter += 1
+            return
+
+        for edit in self.rstedit_list:
+            edit.redo()
+            edit.update()
+        for blkitem in self.blkitem_list:
+            blkitem.document().redo()
+
+    def undo(self):
+        for edit in self.rstedit_list:
+            edit.undo()
+            edit.update()
+        for blkitem in self.blkitem_list:
+            blkitem.document().undo()

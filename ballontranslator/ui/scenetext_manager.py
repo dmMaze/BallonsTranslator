@@ -187,7 +187,7 @@ class CreateItemCommand(QUndoCommand):
 class DeleteBlkItemsCommand(QUndoCommand):
     def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
         super().__init__(parent)
-        self.op_counter = -1
+        self.op_counter = 0
         self.blk_list = []
         self.pwidget_list: List[TransPairWidget] = []
         self.ctrl: SceneTextManager = ctrl
@@ -233,50 +233,51 @@ class DeleteBlkItemsCommand(QUndoCommand):
         self.new_counter_sum = self.sw.counter_sum
         if self.sw_changed:
             if self.sw.counter_sum > 0:
-                self.sw.setCurrentEditor(self.sw.search_rstedit_list[0])
+                idx = self.sw.get_result_edit_index(self.sw.current_edit)
+                if self.sw.current_cursor is not None and idx != -1:
+                    self.sw.result_pos = self.sw.highlighter_list[idx].matched_map[self.sw.current_cursor.position()]
+                    if idx > 0:
+                        self.sw.result_pos += sum(self.sw.search_counter_list[: idx])
+                    self.sw.updateCounterText()
+                else:
+                    self.sw.setCurrentEditor(self.sw.search_rstedit_list[0])
             else:
                 self.sw.setCurrentEditor(None)
 
         self.ctrl.deleteTextblkItemList(self.blk_list, self.pwidget_list)
 
     def redo(self):
-        self.op_counter += 1
-        if self.op_counter <= 0:
+        if self.op_counter == 0:
+            self.op_counter += 1
             return
 
         self.ctrl.deleteTextblkItemList(self.blk_list, self.pwidget_list)
         if self.sw_changed:
             self.sw.counter_sum = self.new_counter_sum
+            cursor_removed = False
             for edit in self.search_rstedit_list:
                 idx = self.sw.get_result_edit_index(edit)
                 if idx != -1:
                     self.sw.search_rstedit_list.pop(idx)
                     self.sw.search_counter_list.pop(idx)
                     self.sw.highlighter_list.pop(idx)
-            if self.sw.counter_sum > 0:
-                self.sw.setCurrentEditor(self.sw.search_rstedit_list[0])
-            else:
-                self.sw.setCurrentEditor(None)
+                if edit == self.sw.current_edit:
+                    cursor_removed = True
+            if cursor_removed:
+                if self.sw.counter_sum > 0:
+                    self.sw.setCurrentEditor(self.sw.search_rstedit_list[0])
+                else:
+                    self.sw.setCurrentEditor(None)
 
 
     def undo(self):
         self.ctrl.recoverTextblkItemList(self.blk_list, self.pwidget_list)
         if self.sw_changed:
             self.sw.counter_sum = self.old_counter_sum
-            for edit in self.search_rstedit_list:
-                self.sw.search_rstedit_list += self.search_rstedit_list
-                self.sw.search_counter_list += self.search_counter_list
-                self.sw.highlighter_list += self.highlighter_list
-            if self.sw.counter_sum > 0:
-                self.sw.setCurrentEditor(self.sw.search_rstedit_list[0])
-            else:
-                self.sw.setCurrentEditor(None)
-
-    def mergeWith(self, command: QUndoCommand):
-        blk_list = command.blk_list
-        if self.blk_list != blk_list:
-            return False
-        return True
+            self.sw.search_rstedit_list += self.search_rstedit_list
+            self.sw.search_counter_list += self.search_counter_list
+            self.sw.highlighter_list += self.highlighter_list
+            self.sw.updateCounterText()
 
 
 class AutoLayoutCommand(QUndoCommand):

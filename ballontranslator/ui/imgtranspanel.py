@@ -13,7 +13,6 @@ from .textitem import TextBlock, TextBlkItem
 from .fontformatpanel import FontFormatPanel
 
 
-
 class SourceTextEdit(QTextEdit):
     hover_enter = Signal(int)
     hover_leave = Signal(int)
@@ -44,7 +43,10 @@ class SourceTextEdit(QTextEdit):
         self.input_method_from = -1
         self.input_method_text = ''
         self.text_content_changed = False
-        self.high_lighting = False
+        self.highlighting = False
+
+    def updateUndoSteps(self):
+        self.old_undo_steps = self.document().availableUndoSteps()
 
     def on_content_changing(self, from_: int, removed: int, added: int):
         if not self.pre_editing:
@@ -53,7 +55,6 @@ class SourceTextEdit(QTextEdit):
             self.change_from = from_
             self.change_added = added
     
-
     def adjustSize(self):
         h = self.document().documentLayout().documentSize().toSize().height()
         self.setFixedHeight(max(h, 50))
@@ -61,13 +62,12 @@ class SourceTextEdit(QTextEdit):
     def on_content_changed(self):
         if self.text_content_changed:
             self.text_content_changed = False
-            if not self.high_lighting:
+            if not self.highlighting:
                 self.text_changed.emit()
         if self.hasFocus() and not self.pre_editing:
             self.user_edited.emit()
 
             if not self.in_redo_undo:
-
                 change_from = self.change_from
                 added_text = ''
                 input_method_used = False
@@ -90,13 +90,11 @@ class SourceTextEdit(QTextEdit):
                     added_text = cursor.selectedText()
                 self.user_edited_verbose.emit(change_from, added_text, input_method_used)
                 
-
                 undo_steps = self.document().availableUndoSteps()
                 new_steps = undo_steps - self.old_undo_steps
                 if new_steps > 0:
                     self.old_undo_steps = undo_steps
                     self.push_undo_stack.emit(new_steps)
-
 
     def setHoverEffect(self, hover: bool):
         try:
@@ -132,13 +130,12 @@ class SourceTextEdit(QTextEdit):
         return super().focusOutEvent(event)
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
-        cursor = self.textCursor()
-        
         if e.preeditString() == '':
             self.pre_editing = False
             self.input_method_text = e.commitString()
         else:
             if self.pre_editing is False:
+                cursor = self.textCursor()
                 self.input_method_from = cursor.selectionStart()
             self.pre_editing = True
         self.input_method_event = e
@@ -168,9 +165,6 @@ class SourceTextEdit(QTextEdit):
         self.in_redo_undo = False
         self.old_undo_steps = self.document().availableUndoSteps()
 
-    def block_all_signals(self, block: bool):
-        self.blockSignals(block)
-        self.document().blockSignals(block)
         
 class TransTextEdit(SourceTextEdit):
     pass
@@ -239,7 +233,7 @@ class TextEditCommand(QUndoCommand):
         super().__init__()
         self.edit = edit
         self.blkitem = blkitem
-        self.op_counter = -1
+        self.op_counter = 0
         self.change_from = edit.change_from
         self.change_added = edit.change_added
         self.change_removed = edit.change_removed
@@ -250,9 +244,10 @@ class TextEditCommand(QUndoCommand):
             edit.input_method_from = -1
 
     def redo(self):
-        self.op_counter += 1
-        if self.op_counter <= 0:
+        if self.op_counter == 0:
+            self.op_counter += 1
             return
+
         for _ in range(self.num_steps):
             self.edit.redo()
         self.blkitem.document().redo()

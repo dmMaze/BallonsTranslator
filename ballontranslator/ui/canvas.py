@@ -514,4 +514,5 @@ class Canvas(QGraphicsScene):
         pass
 
     def on_search_replace_all(self):
+        self.undoStack.push(ReplaceAllCommand(self.search_widget))
         pass
