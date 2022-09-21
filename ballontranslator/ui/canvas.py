@@ -17,7 +17,7 @@ from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
-from .search_replace_widgets import SearchWidget, ReplaceOneCommand, ReplaceAllCommand
+from .page_search_widget import PageSearchWidget, ReplaceOneCommand, ReplaceAllCommand
 from . import constants as C
 
 CANVAS_SCALE_MAX = 3.0
@@ -122,7 +122,7 @@ class Canvas(QGraphicsScene):
             # produce blurred result, saving imgs remain unaffected
             self.gv.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-        self.search_widget = SearchWidget(self.gv, is_floating=True)
+        self.search_widget = PageSearchWidget(self.gv)
         self.search_widget.replace_one.connect(self.on_search_replace_one)
         self.search_widget.replace_all.connect(self.on_search_replace_all)
         

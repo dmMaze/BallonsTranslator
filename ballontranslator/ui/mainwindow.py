@@ -16,7 +16,7 @@ from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
-from .imgtranspanel import TextPanel, SourceTextEdit
+from .textedit_area import TextPanel, SourceTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
@@ -24,6 +24,7 @@ from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .stylewidgets import FrameLessMessageBox
 from .preset_widget import PresetPanel
 from .constants import STYLESHEET_PATH, CONFIG_PATH
+from .global_search_widget import GlobalSearchWidget
 from . import constants as C
 
 class PageListView(QListWidget):    
@@ -74,10 +75,10 @@ class MainWindow(QMainWindow):
         self.setMinimumWidth(screen_size.width() // 2)
 
         self.leftBar = LeftBar(self)
-        self.leftBar.showPageListLabel.stateChanged.connect(self.pageLabelStateChanged)
+        self.leftBar.showPageListLabel.clicked.connect(self.pageLabelStateChanged)
         self.leftBar.imgTransChecked.connect(self.setupImgTransUI)
         self.leftBar.configChecked.connect(self.setupConfigUI)
-        
+        self.leftBar.globalSearchChecker.clicked.connect(self.on_set_gsearch_widget)
         self.leftBar.open_dir.connect(self.openDir)
         self.leftBar.open_json_proj.connect(self.openJsonProj)
         self.leftBar.save_proj.connect(self.save_proj)
@@ -87,6 +88,14 @@ class MainWindow(QMainWindow):
         self.pageList = PageListView()
         self.pageList.setHidden(True)
         self.pageList.currentItemChanged.connect(self.pageListCurrentItemChanged)
+
+        self.leftStackWidget = QStackedWidget(self)
+        self.leftStackWidget.addWidget(self.pageList)
+
+        self.global_search_widget = GlobalSearchWidget(self.leftStackWidget)
+        self.global_search_widget.req_update_pagetext.connect(self.on_req_update_pagetext)
+        self.global_search_widget.search_tree.result_item_clicked.connect(self.on_search_result_item_clicked)
+        self.leftStackWidget.addWidget(self.global_search_widget)
         
         self.centralStackWidget = QStackedWidget(self)
         
@@ -141,7 +150,8 @@ class MainWindow(QMainWindow):
         self.rightComicTransStackPanel.currentChanged.connect(self.on_transpanel_changed)
 
         self.comicTransSplitter = QSplitter(Qt.Orientation.Horizontal)
-        self.comicTransSplitter.addWidget(self.pageList)
+        # self.comicTransSplitter.addWidget(self.pageList)
+        self.comicTransSplitter.addWidget(self.leftStackWidget)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
 
@@ -198,6 +208,7 @@ class MainWindow(QMainWindow):
         self.drawingPanel.initDLModule(dl_manager)
 
         self.st_manager.config = self.config
+        self.global_search_widget.imgtrans_proj = self.imgtrans_proj
 
         self.configPanel.blockSignals(True)
         if self.config.open_recent_on_startup:
@@ -223,11 +234,14 @@ class MainWindow(QMainWindow):
         self.presetPanel.initPresets(self.config.font_presets)
 
         self.canvas.search_widget.set_config(self.config)
+        self.global_search_widget.set_config(self.config)
 
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
-        if self.leftBar.showPageListLabel.isChecked():
-            self.pageList.show()
+        if self.leftBar.needleftStackWidget():
+            self.leftStackWidget.show()
+        else:
+            self.leftStackWidget.hide()
 
     def setupConfigUI(self):
         self.centralStackWidget.setCurrentIndex(1)
@@ -283,11 +297,15 @@ class MainWindow(QMainWindow):
                 self.pageList.setCurrentItem(lstitem)
 
     def pageLabelStateChanged(self):
-        if self.centralStackWidget.currentIndex() == 0:
-            if self.leftBar.showPageListLabel.isChecked():
-                self.pageList.show()
-            else:
-                self.pageList.hide()
+        setup = self.leftBar.showPageListLabel.isChecked()
+        if setup:
+            if self.leftStackWidget.isHidden():
+                self.leftStackWidget.show()
+            if self.leftBar.globalSearchChecker.isChecked():
+                self.leftBar.globalSearchChecker.setChecked(False)
+            self.leftStackWidget.setCurrentWidget(self.pageList)
+        else:
+            self.leftStackWidget.hide()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.canvas.disconnect()
@@ -307,7 +325,6 @@ class MainWindow(QMainWindow):
             f.write(json_dump_nested_obj(self.config))
 
     def onHideCanvas(self):
-        self.pageList.hide()
         self.canvas.alt_pressed = False
         self.canvas.scale_tool_mode = False
 
@@ -355,7 +372,7 @@ class MainWindow(QMainWindow):
         shortcutSelectAll.activated.connect(self.shortcutSelectAll)
         shortcutSearch = QShortcut(QKeySequence("Ctrl+F"), self)
         shortcutSearch.activated.connect(self.shortcutSearch)
-        shortcutGlobalSearch = QShortcut(QKeySequence("Ctrl+Shift+F"), self)
+        shortcutGlobalSearch = QShortcut(QKeySequence("Ctrl+G"), self)
         shortcutGlobalSearch.activated.connect(self.shortcutGlobalSearch)
         shortcutEscape = QShortcut(QKeySequence("Escape"), self)
         shortcutEscape.activated.connect(self.shortcutEscape)
@@ -442,19 +459,52 @@ class MainWindow(QMainWindow):
                 if isinstance(fo, SourceTextEdit):
                     tgt_edit = fo
             se = self.canvas.search_widget.search_editor
+            se.setFocus()
             if sel_text != '':
-                # se.setFocus()
                 se.setPlainText(sel_text)
-                # cursor = se.textCursor()
-                # cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
-                # se.setTextCursor(cursor)
+                cursor = se.textCursor()
+                cursor.select(QTextCursor.SelectionType.Document)
+                se.setTextCursor(cursor)
 
             if self.canvas.search_widget.isHidden():
                 self.canvas.search_widget.show()
             self.canvas.search_widget.setCurrentEditor(tgt_edit)
 
     def shortcutGlobalSearch(self):
-        pass
+        if self.canvas.gv.isVisible():
+            if not self.leftBar.globalSearchChecker.isChecked():
+                self.leftBar.globalSearchChecker.click()
+            fo = self.app.focusObject()
+            sel_text = ''
+            blkitem = self.canvas.editing_textblkitem
+            if fo == self.canvas.gv and blkitem is not None:
+                sel_text = blkitem.textCursor().selectedText()
+            elif isinstance(fo, QTextEdit) or isinstance(fo, QPlainTextEdit):
+                sel_text = fo.textCursor().selectedText()
+            se = self.global_search_widget.search_editor
+            se.setFocus()
+            if sel_text != '':
+                se.setPlainText(sel_text)
+                cursor = se.textCursor()
+                cursor.select(QTextCursor.SelectionType.Document)
+                se.setTextCursor(cursor)
+                
+                self.global_search_widget.commit_search()
+
+    def on_req_update_pagetext(self):
+        if self.canvas.projstate_unsaved:
+            self.st_manager.updateTextBlkList()
+
+    def on_search_result_item_clicked(self, pagename: str, blk_idx: int, is_src: bool):
+        idx = self.imgtrans_proj.pagename2idx(pagename)
+        self.pageList.setCurrentRow(idx)
+        pw = self.st_manager.pairwidget_list[blk_idx]
+        if is_src:
+            pw.e_source.setFocus()
+            pw.e_source.ensure_scene_visible.emit()
+        else:
+            pw.e_trans.setFocus()
+            pw.e_trans.ensure_scene_visible.emit()
 
     def shortcutEscape(self):
         if self.canvas.search_widget.isVisible():
@@ -700,12 +750,21 @@ class MainWindow(QMainWindow):
 
     def on_export_doc(self):
         self.export_doc_thread.exportAsDoc(self.imgtrans_proj)
-        pass
 
     def on_import_doc(self):
         self.st_manager.updateTextBlkList()
 
         self.import_doc_thread.importDoc(self.imgtrans_proj)
+
+    def on_set_gsearch_widget(self):
+        setup = self.leftBar.globalSearchChecker.isChecked()
+        if setup:
+            if self.leftStackWidget.isHidden():
+                self.leftStackWidget.show()
+            self.leftBar.showPageListLabel.setChecked(False)
+            self.leftStackWidget.setCurrentWidget(self.global_search_widget)
+        else:
+            self.leftStackWidget.hide()
 
     def on_fin_export_doc(self):
         msg = QMessageBox()

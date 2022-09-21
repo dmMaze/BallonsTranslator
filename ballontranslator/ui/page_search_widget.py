@@ -1,5 +1,5 @@
-from qtpy.QtWidgets import QHBoxLayout, QComboBox, QTextEdit, QLabel, QTreeView, QPlainTextEdit, QCheckBox, QMessageBox, QVBoxLayout, QStyle, QSlider, QStyle,  QGraphicsDropShadowEffect, QWidget
-from qtpy.QtCore import Qt, QTimer, QPointF, QRect, Signal
+from qtpy.QtWidgets import QHBoxLayout, QComboBox, QTextEdit, QLabel, QPlainTextEdit, QCheckBox, QVBoxLayout,  QGraphicsDropShadowEffect, QWidget
+from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtGui import QKeyEvent, QTextDocument, QTextCursor, QHideEvent, QInputMethodEvent, QFontMetrics, QColor, QShowEvent, QSyntaxHighlighter, QTextCharFormat
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -11,7 +11,7 @@ from typing import List, Union, Tuple, Dict
 from .misc import ProgramConfig
 from .stylewidgets import Widget, ClickableLabel
 from .textitem import TextBlkItem
-from .imgtranspanel import TransPairWidget, SourceTextEdit, TransTextEdit
+from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
 
 HIGHLIGHT_COLOR = QColor(30, 147, 229, 60)
 CURRENT_TEXT_COLOR = QColor(244, 249, 28)
@@ -93,7 +93,7 @@ class HighlightMatched(QSyntaxHighlighter):
                 self.setFormat(intersect_start, length, fmt)
         
         self.edit.highlighting = False
-
+        self.edit.updateUndoSteps()
 
 
 class SearchEditor(QPlainTextEdit):
@@ -101,10 +101,11 @@ class SearchEditor(QPlainTextEdit):
     commit = Signal()
     enter_pressed = Signal()
     shift_enter_pressed = Signal()
-    def __init__(self, parent: QWidget = None, original_height: int = 32, commit_latency: int = -1, *args, **kwargs):
+    def __init__(self, parent: QWidget = None, original_height: int = 32, commit_latency: int = -1, shift_enter_prev: bool = True, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.original_height = original_height
         self.commit_latency = commit_latency
+        self.shift_enter_prev = shift_enter_prev
         if commit_latency > 0:
             self.commit_timer = QTimer(self)
             self.commit_timer.timeout.connect(self.on_commit_timer_timeout)
@@ -129,12 +130,15 @@ class SearchEditor(QPlainTextEdit):
         if e.key() == Qt.Key.Key_Return:
             if self.commit_timer is not None:
                 self.commit_timer.stop()
-            e.setAccepted(True)
             if e.modifiers() == Qt.KeyboardModifier.ShiftModifier:
-                self.shift_enter_pressed.emit()
+                if self.shift_enter_prev:
+                    e.setAccepted(True)
+                    self.shift_enter_pressed.emit()
+                    return
             else:
+                e.setAccepted(True)
                 self.enter_pressed.emit()
-            return
+                return
         return super().keyPressEvent(e)
 
     def on_text_changed(self):
@@ -166,17 +170,16 @@ class SearchEditor(QPlainTextEdit):
         return super().inputMethodEvent(e)
 
 
-class SearchWidget(Widget):
+class PageSearchWidget(Widget):
 
     search = Signal()
-    reinit = Signal()
-    replace_one = Signal()
     replace_all = Signal()
-    
+    replace_one = Signal()
 
-    def __init__(self, parent: QWidget = None, is_floating=True, *args, **kwargs) -> None:
-        super().__init__(parent, *args, **kwargs)
-        self.is_floating = is_floating
+    def __init__(self, parent: QWidget = None, *args, **kwargs) -> None:
+        super().__init__(parent)
+        self.config: ProgramConfig = None
+
         self.search_rstedit_list: List[SourceTextEdit] = []
         self.search_counter_list: List[int] = []
         self.highlighter_list: List[HighlightMatched] = []
@@ -226,9 +229,11 @@ class SearchWidget(Widget):
         self.replace_btn = ClickableLabel(None, self)
         self.replace_btn.setObjectName(self.tr('ReplaceBtn'))
         self.replace_btn.clicked.connect(self.on_replace_btn_clicked)
+        self.replace_btn.setToolTip(self.tr('Replace'))
         self.replace_all_btn = ClickableLabel(None, self)
         self.replace_all_btn.setObjectName(self.tr('ReplaceAllBtn'))
         self.replace_all_btn.clicked.connect(self.on_replaceall_btn_clicked)
+        self.replace_all_btn.setToolTip(self.tr('Replace All'))
 
         hlayout_bar1_0 = QHBoxLayout()
         hlayout_bar1_0.addWidget(self.search_editor)
@@ -248,7 +253,7 @@ class SearchWidget(Widget):
         hlayout_bar1.addLayout(hlayout_bar1_0)
         hlayout_bar1.addLayout(hlayout_bar1_1)
         
-        self.replace_layout = hlayout_bar2 = QHBoxLayout()
+        hlayout_bar2 = QHBoxLayout()
         hlayout_bar2.addWidget(self.replace_editor)
         hlayout_bar2.addWidget(self.replace_btn)
         hlayout_bar2.addWidget(self.replace_all_btn)
@@ -261,25 +266,24 @@ class SearchWidget(Widget):
         vlayout.addLayout(hlayout_bar1)
         vlayout.addLayout(hlayout_bar2)
 
-        if self.is_floating:
-            self.search_editor.commit.connect(self.on_commit_search)
-            self.close_btn = ClickableLabel(None, self)
-            self.close_btn.setObjectName('SearchCloseBtn')
-            self.close_btn.setToolTip(self.tr('Close (Escape)'))
-            self.close_btn.clicked.connect(self.on_close_button_clicked)
-            hlayout_bar1_1.addWidget(self.close_btn)
-            e = QGraphicsDropShadowEffect(self)
-            e.setOffset(0, 0)
-            e.setBlurRadius(35)
-            self.setGraphicsEffect(e)
-            self.setFixedWidth(480)
-            self.search_editor.setFixedWidth(200)
-            self.replace_editor.setFixedWidth(200)
-            self.search_editor.enter_pressed.connect(self.on_next_search_result)
-            self.search_editor.shift_enter_pressed.connect(self.on_prev_search_result)
+        self.search_editor.commit.connect(self.on_commit_search)
+        self.close_btn = ClickableLabel(None, self)
+        self.close_btn.setObjectName('SearchCloseBtn')
+        self.close_btn.setToolTip(self.tr('Close (Escape)'))
+        self.close_btn.clicked.connect(self.on_close_button_clicked)
+        hlayout_bar1_1.addWidget(self.close_btn)
+        e = QGraphicsDropShadowEffect(self)
+        e.setOffset(0, 0)
+        e.setBlurRadius(35)
+        self.setGraphicsEffect(e)
+        self.setFixedWidth(480)
+        self.search_editor.setFixedWidth(200)
+        self.replace_editor.setFixedWidth(200)
+        self.search_editor.enter_pressed.connect(self.on_next_search_result)
+        self.search_editor.shift_enter_pressed.connect(self.on_prev_search_result)
 
         self.adjustSize()
-        self.config: ProgramConfig = None
+        
 
     def on_close_button_clicked(self):
         self.hide()
@@ -390,7 +394,6 @@ class SearchWidget(Widget):
 
     def reInitialize(self):
         self.clearSearchResult()
-        self.reinit.emit()
 
     def page_search(self, update_cursor=True):
 
@@ -433,7 +436,7 @@ class SearchWidget(Widget):
                 self.updateCounterText()
 
     def get_find_flag(self) -> QTextDocument.FindFlag:
-        find_flag = QTextDocument.FindFlag()
+        find_flag = QTextDocument.FindFlag(0)
         if self.case_sensitive_toggle.isChecked():
             find_flag |= QTextDocument.FindFlag.FindCaseSensitively
         if self.whole_word_toggle.isChecked():
@@ -689,9 +692,12 @@ class SearchWidget(Widget):
                 self.setCurrentEditor(edit)
             
 
+class GlobalSearchWidget(Widget):
+    pass
+
 
 class ReplaceOneCommand(QUndoCommand):
-    def __init__(self, se: SearchWidget, parent=None):
+    def __init__(self, se: PageSearchWidget, parent=None):
         super(ReplaceOneCommand, self).__init__(parent)
         self.op_counter = 0
         self.sw = se
@@ -759,7 +765,7 @@ class ReplaceOneCommand(QUndoCommand):
 
 class ReplaceAllCommand(QUndoCommand):
 
-    def __init__(self, search_widget: SearchWidget) -> None:
+    def __init__(self, search_widget: PageSearchWidget) -> None:
         super().__init__()
         self.op_counter = 0
         self.sw = search_widget

@@ -12,10 +12,10 @@ except:
 
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
-from .imgtranspanel import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget, TextEditCommand
+from .textedit_area import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget, TextEditCommand
 from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
-from .search_replace_widgets import SearchWidget
+from .page_search_widget import PageSearchWidget
 
 from utils.imgproc_utils import extract_ballon_region
 from utils.text_processing import seg_text, is_cjk

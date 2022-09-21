@@ -138,6 +138,10 @@ class LeftBar(Widget):
         self.setFixedWidth(LEFTBAR_WIDTH)
         self.showPageListLabel = ShowPageListChecker()
 
+        self.globalSearchChecker = QCheckBox()
+        self.globalSearchChecker.setObjectName('GlobalSearchChecker')
+        self.globalSearchChecker.setToolTip('Global Search (Ctrl+G)')
+
         self.imgTransChecker = StateChecker('imgtrans')
         self.imgTransChecker.setObjectName('ImgTransChecker')
         self.imgTransChecker.checked.connect(self.stateCheckerChanged)
@@ -194,6 +198,7 @@ class LeftBar(Widget):
         vlayout = QVBoxLayout(self)
         vlayout.addWidget(openBtnToolBar)
         vlayout.addWidget(self.showPageListLabel)
+        vlayout.addWidget(self.globalSearchChecker)
         vlayout.addWidget(self.imgTransChecker)
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
         vlayout.addWidget(self.configChecker)
@@ -331,6 +336,9 @@ class LeftBar(Widget):
     def leaveEvent(self, e: QMouseEvent) -> None:
         self.drag_resize_pos = None
         return super().leaveEvent(e)
+
+    def needleftStackWidget(self) -> bool:
+        return self.showPageListLabel.isChecked() or self.globalSearchChecker.isChecked()
 
 
 class RightBar(Widget):

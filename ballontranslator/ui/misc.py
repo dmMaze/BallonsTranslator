@@ -257,6 +257,10 @@ class ProgramConfig:
         fsearch_case: bool = False,
         fsearch_whole_word: bool = False,
         fsearch_range: int = 0,
+        gsearch_case: bool = False,
+        gsearch_whole_word: bool = False,
+        gsearch_regex: bool = False,
+        gsearch_range: int = 0,
         **kwargs) -> None:
 
         if isinstance(dl, dict):
@@ -295,6 +299,10 @@ class ProgramConfig:
         self.fsearch_case = fsearch_case
         self.fsearch_whole_word = fsearch_whole_word
         self.fsearch_range = fsearch_range
+        self.gsearch_case = gsearch_case
+        self.gsearch_whole_word = gsearch_whole_word
+        self.gsearch_regex = gsearch_case
+        self.gsearch_range = gsearch_range
 
 class LruIgnoreArg:
 
