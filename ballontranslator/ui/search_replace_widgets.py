@@ -36,13 +36,17 @@ class HighlightMatched(QSyntaxHighlighter):
         old_edit = self.edit
         if old_edit is not None:
             old_edit.highlighting = True
+            old_edit.block_all_signals(True)
         if edit is not None:
+            edit.highlighting = True
             self.setDocument(edit.document())
+            edit.highlighting = False
         else:
             self.setDocument(None)
         self.edit = edit
         if old_edit is not None:
             old_edit.highlighting = False
+            old_edit.block_all_signals(False)
 
     def set_matched_map(self, matched_map: dict):
         self.matched_map = matched_map
@@ -324,7 +328,7 @@ class SearchWidget(Widget):
 
     def on_rst_text_changed(self):
         edit: SourceTextEdit = self.sender()
-        if edit.pre_editing:
+        if edit.pre_editing or edit.highlighting:
             return
 
         idx = self.get_result_edit_index(edit)
@@ -371,7 +375,7 @@ class SearchWidget(Widget):
             self.search_counter_list.pop(idx)
             edit.text_changed.disconnect(self.on_rst_text_changed)
             highlighter = self.highlighter_list.pop(idx)
-            # highlighter.setEditor(None)
+            highlighter.setEditor(None)
             if len(self.search_rstedit_list) == 0:
                 self.clearSearchResult()
             elif self.current_edit is not None:
@@ -762,39 +766,35 @@ class ReplaceAllCommand(QUndoCommand):
 
         self.rstedit_list: List[SourceTextEdit] = []
         self.blkitem_list: List[TextBlkItem] = []
-        for edit in self.sw.search_rstedit_list:
+        curpos_list = []
+        for edit, highlighter in zip(self.sw.search_rstedit_list, self.sw.highlighter_list):
             self.rstedit_list.append(edit)
+            curpos_list.append(list(highlighter.matched_map.keys()))
 
-        find_flag = self.sw.get_find_flag()
         text = self.sw.search_editor.toPlainText()
+        len_text = len(text)
         replace = self.sw.replace_editor.toPlainText()
-        for edit in self.rstedit_list:
+        len_delta = len(replace) - len_text
+        for edit, curpos_lst in zip(self.rstedit_list, curpos_list):
             redo_blk = type(edit) == TransTextEdit
             if redo_blk:
                 blkitem = self.sw.textblk_item_list[edit.idx]
                 self.blkitem_list.append(blkitem)
                 sel_list = []
 
-            doc = edit.document()
             cursor = edit.textCursor()
             cursor.clearSelection()
             cursor.setPosition(0)
-            # cursor.beginEditBlock()
-            counter = 0
-            while True:
-                counter += 1
-                cursor: QTextCursor = doc.find(text, cursor, find_flag)
-                if cursor.isNull():
-                    break
-                if redo_blk:
-                    sel_list.append([cursor.selectionStart(), cursor.selectionEnd()])
-                if counter > 1:
-                    cursor.joinPreviousEditBlock()
+            cursor.beginEditBlock()
+            for ii, sel_start in enumerate(curpos_lst):
+                sel_start += len_delta * ii - len_text
+                cursor.setPosition(sel_start)
+                sel_end = sel_start+len_text
+                cursor.setPosition(sel_end, QTextCursor.MoveMode.KeepAnchor)
                 cursor.insertText(replace)
-                if counter > 1:
-                    cursor.endEditBlock()
-            
-            # cursor.endEditBlock()
+                if redo_blk:
+                    sel_list.append([sel_start, sel_end])
+            cursor.endEditBlock()
             edit.updateUndoSteps()
 
             if redo_blk:
@@ -805,7 +805,6 @@ class ReplaceAllCommand(QUndoCommand):
                     cursor.setPosition(sel[1], QTextCursor.MoveMode.KeepAnchor)
                     cursor.insertText(replace)
                 cursor.endEditBlock()
-            edit.show()
 
     def redo(self):
         if self.op_counter == 0:
@@ -814,13 +813,11 @@ class ReplaceAllCommand(QUndoCommand):
 
         for edit in self.rstedit_list:
             edit.redo()
-            edit.update()
         for blkitem in self.blkitem_list:
             blkitem.document().redo()
 
     def undo(self):
         for edit in self.rstedit_list:
             edit.undo()
-            edit.update()
         for blkitem in self.blkitem_list:
             blkitem.document().undo()

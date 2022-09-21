@@ -45,6 +45,10 @@ class SourceTextEdit(QTextEdit):
         self.text_content_changed = False
         self.highlighting = False
 
+    def block_all_signals(self, block: bool):
+        self.blockSignals(block)
+        self.document().blockSignals(block)
+
     def updateUndoSteps(self):
         self.old_undo_steps = self.document().availableUndoSteps()
 
