@@ -64,7 +64,7 @@ class SourceTextEdit(QTextEdit):
             self.text_content_changed = False
             if not self.highlighting:
                 self.text_changed.emit()
-        if self.hasFocus() and not self.pre_editing:
+        if self.hasFocus() and not self.pre_editing and not self.highlighting:
             self.user_edited.emit()
 
             if not self.in_redo_undo:

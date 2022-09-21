@@ -16,6 +16,7 @@ from .imgtranspanel import TransPairWidget, SourceTextEdit, TransTextEdit
 HIGHLIGHT_COLOR = QColor(30, 147, 229, 60)
 CURRENT_TEXT_COLOR = QColor(244, 249, 28)
 
+
 class HighlightMatched(QSyntaxHighlighter):
 
     def __init__(self, edit: SourceTextEdit, match_text: str = '', matched_map: dict = None):
@@ -370,7 +371,7 @@ class SearchWidget(Widget):
             self.search_counter_list.pop(idx)
             edit.text_changed.disconnect(self.on_rst_text_changed)
             highlighter = self.highlighter_list.pop(idx)
-            highlighter.setEditor(edit)
+            # highlighter.setEditor(None)
             if len(self.search_rstedit_list) == 0:
                 self.clearSearchResult()
             elif self.current_edit is not None:
@@ -423,12 +424,12 @@ class SearchWidget(Widget):
 
         if update_cursor:
             if len(self.search_rstedit_list) > 0:
-                self.current_edit = self.search_rstedit_list[0]
-                self.updateCurrentCursor()
-            self.updateCounterText()
+                self.setCurrentEditor(self.search_rstedit_list[0])
+            else:
+                self.updateCounterText()
 
     def get_find_flag(self) -> QTextDocument.FindFlag:
-        find_flag = QTextDocument.FindFlags()
+        find_flag = QTextDocument.FindFlag()
         if self.case_sensitive_toggle.isChecked():
             find_flag |= QTextDocument.FindFlag.FindCaseSensitively
         if self.whole_word_toggle.isChecked():
@@ -678,11 +679,11 @@ class SearchWidget(Widget):
 
             if current_idx != -1 and current_idx >= insert_idx:
                 self.result_pos += found_counter
+                self.updateCounterText()
             else:
                 self.result_pos = 0
                 self.setCurrentEditor(edit)
-
-            self.updateCounterText()
+            
 
 
 class ReplaceOneCommand(QUndoCommand):
