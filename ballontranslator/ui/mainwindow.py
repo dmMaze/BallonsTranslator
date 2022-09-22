@@ -142,6 +142,8 @@ class MainWindow(QMainWindow):
         self.st_manager.new_textblk.connect(self.canvas.search_widget.on_new_textblk)
         self.canvas.search_widget.pairwidget_list = self.st_manager.pairwidget_list
         self.canvas.search_widget.textblk_item_list = self.st_manager.textblk_item_list
+        self.canvas.search_widget.replace_one.connect(self.st_manager.on_page_replace_one)
+        self.canvas.search_widget.replace_all.connect(self.st_manager.on_page_replace_all)
 
         # comic trans pannel
         self.rightComicTransStackPanel = QStackedWidget(self)
@@ -309,8 +311,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.st_manager.hovering_transwidget = None
-        self.canvas.disconnect()
-        self.canvas.undoStack.disconnect()
+        self.canvas.prepareClose()
         self.save_config()
         if not self.imgtrans_proj.is_empty:
             self.imgtrans_proj.save()
@@ -335,8 +336,8 @@ class MainWindow(QMainWindow):
             if self.save_on_page_changed:
                 if self.canvas.projstate_unsaved and not self.opening_dir:
                     self.saveCurrentPage()
-            self.st_manager.canvasUndoStack.clear()
             self.imgtrans_proj.set_current_img(item.text())
+            self.canvas.clear_undostack(update_saved_step=True)
             self.canvas.updateCanvas()
             self.st_manager.hovering_transwidget = None
             self.st_manager.updateSceneTextitems()
@@ -493,7 +494,7 @@ class MainWindow(QMainWindow):
                 self.global_search_widget.commit_search()
 
     def on_req_update_pagetext(self):
-        if self.canvas.projstate_unsaved:
+        if self.canvas.text_change_unsaved():
             self.st_manager.updateTextBlkList()
 
     def on_search_result_item_clicked(self, pagename: str, blk_idx: int, is_src: bool):
@@ -553,8 +554,10 @@ class MainWindow(QMainWindow):
             self.saveCurrentPage(update_scene_text=True, restore_interface=True)
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False):
-        if update_scene_text:
+        if update_scene_text and self.canvas.text_change_unsaved():
             self.st_manager.updateTextBlkList()
+
+        self.canvas.update_saved_undostep()
         
         if self.rightComicTransStackPanel.isHidden():
             self.bottomBar.texteditChecker.click()
@@ -638,7 +641,7 @@ class MainWindow(QMainWindow):
         if page_key is None:
             self.bottomBar.transTranspageBtn.setRunText()
             return
-        if run_target:
+        if run_target and self.canvas.text_change_unsaved():
             self.st_manager.updateTextBlkList()
         self.dl_manager.translatePage(run_target, page_key)
 
@@ -753,8 +756,6 @@ class MainWindow(QMainWindow):
         self.export_doc_thread.exportAsDoc(self.imgtrans_proj)
 
     def on_import_doc(self):
-        self.st_manager.updateTextBlkList()
-
         self.import_doc_thread.importDoc(self.imgtrans_proj)
 
     def on_set_gsearch_widget(self):
@@ -774,7 +775,3 @@ class MainWindow(QMainWindow):
 
     def on_fin_import_doc(self):
         self.st_manager.updateSceneTextitems()
-
-
-
-

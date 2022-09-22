@@ -3,13 +3,9 @@ from typing import List, Union
 from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication
 from qtpy.QtCore import Signal, Qt, QSize, QEvent
 from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QKeyEvent, QTextCursor
-try:
-    from qtpy.QtWidgets import QUndoCommand
-except:
-    from qtpy.QtGui import QUndoCommand
 
 from .stylewidgets import Widget, SeparatorWidget
-from .textitem import TextBlock, TextBlkItem
+from .textitem import TextBlock
 from .fontformatpanel import FontFormatPanel
 
 
@@ -17,8 +13,7 @@ class SourceTextEdit(QTextEdit):
     hover_enter = Signal(int)
     hover_leave = Signal(int)
     focus_in = Signal(int)
-    user_edited = Signal()
-    user_edited_verbose = Signal(int, str, bool)
+    propagate_user_edited = Signal(int, str, bool)
     ensure_scene_visible = Signal()
     redo_signal = Signal()
     undo_signal = Signal()
@@ -68,7 +63,6 @@ class SourceTextEdit(QTextEdit):
             if not self.highlighting:
                 self.text_changed.emit()
         if self.hasFocus() and not self.pre_editing and not self.highlighting:
-            self.user_edited.emit()
 
             if not self.in_redo_undo:
                 change_from = self.change_from
@@ -89,9 +83,9 @@ class SourceTextEdit(QTextEdit):
                         input_method_used = True
                     cursor.setPosition(change_from)
                     cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
-                    
                     added_text = cursor.selectedText()
-                self.user_edited_verbose.emit(change_from, added_text, input_method_used)
+                
+                self.propagate_user_edited.emit(change_from, added_text, input_method_used)
                 
                 undo_steps = self.document().availableUndoSteps()
                 new_steps = undo_steps - self.old_undo_steps
@@ -233,33 +227,4 @@ class TextPanel(Widget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-
-class TextEditCommand(QUndoCommand):
-    def __init__(self, edit: Union[SourceTextEdit, TransTextEdit], num_steps: int, blkitem: TextBlkItem) -> None:
-        super().__init__()
-        self.edit = edit
-        self.blkitem = blkitem
-        self.op_counter = 0
-        self.num_steps = min(num_steps, 2)
-        if edit.input_method_from == -1:
-            self.num_steps = 1
-        else:
-            edit.input_method_from = -1
-
-    def redo(self):
-        if self.op_counter == 0:
-            self.op_counter += 1
-            return
-
-        for _ in range(self.num_steps):
-            self.edit.redo()
-        if self.blkitem is not None:
-            self.blkitem.document().redo()
-
-    def undo(self):
-        for _ in range(self.num_steps):
-            self.edit.undo()
-        if self.blkitem is not None:
-            self.blkitem.document().undo()
 

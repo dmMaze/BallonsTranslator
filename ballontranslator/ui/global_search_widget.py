@@ -1,10 +1,6 @@
 from qtpy.QtWidgets import QHBoxLayout, QComboBox, QSizePolicy, QLabel, QTreeView, QCheckBox, QMessageBox, QVBoxLayout, QStyle, QSlider, QStyle,  QGraphicsDropShadowEffect, QWidget
 from qtpy.QtCore import Qt, QItemSelection, QSize, Signal, QUrl, QThread
 from qtpy.QtGui import QKeyEvent, QTextCursor, QStandardItemModel, QStandardItem, QFontMetrics, QColor, QShowEvent, QSyntaxHighlighter, QTextCharFormat
-try:
-    from qtpy.QtWidgets import QUndoCommand
-except:
-    from qtpy.QtGui import QUndoCommand
 
 from typing import List, Union, Tuple, Dict
 

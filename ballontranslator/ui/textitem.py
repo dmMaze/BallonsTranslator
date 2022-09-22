@@ -32,7 +32,7 @@ class TextBlkItem(QGraphicsTextItem):
     redo_signal = Signal()
     undo_signal = Signal()
     push_undo_stack = Signal(int, bool)
-    user_edited_verbose = Signal(int, str, bool)
+    propagate_user_edited = Signal(int, str, bool)
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -116,7 +116,7 @@ class TextBlkItem(QGraphicsTextItem):
                         cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
                         
                         added_text = cursor.selectedText()
-                    self.user_edited_verbose.emit(change_from, added_text, input_method_used)
+                    self.propagate_user_edited.emit(change_from, added_text, input_method_used)
 
                 undo_steps = self.document().availableUndoSteps()
                 new_steps = undo_steps - self.old_undo_steps

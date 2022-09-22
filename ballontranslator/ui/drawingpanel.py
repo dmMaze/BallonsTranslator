@@ -1,11 +1,6 @@
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QDateTime, QRectF, QPoint
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QRectF
 from qtpy.QtWidgets import QGridLayout, QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
-from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
-
-try:
-    from qtpy.QtWidgets import QUndoCommand
-except:
-    from qtpy.QtGui import QUndoCommand
+from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
 
 from typing import Union, Tuple, List
 import numpy as np
@@ -16,12 +11,13 @@ from utils.textblock_mask import canny_flood, connected_canny_flood
 from utils.logger import logger
 
 from .dl_manager import DLManager
-from .image_edit import ImageEditMode, PixmapItem, DrawingLayer, StrokeImgItem
+from .image_edit import ImageEditMode, PixmapItem, StrokeImgItem
 from .configpanel import InpaintConfigPanel
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
-from .misc import DrawPanelConfig, ndarray2pixmap, pixmap2ndarray
+from .misc import DrawPanelConfig, ndarray2pixmap
 from .constants import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
+from .drawing_commands import InpaintUndoCommand, StrokeItemUndoCommand
 
 INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)
 MAX_PEN_SIZE = 1000
@@ -504,7 +500,7 @@ class DrawingPanel(Widget):
         if self.currentTool == self.penTool:
             rect, _, qimg = stroke_item.clip()
             if rect is not None:
-                self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg))
+                self.canvas.push_undo_command(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg))
             self.canvas.removeItem(stroke_item)
         elif self.currentTool == self.inpaintTool:
             self.inpaint_stroke = stroke_item
@@ -538,7 +534,7 @@ class DrawingPanel(Widget):
             inpaint_mask = np.zeros_like(inpainted)
             inpaint_mask[mask > 0] = 1
             erased_img = inpaint_mask * inpainted + (1 - inpaint_mask) * origin
-            self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased_img, mask, inpaint_rect))
+            self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, erased_img, mask, inpaint_rect))
             self.canvas.removeItem(stroke_item)
 
         elif self.currentTool == self.penTool:
@@ -548,7 +544,7 @@ class DrawingPanel(Widget):
                 self.canvas.erase_img_key = None
                 self.canvas.stroke_img_item = None
             if rect is not None:
-                self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg, True))
+                self.canvas.push_undo_command(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg, True))
         
 
     def runInpaint(self, inpaint_dict=None):
@@ -590,7 +586,7 @@ class DrawingPanel(Widget):
         inpaint_rect = inpaint_dict['inpaint_rect']
         mask_array = self.canvas.imgtrans_proj.mask_array
         mask = cv2.bitwise_or(inpaint_dict['mask'], mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]])
-        self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
+        self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
         self.clearInpaintItems()
 
     def on_inpaint_failed(self):
@@ -709,7 +705,7 @@ class DrawingPanel(Widget):
             else:   # erasing
                 mask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
                 erased = self.canvas.imgtrans_proj.img_array[y1: y2, x1: x2]
-                self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased, mask, [x1, y1, x2, y2]))
+                self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, erased, mask, [x1, y1, x2, y2]))
                 self.canvas.image_edit_mode = ImageEditMode.RectTool
             self.setCrossCursor()
 
@@ -721,7 +717,7 @@ class DrawingPanel(Widget):
         ballon_mask = inpaint_dict['ballon_mask']
         if not need_inpaint and self.dl_manager.dl_config.check_need_inpaint:
             img[np.where(ballon_mask > 0)] = bground_bgr
-            self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect']))
+            self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect']))
             self.clearInpaintItems()
         else:
             self.runInpaint(inpaint_dict=inpaint_dict)
@@ -766,65 +762,3 @@ class DrawingPanel(Widget):
             self.inpaint_stroke = None
             if self.inpaintTool.isChecked():
                 self.canvas.image_edit_mode = ImageEditMode.InpaintTool
-
-class StrokeItemUndoCommand(QUndoCommand):
-    def __init__(self, target_layer: DrawingLayer, rect: Tuple[int], qimg: QImage, erasing=False):
-        super().__init__()
-        self.qimg = qimg
-        self.x = rect[0]
-        self.y = rect[1]
-        self.target_layer = target_layer
-        self.key = str(QDateTime.currentMSecsSinceEpoch())
-        if erasing:
-            self.compose_mode = QPainter.CompositionMode.CompositionMode_DestinationOut
-        else:
-            self.compose_mode = QPainter.CompositionMode.CompositionMode_SourceOver
-        
-    def undo(self):
-        if self.qimg is not None:
-            self.target_layer.removeQImage(self.key)
-            self.target_layer.update()
-        # self.stroke_pixmap.hide()
-
-    def redo(self):
-        if self.qimg is not None:
-            self.target_layer.addQImage(self.x, self.y, self.qimg, self.compose_mode, self.key)
-            self.target_layer.scene().update()
-
-
-class InpaintUndoCommand(QUndoCommand):
-    def __init__(self, canvas: Canvas, inpainted: np.ndarray, mask: np.ndarray, inpaint_rect: List[int]):
-        super().__init__()
-        self.canvas = canvas
-        img_array = self.canvas.imgtrans_proj.inpainted_array
-        mask_array = self.canvas.imgtrans_proj.mask_array
-        img_view = img_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        self.undo_img = np.copy(img_view)
-        self.undo_mask = np.copy(mask_view)
-        self.redo_img = inpainted
-        self.redo_mask = mask
-        self.inpaint_rect = inpaint_rect
-
-    def redo(self) -> None:
-        inpaint_rect = self.inpaint_rect
-        img_array = self.canvas.imgtrans_proj.inpainted_array
-        mask_array = self.canvas.imgtrans_proj.mask_array
-        img_view = img_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        img_view[:] = self.redo_img
-        mask_view[:] = self.redo_mask
-        self.canvas.setInpaintLayer()
-        self.canvas.setMaskLayer()
-
-    def undo(self) -> None:
-        inpaint_rect = self.inpaint_rect
-        img_array = self.canvas.imgtrans_proj.inpainted_array
-        mask_array = self.canvas.imgtrans_proj.mask_array
-        img_view = img_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        img_view[:] = self.undo_img
-        mask_view[:] = self.undo_mask
-        self.canvas.setInpaintLayer()
-        self.canvas.setMaskLayer()
-
