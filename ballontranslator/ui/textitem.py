@@ -17,6 +17,7 @@ TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
 
 
 class TextBlkItem(QGraphicsTextItem):
+
     begin_edit = Signal(int)
     end_edit = Signal(int)
     hover_enter = Signal(int)
@@ -25,10 +26,14 @@ class TextBlkItem(QGraphicsTextItem):
     moving = Signal(QGraphicsTextItem)
     rotated = Signal(float)
     reshaped = Signal(QGraphicsTextItem)
-    content_changed = Signal(QGraphicsTextItem)
     leftbutton_pressed = Signal(int)
     doc_size_changed = Signal(int)
     pasted = Signal(int)
+    redo_signal = Signal()
+    undo_signal = Signal()
+    push_undo_stack = Signal(int, bool)
+    user_edited_verbose = Signal(int, str, bool)
+
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pre_editing = False
@@ -55,6 +60,14 @@ class TextBlkItem(QGraphicsTextItem):
         self.oldRect = QRectF()
         self.repaint_on_changed = True
 
+        self.is_formatting = False
+        self.old_undo_steps = 0
+        self.in_redo_undo = False
+        self.change_from: int = 0
+        self.change_added: int = 0
+        self.input_method_from = -1
+        self.input_method_text = ''
+
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
         self.setVertical(False)
@@ -66,20 +79,56 @@ class TextBlkItem(QGraphicsTextItem):
     def inputMethodEvent(self, e: QInputMethodEvent):
         if e.preeditString() == '':
             self.pre_editing = False
+            self.input_method_text = e.commitString()
         else:
+            if self.pre_editing is False:
+                cursor = self.textCursor()
+                self.input_method_from = cursor.selectionStart()
             self.pre_editing = True
         super().inputMethodEvent(e)
         
     def is_editting(self):
         return self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
 
-    def onDocumentContentChanged(self):
-        if self.hasFocus() and not self.pre_editing:   
-            self.content_changed.emit(self)
-        if self.repaint_on_changed:
-            if not self.repainting:
-                self.repaint_background()
-        self.update()
+    def on_content_changed(self):
+        if (self.hasFocus() or self.is_formatting) and not self.pre_editing:   
+            # self.content_changed.emit(self)
+            if not self.in_redo_undo:
+
+                if not self.is_formatting:
+                    change_from = self.change_from
+                    added_text = ''
+                    input_method_used = False
+                    if self.input_method_from != -1:
+                        added_text = self.input_method_text
+                        change_from = self.input_method_from
+                        input_method_used = True
+            
+                    elif self.change_added > 0:
+                        len_text = len(self.toPlainText())
+                        cursor = self.textCursor()
+                        
+                        if self.change_added >  len_text:
+                            self.change_added = 1
+                            change_from = self.textCursor().position() - 1
+                            input_method_used = True
+                        cursor.setPosition(change_from)
+                        cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
+                        
+                        added_text = cursor.selectedText()
+                    self.user_edited_verbose.emit(change_from, added_text, input_method_used)
+
+                undo_steps = self.document().availableUndoSteps()
+                new_steps = undo_steps - self.old_undo_steps
+                if new_steps > 0:
+                    self.old_undo_steps = undo_steps
+                    self.push_undo_stack.emit(new_steps, self.is_formatting)
+
+        if not (self.hasFocus() and self.pre_editing):
+            if self.repaint_on_changed:
+                if not self.repainting:
+                    self.repaint_background()
+            self.update()
 
     def paint_stroke(self, painter: QPainter):
         doc = self.document().clone()
@@ -334,7 +383,8 @@ class TextBlkItem(QGraphicsTextItem):
         layout.documentSizeChanged.connect(self.docSizeChanged)
         doc.setDocumentLayout(layout)
         doc.setDefaultFont(default_font)
-        doc.contentsChanged.connect(self.onDocumentContentChanged)
+        doc.contentsChanged.connect(self.on_content_changed)
+        doc.contentsChange.connect(self.on_content_changing)
         
         if valid_layout:
             layout.setMaxSize(rect.width(), rect.height())
@@ -348,6 +398,44 @@ class TextBlkItem(QGraphicsTextItem):
                 self.setLetterSpacing(self.letter_spacing, force=True)
 
         self.doc_size_changed.emit(self.idx)
+
+    def updateUndoSteps(self):
+        self.old_undo_steps = self.document().availableUndoSteps()
+
+    def on_content_changing(self, from_: int, removed: int, added: int):
+        if not self.pre_editing:
+            if self.hasFocus():
+                self.change_from = from_
+                self.change_added = added
+
+    def keyPressEvent(self, e: QKeyEvent) -> None:
+        if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if e.key() == Qt.Key.Key_Z:
+                e.accept()
+                self.undo_signal.emit()
+                return
+            elif e.key() == Qt.Key.Key_Y:
+                e.accept()
+                self.redo_signal.emit()
+                return
+            elif e.key() == Qt.Key.Key_V:
+                if self.isEditing():
+                    e.accept()
+                    self.pasted.emit(self.idx)
+                    return
+        return super().keyPressEvent(e)
+
+    def undo(self) -> None:
+        self.in_redo_undo = True
+        self.document().undo()
+        self.in_redo_undo = False
+        self.old_undo_steps = self.document().availableUndoSteps()
+
+    def redo(self) -> None:
+        self.in_redo_undo = True
+        self.document().redo()
+        self.in_redo_undo = False
+        self.old_undo_steps = self.document().availableUndoSteps()
 
     def on_document_enlarged(self):
         rect = self.rect()
@@ -670,12 +758,3 @@ class TextBlkItem(QGraphicsTextItem):
             self.setPadding(self.layout.max_font_size(to_px=True))
         if repaint:
             self.repaint_background()
-
-
-    def keyPressEvent(self, e: QKeyEvent) -> None:
-        if e.key() == Qt.Key.Key_V and e.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            if self.isEditing() is not None:
-                e.accept()
-                self.pasted.emit(self.idx)
-                return
-        return super().keyPressEvent(e)

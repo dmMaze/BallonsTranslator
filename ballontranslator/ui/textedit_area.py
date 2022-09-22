@@ -38,7 +38,6 @@ class SourceTextEdit(QTextEdit):
         self.old_undo_steps = self.document().availableUndoSteps()
         self.in_redo_undo = False
         self.change_from: int = 0
-        self.change_removed: int = 0
         self.change_added: int = 0
         self.input_method_from = -1
         self.input_method_text = ''
@@ -55,9 +54,9 @@ class SourceTextEdit(QTextEdit):
     def on_content_changing(self, from_: int, removed: int, added: int):
         if not self.pre_editing:
             self.text_content_changed = True
-        if self.hasFocus() and not self.pre_editing:
-            self.change_from = from_
-            self.change_added = added
+            if self.hasFocus():
+                self.change_from = from_
+                self.change_added = added
     
     def adjustSize(self):
         h = self.document().documentLayout().documentSize().toSize().height()
@@ -142,7 +141,6 @@ class SourceTextEdit(QTextEdit):
                 cursor = self.textCursor()
                 self.input_method_from = cursor.selectionStart()
             self.pre_editing = True
-        self.input_method_event = e
         super().inputMethodEvent(e)
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
@@ -168,6 +166,11 @@ class SourceTextEdit(QTextEdit):
         self.document().redo()
         self.in_redo_undo = False
         self.old_undo_steps = self.document().availableUndoSteps()
+
+    def setPlainTextAndKeepUndoStack(self, text: str):
+        cursor = QTextCursor(self.document())
+        cursor.select(QTextCursor.SelectionType.Document)
+        cursor.insertText(text)
 
         
 class TransTextEdit(SourceTextEdit):
@@ -233,14 +236,11 @@ class TextPanel(Widget):
 
 
 class TextEditCommand(QUndoCommand):
-    def __init__(self, edit: Union[SourceTextEdit, TransTextEdit], blkitem: TextBlkItem, num_steps: int) -> None:
+    def __init__(self, edit: Union[SourceTextEdit, TransTextEdit], num_steps: int, blkitem: TextBlkItem) -> None:
         super().__init__()
         self.edit = edit
         self.blkitem = blkitem
         self.op_counter = 0
-        self.change_from = edit.change_from
-        self.change_added = edit.change_added
-        self.change_removed = edit.change_removed
         self.num_steps = min(num_steps, 2)
         if edit.input_method_from == -1:
             self.num_steps = 1
@@ -254,10 +254,12 @@ class TextEditCommand(QUndoCommand):
 
         for _ in range(self.num_steps):
             self.edit.redo()
-        self.blkitem.document().redo()
+        if self.blkitem is not None:
+            self.blkitem.document().redo()
 
     def undo(self):
         for _ in range(self.num_steps):
             self.edit.undo()
-        self.blkitem.document().undo()
+        if self.blkitem is not None:
+            self.blkitem.document().undo()
 

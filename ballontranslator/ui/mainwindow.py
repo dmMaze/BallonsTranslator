@@ -308,6 +308,7 @@ class MainWindow(QMainWindow):
             self.leftStackWidget.hide()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self.st_manager.hovering_transwidget = None
         self.canvas.disconnect()
         self.canvas.undoStack.disconnect()
         self.save_config()

@@ -22,6 +22,7 @@ def restore_textcursor(formatting_func):
     def wrapper(blkitem: TextBlkItem, *args, **kwargs):
         if blkitem is None:
             return
+        blkitem.is_formatting = True
         cursor = blkitem.textCursor()
         set_all = not cursor.hasSelection()
         pos1 = cursor.position()
@@ -38,6 +39,7 @@ def restore_textcursor(formatting_func):
             cursor.setPosition(pos1)
         blkitem.setTextCursor(cursor)
         blkitem.repaint_background()
+        blkitem.is_formatting = False
     return wrapper
 
 @restore_textcursor
