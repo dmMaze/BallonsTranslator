@@ -189,7 +189,6 @@ class MainWindow(QMainWindow):
         self.st_manager.formatpanel.global_format = self.config.global_fontformat
         self.st_manager.formatpanel.set_active_format(self.config.global_fontformat)
         
-        self.bottomBar.originalSlider.setHidden(True)
         self.rightComicTransStackPanel.setHidden(True)
         self.st_manager.setTextEditMode(False)
 
@@ -553,7 +552,6 @@ class MainWindow(QMainWindow):
             self.bottomBar.originalSlider.show()
             self.bottomBar.textblockChecker.hide()
         else:
-            self.bottomBar.originalSlider.hide()
             self.canvas.setPaintMode(False)
             self.rightComicTransStackPanel.setHidden(True)
         self.st_manager.setTextEditMode(False)
@@ -565,7 +563,6 @@ class MainWindow(QMainWindow):
             self.bottomBar.textblockChecker.show()
             self.rightComicTransStackPanel.setCurrentIndex(1)
             self.st_manager.setTextEditMode(True)
-            self.bottomBar.originalSlider.setHidden(True)
             self.setTextBlockMode()
         else:
             self.bottomBar.textblockChecker.hide()

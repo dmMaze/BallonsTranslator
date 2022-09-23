@@ -332,6 +332,7 @@ class SceneTextManager(QObject):
         if len(selections) > 1:
             for item in selections:
                 item.oldPos = item.pos()
+        self.changeHoveringWidget(self.pairwidget_list[blk_id].e_trans)
 
     def onTextBlkItemEndEdit(self, blk_id: int):
         self.canvas.editing_textblkitem = None
@@ -357,7 +358,6 @@ class SceneTextManager(QObject):
         blk_item = self.textblk_item_list[blk_id]
         if not blk_item.hasFocus():
             self.txtblkShapeControl.setBlkItem(blk_item)
-        self.changeHoveringWidget(self.pairwidget_list[blk_id].e_trans)
 
     def onTextBlkItemMoving(self, item: TextBlkItem):
         self.txtblkShapeControl.updateBoundingRect()
