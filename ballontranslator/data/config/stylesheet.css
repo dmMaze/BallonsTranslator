@@ -309,12 +309,17 @@ QGroupBox {
 }
 
 QPushButton {
-    max-width: 94px;
+    /* max-width: 94px; */
     height: 32px;
     font-size: 14px;
-    background-color: rgba(198, 201, 207, 33%);
+    background-color: rgba(198, 201, 207, 50%);
     border: 1px solid #999999;
-    border-radius: 3px;
+    border-radius: 4px;
+}
+
+NoBorderPushBtn {
+    background-color: rgb(198, 201, 207);
+    border: none;
 }
 
 QPushButton::hover {
@@ -803,8 +808,8 @@ ClickableLabel#SearchCloseBtn {
 }
 
 QCheckBox#CaseSensitiveToggle::indicator {
-    height: 28px;
-    width: 28px;
+    height: 24px;
+    width: 24px;
     padding-top: 3px;
     image: url(data/icons/case-sensitive.svg);
 }
@@ -818,8 +823,8 @@ QCheckBox#CaseSensitiveToggle::indicator:checked {
 }
 
 QCheckBox#WholeWordToggle::indicator {
-    height: 28px;
-    width: 28px;
+    height: 24px;
+    width: 24px;
     image: url(data/icons/whole-word.svg);
 }
 
@@ -832,8 +837,8 @@ QCheckBox#WholeWordToggle::indicator:hover {
 }
 
 QCheckBox#RegexToggle::indicator {
-    height: 28px;
-    width: 28px;
+    height: 24px;
+    width: 24px;
     image: url(data/icons/regex.svg);
 }
 
@@ -859,6 +864,24 @@ ClickableLabel#ReplaceAllBtn {
     image: url(data/icons/replace-all.svg);
     min-width: 24px;
     min-height: 24px;
+}
+
+TitleBarToolBtn {
+    padding-left: 6px;
+    padding-right: 6px;
+    border-style: none;
+    font-size: 15px;
+    color: #6d6d6f;
+}
+
+TitleBarToolBtn::hover {
+    background-color: rgb(30, 147, 229);
+    color: whitesmoke;
+}
+
+TitleBarToolBtn::menu-indicator
+{
+    width:0px;
 }
 
 

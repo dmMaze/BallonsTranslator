@@ -97,6 +97,7 @@ class Canvas(QGraphicsScene):
 
     projstate_unsaved = False
     proj_savestate_changed = Signal(bool)
+    textstack_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -540,6 +541,7 @@ class Canvas(QGraphicsScene):
             self.setProjSaveState(True)
         elif self.draw_undo_stack.index() == self.saved_drawundo_step:
             self.setProjSaveState(False)
+        self.textstack_changed.emit()
 
     def redo_textedit(self):
         self.text_undo_stack.redo()

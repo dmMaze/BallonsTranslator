@@ -6,11 +6,12 @@ try:
 except:
     from qtpy.QtGui import QUndoCommand
 
-from .textitem import TextBlkItem
+from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransTextEdit, SourceTextEdit
-from .misc import FontFormat
+from .misc import FontFormat, doc_replace, doc_replace_no_shift
 from .texteditshapecontrol import TextBlkShapeControl
 from .page_search_widget import PageSearchWidget, Matched
+from .imgtrans_proj import ProjImgTrans
 
 
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, input_method_used: bool):
@@ -342,39 +343,16 @@ class PageReplaceAllCommand(QUndoCommand):
             curpos_list.append(list(highlighter.matched_map.values()))
 
         replace = self.sw.replace_editor.toPlainText()
-        len_replace = len(replace)
         for edit, curpos_lst in zip(self.rstedit_list, curpos_list):
             redo_blk = type(edit) == TransTextEdit
             if redo_blk:
                 blkitem = self.sw.textblk_item_list[edit.idx]
                 self.blkitem_list.append(blkitem)
-                sel_list = []
-
-            cursor = edit.textCursor()
-            cursor.clearSelection()
-            cursor.setPosition(0)
-            cursor.beginEditBlock()
-            pos_delta = 0
-            for ii, matched in enumerate(curpos_lst):
-                sel_start = matched.start + pos_delta
-                sel_end = matched.end + pos_delta
-                cursor.setPosition(sel_start)
-                cursor.setPosition(sel_end, QTextCursor.MoveMode.KeepAnchor)
-                cursor.insertText(replace)
-                if redo_blk:
-                    sel_list.append([sel_start, sel_end])
-                pos_delta += len_replace - (sel_end - sel_start)
-            cursor.endEditBlock()
-            edit.updateUndoSteps()
-
+            span_list = [[matched.start, matched.end] for matched in curpos_lst]
+            sel_list = doc_replace(edit.document(), span_list, replace)
             if redo_blk:
-                cursor = blkitem.textCursor()
-                cursor.beginEditBlock()
-                for sel in sel_list:
-                    cursor.setPosition(sel[0])
-                    cursor.setPosition(sel[1], QTextCursor.MoveMode.KeepAnchor)
-                    cursor.insertText(replace)
-                cursor.endEditBlock()
+                doc_replace_no_shift(blkitem.document(), sel_list, replace)
+                blkitem.updateUndoSteps()
 
     def redo(self):
         if self.op_counter == 0:
@@ -391,3 +369,77 @@ class PageReplaceAllCommand(QUndoCommand):
             edit.undo()
         for blkitem in self.blkitem_list:
             blkitem.undo()
+
+
+class GlobalRepalceAllCommand(QUndoCommand):
+    def __init__(self, sceneitem_list: dict, background_list: dict, target_text: str, proj: ProjImgTrans) -> None:
+        super().__init__()
+        self.op_counter = -1
+        self.target_text = target_text
+        self.proj = proj
+        self.trans_list = sceneitem_list['trans']
+        self.src_list = sceneitem_list['src']
+        self.btrans_list = background_list['trans']
+        self.bsrc_list = background_list['src']
+
+        for trans_dict in self.trans_list:
+            edit: TransTextEdit = trans_dict['edit']
+            item: TextBlkItem = trans_dict['item']
+            matched_map = trans_dict['matched_map']
+            sel_list = doc_replace(edit.document(), matched_map, target_text)
+
+            doc_replace_no_shift(item.document(), sel_list, target_text)
+            item.updateUndoSteps()
+            item.updateUndoSteps()
+
+            trans_dict.pop('matched_map')
+
+        for src_dict in self.src_list:
+            edit: SourceTextEdit = src_dict['edit']
+            edit.setPlainTextAndKeepUndoStack(src_dict['replace'])
+            edit.updateUndoSteps()
+            src_dict.pop('replace')
+
+    def redo(self):
+        if self.op_counter == 0:
+            self.op_counter += 1
+            return
+
+        for trans_dict in self.trans_list:
+            edit: TransTextEdit = trans_dict['edit']
+            item: TextBlkItem = trans_dict['item']
+            edit.redo()
+            item.redo()
+
+        for src_dict in self.src_list:
+            edit: SourceTextEdit = src_dict['edit']
+            edit.redo()
+
+        for trans_dict in self.btrans_list:
+            blk: TextBlock = self.proj.pages[trans_dict['pagename']][trans_dict['idx']]
+            blk.translation = trans_dict['replace']
+            blk.rich_text = trans_dict['replace_html']
+
+        for src_dict in self.src_list:
+            blk: TextBlock = self.proj.pages[trans_dict['pagename']][trans_dict['idx']]
+            blk.text = trans_dict['replace']
+
+    def undo(self):
+        for trans_dict in self.trans_list:
+            edit: TransTextEdit = trans_dict['edit']
+            item: TextBlkItem = trans_dict['item']
+            edit.undo()
+            item.undo()
+
+        for src_dict in self.src_list:
+            edit: SourceTextEdit = src_dict['edit']
+            edit.undo()
+
+        for trans_dict in self.btrans_list:
+            blk: TextBlock = self.proj.pages[trans_dict['pagename']][trans_dict['idx']]
+            blk.translation = trans_dict['ori']
+            blk.rich_text = trans_dict['ori_html']
+
+        for src_dict in self.src_list:
+            blk: TextBlock = self.proj.pages[trans_dict['pagename']][trans_dict['idx']]
+            blk.text = trans_dict['ori']

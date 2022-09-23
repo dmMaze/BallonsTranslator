@@ -26,6 +26,7 @@ from .preset_widget import PresetPanel
 from .constants import STYLESHEET_PATH, CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
 from . import constants as C
+from .textedit_commands import GlobalRepalceAllCommand
 
 class PageListView(QListWidget):    
     def __init__(self, *args, **kwargs) -> None:
@@ -39,6 +40,7 @@ class MainWindow(QMainWindow):
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
     opening_dir = False
+    page_changing = False
     
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -94,6 +96,8 @@ class MainWindow(QMainWindow):
 
         self.global_search_widget = GlobalSearchWidget(self.leftStackWidget)
         self.global_search_widget.req_update_pagetext.connect(self.on_req_update_pagetext)
+        self.global_search_widget.req_move_page.connect(self.on_req_move_page)
+        self.imsave_thread.img_writed.connect(self.global_search_widget.on_img_writed)
         self.global_search_widget.search_tree.result_item_clicked.connect(self.on_search_result_item_clicked)
         self.leftStackWidget.addWidget(self.global_search_widget)
         
@@ -120,6 +124,7 @@ class MainWindow(QMainWindow):
         self.canvas.imgtrans_proj = self.imgtrans_proj
         self.canvas.gv.hide_canvas.connect(self.onHideCanvas)
         self.canvas.proj_savestate_changed.connect(self.on_savestate_changed)
+        self.canvas.textstack_changed.connect(self.on_textstack_changed)
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
         self.configPanel = ConfigPanel(self)
@@ -211,6 +216,8 @@ class MainWindow(QMainWindow):
 
         self.st_manager.config = self.config
         self.global_search_widget.imgtrans_proj = self.imgtrans_proj
+        self.global_search_widget.setupReplaceThread(self.st_manager.pairwidget_list, self.st_manager.textblk_item_list)
+        self.global_search_widget.replace_thread.finished.connect(self.on_global_replace_finished)
 
         self.configPanel.blockSignals(True)
         if self.config.open_recent_on_startup:
@@ -332,6 +339,7 @@ class MainWindow(QMainWindow):
 
     def pageListCurrentItemChanged(self):
         item = self.pageList.currentItem()
+        self.page_changing = True
         if item is not None:
             if self.save_on_page_changed:
                 if self.canvas.projstate_unsaved and not self.opening_dir:
@@ -346,6 +354,7 @@ class MainWindow(QMainWindow):
             if self.dl_manager.run_canvas_inpaint:
                 self.dl_manager.inpaint_thread.terminate()
                 self.dl_manager.run_canvas_inpaint = False
+        self.page_changing = False
 
     def setupShortcuts(self):
         shortcutNext = QShortcut(QKeySequence.StandardKey.MoveToNextPage, self)
@@ -501,19 +510,35 @@ class MainWindow(QMainWindow):
                 self.global_search_widget.commit_search()
 
     def on_req_update_pagetext(self):
+        self.global_search_widget.searched_textstack_step = self.canvas.text_undo_stack.index()
         if self.canvas.text_change_unsaved():
             self.st_manager.updateTextBlkList()
 
-    def on_search_result_item_clicked(self, pagename: str, blk_idx: int, is_src: bool):
+    def on_req_move_page(self, page_name: str, force_save=False):
+        ori_save = self.save_on_page_changed
+        self.save_on_page_changed = False
+        current_img = self.imgtrans_proj.current_img
+        if current_img == page_name and not force_save:
+            return
+        if current_img not in self.global_search_widget.page_set:
+            if self.canvas.projstate_unsaved: 
+                self.saveCurrentPage()
+        else:
+            self.saveCurrentPage(save_rst_only=True)
+        self.pageList.setCurrentRow(self.imgtrans_proj.pagename2idx(page_name))
+        self.save_on_page_changed = ori_save
+
+    def on_search_result_item_clicked(self, pagename: str, blk_idx: int, is_src: bool, start: int, end: int):
         idx = self.imgtrans_proj.pagename2idx(pagename)
         self.pageList.setCurrentRow(idx)
         pw = self.st_manager.pairwidget_list[blk_idx]
-        if is_src:
-            pw.e_source.setFocus()
-            pw.e_source.ensure_scene_visible.emit()
-        else:
-            pw.e_trans.setFocus()
-            pw.e_trans.ensure_scene_visible.emit()
+        edit = pw.e_source if is_src else pw.e_trans
+        edit.setFocus()
+        edit.ensure_scene_visible.emit()
+        cursor = QTextCursor(edit.document())
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        edit.setTextCursor(cursor)
 
     def shortcutEscape(self):
         if self.canvas.search_widget.isVisible():
@@ -560,8 +585,8 @@ class MainWindow(QMainWindow):
             self.canvas.clearSelection()
             self.saveCurrentPage(update_scene_text=True, restore_interface=True)
 
-    def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False):
-        if update_scene_text and self.canvas.text_change_unsaved():
+    def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False):
+        if update_scene_text:
             self.st_manager.updateTextBlkList()
 
         self.canvas.update_saved_undostep()
@@ -579,18 +604,19 @@ class MainWindow(QMainWindow):
 
         if save_proj:
             self.imgtrans_proj.save()
-            mask_path = self.imgtrans_proj.get_mask_path()
-            mask_array = self.imgtrans_proj.mask_array
-            self.imsave_thread.saveImg(mask_path, mask_array)
-            inpainted_path = self.imgtrans_proj.get_inpainted_path()
-            if self.canvas.drawingLayer.drawed():
-                inpainted = self.canvas.inpaintLayer.pixmap()
-                painter = QPainter(inpainted)
-                painter.drawPixmap(0, 0, self.canvas.drawingLayer.get_drawed_pixmap())
-                painter.end()
-            else:
-                inpainted = self.imgtrans_proj.inpainted_array
-            self.imsave_thread.saveImg(inpainted_path, inpainted)
+            if not save_rst_only:
+                mask_path = self.imgtrans_proj.get_mask_path()
+                mask_array = self.imgtrans_proj.mask_array
+                self.imsave_thread.saveImg(mask_path, mask_array)
+                inpainted_path = self.imgtrans_proj.get_inpainted_path()
+                if self.canvas.drawingLayer.drawed():
+                    inpainted = self.canvas.inpaintLayer.pixmap()
+                    painter = QPainter(inpainted)
+                    painter.drawPixmap(0, 0, self.canvas.drawingLayer.get_drawed_pixmap())
+                    painter.end()
+                else:
+                    inpainted = self.imgtrans_proj.inpainted_array
+                self.imsave_thread.saveImg(inpainted_path, inpainted)
         else:
             mask_path = inpainted_path = None
             
@@ -613,7 +639,7 @@ class MainWindow(QMainWindow):
         self.canvas.render(painter)
         painter.end()
         imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
-        self.imsave_thread.saveImg(imsave_path, img)
+        self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img)
             
         if restore_textblock_mode:
             self.bottomBar.textblockChecker.click()
@@ -728,6 +754,10 @@ class MainWindow(QMainWindow):
         save_state = self.tr('unsaved') if unsaved else self.tr('saved')
         self.titleBar.setTitleContent(save_state=save_state)
 
+    def on_textstack_changed(self):
+        if not self.page_changing:
+            self.global_search_widget.set_document_edited()
+
     def on_imgtrans_progressbox_showed(self):
         msg_size = self.dl_manager.progress_msgbox.size()
         size = self.size()
@@ -786,3 +816,11 @@ class MainWindow(QMainWindow):
 
     def on_fin_import_doc(self):
         self.st_manager.updateSceneTextitems()
+
+    def on_global_replace_finished(self):
+        rt = self.global_search_widget.replace_thread
+        self.canvas.text_undo_stack.push(
+            GlobalRepalceAllCommand(rt.sceneitem_list, rt.background_list, rt.target_text, self.imgtrans_proj)
+        )
+        rt.sceneitem_list = None
+        rt.background_list = None

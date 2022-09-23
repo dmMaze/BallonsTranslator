@@ -14,7 +14,7 @@ from .stylewidgets import Widget, ClickableLabel
 from .textitem import TextBlkItem
 from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
 
-HIGHLIGHT_COLOR = QColor(30, 147, 229, 60)
+SEARCHRST_HIGHLIGHT_COLOR = QColor(30, 147, 229, 60)
 CURRENT_TEXT_COLOR = QColor(244, 249, 28)
 
 
@@ -87,7 +87,7 @@ class HighlightMatched(QSyntaxHighlighter):
             return
         self.edit.highlighting = True
         fmt = QTextCharFormat()
-        fmt.setBackground(HIGHLIGHT_COLOR)
+        fmt.setBackground(SEARCHRST_HIGHLIGHT_COLOR)
         block = self.currentBlock()
         block_start = block.position()
         block_end = block_start + block.length()

@@ -2,7 +2,7 @@ import cv2, re
 import numpy as np
 import os.path as osp
 from typing import Tuple, Union, List, Dict
-from qtpy.QtGui import QPixmap,  QColor, QImage
+from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
 
 from . import constants
 from .constants import DEFAULT_FONT_FAMILY
@@ -358,3 +358,31 @@ def html_max_fontsize(html:  str) -> float:
         return max(size_list)
     else:
         return None
+
+def doc_replace(doc: QTextDocument, span_list: List, target: str) -> List:
+    len_replace = len(target)
+    cursor = QTextCursor(doc)
+    cursor.setPosition(0)
+    cursor.beginEditBlock()
+    pos_delta = 0
+    sel_list = []
+    for span in span_list:
+        sel_start = span[0] + pos_delta
+        sel_end = span[1] + pos_delta
+        cursor.setPosition(sel_start)
+        cursor.setPosition(sel_end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(target)
+        sel_list.append([sel_start, sel_end])
+        pos_delta += len_replace - (sel_end - sel_start)
+    cursor.endEditBlock()
+    return sel_list
+
+def doc_replace_no_shift(doc: QTextDocument, span_list: List, target: str):
+    cursor = QTextCursor(doc)
+    cursor.setPosition(0)
+    cursor.beginEditBlock()
+    for span in span_list:
+        cursor.setPosition(span[0])
+        cursor.setPosition(span[1], QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(target)
+    cursor.endEditBlock()

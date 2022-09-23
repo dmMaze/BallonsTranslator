@@ -37,13 +37,13 @@ class ThreadBase(QThread):
         err.exec()
 
 class ImgSaveThread(ThreadBase):
-    
+    img_writed = Signal(str)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.im_save_list = []
 
-    def saveImg(self, save_path: str, img: QImage):
-        self.im_save_list.append((save_path, img))
+    def saveImg(self, save_path: str, img: QImage, pagename_in_proj: str = ''):
+        self.im_save_list.append((save_path, img, pagename_in_proj))
         if self.job is None:
             self.job = self._save_img
             self.start()
@@ -52,11 +52,12 @@ class ImgSaveThread(ThreadBase):
         while True:
             if len(self.im_save_list) == 0:
                 break
-            save_path, img = self.im_save_list.pop(0)
+            save_path, img, pagename_in_proj = self.im_save_list.pop(0)
             if isinstance(img, QImage) or isinstance(img, QPixmap):
                 img.save(save_path)
             elif isinstance(img, np.ndarray):
                 imwrite(save_path, img)
+            self.img_writed.emit(pagename_in_proj)
 
 
 class ImgTransProjFileIOThread(ThreadBase):

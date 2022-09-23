@@ -425,7 +425,7 @@ class TitleBar(Widget):
         self.editToolBtn.setPopupMode(QToolButton.InstantPopup)
 
         self.iconLabel = QLabel(self)
-        self.iconLabel.setFixedWidth(LEFTBAR_WIDTH)
+        self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
 
         self.titleLabel = QLabel('BallonTranslator')
         self.titleLabel.setObjectName('TitleLabel')
