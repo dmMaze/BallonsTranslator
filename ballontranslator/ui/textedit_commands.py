@@ -1,17 +1,16 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtCore import QObject, QRectF, Qt, Signal
 from qtpy.QtGui import QTextCursor
 try:
-    from qtpy.QtWidgets import QUndoCommand, QUndoStack
+    from qtpy.QtWidgets import QUndoCommand
 except:
-    from qtpy.QtGui import QUndoCommand, QUndoStack
+    from qtpy.QtGui import QUndoCommand
 
 from .textitem import TextBlkItem
 from .textedit_area import TransTextEdit, SourceTextEdit
 from .misc import FontFormat
 from .texteditshapecontrol import TextBlkShapeControl
-from .page_search_widget import PageSearchWidget
+from .page_search_widget import PageSearchWidget, Matched
 
 
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, input_method_used: bool):
@@ -22,11 +21,12 @@ def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit
 
     cursor = target_edit.textCursor()
     if len(added_text) > 0:
+        cursor.setPosition(pos)
         if removed > 0:
             cursor.setPosition(pos + removed, QTextCursor.MoveMode.KeepAnchor)
         if input_method_used:
             cursor.beginEditBlock()
-        cursor.insertText((added_text))
+        cursor.insertText(added_text)
         if input_method_used:
             cursor.endEditBlock()
     elif removed > 0:
@@ -96,6 +96,7 @@ class ApplyFontformatCommand(QUndoCommand):
         if command.new_fmt == self.new_fmt:
             return True
         return False
+
 
 class ApplyEffectCommand(QUndoCommand):
     def __init__(self, items: List[TextBlkItem], fontformat: FontFormat):
@@ -250,13 +251,13 @@ class TextEditCommand(QUndoCommand):
         for _ in range(self.num_steps):
             self.edit.redo()
         if self.blkitem is not None:
-            self.blkitem.document().redo()
+            self.blkitem.redo()
 
     def undo(self):
         for _ in range(self.num_steps):
             self.edit.undo()
         if self.blkitem is not None:
-            self.blkitem.document().undo()
+            self.blkitem.undo()
 
 
 class PageReplaceOneCommand(QUndoCommand):
@@ -308,14 +309,15 @@ class PageReplaceOneCommand(QUndoCommand):
                 self.sw.result_pos = 0
 
         if not self.edit_is_src:
-            self.blkitem.document().redo()
+            self.blkitem.redo()
         self.edit.redo()
 
     def undo(self):
         if not self.edit_is_src:
-            self.blkitem.document().undo()
+            self.blkitem.undo()
+        self.sw.update_cursor_on_insert = False
         self.edit.undo()
-
+        self.sw.update_cursor_on_insert = True
         if self.sw.current_edit is not None and self.sw.isVisible():
             move = self.sw.move_cursor(-1)
             if move == 0:
@@ -323,8 +325,6 @@ class PageReplaceOneCommand(QUndoCommand):
             else:
                 self.sw.result_pos = self.sw.counter_sum - 1
             self.sw.updateCounterText()
-
-        self.edit.user_edited.emit()
 
 
 class PageReplaceAllCommand(QUndoCommand):
@@ -336,15 +336,13 @@ class PageReplaceAllCommand(QUndoCommand):
 
         self.rstedit_list: List[SourceTextEdit] = []
         self.blkitem_list: List[TextBlkItem] = []
-        curpos_list = []
+        curpos_list: List[List[Matched]] = []
         for edit, highlighter in zip(self.sw.search_rstedit_list, self.sw.highlighter_list):
             self.rstedit_list.append(edit)
-            curpos_list.append(list(highlighter.matched_map.keys()))
+            curpos_list.append(list(highlighter.matched_map.values()))
 
-        text = self.sw.search_editor.toPlainText()
-        len_text = len(text)
         replace = self.sw.replace_editor.toPlainText()
-        len_delta = len(replace) - len_text
+        len_replace = len(replace)
         for edit, curpos_lst in zip(self.rstedit_list, curpos_list):
             redo_blk = type(edit) == TransTextEdit
             if redo_blk:
@@ -356,14 +354,16 @@ class PageReplaceAllCommand(QUndoCommand):
             cursor.clearSelection()
             cursor.setPosition(0)
             cursor.beginEditBlock()
-            for ii, sel_start in enumerate(curpos_lst):
-                sel_start += len_delta * ii - len_text
+            pos_delta = 0
+            for ii, matched in enumerate(curpos_lst):
+                sel_start = matched.start + pos_delta
+                sel_end = matched.end + pos_delta
                 cursor.setPosition(sel_start)
-                sel_end = sel_start+len_text
                 cursor.setPosition(sel_end, QTextCursor.MoveMode.KeepAnchor)
                 cursor.insertText(replace)
                 if redo_blk:
                     sel_list.append([sel_start, sel_end])
+                pos_delta += len_replace - (sel_end - sel_start)
             cursor.endEditBlock()
             edit.updateUndoSteps()
 
@@ -384,10 +384,10 @@ class PageReplaceAllCommand(QUndoCommand):
         for edit in self.rstedit_list:
             edit.redo()
         for blkitem in self.blkitem_list:
-            blkitem.document().redo()
+            blkitem.redo()
 
     def undo(self):
         for edit in self.rstedit_list:
             edit.undo()
         for blkitem in self.blkitem_list:
-            blkitem.document().undo()
+            blkitem.undo()

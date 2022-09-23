@@ -256,6 +256,7 @@ class ProgramConfig:
         font_presets: dict = None,
         fsearch_case: bool = False,
         fsearch_whole_word: bool = False,
+        fsearch_regex: bool = False,
         fsearch_range: int = 0,
         gsearch_case: bool = False,
         gsearch_whole_word: bool = False,
@@ -298,10 +299,11 @@ class ProgramConfig:
         self.font_presets = {} if font_presets is None else font_presets
         self.fsearch_case = fsearch_case
         self.fsearch_whole_word = fsearch_whole_word
+        self.fsearch_regex = fsearch_regex
         self.fsearch_range = fsearch_range
         self.gsearch_case = gsearch_case
         self.gsearch_whole_word = gsearch_whole_word
-        self.gsearch_regex = gsearch_case
+        self.gsearch_regex = gsearch_regex
         self.gsearch_range = gsearch_range
 
 class LruIgnoreArg:

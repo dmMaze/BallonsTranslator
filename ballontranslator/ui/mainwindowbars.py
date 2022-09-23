@@ -35,6 +35,10 @@ class StatusButton(QPushButton):
     pass
 
 
+class TitleBarToolBtn(QToolButton):
+    pass
+
+
 class RunStopTextBtn(StatusButton):
     run_target = Signal(bool)
     def __init__(self, run_text: str, stop_text: str, run_tool_tip: str = None, stop_tool_tip: str = None, *args, **kwargs):
@@ -150,25 +154,20 @@ class LeftBar(Widget):
         self.configChecker.setObjectName('ConfigChecker')
         self.configChecker.checked.connect(self.stateCheckerChanged)
 
-        actionOpenFolder = QAction(self)
-        actionOpenFolder.setText(self.tr("Open Folder ..."))
+        actionOpenFolder = QAction(self.tr("Open Folder ..."), self)
         actionOpenFolder.triggered.connect(self.onOpenFolder)
         actionOpenFolder.setShortcut(QKeySequence.Open)
 
-        actionOpenProj = QAction(self)
-        actionOpenProj.setText(self.tr("Open Project ... *.json"))
+        actionOpenProj = QAction(self.tr("Open Project ... *.json"), self)
         actionOpenProj.triggered.connect(self.onOpenProj)
 
-        actionSaveProj = QAction(self)
-        actionSaveProj.setText(self.tr("Save Project"))
-        actionSaveProj.triggered.connect(self.onSaveProj)
+        actionSaveProj = QAction(self.tr("Save Project"), self)
+        self.save_proj = actionSaveProj.triggered
         actionSaveProj.setShortcut(QKeySequence.StandardKey.Save)
 
-        actionExportAsDoc = QAction(self)
-        actionExportAsDoc.setText(self.tr("Export as Doc"))
+        actionExportAsDoc = QAction(self.tr("Export as Doc"), self)
         actionExportAsDoc.triggered.connect(self.export_doc)
-        actionImportFromDoc = QAction(self)
-        actionImportFromDoc.setText(self.tr("Import from Doc"))
+        actionImportFromDoc = QAction(self.tr("Import from Doc"), self)
         actionImportFromDoc.triggered.connect(self.import_doc)
 
         self.recentMenu = QMenu(self.tr("Open Recent"), self)
@@ -286,9 +285,6 @@ class LeftBar(Widget):
         if osp.exists(json_path):
             self.open_json_proj.emit(json_path)
 
-    def onSaveProj(self):
-        self.save_proj.emit()
-
     def stateCheckerChanged(self, checker_type: str):
         if checker_type == 'imgtrans':
             self.configChecker.setChecked(False)
@@ -404,6 +400,32 @@ class TitleBar(Widget):
         self.save_state = ''
         self.setFixedHeight(TITLEBAR_HEIGHT)
         self.setMouseTracking(True)
+        self.editToolBtn = TitleBarToolBtn(self)
+        self.editToolBtn.setText(self.tr('Edit'))
+
+        undoAction = QAction(self.tr('Undo'), self)
+        self.undo_trigger = undoAction.triggered
+        undoAction.setShortcut(QKeySequence.StandardKey.Undo)
+        redoAction = QAction(self.tr('Redo'), self)
+        self.redo_trigger = redoAction.triggered
+        redoAction.setShortcut(QKeySequence.StandardKey.Redo)
+        pageSearchAction = QAction(self.tr('Search'), self)
+        self.page_search_trigger = pageSearchAction.triggered
+        pageSearchAction.setShortcut(QKeySequence('Ctrl+F'))
+        globalSearchAction = QAction(self.tr('Global Search'), self)
+        self.global_search_trigger = globalSearchAction.triggered
+        globalSearchAction.setShortcut(QKeySequence('Ctrl+G'))
+
+        editMenu = QMenu(self.editToolBtn)
+        editMenu.addActions([undoAction, redoAction])
+        editMenu.addSeparator()
+        editMenu.addActions([pageSearchAction, globalSearchAction])
+
+        self.editToolBtn.setMenu(editMenu)
+        self.editToolBtn.setPopupMode(QToolButton.InstantPopup)
+
+        self.iconLabel = QLabel(self)
+        self.iconLabel.setFixedWidth(LEFTBAR_WIDTH)
 
         self.titleLabel = QLabel('BallonTranslator')
         self.titleLabel.setObjectName('TitleLabel')
@@ -420,14 +442,16 @@ class TitleBar(Widget):
         self.maxBtn.setFixedSize(48, 27)
         hlayout = QHBoxLayout(self)
         hlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hlayout.addItem(QSpacerItem(0, 0,  QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        hlayout.addWidget(self.iconLabel)
+        hlayout.addWidget(self.editToolBtn)
+        hlayout.addStretch()
         hlayout.addWidget(self.titleLabel)
-        hlayout.addItem(QSpacerItem(0, 0,  QSizePolicy.Policy.Expanding,  QSizePolicy.Policy.Expanding))
+        hlayout.addStretch()
         hlayout.addWidget(self.minBtn)
         hlayout.addWidget(self.maxBtn)
         hlayout.addWidget(self.closeBtn)
         hlayout.setContentsMargins(0, 0, 0, 0)
-        hlayout.setSpacing(0)        
+        hlayout.setSpacing(0) 
 
     def onMaxBtnClicked(self):
         if self.mainwindow.isMaximized():

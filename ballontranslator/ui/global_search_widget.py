@@ -3,6 +3,7 @@ from qtpy.QtCore import Qt, QItemSelection, QSize, Signal, QUrl, QThread
 from qtpy.QtGui import QKeyEvent, QTextCursor, QStandardItemModel, QStandardItem, QFontMetrics, QColor, QShowEvent, QSyntaxHighlighter, QTextCharFormat
 
 from typing import List, Union, Tuple, Dict
+import re
 
 from utils.logger import logger as LOGGER
 from .page_search_widget import SearchEditor, HighlightMatched
@@ -13,7 +14,8 @@ from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
 from .imgtrans_proj import ProjImgTrans
 from .io_thread import ThreadBase
 
-import re
+
+SEARCH_RESULT_FONTSIZE = 12
 
 class PageSearchThead(ThreadBase):
 
@@ -32,13 +34,11 @@ class PageSearchThead(ThreadBase):
         pass
 
 
-SEARCH_RESULT_FONTSIZE = 12
-
-
 class SearchResultItem(QStandardItem):
     def __init__(self, text: str, span: Tuple[int, int], blk_idx: int, pagename: str, is_src: bool):
         super().__init__()
         self.text = text
+        self.show_text = text.replace('\n', ' ')
         self.start = span[0]
         self.end = span[1]
         self.is_src = is_src
@@ -49,7 +49,7 @@ class SearchResultItem(QStandardItem):
         font.setPointSizeF(SEARCH_RESULT_FONTSIZE)
         self.setFont(font)
 
-        self.setText(text)
+        self.setText(self.show_text)
         self.setEditable(False)
 
     def setBold(self, bold: bool):
@@ -69,6 +69,7 @@ class PageSeachResultItem(QStandardItem):
         font = self.font()
         font.setPointSizeF(SEARCH_RESULT_FONTSIZE)
         self.setFont(font)
+        self.setEditable(False)
 
     def addResult(self, matched_span: Tuple[int, int], text: str, blk_idx: int, is_src: bool) -> SearchResultItem:
         self.matched_span_list.append(matched_span)
@@ -77,7 +78,6 @@ class PageSeachResultItem(QStandardItem):
         rstitem = SearchResultItem(text, matched_span, blk_idx, self.pagename, is_src)
         self.appendRow(rstitem)
         return rstitem
-
 
 
 def gen_searchitem_list(span_list: List[int], text: str, blk_idx: int, pagename: str, is_src: bool) -> List[SearchResultItem]:
@@ -276,8 +276,11 @@ class GlobalSearchWidget(Widget):
             regexr = re.escape(regexr)
         if self.whole_word_toggle.isChecked():
             regexr = r'\b' + target_text + r'\b'
-
-        return re.compile(regexr, flag)
+        
+        try: 
+            return re.compile(regexr, flag)
+        except re.error:
+            return None
 
     def commit_search(self):
         self.search_tree.clearPages()
@@ -312,9 +315,6 @@ class GlobalSearchWidget(Widget):
                 pageitem.appendRows(page_rstitem_list)
 
         self.search_tree.expandAll()
-
-
-    
 
     def on_replaceall_btn_clicked(self):
         pass

@@ -276,13 +276,13 @@ class Canvas(QGraphicsScene):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.editing_textblkitem is not None:
             return super().keyPressEvent(event)
-        if event == QKeySequence.Undo:
-            self.undo()
-            self.txtblkShapeControl.updateBoundingRect()
-        elif event == QKeySequence.Redo:
-            self.redo()
-            self.txtblkShapeControl.updateBoundingRect()
-        elif event.key() == Qt.Key.Key_Alt:
+        # if event == QKeySequence.Undo:
+        #     self.undo()
+        #     self.txtblkShapeControl.updateBoundingRect()
+        # elif event == QKeySequence.Redo:
+        #     self.redo()
+        #     self.txtblkShapeControl.updateBoundingRect()
+        if event.key() == Qt.Key.Key_Alt:
             self.alt_pressed = True
         return super().keyPressEvent(event)
 
@@ -551,11 +551,15 @@ class Canvas(QGraphicsScene):
         undo_stack = self.get_active_undostack()
         if undo_stack is not None:
             undo_stack.redo()
+            if undo_stack == self.text_undo_stack:
+                self.txtblkShapeControl.updateBoundingRect()
 
     def undo(self):
         undo_stack = self.get_active_undostack()
         if undo_stack is not None:
             undo_stack.undo()
+            if undo_stack == self.text_undo_stack:
+                self.txtblkShapeControl.updateBoundingRect()
 
     def clear_undostack(self, update_saved_step=False):
         if update_saved_step:
@@ -575,10 +579,10 @@ class Canvas(QGraphicsScene):
         self.saved_textundo_step = self.text_undo_stack.index()
 
     def text_change_unsaved(self) -> bool:
-        return self.saved_textundo_step == self.text_undo_stack.index()
+        return self.saved_textundo_step != self.text_undo_stack.index()
 
     def draw_change_unsaved(self) -> bool:
-        return self.saved_drawundo_step == self.draw_undo_stack.index()
+        return self.saved_drawundo_step != self.draw_undo_stack.index()
 
     def prepareClose(self):
         self.blockSignals(True)

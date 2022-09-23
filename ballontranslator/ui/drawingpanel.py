@@ -572,7 +572,6 @@ class DrawingPanel(Widget):
             left = mask_x - rect_enlarged[0]
             right = rect_enlarged[2] - inpaint_rect[2]
 
-            # print('inpaint_rect: ', inpaint_rect, 'enlarged: ', rect_enlarged, 'ltrb: ', left, top, right, bottom)
             mask = cv2.copyMakeBorder(mask, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0)
             inpaint_rect = rect_enlarged
             img = img[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]

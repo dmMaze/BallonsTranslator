@@ -14,7 +14,7 @@ from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, Pro
 
 
 def write_jpg_metadata(imgpath: str, metadata="a metadata"):
-    exif_dict = {"Exif":{piexif.ExifIFD.UserComment: piexif.helper.UserComment.dump(metadata)}}
+    exif_dict = {"Exif":{piexif.ExifIFD.UserComment: piexif.helper.UserComment.dump(metadata, encoding='unicode')}}
     exif_bytes = piexif.dump(exif_dict)
     piexif.insert(exif_bytes, imgpath)
 
@@ -309,11 +309,12 @@ class ProjImgTrans:
             for index, (cut_path, width) in enumerate(zip(cuts_path_list, cut_width_list)):
                 run = table.cell(index, 0).paragraphs[0].add_run()
                 run.style.font.name = target_font
-                blk = blklist[index]
+                blk: TextBlock = blklist[index]
                 bubdict = vars(blk).copy()
                 bubdict["imgkey"] = pagename
                 bubdict["rich_text"] = ''
-                write_jpg_metadata(cut_path, metadata=json.dumps(bubdict, ensure_ascii=False, cls=NumpyEncoder))
+                bubdict["text"] = blk.get_text()
+                write_jpg_metadata(cut_path, metadata=json.dumps(bubdict, ensure_ascii=False, cls=TextBlkEncoder))
                 run.add_picture(cut_path, width=Inches(width/96 * 0.85))
                 table.cell(index, 1).text = bubdict["translation"]
 

@@ -7,6 +7,7 @@ except:
     from qtpy.QtGui import QUndoCommand
 
 from typing import List, Union, Tuple, Dict
+import re
 
 from .misc import ProgramConfig
 from .stylewidgets import Widget, ClickableLabel
@@ -17,11 +18,28 @@ HIGHLIGHT_COLOR = QColor(30, 147, 229, 60)
 CURRENT_TEXT_COLOR = QColor(244, 249, 28)
 
 
+class Matched:
+    def __init__(self, local_no: int, start: int, end: int) -> None:
+        self.local_no = local_no
+        self.start = start
+        self.end = end
+
+
+def match_text(pattern: re.Pattern, text: str) -> Tuple[int, Dict]:
+    found_counter = 0
+    match_map = {}
+    rst_iter = pattern.finditer(text)
+    for rst in rst_iter:
+        span = rst.span()
+        match_map[span[1]] = Matched(found_counter, span[0], span[1])
+        found_counter += 1
+    return found_counter, match_map
+
+
 class HighlightMatched(QSyntaxHighlighter):
 
-    def __init__(self, edit: SourceTextEdit, match_text: str = '', matched_map: dict = None):
+    def __init__(self, edit: SourceTextEdit, matched_map: dict = None):
         super().__init__(edit.document())
-        self.set_match_text(match_text)
         
         self.case_sensitive = False
         self.whole_word = False
@@ -52,10 +70,6 @@ class HighlightMatched(QSyntaxHighlighter):
         self.matched_map = matched_map
         self.rehighlight()
 
-    def set_match_text(self, match_text: str):
-        self.match_text = match_text
-        self.match_length = len(match_text)
-
     def rehighlight(self) -> None:
         if self.edit is not None:
             self.edit.highlighting = True
@@ -63,8 +77,9 @@ class HighlightMatched(QSyntaxHighlighter):
         if self.edit is not None:
             self.edit.highlighting = False
 
-    def set_current_start(self, start: int):
+    def set_current_span(self, start: int, end: int):
         self.current_start = start
+        self.current_end = end
         self.rehighlight()
 
     def highlightBlock(self, text: str) -> None:
@@ -76,21 +91,22 @@ class HighlightMatched(QSyntaxHighlighter):
         block = self.currentBlock()
         block_start = block.position()
         block_end = block_start + block.length()
-        for match_end, v in self.matched_map.items():
-            match_start = match_end - self.match_length
+        matched: Matched
+        for match_end, matched in self.matched_map.items():
+            match_start = matched.start
             intersect_start = max(match_start, block_start)
             intersect_end = min(match_end, block_end)
             length = intersect_end - intersect_start
             if length > 0:
-                self.setFormat(intersect_start, length, fmt)
+                self.setFormat(intersect_start - block_start, length, fmt)
 
         if self.current_start >= 0:
             intersect_start = max(self.current_start, block_start)
-            intersect_end = min(self.current_start + self.match_length, block_end)
+            intersect_end = min(self.current_end, block_end)
             length = intersect_end - intersect_start
             if length > 0:
                 fmt.setBackground(CURRENT_TEXT_COLOR)
-                self.setFormat(intersect_start, length, fmt)
+                self.setFormat(intersect_start - block_start, length, fmt)
         self.edit.highlighting = False
 
 
@@ -187,7 +203,9 @@ class PageSearchWidget(Widget):
 
         self.current_edit: SourceTextEdit = None
         self.current_cursor: QTextCursor = None
+        self.current_highlighter: HighlightMatched = None
         self.result_pos = 0
+        self.update_cursor_on_insert = True
 
         self.search_editor = SearchEditor(self, commit_latency=-1)
         self.search_editor.setPlaceholderText(self.tr('Find'))
@@ -216,6 +234,11 @@ class PageSearchWidget(Widget):
         self.whole_word_toggle.setToolTip(self.tr('Match Whole Word'))
         self.whole_word_toggle.clicked.connect(self.on_whole_word_clicked)
 
+        self.regex_toggle = QCheckBox(self)
+        self.regex_toggle.setObjectName('RegexToggle')
+        self.regex_toggle.setToolTip(self.tr('Use Regular Expression'))
+        self.regex_toggle.clicked.connect(self.on_regex_clicked)
+
         self.range_combobox = QComboBox(self)
         self.range_combobox.addItems([self.tr('Translation'), self.tr('Source'), self.tr('All')])
         self.range_combobox.currentIndexChanged.connect(self.on_range_changed)
@@ -242,6 +265,7 @@ class PageSearchWidget(Widget):
         hlayout_bar1_1 = QHBoxLayout()
         hlayout_bar1_1.addWidget(self.case_sensitive_toggle)
         hlayout_bar1_1.addWidget(self.whole_word_toggle)
+        hlayout_bar1_1.addWidget(self.regex_toggle)
         hlayout_bar1_1.addWidget(self.prev_match_btn)
         hlayout_bar1_1.addWidget(self.next_match_btn)
         hlayout_bar1_1.setAlignment(hlayout_bar1_1.alignment() | Qt.AlignmentFlag.AlignTop)
@@ -274,7 +298,7 @@ class PageSearchWidget(Widget):
         e.setOffset(0, 0)
         e.setBlurRadius(35)
         self.setGraphicsEffect(e)
-        self.setFixedWidth(480)
+        self.setFixedWidth(520)
         self.search_editor.setFixedWidth(200)
         self.replace_editor.setFixedWidth(200)
         self.search_editor.enter_pressed.connect(self.on_next_search_result)
@@ -325,6 +349,7 @@ class PageSearchWidget(Widget):
         self.highlighter_list.clear()
 
         self.current_edit = None
+        self.current_highlighter = None
         self.current_cursor = None
         self.updateCounterText()
 
@@ -338,7 +363,7 @@ class PageSearchWidget(Widget):
             return
 
         highlighter = self.highlighter_list[idx]
-        counter, pos_map = self._find_page_text(edit, self.search_editor.toPlainText(), self.get_find_flag())
+        counter, matched_map = self._match_text(edit.toPlainText())
 
         delta_count = counter - self.search_counter_list[idx]
         self.counter_sum += delta_count
@@ -353,25 +378,26 @@ class PageSearchWidget(Widget):
         if counter > 0:
             self.search_counter_list[idx] = counter
             if is_current_edit:
-                text = self.search_editor.toPlainText()
-                if self.current_cursor.selectedText() != text or self.current_cursor.position() not in pos_map:
-                    new_cursor: QTextCursor = edit.document().find(self.search_editor.toPlainText(), self.current_cursor, self.get_find_flag() | QTextDocument.FindFlag.FindBackward)
-                    if new_cursor.isNull():
+                cursor_end = self.current_cursor.selectionEnd() 
+                if cursor_end not in matched_map:
+                    matched = self.get_prev_match(cursor_end)
+                    if matched is None:
                         self.setCurrentEditor(self.current_edit)
                     else:
-                        self.current_cursor = new_cursor
-                        self.result_pos = pos_map[new_cursor.position()]
+                        self.current_cursor.setPosition(matched.start)
+                        self.current_cursor.setPosition(matched.end, QTextCursor.MoveMode.KeepAnchor)
+                        self.result_pos = matched_map[matched.end].local_no
                         if idx > 0:
                             self.result_pos += sum(self.search_counter_list[ :idx])
                         self.highlight_current_text()
                 else:
-                    self.result_pos = pos_map[self.current_cursor.position()]
+                    self.result_pos = matched_map[cursor_end].local_no
                     if idx > 0:
                         self.result_pos += sum(self.search_counter_list[ :idx])
                     self.highlight_current_text()
             elif before_current:
                 self.result_pos += delta_count
-            highlighter.set_matched_map(pos_map)
+            highlighter.set_matched_map(matched_map)
         else:
             edit = self.search_rstedit_list.pop(idx)
             self.search_counter_list.pop(idx)
@@ -410,17 +436,16 @@ class PageSearchWidget(Widget):
         search_src = search_range == 1
         search_trans = search_range == 0
 
-        find_flag = self.get_find_flag()
         if search_src:
             for pw in self.pairwidget_list:
-                self.find_page_text(pw.e_source, text, find_flag)
+                self.find_page_text(pw.e_source)
         elif search_trans:
             for pw in self.pairwidget_list:
-                self.find_page_text(pw.e_trans, text, find_flag)
+                self.find_page_text(pw.e_trans)
         else:
             for pw in self.pairwidget_list:
-                self.find_page_text(pw.e_source, text, find_flag)
-                self.find_page_text(pw.e_trans, text, find_flag)
+                self.find_page_text(pw.e_source)
+                self.find_page_text(pw.e_trans)
 
         if len(self.search_counter_list) > 0:
             self.counter_sum = sum(self.search_counter_list)
@@ -433,35 +458,35 @@ class PageSearchWidget(Widget):
             else:
                 self.updateCounterText()
 
-    def get_find_flag(self) -> QTextDocument.FindFlag:
-        find_flag = QTextDocument.FindFlag(0)
-        if self.case_sensitive_toggle.isChecked():
-            find_flag |= QTextDocument.FindFlag.FindCaseSensitively
+    def get_regex_pattern(self) -> re.Pattern:
+        target_text = self.search_editor.toPlainText()
+        regexr = target_text
+        if target_text == '':
+            return None
+
+        flag = re.DOTALL
+        if not self.case_sensitive_toggle.isChecked():
+            flag |= re.IGNORECASE
+        if not self.regex_toggle.isChecked():
+            regexr = re.escape(regexr)
         if self.whole_word_toggle.isChecked():
-            find_flag |= QTextDocument.FindFlag.FindWholeWords
-        return find_flag
+            regexr = r'\b' + target_text + r'\b'
 
-    def _find_page_text(self, text_edit: QTextEdit, text: str, find_flag: QTextDocument.FindFlag, highlight=True) -> Tuple[int, Dict]:
-        doc = text_edit.document()
-        cursor = QTextCursor(doc)
-        found_counter = 0
-        pos_map = {}
-        while True:
-            cursor: QTextCursor = doc.find(text, cursor, options=find_flag)
-            if cursor.isNull():
-                break
-            pos_map[cursor.position()] = found_counter
-            found_counter += 1
-        return found_counter, pos_map
+        return re.compile(regexr, flag)
 
-    def find_page_text(self, text_edit: QTextEdit, text: str, find_flag):
-        found_counter, pos_map = self._find_page_text(text_edit, text, find_flag)
-
+    def find_page_text(self, text_edit: QTextEdit):
+        found_counter, pos_map = self._match_text(text_edit.toPlainText())
         if found_counter > 0:
             self.search_rstedit_list.append(text_edit)
             self.search_counter_list.append(found_counter)
-            self.highlighter_list.append(HighlightMatched(text_edit, text, pos_map))
+            self.highlighter_list.append(HighlightMatched(text_edit, pos_map))
             text_edit.text_changed.connect(self.on_rst_text_changed)
+
+    def _match_text(self, text: str) -> Tuple[int, Dict]:
+        try:
+            return match_text(self.get_regex_pattern(), text)
+        except re.error:
+            return 0, {}
 
     def get_result_edit_index(self, result: SourceTextEdit) -> int:
         try:
@@ -486,16 +511,20 @@ class PageSearchWidget(Widget):
         if edit is None:
             if len(self.search_rstedit_list) > 0:
                 self.current_edit = self.search_rstedit_list[0]
+                self.current_highlighter = self.highlighter_list[0]
 
         if self.current_edit is not None:
-            self.updateCurrentCursor()
             idx = self.current_edit_index()
-            pos_map = self.highlighter_list[idx].matched_map
-            self.result_pos = pos_map[self.current_cursor.position()]
+            self.current_highlighter = self.highlighter_list[idx]
+            self.updateCurrentCursor()
+            matched_map = self.current_highlighter.matched_map
+            matched: Matched = matched_map[self.current_cursor.selectionEnd()]
+            self.result_pos = matched.local_no
             if idx > 0:
                 self.result_pos += sum(self.search_counter_list[ :idx])
         else:
             self.current_cursor = None
+            self.current_highlighter = None
         
         self.updateCounterText()
         self.highlight_current_text(old_idx)
@@ -506,29 +535,30 @@ class PageSearchWidget(Widget):
         if intro_cursor or cursor.selectedText() != text:
             cursor.clearSelection()
             
-        doc = self.current_edit.document()
-        find_flag = self.get_find_flag()
+        matched_map = self.current_highlighter.matched_map
+        matched: Matched
+        
         if not cursor.hasSelection():
             if backward:
-                cursor.movePosition(QTextCursor.MoveOperation.End)
-                find_flag |= QTextDocument.FindFlag.FindBackward
+                matched: Matched = matched_map[list(matched_map.keys())[-1]]
             else:
-                cursor.movePosition(QTextCursor.MoveOperation.Start)
-            cursor: QTextCursor = doc.find(text, cursor, options=find_flag)
+                matched: Matched = matched_map[list(matched_map.keys())[0]]
+            cursor.setPosition(matched.start)
+            cursor.setPosition(matched.end, QTextCursor.MoveMode.KeepAnchor)
         else:
             sel_start = cursor.selectionStart()
-            cursor: QTextCursor = doc.find(text, sel_start, options=find_flag)
+            for _, matched in matched_map.items():
+                if matched.start >= sel_start:
+                    cursor.setPosition(matched.start)
+                    cursor.setPosition(matched.end, QTextCursor.MoveMode.KeepAnchor)
+                    break
 
-        idx = self.current_edit_index()
-        pos_map = self.highlighter_list[idx].matched_map
         c_pos = cursor.position()
-        if c_pos not in pos_map:
-            find_flag |= QTextDocument.FindFlag.FindBackward
-            for k in reversed(pos_map):
+        if c_pos not in matched_map:
+            for k, matched in reversed(matched_map.items()):
                 if k < c_pos:
-                    text = self.search_editor.toPlainText()
-                    cursor.setPosition(k-len(text))
-                    cursor.setPosition(k, QTextCursor.MoveMode.KeepAnchor)
+                    cursor.setPosition(matched.start)
+                    cursor.setPosition(matched.end, QTextCursor.MoveMode.KeepAnchor)
                     break
 
         self.current_cursor = cursor
@@ -545,24 +575,34 @@ class PageSearchWidget(Widget):
             cursor.clearSelection()
             self.current_edit.setTextCursor(cursor)
 
+    def get_next_match(self, cursor_sel_start: int) -> Matched:
+        if self.current_highlighter is None:
+            return None
+        matched: Matched
+        for _, matched in self.current_highlighter.matched_map.items():
+            if matched.start > cursor_sel_start:
+                return matched
+        return None
+
+    def get_prev_match(self, cursor_sel_end: int) -> Matched:
+        if self.current_highlighter is None:
+            return None
+        matched: Matched
+        for _, matched in reversed(self.current_highlighter.matched_map.items()):
+            if matched.end < cursor_sel_end:
+                return matched
+        return None
+
     def move_cursor(self, step: int = 1) -> int:
-        doc = self.current_edit.document()
-        text = self.search_editor.toPlainText()
         cursor_reset = 0
         self.clean_current_selection()
-        find_flag = self.get_find_flag()
-        len_text = len(text)
         if step < 0:
-            find_flag |= QTextDocument.FindFlag.FindBackward
-            new_cursor = self.current_cursor
-            while not new_cursor.isNull() and \
-                self.current_cursor.position() - new_cursor.position() < len_text:
-                new_cursor = doc.find(text, new_cursor, find_flag)
+            moved_matched = self.get_prev_match(self.current_cursor.selectionEnd())
         else:
-            new_cursor: QTextCursor = doc.find(text, self.current_cursor, find_flag)
+            moved_matched = self.get_next_match(self.current_cursor.selectionStart())
 
         old_idx = -1
-        if new_cursor.isNull():
+        if moved_matched is None:
             old_idx = self.current_edit_index()
             idx = old_idx + step
             # return step value if next move will be out of page
@@ -574,9 +614,11 @@ class PageSearchWidget(Widget):
                 cursor_reset = step
                 idx = num_rstedit - 1
             self.current_edit = self.search_rstedit_list[idx]
+            self.current_highlighter = self.highlighter_list[idx]
             self.updateCurrentCursor(intro_cursor=True, backward=step < 0)
         else:
-            self.current_cursor = new_cursor
+            self.current_cursor.setPosition(moved_matched.start)
+            self.current_cursor.setPosition(moved_matched.end, QTextCursor.MoveMode.KeepAnchor)
 
         self.highlight_current_text(old_idx)
         return cursor_reset
@@ -587,10 +629,10 @@ class PageSearchWidget(Widget):
 
         idx = self.current_edit_index()
         if idx != -1:
-            self.highlighter_list[idx].set_current_start(self.current_cursor.selectionStart())
+            self.highlighter_list[idx].set_current_span(self.current_cursor.selectionStart(), self.current_cursor.selectionEnd())
 
         if old_idx != -1 and old_idx != idx:
-            self.highlighter_list[old_idx].set_current_start(-1)
+            self.highlighter_list[old_idx].set_current_span(-1, -1)
 
         if self.isVisible():
             self.current_edit.ensure_scene_visible.emit()
@@ -619,6 +661,10 @@ class PageSearchWidget(Widget):
         self.config.fsearch_whole_word = self.whole_word_toggle.isChecked()
         self.page_search()
 
+    def on_regex_clicked(self):
+        self.config.fsearch_regex = self.regex_toggle.isChecked()
+        self.page_search()
+
     def on_case_clicked(self):
         self.config.fsearch_case = self.case_sensitive_toggle.isChecked()
         self.page_search()
@@ -631,6 +677,7 @@ class PageSearchWidget(Widget):
         self.config = config
         self.whole_word_toggle.setChecked(config.fsearch_whole_word)
         self.case_sensitive_toggle.setChecked(config.fsearch_case)
+        self.regex_toggle.setChecked(config.fsearch_regex)
         self.range_combobox.setCurrentIndex(config.fsearch_range)
 
     def on_commit_search(self):
@@ -664,8 +711,7 @@ class PageSearchWidget(Widget):
         if text == '':
             return
 
-        find_flag = self.get_find_flag()
-        found_counter, pos_map = self._find_page_text(edit, text, find_flag)
+        found_counter, match_map = self._match_text(edit.toPlainText())
         if found_counter > 0:
             current_idx = self.current_edit_index()
             insert_idx = 0
@@ -678,7 +724,7 @@ class PageSearchWidget(Widget):
 
             self.search_counter_list.insert(insert_idx, found_counter)
             self.search_rstedit_list.insert(insert_idx, edit)
-            self.highlighter_list.insert(insert_idx, HighlightMatched(edit, text, pos_map))
+            self.highlighter_list.insert(insert_idx, HighlightMatched(edit, match_map))
             edit.text_changed.connect(self.on_rst_text_changed)
             self.counter_sum += found_counter
 
@@ -686,5 +732,8 @@ class PageSearchWidget(Widget):
                 self.result_pos += found_counter
                 self.updateCounterText()
             else:
-                self.result_pos = 0
-                self.setCurrentEditor(edit)
+                if self.update_cursor_on_insert:
+                    self.result_pos = 0
+                    self.setCurrentEditor(edit)
+                else:
+                    self.updateCounterText()

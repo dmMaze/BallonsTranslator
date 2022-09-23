@@ -71,7 +71,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
                 counter = self.sw.search_counter_list.pop(rst_idx)
                 self.sw.counter_sum -= counter
                 if self.sw.current_edit == pw.e_trans:
-                    highlighter.set_current_start(-1)
+                    highlighter.set_current_span(-1, -1)
                 self.search_rstedit_list.append(self.sw.search_rstedit_list.pop(rst_idx))
                 self.search_counter_list.append(counter)
                 self.highlighter_list.append(highlighter)
@@ -83,7 +83,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
                 counter = self.sw.search_counter_list.pop(rst_idx)
                 self.sw.counter_sum -= counter
                 if self.sw.current_edit == pw.e_trans:
-                    highlighter.set_current_start(-1)
+                    highlighter.set_current_span(-1, -1)
                 self.search_rstedit_list.append(self.sw.search_rstedit_list.pop(rst_idx))
                 self.search_counter_list.append(counter)
                 self.highlighter_list.append(highlighter)
@@ -318,13 +318,12 @@ class SceneTextManager(QObject):
         self.changeHoveringWidget(e_trans)
 
     def changeHoveringWidget(self, edit: SourceTextEdit):
-        if self.hovering_transwidget != edit:
-            if self.hovering_transwidget is not None:
-                self.hovering_transwidget.setHoverEffect(False)
-            self.hovering_transwidget = edit
-            if edit is not None:
-                self.textEditList.ensureWidgetVisible(edit)
-                edit.setHoverEffect(True)
+        if self.hovering_transwidget is not None and self.hovering_transwidget != edit:
+            self.hovering_transwidget.setHoverEffect(False)
+        self.hovering_transwidget = edit
+        if edit is not None:
+            self.textEditList.ensureWidgetVisible(edit, yMargin=edit.geometry().height())
+            edit.setHoverEffect(True)
 
     def onLeftbuttonPressed(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]
@@ -634,6 +633,7 @@ class SceneTextManager(QObject):
         blk_item = self.textblk_item_list[edit.idx]
         if blk_item.isEditing():
             blk_item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        
         propagate_user_edit(edit, blk_item, pos, added_text, input_method_used)
 
     def onGlobalFormatChanged(self):

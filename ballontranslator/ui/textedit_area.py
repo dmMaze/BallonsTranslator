@@ -84,7 +84,7 @@ class SourceTextEdit(QTextEdit):
                     cursor.setPosition(change_from)
                     cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
                     added_text = cursor.selectedText()
-                
+
                 self.propagate_user_edited.emit(change_from, added_text, input_method_used)
                 
                 undo_steps = self.document().availableUndoSteps()
@@ -147,6 +147,10 @@ class SourceTextEdit(QTextEdit):
                 e.accept()
                 self.redo_signal.emit()
                 return
+        elif e.key() == Qt.Key.Key_Return:
+            e.accept()
+            self.textCursor().insertText('\n')
+            return
         return super().keyPressEvent(e)
 
     def undo(self) -> None:

@@ -372,10 +372,11 @@ class MainWindow(QMainWindow):
         shortcutSpace.activated.connect(self.shortcutSpace)
         shortcutSelectAll = QShortcut(QKeySequence.StandardKey.SelectAll, self)
         shortcutSelectAll.activated.connect(self.shortcutSelectAll)
-        shortcutSearch = QShortcut(QKeySequence("Ctrl+F"), self)
-        shortcutSearch.activated.connect(self.shortcutSearch)
-        shortcutGlobalSearch = QShortcut(QKeySequence("Ctrl+G"), self)
-        shortcutGlobalSearch.activated.connect(self.shortcutGlobalSearch)
+
+        self.titleBar.redo_trigger.connect(self.on_redo)
+        self.titleBar.undo_trigger.connect(self.on_undo)
+        self.titleBar.page_search_trigger.connect(self.on_page_search)
+        self.titleBar.global_search_trigger.connect(self.on_global_search)
         shortcutEscape = QShortcut(QKeySequence("Escape"), self)
         shortcutEscape.activated.connect(self.shortcutEscape)
 
@@ -447,7 +448,13 @@ class MainWindow(QMainWindow):
         if self.textPanel.formatpanel.isVisible():
             self.textPanel.formatpanel.formatBtnGroup.underlineBtn.click()
 
-    def shortcutSearch(self):
+    def on_redo(self):
+        self.canvas.redo()
+
+    def on_undo(self):
+        self.canvas.undo()
+
+    def on_page_search(self):
         if self.canvas.gv.isVisible():
             fo = self.app.focusObject()
             sel_text = ''
@@ -472,7 +479,7 @@ class MainWindow(QMainWindow):
                 self.canvas.search_widget.show()
             self.canvas.search_widget.setCurrentEditor(tgt_edit)
 
-    def shortcutGlobalSearch(self):
+    def on_global_search(self):
         if self.canvas.gv.isVisible():
             if not self.leftBar.globalSearchChecker.isChecked():
                 self.leftBar.globalSearchChecker.click()
@@ -745,6 +752,8 @@ class MainWindow(QMainWindow):
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
+        if not self.canvas.textEditMode() and self.canvas.search_widget.isVisible():
+            self.canvas.search_widget.hide()
 
     def show_presets(self):
         fmt = self.textPanel.formatpanel.active_format
@@ -753,6 +762,8 @@ class MainWindow(QMainWindow):
         self.presetPanel.show()
 
     def on_export_doc(self):
+        if self.canvas.text_change_unsaved():
+            self.st_manager.updateTextBlkList()
         self.export_doc_thread.exportAsDoc(self.imgtrans_proj)
 
     def on_import_doc(self):

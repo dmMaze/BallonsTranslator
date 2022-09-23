@@ -423,6 +423,10 @@ class TextBlkItem(QGraphicsTextItem):
                     e.accept()
                     self.pasted.emit(self.idx)
                     return
+        elif e.key() == Qt.Key.Key_Return:
+            e.accept()
+            self.textCursor().insertText('\n')
+            return
         return super().keyPressEvent(e)
 
     def undo(self) -> None:

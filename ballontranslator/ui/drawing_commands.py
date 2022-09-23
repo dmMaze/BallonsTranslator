@@ -1,25 +1,16 @@
 from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QDateTime, QRectF, QPoint
-from qtpy.QtWidgets import QGridLayout, QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
 try:
-    from qtpy.QtWidgets import QUndoCommand, QUndoStack
+    from qtpy.QtWidgets import QUndoCommand
 except:
-    from qtpy.QtGui import QUndoCommand, QUndoStack
+    from qtpy.QtGui import QUndoCommand
 
 from typing import Union, Tuple, List
 import numpy as np
-import cv2
-
-from utils.imgproc_utils import enlarge_window
-from utils.textblock_mask import canny_flood, connected_canny_flood
 from utils.logger import logger
 
-from .dl_manager import DLManager
 from .image_edit import ImageEditMode, PixmapItem, DrawingLayer, StrokeImgItem
-from .configpanel import InpaintConfigPanel
-from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
-
 
 
 class StrokeItemUndoCommand(QUndoCommand):
