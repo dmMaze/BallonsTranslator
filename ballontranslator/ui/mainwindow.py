@@ -355,19 +355,18 @@ class MainWindow(FramelessWindow):
         self.page_changing = False
 
     def setupShortcuts(self):
-        shortcutNext = QShortcut(QKeySequence.StandardKey.MoveToNextPage, self)
-        shortcutNext.activated.connect(self.shortcutNext)
-        shortcutD = QShortcut(QKeySequence("D"), self)
-        shortcutD.activated.connect(self.shortcutNext) 
-        shortcutBefore = QShortcut(QKeySequence.StandardKey.MoveToPreviousPage, self)
-        shortcutBefore.activated.connect(self.shortcutBefore)
-        shortcutA = QShortcut(QKeySequence("A"), self)
-        shortcutA.activated.connect(self.shortcutBefore)         
-        shortcutTextedit = QShortcut(QKeySequence("T"), self)
-        shortcutTextedit.activated.connect(self.shortcutTextedit)
+        self.titleBar.nextpage_trigger.connect(self.shortcutNext) 
+        self.titleBar.prevpage_trigger.connect(self.shortcutBefore)
+        self.titleBar.textedit_trigger.connect(self.shortcutTextedit)
+        self.titleBar.drawboard_trigger.connect(self.shortcutDrawboard)
+        self.titleBar.redo_trigger.connect(self.on_redo)
+        self.titleBar.undo_trigger.connect(self.on_undo)
+        self.titleBar.page_search_trigger.connect(self.on_page_search)
+        self.titleBar.global_search_trigger.connect(self.on_global_search)
+        self.titleBar.run_trigger.connect(self.leftBar.runImgtransBtn.click)
+        self.titleBar.translate_page_trigger.connect(self.bottomBar.transTranspageBtn.click)
+
         shortcutTextblock = QShortcut(QKeySequence("W"), self)
-        shortcutPaint = QShortcut(QKeySequence("P"), self)
-        shortcutPaint.activated.connect(self.shortcutPaint)
         shortcutTextblock.activated.connect(self.shortcutTextblock)
         shortcutZoomIn = QShortcut(QKeySequence.StandardKey.ZoomIn, self)
         shortcutZoomIn.activated.connect(self.canvas.gv.scale_up_signal)
@@ -380,14 +379,9 @@ class MainWindow(FramelessWindow):
         shortcutSelectAll = QShortcut(QKeySequence.StandardKey.SelectAll, self)
         shortcutSelectAll.activated.connect(self.shortcutSelectAll)
 
-        self.titleBar.redo_trigger.connect(self.on_redo)
-        self.titleBar.undo_trigger.connect(self.on_undo)
-        self.titleBar.page_search_trigger.connect(self.on_page_search)
-        self.titleBar.global_search_trigger.connect(self.on_global_search)
         shortcutEscape = QShortcut(QKeySequence("Escape"), self)
         shortcutEscape.activated.connect(self.shortcutEscape)
 
-        # font formatting
         shortcutBold = QShortcut(QKeySequence.StandardKey.Bold, self)
         shortcutBold.activated.connect(self.shortcutBold)
         shortcutItalic = QShortcut(QKeySequence.StandardKey.Italic, self)
@@ -422,7 +416,7 @@ class MainWindow(FramelessWindow):
             if self.bottomBar.texteditChecker.isChecked():
                 self.bottomBar.textblockChecker.click()
 
-    def shortcutPaint(self):
+    def shortcutDrawboard(self):
         if self.centralStackWidget.currentIndex() == 0:
             self.bottomBar.paintChecker.click()
 
@@ -672,6 +666,7 @@ class MainWindow(FramelessWindow):
             return
         if run_target and self.canvas.text_change_unsaved():
             self.st_manager.updateTextBlkList()
+        self.global_search_widget.set_document_edited()
         self.dl_manager.translatePage(run_target, page_key)
 
     def finishTranslatePage(self, page_key):

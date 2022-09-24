@@ -330,9 +330,45 @@ class TitleBar(Widget):
         editMenu.addActions([undoAction, redoAction])
         editMenu.addSeparator()
         editMenu.addActions([pageSearchAction, globalSearchAction])
-
         self.editToolBtn.setMenu(editMenu)
         self.editToolBtn.setPopupMode(QToolButton.InstantPopup)
+
+        self.viewToolBtn = TitleBarToolBtn(self)
+        self.viewToolBtn.setText(self.tr('View'))
+        drawBoardAction = QAction(self.tr('Drawing Board '), self)
+        drawBoardAction.setShortcut(QKeySequence('P'))
+        texteditAction = QAction(self.tr('Text Editor'), self)
+        texteditAction.setShortcut(QKeySequence('T'))
+        viewMenu = QMenu(self.viewToolBtn)
+        viewMenu.addActions([drawBoardAction, texteditAction])
+        self.viewToolBtn.setMenu(viewMenu)
+        self.viewToolBtn.setPopupMode(QToolButton.InstantPopup)
+        self.textedit_trigger = texteditAction.triggered
+        self.drawboard_trigger = drawBoardAction.triggered
+
+        self.goToolBtn = TitleBarToolBtn(self)
+        self.goToolBtn.setText(self.tr('Go'))
+        prevPageAction = QAction(self.tr('Previous Page'), self)
+        prevPageAction.setShortcuts([QKeySequence.StandardKey.MoveToPreviousPage, QKeySequence('A')])
+        nextPageAction = QAction(self.tr('Next Page'), self)
+        nextPageAction.setShortcuts([QKeySequence.StandardKey.MoveToNextPage, QKeySequence('D')])
+        goMenu = QMenu(self.goToolBtn)
+        goMenu.addActions([prevPageAction, nextPageAction])
+        self.goToolBtn.setMenu(goMenu)
+        self.goToolBtn.setPopupMode(QToolButton.InstantPopup)
+        self.prevpage_trigger = prevPageAction.triggered
+        self.nextpage_trigger = nextPageAction.triggered
+
+        self.runToolBtn = TitleBarToolBtn(self)
+        self.runToolBtn.setText(self.tr('Run'))
+        runAction = QAction(self.tr('Run'), self)
+        translatePageAction = QAction(self.tr('Translate page'), self)
+        runMenu = QMenu(self.runToolBtn)
+        runMenu.addActions([runAction, translatePageAction])
+        self.runToolBtn.setMenu(runMenu)
+        self.runToolBtn.setPopupMode(QToolButton.InstantPopup)
+        self.run_trigger = runAction.triggered
+        self.translate_page_trigger = translatePageAction.triggered
 
         self.iconLabel = QLabel(self)
         self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
@@ -354,6 +390,9 @@ class TitleBar(Widget):
         hlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hlayout.addWidget(self.iconLabel)
         hlayout.addWidget(self.editToolBtn)
+        hlayout.addWidget(self.viewToolBtn)
+        hlayout.addWidget(self.goToolBtn)
+        hlayout.addWidget(self.runToolBtn)
         hlayout.addStretch()
         hlayout.addWidget(self.titleLabel)
         hlayout.addStretch()

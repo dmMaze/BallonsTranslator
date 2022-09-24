@@ -1,6 +1,6 @@
 from qtpy.QtWidgets import QHBoxLayout, QSizePolicy, QComboBox, QStyledItemDelegate, QLabel, QTreeView, QCheckBox, QStyleOptionViewItem, QVBoxLayout, QStyle, QMessageBox, QStyle,  QApplication, QWidget
 from qtpy.QtCore import Qt, QItemSelection, QSize, Signal, QUrl, QModelIndex, QRectF
-from qtpy.QtGui import QPalette, QPainter, QTextCursor, QStandardItemModel, QStandardItem, QAbstractTextDocumentLayout, QColor, QShowEvent, QTextDocument, QTextCharFormat
+from qtpy.QtGui import QFont, QPainter, QTextCursor, QStandardItemModel, QStandardItem, QAbstractTextDocumentLayout, QColor, QShowEvent, QTextDocument, QTextCharFormat
 
 from typing import List, Union, Tuple, Dict
 import re, time
@@ -44,11 +44,12 @@ class HTMLDelegate( QStyledItemDelegate ):
         style.drawControl(QStyle.ControlElement.CE_ItemViewItem, options, painter)
 
 
-def get_rstitem_renderhtml(text: str, span: Tuple[int, int]) -> str:
+def get_rstitem_renderhtml(text: str, span: Tuple[int, int], font: QFont = None) -> str:
     if text == '':
         return text
     doc = QTextDocument()
-    font = doc.defaultFont()
+    if font is None:
+        font = doc.defaultFont()
     font.setPointSizeF(SEARCHRST_FONTSIZE)
     doc.setDefaultFont(font)
     doc.setPlainText(text.replace('\n', ' '))
@@ -76,13 +77,8 @@ class SearchResultItem(QStandardItem):
         self.is_src = is_src
         self.blk_idx = blk_idx
         self.pagename = pagename
-        self.setText(get_rstitem_renderhtml(text, span))
+        self.setText(get_rstitem_renderhtml(text, span, font=self.font()))
         self.setEditable(False)
-
-    def setBold(self, bold: bool):
-        font = self.font()
-        font.setBold(bold)
-        self.setFont(font)
 
 
 class PageSeachResultItem(QStandardItem):
@@ -534,6 +530,7 @@ class GlobalSearchWidget(Widget):
         if self.counter_sum > 0:
             self.search_tree.clearPages()
             self.result_label.setText(self.doc_edited_str)
+            self.counter_sum = 0
 
     def on_img_writed(self, pagename: str):
         if not self.progress_bar.isVisible():
