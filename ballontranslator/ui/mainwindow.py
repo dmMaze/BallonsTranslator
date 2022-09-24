@@ -2,9 +2,9 @@ import os.path as osp
 import os, re
 from typing import List
 
-from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QLineEdit, QPlainTextEdit
-from qtpy.QtCore import Qt, QPoint, QSize
-from qtpy.QtGui import QColor, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QFont, QTextDocument
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
+from qtpy.QtCore import Qt, QPoint, QSize, QEvent
+from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
@@ -19,7 +19,7 @@ from .dl_manager import DLManager
 from .textedit_area import TextPanel, SourceTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
-from .mainwindowbars import TitleBar, LeftBar, RightBar, BottomBar
+from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .stylewidgets import FrameLessMessageBox
 from .preset_widget import PresetPanel
@@ -28,6 +28,8 @@ from .global_search_widget import GlobalSearchWidget
 from . import constants as C
 from .textedit_commands import GlobalRepalceAllCommand
 
+from .framelesswindow import FramelessWindow
+
 class PageListView(QListWidget):    
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -35,7 +37,7 @@ class PageListView(QListWidget):
         self.setIconSize(QSize(C.PAGELIST_THUMBNAIL_SIZE, C.PAGELIST_THUMBNAIL_SIZE))
 
 
-class MainWindow(QMainWindow):
+class MainWindow(FramelessWindow):
 
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
@@ -43,13 +45,8 @@ class MainWindow(QMainWindow):
     page_changing = False
     
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
+        
         super().__init__(*args, **kwargs)
-
-        C.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
-        yahei = QFont('Microsoft YaHei UI')
-        if yahei.exactMatch():
-            QGuiApplication.setFont(yahei)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.app = app
         self.setupThread()
         self.setupUi()
@@ -110,12 +107,9 @@ class MainWindow(QMainWindow):
         self.bottomBar.paintmode_checkchanged.connect(self.setPaintMode)
         self.bottomBar.textblock_checkchanged.connect(self.setTextBlockMode)
 
-        self.rightBar = RightBar(self)
-
         mainHLayout = QHBoxLayout()
         mainHLayout.addWidget(self.leftBar)
         mainHLayout.addWidget(self.centralStackWidget)
-        mainHLayout.addWidget(self.rightBar)
         mainHLayout.setContentsMargins(0, 0, 0, 0)
         mainHLayout.setSpacing(0)
 
@@ -165,16 +159,15 @@ class MainWindow(QMainWindow):
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
 
-        self.centerWidget = QWidget()
-        self.setCentralWidget(self.centerWidget)
-        mainVBoxLayout = QVBoxLayout(self.centerWidget)
+        
+        mainVBoxLayout = QVBoxLayout(self)
         mainVBoxLayout.addWidget(self.titleBar)
         mainVBoxLayout.addLayout(mainHLayout)
         mainVBoxLayout.addWidget(self.bottomBar)
         mainVBoxLayout.setContentsMargins(0, 0, 0, 0)
         mainVBoxLayout.setSpacing(0)
-        self.mainvlayout = mainVBoxLayout
 
+        self.mainvlayout = mainVBoxLayout
         self.comicTransSplitter.setStretchFactor(1, 10)
 
     def setupConfig(self):
@@ -322,6 +315,12 @@ class MainWindow(QMainWindow):
         if not self.imgtrans_proj.is_empty:
             self.imgtrans_proj.save()
         return super().closeEvent(event)
+
+    def changeEvent(self, event: QEvent):
+        if event.type() == QEvent.WindowStateChange:
+            if self.windowState() & Qt.WindowState.WindowMaximized:
+                self.titleBar.maxBtn.setChecked(True)
+        super().changeEvent(event)
 
     def save_config(self):
         self.config.imgtrans_paintmode = self.bottomBar.paintChecker.isChecked()

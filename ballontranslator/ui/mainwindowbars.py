@@ -3,12 +3,13 @@ from collections import OrderedDict
 from typing import List, Union
 
 from .stylewidgets import Widget, PaintQSlider
-from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, DRAG_DIR_NONE, DRAG_DIR_VER, DRAG_DIR_BDIAG, DRAG_DIR_FDIAG, LEFTBAR_WIDTH, LEFTBTN_WIDTH
+from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton
 from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QMouseEvent, QKeySequence
 
+from .framelesswindow import startSystemMove
 from . import constants as C
 if C.FLAG_QT6:
     from qtpy.QtGui import QAction
@@ -136,7 +137,6 @@ class LeftBar(Widget):
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.mainwindow: QMainWindow = mainwindow
-        self.drag_resize_pos: QPoint = None
 
         padding = (LEFTBAR_WIDTH - LEFTBTN_WIDTH) // 2
         self.setFixedWidth(LEFTBAR_WIDTH)
@@ -293,97 +293,8 @@ class LeftBar(Widget):
             self.imgTransChecker.setChecked(False)
             self.configChecked.emit()
 
-    def mouseMoveEvent(self, e: QMouseEvent) -> None:
-        if not self.mainwindow.isMaximized():
-            if C.FLAG_QT6:
-                g_pos = e.globalPosition().toPoint()
-            else:
-                g_pos = e.globalPos()
-            ex = g_pos.x()
-            geow = self.mainwindow.geometry()
-            if ex - geow.left() < WINDOW_BORDER_WIDTH:
-                self.setCursor(Qt.CursorShape.SizeHorCursor)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-
-            if self.drag_resize_pos is not None:
-                self.setCursor(Qt.CursorShape.SizeHorCursor)
-                delta_x = ex - self.drag_resize_pos.x()
-                self.drag_resize_pos = g_pos
-                geow.setLeft(geow.left() + delta_x)
-                self.mainwindow.setGeometry(geow)
-        return super().mouseMoveEvent(e)
-
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        if C.FLAG_QT6:
-            g_pos = e.globalPosition().toPoint()
-        else:
-            g_pos = e.globalPos()
-        ex = g_pos.x()
-        geow = self.mainwindow.geometry()
-        if ex - geow.left() < WINDOW_BORDER_WIDTH:
-            self.drag_resize_pos = g_pos
-        return super().mousePressEvent(e)
-
-    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        return super().mouseReleaseEvent(e)
-
-    def leaveEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        return super().leaveEvent(e)
-
     def needleftStackWidget(self) -> bool:
         return self.showPageListLabel.isChecked() or self.globalSearchChecker.isChecked()
-
-
-class RightBar(Widget):
-    def __init__(self, mainwindow: QMainWindow):
-        super().__init__()
-        self.mainwindow = mainwindow
-        self.drag_resize_pos: QPoint = None
-        self.setFixedWidth(WINDOW_BORDER_WIDTH)
-        self.setMouseTracking(True)
-
-    def mouseMoveEvent(self, e:  QMouseEvent) -> None:
-        if not self.mainwindow.isMaximized():
-            if C.FLAG_QT6:
-                g_pos = e.globalPosition().toPoint()
-            else:
-                g_pos = e.globalPos()
-            ex = g_pos.x()
-            geow = self.mainwindow.geometry()
-            if ex - geow.right() < WINDOW_BORDER_WIDTH:
-                self.setCursor(Qt.CursorShape.SizeHorCursor)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-
-            if self.drag_resize_pos is not None:
-                self.setCursor(Qt.CursorShape.SizeHorCursor)
-                delta_x = ex - self.drag_resize_pos.x()
-                self.drag_resize_pos = g_pos
-                geow.setRight(geow.right() + delta_x)
-                self.mainwindow.setGeometry(geow)
-        return super().mouseMoveEvent(e)
-
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        if C.FLAG_QT6:
-            g_pos = e.globalPosition().toPoint()
-        else:
-            g_pos = e.globalPos()
-        ex = g_pos.x()
-        geow = self.mainwindow.geometry()
-        if ex - geow.right() < WINDOW_BORDER_WIDTH:
-            self.drag_resize_pos = g_pos
-        return super().mousePressEvent(e)
-
-    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        return super().mouseReleaseEvent(e)
-
-    def leaveEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        return super().leaveEvent(e)
 
 
 class TitleBar(Widget):
@@ -392,8 +303,6 @@ class TitleBar(Widget):
         super().__init__(parent, *args, **kwargs)
         self.mainwindow : QMainWindow = parent
         self.mPos: QPoint = None
-        self.drag_resize_pos: QPoint = None
-        self.drag_dir = DRAG_DIR_NONE
         self.normalsize = False
         self.proj_name = ''
         self.page_name = ''
@@ -474,17 +383,7 @@ class TitleBar(Widget):
         if event.button() == Qt.MouseButton.LeftButton:
             if not self.mainwindow.isMaximized() and \
                 event.pos().y() < WINDOW_BORDER_WIDTH:
-                self.drag_resize_pos = g_pos
-                x = event.pos().x()
-                if x < WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                    self.drag_dir = DRAG_DIR_FDIAG
-                elif x > self.width() - WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                    self.drag_dir = DRAG_DIR_BDIAG
-                else:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-                    self.drag_dir = DRAG_DIR_VER
+                pass
             else:
                 self.mPos = event.pos()
                 self.mPosGlobal = g_pos
@@ -492,66 +391,22 @@ class TitleBar(Widget):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self.mPos = None
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
         return super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if C.FLAG_QT6:
-            g_pos = event.globalPosition().toPoint()
-        else:
-            g_pos = event.globalPos()
         if self.mPos is not None:
-            self.mainwindow.show()
-            if self.mainwindow.isMaximized():
-                oldw = self.mainwindow.width()
-                newgeo = self.mainwindow.normalGeometry()
-                self.mainwindow.showNormal()
-                
-                if self.mPos.x() > newgeo.width():
-                    self.mPos = QPoint(newgeo.width()-oldw+self.mPos.x(), self.mPos.y())
-                else:
-                    self.mainwindow.move(g_pos - self.mPos)
+            if C.FLAG_QT6:
+                g_pos = event.globalPosition().toPoint()
             else:
-                self.mainwindow.move(g_pos-self.mPos)
-        elif not self.mainwindow.isMaximized():
-            y = event.pos().y()
-            x = event.pos().x()
-            if self.drag_dir != DRAG_DIR_NONE:
-                geo = self.mainwindow.geometry()
-                delta_y = g_pos.y() - self.drag_resize_pos.y()
-                delta_x = g_pos.x() - self.drag_resize_pos.x()
-                geo.setTop(geo.top() + delta_y)
-                if self.drag_dir == DRAG_DIR_BDIAG:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                    geo.setRight(geo.right() + delta_x)
-                elif self.drag_dir == DRAG_DIR_FDIAG:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                    geo.setLeft(geo.left() + delta_x)
-                elif self.drag_dir == DRAG_DIR_VER:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-                self.mainwindow.setGeometry(geo)
-                self.drag_resize_pos = g_pos
-            elif y < WINDOW_BORDER_WIDTH:
-                if x < WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                elif x > self.width() - WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                else:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
+                g_pos = event.globalPos()
+            startSystemMove(self.window(), g_pos)
 
     def hideEvent(self, e) -> None:
         self.mPos = None
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
         return super().hideEvent(e)
 
     def leaveEvent(self, e) -> None:
         self.mPos = None
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
         return super().leaveEvent(e)
 
     def setTitleContent(self, proj_name: str = None, page_name: str = None, save_state: str = None):
@@ -584,8 +439,6 @@ class BottomBar(Widget):
         self.setFixedHeight(BOTTOMBAR_HEIGHT)
         self.setMouseTracking(True)
         self.mainwindow = mainwindow
-        self.drag_resize_pos: QPoint = None
-        self.drag_dir = DRAG_DIR_NONE
 
         self.ocrChecker = TextChecker('ocr')
         self.ocrChecker.setObjectName('OCRChecker')
@@ -651,69 +504,3 @@ class BottomBar(Widget):
         
     def transCheckerStateChanged(self):
         self.transcheck_statechanged.emit(self.transChecker.isChecked())
-
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if not self.mainwindow.isMaximized():
-            if C.FLAG_QT6:
-                g_pos = event.globalPosition().toPoint()
-            else:
-                g_pos = event.globalPos()
-            ey = g_pos.y()
-            ex = g_pos.x()
-            geow = self.mainwindow.geometry()
-
-            if self.drag_dir != DRAG_DIR_NONE:
-                
-                delta_y = g_pos.y() - self.drag_resize_pos.y()
-                delta_x = g_pos.x() - self.drag_resize_pos.x()
-                geow.setBottom(geow.bottom() + delta_y)
-                if self.drag_dir == DRAG_DIR_BDIAG:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                    geow.setLeft(geow.left() + delta_x)
-                elif self.drag_dir == DRAG_DIR_FDIAG:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                    geow.setRight(geow.right() + delta_x)
-                elif self.drag_dir == DRAG_DIR_VER:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-                self.mainwindow.setGeometry(geow)
-                self.drag_resize_pos = g_pos
-            
-            elif geow.bottom() - ey < WINDOW_BORDER_WIDTH:
-                if geow.right() - ex < WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                elif ex - geow.left() < WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                else:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-
-        return super().mouseMoveEvent(event)
-
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        if C.FLAG_QT6:
-            g_pos = e.globalPosition().toPoint()
-        else:
-            g_pos = e.globalPos()
-        ey = g_pos.y()
-        ex = g_pos.x()
-        geow = self.mainwindow.geometry()
-        if geow.bottom() - ey < WINDOW_BORDER_WIDTH:
-            if geow.right() - ex < WINDOW_BORDER_WIDTH:
-                self.drag_dir = DRAG_DIR_FDIAG
-            elif ex - geow.left() < WINDOW_BORDER_WIDTH:
-                self.drag_dir = DRAG_DIR_BDIAG
-            else:
-                self.drag_dir = DRAG_DIR_VER
-            self.drag_resize_pos = g_pos
-        return super().mousePressEvent(e)
-
-    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
-        return super().mouseReleaseEvent(e)
-
-    def leaveEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
-        return super().leaveEvent(e)

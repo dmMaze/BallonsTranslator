@@ -25,16 +25,17 @@ def main():
     from qtpy.QtWidgets import QApplication
     from qtpy.QtCore import QTranslator, QLocale, Qt
     from qtpy.QtGui import QIcon
+    from qtpy.QtGui import  QGuiApplication, QIcon, QFont
 
-    from ui import constants
+    from ui import constants as C
     if qtpy.API_NAME[-1] == '6':
-        constants.FLAG_QT6 = True
+        C.FLAG_QT6 = True
     else:
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
-    os.chdir(constants.PROGRAM_PATH)
+    os.chdir(C.PROGRAM_PATH)
     app = QApplication(sys.argv)
     translator = QTranslator()
     translator.load(
@@ -44,9 +45,14 @@ def main():
     app.installTranslator(translator)
     # app.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
 
+    C.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
+    yahei = QFont('Microsoft YaHei UI')
+    if yahei.exactMatch():
+        QGuiApplication.setFont(yahei)
+
     from ui.mainwindow import MainWindow
     ballontrans = MainWindow(app, open_dir=args.proj_dir)
-    ballontrans.setWindowIcon(QIcon(constants.ICON_PATH))
+    ballontrans.setWindowIcon(QIcon(C.ICON_PATH))
     ballontrans.show()
     sys.exit(app.exec())
 

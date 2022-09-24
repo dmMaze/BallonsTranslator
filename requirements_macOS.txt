@@ -25,3 +25,5 @@ ctranslate2
 python-docx
 docx2txt
 piexif
+Cocoa
+pyobjc
