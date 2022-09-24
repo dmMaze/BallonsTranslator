@@ -248,11 +248,11 @@ class PageSearchWidget(Widget):
         self.replace_editor = SearchEditor(self)
         self.replace_editor.setPlaceholderText(self.tr('Replace'))
         self.replace_btn = ClickableLabel(None, self)
-        self.replace_btn.setObjectName(self.tr('ReplaceBtn'))
+        self.replace_btn.setObjectName('ReplaceBtn')
         self.replace_btn.clicked.connect(self.on_replace_btn_clicked)
         self.replace_btn.setToolTip(self.tr('Replace'))
         self.replace_all_btn = ClickableLabel(None, self)
-        self.replace_all_btn.setObjectName(self.tr('ReplaceAllBtn'))
+        self.replace_all_btn.setObjectName('ReplaceAllBtn')
         self.replace_all_btn.clicked.connect(self.on_replaceall_btn_clicked)
         self.replace_all_btn.setToolTip(self.tr('Replace All'))
 

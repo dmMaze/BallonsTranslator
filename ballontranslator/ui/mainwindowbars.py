@@ -144,7 +144,7 @@ class LeftBar(Widget):
 
         self.globalSearchChecker = QCheckBox()
         self.globalSearchChecker.setObjectName('GlobalSearchChecker')
-        self.globalSearchChecker.setToolTip('Global Search (Ctrl+G)')
+        self.globalSearchChecker.setToolTip(self.tr('Global Search (Ctrl+G)'))
 
         self.imgTransChecker = StateChecker('imgtrans')
         self.imgTransChecker.setObjectName('ImgTransChecker')

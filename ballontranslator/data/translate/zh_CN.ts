@@ -4,47 +4,47 @@
 <context>
     <name>BottomBar</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="558"/>
+        <location filename="../../ui/mainwindowbars.py" line="484"/>
         <source>Enable/disable ocr</source>
         <translation>启用/禁用OCR</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="562"/>
+        <location filename="../../ui/mainwindowbars.py" line="488"/>
         <source>Enable/disable translation</source>
         <translation>启用/禁用机翻</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="566"/>
+        <location filename="../../ui/mainwindowbars.py" line="492"/>
         <source>translate page</source>
         <translation>翻译本页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="566"/>
+        <location filename="../../ui/mainwindowbars.py" line="492"/>
         <source>stop</source>
         <translation>停止</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="566"/>
+        <location filename="../../ui/mainwindowbars.py" line="492"/>
         <source>translate current page</source>
         <translation>翻译本页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="566"/>
+        <location filename="../../ui/mainwindowbars.py" line="492"/>
         <source>stop translation</source>
         <translation>停止翻译</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="575"/>
+        <location filename="../../ui/mainwindowbars.py" line="501"/>
         <source>Enable/disable paint mode</source>
         <translation>启用/禁用画板</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="579"/>
+        <location filename="../../ui/mainwindowbars.py" line="505"/>
         <source>Enable/disable text edit mode</source>
         <translation>启用/禁用文本编辑</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="585"/>
+        <location filename="../../ui/mainwindowbars.py" line="511"/>
         <source>Original image transparency: </source>
         <translation>原图透明度: </translation>
     </message>
@@ -52,17 +52,17 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ui/canvas.py" line="461"/>
+        <location filename="../../ui/canvas.py" line="488"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="462"/>
+        <location filename="../../ui/canvas.py" line="489"/>
         <source>Apply font formatting</source>
         <translation>应用字体格式</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="463"/>
+        <location filename="../../ui/canvas.py" line="490"/>
         <source>Auto layout</source>
         <translation>自动排版</translation>
     </message>
@@ -70,107 +70,107 @@
 <context>
     <name>ConfigPanel</name>
     <message>
-        <location filename="../../ui/configpanel.py" line="292"/>
+        <location filename="../../ui/configpanel.py" line="291"/>
         <source>Text Detection</source>
         <translation>文本检测</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="315"/>
+        <location filename="../../ui/configpanel.py" line="314"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="294"/>
+        <location filename="../../ui/configpanel.py" line="293"/>
         <source>Inpaint</source>
         <translation>图像修复</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="295"/>
+        <location filename="../../ui/configpanel.py" line="294"/>
         <source>Translator</source>
         <translation>翻译器</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="311"/>
+        <location filename="../../ui/configpanel.py" line="310"/>
         <source>Detector</source>
         <translation>检测器</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="319"/>
+        <location filename="../../ui/configpanel.py" line="318"/>
         <source>Inpainter</source>
         <translation>修复工具</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="289"/>
+        <location filename="../../ui/configpanel.py" line="288"/>
         <source>DL Module</source>
         <translation>自动化模组</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="290"/>
+        <location filename="../../ui/configpanel.py" line="289"/>
         <source>General</source>
         <translation>常规</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="296"/>
+        <location filename="../../ui/configpanel.py" line="295"/>
         <source>Startup</source>
         <translation>启动</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="327"/>
+        <location filename="../../ui/configpanel.py" line="326"/>
         <source>Reopen last project on startup</source>
         <translation>启动时打开上次项目</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="297"/>
+        <location filename="../../ui/configpanel.py" line="296"/>
         <source>Lettering</source>
         <translation>嵌字</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="331"/>
+        <location filename="../../ui/configpanel.py" line="330"/>
         <source>decide by program</source>
         <translation>由程序决定</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="332"/>
+        <location filename="../../ui/configpanel.py" line="331"/>
         <source>use global setting</source>
         <translation>使用全局设置</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="334"/>
+        <location filename="../../ui/configpanel.py" line="333"/>
         <source>font size</source>
         <translation>字体大小</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="336"/>
+        <location filename="../../ui/configpanel.py" line="335"/>
         <source>stroke</source>
         <translation>轮廓</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="338"/>
+        <location filename="../../ui/configpanel.py" line="337"/>
         <source>font &amp; stroke color</source>
         <translation>字体与轮廓颜色</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="340"/>
+        <location filename="../../ui/configpanel.py" line="339"/>
         <source>alignment</source>
         <translation>对齐方式</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="345"/>
+        <location filename="../../ui/configpanel.py" line="344"/>
         <source>Auto layout</source>
         <translation>自动排版</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="345"/>
+        <location filename="../../ui/configpanel.py" line="344"/>
         <source>Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to &quot;decide by program.&quot;</source>
         <translation>自动断句并分行.</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="348"/>
+        <location filename="../../ui/configpanel.py" line="347"/>
         <source>To uppercase</source>
         <translation>小写转大写</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="342"/>
+        <location filename="../../ui/configpanel.py" line="341"/>
         <source>effect</source>
         <translation>特效</translation>
     </message>
@@ -178,7 +178,7 @@
 <context>
     <name>DLManager</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="646"/>
+        <location filename="../../ui/dl_manager.py" line="650"/>
         <source>Invalid</source>
         <translation>不可用</translation>
     </message>
@@ -186,7 +186,7 @@
 <context>
     <name>DrawingPanel</name>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="287"/>
+        <location filename="../../ui/drawingpanel.py" line="305"/>
         <source>Mask Transparency</source>
         <translation>掩膜透明度</translation>
     </message>
@@ -194,12 +194,12 @@
 <context>
     <name>ExportDocThread</name>
     <message>
-        <location filename="../../ui/io_thread.py" line="91"/>
+        <location filename="../../ui/io_thread.py" line="92"/>
         <source>Export as doc...</source>
         <translation>导出word文档...</translation>
     </message>
     <message>
-        <location filename="../../ui/io_thread.py" line="97"/>
+        <location filename="../../ui/io_thread.py" line="98"/>
         <source>Overwrite </source>
         <translation>覆盖</translation>
     </message>
@@ -268,6 +268,102 @@
     </message>
 </context>
 <context>
+    <name>GlobalReplaceThead</name>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="182"/>
+        <source>Replace...</source>
+        <translation>替换中...</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="188"/>
+        <source>Replace all occurrences?</source>
+        <translation>替换所有结果?</translation>
+    </message>
+</context>
+<context>
+    <name>GlobalSearchWidget</name>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="300"/>
+        <source>Find</source>
+        <translation>查找</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="303"/>
+        <source>No results found. </source>
+        <translation>未找到结果. </translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="304"/>
+        <source>Document changed. Press Enter to re-search.</source>
+        <translation>文档已变更. 按下回车键重新搜索.</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="305"/>
+        <source>Found results: </source>
+        <translation>查找结果: </translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="311"/>
+        <source>Match Case</source>
+        <translation>区分大小写</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="316"/>
+        <source>Match Whole Word</source>
+        <translation>全字匹配</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="321"/>
+        <source>Use Regular Expression</source>
+        <translation>使用正则表达式</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="325"/>
+        <source>Translation</source>
+        <translation>译文</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="325"/>
+        <source>Source</source>
+        <translation>源文</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="325"/>
+        <source>All</source>
+        <translation>全文</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="328"/>
+        <source> in</source>
+        <translation> 在</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="331"/>
+        <source>Replace</source>
+        <translation>替换</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="334"/>
+        <source>Replace All</source>
+        <translation>全部替换</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="336"/>
+        <source>Replace All and Re-render all pages</source>
+        <translation>全部替换并重新渲染所有页</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="377"/>
+        <source>Replace...</source>
+        <translation>替换中...</translation>
+    </message>
+    <message>
+        <location filename="../../ui/global_search_widget.py" line="489"/>
+        <source>Replace all occurrences re-render all pages? It can&apos;t be undone.</source>
+        <translation>全部替换并重新渲染所有页? 无法撤销. </translation>
+    </message>
+</context>
+<context>
     <name>ImgtransProgressMessageBox</name>
     <message>
         <location filename="../../ui/stylewidgets.py" line="141"/>
@@ -293,7 +389,7 @@
 <context>
     <name>ImgtransThread</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="318"/>
+        <location filename="../../ui/dl_manager.py" line="322"/>
         <source>Translation Failed.</source>
         <translation>翻译失败.</translation>
     </message>
@@ -301,12 +397,12 @@
 <context>
     <name>ImportDocThread</name>
     <message>
-        <location filename="../../ui/io_thread.py" line="125"/>
+        <location filename="../../ui/io_thread.py" line="126"/>
         <source>Import doc...</source>
         <translation>导入word文档...</translation>
     </message>
     <message>
-        <location filename="../../ui/io_thread.py" line="132"/>
+        <location filename="../../ui/io_thread.py" line="133"/>
         <source>Import *.docx</source>
         <translation>导入*.docx</translation>
     </message>
@@ -322,12 +418,12 @@
 <context>
     <name>InpaintPanel</name>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="75"/>
+        <location filename="../../ui/drawingpanel.py" line="71"/>
         <source>Thickness</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="70"/>
+        <location filename="../../ui/drawingpanel.py" line="66"/>
         <source>pen thickness </source>
         <translation>画笔大小 </translation>
     </message>
@@ -343,7 +439,7 @@
 <context>
     <name>InpainterStatusButton</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="79"/>
+        <location filename="../../ui/mainwindowbars.py" line="84"/>
         <source>Inpainter: </source>
         <translation>修复工具: </translation>
     </message>
@@ -351,72 +447,77 @@
 <context>
     <name>LeftBar</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="150"/>
+        <location filename="../../ui/mainwindowbars.py" line="157"/>
         <source>Open Folder ...</source>
         <translation>打开文件夹...</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="155"/>
+        <location filename="../../ui/mainwindowbars.py" line="161"/>
         <source>Open Project ... *.json</source>
         <translation>打开项目文件...*.json</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="159"/>
+        <location filename="../../ui/mainwindowbars.py" line="164"/>
         <source>Save Project</source>
         <translation>保存项目</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="164"/>
+        <location filename="../../ui/mainwindowbars.py" line="168"/>
         <source>Export as Doc</source>
         <translation>导出为word文档</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="167"/>
+        <location filename="../../ui/mainwindowbars.py" line="170"/>
         <source>Import from Doc</source>
         <translation>导入word文档</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="170"/>
+        <location filename="../../ui/mainwindowbars.py" line="173"/>
         <source>Open Recent</source>
         <translation>打开最近</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="273"/>
+        <location filename="../../ui/mainwindowbars.py" line="277"/>
         <source>Select Directory</source>
         <translation>选择文件夹</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="280"/>
+        <location filename="../../ui/mainwindowbars.py" line="284"/>
         <source>Import *.docx</source>
         <translation>导入*.docx</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="147"/>
+        <source>Global Search (Ctrl+G)</source>
+        <translation>全局查找 (Ctrl+G)</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../ui/mainwindow.py" line="262"/>
+        <location filename="../../ui/mainwindow.py" line="284"/>
         <source>Failed to load project </source>
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="622"/>
+        <location filename="../../ui/mainwindow.py" line="745"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="622"/>
+        <location filename="../../ui/mainwindow.py" line="745"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="636"/>
+        <location filename="../../ui/mainwindow.py" line="763"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="667"/>
+        <location filename="../../ui/mainwindow.py" line="805"/>
         <source>Export to </source>
-        <translation>导出至</translation>
+        <translation>导出至 </translation>
     </message>
 </context>
 <context>
@@ -428,29 +529,102 @@
     </message>
 </context>
 <context>
+    <name>PageSearchWidget</name>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="211"/>
+        <source>Find</source>
+        <translation>查找</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="214"/>
+        <source>No result</source>
+        <translation>无结果</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="220"/>
+        <source>Previous Match (Shift+Enter)</source>
+        <translation>上一个匹配项 (Shift+Enter)</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="225"/>
+        <source>Next Match (Enter)</source>
+        <translation>下一个匹配项 (Enter)</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="229"/>
+        <source>Match Case</source>
+        <translation>区分大小写</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="234"/>
+        <source>Match Whole Word</source>
+        <translation>全字匹配</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="239"/>
+        <source>Use Regular Expression</source>
+        <translation>使用正则表达式</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="243"/>
+        <source>Translation</source>
+        <translation>译文</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="243"/>
+        <source>Source</source>
+        <translation>源文</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="243"/>
+        <source>All</source>
+        <translation>全文</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="246"/>
+        <source>Range</source>
+        <translation>范围</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="253"/>
+        <source>Replace</source>
+        <translation>替换</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="257"/>
+        <source>Replace All</source>
+        <translation>全部替换</translation>
+    </message>
+    <message>
+        <location filename="../../ui/page_search_widget.py" line="294"/>
+        <source>Close (Escape)</source>
+        <translation>关闭 (Esc)</translation>
+    </message>
+</context>
+<context>
     <name>PenConfigPanel</name>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="110"/>
+        <location filename="../../ui/drawingpanel.py" line="106"/>
         <source>alpha value</source>
         <translation>alpha值</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="117"/>
+        <location filename="../../ui/drawingpanel.py" line="113"/>
         <source>Color</source>
         <translation>颜色</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="118"/>
+        <location filename="../../ui/drawingpanel.py" line="114"/>
         <source>Alpha</source>
         <translation>Alpha</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="126"/>
+        <location filename="../../ui/drawingpanel.py" line="122"/>
         <source>Thickness</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="107"/>
+        <location filename="../../ui/drawingpanel.py" line="103"/>
         <source>pen thickness </source>
         <translation>画笔大小 </translation>
     </message>
@@ -542,34 +716,54 @@
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="164"/>
+        <location filename="../../ui/drawingpanel.py" line="166"/>
         <source>method 1</source>
         <translation>方法1</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="164"/>
+        <location filename="../../ui/drawingpanel.py" line="166"/>
         <source>method 2</source>
         <translation>方法2</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="165"/>
+        <location filename="../../ui/drawingpanel.py" line="167"/>
         <source>Auto</source>
         <translation>自动</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="166"/>
+        <location filename="../../ui/drawingpanel.py" line="168"/>
         <source>run inpainting automatically.</source>
         <translation>自动运行修复函数.</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="168"/>
+        <location filename="../../ui/drawingpanel.py" line="170"/>
         <source>Inpaint</source>
         <translation>图像修复</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="170"/>
+        <location filename="../../ui/drawingpanel.py" line="173"/>
         <source>Delete</source>
         <translation>删除</translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="159"/>
+        <source>Dilate</source>
+        <translation>膨胀</translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="160"/>
+        <source>kernel size: </source>
+        <translation>核大小: </translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="171"/>
+        <source>Space</source>
+        <translation>空格</translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="174"/>
+        <source>Ctrl+D</source>
+        <translation></translation>
     </message>
 </context>
 <context>
@@ -639,6 +833,74 @@
     </message>
 </context>
 <context>
+    <name>TitleBar</name>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="314"/>
+        <source>Edit</source>
+        <translation>编辑</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="316"/>
+        <source>Undo</source>
+        <translation>撤销</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="319"/>
+        <source>Redo</source>
+        <translation>重做</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="322"/>
+        <source>Search</source>
+        <translation>搜索</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="325"/>
+        <source>Global Search</source>
+        <translation>全局搜索</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="337"/>
+        <source>View</source>
+        <translation>视图</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="338"/>
+        <source>Drawing Board </source>
+        <translation>画板 </translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="340"/>
+        <source>Text Editor</source>
+        <translation>编辑器</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="350"/>
+        <source>Go</source>
+        <translation>转到</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="351"/>
+        <source>Previous Page</source>
+        <translation>上一页</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="353"/>
+        <source>Next Page</source>
+        <translation>下一页</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="364"/>
+        <source>Run</source>
+        <translation>运行</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="365"/>
+        <source>Translate page</source>
+        <translation>翻译本页</translation>
+    </message>
+</context>
+<context>
     <name>TranslateThread</name>
     <message>
         <location filename="../../ui/dl_manager.py" line="168"/>
@@ -682,17 +944,17 @@
 <context>
     <name>TranslatorStatusButton</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="72"/>
+        <location filename="../../ui/mainwindowbars.py" line="77"/>
         <source>Translator: </source>
         <translation>翻译器： </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="72"/>
+        <location filename="../../ui/mainwindowbars.py" line="77"/>
         <source>Source: </source>
         <translation>源语言: </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="72"/>
+        <location filename="../../ui/mainwindowbars.py" line="77"/>
         <source>Target: </source>
         <translation>目标语言: </translation>
     </message>
