@@ -185,7 +185,7 @@ class TextBlock(object):
         blk_dict = copy.deepcopy(vars(self))
         return blk_dict
 
-    def get_transformed_region(self, img, idx, textheight) -> np.ndarray :
+    def get_transformed_region(self, img, idx, textheight, maxwidth=None) -> np.ndarray :
         im_h, im_w = img.shape[:2]
         direction = 'v' if self.vertical else 'h'
         src_pts = np.array(self.lines[idx], dtype=np.float64)
@@ -208,8 +208,10 @@ class TextBlock(object):
             M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
             region = cv2.warpPerspective(img, M, (w, h))
             region = cv2.rotate(region, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        # cv2.imshow('region'+str(idx), region)
-        # cv2.waitKey(0)
+        if maxwidth is not None:
+            h, w = region.shape[: 2]
+            if w > maxwidth:
+                region = cv2.resize(region, (maxwidth, h))
         return region
 
     def get_text(self):

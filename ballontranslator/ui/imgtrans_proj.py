@@ -4,7 +4,6 @@ from docx import Document
 import piexif.helper
 import numpy as np
 import os.path as osp
-from collections import OrderedDict
 from typing import Tuple, Union, List, Dict
 
 from utils.logger import logger as LOGGER
@@ -93,20 +92,19 @@ class ProjImgTrans:
             self.pages = {}
             self._pagename2idx = {}
             self._idx2pagename = {}
+            self.not_found_pages = {}
             page_dict = proj_dict['pages']
             not_found_pages = list(page_dict.keys())
             found_pages = find_all_imgs(img_dir=self.directory, abs_path=False)
-            page_counter = 0
-            for imname in found_pages:
+            for ii, imname in enumerate(found_pages):
                 if imname in page_dict:
                     self.pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
-                    self._pagename2idx[imname] = page_counter
-                    self._idx2pagename[page_counter] = imname
-                    page_counter += 1
                     not_found_pages.remove(imname)
                 else:
                     self.pages[imname] = []
                     self.new_pages.append(imname)
+                self._pagename2idx[imname] = ii
+                self._idx2pagename[ii] = imname
             for imname in not_found_pages:
                 self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
         except Exception as e:
@@ -330,7 +328,7 @@ class ProjImgTrans:
             shutil.rmtree(cuts_dir)
 
 
-    def load_doc(self, doc_path, delete_tmp_folder=True, fin_page_signal=None) -> OrderedDict:
+    def load_doc(self, doc_path, delete_tmp_folder=True, fin_page_signal=None):
 
         tmp_bubble_folder = osp.join(self.directory, 'img_folder')
         os.makedirs(tmp_bubble_folder, exist_ok=True)

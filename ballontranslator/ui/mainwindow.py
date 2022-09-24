@@ -188,12 +188,13 @@ class MainWindow(FramelessWindow):
         self.bottomBar.ocrChecker.setCheckState(self.config.dl.enable_ocr)
         self.bottomBar.transChecker.setChecked(self.config.dl.enable_translate)
 
-        self.dl_manager = dl_manager = DLManager(self.config, self.imgtrans_proj, self.configPanel)
+        self.dl_manager = dl_manager = DLManager(self.config, self.imgtrans_proj)
         dl_manager.update_translator_status.connect(self.updateTranslatorStatus)
         dl_manager.update_inpainter_status.connect(self.updateInpainterStatus)
         dl_manager.finish_translate_page.connect(self.finishTranslatePage)
         dl_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         dl_manager.page_trans_finished.connect(self.on_pagtrans_finished)
+        self.dl_manager.setupThread(self.configPanel)
         dl_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         dl_manager.imgtrans_thread.mask_postprocess = self.drawingPanel.rectPanel.post_process_mask
 
@@ -252,6 +253,9 @@ class MainWindow(FramelessWindow):
             self.openDir(proj_path)
         else:
             self.openJsonProj(proj_path)
+
+    def openImgtransProj(self, p: str, ):
+        pass
 
     def openDir(self, directory: str):
         try:

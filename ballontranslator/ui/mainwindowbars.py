@@ -1,5 +1,4 @@
 import os.path as osp
-from collections import OrderedDict
 from typing import List, Union
 
 from .stylewidgets import Widget, PaintQSlider
@@ -222,7 +221,6 @@ class LeftBar(Widget):
             proj_list = [proj_list]
         if self.recent_proj_list == proj_list:
             return
-        proj_list = list(OrderedDict.fromkeys(proj_list))
 
         actionlist = self.recentMenu.actions()
         if len(self.recent_proj_list) == 0:

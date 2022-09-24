@@ -76,7 +76,7 @@ class CustomTransformerEncoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
-        self.pe = PositionalEncoding(d_model, max_len = 768)
+        self.pe = PositionalEncoding(d_model, max_len = 2048)
 
         self.activation = F.gelu
 
@@ -400,7 +400,10 @@ class OCR48pxCTC:
 
         model = OCR(dictionary, 768)
         sd = torch.load(model_path, map_location = 'cpu')
-        model.load_state_dict(sd['model'] if 'model' in sd else sd)
+        del sd['encoders.layers.0.pe.pe']
+        del sd['encoders.layers.1.pe.pe']
+        del sd['encoders.layers.2.pe.pe']
+        model.load_state_dict(sd['model'] if 'model' in sd else sd, strict=False)
         model.eval()
         if self.device != 'cpu' :
             model = model.to(self.device)
@@ -421,9 +424,8 @@ class OCR48pxCTC:
         for blk_idx, textblk in enumerate(textblk_lst):
             for ii in range(len(textblk)):
                 textblk_lst_indices.append(blk_idx)
-                regions.append(textblk.get_transformed_region(img, ii, 48))
+                regions.append(textblk.get_transformed_region(img, ii, 48, maxwidth=8100))
                 region_idx += 1
-        # regions = [textblk.get_transformed_region(img, idx, self.text_height) for idx in range(len(textblk))]
         perm = range(len(regions))
         chunck_idx = 0
         for indices in chunks(perm, self.max_chunk_size) :
