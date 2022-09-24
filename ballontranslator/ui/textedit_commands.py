@@ -71,32 +71,30 @@ class MoveBlkItemsCommand(QUndoCommand):
 
 
 class ApplyFontformatCommand(QUndoCommand):
-    def __init__(self, items: List[TextBlkItem], fontformat: FontFormat):
+    def __init__(self, items: List[TextBlkItem], trans_widget_lst: List[TransTextEdit], fontformat: FontFormat):
         super(ApplyFontformatCommand, self).__init__()
         self.items = items
         self.old_html_lst = []
         self.old_rect_lst = []
         self.old_fmt_lst = []
         self.new_fmt = fontformat
+        self.trans_widget_lst = trans_widget_lst
         for item in items:
             self.old_html_lst.append(item.toHtml())
             self.old_fmt_lst.append(item.get_fontformat())
             self.old_rect_lst.append(item.absBoundingRect())
 
     def redo(self):
-        for item in self.items:
+        for item, edit in zip(self.items, self.trans_widget_lst):
             item.set_fontformat(self.new_fmt, set_char_format=True)
+            edit.document().clearUndoRedoStacks()
 
     def undo(self):
-        for rect, item, html, fmt in zip(self.old_rect_lst, self.items, self.old_html_lst, self.old_fmt_lst):
+        for rect, item, html, fmt, edit in zip(self.old_rect_lst, self.items, self.old_html_lst, self.old_fmt_lst, self.trans_widget_lst):
             item.setHtml(html)
             item.set_fontformat(fmt)
             item.setRect(rect)
-
-    def mergeWith(self, command: QUndoCommand):
-        if command.new_fmt == self.new_fmt:
-            return True
-        return False
+            edit.document().clearUndoRedoStacks()
 
 
 class ApplyEffectCommand(QUndoCommand):

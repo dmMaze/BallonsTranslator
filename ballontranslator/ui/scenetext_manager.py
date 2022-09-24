@@ -641,8 +641,11 @@ class SceneTextManager(QObject):
 
     def apply_fontformat(self, fontformat: FontFormat):
         selected_blks = self.get_selected_blkitems()
+        trans_widget_list = []
+        for blk in selected_blks:
+            trans_widget_list.append(self.pairwidget_list[blk.idx].e_trans)
         if len(selected_blks) > 0:
-            self.canvas.push_undo_command(ApplyFontformatCommand(selected_blks, fontformat))
+            self.canvas.push_undo_command(ApplyFontformatCommand(selected_blks, trans_widget_list, fontformat))
 
     def on_apply_effect(self):
         format = self.formatpanel.active_format
