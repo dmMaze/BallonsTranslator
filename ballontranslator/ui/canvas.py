@@ -6,10 +6,10 @@ from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, 
 from qtpy.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QPen, QPainterPath
 
 try:
-    from qtpy.QtWidgets import QUndoStack
+    from qtpy.QtWidgets import QUndoStack, QUndoCommand
 
 except:
-    from qtpy.QtGui import QUndoStack
+    from qtpy.QtGui import QUndoStack, QUndoCommand
 
 from .misc import ndarray2pixmap
 from .imgtrans_proj import ProjImgTrans
@@ -17,6 +17,7 @@ from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
+from .page_search_widget import PageSearchWidget
 from . import constants as C
 
 CANVAS_SCALE_MAX = 3.0
@@ -35,7 +36,7 @@ class CustomGV(QGraphicsView):
     def wheelEvent(self, event : QWheelEvent) -> None:
         # qgraphicsview always scroll content according to wheelevent
         # which is not desired when scaling img
-        if self.ctrl_pressed:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if self.do_scale:
                 if event.angleDelta().y() > 0:
                     self.scale_up_signal.emit()
@@ -96,6 +97,7 @@ class Canvas(QGraphicsScene):
 
     projstate_unsaved = False
     proj_savestate_changed = Signal(bool)
+    textstack_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -120,6 +122,9 @@ class Canvas(QGraphicsScene):
             # mitigate https://bugreports.qt.io/browse/QTBUG-93417
             # produce blurred result, saving imgs remain unaffected
             self.gv.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        self.search_widget = PageSearchWidget(self.gv)
+        self.search_widget.hide()
         
         self.ctrl_relesed = self.gv.ctrl_released
         self.vscroll_bar = self.gv.verticalScrollBar()
@@ -129,8 +134,13 @@ class Canvas(QGraphicsScene):
         self.rubber_band.hide()
         self.rubber_band_origin = None
 
-        self.undoStack = QUndoStack(self)
-        self.undoStack.indexChanged.connect(self.on_undostack_changed)
+        self.draw_undo_stack = QUndoStack(self)
+        self.draw_undo_stack.indexChanged.connect(self.on_drawstack_changed)
+        self.text_undo_stack = QUndoStack(self)
+        self.text_undo_stack.indexChanged.connect(self.on_textstack_changed)
+        self.saved_drawundo_step = 0
+        self.saved_textundo_step = 0
+
         self.scaleFactorLabel = FadeLabel(self.gv)
         self.scaleFactorLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scaleFactorLabel.setText('100%')
@@ -168,6 +178,15 @@ class Canvas(QGraphicsScene):
         self.editor_index = 0 # 0: drawing 1: text editor
         self.mid_btn_pressed = False
         self.pan_initial_pos = QPoint(0, 0)
+
+        self.saved_textundo_step = 0
+        self.saved_drawundo_step = 0
+
+    def textEditMode(self) -> bool:
+        return self.editor_index == 1
+
+    def drawMode(self) -> bool:
+        return self.editor_index == 0
 
     def scaleUp(self):
         self.scaleImage(1 + CANVAS_SCALE_SPEED)
@@ -232,11 +251,18 @@ class Canvas(QGraphicsScene):
         self.scalefactor_changed.emit()
 
     def onViewResized(self):
-        x = self.gv.geometry().width() - self.scaleFactorLabel.width()
-        y = self.gv.geometry().height() - self.scaleFactorLabel.height()
+        gv_w, gv_h = self.gv.geometry().width(), self.gv.geometry().height()
+
+        x = gv_w - self.scaleFactorLabel.width()
+        y = gv_h - self.scaleFactorLabel.height()
         pos_new = (QPointF(x, y) / 2).toPoint()
         if self.scaleFactorLabel.pos() != pos_new:
             self.scaleFactorLabel.move(pos_new)
+        
+        x = gv_w - self.search_widget.width()
+        pos = self.search_widget.pos()
+        pos.setX(x-30)
+        self.search_widget.move(pos)
         
     def onScaleFactorChanged(self):
         self.scaleFactorLabel.setText(f'{self.scale_factor*100:2.0f}%')
@@ -252,13 +278,13 @@ class Canvas(QGraphicsScene):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.editing_textblkitem is not None:
             return super().keyPressEvent(event)
-        if event == QKeySequence.Undo:
-            self.undoStack.undo()
-            self.txtblkShapeControl.updateBoundingRect()
-        elif event == QKeySequence.Redo:
-            self.undoStack.redo()
-            self.txtblkShapeControl.updateBoundingRect()
-        elif event.key() == Qt.Key.Key_Alt:
+        # if event == QKeySequence.Undo:
+        #     self.undo()
+        #     self.txtblkShapeControl.updateBoundingRect()
+        # elif event == QKeySequence.Redo:
+        #     self.redo()
+        #     self.txtblkShapeControl.updateBoundingRect()
+        if event.key() == Qt.Key.Key_Alt:
             self.alt_pressed = True
         return super().keyPressEvent(event)
 
@@ -399,6 +425,7 @@ class Canvas(QGraphicsScene):
         self.erase_img_key = None
         self.txtblkShapeControl.setBlkItem(None)
         self.mid_btn_pressed = False
+        self.search_widget.reInitialize()
 
         self.clearSelection()
         self.setProjSaveState(False)
@@ -478,10 +505,6 @@ class Canvas(QGraphicsScene):
         if self.stroke_img_item is not None:
             self.removeItem(self.stroke_img_item)
 
-    def on_undostack_changed(self):
-        if self.undoStack.count() != 0:
-            self.setProjSaveState(True)
-
     def setProjSaveState(self, un_saved: bool):
         if un_saved == self.projstate_unsaved:
             return
@@ -495,3 +518,77 @@ class Canvas(QGraphicsScene):
             item.setParentItem(None)
             self.stroke_img_item = None
             self.erase_img_key = None
+
+    def get_active_undostack(self) -> QUndoStack:
+        if self.textEditMode():
+            return self.text_undo_stack
+        elif self.drawMode():
+            return self.draw_undo_stack
+        return None
+
+    def push_undo_command(self, command: QUndoCommand):
+        undo_stack = self.get_active_undostack()
+        if undo_stack is not None:
+            undo_stack.push(command)
+
+    def on_drawstack_changed(self, index: int):
+        if index != self.saved_drawundo_step:
+            self.setProjSaveState(True)
+        elif self.text_undo_stack.index() == self.saved_textundo_step:
+            self.setProjSaveState(False)
+
+    def on_textstack_changed(self, index: int):
+        if index != self.saved_textundo_step:
+            self.setProjSaveState(True)
+        elif self.draw_undo_stack.index() == self.saved_drawundo_step:
+            self.setProjSaveState(False)
+        self.textstack_changed.emit()
+
+    def redo_textedit(self):
+        self.text_undo_stack.redo()
+
+    def undo_textedit(self):
+        self.text_undo_stack.undo()
+
+    def redo(self):
+        undo_stack = self.get_active_undostack()
+        if undo_stack is not None:
+            undo_stack.redo()
+            if undo_stack == self.text_undo_stack:
+                self.txtblkShapeControl.updateBoundingRect()
+
+    def undo(self):
+        undo_stack = self.get_active_undostack()
+        if undo_stack is not None:
+            undo_stack.undo()
+            if undo_stack == self.text_undo_stack:
+                self.txtblkShapeControl.updateBoundingRect()
+
+    def clear_undostack(self, update_saved_step=False):
+        if update_saved_step:
+            self.saved_drawundo_step = 0
+            self.saved_textundo_step = 0
+        self.draw_undo_stack.clear()
+        self.text_undo_stack.clear()
+
+    def clear_text_stack(self):
+        self.text_undo_stack.clear()
+
+    def clear_draw_stack(self):
+        self.draw_undo_stack.clear()
+
+    def update_saved_undostep(self):
+        self.saved_drawundo_step = self.draw_undo_stack.index()
+        self.saved_textundo_step = self.text_undo_stack.index()
+
+    def text_change_unsaved(self) -> bool:
+        return self.saved_textundo_step != self.text_undo_stack.index()
+
+    def draw_change_unsaved(self) -> bool:
+        return self.saved_drawundo_step != self.draw_undo_stack.index()
+
+    def prepareClose(self):
+        self.blockSignals(True)
+        self.disconnect()
+        self.text_undo_stack.disconnect()
+        self.draw_undo_stack.disconnect()

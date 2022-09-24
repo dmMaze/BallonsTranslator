@@ -9,7 +9,6 @@ from qtpy.QtGui import QColor, QTextCharFormat, QMouseEvent, QFont, QTextCursor
 from .stylewidgets import Widget, ColorPicker, ClickableLabel
 from .misc import FontFormat, set_html_color, pt2px
 from .textitem import TextBlkItem
-from .canvas import Canvas
 from .constants import CONFIG_FONTSIZE_CONTENT, WIDGET_SPACING_CLOSE
 from .text_graphical_effect import TextEffectPanel
 from .combobox import SizeComboBox
@@ -23,6 +22,7 @@ def restore_textcursor(formatting_func):
     def wrapper(blkitem: TextBlkItem, *args, **kwargs):
         if blkitem is None:
             return
+        blkitem.is_formatting = True
         cursor = blkitem.textCursor()
         set_all = not cursor.hasSelection()
         pos1 = cursor.position()
@@ -39,6 +39,7 @@ def restore_textcursor(formatting_func):
             cursor.setPosition(pos1)
         blkitem.setTextCursor(cursor)
         blkitem.repaint_background()
+        blkitem.is_formatting = False
     return wrapper
 
 @restore_textcursor
@@ -363,10 +364,9 @@ class FontFormatPanel(Widget):
     
     global_format_changed = Signal()
 
-    def __init__(self, app: QApplication, canvas: Canvas, *args, **kwargs) -> None:
+    def __init__(self, app: QApplication, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.app = app
-        self.canvas = canvas
 
         self.vlayout = QVBoxLayout(self)
         self.vlayout.setAlignment(Qt.AlignTop)

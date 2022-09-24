@@ -2,7 +2,7 @@ import cv2, re
 import numpy as np
 import os.path as osp
 from typing import Tuple, Union, List, Dict
-from qtpy.QtGui import QPixmap,  QColor, QImage
+from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
 
 from . import constants
 from .constants import DEFAULT_FONT_FAMILY
@@ -254,6 +254,14 @@ class ProgramConfig:
         let_autolayout_flag: bool = True,
         let_uppercase_flag: bool = True,
         font_presets: dict = None,
+        fsearch_case: bool = False,
+        fsearch_whole_word: bool = False,
+        fsearch_regex: bool = False,
+        fsearch_range: int = 0,
+        gsearch_case: bool = False,
+        gsearch_whole_word: bool = False,
+        gsearch_regex: bool = False,
+        gsearch_range: int = 0,
         **kwargs) -> None:
 
         if isinstance(dl, dict):
@@ -289,6 +297,14 @@ class ProgramConfig:
         self.let_autolayout_flag = let_autolayout_flag
         self.let_uppercase_flag = let_uppercase_flag
         self.font_presets = {} if font_presets is None else font_presets
+        self.fsearch_case = fsearch_case
+        self.fsearch_whole_word = fsearch_whole_word
+        self.fsearch_regex = fsearch_regex
+        self.fsearch_range = fsearch_range
+        self.gsearch_case = gsearch_case
+        self.gsearch_whole_word = gsearch_whole_word
+        self.gsearch_regex = gsearch_regex
+        self.gsearch_range = gsearch_range
 
 class LruIgnoreArg:
 
@@ -342,3 +358,31 @@ def html_max_fontsize(html:  str) -> float:
         return max(size_list)
     else:
         return None
+
+def doc_replace(doc: QTextDocument, span_list: List, target: str) -> List:
+    len_replace = len(target)
+    cursor = QTextCursor(doc)
+    cursor.setPosition(0)
+    cursor.beginEditBlock()
+    pos_delta = 0
+    sel_list = []
+    for span in span_list:
+        sel_start = span[0] + pos_delta
+        sel_end = span[1] + pos_delta
+        cursor.setPosition(sel_start)
+        cursor.setPosition(sel_end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(target)
+        sel_list.append([sel_start, sel_end])
+        pos_delta += len_replace - (sel_end - sel_start)
+    cursor.endEditBlock()
+    return sel_list
+
+def doc_replace_no_shift(doc: QTextDocument, span_list: List, target: str):
+    cursor = QTextCursor(doc)
+    cursor.setPosition(0)
+    cursor.beginEditBlock()
+    for span in span_list:
+        cursor.setPosition(span[0])
+        cursor.setPosition(span[1], QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(target)
+    cursor.endEditBlock()

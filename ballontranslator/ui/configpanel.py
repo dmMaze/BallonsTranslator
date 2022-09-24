@@ -207,7 +207,7 @@ class TreeModel(QStandardItemModel):
         if role == Qt.ItemDataRole.SizeHintRole:
             size = QSize()
             item = self.itemFromIndex(index)
-            size.setHeight(item.font().pointSize()+26)
+            size.setHeight(item.font().pointSize()+20)
             return size
         else:
             return super().data(index, role)
@@ -225,7 +225,6 @@ class ConfigTable(QTreeView):
         self.last_selected: TableItem = None
         self.setHeaderHidden(True)
         self.setMinimumWidth(260)
-        self.expandAll()
 
     def addHeader(self, header: str) -> TableItem:
         rootNode = self.model().invisibleRootItem()
@@ -358,6 +357,8 @@ class ConfigPanel(Widget):
         hlayout.addWidget(splitter)
         hlayout.setSpacing(0)
         hlayout.setContentsMargins(96, 0, 0, 0)
+
+        self.configTable.expandAll()
 
     def addConfigBlock(self, header: str) -> Tuple[ConfigBlock, TableItem]:
         cb = ConfigBlock(header)

@@ -14,7 +14,7 @@ from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, Pro
 
 
 def write_jpg_metadata(imgpath: str, metadata="a metadata"):
-    exif_dict = {"Exif":{piexif.ExifIFD.UserComment: piexif.helper.UserComment.dump(metadata)}}
+    exif_dict = {"Exif":{piexif.ExifIFD.UserComment: piexif.helper.UserComment.dump(metadata, encoding='unicode')}}
     exif_bytes = piexif.dump(exif_dict)
     piexif.insert(exif_bytes, imgpath)
 
@@ -30,7 +30,10 @@ class ProjImgTrans:
     def __init__(self, directory: str = None):
         self.type = 'imgtrans'
         self.directory: str = None
-        self.pages: OrderedDict[List[TextBlock]] = OrderedDict()
+        self.pages: Dict[List[TextBlock]] = {}
+        self._pagename2idx = {}
+        self._idx2pagename = {}
+
         self.not_found_pages: Dict[List[TextBlock]] = {}
         self.new_pages: List[str] = []
         self.proj_path: str = None
@@ -40,6 +43,14 @@ class ProjImgTrans:
         self.inpainted_array: np.ndarray = None
         if directory is not None:
             self.load(directory)
+
+    def idx2pagename(self, idx: int) -> str:
+        return self._idx2pagename[idx]
+
+    def pagename2idx(self, pagename: str) -> int:
+        if pagename in self.pages:
+            return self._pagename2idx[pagename]
+        return -1
 
     def proj_name(self) -> str:
         return self.type+'_'+osp.basename(self.directory)
@@ -79,13 +90,19 @@ class ProjImgTrans:
     def load_from_dict(self, proj_dict: dict):
         self.set_current_img(None)
         try:
-            self.pages = OrderedDict()
+            self.pages = {}
+            self._pagename2idx = {}
+            self._idx2pagename = {}
             page_dict = proj_dict['pages']
             not_found_pages = list(page_dict.keys())
             found_pages = find_all_imgs(img_dir=self.directory, abs_path=False)
+            page_counter = 0
             for imname in found_pages:
                 if imname in page_dict:
                     self.pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
+                    self._pagename2idx[imname] = page_counter
+                    self._idx2pagename[page_counter] = imname
+                    page_counter += 1
                     not_found_pages.remove(imname)
                 else:
                     self.pages[imname] = []
@@ -145,23 +162,31 @@ class ProjImgTrans:
         if idx < 0 or idx > num_pages - 1:
             self.set_current_img(None)
         else:
-            self.set_current_img(list(self.pages)[idx])
+            self.set_current_img(self.idx2pagename(idx))
 
     def get_blklist_byidx(self, idx: int) -> List[TextBlock]:
-        return self.pages[list(self.pages)[idx]]
+        return self.pages[self.idx2pagename(idx)]
 
     @property
     def num_pages(self) -> int:
         return len(self.pages)
+
+    @property
+    def current_idx(self) -> int:
+        return self.pagename2idx(self.current_img)
 
     def new_project(self):
         if not osp.exists(self.directory):
             raise ProjectDirNotExistException
         self.set_current_img(None)
         imglist = find_all_imgs(self.directory, abs_path=False)
-        self.pages = OrderedDict()
-        for imgname in imglist:
+        self.pages = {}
+        self._pagename2idx = {}
+        self._idx2pagename = {}
+        for ii, imgname in enumerate(imglist):
             self.pages[imgname] = []
+            self._pagename2idx[imgname] = ii
+            self._idx2pagename[ii] = imgname
         self.set_current_img_byidx(0)
         self.save()
         
@@ -240,17 +265,13 @@ class ProjImgTrans:
 
     def set_next_img(self):
         if self.current_img is not None:
-            keylist = list(self.pages.keys())
-            current_index = keylist.index(self.current_img)
-            next_index = (current_index + 1) % len(keylist)
-            self.set_current_img(keylist[next_index])
+            next_idx = (self.current_idx + 1) % self.num_pages
+            self.set_current_img(self.idx2pagename(next_idx))
 
     def set_prev_img(self):
         if self.current_img is not None:
-            keylist = list(self.pages.keys())
-            current_index = keylist.index(self.current_img)
-            next_index = (current_index - 1 + len(keylist)) % len(keylist)
-            self.set_current_img(keylist[next_index])
+            next_idx = (self.current_idx - 1 + self.num_pages) % self.num_pages
+            self.set_current_img(self.idx2pagename(next_idx))
 
     def current_block_list(self) -> List[TextBlock]:
         if self.current_img is not None:
@@ -288,11 +309,12 @@ class ProjImgTrans:
             for index, (cut_path, width) in enumerate(zip(cuts_path_list, cut_width_list)):
                 run = table.cell(index, 0).paragraphs[0].add_run()
                 run.style.font.name = target_font
-                blk = blklist[index]
+                blk: TextBlock = blklist[index]
                 bubdict = vars(blk).copy()
                 bubdict["imgkey"] = pagename
                 bubdict["rich_text"] = ''
-                write_jpg_metadata(cut_path, metadata=json.dumps(bubdict, ensure_ascii=False, cls=NumpyEncoder))
+                bubdict["text"] = blk.get_text()
+                write_jpg_metadata(cut_path, metadata=json.dumps(bubdict, ensure_ascii=False, cls=TextBlkEncoder))
                 run.add_picture(cut_path, width=Inches(width/96 * 0.85))
                 table.cell(index, 1).text = bubdict["translation"]
 
@@ -317,8 +339,11 @@ class ProjImgTrans:
         doc = docx.Document(doc_path)
         body_xml_str = doc._body._element.xml
 
-        pages = OrderedDict()
+        pages = {}
+        pagename2idx = {}
+        idx2pagename = {}
         bub_index = 0
+        page_counter = 0
         for tbl in re.findall(r'<w:tbl>(.*?)</w:tbl>', body_xml_str, re.DOTALL):
             for tr in re.findall(r'<w:tr(.*?)>(.*?)</w:tr>', tbl, re.DOTALL):
                 if re.findall(r'<pic:cNvPr id=\"0\" name=\"(.*?)\"/>', tr[1]):
@@ -338,6 +363,9 @@ class ProjImgTrans:
                     imgkey = meta_dict.pop("imgkey")
                     if not imgkey in pages:
                         pages[imgkey] = []
+                        pagename2idx[imgkey] = page_counter
+                        idx2pagename[page_counter] = imgkey
+                        page_counter += 1
                     pages[imgkey].append(TextBlock(**meta_dict))
                     
                     if fin_page_signal is not None:
@@ -345,6 +373,8 @@ class ProjImgTrans:
 
         self.pages.clear()
         self.pages.update(pages)
+        self._pagename2idx = pagename2idx
+        self._idx2pagename = idx2pagename
         if delete_tmp_folder:
             shutil.rmtree(tmp_bubble_folder)
 

@@ -696,6 +696,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         doc_margin = self.document().documentMargin()
 
         idea_height = self.block_ideal_height[block.blockNumber()]
+        if idea_height == 0:
+            idea_height = tbr.height()
         if block == doc.firstBlock():
             self.x_offset_lst = []
             self.y_offset_lst = []

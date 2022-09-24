@@ -20,6 +20,9 @@ CustomGV {
 }
 
 ConfigTable {
+    border-color: #b3b6bf;
+    border-style: solid;
+    border-width: 1px;
     background-color: #e1e4eb
 }
 
@@ -27,11 +30,14 @@ ConfigBlock {
     background-color: #e1e4eb
 }
 
-
 ConfigSubBlock {
     background-color: #e1e4eb
 }
 
+SearchResultTree {
+    border-style: none;
+    background-color: #ebeef5;
+}
 
 QSplitter:handle {
     background: #ebeef5;
@@ -303,12 +309,17 @@ QGroupBox {
 }
 
 QPushButton {
-    max-width: 94px;
+    /* max-width: 94px; */
     height: 32px;
     font-size: 14px;
-    background-color: rgba(198, 201, 207, 33%);
+    background-color: rgba(198, 201, 207, 50%);
     border: 1px solid #999999;
-    border-radius: 3px;
+    border-radius: 4px;
+}
+
+NoBorderPushBtn {
+    background-color: rgb(198, 201, 207);
+    border: none;
 }
 
 QPushButton::hover {
@@ -504,6 +515,22 @@ ShowPageListChecker::indicator:checked
 {
     image: url(data/icons/showpagelist_activate.svg);
 }
+
+QCheckBox#GlobalSearchChecker::indicator{
+    height: 38px;
+    width: 38px;
+    image: url(data/icons/search.svg);
+}
+
+QCheckBox#GlobalSearchChecker::indicator:hover
+{
+    image: url(data/icons/search_activate.svg);
+}
+QCheckBox#GlobalSearchChecker::indicator:checked
+{
+    image: url(data/icons/search_activate.svg);
+}
+
 
 StateChecker#ImgTransChecker::indicator{
     height: 37px;
@@ -742,7 +769,7 @@ DrawToolCheckBox#DrawRectTool::indicator:checked {
     image: url(data/icons/bottombar_textblock_activate.svg);
 }
 
-QTreeView {
+GlobalSearchWidget {
     border-color: #b3b6bf;
     border-style: solid;
     border-width: 1px;
@@ -763,3 +790,98 @@ TextEditListScrollArea {
 PresetListWidget {
     min-height: 280px;
 }
+
+ClickableLabel#PrevMatchBtn {
+    image: url(data/icons/arrow-up.svg);
+    min-width: 24px;
+}
+
+ClickableLabel#NextMatchBtn {
+    image: url(data/icons/arrow-down.svg);
+    min-width: 24px;
+}
+
+
+ClickableLabel#SearchCloseBtn {
+    image: url(data/icons/chrome-close.svg);
+    min-width: 24px;
+}
+
+QCheckBox#CaseSensitiveToggle::indicator {
+    height: 24px;
+    width: 24px;
+    padding-top: 3px;
+    image: url(data/icons/case-sensitive.svg);
+}
+
+QCheckBox#CaseSensitiveToggle::indicator:hover {
+    background-color: rgba(127, 127, 127, 20%);
+}
+
+QCheckBox#CaseSensitiveToggle::indicator:checked {
+    image: url(data/icons/case-sensitive_activated.svg);
+}
+
+QCheckBox#WholeWordToggle::indicator {
+    height: 24px;
+    width: 24px;
+    image: url(data/icons/whole-word.svg);
+}
+
+QCheckBox#WholeWordToggle::indicator:checked {
+    image: url(data/icons/whole-word_activate.svg);
+}
+
+QCheckBox#WholeWordToggle::indicator:hover {
+    background-color: rgba(127, 127, 127, 20%);
+}
+
+QCheckBox#RegexToggle::indicator {
+    height: 24px;
+    width: 24px;
+    image: url(data/icons/regex.svg);
+}
+
+QCheckBox#RegexToggle::indicator:checked {
+    image: url(data/icons/regex_activate.svg);
+}
+
+QCheckBox#RegexToggle::indicator:hover {
+    background-color: rgba(127, 127, 127, 20%);
+}
+
+SearchEditor {
+    height: 32px;
+}
+
+ClickableLabel#ReplaceBtn {
+    image: url(data/icons/replace.svg);
+    min-width: 24px;
+    min-height: 24px;
+}
+
+ClickableLabel#ReplaceAllBtn {
+    image: url(data/icons/replace-all.svg);
+    min-width: 24px;
+    min-height: 24px;
+}
+
+TitleBarToolBtn {
+    padding-left: 6px;
+    padding-right: 6px;
+    border-style: none;
+    font-size: 15px;
+    color: #6d6d6f;
+}
+
+TitleBarToolBtn::hover {
+    background-color: rgb(30, 147, 229);
+    color: whitesmoke;
+}
+
+TitleBarToolBtn::menu-indicator
+{
+    width:0px;
+}
+
+
