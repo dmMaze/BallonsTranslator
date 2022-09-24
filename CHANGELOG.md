@@ -1,5 +1,13 @@
 # Changelogs
 
+### 2022-09-24
+[v1.3.12](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.12)发布
+
+1. 支持全局(Ctrl+G)/当前页(Ctrl+F)查找替换
+2. 原来的文本编辑器局部撤销重做并入全局文本编辑撤销重做栈, 画板撤销重做现在和文本编辑分离
+3. Word文档导入导出bug修复
+4. 基于 https://github.com/zhiyiYo/PyQt-Frameless-Window 重写无边框窗口
+
 ### 2022-09-13
 [v1.3.8](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.8)发布
 

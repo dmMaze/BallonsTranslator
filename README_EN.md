@@ -88,14 +88,15 @@ batch text formatting & auto layout
 </p>
 
 ## Shortcuts
-* A/D or pageUp/Down to turn the page
-* Ctrl+Z, Ctrl+Y to undo/redo most operations, note the undo stack will be cleared after you turn the page.
-* T to text-editting mode, (or the "T" button on the bottom toolbar) press W to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
-* P to image-editting mode.  
+* ```A```/```D``` or ```pageUp```/```Down``` to turn the page
+* ```Ctrl+Z```, ```Ctrl+Y``` to undo/redo most operations, note the undo stack will be cleared after you turn the page.
+* ```T``` to text-editting mode, (or the "T" button on the bottom toolbar) press W to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
+* ```P``` to image-editting mode.  
 * In the image editing mode, use the slider on the right bottom to control the original image transparency.
 * The "OCR" and "A" button in the bottom toolbar controls whether to enable OCR and translation, if you disable them, the program will only do the text detection and removal.  
 * Set parameters of automatic modules in the config panel.  
-* Ctrl++/ to resize image
+* ```Ctrl++```/```Ctrl+-``` to resize image
+* ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
   
 <img src="doc/src/configpanel.png">  
 

@@ -102,6 +102,7 @@ python ballontranslator
 * 设置面板配置各自动化模块参数
 * Ctrl++/-或滚轮缩放画布
 * Ctrl+A可选中界面中所有文本块
+* Ctrl+F查找当前页, Ctrl+G全局查找
 
 <img src="doc/src/configpanel.png">  
 

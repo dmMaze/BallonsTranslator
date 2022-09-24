@@ -1,7 +1,15 @@
 # Changelogs
 
+### 2022-09-24
+[v1.3.12](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.12) released
+
+1. Support global Search(Ctrl+G) and search current page(Ctrl+F). 
+2. Local redo stack of each texteditor are merged into a main text-edit stack, text-edit stack is split from drawing board's now. 
+3. Word doc import/export bugfixes
+4. Frameless window rework based on https://github.com/zhiyiYo/PyQt-Frameless-Window
+
 ### 2022-09-13
-[v1.3.8](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.8)发布
+[v1.3.8](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.8) released
 
 1. Pen tool bug fixes & optimization
 2. Fix scaling
