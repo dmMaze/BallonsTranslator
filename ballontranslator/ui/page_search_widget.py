@@ -561,6 +561,13 @@ class PageSearchWidget(Widget):
                     cursor.setPosition(matched.end, QTextCursor.MoveMode.KeepAnchor)
                     break
 
+        if cursor is not None:
+            if cursor.selectionEnd() not in self.current_highlighter.matched_map:
+                for k, matched in self.current_highlighter.matched_map.items():
+                    cursor.setPosition(matched.start)
+                    cursor.setPosition(matched.end, QTextCursor.MoveMode.KeepAnchor)
+                    break
+
         self.current_cursor = cursor
 
     def updateCounterText(self):

@@ -36,7 +36,7 @@ class CustomGV(QGraphicsView):
     def wheelEvent(self, event : QWheelEvent) -> None:
         # qgraphicsview always scroll content according to wheelevent
         # which is not desired when scaling img
-        if self.ctrl_pressed:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if self.do_scale:
                 if event.angleDelta().y() > 0:
                     self.scale_up_signal.emit()
@@ -124,6 +124,7 @@ class Canvas(QGraphicsScene):
             self.gv.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
         self.search_widget = PageSearchWidget(self.gv)
+        self.search_widget.hide()
         
         self.ctrl_relesed = self.gv.ctrl_released
         self.vscroll_bar = self.gv.verticalScrollBar()

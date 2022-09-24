@@ -400,6 +400,7 @@ class TitleBar(Widget):
         self.save_state = ''
         self.setFixedHeight(TITLEBAR_HEIGHT)
         self.setMouseTracking(True)
+
         self.editToolBtn = TitleBarToolBtn(self)
         self.editToolBtn.setText(self.tr('Edit'))
 
@@ -465,6 +466,7 @@ class TitleBar(Widget):
         self.mainwindow.showMinimized()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
+
         if C.FLAG_QT6:
             g_pos = event.globalPosition().toPoint()
         else:

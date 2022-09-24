@@ -335,9 +335,9 @@ class GlobalSearchWidget(Widget):
         self.replace_editor.setPlaceholderText(self.tr('Replace'))
 
         self.search_tree = SearchResultTree(self)
-        self.replace_btn = NoBorderPushBtn(self.tr('Replace all'))
+        self.replace_btn = NoBorderPushBtn(self.tr('Replace All'))
         self.replace_btn.clicked.connect(self.on_replace)
-        self.replace_rerender_btn = NoBorderPushBtn(self.tr('Replace all and re-render'))
+        self.replace_rerender_btn = NoBorderPushBtn(self.tr('Replace All and Re-render all pages'))
         self.replace_rerender_btn.clicked.connect(self.on_replace_rerender)
         self.replace_thread = GlobalReplaceThead()
 
