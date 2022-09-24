@@ -8,7 +8,7 @@ from qtpy.QtWidgets import QMessageBox
 
 from utils.logger import logger as LOGGER
 from utils.registry import Registry
-from dl.translators import MissingTranslatorParams, InvalidSourceOrTargetLanguage
+from dl.translators import MissingTranslatorParams
 from dl import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     VALID_TRANSLATORS, VALID_TEXTDETECTORS, VALID_INPAINTERS, VALID_OCR, \
     TranslatorBase, InpainterBase, TextDetectorBase, OCRBase
@@ -173,8 +173,11 @@ class TranslateThread(ModuleThread):
         self.finish_set_module.emit()
 
     def setTranslator(self, translator: str):
-        self.job = lambda : self._set_translator(translator)
-        self.start()
+        if translator in ['Sugoi']:
+            self._set_translator(translator)
+        else:
+            self.job = lambda : self._set_translator(translator)
+            self.start()
 
     def _translate_page(self, page_dict, page_key: str, raise_exception=False, emit_finished=True):
         page = page_dict[page_key]
@@ -383,26 +386,26 @@ class DLManager(QObject):
     canvas_inpaint_finished = Signal(dict)
 
     imgtrans_pipeline_finished = Signal()
-
     page_trans_finished = Signal(int)
 
     run_canvas_inpaint = False
     def __init__(self, 
                  config: ProgramConfig, 
                  imgtrans_proj: ProjImgTrans,
-                 config_panel: ConfigPanel, 
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config = config
-        self.dl_config = dl_config = config.dl
+        self.dl_config = config.dl
         self.imgtrans_proj = imgtrans_proj
 
-        self.textdetect_thread = TextDetectThread(self.dl_config)
+    def setupThread(self, config_panel: ConfigPanel):
+        dl_config = self.dl_config
+        self.textdetect_thread = TextDetectThread(dl_config)
         self.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
         # self.textdetect_thread.finish_detect_page.connect(self.on_finish_detect_page)
         self.textdetect_thread.exception_occurred.connect(self.handleRunTimeException)
 
-        self.ocr_thread = OCRThread(self.dl_config)
+        self.ocr_thread = OCRThread(dl_config)
         self.ocr_thread.finish_set_module.connect(self.on_finish_setocr)
         # self.ocr_thread.finish_ocr_page.connect(self.on_finish_ocr_page)
         self.ocr_thread.exception_occurred.connect(self.handleRunTimeException)
@@ -594,8 +597,8 @@ class DLManager(QObject):
         if self.translate_thread.isRunning():
             LOGGER.warning('Terminating a running translation thread.')
             self.translate_thread.terminate()
-        self.translate_thread.setTranslator(translator)
         self.update_translator_status.emit('...', self.dl_config.translate_source, self.dl_config.translate_target)
+        self.translate_thread.setTranslator(translator)
 
     def setInpainter(self, inpainter: str = None):
         if inpainter is None:
@@ -647,6 +650,7 @@ class DLManager(QObject):
             self.translator_panel.finishSetTranslator(translator)
             LOGGER.info('Translator set to {}'.format(self.translator.name))
         else:
+            LOGGER.error('invalid translator')
             self.update_translator_status.emit(self.tr('Invalid'), '', '')
         
     def on_finish_translate_page(self, page_key: str):
