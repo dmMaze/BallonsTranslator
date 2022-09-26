@@ -128,7 +128,7 @@ class MainWindow(FramelessWindow):
         self.textPanel = TextPanel(self.app)
         self.textPanel.formatpanel.effect_panel.setParent(self)
         self.textPanel.formatpanel.effect_panel.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.CustomizeWindowHint)
-        self.textPanel.formatpanel.fontfmtLabel.clicked.connect(self.show_presets)
+        self.textPanel.formatpanel.fontfmtLabel.clicked.connect(self.show_fontstyle_presets)
         
         self.presetPanel = PresetPanel(self)
         self.presetPanel.setParent(self)
@@ -369,6 +369,7 @@ class MainWindow(FramelessWindow):
         self.titleBar.global_search_trigger.connect(self.on_global_search)
         self.titleBar.run_trigger.connect(self.leftBar.runImgtransBtn.click)
         self.titleBar.translate_page_trigger.connect(self.bottomBar.transTranspageBtn.click)
+        self.titleBar.fontstyle_trigger.connect(self.show_fontstyle_presets)
 
         shortcutTextblock = QShortcut(QKeySequence("W"), self)
         shortcutTextblock.activated.connect(self.shortcutTextblock)
@@ -780,7 +781,7 @@ class MainWindow(FramelessWindow):
         if not self.canvas.textEditMode() and self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
 
-    def show_presets(self):
+    def show_fontstyle_presets(self):
         fmt = self.textPanel.formatpanel.active_format
         fmt_name = self.textPanel.formatpanel.fontfmtLabel.text()
         self.presetPanel.updateCurrentFontFormat(fmt, fmt_name)

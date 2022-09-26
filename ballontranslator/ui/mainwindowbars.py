@@ -337,12 +337,16 @@ class TitleBar(Widget):
         drawBoardAction.setShortcut(QKeySequence('P'))
         texteditAction = QAction(self.tr('Text Editor'), self)
         texteditAction.setShortcut(QKeySequence('T'))
+        fontStylePresetAction = QAction(self.tr('Text Style Presets'), self)
         viewMenu = QMenu(self.viewToolBtn)
         viewMenu.addActions([drawBoardAction, texteditAction])
+        viewMenu.addSeparator()
+        viewMenu.addAction(fontStylePresetAction)
         self.viewToolBtn.setMenu(viewMenu)
         self.viewToolBtn.setPopupMode(QToolButton.InstantPopup)
         self.textedit_trigger = texteditAction.triggered
         self.drawboard_trigger = drawBoardAction.triggered
+        self.fontstyle_trigger = fontStylePresetAction.triggered
 
         self.goToolBtn = TitleBarToolBtn(self)
         self.goToolBtn.setText(self.tr('Go'))

@@ -20,7 +20,9 @@ preview
   Support mask editing & inpainting (something like spot healing brush tool in PS) 
   
 * Text editing  
-  Support rich text formatting, translated texts can be edited interactively.
+  - Support rich text formatting and text style presets, translated texts can be edited interactively.
+  - Support search & replace
+  - Support export/import to/from word documents
 
 # Usage
 
