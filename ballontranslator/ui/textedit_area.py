@@ -228,7 +228,7 @@ class TextPanel(Widget):
         self.formatpanel = FontFormatPanel(app, self)
         layout.addWidget(self.formatpanel)
         layout.addWidget(self.textEditList)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 5, 0)
         layout.setSpacing(14)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
