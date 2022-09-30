@@ -828,5 +828,5 @@ class MainWindow(FramelessWindow):
     def on_darkmode_triggered(self):
         self.config.darkmode = self.titleBar.darkModeAction.isChecked()
         theme = 'eva-dark' if self.config.darkmode else 'eva-light'
-        css = parse_stylesheet(theme=theme)
+        css = parse_stylesheet(theme=theme, reverse_icon=True)
         self.setStyleSheet(css)
