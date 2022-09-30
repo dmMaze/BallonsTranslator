@@ -11,7 +11,7 @@ from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from dl.textdetector import TextBlock
 
-from .misc import pt2px
+from .misc import pt2px, parse_stylesheet
 from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -27,7 +27,6 @@ from .constants import STYLESHEET_PATH, CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
 from . import constants as C
 from .textedit_commands import GlobalRepalceAllCommand
-
 from .framelesswindow import FramelessWindow
 
 class PageListView(QListWidget):    
@@ -171,8 +170,8 @@ class MainWindow(FramelessWindow):
         self.comicTransSplitter.setStretchFactor(1, 10)
 
     def setupConfig(self):
-        with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
-            self.setStyleSheet(f.read())
+        theme = 'eva-dark' if self.config.darkmode else 'eva-light'
+        self.setStyleSheet(parse_stylesheet(theme))
 
         self.bottomBar.originalSlider.setValue(self.config.original_transparency * 100)
         self.drawingPanel.maskTransperancySlider.setValue(self.config.mask_transparency * 100)
@@ -203,6 +202,8 @@ class MainWindow(FramelessWindow):
         self.bottomBar.transcheck_statechanged.connect(dl_manager.setTransMode)
         self.bottomBar.translatorStatusbtn.clicked.connect(self.translatorStatusBtnPressed)
         self.bottomBar.transTranspageBtn.run_target.connect(self.on_transpagebtn_pressed)
+
+        self.titleBar.darkModeAction.setChecked(self.config.darkmode)
 
         self.drawingPanel.set_config(self.config.drawpanel)
         self.drawingPanel.initDLModule(dl_manager)
@@ -370,6 +371,7 @@ class MainWindow(FramelessWindow):
         self.titleBar.run_trigger.connect(self.leftBar.runImgtransBtn.click)
         self.titleBar.translate_page_trigger.connect(self.bottomBar.transTranspageBtn.click)
         self.titleBar.fontstyle_trigger.connect(self.show_fontstyle_presets)
+        self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
 
         shortcutTextblock = QShortcut(QKeySequence("W"), self)
         shortcutTextblock.activated.connect(self.shortcutTextblock)
@@ -581,6 +583,8 @@ class MainWindow(FramelessWindow):
             self.saveCurrentPage(update_scene_text=True, restore_interface=True)
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False):
+        if not self.imgtrans_proj.img_valid:
+            return
         if update_scene_text:
             self.st_manager.updateTextBlkList()
 
@@ -820,3 +824,9 @@ class MainWindow(FramelessWindow):
         )
         rt.sceneitem_list = None
         rt.background_list = None
+
+    def on_darkmode_triggered(self):
+        self.config.darkmode = self.titleBar.darkModeAction.isChecked()
+        theme = 'eva-dark' if self.config.darkmode else 'eva-light'
+        css = parse_stylesheet(theme=theme)
+        self.setStyleSheet(css)

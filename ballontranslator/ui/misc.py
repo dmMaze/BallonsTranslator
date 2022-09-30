@@ -1,11 +1,11 @@
-import cv2, re
+import cv2, re, json
 import numpy as np
 import os.path as osp
 from typing import Tuple, Union, List, Dict
 from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
 
 from . import constants
-from .constants import DEFAULT_FONT_FAMILY
+from .constants import DEFAULT_FONT_FAMILY, STYLESHEET_PATH, THEME_PATH
 from utils.io_utils import find_all_imgs, NumpyEncoder, imread, imwrite
 from dl.textdetector.textblock import TextBlock
 
@@ -262,6 +262,7 @@ class ProgramConfig:
         gsearch_whole_word: bool = False,
         gsearch_regex: bool = False,
         gsearch_range: int = 0,
+        darkmode: bool = False,
         **kwargs) -> None:
 
         if isinstance(dl, dict):
@@ -305,6 +306,7 @@ class ProgramConfig:
         self.gsearch_whole_word = gsearch_whole_word
         self.gsearch_regex = gsearch_regex
         self.gsearch_range = gsearch_range
+        self.darkmode = darkmode
 
 class LruIgnoreArg:
 
@@ -386,3 +388,16 @@ def doc_replace_no_shift(doc: QTextDocument, span_list: List, target: str):
         cursor.setPosition(span[1], QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(target)
     cursor.endEditBlock()
+
+def parse_stylesheet(theme: str = '') -> str:
+    with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
+        stylesheet = f.read()
+    with open(THEME_PATH, 'r', encoding='utf8') as f:
+        theme_dict: Dict = json.loads(f.read())
+    if not theme or theme not in theme_dict:
+        tgt_theme: Dict = theme_dict[list(theme_dict.keys())[0]]
+    else:
+        tgt_theme: Dict = theme_dict[theme]
+    for key, val in tgt_theme.items():
+        stylesheet = stylesheet.replace(key, val)
+    return stylesheet

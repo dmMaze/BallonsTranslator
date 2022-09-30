@@ -8,6 +8,7 @@ PROGRAM_PATH = osp.dirname(UI_PATH)
 LIBS_PATH = osp.join(PROGRAM_PATH, 'data/libs')
 
 STYLESHEET_PATH = osp.join(PROGRAM_PATH, 'data/config/stylesheet.css')
+THEME_PATH = osp.join(PROGRAM_PATH, 'data/config/themes.json')
 CONFIG_PATH = osp.join(PROGRAM_PATH, 'data/config/config.json')
 
 CONFIG_FONTSIZE_HEADER = 18
