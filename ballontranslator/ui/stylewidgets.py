@@ -100,28 +100,6 @@ class ProgressMessageBox(QDialog):
             self.task_progress_bar = TaskProgressBar(task_name)
             layout.addWidget(self.task_progress_bar)
 
-        self.setStyleSheet("""
-            QWidget {
-                font-size: 13pt;
-                /* border-style: none; */
-                color: #5d5d5f;
-                background-color: #ebeef5;
-
-            }
-            Widget {
-                background-color: #ebeef5;
-            }
-            QProgressBar {
-                border: 0px;
-                text-align: center;
-                max-height: 3px;
-                background-color: #e1e4eb;
-            }
-            QProgressBar::chunk {
-                background-color: rgb(30, 147, 229);
-            }
-        """)
-
     def updateTaskProgress(self, value: int, msg: str = ''):
         if self.task_progress_bar is not None:
             self.task_progress_bar.updateProgress(value, msg)

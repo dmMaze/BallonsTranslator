@@ -398,16 +398,14 @@ class DLManager(QObject):
         self.dl_config = config.dl
         self.imgtrans_proj = imgtrans_proj
 
-    def setupThread(self, config_panel: ConfigPanel):
+    def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox):
         dl_config = self.dl_config
         self.textdetect_thread = TextDetectThread(dl_config)
         self.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
-        # self.textdetect_thread.finish_detect_page.connect(self.on_finish_detect_page)
         self.textdetect_thread.exception_occurred.connect(self.handleRunTimeException)
 
         self.ocr_thread = OCRThread(dl_config)
         self.ocr_thread.finish_set_module.connect(self.on_finish_setocr)
-        # self.ocr_thread.finish_ocr_page.connect(self.on_finish_ocr_page)
         self.ocr_thread.exception_occurred.connect(self.handleRunTimeException)
 
         self.translate_thread = TranslateThread(dl_config)
@@ -421,7 +419,7 @@ class DLManager(QObject):
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
         self.inpaint_thread.exception_occurred.connect(self.handleRunTimeException)        
 
-        self.progress_msgbox = ImgtransProgressMessageBox()
+        self.progress_msgbox = imgtrans_progress_msgbox
 
         self.imgtrans_thread = ImgtransThread(dl_config, self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread)
         self.imgtrans_thread.update_detect_progress.connect(self.on_update_detect_progress)

@@ -893,4 +893,14 @@ TitleBarToolBtn::menu-indicator
     width:0px;
 }
 
+QProgressBar {
+    border: 0px;
+    text-align: center;
+    max-height: 3px;
+    background-color: @borderColor;
+}
+QProgressBar::chunk {
+    background-color: rgb(30, 147, 229);
+}
+
 

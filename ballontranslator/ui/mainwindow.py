@@ -21,9 +21,9 @@ from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
-from .stylewidgets import FrameLessMessageBox
+from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox
 from .preset_widget import PresetPanel
-from .constants import STYLESHEET_PATH, CONFIG_PATH
+from .constants import CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
 from . import constants as C
 from .textedit_commands import GlobalRepalceAllCommand
@@ -64,7 +64,9 @@ class MainWindow(FramelessWindow):
 
 
     def setStyleSheet(self, styleSheet: str) -> None:
-        # self.textPanel.formatpanel.familybox.setStyleSheet(styleSheet)
+        self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
+        self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
+        self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
         return super().setStyleSheet(styleSheet)
 
     def setupThread(self):
@@ -83,7 +85,6 @@ class MainWindow(FramelessWindow):
         self.setMinimumWidth(screen_size.width() // 2)
         self.configPanel = ConfigPanel(self)
         self.config = self.configPanel.config
-        self.resetStyleSheet()
 
         self.leftBar = LeftBar(self)
         self.leftBar.showPageListLabel.clicked.connect(self.pageLabelStateChanged)
@@ -179,6 +180,8 @@ class MainWindow(FramelessWindow):
 
         self.mainvlayout = mainVBoxLayout
         self.comicTransSplitter.setStretchFactor(1, 10)
+        self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
+        self.resetStyleSheet()
 
     def setupConfig(self):
 
@@ -202,7 +205,7 @@ class MainWindow(FramelessWindow):
         dl_manager.finish_translate_page.connect(self.finishTranslatePage)
         dl_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         dl_manager.page_trans_finished.connect(self.on_pagtrans_finished)
-        self.dl_manager.setupThread(self.configPanel)
+        self.dl_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox)
         dl_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         dl_manager.imgtrans_thread.mask_postprocess = self.drawingPanel.rectPanel.post_process_mask
 
