@@ -1,11 +1,12 @@
-import cv2, re
+import cv2, re, json, os
+from pathlib import Path
 import numpy as np
 import os.path as osp
 from typing import Tuple, Union, List, Dict
 from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
 
-from . import constants
-from .constants import DEFAULT_FONT_FAMILY
+from . import constants as C
+from .constants import DEFAULT_FONT_FAMILY, STYLESHEET_PATH, THEME_PATH
 from utils.io_utils import find_all_imgs, NumpyEncoder, imread, imwrite
 from dl.textdetector.textblock import TextBlock
 
@@ -262,6 +263,7 @@ class ProgramConfig:
         gsearch_whole_word: bool = False,
         gsearch_regex: bool = False,
         gsearch_range: int = 0,
+        darkmode: bool = False,
         **kwargs) -> None:
 
         if isinstance(dl, dict):
@@ -305,6 +307,7 @@ class ProgramConfig:
         self.gsearch_whole_word = gsearch_whole_word
         self.gsearch_regex = gsearch_regex
         self.gsearch_range = gsearch_range
+        self.darkmode = darkmode
 
 class LruIgnoreArg:
 
@@ -346,10 +349,10 @@ def set_html_color(html, rgb):
         return span_pattern.sub(lambda matched: span_repl_func(matched, hex_color), html)
 
 def pt2px(pt):
-    return int(round(pt * constants.LDPI / 72.))
+    return int(round(pt * C.LDPI / 72.))
 
 def px2pt(px):
-    return px / constants.LDPI * 72.
+    return px / C.LDPI * 72.
 
 def html_max_fontsize(html:  str) -> float:
     size_list = fontsize_pattern.findall(html)
@@ -386,3 +389,60 @@ def doc_replace_no_shift(doc: QTextDocument, span_list: List, target: str):
         cursor.setPosition(span[1], QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(target)
     cursor.endEditBlock()
+
+def hex2rgb(h: str):  # rgb order (PIL)
+    return tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
+
+def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
+    if reverse_icon:
+        dark2light = True if theme == 'eva-light' else False
+        reverse_icon_color(dark2light)
+    with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
+        stylesheet = f.read()
+    with open(THEME_PATH, 'r', encoding='utf8') as f:
+        theme_dict: Dict = json.loads(f.read())
+    if not theme or theme not in theme_dict:
+        tgt_theme: Dict = theme_dict[list(theme_dict.keys())[0]]
+    else:
+        tgt_theme: Dict = theme_dict[theme]
+
+    C.FOREGROUND_FONTCOLOR = hex2rgb(tgt_theme['@qwidgetForegroundColor'])
+    C.SLIDERHANDLE_COLOR = hex2rgb(tgt_theme['@sliderHandleColor'])
+    for key, val in tgt_theme.items():
+        stylesheet = stylesheet.replace(key, val)
+    return stylesheet
+
+
+ICON_DIR = 'data/icons'
+
+LIGHTFILL_ACTIVE = "fill=\"#697187\""
+LIGHTFILL = "fill=\"#b3b6bf\""
+DARKFILL_ACTIVE = "fill=\"#96a4cd\""
+DARKFILL = "fill=\"#697186\""
+
+ICONREVERSE_DICT_LIGHT2DARK = {LIGHTFILL_ACTIVE: DARKFILL_ACTIVE, LIGHTFILL: DARKFILL}
+ICONREVERSE_DICT_DARK2LIGHT = {DARKFILL_ACTIVE: LIGHTFILL_ACTIVE, DARKFILL: LIGHTFILL}
+ICON_LIST = []
+
+def reverse_icon_color(dark2light: bool = False):
+    global ICON_LIST
+    if not ICON_LIST:
+        for filename in os.listdir(ICON_DIR):
+            file_suffix = Path(filename).suffix
+            if file_suffix.lower() != '.svg':
+                continue
+            else:
+                ICON_LIST.append(osp.join(ICON_DIR, filename))
+
+    if dark2light:
+        pattern = re.compile(re.escape(DARKFILL) + '|' + re.escape(DARKFILL_ACTIVE))
+        rep_dict = ICONREVERSE_DICT_DARK2LIGHT
+    else:
+        pattern = re.compile(re.escape(LIGHTFILL) + '|' + re.escape(LIGHTFILL_ACTIVE))
+        rep_dict = ICONREVERSE_DICT_LIGHT2DARK
+    for svgpath in ICON_LIST:
+        with open(svgpath, "r", encoding="utf-8") as f:
+            svg_content = f.read()
+            svg_content = pattern.sub(lambda m:rep_dict[m.group()], svg_content)
+        with open(svgpath, "w", encoding="utf-8") as f:
+            f.write(svg_content)

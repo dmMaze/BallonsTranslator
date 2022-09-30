@@ -8,6 +8,7 @@ PROGRAM_PATH = osp.dirname(UI_PATH)
 LIBS_PATH = osp.join(PROGRAM_PATH, 'data/libs')
 
 STYLESHEET_PATH = osp.join(PROGRAM_PATH, 'data/config/stylesheet.css')
+THEME_PATH = osp.join(PROGRAM_PATH, 'data/config/themes.json')
 CONFIG_PATH = osp.join(PROGRAM_PATH, 'data/config/config.json')
 
 CONFIG_FONTSIZE_HEADER = 18
@@ -43,3 +44,6 @@ PAGELIST_THUMBNAIL_MAXNUM = 100
 PAGELIST_THUMBNAIL_SIZE = 48
 
 FLAG_QT6 = False
+
+SLIDERHANDLE_COLOR = (85,85,96)
+FOREGROUND_FONTCOLOR = (93,93,95)

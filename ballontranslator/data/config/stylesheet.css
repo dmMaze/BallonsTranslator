@@ -1,46 +1,46 @@
 QWidget {
     /* border-style: none; */
-    color: #5d5d5f;
-
+    color: @qwidgetForegroundColor;
+    background-color: @qwidgetBackgroundColor;
 }
 
 SeparatorWidget {
-    border-color: #b3b6bf;
+    border-color: @borderColor;
 }
 
 Widget {
-    background-color: #ebeef5;
+    background-color: @widgetBackgroundColor;
 }
 
 CustomGV {
-    background-color: #e6e9f0;
-    border-color: #b3b6bf;
+    background-color: @emptyContentBackgroundColor;
+    border-color: @borderColor;
     border-style: solid;
     border-width: 1px;
 }
 
 ConfigTable {
-    border-color: #b3b6bf;
+    border-color: @borderColor;
     border-style: solid;
     border-width: 1px;
-    background-color: #e1e4eb
+    background-color: @emptyContentBackgroundColor
 }
 
 ConfigBlock {
-    background-color: #e1e4eb
+    background-color: @emptyContentBackgroundColor
 }
 
 ConfigSubBlock {
-    background-color: #e1e4eb
+    background-color: @emptyContentBackgroundColor
 }
 
 SearchResultTree {
     border-style: none;
-    background-color: #ebeef5;
+    background-color: @widgetBackgroundColor;
 }
 
 QSplitter:handle {
-    background: #ebeef5;
+    background: @widgetBackgroundColor;
 }
 
 QSplitter::handle:pressed {
@@ -48,37 +48,46 @@ QSplitter::handle:pressed {
 }
 
 ConfigSubBlock::hover {
-    /* background-color: rgba(200, 215, 255, 50%); */
     background-color: rgba(30, 147, 229, 20%);
 }
 
 SourceTextEdit {
     font-size: 17px;
-    background-color: #e1e4eb;
+    background-color: @emptyContentBackgroundColor;
     border-radius: 7px;
     border-style: none;
 }
 
 TransTextEdit {
     font-size: 17px;
-    /* background-color: #e1e4eb; */
     border-radius: 7px;
-    background-color: whitesmoke;
+    background-color: @transtexteditBackgroundColor;
 }
 
 QComboBox {
     height: 27px;
     font-size: 14px;
     padding-left: 8px;
-    border: 1px solid whitesmoke;
+    border: 1px solid @borderColor;
 }
+
+QLineEdit {
+    border: 1px solid @borderColor;
+}
+
+QPlainTextEdit {
+    border: 1px solid @borderColor;
+}
+
+QPlainTextEdit:focus {
+    border: 1px solid rgb(30, 147, 229);
+ }
 
 QComboBox::drop-down {
     border-left-width: 0px;
 }
 
 QComboBox::hover {
-    /* background-color: red; */
     border: 1px solid rgb(30, 147, 229);
 }
 
@@ -95,7 +104,7 @@ QFontComboBox#FontFamilyBox {
     font-size: 14px;
     padding-right: 14px;
     padding-left: 6px;
-    border-color: #b3b6bf;
+    border-color: @borderColor;
 }
 
 QFontComboBox#FontFamilyBox::hover {
@@ -108,7 +117,7 @@ SizeComboBox {
     font-size: 13px;
     min-width: 43px;
     max-width: 43px;
-    border-color: #b3b6bf;
+    border-color: @borderColor;
 }
 
 SizeComboBox::hover {
@@ -144,7 +153,7 @@ ColorPicker {
     min-height: 25px;
     min-width: 25px;
     max-width: 25px;
-    border: 2px solid #b3b6bf;
+    border: 2px solid @borderColor;
 }
 
 ColorPicker::hover {
@@ -158,7 +167,7 @@ AlignmentChecker {
 AlignmentChecker::indicator {
     height: 28px;
     width: 28px;
-    border: 2px solid #b3b6bf;
+    border: 2px solid @borderColor;
 }
 
 AlignmentChecker::indicator:checked {
@@ -259,8 +268,8 @@ TextEditListScrollArea {
 }
 
 QListWidget {
-    background-color: #e1e4eb;
-    border-color: #b3b6bf;
+    background-color: @emptyContentBackgroundColor;
+    border-color: @borderColor;
     border-style: solid;
     border-width: 1px;
 }
@@ -270,7 +279,7 @@ QAction {
 }
 
 QMenu {
-    background-color: #e1e4eb;
+    background-color: @emptyContentBackgroundColor;
     margin: 0px; /* some spacing around the menu */
 }
 
@@ -278,7 +287,7 @@ QMenu::item {
     height: 28px;
     width: 342px;
     margin: 0px;
-    background-color: #e1e4eb;
+    background-color: @emptyContentBackgroundColor;
     padding-left: 32px;
     padding-right: 32px;
 }
@@ -291,7 +300,7 @@ QMenu::separator {
 }
 
 /* QMenu::item {
-    background-color: #e1e4eb;
+    background-color: @emptyContentBackgroundColor;
     min-height: 100px;
 }*/
 
@@ -301,24 +310,24 @@ QMenu::item:selected {
 
 QDialog {
     font-size: 7px;
-    background-color: #ebeef5;
+    background-color: @widgetBackgroundColor;
 }
 
 QGroupBox {
-    background-color: #e1e4eb;
+    background-color: @emptyContentBackgroundColor;
 }
 
 QPushButton {
     /* max-width: 94px; */
     height: 32px;
     font-size: 14px;
-    background-color: rgba(198, 201, 207, 50%);
-    border: 1px solid #999999;
+    background-color: @pushBtnBackgroundColor;
+    border: 1px solid @borderColor;
     border-radius: 4px;
 }
 
 NoBorderPushBtn {
-    background-color: rgb(198, 201, 207);
+    background-color: @noboderPushBtnBackgroundColor;
     border: none;
 }
 
@@ -494,7 +503,7 @@ OpenBtn::pressed {
 }
 
 QProgressBar {
-    background-color: #e1e4eb;
+    background-color: @emptyContentBackgroundColor;
     width: 450px;
     height: 45px;
     max-width: 450px;
@@ -545,6 +554,7 @@ StateChecker#ImgTransChecker::indicator:hover
 StateChecker#ImgTransChecker::indicator:checked
 {
     image: url(data/icons/leftbar_imgtrans_activate.svg);
+    color: red;
 }
 
 StateChecker#ConfigChecker::indicator{
@@ -689,7 +699,7 @@ QScrollBar::add-line {
 
 QLabel#TitleLabel {
     font-size: 13px;
-    color: #5d5d5f;
+    color: @qwidgetForegroundColor;
 }
 
 QLabel#angleLabel {
@@ -770,13 +780,13 @@ DrawToolCheckBox#DrawRectTool::indicator:checked {
 }
 
 GlobalSearchWidget {
-    border-color: #b3b6bf;
+    border-color: @borderColor;
     border-style: solid;
     border-width: 1px;
 }
 
 QScrollArea {
-    border-color: #b3b6bf;
+    border-color: @borderColor;
     border-style: solid;
     border-width: 1px;
 }
@@ -871,7 +881,7 @@ TitleBarToolBtn {
     padding-right: 4px;
     border-style: none;
     font-size: 15px;
-    color: #6d6d6f;
+    color: @titleBarColor;
 }
 
 TitleBarToolBtn::hover {

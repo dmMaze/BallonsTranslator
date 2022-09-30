@@ -43,7 +43,6 @@ def main():
         osp.dirname(osp.abspath(__file__)) + "/data/translate",
     )
     app.installTranslator(translator)
-    # app.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
 
     C.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
     yahei = QFont('Microsoft YaHei UI')
@@ -54,6 +53,7 @@ def main():
     ballontrans = MainWindow(app, open_dir=args.proj_dir)
     ballontrans.setWindowIcon(QIcon(C.ICON_PATH))
     ballontrans.show()
+    ballontrans.resetStyleSheet()
     sys.exit(app.exec())
 
 if __name__ == '__main__':

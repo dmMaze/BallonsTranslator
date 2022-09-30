@@ -1,6 +1,6 @@
 from qtpy.QtWidgets import QHBoxLayout, QSizePolicy, QComboBox, QStyledItemDelegate, QLabel, QTreeView, QCheckBox, QStyleOptionViewItem, QVBoxLayout, QStyle, QMessageBox, QStyle,  QApplication, QWidget
 from qtpy.QtCore import Qt, QItemSelection, QSize, Signal, QUrl, QModelIndex, QRectF
-from qtpy.QtGui import QFont, QPainter, QTextCursor, QStandardItemModel, QStandardItem, QAbstractTextDocumentLayout, QColor, QShowEvent, QTextDocument, QTextCharFormat
+from qtpy.QtGui import QFont, QPainter, QTextCursor, QStandardItemModel, QStandardItem, QAbstractTextDocumentLayout, QColor, QPalette, QTextDocument, QTextCharFormat
 
 from typing import List, Union, Tuple, Dict
 import re, time
@@ -14,6 +14,7 @@ from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
 from .imgtrans_proj import ProjImgTrans
 from .io_thread import ThreadBase
+from . import constants as C
 
 SEARCHRST_FONTSIZE = 10.3
 
@@ -28,8 +29,9 @@ class HTMLDelegate( QStyledItemDelegate ):
         options = QStyleOptionViewItem(option)
         self.initStyleOption(options, index)
         painter.save()
-        self.doc.setHtml(options.text)
         self.doc.setDefaultFont(options.font)
+        self.doc.setHtml(options.text)
+        
         options.text = ''
         
         painter.translate(options.rect.left(), options.rect.top())
@@ -38,7 +40,8 @@ class HTMLDelegate( QStyledItemDelegate ):
         painter.setClipRect(clip)
         ctx = QAbstractTextDocumentLayout.PaintContext()
         ctx.clip = clip
-        self.doc.drawContents(painter, clip)
+        ctx.palette.setColor(QPalette.ColorRole.Text, QColor(*C.FOREGROUND_FONTCOLOR))
+        self.doc.documentLayout().draw(painter, ctx)
         painter.restore()
         style = QApplication.style() if options.widget is None else options.widget.style()
         style.drawControl(QStyle.ControlElement.CE_ItemViewItem, options, painter)
