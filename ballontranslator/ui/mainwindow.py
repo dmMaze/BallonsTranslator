@@ -61,6 +61,12 @@ class MainWindow(FramelessWindow):
                 if osp.exists(proj_dir):
                     self.OpenProj(proj_dir)
 
+
+
+    def setStyleSheet(self, styleSheet: str) -> None:
+        # self.textPanel.formatpanel.familybox.setStyleSheet(styleSheet)
+        return super().setStyleSheet(styleSheet)
+
     def setupThread(self):
         self.imsave_thread = ImgSaveThread()
         self.export_doc_thread = ExportDocThread()
@@ -68,9 +74,16 @@ class MainWindow(FramelessWindow):
         self.import_doc_thread = ImportDocThread(self)
         self.import_doc_thread.fin_io.connect(self.on_fin_import_doc)
 
+    def resetStyleSheet(self, reverse_icon: bool = False):
+        theme = 'eva-dark' if self.config.darkmode else 'eva-light'
+        self.setStyleSheet(parse_stylesheet(theme, reverse_icon))
+
     def setupUi(self):
         screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
+        self.configPanel = ConfigPanel(self)
+        self.config = self.configPanel.config
+        self.resetStyleSheet()
 
         self.leftBar = LeftBar(self)
         self.leftBar.showPageListLabel.clicked.connect(self.pageLabelStateChanged)
@@ -120,8 +133,6 @@ class MainWindow(FramelessWindow):
         self.canvas.textstack_changed.connect(self.on_textstack_changed)
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
-        self.configPanel = ConfigPanel(self)
-        self.config = self.configPanel.config
 
         self.drawingPanel = DrawingPanel(self.canvas, self.configPanel.inpaint_config_panel)
         self.textPanel = TextPanel(self.app)
@@ -170,8 +181,6 @@ class MainWindow(FramelessWindow):
         self.comicTransSplitter.setStretchFactor(1, 10)
 
     def setupConfig(self):
-        theme = 'eva-dark' if self.config.darkmode else 'eva-light'
-        self.setStyleSheet(parse_stylesheet(theme))
 
         self.bottomBar.originalSlider.setValue(self.config.original_transparency * 100)
         self.drawingPanel.maskTransperancySlider.setValue(self.config.mask_transparency * 100)
@@ -827,6 +836,5 @@ class MainWindow(FramelessWindow):
 
     def on_darkmode_triggered(self):
         self.config.darkmode = self.titleBar.darkModeAction.isChecked()
-        theme = 'eva-dark' if self.config.darkmode else 'eva-light'
-        css = parse_stylesheet(theme=theme, reverse_icon=True)
-        self.setStyleSheet(css)
+        self.resetStyleSheet(reverse_icon=True)
+        self.save_config()

@@ -61,7 +61,7 @@ SourceTextEdit {
 TransTextEdit {
     font-size: 17px;
     border-radius: 7px;
-    background-color: whitesmoke;
+    background-color: @transtexteditBackgroundColor;
 }
 
 QComboBox {
@@ -321,13 +321,13 @@ QPushButton {
     /* max-width: 94px; */
     height: 32px;
     font-size: 14px;
-    background-color: rgba(198, 201, 207, 50%);
-    border: 1px solid #999999;
+    background-color: @pushBtnBackgroundColor;
+    border: 1px solid @borderColor;
     border-radius: 4px;
 }
 
 NoBorderPushBtn {
-    background-color: rgb(198, 201, 207);
+    background-color: @noboderPushBtnBackgroundColor;
     border: none;
 }
 

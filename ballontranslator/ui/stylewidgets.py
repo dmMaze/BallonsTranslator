@@ -4,6 +4,7 @@ from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPain
 from typing import List, Union, Tuple
 
 from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
+from . import constants as C
 
 
 class Widget(QWidget):
@@ -269,15 +270,15 @@ class PaintQSlider(QSlider):
         if option.state & QStyle.State_MouseOver:  # 双重圆
             # 半透明大圆
             r = rect.height() / 2
-            painter.setBrush(QColor(85,85,96,100))
+            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,100))
             painter.drawRoundedRect(rect, r, r)
             # 实心小圆(上下左右偏移4)
             rect = rect.adjusted(4, 4, -4, -4)
             r = rect.height() / 2
-            painter.setBrush(QColor(85,85,96,255))
+            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,255))
             painter.drawRoundedRect(rect, r, r)
             if self.draw_content is not None:
-                painter.setPen(QColor(85,85,96,255))
+                painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
                 font = painter.font()
                 font.setPointSize(8)
                 fm = QFontMetrics(font)
@@ -299,7 +300,7 @@ class PaintQSlider(QSlider):
         else:  # 实心圆
             rect = rect.adjusted(4, 4, -4, -4)
             r = rect.height() / 2
-            painter.setBrush(QColor(85,85,96,200))
+            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,200))
             painter.drawRoundedRect(rect, r, r)
 
 

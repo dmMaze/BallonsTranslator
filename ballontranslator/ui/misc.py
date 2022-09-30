@@ -5,7 +5,7 @@ import os.path as osp
 from typing import Tuple, Union, List, Dict
 from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
 
-from . import constants
+from . import constants as C
 from .constants import DEFAULT_FONT_FAMILY, STYLESHEET_PATH, THEME_PATH
 from utils.io_utils import find_all_imgs, NumpyEncoder, imread, imwrite
 from dl.textdetector.textblock import TextBlock
@@ -349,10 +349,10 @@ def set_html_color(html, rgb):
         return span_pattern.sub(lambda matched: span_repl_func(matched, hex_color), html)
 
 def pt2px(pt):
-    return int(round(pt * constants.LDPI / 72.))
+    return int(round(pt * C.LDPI / 72.))
 
 def px2pt(px):
-    return px / constants.LDPI * 72.
+    return px / C.LDPI * 72.
 
 def html_max_fontsize(html:  str) -> float:
     size_list = fontsize_pattern.findall(html)
@@ -390,6 +390,9 @@ def doc_replace_no_shift(doc: QTextDocument, span_list: List, target: str):
         cursor.insertText(target)
     cursor.endEditBlock()
 
+def hex2rgb(h: str):  # rgb order (PIL)
+    return tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
+
 def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
     if reverse_icon:
         dark2light = True if theme == 'eva-light' else False
@@ -402,6 +405,9 @@ def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
         tgt_theme: Dict = theme_dict[list(theme_dict.keys())[0]]
     else:
         tgt_theme: Dict = theme_dict[theme]
+
+    C.FOREGROUND_FONTCOLOR = hex2rgb(tgt_theme['@qwidgetForegroundColor'])
+    C.SLIDERHANDLE_COLOR = hex2rgb(tgt_theme['@sliderHandleColor'])
     for key, val in tgt_theme.items():
         stylesheet = stylesheet.replace(key, val)
     return stylesheet
