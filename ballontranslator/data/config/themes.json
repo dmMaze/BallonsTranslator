@@ -8,7 +8,10 @@
         "@pushBtnBackgroundColor": "rgba(198, 201, 207, 50%)",
         "@noboderPushBtnBackgroundColor": "rgb(198, 201, 207)",
         "@transtexteditBackgroundColor": "whitesmoke",
-        "@sliderHandleColor" : "#555560"
+        "@sliderHandleColor" : "#555560",
+        "@scrollBarBackground": "rgba(0, 0, 0, 30)",
+        "@scrollBarColor": "rgba(0, 0, 0, 30)",
+        "@scrollBarHoverColor": "rgba(0, 0, 0, 50)"
     },
     "eva-dark": {
         "@borderColor": "#535671",
@@ -20,6 +23,9 @@
         "@pushBtnBackgroundColor": "#21252b",
         "@noboderPushBtnBackgroundColor": "#191d24",
         "@transtexteditBackgroundColor": "#191d24",
-        "@sliderHandleColor" : "#96a4cd"
+        "@sliderHandleColor" : "#96a4cd",
+        "@scrollBarBackground": "rgba(0, 0, 0, 30)",
+        "@scrollBarColor": "rgba(127, 127, 127, 100)",
+        "@scrollBarHoverColor": "rgba(127, 127, 127, 200)"
     }
 }

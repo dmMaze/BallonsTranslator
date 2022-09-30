@@ -599,11 +599,11 @@ QScrollBar:vertical {
     margin: 0px 0px 0px 0px; /**/
     padding-top: 12px; /*距离上面12px*/
     padding-bottom: 12px; /*距离底部12px*/
-    background: rgba(0, 0, 0, 30)
+    background: @scrollBarBackground
 }
 /*横向滚动条*/
 QScrollBar:horizontal {
-    background: rgba(0, 0, 0, 30);
+    background: @scrollBarBackground;
     height: 10px; /*高度*/
     margin: 0px 0px 0px 0px;
     padding-left: 12px; /*距离左边12px*/
@@ -612,20 +612,19 @@ QScrollBar:horizontal {
 
 /*当鼠标放到纵向或者横向滚动条上面时*/
 QScrollBar:vertical:hover,QScrollBar:horizontal:hover {
-    background: rgba(0, 0, 0, 30); /*修改背景透明度 30*/
-    border-radius: 5px; /*圆角*/
+    background: @scrollBarColor; /*修改背景透明度 30*/
 }
 
 /*纵向滚动条上面的滑块*/
 QScrollBar::handle:vertical {
-    background: rgba(0, 0, 0, 50);
+    background: @scrollBarColor;
     width: 10px;
     /* border-radius: 5px; */
     border: none;
 }
 /*横向滚动条上面的滑块*/
 QScrollBar::handle:horizontal {
-    background: rgba(0, 0, 0, 50);
+    background: @scrollBarColor;
     height: 10px;
     /* border-radius: 5px; */
     border: none;
@@ -633,7 +632,7 @@ QScrollBar::handle:horizontal {
 
 /*当鼠标放到滚动条滑块上面时改变透明度实现颜色的深浅变化*/
 QScrollBar::handle:vertical:hover,QScrollBar::handle:horizontal:hover {
-    background: rgba(0, 0, 0, 100);
+    background: @scrollBarHoverColor;
 }
 
 /*纵向滚动条下部分块*/
