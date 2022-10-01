@@ -241,13 +241,15 @@ class Canvas(QGraphicsScene):
 
         sbr = self.imgLayer.sceneBoundingRect()
         self.old_size = sbr.size()
+        scale_changed = self.scale_factor != s_f
         self.scale_factor = s_f
         self.baseLayer.setScale(self.scale_factor)
         self.txtblkShapeControl.updateScale(self.scale_factor)
 
-        self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
-        self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
-        self.setSceneRect(0, 0, self.imgLayer.sceneBoundingRect().width(), self.imgLayer.sceneBoundingRect().height())
+        if scale_changed:
+            self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
+            self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
+            self.setSceneRect(0, 0, self.imgLayer.sceneBoundingRect().width(), self.imgLayer.sceneBoundingRect().height())
         self.scalefactor_changed.emit()
 
     def onViewResized(self):
