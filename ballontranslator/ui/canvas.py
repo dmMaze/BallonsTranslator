@@ -249,7 +249,7 @@ class Canvas(QGraphicsScene):
         if scale_changed:
             self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
             self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
-            self.setSceneRect(0, 0, self.imgLayer.sceneBoundingRect().width(), self.imgLayer.sceneBoundingRect().height())
+        self.setSceneRect(0, 0, self.imgLayer.sceneBoundingRect().width(), self.imgLayer.sceneBoundingRect().height())
         self.scalefactor_changed.emit()
 
     def onViewResized(self):

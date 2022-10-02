@@ -289,7 +289,10 @@ class ImgtransThread(QThread):
         self.inpaint_counter = 0
         self.num_pages = num_pages = len(self.imgtrans_proj.pages)
 
-        self.parallel_trans = not self.translator.is_computational_intensive()
+        if self.translator is not None:
+            self.parallel_trans = not self.translator.is_computational_intensive()
+        else:
+            self.parallel_trans = False
         if self.dl_config.enable_translate and self.parallel_trans:
             self.translate_thread.runTranslatePipeline(self.imgtrans_proj)
 

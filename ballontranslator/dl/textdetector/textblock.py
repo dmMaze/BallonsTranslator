@@ -409,7 +409,9 @@ def merge_textlines(blk_list: List[TextBlock]) -> List[TextBlock]:
     return merged_list
 
 def split_textblk(blk: TextBlock):
-    font_size, distance, lines = blk.font_size, blk.distance, blk.lines_array()
+    font_size, distance, lines = blk.font_size, blk.distance, blk.lines
+    l0 = np.array(blk.lines[0])
+    lines.sort(key=lambda line: np.linalg.norm(np.array(line[0] - l0[0])))
     distance_tol = font_size * 2
     current_blk = copy.deepcopy(blk)
     current_blk.lines = [lines[0]]
@@ -423,7 +425,7 @@ def split_textblk(blk: TextBlock):
             if line_disance > distance_tol:
                 split = True
             else:
-                if blk.vertical and abs(abs(blk.angle) - 90) < 10:
+                if blk.vertical and abs(blk.angle) < 10 and len(current_blk.lines) > 1:
                     split = abs(lines[jj][0][1] - line[0][1]) > font_size
         if split:
             current_blk = copy.deepcopy(current_blk)
