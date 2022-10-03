@@ -338,10 +338,7 @@ class ProjImgTrans:
         body_xml_str = doc._body._element.xml
 
         pages = {}
-        pagename2idx = {}
-        idx2pagename = {}
         bub_index = 0
-        page_counter = 0
         for tbl in re.findall(r'<w:tbl>(.*?)</w:tbl>', body_xml_str, re.DOTALL):
             for tr in re.findall(r'<w:tr(.*?)>(.*?)</w:tr>', tbl, re.DOTALL):
                 if re.findall(r'<pic:cNvPr id=\"0\" name=\"(.*?)\"/>', tr[1]):
@@ -361,20 +358,37 @@ class ProjImgTrans:
                     imgkey = meta_dict.pop("imgkey")
                     if not imgkey in pages:
                         pages[imgkey] = []
-                        pagename2idx[imgkey] = page_counter
-                        idx2pagename[page_counter] = imgkey
-                        page_counter += 1
                     pages[imgkey].append(TextBlock(**meta_dict))
                     
                     if fin_page_signal is not None:
                         fin_page_signal.emit()
 
-        self.pages.clear()
-        self.pages.update(pages)
-        self._pagename2idx = pagename2idx
-        self._idx2pagename = idx2pagename
+        self.merge_from_proj_dict(pages)
         if delete_tmp_folder:
             shutil.rmtree(tmp_bubble_folder)
+
+    def merge_from_proj_dict(self, tgt_dict: Dict) -> Dict:
+        if self.pages is None:
+            self.pages = {}
+        src_dict = self.pages if self.pages is not None else {}
+        key_lst = list(dict.fromkeys(list(src_dict.keys()) + list(tgt_dict.keys())))
+        key_lst.sort()
+        rst_dict = {}
+        pagename2idx = {}
+        idx2pagename = {}
+        page_counter = 0
+        for key in key_lst:
+            if key in src_dict and not key in tgt_dict:
+                rst_dict[key] = src_dict[key]
+            else:
+                rst_dict[key] = tgt_dict[key]
+            pagename2idx[key] = page_counter
+            idx2pagename[page_counter] = key
+            page_counter += 1
+        self.pages.clear()
+        self.pages.update(rst_dict)
+        self._pagename2idx = pagename2idx
+        self._idx2pagename = idx2pagename        
 
 
 def gen_ballon_cuts(cuts_dir: str, imgpath: str, blk_list: List[TextBlock], resize=True) -> Tuple[List[str], List[int]]:

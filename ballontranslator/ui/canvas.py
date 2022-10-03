@@ -249,8 +249,8 @@ class Canvas(QGraphicsScene):
         if scale_changed:
             self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
             self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
+            self.scalefactor_changed.emit()
         self.setSceneRect(0, 0, self.imgLayer.sceneBoundingRect().width(), self.imgLayer.sceneBoundingRect().height())
-        self.scalefactor_changed.emit()
 
     def onViewResized(self):
         gv_w, gv_h = self.gv.geometry().width(), self.gv.geometry().height()
@@ -280,12 +280,6 @@ class Canvas(QGraphicsScene):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.editing_textblkitem is not None:
             return super().keyPressEvent(event)
-        # if event == QKeySequence.Undo:
-        #     self.undo()
-        #     self.txtblkShapeControl.updateBoundingRect()
-        # elif event == QKeySequence.Redo:
-        #     self.redo()
-        #     self.txtblkShapeControl.updateBoundingRect()
         if event.key() == Qt.Key.Key_Alt:
             self.alt_pressed = True
         return super().keyPressEvent(event)

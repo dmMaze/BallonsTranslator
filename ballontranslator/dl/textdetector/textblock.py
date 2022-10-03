@@ -411,21 +411,21 @@ def merge_textlines(blk_list: List[TextBlock]) -> List[TextBlock]:
 def split_textblk(blk: TextBlock):
     font_size, distance, lines = blk.font_size, blk.distance, blk.lines
     l0 = np.array(blk.lines[0])
-    lines.sort(key=lambda line: np.linalg.norm(np.array(line[0] - l0[0])))
+    lines.sort(key=lambda line: np.linalg.norm(np.array(line[0]) - l0[0]))
     distance_tol = font_size * 2
     current_blk = copy.deepcopy(blk)
-    current_blk.lines = [lines[0]]
+    current_blk.lines = [l0]
     sub_blk_list = [current_blk]
     textblock_splitted = False
     for jj, line in enumerate(lines[1:]):
         l1, l2 = Polygon(lines[jj]), Polygon(line)
         split = False
         if not l1.intersects(l2):
-            line_disance = distance[jj+1] - distance[jj]
+            line_disance = abs(distance[jj+1] - distance[jj])
             if line_disance > distance_tol:
                 split = True
-            else:
-                if blk.vertical and abs(blk.angle) < 10 and len(current_blk.lines) > 1:
+            elif blk.vertical and abs(blk.angle) < 15:
+                if len(current_blk.lines) > 1 or line_disance > font_size:
                     split = abs(lines[jj][0][1] - line[0][1]) > font_size
         if split:
             current_blk = copy.deepcopy(current_blk)
@@ -483,7 +483,6 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
                     continue
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
-        lines = blk.lines_array()
         eval_orientation = blk.language != 'eng'
         examine_textblk(blk, im_w, im_h, eval_orientation, sort=True)
         
