@@ -533,11 +533,12 @@ class DLManager(QObject):
         if not self.dl_config.enable_ocr:
             self.progress_msgbox.ocr_bar.hide()
             self.progress_msgbox.translate_bar.hide()
-        elif not self.dl_config.enable_translate:
-            self.progress_msgbox.translate_bar.hide()
         else:
             self.progress_msgbox.ocr_bar.show()
-            self.progress_msgbox.translate_bar.show()
+            if not self.dl_config.enable_translate:
+                self.progress_msgbox.translate_bar.hide()
+            else:
+                self.progress_msgbox.translate_bar.show()
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show()
         self.imgtrans_thread.runImgtransPipeline(self.imgtrans_proj)
