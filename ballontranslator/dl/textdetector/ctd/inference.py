@@ -43,7 +43,7 @@ def model2annotations(model_path, img_dir_list, save_dir, save_json=False):
         for blk in blk_list:
             polys += blk.lines
             blk_xyxy.append(blk.xyxy)
-            blk_dict_list.append(blk.to_dict(extra_info=True))
+            blk_dict_list.append(blk.to_dict())
         blk_xyxy = xyxy2yolo(blk_xyxy, im_w, im_h)
         if blk_xyxy is not None:
             cls_list = [1] * len(blk_xyxy)
