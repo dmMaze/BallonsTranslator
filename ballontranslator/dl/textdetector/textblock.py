@@ -468,7 +468,7 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
                 if mask_score < mask_score_thresh:
                     continue
             blk = TextBlock([bx1, by1, bx2, by2], [line])
-            examine_textblk(blk, im_w, im_h, True, sort=False)
+            examine_textblk(blk, im_w, im_h, sort=False)
             if blk.vertical:
                 scattered_lines['ver'].append(blk)
             else:
