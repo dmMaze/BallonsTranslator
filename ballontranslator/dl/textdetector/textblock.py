@@ -148,7 +148,7 @@ class TextBlock(object):
         min_bbox = np.array([[min_x, min_y, max_x, min_y, max_x, max_y, min_x, max_y]])
         if angled and rotate_back:
             min_bbox = rotate_polygons(center, min_bbox, -self.angle)
-        return min_bbox.reshape(-1, 4, 2)
+        return min_bbox.reshape(-1, 4, 2).astype(np.int64)
 
     def normalizd_width_list(self) -> List[float]:
         angled, center, polygons = self.unrotated_polygons()

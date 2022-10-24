@@ -1,6 +1,7 @@
 from typing import List, Union, Tuple
 
 from qtpy.QtGui import QTextCursor
+from qtpy.QtCore import QPointF
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -44,30 +45,31 @@ class MoveBlkItemsCommand(QUndoCommand):
     def __init__(self, items: List[TextBlkItem], shape_ctrl: TextBlkShapeControl):
         super(MoveBlkItemsCommand, self).__init__()
         self.items = items
-        self.old_pos_lst = []
-        self.new_pos_lst = []
+        self.old_pos_lst: List[QPointF] = []
+        self.new_pos_lst: List[QPointF] = []
         self.shape_ctrl = shape_ctrl
         for item in items:
-            self.old_pos_lst.append(item.oldPos)
-            self.new_pos_lst.append(item.pos())
+            padding = item.padding()
+            padding = QPointF(padding, padding)
+            self.old_pos_lst.append(item.oldPos + padding)
+            self.new_pos_lst.append(item.pos() + padding)
             item.oldPos = item.pos()
 
     def redo(self):
         for item, new_pos in zip(self.items, self.new_pos_lst):
-            item.setPos(new_pos)
+            padding = item.padding()
+            padding = QPointF(padding, padding)
+            item.setPos(new_pos - padding)
             if self.shape_ctrl.blk_item == item and self.shape_ctrl.pos() != new_pos:
                 self.shape_ctrl.setPos(new_pos)
 
     def undo(self):
         for item, old_pos in zip(self.items, self.old_pos_lst):
-            item.setPos(old_pos)
+            padding = item.padding()
+            padding = QPointF(padding, padding)
+            item.setPos(old_pos - padding)
             if self.shape_ctrl.blk_item == item and self.shape_ctrl.pos() != old_pos:
                 self.shape_ctrl.setPos(old_pos)
-
-    def mergeWith(self, command: QUndoCommand):
-        if command.old_pos_lst == self.old_pos_lst:
-            return True
-        return False
 
 
 class ApplyFontformatCommand(QUndoCommand):
