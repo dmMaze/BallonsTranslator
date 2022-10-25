@@ -1,5 +1,9 @@
 # Changelogs
 
+### 2022-10-25
+[v1.3.14](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.14)发布
+1. 修bug
+
 ### 2022-09-30
 v1.3.13起支持深色模式: 视图->深色模式
 

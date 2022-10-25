@@ -1,5 +1,9 @@
 # Changelogs
 
+### 2022-10-25
+[v1.3.14](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.14) released
+1. Bugfixes
+
 ### 2022-09-30
 Support Dark Mode since v1.3.13: View->Dark Mode
 
