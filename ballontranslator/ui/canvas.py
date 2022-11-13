@@ -467,7 +467,7 @@ class Canvas(QGraphicsScene):
             self.maskLayer.setVisible(True)
         else:
             self.maskLayer.setVisible(False)
-            self.gv.setCursor(self.default_cursor)
+            # self.gv.setCursor(self.default_cursor)
             self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             self.image_edit_mode = ImageEditMode.NONE
 
