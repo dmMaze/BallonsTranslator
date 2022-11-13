@@ -17,26 +17,50 @@ class ImageEditMode:
     PenTool = 2
     RectTool = 3
 
+class PenShape:
+    Circle = 0
+    Rectangle = 1
+    Triangle = 2
 
 class StrokeImgItem(QGraphicsItem):
-    def __init__(self, pen: QPen, point: QPointF, size: QSize, format: QImage.Format = QImage.Format.Format_ARGB32, ):
+    def __init__(self, pen: QPen, point: QPointF, size: QSize, format: QImage.Format = QImage.Format.Format_ARGB32, shape=PenShape.Circle):
         super().__init__()
         self._img = QImage(size, format)
         self._img.fill(Qt.GlobalColor.transparent)
+        pen = QPen(pen)
+        if shape == PenShape.Rectangle:
+            pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+            
         self.pen = pen
-        self._d = d = self.pen.widthF()
+        self._d = d = pen.widthF()
+        self._d_rect = d // 32
         self._r = d / 2
         self.clipped_rect = None
+        self.shape = shape
+        self._line_to = [self._line_to_circle, self._line_to_rectangle][shape]
 
         self.painter = QPainter(self._img)
-        self.painter.setPen(pen)
         self.painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        if shape != PenShape.Circle:
+            pen.setWidthF(0)
+        self.painter.setPen(pen)
+        self.painter.setBrush(pen.color())
+        
         self.setBoundingRegionGranularity(0)
         self.cur_point = point
         self._br = QRectF(0, 0, size.width(), size.height())
         self.is_painting = True
-        self.lineTo(point)
+
+        min_x = self.cur_point.x() - self._r
+        min_y = self.cur_point.y() - self._r
+        if shape == PenShape.Circle:
+            self._line_to(self.cur_point, None)
+        else:
+            self._line_to(self.cur_point, None)
+        rect = QRectF(min_x, min_y, self._d, self._d)
+        self.init_rect = rect
+        self.update(rect)
 
     def finishPainting(self):
         self.painter.end()
@@ -64,17 +88,31 @@ class StrokeImgItem(QGraphicsItem):
     def boundingRect(self) -> QRectF:
         return self._br
 
+    def _line_to_circle(self, pnt1: QPointF, pnt2: QPointF):
+        if pnt2 is not None:
+            self.painter.drawLine(pnt1, pnt2)
+        else:
+            pen = QPen(self.pen)
+            pen.setWidthF(0)
+            self.painter.setPen(pen)
+            self.painter.setBrush(self.pen.color())
+            self.painter.drawEllipse(pnt1.x() - self._r, pnt1.y() - self._r, self._d, self._d)
+            self.painter.setPen(self.pen)
+
+    def _line_to_rectangle(self, pnt1: QPointF, pnt2: QPointF):
+        self.painter.drawRect(pnt1.x() - self._r, pnt1.y() - self._r, self._d, self._d)
+
     def lineTo(self, new_pnt: QPointF, update=True) -> QRectF:
         delta = self.cur_point - new_pnt
         delta_w, delta_h = abs(delta.x()),  abs(delta.y())
         rect = None
-        if delta_w + delta_h > 2:
+        if delta_w + delta_h > 1:
             min_x = min(self.cur_point.x(), new_pnt.x()) - self._r
             min_y = min(self.cur_point.y(), new_pnt.y()) - self._r
             delta_w += self._d
             delta_h += self._d
             rect = QRectF(min_x, min_y, delta_w, delta_h)
-            self.painter.drawLine(self.cur_point, new_pnt)
+            self._line_to(self.cur_point, new_pnt)
             self.cur_point = new_pnt
             if update:
                 self.update(rect)

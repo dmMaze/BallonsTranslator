@@ -90,6 +90,7 @@ class Canvas(QGraphicsScene):
     
     imgtrans_proj: ProjImgTrans = None
     painting_pen = QPen()
+    painting_shape = 0
     erasing_pen = QPen()
     image_edit_mode = ImageEditMode.NONE
     alt_pressed = False
@@ -293,7 +294,7 @@ class Canvas(QGraphicsScene):
         if self.stroke_img_item is not None:
             self.stroke_img_item.startNewPoint(pos)
         else:
-            self.stroke_img_item = StrokeImgItem(pen, pos, self.imgLayer.pixmap().size())
+            self.stroke_img_item = StrokeImgItem(pen, pos, self.imgLayer.pixmap().size(), shape=self.painting_shape)
             if not erasing:
                 self.stroke_img_item.setParentItem(self.baseLayer)
             else:
@@ -334,17 +335,21 @@ class Canvas(QGraphicsScene):
             
         elif self.creating_textblock:
             self.txtblkShapeControl.setRect(QRectF(self.create_block_origin, event.scenePos() / self.scale_factor).normalized())
+        
         elif self.stroke_img_item is not None:
             if self.stroke_img_item.is_painting:
                 pos = self.imgLayer.mapFromScene(event.scenePos())
                 if self.erase_img_key is None:
+                    # painting
                     self.stroke_img_item.lineTo(pos)
                 else:
                     rect = self.stroke_img_item.lineTo(pos, update=False)
                     if rect is not None:
                         self.drawingLayer.update(rect)
+        
         elif self.scale_tool_mode:
             self.scale_tool.emit(event.scenePos())
+        
         elif self.rubber_band.isVisible() and self.rubber_band_origin is not None:
             self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, event.scenePos()).normalized())
             sel_path = QPainterPath(self.rubber_band_origin)
@@ -353,6 +358,7 @@ class Canvas(QGraphicsScene):
                 self.setSelectionArea(sel_path, deviceTransform=self.gv.viewportTransform())
             else:
                 self.setSelectionArea(sel_path, Qt.ItemSelectionMode.IntersectsItemBoundingRect, self.gv.viewportTransform())
+        
         return super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:

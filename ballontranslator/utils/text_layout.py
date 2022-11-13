@@ -1,9 +1,7 @@
 from typing import List, Callable, Tuple
 import numpy as np
-import cv2
 
-from .text_processing import seg_text
-from .imgproc_utils import extract_ballon_region, rotate_image
+from .imgproc_utils import rotate_image
 
 class Line:
 

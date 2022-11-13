@@ -11,7 +11,7 @@ from utils.textblock_mask import canny_flood, connected_canny_flood
 from utils.logger import logger
 
 from .dl_manager import DLManager
-from .image_edit import ImageEditMode, PixmapItem, StrokeImgItem
+from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem
 from .configpanel import InpaintConfigPanel
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
@@ -73,9 +73,22 @@ class InpaintPanel(Widget):
         thickness_layout.addWidget(self.thicknessSlider)
         thickness_layout.setSpacing(10)
 
+        shape_label = ToolNameLabel(100, self.tr('Shape'))
+        self.shapeCombobox = QComboBox(self)
+        self.shapeCombobox.addItems([
+            self.tr('Circle'),
+            self.tr('Rectangle'),
+            # self.tr('Triangle')
+        ])
+        self.shapeChanged = self.shapeCombobox.currentIndexChanged
+        shape_layout = QHBoxLayout()
+        shape_layout.addWidget(shape_label)
+        shape_layout.addWidget(self.shapeCombobox)
+
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(thickness_layout)
+        layout.addLayout(shape_layout)
         layout.setSpacing(14)
         self.vlayout = layout
 
@@ -93,6 +106,10 @@ class InpaintPanel(Widget):
         self.vlayout.removeWidget(self.inpainter_panel)
         self.inpainter_panel.needInpaintChecker.setVisible(True)
         return super().hideEvent(e)
+
+    @property
+    def shape(self):
+        return self.shapeCombobox.currentIndex()
 
 
 class PenConfigPanel(Widget):
@@ -125,10 +142,23 @@ class PenConfigPanel(Widget):
         thickness_layout.addWidget(self.thicknessSlider)
         thickness_layout.setSpacing(10)
 
+        shape_label = ToolNameLabel(100, self.tr('Shape'))
+        self.shapeCombobox = QComboBox(self)
+        self.shapeCombobox.addItems([
+            self.tr('Circle'),
+            self.tr('Rectangle'),
+            # self.tr('Triangle')
+        ])
+        self.shapeChanged = self.shapeCombobox.currentIndexChanged
+        shape_layout = QHBoxLayout()
+        shape_layout.addWidget(shape_label)
+        shape_layout.addWidget(self.shapeCombobox)
+
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(color_layout)
         layout.addLayout(thickness_layout)
+        layout.addLayout(shape_layout)
         layout.setSpacing(20)
 
     def on_thickness_changed(self):
@@ -147,6 +177,10 @@ class PenConfigPanel(Widget):
         color = self.colorPicker.rgba()
         color[-1] = self.alphaSlider.value()
         self.colorChanged.emit(color)
+
+    @property
+    def shape(self):
+        return self.shapeCombobox.currentIndex()
 
 
 class RectPanel(Widget):
@@ -263,6 +297,7 @@ class DrawingPanel(Widget):
         self.inpaintTool.checked.connect(self.on_use_inpainttool)
         self.inpaintConfigPanel = InpaintPanel(inpainter_panel)
         self.inpaintConfigPanel.thicknessChanged.connect(self.setInpaintToolWidth)
+        self.inpaintConfigPanel.shapeChanged.connect(self.setInpaintShape)
 
         self.rectTool = DrawToolCheckBox()
         self.rectTool.setObjectName("DrawRectTool")
@@ -279,6 +314,7 @@ class DrawingPanel(Widget):
         self.penConfigPanel = PenConfigPanel()
         self.penConfigPanel.thicknessChanged.connect(self.setPenToolWidth)
         self.penConfigPanel.colorChanged.connect(self.setPenToolColor)
+        self.penConfigPanel.shapeChanged.connect(self.setPenShape)
 
         toolboxlayout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         toolboxlayout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -325,6 +361,10 @@ class DrawingPanel(Widget):
         if self.isVisible():
             self.setInpaintCursor()
 
+    def setInpaintShape(self, shape: int):
+        self.setInpaintCursor()
+        self.canvas.painting_shape = shape
+
     def setPenToolWidth(self, width):
         self.pentool_pen.setWidthF(width)
         self.erasing_pen.setWidthF(width)
@@ -340,6 +380,10 @@ class DrawingPanel(Widget):
         self.penConfigPanel.colorPicker.setPickerColor(color)
         self.penConfigPanel.alphaSlider.setValue(color.alpha())
 
+    def setPenShape(self, shape: int):
+        self.setPenCursor()
+        self.canvas.painting_shape = shape
+
     def on_use_handtool(self) -> None:
         if self.currentTool is not None and self.currentTool != self.handTool:
             self.currentTool.setChecked(False)
@@ -354,6 +398,7 @@ class DrawingPanel(Widget):
         self.canvas.image_edit_mode = ImageEditMode.InpaintTool
         self.canvas.painting_pen = self.inpaint_pen
         self.canvas.erasing_pen = self.inpaint_pen
+        self.canvas.painting_shape = self.inpaintConfigPanel.shape
         self.toolConfigStackwidget.setCurrentWidget(self.inpaintConfigPanel)
         if self.isVisible():
             self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -364,6 +409,7 @@ class DrawingPanel(Widget):
             self.currentTool.setChecked(False)
         self.currentTool = self.penTool
         self.canvas.painting_pen = self.pentool_pen
+        self.canvas.painting_shape = self.penConfigPanel.shape
         self.canvas.erasing_pen = self.erasing_pen
         self.canvas.image_edit_mode = ImageEditMode.PenTool
         self.toolConfigStackwidget.setCurrentWidget(self.penConfigPanel)
@@ -385,7 +431,11 @@ class DrawingPanel(Widget):
         pc = self.pentool_pen.color()
         config.pentool_color = [pc.red(), pc.green(), pc.blue(), pc.alpha()]
         config.pentool_width = self.pentool_pen.widthF()
+        config.pentool_shape = self.penConfigPanel.shape
+
         config.inpainter_width = self.inpaint_pen.widthF()
+        config.inpainter_shape = self.penConfigPanel.shape
+
         if self.currentTool == self.handTool:
             config.current_tool = ImageEditMode.HandTool
         elif self.currentTool == self.inpaintTool:
@@ -401,11 +451,14 @@ class DrawingPanel(Widget):
 
     def set_config(self, config: DrawPanelConfig):
         self.setPenToolWidth(config.pentool_width)
+        self.setPenToolColor(config.pentool_color)
         self.penConfigPanel.thicknessSlider.setValue(config.pentool_width)
+        self.penConfigPanel.shapeCombobox.setCurrentIndex(config.pentool_shape)
+        
         self.setInpaintToolWidth(config.inpainter_width)
         self.inpaintConfigPanel.thicknessSlider.setValue(config.inpainter_width)
-        self.setPenToolColor(config.pentool_color)
-
+        self.inpaintConfigPanel.shapeCombobox.setCurrentIndex(config.inpainter_shape)
+        
         self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
         self.rectPanel.methodComboBox.setCurrentIndex(config.rectool_method)
@@ -418,7 +471,7 @@ class DrawingPanel(Widget):
         elif config.current_tool == ImageEditMode.RectTool:
             self.rectTool.setChecked(True)
 
-    def get_pen_cursor(self, pen_color: QColor = None, pen_size = None, draw_circle=True) -> QCursor:
+    def get_pen_cursor(self, pen_color: QColor = None, pen_size = None, draw_shape=True, shape=PenShape.Circle) -> QCursor:
         cross_size = 31
         cross_len = cross_size // 4
         thickness = 3
@@ -441,11 +494,21 @@ class DrawingPanel(Widget):
         painter = QPainter(cur_pixmap)
         painter.setPen(pen)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if draw_circle:
-            painter.drawEllipse(cursor_center-pen_radius + thickness, 
-                                cursor_center-pen_radius + thickness, 
-                                pen_size - 2*thickness, 
-                                pen_size - 2*thickness)
+        if draw_shape:
+            if shape == PenShape.Circle:
+                painter.drawEllipse(cursor_center-pen_radius + thickness, 
+                                    cursor_center-pen_radius + thickness, 
+                                    pen_size - 2*thickness, 
+                                    pen_size - 2*thickness)
+            elif shape == PenShape.Rectangle:
+                painter.drawRect(cursor_center-pen_radius + thickness, 
+                                    cursor_center-pen_radius + thickness, 
+                                    pen_size - 2*thickness, 
+                                    pen_size - 2*thickness)
+            else:
+                raise NotImplementedError
+            # elif shape == PenShape.Triangle:
+                # painter.drawPolygon
         cross_left = (map_size  - 1 - cross_size) // 2 
         cross_right = map_size - cross_left
 
@@ -626,7 +689,7 @@ class DrawingPanel(Widget):
         self.setCrossCursor()
         
     def setCrossCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor(draw_circle=False))
+        self.canvas.gv.setCursor(self.get_pen_cursor(draw_shape=False))
 
     def on_scale_tool(self, pos: QPointF):
         if self.scale_tool_pos is None:
@@ -658,10 +721,10 @@ class DrawingPanel(Widget):
             self.setInpaintCursor()
 
     def setPenCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor())
+        self.canvas.gv.setCursor(self.get_pen_cursor(shape=self.penConfigPanel.shape))
 
     def setInpaintCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor(INPAINT_BRUSH_COLOR, self.inpaint_pen.width()))
+        self.canvas.gv.setCursor(self.get_pen_cursor(INPAINT_BRUSH_COLOR, self.inpaint_pen.width(), shape=self.inpaintConfigPanel.shape))
 
     def on_handchecker_changed(self):
         if self.handTool.isChecked():
