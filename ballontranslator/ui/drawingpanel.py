@@ -103,8 +103,9 @@ class PenConfigPanel(Widget):
         self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px')
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
-        self.alphaSlider = PaintQSlider(self.tr('alpha value'))
+        self.alphaSlider = PaintQSlider(self.tr('alpha value') + ' value')
         self.alphaSlider.setRange(0, 255)
+        self.alphaSlider.setValue(255)
         self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
 
         self.colorPicker = ColorPicker()
@@ -144,6 +145,7 @@ class PenConfigPanel(Widget):
 
     def on_color_changed(self):
         color = self.colorPicker.rgba()
+        color[-1] = self.alphaSlider.value()
         self.colorChanged.emit(color)
 
 
@@ -335,6 +337,8 @@ class DrawingPanel(Widget):
         self.pentool_pen.setColor(color)
         if self.isVisible():
             self.setPenCursor()
+        self.penConfigPanel.colorPicker.setPickerColor(color)
+        self.penConfigPanel.alphaSlider.setValue(color.alpha())
 
     def on_use_handtool(self) -> None:
         if self.currentTool is not None and self.currentTool != self.handTool:
@@ -401,7 +405,6 @@ class DrawingPanel(Widget):
         self.setInpaintToolWidth(config.inpainter_width)
         self.inpaintConfigPanel.thicknessSlider.setValue(config.inpainter_width)
         self.setPenToolColor(config.pentool_color)
-        self.penConfigPanel.colorPicker.setPickerColor(config.pentool_color)
 
         self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
