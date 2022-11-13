@@ -829,3 +829,6 @@ class DrawingPanel(Widget):
             self.inpaint_stroke = None
             if self.inpaintTool.isChecked():
                 self.canvas.image_edit_mode = ImageEditMode.InpaintTool
+
+    def handle_page_changed(self):
+        self.clearInpaintItems()

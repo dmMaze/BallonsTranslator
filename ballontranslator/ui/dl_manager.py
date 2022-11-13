@@ -76,7 +76,8 @@ class ModuleThread(QThread):
 
 class InpaintThread(ModuleThread):
 
-    finish_inpaint = Signal(dict)    
+    finish_inpaint = Signal(dict)
+    inpainting = False    
     def __init__(self, dl_config: DLModuleConfig, *args, **kwargs) -> None:
         super().__init__(dl_config, 'inpainter', INPAINTERS, *args, **kwargs)
 
@@ -94,7 +95,7 @@ class InpaintThread(ModuleThread):
     
     def _inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None):
         inpaint_dict = {}
-        
+        self.inpainting = True
         try:
             inpainted = self.inpainter.inpaint(img, mask)
             inpaint_dict = {
@@ -107,7 +108,8 @@ class InpaintThread(ModuleThread):
             self.finish_inpaint.emit(inpaint_dict)
         except Exception as e:
             self.exception_occurred.emit(self.tr('Inpainting Failed.'), str(e), traceback.format_exc())
-
+            self.inpainting = False
+        self.inpainting = False
 
 class TextDetectThread(ModuleThread):
     
@@ -734,6 +736,12 @@ class DLManager(QObject):
         err.setText(msg)
         err.setDetailedText(verbose)
         err.exec()
+
+    def handle_page_changed(self):
+        if not self.imgtrans_thread.isRunning():
+            if self.inpaint_thread.inpainting:
+                self.run_canvas_inpaint = False
+                self.inpaint_thread.terminate()
 
     def on_inpainter_checker_changed(self, is_checked: bool):
         self.dl_config.check_need_inpaint = is_checked

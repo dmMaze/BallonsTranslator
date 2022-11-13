@@ -251,6 +251,9 @@ class MainWindow(FramelessWindow):
         self.canvas.search_widget.set_config(self.config)
         self.global_search_widget.set_config(self.config)
 
+        if self.rightComicTransStackPanel.isHidden():
+            self.setPaintMode()
+
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
         if self.leftBar.needleftStackWidget():
@@ -352,23 +355,30 @@ class MainWindow(FramelessWindow):
         self.canvas.alt_pressed = False
         self.canvas.scale_tool_mode = False
 
+    def conditional_manual_save(self):
+        if self.canvas.projstate_unsaved and not self.opening_dir:
+            update_scene_text = save_proj = self.canvas.text_change_unsaved()
+            save_rst_only = not self.canvas.draw_change_unsaved()
+            if not save_rst_only:
+                save_proj = True
+            
+            self.saveCurrentPage(update_scene_text, save_proj, restore_interface=True, save_rst_only=save_rst_only)
+
     def pageListCurrentItemChanged(self):
         item = self.pageList.currentItem()
         self.page_changing = True
         if item is not None:
             if self.save_on_page_changed:
-                if self.canvas.projstate_unsaved and not self.opening_dir:
-                    self.saveCurrentPage()
+                self.conditional_manual_save()
             self.imgtrans_proj.set_current_img(item.text())
             self.canvas.clear_undostack(update_saved_step=True)
             self.canvas.updateCanvas()
             self.st_manager.hovering_transwidget = None
             self.st_manager.updateSceneTextitems()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
-            self.drawingPanel.clearInpaintItems()
-            if self.dl_manager.run_canvas_inpaint:
-                self.dl_manager.inpaint_thread.terminate()
-                self.dl_manager.run_canvas_inpaint = False
+            self.dl_manager.handle_page_changed()
+            self.drawingPanel.handle_page_changed()
+            
         self.page_changing = False
 
     def setupShortcuts(self):
@@ -591,19 +601,21 @@ class MainWindow(FramelessWindow):
     def save_proj(self):
         if self.leftBar.imgTransChecker.isChecked()\
             and self.imgtrans_proj.directory is not None:
-            self.canvas.clearSelection()
-            self.saveCurrentPage(update_scene_text=True, restore_interface=True)
+            
+            # self.saveCurrentPage(update_scene_text=True, restore_interface=True)
+            self.conditional_manual_save()
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False):
+        
         if not self.imgtrans_proj.img_valid:
             return
+        
         if update_scene_text:
             self.st_manager.updateTextBlkList()
-
-        self.canvas.update_saved_undostep()
         
         if self.rightComicTransStackPanel.isHidden():
             self.bottomBar.texteditChecker.click()
+
         trans_idx = self.rightComicTransStackPanel.currentIndex()
         if trans_idx != 1:
             self.bottomBar.texteditChecker.click()
@@ -612,6 +624,19 @@ class MainWindow(FramelessWindow):
         if self.bottomBar.originalSlider.value() != 0:
             restore_original_transparency = self.bottomBar.originalSlider.value()
             self.bottomBar.originalSlider.setValue(0)
+
+        restore_textblock_mode = False
+        if self.config.imgtrans_textblock:
+            restore_textblock_mode = True
+            self.bottomBar.textblockChecker.click()
+
+        hide_tsc = False
+        if self.st_manager.txtblkShapeControl.isVisible():
+            hide_tsc = True
+            self.st_manager.txtblkShapeControl.hide()
+
+        if not osp.exists(self.imgtrans_proj.result_dir()):
+            os.makedirs(self.imgtrans_proj.result_dir())
 
         if save_proj:
             self.imgtrans_proj.save()
@@ -628,41 +653,28 @@ class MainWindow(FramelessWindow):
                 else:
                     inpainted = self.imgtrans_proj.inpainted_array
                 self.imsave_thread.saveImg(inpainted_path, inpainted)
-        else:
-            mask_path = inpainted_path = None
-            
-        restore_textblock_mode = False
-        if self.config.imgtrans_textblock:
-            restore_textblock_mode = True
-            self.bottomBar.textblockChecker.click()
-
-        hide_tsc = False
-        if self.st_manager.txtblkShapeControl.isVisible():
-            hide_tsc = True
-            self.st_manager.txtblkShapeControl.hide()
-
-        if not osp.exists(self.imgtrans_proj.result_dir()):
-            os.makedirs(self.imgtrans_proj.result_dir())
 
         img = QImage(self.canvas.imgLayer.pixmap().size(), QImage.Format.Format_ARGB32)
         painter = QPainter(img)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.canvas.clearSelection()
         self.canvas.render(painter)
         painter.end()
         imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
         self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img)
             
-        if restore_textblock_mode:
-            self.bottomBar.textblockChecker.click()
-        if hide_tsc:
-            self.st_manager.txtblkShapeControl.show()
         self.canvas.setProjSaveState(False)
+        self.canvas.update_saved_undostep()
 
         if restore_interface:
             if restore_original_transparency is not None:
                 self.bottomBar.originalSlider.setValue(restore_original_transparency)
             if trans_idx != 1:
                 self.bottomBar.paintChecker.click()
+            if restore_textblock_mode:
+                self.bottomBar.textblockChecker.click()
+            if hide_tsc:
+                self.st_manager.txtblkShapeControl.show()
         
     def translatorStatusBtnPressed(self):
         self.leftBar.configChecker.setChecked(True)
