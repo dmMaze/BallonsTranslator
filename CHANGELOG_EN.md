@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2022-11-29
+[v1.3.15](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.15) released
+1. Bugfixes
+2. Optimize saving logic
+3. The shape of Pen/Inpaint tool can be set to rectangle (experimental)
+
 ### 2022-10-25
 [v1.3.14](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.14) released
 1. Bugfixes

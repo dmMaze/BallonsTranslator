@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2022-11-29
+[v1.3.15](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.15)发布
+1. 修bug
+2. 优化保存逻辑
+3. 画笔现在可以改成方形(实验)
+
 ### 2022-10-25
 [v1.3.14](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.14)发布
 1. 修bug
