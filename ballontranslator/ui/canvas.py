@@ -130,7 +130,7 @@ class Canvas(QGraphicsScene):
         self.ctrl_relesed = self.gv.ctrl_released
         self.vscroll_bar = self.gv.verticalScrollBar()
         self.hscroll_bar = self.gv.horizontalScrollBar()
-        self.default_cursor = self.gv.cursor()
+        # self.default_cursor = self.gv.cursor()
         self.rubber_band = self.addWidget(QRubberBand(QRubberBand.Shape.Rectangle))
         self.rubber_band.hide()
         self.rubber_band_origin = None

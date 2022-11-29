@@ -38,6 +38,7 @@ class SourceTextEdit(QTextEdit):
         self.input_method_text = ''
         self.text_content_changed = False
         self.highlighting = False
+        self.ctrlv_pressed = False
 
     def block_all_signals(self, block: bool):
         self.blockSignals(block)
@@ -62,31 +63,40 @@ class SourceTextEdit(QTextEdit):
             self.text_content_changed = False
             if not self.highlighting:
                 self.text_changed.emit()
+                
         if self.hasFocus() and not self.pre_editing and not self.highlighting:
 
             if not self.in_redo_undo:
+                
                 change_from = self.change_from
                 added_text = ''
                 input_method_used = False
-                if self.input_method_from != -1:
-                    added_text = self.input_method_text
-                    change_from = self.input_method_from
-                    input_method_used = True
-        
-                elif self.change_added > 0:
-                    len_text = len(self.toPlainText())
+                
+                if self.ctrlv_pressed:
+                    self.ctrlv_pressed = False
                     cursor = self.textCursor()
-                    
-                    if self.change_added >  len_text:
-                        self.change_added = 1
-                        change_from = self.textCursor().position() - 1
-                        input_method_used = True
                     cursor.setPosition(change_from)
-                    cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
+                    cursor.setPosition(self.textCursor().position(), QTextCursor.MoveMode.KeepAnchor)
                     added_text = cursor.selectedText()
+                
+                else:
+                    if self.input_method_from != -1:
+                        added_text = self.input_method_text
+                        change_from = self.input_method_from
+                        input_method_used = True
+                    elif self.change_added > 0:
+                        len_text = len(self.toPlainText())
+                        cursor = self.textCursor()
+                        
+                        if self.change_added >  len_text:
+                            self.change_added = 1
+                            change_from = self.textCursor().position() - 1
+                            input_method_used = True
+                        cursor.setPosition(change_from)
+                        cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
+                        added_text = cursor.selectedText()
 
                 self.propagate_user_edited.emit(change_from, added_text, input_method_used)
-                
                 undo_steps = self.document().availableUndoSteps()
                 new_steps = undo_steps - self.old_undo_steps
                 if new_steps > 0:
@@ -147,6 +157,9 @@ class SourceTextEdit(QTextEdit):
                 e.accept()
                 self.redo_signal.emit()
                 return
+            elif e.key() == Qt.Key.Key_V:
+                self.ctrlv_pressed = True
+                return super().keyPressEvent(e)
         elif e.key() == Qt.Key.Key_Return:
             e.accept()
             self.textCursor().insertText('\n')

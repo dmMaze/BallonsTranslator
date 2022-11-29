@@ -61,8 +61,6 @@ class MainWindow(FramelessWindow):
                 if osp.exists(proj_dir):
                     self.OpenProj(proj_dir)
 
-
-
     def setStyleSheet(self, styleSheet: str) -> None:
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
         self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
