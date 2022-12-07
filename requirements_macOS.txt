@@ -27,3 +27,4 @@ docx2txt
 piexif
 pycocoa
 pyobjc
+six
