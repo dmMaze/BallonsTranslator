@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+# macOS pyinstaller 打包
 
 block_cipher = None
 
@@ -19,11 +20,6 @@ a = Analysis(
         './tests', 
         './ui', 
         './ui/framelesswindow', 
-        './ui/framelesswindow/fw_qt5', 
-        './ui/framelesswindow/fw_qt5/linux', 
-        './ui/framelesswindow/fw_qt5/mac', 
-        './ui/framelesswindow/fw_qt5/utils', 
-        './ui/framelesswindow/fw_qt5/windows', 
         './ui/framelesswindow/fw_qt6', 
         './ui/framelesswindow/fw_qt6/linux', 
         './ui/framelesswindow/fw_qt6/mac', 

@@ -2,6 +2,7 @@ import sys
 import argparse
 import os.path as osp
 import os
+from utils.logger import logger as LOGGER
 
 QT_APIS = ['pyqt5', 'pyqt6']
 
@@ -15,6 +16,10 @@ def main():
         os.environ['QT_API'] = 'pyqt5'
     else:
         os.environ['QT_API'] = args.qt_api
+
+    if sys.platform == 'darwin':
+        os.environ['QT_API'] = 'pyqt6'
+        LOGGER.info('running on macOS, set QT_API to pyqt6')
 
     if sys.platform == 'win32':
         import ctypes
