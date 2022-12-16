@@ -201,9 +201,9 @@ class LeftBar(Widget):
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
         vlayout.addWidget(self.configChecker)
         vlayout.addWidget(self.runImgtransBtn)
-        vlayout.setContentsMargins(padding, 0, padding, LEFTBTN_WIDTH / 2)
+        vlayout.setContentsMargins(padding, 0, padding, int(LEFTBTN_WIDTH / 2))
         vlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        vlayout.setSpacing(LEFTBTN_WIDTH / 2)
+        vlayout.setSpacing(int(LEFTBTN_WIDTH / 2))
         self.setGeometry(0, 0, 300, 500)
         self.setMouseTracking(True)
 

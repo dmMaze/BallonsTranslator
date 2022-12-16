@@ -1,18 +1,18 @@
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout, QScrollArea, QGroupBox, QPushButton, QLabel
+from typing import Union, Tuple
+
+import cv2
+import numpy as np
 from qtpy.QtCore import Signal, Qt, QPoint
 from qtpy.QtGui import QColor, QShowEvent, QPixmap, QImage, QPainter, QFontMetricsF
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout, QScrollArea, QGroupBox, QPushButton, QLabel
 
+from . import constants as C
 from .misc import pixmap2ndarray, ndarray2pixmap, FontFormat, pt2px
 from .stylewidgets import Widget, ColorPicker, PaintQSlider
-from . import constants as C
-
-from typing import Union, Tuple
-import numpy as np
-import cv2
 
 
-def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, strength=1.0, radius=21) -> Tuple[QPixmap, np.ndarray, np.ndarray]:
-
+def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, strength=1.0, radius=21) -> Tuple[
+    QPixmap, np.ndarray, np.ndarray]:
     if isinstance(color, QColor):
         color = [color.red(), color.green(), color.blue()]
 
@@ -30,20 +30,19 @@ def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, 
 
     result = ndarray2pixmap(bg_img)
     return result, img
-    
+
 
 def effect_require_repaint(fontfmt: FontFormat) -> bool:
     return fontfmt.stroke_width > 0 or fontfmt.shadow_radius > 0
 
 
-def text_effect_preview_pipe(target:  QPixmap, font_size: float, fontfmt: FontFormat, inplace=False) -> QPixmap:
-    
+def text_effect_preview_pipe(target: QPixmap, font_size: float, fontfmt: FontFormat, inplace=False) -> QPixmap:
     if not inplace:
         target = target.copy()
 
     if effect_require_repaint(fontfmt):
         painter = QPainter(target)
-        
+
         # shadow
         if fontfmt.shadow_radius != 0 and fontfmt.shadow_strength > 0:
             r = int(round(fontfmt.shadow_radius * font_size))
@@ -52,7 +51,7 @@ def text_effect_preview_pipe(target:  QPixmap, font_size: float, fontfmt: FontFo
             xoffset = int(fontfmt.shadow_offset[0] * font_size)
             yoffset = int(fontfmt.shadow_offset[1] * font_size)
             painter.drawPixmap(xoffset, yoffset, shadow_map)
-        
+
         painter.end()
     # opacity
     if fontfmt.opacity != 1:
@@ -66,8 +65,8 @@ def text_effect_preview_pipe(target:  QPixmap, font_size: float, fontfmt: FontFo
 
     return target
 
-class TextEffectPanel(Widget):
 
+class TextEffectPanel(Widget):
     apply = Signal()
 
     def __init__(self, *args, **kwargs) -> None:
@@ -76,10 +75,10 @@ class TextEffectPanel(Widget):
         self.fontfmt: FontFormat = None
         self.fontfmt = FontFormat()
         self.active_fontfmt = FontFormat()
-        
+
         self.preview_label = QLabel(self)
         self.preview_label.setContentsMargins(0, 0, 0, 0)
-        
+
         font = self.preview_label.font()
         font.setPointSizeF(24)
         self.preview_label.setFont(font)
@@ -88,9 +87,9 @@ class TextEffectPanel(Widget):
         fm = QFontMetricsF(font)
         br = fm.boundingRect(self.preview_text)
         br_w, br_h = br.width(), br.height()
-        self.preview_pixmap = QPixmap(br_w + br_h * 2, br_h * 3)
-        self.preview_origin = QPoint(br_h, 1.75 * br_h)
-        self.preview_label.setFixedHeight(br_h * 2)
+        self.preview_pixmap = QPixmap(int(br_w + br_h * 2), int(br_h * 3))
+        self.preview_origin = QPoint(int(br_h), int(1.75 * br_h))
+        self.preview_label.setFixedHeight(int(br_h * 2))
 
         # opacity
         opacity_label = QLabel(self.tr('Opacity'))
@@ -153,7 +152,7 @@ class TextEffectPanel(Widget):
         vlayout.addWidget(self.preview_label)
         vlayout.addWidget(self.scroll_area)
         vlayout.addLayout(dec_layout)
-        
+
         self.updatePreviewPixmap()
 
     def updatePreviewPixmap(self):
@@ -222,4 +221,3 @@ class TextEffectPanel(Widget):
         self.shadow_color_picker.setPickerColor(self.fontfmt.shadow_color)
         self.shadow_radius_slider.setValue(int(self.fontfmt.shadow_radius * 100))
         self.shadow_strength_slider.setValue(int(self.fontfmt.shadow_strength * 100))
-
