@@ -357,7 +357,7 @@ class DrawingPanel(Widget):
         dl_manager.inpaint_thread.exception_occurred.connect(self.on_inpaint_failed)
 
     def setInpaintToolWidth(self, width):
-        self.inpaint_pen.setWidth(int(width))
+        self.inpaint_pen.setWidthF(width)
         if self.isVisible():
             self.setInpaintCursor()
 
@@ -541,7 +541,7 @@ class DrawingPanel(Widget):
                 new_val = max(val+1, new_val)
             else:
                 new_val = min(val-1, new_val)
-            self.penConfigPanel.thicknessSlider.setValue(new_val)
+            self.penConfigPanel.thicknessSlider.setValue(int(new_val))
             self.setPenToolWidth(self.penConfigPanel.thicknessSlider.value())
 
         elif self.currentTool == self.inpaintTool:
@@ -551,7 +551,7 @@ class DrawingPanel(Widget):
                 new_val = max(val+1, new_val)
             else:
                 new_val = min(val-1, new_val)
-            self.inpaintConfigPanel.thicknessSlider.setValue(new_val)
+            self.inpaintConfigPanel.thicknessSlider.setValue(int(new_val))
             self.setInpaintToolWidth(self.inpaintConfigPanel.thicknessSlider.value())
 
     def showEvent(self, event) -> None:
@@ -699,7 +699,7 @@ class DrawingPanel(Widget):
         self.scale_circle.setRect(0, 0, radius, radius)
 
     def on_end_scale_tool(self):
-        circle_size = self.scale_circle.rect().width() / self.canvas.scale_factor
+        circle_size = int(self.scale_circle.rect().width() / self.canvas.scale_factor)
         self.scale_tool_pos = None
         self.canvas.removeItem(self.scale_circle)
 
