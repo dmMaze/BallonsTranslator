@@ -2,12 +2,11 @@ import numpy as np
 from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
-from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QObject, QEvent
-from qtpy.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QPen, QPainterPath
+from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
+from qtpy.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
-
 except:
     from qtpy.QtGui import QUndoStack, QUndoCommand
 
@@ -25,7 +24,6 @@ CANVAS_SCALE_MIN = 0.1
 CANVAS_SCALE_SPEED = 0.1
 
 class CustomGV(QGraphicsView):
-    do_scale = True
     ctrl_pressed = False
     scale_up_signal = Signal()
     scale_down_signal = Signal()
@@ -37,12 +35,11 @@ class CustomGV(QGraphicsView):
         # qgraphicsview always scroll content according to wheelevent
         # which is not desired when scaling img
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            if self.do_scale:
-                if event.angleDelta().y() > 0:
-                    self.scale_up_signal.emit()
-                else:
-                    self.scale_down_signal.emit()
-                return
+            if event.angleDelta().y() > 0:
+                self.scale_up_signal.emit()
+            else:
+                self.scale_down_signal.emit()
+            return
         return super().wheelEvent(event)
 
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
@@ -61,9 +58,6 @@ class CustomGV(QGraphicsView):
         return super().resizeEvent(event)
 
     def hideEvent(self, event: QHideEvent) -> None:
-        self.leftbtn_pressed = False
-        self.do_scale = True
-        self.ctrl_pressed = False
         self.hide_canvas.emit()
         return super().hideEvent(event)
 
@@ -499,11 +493,18 @@ class Canvas(QGraphicsScene):
                 self.layout_textblks.emit()
     
     def on_hide_canvas(self):
+        self.clear_states()
+
+    def on_activation_changed(self):
+        self.clear_states()
+
+    def clear_states(self):
         self.alt_pressed = False
         self.scale_tool_mode = False
         self.creating_textblock = False
         self.create_block_origin = None
         self.editing_textblkitem = None
+        self.gv.ctrl_pressed = False
         if self.stroke_img_item is not None:
             self.removeItem(self.stroke_img_item)
 
@@ -594,3 +595,4 @@ class Canvas(QGraphicsScene):
         self.disconnect()
         self.text_undo_stack.disconnect()
         self.draw_undo_stack.disconnect()
+

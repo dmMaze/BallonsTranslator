@@ -335,9 +335,11 @@ class MainWindow(FramelessWindow):
         return super().closeEvent(event)
 
     def changeEvent(self, event: QEvent):
-        if event.type() == QEvent.WindowStateChange:
+        if event.type() == QEvent.Type.WindowStateChange:
             if self.windowState() & Qt.WindowState.WindowMaximized:
                 self.titleBar.maxBtn.setChecked(True)
+        elif event.type() == QEvent.Type.ActivationChange:
+            self.canvas.on_activation_changed()
         super().changeEvent(event)
 
     def save_config(self):
