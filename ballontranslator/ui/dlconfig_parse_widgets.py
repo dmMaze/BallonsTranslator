@@ -21,7 +21,7 @@ class ParamNameLabel(QLabel):
         labelwidth = 120
         fm = QFontMetricsF(font)
         fmw = fm.boundingRect(param_name).width()
-        labelwidth = max(fmw, labelwidth)
+        labelwidth = int(max(fmw, labelwidth))
         self.setFixedWidth(labelwidth)
         self.setText(param_name)
 

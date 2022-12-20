@@ -446,7 +446,7 @@ class FontFormatPanel(Widget):
         self.letterSpacingBox = SizeComboBox([0, 10], self)
         self.letterSpacingBox.addItems(["0.0"])
         self.letterSpacingBox.setToolTip(self.tr("Change letter spacing"))
-        self.letterSpacingBox.setMinimumWidth(self.letterSpacingBox.height() * 2.5)
+        self.letterSpacingBox.setMinimumWidth(int(self.letterSpacingBox.height() * 2.5))
         self.letterSpacingBox.apply_change.connect(self.update_letter_spacing)
         self.letterSpacingBox.editTextChanged.connect(self.onLetterSpacingEditorChanged)
 

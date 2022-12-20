@@ -183,8 +183,8 @@ class MainWindow(FramelessWindow):
 
     def setupConfig(self):
 
-        self.bottomBar.originalSlider.setValue(self.config.original_transparency * 100)
-        self.drawingPanel.maskTransperancySlider.setValue(self.config.mask_transparency * 100)
+        self.bottomBar.originalSlider.setValue(int(self.config.original_transparency * 100))
+        self.drawingPanel.maskTransperancySlider.setValue(int(self.config.mask_transparency * 100))
         self.leftBar.initRecentProjMenu(self.config.recent_proj_list)
         self.leftBar.save_config.connect(self.save_config)
         self.leftBar.imgTransChecker.setChecked(True)
