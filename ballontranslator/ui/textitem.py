@@ -762,3 +762,8 @@ class TextBlkItem(QGraphicsTextItem):
             self.setPadding(self.layout.max_font_size(to_px=True))
         if repaint:
             self.repaint_background()
+
+    def setPlainTextAndKeepUndoStack(self, text: str):
+        cursor = QTextCursor(self.document())
+        cursor.select(QTextCursor.SelectionType.Document)
+        cursor.insertText(text)

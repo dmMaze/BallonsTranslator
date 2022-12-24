@@ -443,3 +443,27 @@ class GlobalRepalceAllCommand(QUndoCommand):
         for src_dict in self.src_list:
             blk: TextBlock = self.proj.pages[trans_dict['pagename']][trans_dict['idx']]
             blk.text = trans_dict['ori']
+
+
+class MultiPasteCommand(QUndoCommand):
+    def __init__(self, text: str, blkitems: List[TextBlkItem], etrans: List[TransTextEdit]) -> None:
+        super().__init__()
+        self.op_counter = -1
+        self.blkitems = blkitems
+        self.etrans = etrans
+        for blkitem, etran in zip(self.blkitems, self.etrans):
+            etran.setPlainTextAndKeepUndoStack(text)
+            blkitem.setPlainTextAndKeepUndoStack(text)
+
+    def redo(self):
+        if self.op_counter == 0:
+            self.op_counter += 1
+            return
+        for blkitem, etran in zip(self.blkitems, self.etrans):
+            blkitem.redo()
+            etran.redo()
+
+    def undo(self):
+        for blkitem, etran in zip(self.blkitems, self.etrans):
+            blkitem.undo()
+            etran.undo()

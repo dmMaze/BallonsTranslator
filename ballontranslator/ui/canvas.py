@@ -30,6 +30,7 @@ class CustomGV(QGraphicsView):
     view_resized = Signal()
     hide_canvas = Signal()
     ctrl_released = Signal()
+    canvas: QGraphicsScene = None
 
     def wheelEvent(self, event : QWheelEvent) -> None:
         # qgraphicsview always scroll content according to wheelevent
@@ -48,10 +49,18 @@ class CustomGV(QGraphicsView):
             self.ctrl_released.emit()
         return super().keyReleaseEvent(event)
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key.Key_Control:
+    def keyPressEvent(self, e: QKeyEvent) -> None:
+        if e.key() == Qt.Key.Key_Control:
             self.ctrl_pressed = True
-        return super().keyPressEvent(event)
+
+        if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if e.key() == Qt.Key.Key_V:
+                # self.ctrlv_pressed.emit(e)
+                if self.canvas.handle_ctrlv():
+                    e.accept()
+                    return
+
+        return super().keyPressEvent(e)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         self.view_resized.emit()
@@ -70,6 +79,7 @@ class Canvas(QGraphicsScene):
 
     scalefactor_changed = Signal()
     end_create_textblock = Signal(QRectF)
+    paste2selected_textitems = Signal()
     end_create_rect = Signal(QRectF, int)
     finish_painting = Signal(StrokeImgItem)
     finish_erasing = Signal(StrokeImgItem)
@@ -112,6 +122,7 @@ class Canvas(QGraphicsScene):
         self.gv.view_resized.connect(self.onViewResized)
         self.gv.hide_canvas.connect(self.on_hide_canvas)
         self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.gv.canvas = self
         
         if not C.FLAG_QT6:
             # mitigate https://bugreports.qt.io/browse/QTBUG-93417
@@ -354,6 +365,23 @@ class Canvas(QGraphicsScene):
                 self.setSelectionArea(sel_path, Qt.ItemSelectionMode.IntersectsItemBoundingRect, self.gv.viewportTransform())
         
         return super().mouseMoveEvent(event)
+
+    def selected_text_items(self) -> List[TextBlkItem]:
+        sel_titem = []
+        selitems = self.selectedItems()
+        for sel in selitems:
+            if isinstance(sel, TextBlkItem):
+                sel_titem.append(sel)
+        return sel_titem
+
+    def handle_ctrlv(self) -> bool:
+        if not self.textEditMode():
+            return False        
+        if self.editing_textblkitem is not None and self.editing_textblkitem.isEditing():
+            return False
+
+        self.paste2selected_textitems.emit()
+        return True
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()

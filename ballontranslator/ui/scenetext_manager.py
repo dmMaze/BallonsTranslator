@@ -15,7 +15,7 @@ from .canvas import Canvas
 from .textedit_area import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget
 from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
-from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand
+from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand
 from utils.imgproc_utils import extract_ballon_region
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
@@ -149,6 +149,7 @@ class SceneTextManager(QObject):
         self.canvas = canvas
         self.canvas.scalefactor_changed.connect(self.adjustSceneTextRect)
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
+        self.canvas.paste2selected_textitems.connect(self.on_paste2selected_textitems)
         self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
         self.canvas.format_textblks.connect(self.onFormatTextblks)
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
@@ -596,6 +597,14 @@ class SceneTextManager(QObject):
             blk_item = TextBlkItem(block, len(self.textblk_item_list), set_format=False, show_rect=True)
             blk_item.set_fontformat(self.formatpanel.global_format)
             self.canvas.push_undo_command(CreateItemCommand(blk_item, self))
+
+    def on_paste2selected_textitems(self):
+        blkitems = self.canvas.selected_text_items()
+        text = self.app.clipboard().text()
+        if len(blkitems) < 1 or not text:
+            return
+        etrans = [self.pairwidget_list[blkitem.idx].e_trans for blkitem in blkitems]
+        self.canvas.push_undo_command(MultiPasteCommand(text, blkitems, etrans))
 
     def onRotateTextBlkItem(self, item: TextBlock):
         self.canvas.push_undo_command(RotateItemCommand(item))
