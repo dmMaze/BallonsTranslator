@@ -197,10 +197,10 @@ class SegDetectorRepresenter():
     def box_score_fast(self, bitmap, _box):
         h, w = bitmap.shape[:2]
         box = _box.copy()
-        xmin = np.clip(np.floor(box[:, 0].min()).astype(np.int), 0, w - 1)
-        xmax = np.clip(np.ceil(box[:, 0].max()).astype(np.int), 0, w - 1)
-        ymin = np.clip(np.floor(box[:, 1].min()).astype(np.int), 0, h - 1)
-        ymax = np.clip(np.ceil(box[:, 1].max()).astype(np.int), 0, h - 1)
+        xmin = np.clip(np.floor(box[:, 0].min()).astype(np.int64), 0, w - 1)
+        xmax = np.clip(np.ceil(box[:, 0].max()).astype(np.int64), 0, w - 1)
+        ymin = np.clip(np.floor(box[:, 1].min()).astype(np.int64), 0, h - 1)
+        ymax = np.clip(np.ceil(box[:, 1].max()).astype(np.int64), 0, h - 1)
 
         mask = np.zeros((ymax - ymin + 1, xmax - xmin + 1), dtype=np.uint8)
         box[:, 0] = box[:, 0] - xmin
@@ -465,7 +465,7 @@ class QuadMetric():
                 for i in range(pred_polygons.shape[0]):
                     if pred_scores[i] >= box_thresh:
                         # print(pred_polygons[i,:,:].tolist())
-                        pred.append(dict(points=pred_polygons[i, :, :].astype(np.int)))
+                        pred.append(dict(points=pred_polygons[i, :, :].astype(np.int64)))
                 # pred = [dict(points=pred_polygons[i,:,:].tolist()) if pred_scores[i] >= box_thresh for i in range(pred_polygons.shape[0])]
             results.append(self.evaluator.evaluate_image(gt, pred))
         return results

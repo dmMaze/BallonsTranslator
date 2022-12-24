@@ -589,7 +589,7 @@ class SceneTextManager(QObject):
     def onEndCreateTextBlock(self, rect: QRectF):
         if rect.width() > 1 and rect.height() > 1:
             xyxy = np.array([rect.x(), rect.y(), rect.right(), rect.bottom()])        
-            xyxy = np.round(xyxy).astype(np.int)
+            xyxy = np.round(xyxy).astype(np.int32)
             block = TextBlock(xyxy)
             xywh = np.copy(xyxy)
             xywh[[2, 3]] -= xywh[[0, 1]]
