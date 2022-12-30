@@ -24,6 +24,8 @@ preview
   - Support search & replace
   - Support export/import to/from word documents
 
+* Adapted to images with extreme aspect ratio such as webtoons
+
 # Usage
 
 Windows users can download Ballonstranslator-x.x.x-core.7z from [腾讯云](https://share.weiyun.com/xoRhz9i4) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and extract it to a folder named BallonTranslator, also download Ballonstranslator-x.x.x-patch.7z if there is any and extract it to the same folder.
@@ -126,7 +128,7 @@ Support English and Japanese text detection, training code and more details can 
 
 ## Translators
 
- * Please change the goolge translator url from *.cn to *.com if you are not blocked by GFW.  
+ * <s> Please change the goolge translator url from *.cn to *.com if you are not blocked by GFW. </s> Google shuts down translate service in China, please set corresponding 'url' in config panel to *.com.
  * Caiyun translator need to require a [token](https://dashboard.caiyunapp.com/)
  * papago  
  * DeepL & Sugoi translator(and it's CT2 Translation conversion) thanks to [Snowad14](https://github.com/Snowad14)  

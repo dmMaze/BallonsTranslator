@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2022-12-30
+[v1.3.18](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.18) released
+1. Adapted to images with extreme aspect ratio such as webtoons
+2. Support paste text to multiple selected Text blocks.
+3. Bugfixes
+
 ### 2022-11-29
 [v1.3.15](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.15) released
 1. Bugfixes

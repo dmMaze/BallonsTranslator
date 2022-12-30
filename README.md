@@ -24,6 +24,7 @@
   - 支持全文/源文/译文查找替换
   - 支持导入导出word文档
 
+* 适用于条漫
 
 # 使用说明
 
@@ -131,7 +132,7 @@ Sugoi翻译器作者: [mingshiba](https://www.patreon.com/mingshiba).
 
 ### 翻译器
 
- * 谷歌翻译能挂代理建议把url从cn改成com
+ * <s>谷歌翻译能挂代理建议把url从cn改成com</s> 谷歌翻译器已经关闭中国服务, 大陆再用需要设置全局代理, 并在设置面板把url换成*.com
  * 彩云, 需要申请[token](https://dashboard.caiyunapp.com/)
  * papago  
  * DeepL 和 Sugoi(及它的CT2 Translation转换)翻译器, 感谢[Snowad14](https://github.com/Snowad14)  

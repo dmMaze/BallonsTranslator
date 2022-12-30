@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2022-12-30
+[v1.3.18](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.18)发布
+1. 适应具有极端宽高比的图片比如条漫
+2. 支持粘贴到多个选中的文本编辑框
+3. 修bug
+
 ### 2022-11-29
 [v1.3.15](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.15)发布
 1. 修bug
