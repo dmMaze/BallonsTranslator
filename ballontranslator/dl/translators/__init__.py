@@ -174,7 +174,7 @@ class GoogleTranslator(TranslatorBase):
         'url': {
             'type': 'selector',
             'options': [
-                'https://translate.google.cn/m',
+                # 'https://translate.google.cn/m',
                 'https://translate.google.com/m'
             ],
             'select': 'https://translate.google.cn/m'
