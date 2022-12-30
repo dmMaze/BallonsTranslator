@@ -286,6 +286,15 @@ class TextBlock(object):
             return self.default_stroke_width
         return 0
 
+    def adjust_pos(self, dx: int, dy: int):
+        self.xyxy[0] += dx
+        self.xyxy[1] += dy
+        self.xyxy[2] += dx
+        self.xyxy[3] += dy
+        if self._bounding_rect is not None:
+            self._bounding_rect[0] += dx
+            self._bounding_rect[1] += dy
+
 def sort_textblk_list(blk_list: List[TextBlock], im_w: int, im_h: int) -> List[TextBlock]:
     if len(blk_list) == 0:
         return blk_list

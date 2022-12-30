@@ -3,7 +3,7 @@ from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
-from qtpy.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath
+from qtpy.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
@@ -59,6 +59,10 @@ class CustomGV(QGraphicsView):
                 if self.canvas.handle_ctrlv():
                     e.accept()
                     return
+            if e.key() == Qt.Key.Key_C:
+                if self.canvas.handle_ctrlc():
+                    e.accept()
+                    return
 
         return super().keyPressEvent(e)
 
@@ -84,6 +88,8 @@ class Canvas(QGraphicsScene):
     finish_painting = Signal(StrokeImgItem)
     finish_erasing = Signal(StrokeImgItem)
     delete_textblks = Signal()
+    copy_textblks = Signal(QPointF)
+    paste_textblks = Signal(QPointF)
     format_textblks = Signal()
     layout_textblks = Signal()
 
@@ -187,6 +193,8 @@ class Canvas(QGraphicsScene):
 
         self.saved_textundo_step = 0
         self.saved_drawundo_step = 0
+
+        self.clipboard_blks: List[TextBlock] = []
 
     def textEditMode(self) -> bool:
         return self.editor_index == 1
@@ -380,8 +388,27 @@ class Canvas(QGraphicsScene):
         if self.editing_textblkitem is not None and self.editing_textblkitem.isEditing():
             return False
 
-        self.paste2selected_textitems.emit()
+        if len(self.selected_text_items()) > 0:
+            self.paste2selected_textitems.emit()
+        else:
+            self.paste_textblks.emit(self.scene_cursor_pos())
+
         return True
+
+    def handle_ctrlc(self):
+        if not self.textEditMode():
+            return False        
+        if self.editing_textblkitem is not None and self.editing_textblkitem.isEditing():
+            return False
+
+        if len(self.selected_text_items()) > 0:
+            self.copy_textblks.emit(self.scene_cursor_pos())
+        
+        return True
+
+    def scene_cursor_pos(self):
+        origin = self.gv.mapFromGlobal(QCursor.pos())
+        return self.gv.mapToScene(origin)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
@@ -507,14 +534,21 @@ class Canvas(QGraphicsScene):
         self.textblock_mode = mode
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent):
-        if len(self.selectedItems()) != 0:
+        if self.textEditMode():
             menu = QMenu()
+            copy_act = menu.addAction(self.tr("Copy"))
+            paste_act = menu.addAction(self.tr("Paste"))
             delete_act = menu.addAction(self.tr("Delete"))
+            menu.addSeparator()
             format_act = menu.addAction(self.tr("Apply font formatting"))
             layout_act = menu.addAction(self.tr("Auto layout"))
             rst = menu.exec_(event.screenPos())
             if rst == delete_act:
                 self.delete_textblks.emit()
+            elif rst == copy_act:
+                self.copy_textblks.emit(event.scenePos())
+            elif rst == paste_act:
+                self.paste_textblks.emit(event.scenePos())
             elif rst == format_act:
                 self.format_textblks.emit()
             elif rst == layout_act:

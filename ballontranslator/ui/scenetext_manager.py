@@ -1,9 +1,10 @@
 
 from typing import List, Union, Tuple
 import numpy as np
+import copy
 
 from qtpy.QtWidgets import QApplication
-from qtpy.QtCore import QObject, QRectF, Qt, Signal
+from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF
 from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -137,6 +138,25 @@ class DeleteBlkItemsCommand(QUndoCommand):
             self.sw.updateCounterText()
 
 
+class PasteBlkItemsCommand(QUndoCommand):
+    def __init__(self, blk_list: List[TextBlkItem], pwidget_list: List[TransPairWidget], ctrl, parent=None):
+        super().__init__(parent)
+        self.op_counter = 0
+        self.blk_list = blk_list
+        for blkitem in blk_list:
+            blkitem.setSelected(True)
+        self.pwidget_list = pwidget_list
+        self.ctrl:SceneTextManager = ctrl
+
+    def redo(self):
+        if self.op_counter == 0:
+            self.op_counter += 1
+            return
+        self.ctrl.recoverTextblkItemList(self.blk_list, self.pwidget_list)
+
+    def undo(self):
+        self.ctrl.deleteTextblkItemList(self.blk_list, self.pwidget_list)
+
 class SceneTextManager(QObject):
     new_textblk = Signal(int)
     def __init__(self, 
@@ -151,6 +171,8 @@ class SceneTextManager(QObject):
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
         self.canvas.paste2selected_textitems.connect(self.on_paste2selected_textitems)
         self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
+        self.canvas.copy_textblks.connect(self.onCopyBlkItems)
+        self.canvas.paste_textblks.connect(self.onPasteBlkItems)
         self.canvas.format_textblks.connect(self.onFormatTextblks)
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.txtblkShapeControl = canvas.txtblkShapeControl
@@ -382,6 +404,53 @@ class SceneTextManager(QObject):
             selected_blks.append(self.txtblkShapeControl.blk_item)
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(DeleteBlkItemsCommand(selected_blks, self))
+
+    def onCopyBlkItems(self, pos: QPointF):
+        selected_blks = self.get_selected_blkitems()
+        if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
+            selected_blks.append(self.txtblkShapeControl.blk_item)
+
+        if len(selected_blks) == 0:            
+            return
+
+        self.canvas.clipboard_blks.clear()
+        if self.canvas.text_change_unsaved():
+            self.updateTextBlkList()
+
+        if pos is None:
+            pos = selected_blks[0].blk.xyxy
+            pos_x, pos_y = pos[0], pos[1]
+        else:
+            pos_x, pos_y = pos.x(), pos.y()
+            pos_x = int(pos_x / self.canvas.scale_factor)
+            pos_y = int(pos_y / self.canvas.scale_factor)
+
+        for blkitems in selected_blks:
+            blk = copy.deepcopy(blkitems.blk)
+            blk.adjust_pos(-pos_x, -pos_y)
+            self.canvas.clipboard_blks.append(blk)
+
+
+    def onPasteBlkItems(self, pos: QPointF):
+        if pos is None:
+            pos_x, pos_y = 0, 0
+        else:
+            pos_x, pos_y = pos.x(), pos.y()
+            pos_x = int(pos_x / self.canvas.scale_factor)
+            pos_y = int(pos_y / self.canvas.scale_factor)
+        blkitem_list, pair_widget_list = [], []
+        for blk in self.canvas.clipboard_blks:
+            blk = copy.deepcopy(blk)
+            blk.adjust_pos(pos_x, pos_y)
+            blkitem = self.addTextBlock(blk)
+            pairw = self.pairwidget_list[-1]
+            blkitem_list.append(blkitem)
+            pair_widget_list.append(pairw)
+        if len(blkitem_list) > 0:
+            self.canvas.clearSelection()
+
+            self.canvas.push_undo_command(PasteBlkItemsCommand(blkitem_list, pair_widget_list, self))
+        pass
 
     def onFormatTextblks(self):
         self.apply_fontformat(self.formatpanel.global_format)
