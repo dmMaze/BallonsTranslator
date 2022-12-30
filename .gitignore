@@ -11,6 +11,7 @@ tmp.py
 dummy_scripts.py
 
 tmp
+TEST*
 
 *.json
 .vscode

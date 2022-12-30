@@ -37,7 +37,7 @@ class SegDetectorRepresenter():
         self.max_candidates = max_candidates
         self.unclip_ratio = unclip_ratio
 
-    def __call__(self, batch, pred, is_output_polygon=False):
+    def __call__(self, batch, pred, is_output_polygon=False, height=None, width=None):
         '''
         batch: (image, polygons, ignore_tags
         batch: a dict produced by dataloaders.
@@ -57,9 +57,13 @@ class SegDetectorRepresenter():
         scores_batch = []
         # print(pred.size())
         batch_size = pred.size(0) if isinstance(pred, torch.Tensor) else pred.shape[0]
+
+        if height is None:
+            height = pred.shape[1]
+        if width is None: 
+            width = pred.shape[2]
+
         for batch_index in range(batch_size):
-            # height, width = batch['shape'][batch_index]
-            height, width = pred.shape[1], pred.shape[2]
             if is_output_polygon:
                 boxes, scores = self.polygons_from_bitmap(pred[batch_index], segmentation[batch_index], width, height)
             else:

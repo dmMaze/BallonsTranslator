@@ -323,3 +323,29 @@ def extract_ballon_region(img: np.ndarray, ballon_rect: List, show_process=False
         return ballon_mask, (ballon_mask > 0).sum(), [x1, y1, x2, y2], cv2.boundingRect(ballon_mask)
     return ballon_mask, (ballon_mask > 0).sum(), [x1, y1, x2, y2]
 
+def square_pad_resize(img: np.ndarray, tgt_size: int):
+    h, w = img.shape[:2]
+    pad_h, pad_w = 0, 0
+    
+    # make square image
+    if w < h:
+        pad_w = h - w
+        w += pad_w
+    elif h < w:
+        pad_h = w - h
+        h += pad_h
+
+    pad_size = tgt_size - h
+    if pad_size > 0:
+        pad_h += pad_size
+        pad_w += pad_size
+
+    if pad_h > 0 or pad_w > 0:    
+        img = cv2.copyMakeBorder(img, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT)
+
+    down_scale_ratio = tgt_size / img.shape[0]
+    assert down_scale_ratio <= 1
+    if down_scale_ratio < 1:
+        img = cv2.resize(img, (tgt_size, tgt_size), interpolation=cv2.INTER_LINEAR)
+
+    return img, down_scale_ratio, pad_h, pad_w
