@@ -39,8 +39,7 @@ def det_rearrange_forward(
         _psize = _h = patch_lst[0].shape[-1]
         _step = int(ph_step * _psize / patch_size)
         _pw = int(_psize / pw_num)
-        if ph_num > 1:
-            _h += (ph_num - 1) * _step
+        _h = int(_pw / w * h)
         tgtmap = np.zeros((channel, _h, _pw), dtype=np.float32)
         num_patches = len(patch_lst) * pw_num - pad_num
         for ii, p in enumerate(patch_lst):
@@ -48,7 +47,8 @@ def det_rearrange_forward(
                 p = einops.rearrange(p, 'c h w -> c w h')
             for jj in range(pw_num):
                 pidx = ii * pw_num + jj
-                t = pidx * _step
+                rel_t = rel_step_list[pidx]
+                t = int(round(rel_t * _h))
                 b = t + _psize
                 l = jj * _pw
                 r = l + _pw
@@ -82,7 +82,7 @@ def det_rearrange_forward(
             pad_size = pad_h
             batches[-1].append(p)
             if verbose:
-                cv2.imwrite(f'result/rearrange_{ii}.jpg', p[..., ::-1])
+                cv2.imwrite(f'result/rearrange_{ii}.png', p[..., ::-1])
         return batches, down_scale_ratio, pad_size
 
     h, w = img.shape[:2]
@@ -102,7 +102,7 @@ def det_rearrange_forward(
 
         if verbose:
             print(f'Input image will be rearranged to square batches before fed into network.\
-                \n Rearranged batches will be saved to result/rearrange_%d.jpg')
+                \n Rearranged batches will be saved to result/rearrange_%d.png')
 
         if transpose:
             img = einops.rearrange(img, 'h w c -> w h c')
@@ -112,9 +112,14 @@ def det_rearrange_forward(
 
         ph_num = int(np.ceil(h / ph))
         ph_step = int((h - ph) / (ph_num - 1)) if ph_num > 1 else 0
+        rel_ph_step = ph_step / h
+        rel_step_list = []
         patch_list = []
         for ii in range(ph_num):
-            patch_list.append(img[ii * ph_step: ii * ph_step + ph])
+            t = ii * ph_step
+            b = t + ph
+            rel_step_list.append(t / h)
+            patch_list.append(img[t: b])
 
         p_num = int(np.ceil(ph_num / pw_num))
         pad_num = p_num * pw_num - ph_num
