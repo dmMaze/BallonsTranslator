@@ -108,14 +108,27 @@ class TextBlkItem(QGraphicsTextItem):
                         len_text = len(self.toPlainText())
                         cursor = self.textCursor()
                         
+                        # if self.change_added >  len_text:
+                        #     self.change_added = 1
+                        #     change_from = self.textCursor().position() - 1
+                        #     input_method_used = True
+                        # cursor.setPosition(change_from)
+                        # cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
                         if self.change_added >  len_text:
-                            self.change_added = 1
-                            change_from = self.textCursor().position() - 1
+                            self.change_added = self.change_added - len_text
+                            change_from = self.textCursor().position() - self.change_added - 1
                             input_method_used = True
+                            cursor.setPosition(change_from)
+                            cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
+                            added_text = cursor.selectedText()
+                            if added_text == '…' or added_text == '—':
+                                self.change_added = 2
                         cursor.setPosition(change_from)
-                        cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
-                        
+                        cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor) 
+
                         added_text = cursor.selectedText()
+
+                    # print(change_from, added_text, input_method_used, self.change_from, self.change_added)
                     self.propagate_user_edited.emit(change_from, added_text, input_method_used)
 
                 undo_steps = self.document().availableUndoSteps()
