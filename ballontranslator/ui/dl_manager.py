@@ -1,5 +1,5 @@
 import time
-from typing import Union
+from typing import Union, List, Dict, Callable
 import numpy as np
 import traceback
 
@@ -381,6 +381,24 @@ class ImgtransThread(QThread):
             return min(counter, ref_counter) - 1
         return counter - 1
 
+def merge_config_module_params(config_params: Dict, module_keys: List, get_module: Callable) -> Dict:
+    for module_key in module_keys:
+        module_params = get_module(module_key).setup_params
+        if module_key not in config_params or config_params[module_key] is None:
+            config_params[module_key] = module_params
+        else:
+            cfg_param = config_params[module_key]
+            cfg_key_set = set(cfg_param.keys())
+            module_key_set = set(module_params.keys())
+            for ck in cfg_key_set:
+                if ck not in module_key_set:
+                    LOGGER.warning(f'Found invalid {module_key} config: {ck}')
+                    cfg_param.pop(ck)
+            for mk in module_key_set:
+                if mk not in cfg_key_set:
+                    LOGGER.info(f'Found new {module_key} config: {mk}')
+                    cfg_param[mk] = module_params[mk]
+    return config_params
 
 class DLManager(QObject):
     imgtrans_proj: ProjImgTrans = None
@@ -434,11 +452,7 @@ class DLManager(QObject):
         self.imgtrans_thread.exception_occurred.connect(self.handleRunTimeException)
 
         self.translator_panel = translator_panel = config_panel.trans_config_panel        
-        translator_setup_params = self.dl_config.translator_setup_params
-        for translator in VALID_TRANSLATORS:
-            if translator not in translator_setup_params \
-                or translator_setup_params[translator] is None:
-                translator_setup_params[translator] = TRANSLATORS.get(translator).setup_params
+        translator_setup_params = merge_config_module_params(dl_config.translator_setup_params, VALID_TRANSLATORS, TRANSLATORS.get)
         translator_panel.setupModulesParamWidgets(translator_setup_params)
         translator_panel.translator_changed.connect(self.setTranslator)
         translator_panel.source_combobox.currentTextChanged.connect(self.on_translatorsource_changed)
@@ -446,11 +460,7 @@ class DLManager(QObject):
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
 
         self.inpaint_panel = inpainter_panel = config_panel.inpaint_config_panel
-        inpainter_setup_params = self.dl_config.inpainter_setup_params
-        for inpainter in VALID_INPAINTERS:
-            if inpainter not in inpainter_setup_params \
-                or inpainter_setup_params[inpainter] is None:
-                inpainter_setup_params[inpainter] = INPAINTERS.get(inpainter).setup_params
+        inpainter_setup_params = merge_config_module_params(dl_config.inpainter_setup_params, VALID_INPAINTERS, INPAINTERS.get)
         inpainter_panel.setupModulesParamWidgets(inpainter_setup_params)
         inpainter_panel.paramwidget_edited.connect(self.on_inpainterparam_edited)
         inpainter_panel.inpainter_changed.connect(self.setInpainter)
@@ -458,22 +468,13 @@ class DLManager(QObject):
         inpainter_panel.needInpaintChecker.checker.setChecked(dl_config.check_need_inpaint)
 
         self.textdetect_panel = textdetector_panel = config_panel.detect_config_panel
-        textdetector_setup_params = self.dl_config.textdetector_setup_params
-        for textdetector in VALID_TEXTDETECTORS:
-            if textdetector not in textdetector_setup_params or \
-                textdetector_setup_params[textdetector] is None:
-                textdetector_setup_params[textdetector] = TEXTDETECTORS.get(textdetector).setup_params
-
+        textdetector_setup_params = merge_config_module_params(dl_config.textdetector_setup_params, VALID_TEXTDETECTORS, TEXTDETECTORS.get)
         textdetector_panel.setupModulesParamWidgets(textdetector_setup_params)
         textdetector_panel.paramwidget_edited.connect(self.on_textdetectorparam_edited)
         textdetector_panel.detector_changed.connect(self.setTextDetector)
 
         self.ocr_panel = ocr_panel = config_panel.ocr_config_panel
-        ocr_setup_params = self.dl_config.ocr_setup_params
-        for ocr in VALID_OCR:
-            if ocr not in ocr_setup_params or \
-                ocr_setup_params[ocr] is None:
-                ocr_setup_params[ocr] = OCR.get(ocr).setup_params
+        ocr_setup_params = merge_config_module_params(dl_config.ocr_setup_params, VALID_OCR, OCR.get)
         ocr_panel.setupModulesParamWidgets(ocr_setup_params)
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.setOCR)
