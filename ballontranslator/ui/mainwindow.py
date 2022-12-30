@@ -418,6 +418,9 @@ class MainWindow(FramelessWindow):
         shortcutUnderline = QShortcut(QKeySequence.StandardKey.Underline, self)
         shortcutUnderline.activated.connect(self.shortcutUnderline)
 
+        shortcutDelete = QShortcut(QKeySequence.StandardKey.Delete, self)
+        shortcutDelete.activated.connect(self.shortcutDelete)
+
     def shortcutNext(self):
         if self.centralStackWidget.currentIndex() == 0:
             index = self.pageList.currentIndex()
@@ -469,6 +472,10 @@ class MainWindow(FramelessWindow):
     def shortcutBold(self):
         if self.textPanel.formatpanel.isVisible():
             self.textPanel.formatpanel.formatBtnGroup.boldBtn.click()
+
+    def shortcutDelete(self):
+        if self.canvas.gv.isVisible():
+            self.canvas.delete_textblks.emit()
 
     def shortcutItalic(self):
         if self.textPanel.formatpanel.isVisible():
