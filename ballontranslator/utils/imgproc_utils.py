@@ -168,6 +168,9 @@ def enlarge_window(rect, im_w, im_h, ratio=2.5, aspect_ratio=1.0) -> List:
     w = x2 - x1
     h = y2 - y1
 
+    if w <= 0 or h <= 0:
+        return [0, 0, 0, 0]
+
     # https://numpy.org/doc/stable/reference/generated/numpy.roots.html
     coeff = [aspect_ratio, w+h*aspect_ratio, (1-ratio)*w*h]
     roots = np.roots(coeff)
@@ -177,6 +180,8 @@ def enlarge_window(rect, im_w, im_h, ratio=2.5, aspect_ratio=1.0) -> List:
     delta_w = min(x1, im_w - x2, delta_w)
     delta = min(y1, im_h - y2, delta)
     rect = np.array([x1-delta_w, y1-delta, x2+delta_w, y2+delta], dtype=np.int64)
+    rect[::2] = np.clip(rect[::2], 0, im_w - 1)
+    rect[1::2] = np.clip(rect[1::2], 0, im_h - 1)
     return rect.tolist()
 
 def draw_connected_labels(num_labels, labels, stats, centroids, names="draw_connected_labels", skip_background=True):

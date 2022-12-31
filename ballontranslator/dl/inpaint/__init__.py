@@ -29,8 +29,21 @@ class InpainterBase(ModuleParamParser):
     def setup_inpainter(self):
         raise NotImplementedError
 
-    def inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+    def inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None, check_need_inpaint: bool = False) -> np.ndarray:
         if not self.inpaint_by_block or textblock_list is None:
+            if check_need_inpaint:
+                ballon_msk, non_text_msk = extract_ballon_mask(img, mask)
+                if ballon_msk is not None:
+                    non_text_region = np.where(non_text_msk > 0)
+                    non_text_px = img[non_text_region]
+                    average_bg_color = np.mean(non_text_px, axis=0)
+                    std_bgr = np.std(non_text_px - average_bg_color, axis=0)
+                    std_max = np.max(std_bgr)
+                    inpaint_thresh = 7 if np.std(std_bgr) > 1 else 10
+                    if std_max < inpaint_thresh:
+                        img = img.copy()
+                        img[np.where(ballon_msk > 0)] = average_bg_color
+                        return img
             return self._inpaint(img, mask)
         else:
             im_h, im_w = img.shape[:2]
@@ -41,7 +54,7 @@ class InpainterBase(ModuleParamParser):
                 im = inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
                 msk = mask[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
                 need_inpaint = True
-                if self.check_need_inpaint:
+                if self.check_need_inpaint or check_need_inpaint:
                     ballon_msk, non_text_msk = extract_ballon_mask(im, msk)
                     if ballon_msk is not None:
                         non_text_region = np.where(non_text_msk > 0)
