@@ -27,20 +27,20 @@ class CreateItemCommand(QUndoCommand):
         super().__init__(parent)
         self.blk_item = blk_item
         self.ctrl: SceneTextManager = ctrl
+        self.op_count = -1
+        self.ctrl.addTextBlock(self.blk_item)
+        self.pairw = self.ctrl.pairwidget_list[self.blk_item.idx]
+        self.ctrl.txtblkShapeControl.setBlkItem(self.blk_item)
 
     def redo(self):
-        self.ctrl.addTextBlock(self.blk_item)
-        self.ctrl.txtblkShapeControl.setBlkItem(self.blk_item)
+        if self.op_count < 0:
+            self.op_count += 1
+            self.blk_item.setSelected(True)
+            return
+        self.ctrl.recoverTextblkItem(self.blk_item, self.pairw)
 
     def undo(self):
         self.ctrl.deleteTextblkItem(self.blk_item)
-
-    def mergeWith(self, command: QUndoCommand):
-        blk_item = command.blk_item
-        if self.blk_item != blk_item:
-            return False
-        self.blk_item = blk_item
-        return True
 
 
 class DeleteBlkItemsCommand(QUndoCommand):
@@ -662,7 +662,7 @@ class SceneTextManager(QObject):
             block = TextBlock(xyxy)
             xywh = np.copy(xyxy)
             xywh[[2, 3]] -= xywh[[0, 1]]
-            block.lines = xywh2xyxypoly(np.array([xywh])).reshape(-1, 4, 2).tolist()
+            block.set_lines_by_xywh(xywh)
             blk_item = TextBlkItem(block, len(self.textblk_item_list), set_format=False, show_rect=True)
             blk_item.set_fontformat(self.formatpanel.global_format)
             self.canvas.push_undo_command(CreateItemCommand(blk_item, self))

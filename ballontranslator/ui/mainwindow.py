@@ -1,5 +1,5 @@
 import os.path as osp
-import os, re
+import os, re, copy
 from typing import List
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
@@ -9,7 +9,8 @@ from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySeq
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
-from dl.textdetector import TextBlock
+from dl.textdetector.textblock import TextBlock, visualize_textblocks
+from utils.imgproc_utils import xywh2xyxypoly
 
 from .misc import pt2px, parse_stylesheet
 from .imgtrans_proj import ProjImgTrans
@@ -28,6 +29,7 @@ from .global_search_widget import GlobalSearchWidget
 from . import constants as C
 from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
+from .drawing_commands import RunBlkTransCommand
 
 class PageListView(QListWidget):    
     def __init__(self, *args, **kwargs) -> None:
@@ -130,6 +132,7 @@ class MainWindow(FramelessWindow):
         self.canvas.gv.hide_canvas.connect(self.onHideCanvas)
         self.canvas.proj_savestate_changed.connect(self.on_savestate_changed)
         self.canvas.textstack_changed.connect(self.on_textstack_changed)
+        self.canvas.run_blktrans.connect(self.on_run_blktrans)
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
 
@@ -203,9 +206,12 @@ class MainWindow(FramelessWindow):
         dl_manager.finish_translate_page.connect(self.finishTranslatePage)
         dl_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         dl_manager.page_trans_finished.connect(self.on_pagtrans_finished)
-        self.dl_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox)
+        dl_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox)
         dl_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         dl_manager.imgtrans_thread.mask_postprocess = self.drawingPanel.rectPanel.post_process_mask
+        dl_manager.blktrans_pipeline_finished.connect(self.on_blktrans_finished)
+        dl_manager.imgtrans_thread.get_maskseg_method = self.drawingPanel.rectPanel.get_maskseg_method
+        dl_manager.imgtrans_thread.post_process_mask = self.drawingPanel.rectPanel.post_process_mask
 
         self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
         self.bottomBar.ocrcheck_statechanged.connect(dl_manager.setOCRMode)
@@ -788,6 +794,39 @@ class MainWindow(FramelessWindow):
     def on_textstack_changed(self):
         if not self.page_changing:
             self.global_search_widget.set_document_edited()
+
+    def on_run_blktrans(self, mode: int):
+        tgt_img = self.imgtrans_proj.img_array
+        if tgt_img is None:
+            return
+        blkitem_list = self.canvas.selected_text_items()
+        if len(blkitem_list) < 1:
+            return
+
+        im_h, im_w = tgt_img.shape[:2]
+        blk_list = []
+        for blkitem in blkitem_list:
+            blk = blkitem.blk
+            blk._bounding_rect = blkitem.absBoundingRect()
+            blk.vertical = blkitem.is_vertical
+            blk.text = [self.st_manager.pairwidget_list[blkitem.idx].e_source.toPlainText()]
+            blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
+            blk_list.append(blk)
+
+        # c = visualize_textblocks(tgt_img.copy(), blk_list)
+        # import cv2
+        # cv2.imshow('xx', c)
+        # cv2.waitKey(0)
+        self.dl_manager.runBlktransPipeline(blk_list, tgt_img, mode)
+
+    def on_blktrans_finished(self, mode: int):
+        blkitem_list = self.canvas.selected_text_items()
+        if len(blkitem_list) < 1:
+            return
+        pairw_list = []
+        for blk in blkitem_list:
+            pairw_list.append(self.st_manager.pairwidget_list[blk.idx])
+        self.canvas.push_undo_command(RunBlkTransCommand(self.canvas, blkitem_list, pairw_list, mode))
 
     def on_imgtrans_progressbox_showed(self):
         msg_size = self.dl_manager.progress_msgbox.size()

@@ -97,7 +97,10 @@ class TextBlock(object):
         self.shadow_color = shadow_color
         self.shadow_offset = shadow_offset
 
-    def adjust_bbox(self, with_bbox=False):
+        self.region_mask: np.ndarray = None
+        self.region_inpaint_dict: dict = None
+
+    def adjust_bbox(self, with_bbox=False, x_range=None, y_range=None):
         lines = self.lines_array().astype(np.int32)
         if with_bbox:
             self.xyxy[0] = min(lines[..., 0].min(), self.xyxy[0])
@@ -110,6 +113,13 @@ class TextBlock(object):
             self.xyxy[2] = lines[..., 0].max()
             self.xyxy[3] = lines[..., 1].max()
 
+        if x_range is not None:
+            self.xyxy[0] = np.clip(self.xyxy[0], x_range[0], x_range[1])
+            self.xyxy[2] = np.clip(self.xyxy[2], x_range[0], x_range[1])
+        if y_range is not None:
+            self.xyxy[1] = np.clip(self.xyxy[1], y_range[0], y_range[1])
+            self.xyxy[3] = np.clip(self.xyxy[3], y_range[0], y_range[1])
+
     def sort_lines(self):
         if self.distance is not None:
             idx = np.argsort(self.distance)
@@ -119,6 +129,26 @@ class TextBlock(object):
 
     def lines_array(self, dtype=np.float64):
         return np.array(self.lines, dtype=dtype)
+
+    def set_lines_by_xywh(self, xywh: np.ndarray, angle=0, x_range=None, y_range=None, adjust_bbox=False):
+        if isinstance(xywh, List):
+            xywh = np.array(xywh)
+        lines = xywh2xyxypoly(np.array([xywh]))
+        if angle != 0:
+            cx, cy = xywh[0], xywh[1]
+            cx += xywh[2] / 2.
+            cy += xywh[3] / 2.
+            lines = rotate_polygons([cx, cy], lines, angle)
+
+        lines = lines.reshape(-1, 4, 2)
+        if x_range is not None:
+            lines[..., 0] = np.clip(lines[..., 0], x_range[0], x_range[1])
+        if y_range is not None:
+            lines[..., 1] = np.clip(lines[..., 1], y_range[0], y_range[1])
+        self.lines = lines.tolist()
+
+        if adjust_bbox:
+            self.adjust_bbox()
 
     def aspect_ratio(self) -> float:
         min_rect = self.min_rect()
@@ -188,25 +218,38 @@ class TextBlock(object):
     def get_transformed_region(self, img: np.ndarray, idx: int, textheight: int, maxwidth: int = None) -> np.ndarray :
         direction = 'v' if self.vertical else 'h'
         src_pts = np.array(self.lines[idx], dtype=np.float64)
+        im_h, im_w = img.shape[:2]
 
         middle_pnt = (src_pts[[1, 2, 3, 0]] + src_pts) / 2
         vec_v = middle_pnt[2] - middle_pnt[0]   # vertical vectors of textlines
         vec_h = middle_pnt[1] - middle_pnt[3]   # horizontal vectors of textlines
-        ratio = np.linalg.norm(vec_v) / np.linalg.norm(vec_h)
+        norm_v = np.linalg.norm(vec_v)
+        norm_h = np.linalg.norm(vec_h)
+        if norm_v <= 0 or norm_h <= 0:
+            print('invalid textpolygon to target img')
+            return np.zeros((textheight, textheight, 3), dtype=np.uint8)
+        ratio = norm_v / norm_h
 
         if direction == 'h' :
             h = int(textheight)
             w = int(round(textheight / ratio))
             dst_pts = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]).astype(np.float32)
             M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            if M is None:
+                print('invalid textpolygon to target img')
+                return np.zeros((textheight, textheight, 3), dtype=np.uint8)
             region = cv2.warpPerspective(img, M, (w, h))
         elif direction == 'v' :
             w = int(textheight)
             h = int(round(textheight * ratio))
             dst_pts = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]).astype(np.float32)
             M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            if M is None:
+                print('invalid textpolygon to target img')
+                return np.zeros((textheight, textheight, 3), dtype=np.uint8)
             region = cv2.warpPerspective(img, M, (w, h))
             region = cv2.rotate(region, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
         if maxwidth is not None:
             h, w = region.shape[: 2]
             if w > maxwidth:

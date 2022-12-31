@@ -93,6 +93,8 @@ class Canvas(QGraphicsScene):
     format_textblks = Signal()
     layout_textblks = Signal()
 
+    run_blktrans = Signal(int)
+
     begin_scale_tool = Signal(QPointF)
     scale_tool = Signal(QPointF)
     end_scale_tool = Signal()
@@ -542,7 +544,14 @@ class Canvas(QGraphicsScene):
             menu.addSeparator()
             format_act = menu.addAction(self.tr("Apply font formatting"))
             layout_act = menu.addAction(self.tr("Auto layout"))
+            menu.addSeparator()
+            translate_act = menu.addAction(self.tr("translate"))
+            ocr_act = menu.addAction(self.tr("OCR"))
+            ocr_translate_act = menu.addAction(self.tr("OCR and translate"))
+            ocr_translate_inpaint_act = menu.addAction(self.tr("OCR, translate and inpaint"))
+
             rst = menu.exec_(event.screenPos())
+            
             if rst == delete_act:
                 self.delete_textblks.emit()
             elif rst == copy_act:
@@ -553,6 +562,14 @@ class Canvas(QGraphicsScene):
                 self.format_textblks.emit()
             elif rst == layout_act:
                 self.layout_textblks.emit()
+            elif rst == translate_act:
+                self.run_blktrans.emit(-1)
+            elif rst == ocr_act:
+                self.run_blktrans.emit(0)
+            elif rst == ocr_translate_act:
+                self.run_blktrans.emit(1)
+            elif rst == ocr_translate_inpaint_act:
+                self.run_blktrans.emit(2)
     
     def on_hide_canvas(self):
         self.clear_states()

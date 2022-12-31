@@ -146,6 +146,17 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         self.updateInpaintProgress(0)
         self.updateTranslateProgress(0)
 
+    def show_all_bars(self):
+        self.detect_bar.show()
+        self.ocr_bar.show()
+        self.translate_bar.show()
+        self.inpaint_bar.show()
+
+    def hide_all_bars(self):
+        self.detect_bar.hide()
+        self.ocr_bar.hide()
+        self.translate_bar.hide()
+        self.inpaint_bar.hide()
 
 class ColorPicker(QLabel):
     colorChanged = Signal(bool)
