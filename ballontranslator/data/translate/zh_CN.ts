@@ -52,19 +52,49 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ui/canvas.py" line="488"/>
+        <location filename="../../ui/canvas.py" line="543"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="489"/>
+        <location filename="../../ui/canvas.py" line="545"/>
         <source>Apply font formatting</source>
         <translation>应用字体格式</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="490"/>
+        <location filename="../../ui/canvas.py" line="546"/>
         <source>Auto layout</source>
         <translation>自动排版</translation>
+    </message>
+    <message>
+        <location filename="../../ui/canvas.py" line="541"/>
+        <source>Copy</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <location filename="../../ui/canvas.py" line="542"/>
+        <source>Paste</source>
+        <translation>粘贴</translation>
+    </message>
+    <message>
+        <location filename="../../ui/canvas.py" line="548"/>
+        <source>translate</source>
+        <translation>翻译</translation>
+    </message>
+    <message>
+        <location filename="../../ui/canvas.py" line="549"/>
+        <source>OCR</source>
+        <translation>OCR</translation>
+    </message>
+    <message>
+        <location filename="../../ui/canvas.py" line="550"/>
+        <source>OCR and translate</source>
+        <translation>OCR并翻译</translation>
+    </message>
+    <message>
+        <location filename="../../ui/canvas.py" line="551"/>
+        <source>OCR, translate and inpaint</source>
+        <translation>OCR，翻译并抹字</translation>
     </message>
 </context>
 <context>
@@ -178,7 +208,7 @@
 <context>
     <name>DLManager</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="654"/>
+        <location filename="../../ui/dl_manager.py" line="726"/>
         <source>Invalid</source>
         <translation>不可用</translation>
     </message>
@@ -186,7 +216,7 @@
 <context>
     <name>DrawingPanel</name>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="305"/>
+        <location filename="../../ui/drawingpanel.py" line="343"/>
         <source>Mask Transparency</source>
         <translation>掩膜透明度</translation>
     </message>
@@ -366,22 +396,22 @@
 <context>
     <name>ImgtransProgressMessageBox</name>
     <message>
-        <location filename="../../ui/stylewidgets.py" line="142"/>
+        <location filename="../../ui/stylewidgets.py" line="120"/>
         <source>Detecting: </source>
         <translation>检测: </translation>
     </message>
     <message>
-        <location filename="../../ui/stylewidgets.py" line="143"/>
+        <location filename="../../ui/stylewidgets.py" line="121"/>
         <source>OCR: </source>
         <translation>OCR: </translation>
     </message>
     <message>
-        <location filename="../../ui/stylewidgets.py" line="144"/>
+        <location filename="../../ui/stylewidgets.py" line="122"/>
         <source>Inpainting: </source>
         <translation>修复: </translation>
     </message>
     <message>
-        <location filename="../../ui/stylewidgets.py" line="145"/>
+        <location filename="../../ui/stylewidgets.py" line="123"/>
         <source>Translating: </source>
         <translation>翻译: </translation>
     </message>
@@ -389,7 +419,7 @@
 <context>
     <name>ImgtransThread</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="325"/>
+        <location filename="../../ui/dl_manager.py" line="365"/>
         <source>Translation Failed.</source>
         <translation>翻译失败.</translation>
     </message>
@@ -427,11 +457,26 @@
         <source>pen thickness </source>
         <translation>画笔大小 </translation>
     </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="76"/>
+        <source>Shape</source>
+        <translation>形状</translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="78"/>
+        <source>Circle</source>
+        <translation>圆形</translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="78"/>
+        <source>Rectangle</source>
+        <translation>方形</translation>
+    </message>
 </context>
 <context>
     <name>InpaintThread</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="109"/>
+        <location filename="../../ui/dl_manager.py" line="113"/>
         <source>Inpainting Failed.</source>
         <translation>修复失败.</translation>
     </message>
@@ -495,27 +540,27 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../ui/mainwindow.py" line="298"/>
+        <location filename="../../ui/mainwindow.py" line="308"/>
         <source>Failed to load project </source>
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="763"/>
+        <location filename="../../ui/mainwindow.py" line="791"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="763"/>
+        <location filename="../../ui/mainwindow.py" line="791"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="781"/>
+        <location filename="../../ui/mainwindow.py" line="842"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="823"/>
+        <location filename="../../ui/mainwindow.py" line="884"/>
         <source>Export to </source>
         <translation>导出至 </translation>
     </message>
@@ -523,7 +568,7 @@
 <context>
     <name>ModuleThread</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="52"/>
+        <location filename="../../ui/dl_manager.py" line="55"/>
         <source>Failed to set </source>
         <translation>无法设置 </translation>
     </message>
@@ -604,29 +649,44 @@
 <context>
     <name>PenConfigPanel</name>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="106"/>
+        <location filename="../../ui/drawingpanel.py" line="123"/>
         <source>alpha value</source>
         <translation>alpha值</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="113"/>
+        <location filename="../../ui/drawingpanel.py" line="131"/>
         <source>Color</source>
         <translation>颜色</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="114"/>
+        <location filename="../../ui/drawingpanel.py" line="132"/>
         <source>Alpha</source>
         <translation>Alpha</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="122"/>
+        <location filename="../../ui/drawingpanel.py" line="140"/>
         <source>Thickness</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="103"/>
+        <location filename="../../ui/drawingpanel.py" line="120"/>
         <source>pen thickness </source>
         <translation>画笔大小 </translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="145"/>
+        <source>Shape</source>
+        <translation>形状</translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="147"/>
+        <source>Circle</source>
+        <translation>圆形</translation>
+    </message>
+    <message>
+        <location filename="../../ui/drawingpanel.py" line="147"/>
+        <source>Rectangle</source>
+        <translation>方形</translation>
     </message>
 </context>
 <context>
@@ -716,52 +776,52 @@
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="166"/>
+        <location filename="../../ui/drawingpanel.py" line="202"/>
         <source>method 1</source>
         <translation>方法1</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="166"/>
+        <location filename="../../ui/drawingpanel.py" line="202"/>
         <source>method 2</source>
         <translation>方法2</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="167"/>
+        <location filename="../../ui/drawingpanel.py" line="203"/>
         <source>Auto</source>
         <translation>自动</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="168"/>
+        <location filename="../../ui/drawingpanel.py" line="204"/>
         <source>run inpainting automatically.</source>
         <translation>自动运行修复函数.</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="170"/>
+        <location filename="../../ui/drawingpanel.py" line="206"/>
         <source>Inpaint</source>
         <translation>图像修复</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="173"/>
+        <location filename="../../ui/drawingpanel.py" line="209"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="159"/>
+        <location filename="../../ui/drawingpanel.py" line="195"/>
         <source>Dilate</source>
         <translation>膨胀</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="160"/>
+        <location filename="../../ui/drawingpanel.py" line="196"/>
         <source>kernel size: </source>
         <translation>核大小: </translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="171"/>
+        <location filename="../../ui/drawingpanel.py" line="207"/>
         <source>Space</source>
         <translation>空格</translation>
     </message>
     <message>
-        <location filename="../../ui/drawingpanel.py" line="174"/>
+        <location filename="../../ui/drawingpanel.py" line="210"/>
         <source>Ctrl+D</source>
         <translation></translation>
     </message>
@@ -769,57 +829,57 @@
 <context>
     <name>TextEffectPanel</name>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="87"/>
+        <location filename="../../ui/text_graphical_effect.py" line="86"/>
         <source>Effect</source>
         <translation>特效</translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="96"/>
+        <location filename="../../ui/text_graphical_effect.py" line="95"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="102"/>
+        <location filename="../../ui/text_graphical_effect.py" line="101"/>
         <source>Shadow</source>
         <translation>阴影</translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="105"/>
+        <location filename="../../ui/text_graphical_effect.py" line="104"/>
         <source>Change shadow color</source>
         <translation>修改阴影颜色</translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="119"/>
+        <location filename="../../ui/text_graphical_effect.py" line="118"/>
         <source>Apply</source>
         <translation>应用</translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="121"/>
+        <location filename="../../ui/text_graphical_effect.py" line="120"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="97"/>
+        <location filename="../../ui/text_graphical_effect.py" line="96"/>
         <source>Opacity: </source>
         <translation>不透明度: </translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="106"/>
+        <location filename="../../ui/text_graphical_effect.py" line="105"/>
         <source>radius: </source>
         <translation>半径: </translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="109"/>
+        <location filename="../../ui/text_graphical_effect.py" line="108"/>
         <source>strength: </source>
         <translation>强度: </translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="112"/>
+        <location filename="../../ui/text_graphical_effect.py" line="111"/>
         <source>x offset: </source>
         <translation>x偏移: </translation>
     </message>
     <message>
-        <location filename="../../ui/text_graphical_effect.py" line="115"/>
+        <location filename="../../ui/text_graphical_effect.py" line="114"/>
         <source>y offset: </source>
         <translation>y偏移: </translation>
     </message>
@@ -923,17 +983,17 @@
         <translation type="obsolete">支持语言列表: </translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="170"/>
+        <location filename="../../ui/dl_manager.py" line="175"/>
         <source>Failed to set translator </source>
         <translation>翻译器设置失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="225"/>
+        <location filename="../../ui/dl_manager.py" line="230"/>
         <source> is required for </source>
         <translation>是翻译器必填项</translation>
     </message>
     <message>
-        <location filename="../../ui/dl_manager.py" line="223"/>
+        <location filename="../../ui/dl_manager.py" line="228"/>
         <source>Translation Failed.</source>
         <translation>翻译失败.</translation>
     </message>
