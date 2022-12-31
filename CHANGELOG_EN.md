@@ -7,7 +7,8 @@
 3. Bugfixes
 4. OCR/Translate/Inpaint selected text blocks
    lettering style will inherit from corresponding selected block.
-   ctc_48px is more recommended for single line text, mangocr for multi-line Japanese, need to retrain detection model to perform better
+   ctc_48px is more recommended for single line text, mangocr for multi-line Japanese, need to retrain detection model make ctc48_px generalize to multi-lines  
+   Note that if you use **ctc_48px** make sure that the box is in vertical mode and fits as close to the single line of text as possible
 <img src="doc/src/ocrselected.gif" div align=center>
 
 ### 2022-11-29
