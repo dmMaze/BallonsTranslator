@@ -1,10 +1,13 @@
 # Changelogs
 
 ### 2022-12-30
-[v1.3.18](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.18)发布
+[v1.3.20](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.20)发布
 1. 适应具有极端宽高比的图片比如条漫
 2. 支持粘贴到多个选中的文本编辑框
 3. 修bug
+4. OCR/翻译/修复选中文字区域, 填字样式会继承选中的文字框自己的
+   单行文本建议选用ctc_48px, 多行日文选mangocr, 目前对多行其它语言不太行, 需要重新训练检测模型
+<img src="doc/src/ocrselected.gif" div align=center>
 
 ### 2022-11-29
 [v1.3.15](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.15)发布

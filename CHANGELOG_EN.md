@@ -1,10 +1,14 @@
 # Changelogs
 
-### 2022-12-30
-[v1.3.18](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.18) released
+### 2022-12-31
+[v1.3.20](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.20) released
 1. Adapted to images with extreme aspect ratio such as webtoons
 2. Support paste text to multiple selected Text blocks.
 3. Bugfixes
+4. OCR/Translate/Inpaint selected text blocks
+   lettering style will inherit from corresponding selected block.
+   ctc_48px is more recommended for single line text, mangocr for multi-line Japanese, need to retrain detection model to perform better
+<img src="doc/src/ocrselected.gif" div align=center>
 
 ### 2022-11-29
 [v1.3.15](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.15) released
