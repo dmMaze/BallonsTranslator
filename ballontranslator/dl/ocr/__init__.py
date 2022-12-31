@@ -148,7 +148,7 @@ class MangaOCR(OCRBase):
                 blk.text = self.model(img[y1:y2, x1:x2])
             else:
                 logging.warning('invalid textbbox to target img')
-                blk.text = ''
+                blk.text = ['']
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)

@@ -607,7 +607,7 @@ class DLManager(QObject):
             self.progress_msgbox.updateTranslateProgress(progress)
         elif stage == 'inpaint':
             self.progress_msgbox.updateInpaintProgress(progress)
-        elif stage in {'0', '1', '2'}:
+        elif stage in {'-1', '0', '1', '2'}:
             self.blktrans_pipeline_finished.emit(int(stage))
             self.progress_msgbox.hide()
         else:
