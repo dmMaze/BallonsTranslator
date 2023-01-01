@@ -142,6 +142,7 @@ Sugoi翻译器作者: [mingshiba](https://www.patreon.com/mingshiba).
 ## 杂
 * 如果电脑带N卡, 程序默认对所有模型启用GPU加速, 默认配置下显存占用在6G左右. 4G显存调小修复器inpaint_size即可.  
 * 感谢[bropines](https://github.com/bropines)提供俄语翻译
+* 第三方输入法可能会造成右侧编辑框显示bug, 见[#76](https://github.com/dmMaze/BallonsTranslator/issues/76), 暂时不打算修
 
 ## 一键翻译结果预览
 |            Original            |         Translated (CHS)         |         Translated (ENG)         |
