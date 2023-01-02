@@ -96,6 +96,11 @@ python ballontranslator
 批量文本格式调整及自动排版
 </p>
 
+<img src="doc/src/ocrselected.gif" div align=center>
+<p align=center>
+OCR并翻译选中文本框
+</p>
+
 ## 界面说明及快捷键
 * Ctrl+Z, Ctrl+Y可以撤销重做大部分操作，注意翻页后撤消重做栈会清空
 * A/D或pageUp/Down翻页, 如果当前页面未保存会自动保存

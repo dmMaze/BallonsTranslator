@@ -91,6 +91,11 @@ Text editing mode
 batch text formatting & auto layout
 </p>
 
+<img src="doc/src/ocrselected.gif" div align=center>
+<p align=center>
+ocr & translate selected area
+</p>
+
 ## Shortcuts
 * ```A```/```D``` or ```pageUp```/```Down``` to turn the page
 * ```Ctrl+Z```, ```Ctrl+Y``` to undo/redo most operations, note the undo stack will be cleared after you turn the page.
