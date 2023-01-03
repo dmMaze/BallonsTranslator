@@ -89,14 +89,14 @@ class SourceTextEdit(QTextEdit):
                         cursor = self.textCursor()
                         
                         if self.change_added >  len_text:
-                            self.change_added = self.change_added - len_text
-                            change_from = self.textCursor().position() - self.change_added - 1
-                            input_method_used = True
+                            self.change_added = 1
+                            change_from = self.textCursor().position() - 1
                             cursor.setPosition(change_from)
                             cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
                             added_text = cursor.selectedText()
                             if added_text == '…' or added_text == '—':
-                                self.change_added = 2
+                                    self.change_added = 2
+                                    change_from -= 1
                         cursor.setPosition(change_from)
                         cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor) 
                         added_text = cursor.selectedText()
