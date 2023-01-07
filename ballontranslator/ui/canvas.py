@@ -3,7 +3,7 @@ from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
-from qtpy.QtGui import QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
+from qtpy.QtGui import QKeySequence, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
@@ -92,6 +92,7 @@ class Canvas(QGraphicsScene):
     paste_textblks = Signal(QPointF)
     format_textblks = Signal()
     layout_textblks = Signal()
+    reset_angle = Signal()
 
     run_blktrans = Signal(int)
 
@@ -540,11 +541,12 @@ class Canvas(QGraphicsScene):
             menu = QMenu()
             copy_act = menu.addAction(self.tr("Copy"))
             paste_act = menu.addAction(self.tr("Paste"))
-            delete_act = menu.addAction(self.tr("Delete"))
+            delete_act = menu.addAction(self.tr("Delete"), )
             delete_recover_act = menu.addAction(self.tr("Delete and Recover removed text"))
             menu.addSeparator()
             format_act = menu.addAction(self.tr("Apply font formatting"))
             layout_act = menu.addAction(self.tr("Auto layout"))
+            angle_act = menu.addAction(self.tr("Reset Angle"))
             menu.addSeparator()
             translate_act = menu.addAction(self.tr("translate"))
             ocr_act = menu.addAction(self.tr("OCR"))
@@ -565,6 +567,8 @@ class Canvas(QGraphicsScene):
                 self.format_textblks.emit()
             elif rst == layout_act:
                 self.layout_textblks.emit()
+            elif rst == angle_act:
+                self.reset_angle.emit()
             elif rst == translate_act:
                 self.run_blktrans.emit(-1)
             elif rst == ocr_act:
@@ -573,6 +577,7 @@ class Canvas(QGraphicsScene):
                 self.run_blktrans.emit(1)
             elif rst == ocr_translate_inpaint_act:
                 self.run_blktrans.emit(2)
+
     
     def on_hide_canvas(self):
         self.clear_states()

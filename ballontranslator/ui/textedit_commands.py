@@ -204,6 +204,32 @@ class AutoLayoutCommand(QUndoCommand):
                 item.setLetterSpacing(item.letter_spacing, force=True)
 
 
+class ResetAngleCommand(QUndoCommand):
+    def __init__(self, blkitem_lst: List[TextBlkItem], ctrl: TextBlkShapeControl):
+        super(ResetAngleCommand, self).__init__()
+        self.blkitem_lst = blkitem_lst
+        self.angle_lst = []
+        self.ctrl = ctrl
+        blkitem_lst = []
+        for blk in self.blkitem_lst:
+            rotation = blk.rotation()
+            if rotation != 0:
+                self.angle_lst.append(rotation)
+                blkitem_lst.append(blk)
+        self.blkitem_lst = blkitem_lst
+    
+    def redo(self):
+        for blk in self.blkitem_lst:
+            blk.setAngle(0)
+            if self.ctrl.blk_item == blk:
+                self.ctrl.setAngle(0)
+
+    def undo(self):
+        for blk, angle in zip(self.blkitem_lst, self.angle_lst):
+            blk.setAngle(angle)
+            if self.ctrl.blk_item == blk:
+                self.ctrl.setAngle(angle)
+
 class TextItemEditCommand(QUndoCommand):
     def __init__(self, blkitem: TextBlkItem, trans_edit: TransTextEdit, num_steps: int):
         super(TextItemEditCommand, self).__init__()

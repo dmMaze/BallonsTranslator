@@ -17,7 +17,7 @@ from .canvas import Canvas
 from .textedit_area import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget
 from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
-from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand
+from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
 from utils.imgproc_utils import extract_ballon_region, rotate_polygons
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
@@ -276,6 +276,7 @@ class SceneTextManager(QObject):
         self.canvas.paste_textblks.connect(self.onPasteBlkItems)
         self.canvas.format_textblks.connect(self.onFormatTextblks)
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
+        self.canvas.reset_angle.connect(self.onResetAngle)
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
 
@@ -568,6 +569,11 @@ class SceneTextManager(QObject):
                 self.layout_textblk(blkitem)
 
             self.canvas.push_undo_command(AutoLayoutCommand(selected_blks, old_rect_lst, old_html_lst, trans_widget_lst))
+
+    def onResetAngle(self):
+        selected_blks = self.get_selected_blkitems()
+        if len(selected_blks) > 0:
+            self.canvas.push_undo_command(ResetAngleCommand(selected_blks, self.txtblkShapeControl))
 
     def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
         
