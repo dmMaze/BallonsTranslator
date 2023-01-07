@@ -52,49 +52,59 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ui/canvas.py" line="543"/>
+        <location filename="../../ui/canvas.py" line="544"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="545"/>
+        <location filename="../../ui/canvas.py" line="547"/>
         <source>Apply font formatting</source>
         <translation>应用字体格式</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="546"/>
+        <location filename="../../ui/canvas.py" line="548"/>
         <source>Auto layout</source>
         <translation>自动排版</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="541"/>
+        <location filename="../../ui/canvas.py" line="542"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="542"/>
+        <location filename="../../ui/canvas.py" line="543"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="548"/>
+        <location filename="../../ui/canvas.py" line="551"/>
         <source>translate</source>
         <translation>翻译</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="549"/>
+        <location filename="../../ui/canvas.py" line="552"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="550"/>
+        <location filename="../../ui/canvas.py" line="553"/>
         <source>OCR and translate</source>
         <translation>OCR并翻译</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="551"/>
+        <location filename="../../ui/canvas.py" line="554"/>
         <source>OCR, translate and inpaint</source>
         <translation>OCR，翻译并抹字</translation>
+    </message>
+    <message>
+        <location filename="../../ui/canvas.py" line="545"/>
+        <source>Delete and Recover removed text</source>
+        <translation>删除并恢复被抹除文字</translation>
+    </message>
+    <message>
+        <location filename="../../ui/canvas.py" line="549"/>
+        <source>Reset Angle</source>
+        <translation>角度复位</translation>
     </message>
 </context>
 <context>

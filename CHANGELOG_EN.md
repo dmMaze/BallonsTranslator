@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2023-01-08
+[v1.3.22](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.22) released
+1. Support delete and restore removed text
+2. Support reset angle
+3. Bugfixes
+
 ### 2022-12-31
 [v1.3.20](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.20) released
 1. Adapted to images with extreme aspect ratio such as webtoons

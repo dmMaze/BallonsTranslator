@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2023-01-08
+[v1.3.22](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.22) released
+1. 支持删除并恢复被抹除文字
+2. 支持角度复位
+3. 修Bug
+
 ### 2022-12-30
 [v1.3.20](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.20)发布
 1. 适应具有极端宽高比的图片比如条漫
