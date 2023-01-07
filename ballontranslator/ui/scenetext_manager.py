@@ -2,6 +2,7 @@
 from typing import List, Union, Tuple
 import numpy as np
 import copy
+import cv2
 
 from qtpy.QtWidgets import QApplication
 from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF
@@ -17,7 +18,7 @@ from .textedit_area import TextPanel, TransTextEdit, SourceTextEdit, TransPairWi
 from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand
-from utils.imgproc_utils import extract_ballon_region
+from utils.imgproc_utils import extract_ballon_region, rotate_polygons
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
 
@@ -44,13 +45,24 @@ class CreateItemCommand(QUndoCommand):
 
 
 class DeleteBlkItemsCommand(QUndoCommand):
-    def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
+    def __init__(self, blk_list: List[TextBlkItem], mode: int, ctrl, parent=None):
         super().__init__(parent)
         self.op_counter = 0
         self.blk_list = []
         self.pwidget_list: List[TransPairWidget] = []
         self.ctrl: SceneTextManager = ctrl
         self.sw = self.ctrl.canvas.search_widget
+        self.canvas: Canvas = ctrl.canvas
+        self.mode = mode
+
+        self.undo_img_list = []
+        self.redo_img_list = []
+        self.inpaint_rect_lst = []
+        self.mask_pnts = []
+        img_array = self.canvas.imgtrans_proj.inpainted_array
+        mask_array = self.canvas.imgtrans_proj.mask_array
+        original_array = self.canvas.imgtrans_proj.img_array
+        im_h, im_w = img_array.shape[:2]
 
         self.search_rstedit_list: List[SourceTextEdit] = []
         self.search_counter_list = []
@@ -64,6 +76,69 @@ class DeleteBlkItemsCommand(QUndoCommand):
             self.blk_list.append(blkitem)
             pw: TransPairWidget = ctrl.pairwidget_list[blkitem.idx]
             self.pwidget_list.append(pw)
+
+            if mode == 1:
+                is_empty = False
+                x, y, w, h = blkitem.absBoundingRect()
+                if blkitem.rotation() != 0:
+                    cx, cy = x + int(round(w / 2)), y + int(round(h / 2))
+                    poly = xywh2xyxypoly(np.array([[x, y, w, h]]))
+                    poly = rotate_polygons([cx, cy], poly, -blkitem.rotation())
+                    
+                    x1, x2 = np.min(poly[..., ::2]), np.max(poly[..., ::2])
+                    y1, y2 = np.min(poly[..., 1::2]), np.max(poly[..., 1::2])
+                    
+                    if x2 < 0 or x2 - x1 < 2 or x1 >= im_w - 1 \
+                        or y2 < 0 or y2 - y1 < 2 or y1 >= im_h - 1:
+                        is_empty = True
+                    else:
+                        poly[..., ::2] -= cx - int((x2 - x1) / 2)
+                        poly[..., 1::2] -= cy - int((y2 - y1) / 2)
+                        itmsk = np.zeros((y2 - y1, x2 - x1), np.uint8)
+                        
+                        cv2.fillPoly(itmsk, poly.reshape(-1, 4, 2), color=(255))
+                        px1, px2, py1, py2 = 0, im_w, 0, im_h
+                        if x1 < 0:
+                            px1 = -x1
+                            x1 = 0
+                        if x2 > im_w:
+                            px2 = im_w - x2
+                            x2 = im_w
+                        if y1 < 0:
+                            py1 = -y1
+                            y1 = 0
+                        if y2 > im_h:
+                            py2 = im_h - y2
+                            y2 = im_h
+                        itmsk = itmsk[py1: py2, px1: px2]
+                        msk = cv2.bitwise_and(mask_array[y1: y2, x1: x2], itmsk)
+
+                else:
+                    x1, y1, x2, y2 = x, y, x+w, y+h
+                    if x2 < 0 or x2 - x1 < 2 or x1 >= im_w - 1 \
+                        or y2 < 0 or y2 - y1 < 2 or y1 >= im_h - 1:
+                        is_empty = True
+                    else:
+                        if x1 < 0:
+                            x1 = 0
+                        if x2 > im_w:
+                            x2 = im_w
+                        if y1 < 0:
+                            y1 = 0
+                        if y2 > im_h:
+                            y2 = im_h
+                        msk = mask_array[y1: y2, x1: x2]
+                if is_empty:
+                    self.undo_img_list.append(None)
+                    self.redo_img_list.append(None)
+                    self.inpaint_rect_lst.append(None)
+                    self.mask_pnts.append(None)
+                else:
+                    self.mask_pnts.append(np.where(msk))
+                    self.undo_img_list.append(np.copy(img_array[y1: y2, x1: x2]))
+                    self.redo_img_list.append(np.copy(original_array[y1: y2, x1: x2]))
+                    self.inpaint_rect_lst.append([x1, y1, x2, y2])
+
 
             rst_idx = self.sw.get_result_edit_index(pw.e_trans)
             if rst_idx != -1:
@@ -106,6 +181,19 @@ class DeleteBlkItemsCommand(QUndoCommand):
         self.ctrl.deleteTextblkItemList(self.blk_list, self.pwidget_list)
 
     def redo(self):
+
+        if self.mode == 1:
+            img_array = self.canvas.imgtrans_proj.inpainted_array
+            mask_array = self.canvas.imgtrans_proj.mask_array
+            for mskpnt, inpaint_rect, redo_img in zip(self.mask_pnts, self.inpaint_rect_lst, self.redo_img_list):
+                if mskpnt == None:
+                    continue
+                x1, y1, x2, y2 = inpaint_rect
+                img_array[y1: y2, x1: x2][mskpnt] = redo_img[mskpnt]
+                mask_array[y1: y2, x1: x2][mskpnt] = 0
+            self.canvas.setInpaintLayer()
+            self.canvas.setMaskLayer()
+
         if self.op_counter == 0:
             self.op_counter += 1
             return
@@ -129,6 +217,19 @@ class DeleteBlkItemsCommand(QUndoCommand):
                     self.sw.setCurrentEditor(None)
 
     def undo(self):
+
+        if self.mode == 1:
+            img_array = self.canvas.imgtrans_proj.inpainted_array
+            mask_array = self.canvas.imgtrans_proj.mask_array
+            for mskpnt, inpaint_rect, undo_img in zip(self.mask_pnts, self.inpaint_rect_lst, self.undo_img_list):
+                if mskpnt == None:
+                    continue
+                x1, y1, x2, y2 = inpaint_rect
+                img_array[y1: y2, x1: x2][mskpnt] = undo_img[mskpnt]
+                mask_array[y1: y2, x1: x2][mskpnt] = 255
+            self.canvas.setInpaintLayer()
+            self.canvas.setMaskLayer()
+
         self.ctrl.recoverTextblkItemList(self.blk_list, self.pwidget_list)
         if self.sw_changed:
             self.sw.counter_sum = self.old_counter_sum
@@ -398,12 +499,12 @@ class SceneTextManager(QObject):
         if blk_item:
             self.canvas.push_undo_command(RotateItemCommand(blk_item, new_angle, self.txtblkShapeControl))
 
-    def onDeleteBlkItems(self):
+    def onDeleteBlkItems(self, mode: int):
         selected_blks = self.get_selected_blkitems()
         if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
             selected_blks.append(self.txtblkShapeControl.blk_item)
         if len(selected_blks) > 0:
-            self.canvas.push_undo_command(DeleteBlkItemsCommand(selected_blks, self))
+            self.canvas.push_undo_command(DeleteBlkItemsCommand(selected_blks, mode, self))
 
     def onCopyBlkItems(self, pos: QPointF):
         selected_blks = self.get_selected_blkitems()

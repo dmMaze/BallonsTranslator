@@ -87,7 +87,7 @@ class Canvas(QGraphicsScene):
     end_create_rect = Signal(QRectF, int)
     finish_painting = Signal(StrokeImgItem)
     finish_erasing = Signal(StrokeImgItem)
-    delete_textblks = Signal()
+    delete_textblks = Signal(int)
     copy_textblks = Signal(QPointF)
     paste_textblks = Signal(QPointF)
     format_textblks = Signal()
@@ -541,6 +541,7 @@ class Canvas(QGraphicsScene):
             copy_act = menu.addAction(self.tr("Copy"))
             paste_act = menu.addAction(self.tr("Paste"))
             delete_act = menu.addAction(self.tr("Delete"))
+            delete_recover_act = menu.addAction(self.tr("Delete and Recover removed text"))
             menu.addSeparator()
             format_act = menu.addAction(self.tr("Apply font formatting"))
             layout_act = menu.addAction(self.tr("Auto layout"))
@@ -553,7 +554,9 @@ class Canvas(QGraphicsScene):
             rst = menu.exec_(event.screenPos())
             
             if rst == delete_act:
-                self.delete_textblks.emit()
+                self.delete_textblks.emit(0)
+            elif rst == delete_recover_act:
+                self.delete_textblks.emit(1)
             elif rst == copy_act:
                 self.copy_textblks.emit(event.scenePos())
             elif rst == paste_act:

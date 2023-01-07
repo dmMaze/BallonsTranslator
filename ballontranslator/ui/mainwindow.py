@@ -481,7 +481,7 @@ class MainWindow(FramelessWindow):
 
     def shortcutDelete(self):
         if self.canvas.gv.isVisible():
-            self.canvas.delete_textblks.emit()
+            self.canvas.delete_textblks.emit(0)
 
     def shortcutItalic(self):
         if self.textPanel.formatpanel.isVisible():
