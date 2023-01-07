@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtWidgets import QShortcut, QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
 from qtpy.QtGui import QKeySequence, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
 
@@ -538,7 +538,7 @@ class Canvas(QGraphicsScene):
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent):
         if self.textEditMode():
-            menu = QMenu()
+            menu = QMenu(self.gv)
             copy_act = menu.addAction(self.tr("Copy"))
             paste_act = menu.addAction(self.tr("Paste"))
             delete_act = menu.addAction(self.tr("Delete"), )
@@ -577,7 +577,6 @@ class Canvas(QGraphicsScene):
                 self.run_blktrans.emit(1)
             elif rst == ocr_translate_inpaint_act:
                 self.run_blktrans.emit(2)
-
     
     def on_hide_canvas(self):
         self.clear_states()
