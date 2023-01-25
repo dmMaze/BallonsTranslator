@@ -875,6 +875,18 @@ ClickableLabel#ReplaceAllBtn {
     min-height: 24px;
 }
 
+ClickableLabel#SalaDict {
+    image: url(data/icons/saladict.png);
+    min-width: 24px;
+    min-height: 24px;
+}
+
+ClickableLabel#SearchInternet {
+    image: url(data/icons/search.svg);
+    min-width: 24px;
+    min-height: 24px;
+}
+
 TitleBarToolBtn {
     padding-left: 4px;
     padding-right: 4px;

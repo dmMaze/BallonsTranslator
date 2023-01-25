@@ -67,6 +67,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.change_added: int = 0
         self.input_method_from = -1
         self.input_method_text = ''
+        self.block_all_input = False
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
@@ -423,6 +424,11 @@ class TextBlkItem(QGraphicsTextItem):
                 self.change_added = added
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
+
+        if self.block_all_input:
+            e.setAccepted(True)
+            return
+
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()

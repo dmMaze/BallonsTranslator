@@ -93,7 +93,11 @@ class ParamWidget(QWidget):
             elif isinstance(params[param_key], dict):
                 param_dict = params[param_key]
                 if param_dict['type'] == 'selector':
-                    param_widget = ParamComboBox(param_key, param_dict['options'])
+                    if 'url' in param_key:
+                        size = CONFIG_COMBOBOX_MIDEAN
+                    else:
+                        size = CONFIG_COMBOBOX_SHORT
+                    param_widget = ParamComboBox(param_key, param_dict['options'], size=size)
 
                     # if cuda is not available, disable combobox 'cuda' item
                     # https://stackoverflow.com/questions/38915001/disable-specific-items-in-qcombobox

@@ -4,8 +4,8 @@ import numpy as np
 import copy
 import cv2
 
-from qtpy.QtWidgets import QApplication
-from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF
+from qtpy.QtWidgets import QApplication, QWidget
+from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QPoint
 from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -14,7 +14,7 @@ except:
 
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
-from .textedit_area import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget
+from .textedit_area import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu
 from .fontformatpanel import set_textblk_fontsize
 from .misc import FontFormat, ProgramConfig, pt2px
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
@@ -262,12 +262,15 @@ class SceneTextManager(QObject):
     new_textblk = Signal(int)
     def __init__(self, 
                  app: QApplication,
+                 mainwindow: QWidget,
                  canvas: Canvas, 
                  textpanel: TextPanel, 
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.app = app     
+        self.mainwindow = mainwindow
         self.canvas = canvas
+        self.selectext_minimenu: SelectTextMiniMenu = None
         self.canvas.scalefactor_changed.connect(self.adjustSceneTextRect)
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
         self.canvas.paste2selected_textitems.connect(self.on_paste2selected_textitems)
@@ -357,6 +360,8 @@ class SceneTextManager(QObject):
         pair_widget.e_source.push_undo_stack.connect(self.on_push_edit_stack)
         pair_widget.e_source.redo_signal.connect(self.on_textedit_redo)
         pair_widget.e_source.undo_signal.connect(self.on_textedit_undo)
+        pair_widget.e_source.show_select_menu.connect(self.on_show_select_menu)
+        pair_widget.e_source.focus_out.connect(self.on_pairw_focusout)
 
         pair_widget.e_trans.setPlainText(blk_item.toPlainText())
         pair_widget.e_trans.focus_in.connect(self.onTransWidgetHoverEnter)
@@ -365,6 +370,8 @@ class SceneTextManager(QObject):
         pair_widget.e_trans.push_undo_stack.connect(self.on_push_edit_stack)
         pair_widget.e_trans.redo_signal.connect(self.on_textedit_redo)
         pair_widget.e_trans.undo_signal.connect(self.on_textedit_undo)
+        pair_widget.e_trans.show_select_menu.connect(self.on_show_select_menu)
+        pair_widget.e_trans.focus_out.connect(self.on_pairw_focusout)
 
         self.new_textblk.emit(blk_item.idx)
         return blk_item
@@ -797,6 +804,25 @@ class SceneTextManager(QObject):
 
     def on_textedit_undo(self):
         self.canvas.undo_textedit()
+
+    def on_show_select_menu(self, pos: QPoint, selected_text: str):
+        if self.config.textselect_mini_menu:
+            if not selected_text:
+                if self.selectext_minimenu.isVisible():
+                    self.selectext_minimenu.hide()
+            else:
+                self.selectext_minimenu.show()
+                self.selectext_minimenu.move(self.mainwindow.mapFromGlobal(pos))
+                self.selectext_minimenu.selected_text = selected_text
+
+    def on_block_current_editor(self, block: bool):
+        w: SourceTextEdit = self.app.focusWidget()
+        if isinstance(w, SourceTextEdit) or isinstance(w, TextBlkItem):
+            w.block_all_input = block
+
+    def on_pairw_focusout(self):
+        if self.selectext_minimenu.isVisible():
+            self.selectext_minimenu.hide()
 
     def on_push_textitem_undostack(self, num_steps: int, is_formatting: bool):
         blkitem: TextBlkItem = self.sender()

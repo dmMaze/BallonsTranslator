@@ -1,7 +1,7 @@
 from typing import List, Union, Tuple
 import json
 
-from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
+from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
 from qtpy.QtCore import Qt, QModelIndex, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
 
@@ -107,8 +107,8 @@ class ConfigBlock(Widget):
         sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
         self.subblock_list.append(sublock)
 
-    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None) -> Tuple[ConfigComboBox, QWidget]:
-        combox = ConfigComboBox()
+    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True) -> Tuple[ConfigComboBox, QWidget]:
+        combox = ConfigComboBox(fix_size=fix_size)
         combox.addItems(sel)
         if target_block is None:
             sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
@@ -294,6 +294,7 @@ class ConfigPanel(Widget):
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
         label_lettering = self.tr('Lettering')
+        label_saladict = self.tr("SalaDict")
     
         dltableitem.appendRows([
             TableItem(label_text_det, CONFIG_FONTSIZE_TABLE),
@@ -303,7 +304,8 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_lettering, CONFIG_FONTSIZE_TABLE)
+            TableItem(label_lettering, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_saladict, CONFIG_FONTSIZE_TABLE)
         ])
 
         dlConfigPanel.addTextLabel(label_text_det)
@@ -346,7 +348,19 @@ class ConfigPanel(Widget):
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
         self.let_uppercase_checker = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
-        
+
+        generalConfigPanel.addTextLabel(label_saladict)
+        self.selectext_minimenu_checker = generalConfigPanel.addCheckBox(self.tr('Show mini menu when selecting text.'))
+        self.selectext_minimenu_checker.stateChanged.connect(self.on_selectext_minimenu_changed)
+        self.saladict_shortcut = QKeySequenceEdit("ALT+W", self)
+        self.saladict_shortcut.keySequenceChanged.connect(self.on_saladict_shortcut_changed)
+        self.saladict_shortcut.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
+        generalConfigPanel.addBlockWidget(self.saladict_shortcut, self.tr("shortcut"))
+        self.searchurl_combobox, _ = generalConfigPanel.addCombobox(["https://www.google.com/search?q=", "https://www.bing.com/search?q=", "https://duckduckgo.com/?q=", "https://yandex.com/search/?text=", "http://www.baidu.com/s?wd=", "https://search.yahoo.com/search;?p=", "https://www.urbandictionary.com/define.php?term="], self.tr("Search Engines"), fix_size=False)
+        self.searchurl_combobox.setEditable(True)
+        self.searchurl_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.searchurl_combobox.currentTextChanged.connect(self.on_searchurl_changed)
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.configTable)
         splitter.addWidget(self.configContent)
@@ -392,6 +406,18 @@ class ConfigPanel(Widget):
     def on_uppercase_changed(self):
         self.config.let_uppercase_flag = self.let_uppercase_checker.isChecked()
 
+    def on_selectext_minimenu_changed(self):
+        self.config.textselect_mini_menu = self.selectext_minimenu_checker.isChecked()
+
+    def on_saladict_shortcut_changed(self):
+        kstr = self.saladict_shortcut.keySequence().toString()
+        if kstr:
+            self.config.saladict_shortcut = self.saladict_shortcut.keySequence().toString()
+
+    def on_searchurl_changed(self):
+        url = self.searchurl_combobox.currentText()
+        self.config.search_url = url
+
     def on_fontcolor_flag_changed(self):
         self.config.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
 
@@ -424,4 +450,22 @@ class ConfigPanel(Widget):
         self.save_config.emit()
         return super().hideEvent(e)
         
-    
+    def setupConfig(self):
+        self.blockSignals(True)
+
+        config = self.config
+        if config.open_recent_on_startup:
+            self.open_on_startup_checker.setChecked(True)
+
+        self.let_effect_combox.setCurrentIndex(config.let_fnteffect_flag)
+        self.let_fntsize_combox.setCurrentIndex(config.let_fntsize_flag)
+        self.let_fntstroke_combox.setCurrentIndex(config.let_fntstroke_flag)
+        self.let_fntcolor_combox.setCurrentIndex(config.let_fntcolor_flag)
+        self.let_alignment_combox.setCurrentIndex(config.let_alignment_flag)
+        self.let_autolayout_checker.setChecked(config.let_autolayout_flag)
+        self.selectext_minimenu_checker.setChecked(config.textselect_mini_menu)
+        self.let_uppercase_checker.setChecked(config.let_uppercase_flag)
+        self.saladict_shortcut.setKeySequence(config.saladict_shortcut)
+        self.searchurl_combobox.setCurrentText(config.search_url)
+
+        self.blockSignals(False)

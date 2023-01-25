@@ -1,12 +1,52 @@
 from typing import List, Union
 
-from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication
-from qtpy.QtCore import Signal, Qt, QSize, QEvent
-from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QKeyEvent, QTextCursor
+from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication, QHBoxLayout 
+from qtpy.QtCore import Signal, Qt, QSize, QEvent, QPoint
+from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QKeyEvent, QTextCursor, QMouseEvent
+import keyboard
 
-from .stylewidgets import Widget, SeparatorWidget
+from .stylewidgets import Widget, SeparatorWidget, ClickableLabel
 from .textitem import TextBlock
 from .fontformatpanel import FontFormatPanel
+from .misc import ProgramConfig
+import webbrowser
+
+class SelectTextMiniMenu(Widget):
+
+    block_current_editor = Signal(bool)
+
+    def __init__(self, app: QApplication, config: ProgramConfig, parent=None, *args, **kwargs) -> None:
+        super().__init__(parent=parent, *args, **kwargs)
+        self.app = app
+        self.config = config
+        self.search_internet_btn = ClickableLabel(parent=self)
+        self.search_internet_btn.setObjectName("SearchInternet")
+        self.search_internet_btn.setToolTip(self.tr("Search selected text on Internet"))
+        self.search_internet_btn.clicked.connect(self.on_search_internet)
+        self.saladict_btn = ClickableLabel(parent=self)
+        self.saladict_btn.setObjectName("SalaDict")
+        self.saladict_btn.clicked.connect(self.on_saladict)
+        self.saladict_btn.setToolTip(self.tr("Look up selected text in SalaDict, see installation guide in configpanel"))
+        layout = QHBoxLayout(self)
+        layout.addWidget(self.saladict_btn)
+        layout.addWidget(self.search_internet_btn)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+
+        self.selected_text = ''
+
+    def on_search_internet(self):
+        browser = webbrowser.get()
+        browser.open_new(self.config.search_url + self.selected_text)
+        self.hide()
+
+    def on_saladict(self):
+        self.app.clipboard().setText(self.selected_text)
+        self.block_current_editor.emit(True)
+        keyboard.press(self.config.saladict_shortcut)
+        keyboard.release(self.config.saladict_shortcut)
+        self.block_current_editor.emit(False)
+        self.hide()
 
 
 class SourceTextEdit(QTextEdit):
@@ -19,6 +59,8 @@ class SourceTextEdit(QTextEdit):
     undo_signal = Signal()
     push_undo_stack = Signal(int)
     text_changed = Signal()
+    show_select_menu = Signal(QPoint, str)
+    focus_out = Signal()
 
     def __init__(self, idx, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -39,6 +81,35 @@ class SourceTextEdit(QTextEdit):
         self.text_content_changed = False
         self.highlighting = False
         self.ctrlv_pressed = False
+
+        self.selected_text = ''
+        self.cursorPositionChanged.connect(self.on_cursorpos_changed)
+
+        self.cursor_coord = None
+        self.block_all_input = False
+
+    def on_cursorpos_changed(self) -> None:
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            self.selected_text = cursor.selectedText()
+            crect = self.cursorRect()
+            if cursor.selectionStart() == cursor.position():
+                self.cursor_coord = crect.bottomLeft()
+            else:
+                self.cursor_coord = crect.bottomRight()
+        else:
+            if self.cursor_coord is not None:
+                self.show_select_menu.emit(QPoint(), '')
+            self.cursor_coord = None
+
+    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+        super().mouseReleaseEvent(e)
+        if e.button() == Qt.MouseButton.LeftButton:
+            if self.hasFocus():
+                if self.cursor_coord is not None:
+                    pos = self.mapToGlobal(self.cursor_coord)
+                    sel_text = self.selected_text
+                    self.show_select_menu.emit(pos, sel_text)
 
     def block_all_signals(self, block: bool):
         self.blockSignals(block)
@@ -140,6 +211,7 @@ class SourceTextEdit(QTextEdit):
 
     def focusOutEvent(self, event: QFocusEvent) -> None:
         self.setHoverEffect(False)
+        self.focus_out.emit()
         return super().focusOutEvent(event)
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
@@ -154,6 +226,10 @@ class SourceTextEdit(QTextEdit):
         super().inputMethodEvent(e)
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
+        if self.block_all_input:
+            e.setAccepted(True)
+            return
+
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()

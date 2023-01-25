@@ -323,8 +323,8 @@ class ClickableLabel(QLabel):
 
     clicked = Signal()
 
-    def __init__(self, text=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, text=None, parent=None, *args, **kwargs):
+        super().__init__(parent=parent, *args, **kwargs)
         if text is not None:
             self.setText(text)
 

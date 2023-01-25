@@ -268,6 +268,9 @@ class ProgramConfig:
         gsearch_regex: bool = False,
         gsearch_range: int = 0,
         darkmode: bool = False,
+        textselect_mini_menu: bool = True,
+        saladict_shortcut: str = "Alt+S",
+        search_url: str = "https://www.google.com/search?q=",
         **kwargs) -> None:
 
         if isinstance(dl, dict):
@@ -312,6 +315,9 @@ class ProgramConfig:
         self.gsearch_regex = gsearch_regex
         self.gsearch_range = gsearch_range
         self.darkmode = darkmode
+        self.textselect_mini_menu = textselect_mini_menu
+        self.saladict_shortcut = saladict_shortcut
+        self.search_url = search_url
 
 class LruIgnoreArg:
 

@@ -17,7 +17,7 @@ from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
-from .textedit_area import TextPanel, SourceTextEdit
+from .textedit_area import TextPanel, SourceTextEdit, SelectTextMiniMenu
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
@@ -67,6 +67,8 @@ class MainWindow(FramelessWindow):
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
         self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
         self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
+        # sel_menu_size = self.selectext_minimenu.sizeHint()
+        # self.selectext_minimenu.setFixedWidth(sel_menu_size.width())
         return super().setStyleSheet(styleSheet)
 
     def setupThread(self):
@@ -149,7 +151,7 @@ class MainWindow(FramelessWindow):
         self.presetPanel.hide()
         self.presetPanel.hide_signal.connect(self.save_config)
         self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
-        self.st_manager = SceneTextManager(self.app, self.canvas, self.textPanel)
+        self.st_manager = SceneTextManager(self.app, self, self.canvas, self.textPanel)
         self.st_manager.new_textblk.connect(self.canvas.search_widget.on_new_textblk)
         self.canvas.search_widget.pairwidget_list = self.st_manager.pairwidget_list
         self.canvas.search_widget.textblk_item_list = self.st_manager.textblk_item_list
@@ -171,7 +173,10 @@ class MainWindow(FramelessWindow):
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
 
-        
+        self.selectext_minimenu = self.st_manager.selectext_minimenu = SelectTextMiniMenu(self.app, self.configPanel.config, self)
+        self.selectext_minimenu.block_current_editor.connect(self.st_manager.on_block_current_editor)
+        self.selectext_minimenu.hide()
+
         mainVBoxLayout = QVBoxLayout(self)
         mainVBoxLayout.addWidget(self.titleBar)
         mainVBoxLayout.addLayout(mainHLayout)
@@ -186,21 +191,23 @@ class MainWindow(FramelessWindow):
 
     def setupConfig(self):
 
-        self.bottomBar.originalSlider.setValue(int(self.config.original_transparency * 100))
-        self.drawingPanel.maskTransperancySlider.setValue(int(self.config.mask_transparency * 100))
-        self.leftBar.initRecentProjMenu(self.config.recent_proj_list)
+        config = self.st_manager.config = self.config
+
+        self.bottomBar.originalSlider.setValue(int(config.original_transparency * 100))
+        self.drawingPanel.maskTransperancySlider.setValue(int(config.mask_transparency * 100))
+        self.leftBar.initRecentProjMenu(config.recent_proj_list)
         self.leftBar.save_config.connect(self.save_config)
         self.leftBar.imgTransChecker.setChecked(True)
-        self.st_manager.formatpanel.global_format = self.config.global_fontformat
-        self.st_manager.formatpanel.set_active_format(self.config.global_fontformat)
+        self.st_manager.formatpanel.global_format = config.global_fontformat
+        self.st_manager.formatpanel.set_active_format(config.global_fontformat)
         
         self.rightComicTransStackPanel.setHidden(True)
         self.st_manager.setTextEditMode(False)
 
-        self.bottomBar.ocrChecker.setCheckState(self.config.dl.enable_ocr)
-        self.bottomBar.transChecker.setChecked(self.config.dl.enable_translate)
+        self.bottomBar.ocrChecker.setCheckState(config.dl.enable_ocr)
+        self.bottomBar.transChecker.setChecked(config.dl.enable_translate)
 
-        self.dl_manager = dl_manager = DLManager(self.config, self.imgtrans_proj)
+        self.dl_manager = dl_manager = DLManager(config, self.imgtrans_proj)
         dl_manager.update_translator_status.connect(self.updateTranslatorStatus)
         dl_manager.update_inpainter_status.connect(self.updateInpainterStatus)
         dl_manager.finish_translate_page.connect(self.finishTranslatePage)
@@ -219,41 +226,31 @@ class MainWindow(FramelessWindow):
         self.bottomBar.translatorStatusbtn.clicked.connect(self.translatorStatusBtnPressed)
         self.bottomBar.transTranspageBtn.run_target.connect(self.on_transpagebtn_pressed)
 
-        self.titleBar.darkModeAction.setChecked(self.config.darkmode)
+        self.titleBar.darkModeAction.setChecked(config.darkmode)
 
-        self.drawingPanel.set_config(self.config.drawpanel)
+        self.drawingPanel.set_config(config.drawpanel)
         self.drawingPanel.initDLModule(dl_manager)
 
-        self.st_manager.config = self.config
+        
         self.global_search_widget.imgtrans_proj = self.imgtrans_proj
         self.global_search_widget.setupReplaceThread(self.st_manager.pairwidget_list, self.st_manager.textblk_item_list)
         self.global_search_widget.replace_thread.finished.connect(self.on_global_replace_finished)
 
-        self.configPanel.blockSignals(True)
-        if self.config.open_recent_on_startup:
-            self.configPanel.open_on_startup_checker.setChecked(True)
-        self.configPanel.let_effect_combox.setCurrentIndex(self.config.let_fnteffect_flag)
-        self.configPanel.let_fntsize_combox.setCurrentIndex(self.config.let_fntsize_flag)
-        self.configPanel.let_fntstroke_combox.setCurrentIndex(self.config.let_fntstroke_flag)
-        self.configPanel.let_fntcolor_combox.setCurrentIndex(self.config.let_fntcolor_flag)
-        self.configPanel.let_alignment_combox.setCurrentIndex(self.config.let_alignment_flag)
-        self.configPanel.let_autolayout_checker.setChecked(self.config.let_autolayout_flag)
-        self.configPanel.let_uppercase_checker.setChecked(self.config.let_uppercase_flag)
+        self.configPanel.setupConfig()
         self.configPanel.save_config.connect(self.save_config)
-        self.configPanel.blockSignals(False)
 
-        textblock_mode = self.config.imgtrans_textblock
-        if self.config.imgtrans_textedit:
+        textblock_mode = config.imgtrans_textblock
+        if config.imgtrans_textedit:
             if textblock_mode:
                 self.bottomBar.textblockChecker.setChecked(True)
             self.bottomBar.texteditChecker.click()
-        elif self.config.imgtrans_paintmode:
+        elif config.imgtrans_paintmode:
             self.bottomBar.paintChecker.click()
 
-        self.presetPanel.initPresets(self.config.font_presets)
+        self.presetPanel.initPresets(config.font_presets)
 
-        self.canvas.search_widget.set_config(self.config)
-        self.global_search_widget.set_config(self.config)
+        self.canvas.search_widget.set_config(config)
+        self.global_search_widget.set_config(config)
 
         if self.rightComicTransStackPanel.isHidden():
             self.setPaintMode()
