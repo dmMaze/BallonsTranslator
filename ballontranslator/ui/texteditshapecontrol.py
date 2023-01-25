@@ -103,6 +103,9 @@ class ControlBlockItem(QGraphicsRectItem):
         super().mouseMoveEvent(event)
 
         blk_item = self.ctrl.blk_item
+        if blk_item is None:
+            return
+
         if self.drag_mode == self.DRAG_RESHAPE:    
             block_group = self.ctrl.ctrlblock_group
             crect = self.ctrl.rect()
