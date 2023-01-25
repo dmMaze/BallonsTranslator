@@ -58,6 +58,7 @@ class ConfigSubBlock(Widget):
             layout.addWidget(widget)
         else:
             layout.addLayout(widget)
+        self.widget = widget
         self.setContentsMargins(24, 6, 24, 6)
 
     def setIdx(self, idx0: int, idx1: int) -> None:
@@ -176,7 +177,7 @@ class ConfigContent(QScrollArea):
         else:
             self.active_label = block.header
         self.active_label.setActiveBackground()
-        # self.ensureWidgetVisible(self.active_label)
+        self.ensureWidgetVisible(self.active_label, yMargin=self.active_label.height() * 7)
 
     def deactiveLabel(self):
         if self.active_label is not None:
@@ -355,7 +356,10 @@ class ConfigPanel(Widget):
         self.saladict_shortcut = QKeySequenceEdit("ALT+W", self)
         self.saladict_shortcut.keySequenceChanged.connect(self.on_saladict_shortcut_changed)
         self.saladict_shortcut.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
-        generalConfigPanel.addBlockWidget(self.saladict_shortcut, self.tr("shortcut"))
+
+        sublock = ConfigSubBlock(self.saladict_shortcut, self.tr("shortcut"), vertical_layout=False)
+        sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        generalConfigPanel.addSublock(sublock)
         self.searchurl_combobox, _ = generalConfigPanel.addCombobox(["https://www.google.com/search?q=", "https://www.bing.com/search?q=", "https://duckduckgo.com/?q=", "https://yandex.com/search/?text=", "http://www.baidu.com/s?wd=", "https://search.yahoo.com/search;?p=", "https://www.urbandictionary.com/define.php?term="], self.tr("Search Engines"), fix_size=False)
         self.searchurl_combobox.setEditable(True)
         self.searchurl_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
@@ -388,8 +392,8 @@ class ConfigPanel(Widget):
 
     def onTableItemPressed(self, idx0, idx1):
         self.configContent.setActiveLabel(idx0, idx1)
-        cb: ConfigBlock = self.configContent.config_block_list[idx0]
-        self.configContent.ensureWidgetVisible(cb.getSubBlockbyIdx(idx1))
+        # cb: ConfigBlock = self.configContent.config_block_list[idx0]
+        # self.configContent.ensureWidgetVisible(self.activel)
 
     def on_open_onstartup_changed(self):
         self.config.open_recent_on_startup = self.open_on_startup_checker.isChecked()
