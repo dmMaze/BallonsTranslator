@@ -114,7 +114,7 @@ class TextBlkItem(QGraphicsTextItem):
                         #     input_method_used = True
                         # cursor.setPosition(change_from)
                         # cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
-                        if self.change_added >  len_text:
+                        if self.change_added >  len_text or change_from + self.change_added > len_text:
                             self.change_added = 1
                             change_from = self.textCursor().position() - 1
                             cursor.setPosition(change_from)

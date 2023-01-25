@@ -13,6 +13,7 @@ from .misc import FontFormat, doc_replace, doc_replace_no_shift
 from .texteditshapecontrol import TextBlkShapeControl
 from .page_search_widget import PageSearchWidget, Matched
 from .imgtrans_proj import ProjImgTrans
+from .scene_textlayout import PUNSET_HALF
 
 
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, input_method_used: bool):
@@ -21,15 +22,19 @@ def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit
     new_count = src_edit.document().characterCount()
     removed = ori_count + len(added_text) - new_count
 
+    new_editblock = False
+    if input_method_used or added_text not in PUNSET_HALF:
+        new_editblock = True
+
     cursor = target_edit.textCursor()
     if len(added_text) > 0:
         cursor.setPosition(pos)
         if removed > 0:
             cursor.setPosition(pos + removed, QTextCursor.MoveMode.KeepAnchor)
-        if input_method_used:
+        if new_editblock:
             cursor.beginEditBlock()
         cursor.insertText(added_text)
-        if input_method_used:
+        if new_editblock:
             cursor.endEditBlock()
     elif removed > 0:
         if removed == 1:

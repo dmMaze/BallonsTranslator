@@ -85,10 +85,11 @@ class SourceTextEdit(QTextEdit):
                         change_from = self.input_method_from
                         input_method_used = True
                     elif self.change_added > 0:
-                        len_text = len(self.toPlainText())
+                        text = self.toPlainText()
+                        len_text = len(text)
                         cursor = self.textCursor()
                         
-                        if self.change_added >  len_text:
+                        if self.change_added >  len_text or change_from + self.change_added > len_text:
                             self.change_added = 1
                             change_from = self.textCursor().position() - 1
                             cursor.setPosition(change_from)
