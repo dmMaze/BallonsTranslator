@@ -29,3 +29,4 @@ pycocoa
 pyobjc
 six
 keyboard
+ordered-set

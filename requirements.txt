@@ -24,3 +24,4 @@ python-docx
 docx2txt
 piexif
 keyboard
+ordered-set

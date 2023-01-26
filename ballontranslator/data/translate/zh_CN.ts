@@ -4,47 +4,47 @@
 <context>
     <name>BottomBar</name>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="492"/>
+        <location filename="../../ui/mainwindowbars.py" line="497"/>
         <source>Enable/disable ocr</source>
         <translation>启用/禁用OCR</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="496"/>
+        <location filename="../../ui/mainwindowbars.py" line="501"/>
         <source>Enable/disable translation</source>
         <translation>启用/禁用机翻</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="500"/>
+        <location filename="../../ui/mainwindowbars.py" line="505"/>
         <source>translate page</source>
         <translation>翻译本页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="500"/>
+        <location filename="../../ui/mainwindowbars.py" line="505"/>
         <source>stop</source>
         <translation>停止</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="500"/>
+        <location filename="../../ui/mainwindowbars.py" line="505"/>
         <source>translate current page</source>
         <translation>翻译本页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="500"/>
+        <location filename="../../ui/mainwindowbars.py" line="505"/>
         <source>stop translation</source>
         <translation>停止翻译</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="509"/>
+        <location filename="../../ui/mainwindowbars.py" line="514"/>
         <source>Enable/disable paint mode</source>
         <translation>启用/禁用画板</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="513"/>
+        <location filename="../../ui/mainwindowbars.py" line="518"/>
         <source>Enable/disable text edit mode</source>
         <translation>启用/禁用文本编辑</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="519"/>
+        <location filename="../../ui/mainwindowbars.py" line="524"/>
         <source>Original image transparency: </source>
         <translation>原图透明度: </translation>
     </message>
@@ -225,17 +225,17 @@
         <translation>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict_chs.md&quot;&gt;安装说明&lt;/a&gt;</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="362"/>
+        <location filename="../../ui/configpanel.py" line="361"/>
         <source>Show mini menu when selecting text.</source>
         <translation>选择文本时显示迷你菜单</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="368"/>
+        <location filename="../../ui/configpanel.py" line="367"/>
         <source>shortcut</source>
         <translation>快捷键</translation>
     </message>
     <message>
-        <location filename="../../ui/configpanel.py" line="371"/>
+        <location filename="../../ui/configpanel.py" line="370"/>
         <source>Search Engines</source>
         <translation>搜索引擎</translation>
     </message>
@@ -243,7 +243,7 @@
 <context>
     <name>DLManager</name>
     <message>
-        <location filename="../../ui/dl_manager.py" line="726"/>
+        <location filename="../../ui/dl_manager.py" line="730"/>
         <source>Invalid</source>
         <translation>不可用</translation>
     </message>
@@ -475,7 +475,7 @@
 <context>
     <name>InpaintConfigPanel</name>
     <message>
-        <location filename="../../ui/dlconfig_parse_widgets.py" line="233"/>
+        <location filename="../../ui/dlconfig_parse_widgets.py" line="241"/>
         <source>Let the program decide whether it is necessary to use the selected inpaint method.</source>
         <translation>由程序决定是否调用修复方法</translation>
     </message>
@@ -522,6 +522,39 @@
         <location filename="../../ui/mainwindowbars.py" line="83"/>
         <source>Inpainter: </source>
         <translation>修复工具: </translation>
+    </message>
+</context>
+<context>
+    <name>KeywordSubWidget</name>
+    <message>
+        <location filename="../../ui/keywordsubwidget.py" line="23"/>
+        <source>Keyword</source>
+        <translation>关键词</translation>
+    </message>
+    <message>
+        <location filename="../../ui/keywordsubwidget.py" line="23"/>
+        <source>Substitution</source>
+        <translation>替换</translation>
+    </message>
+    <message>
+        <location filename="../../ui/keywordsubwidget.py" line="23"/>
+        <source>Use regex</source>
+        <translation>使用正则表达式</translation>
+    </message>
+    <message>
+        <location filename="../../ui/keywordsubwidget.py" line="23"/>
+        <source>Case sensitive</source>
+        <translation>大小写敏感</translation>
+    </message>
+    <message>
+        <location filename="../../ui/keywordsubwidget.py" line="34"/>
+        <source>New</source>
+        <translation>新建</translation>
+    </message>
+    <message>
+        <location filename="../../ui/keywordsubwidget.py" line="36"/>
+        <source>Delete</source>
+        <translation>删除</translation>
     </message>
 </context>
 <context>
@@ -575,27 +608,27 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../ui/mainwindow.py" line="305"/>
+        <location filename="../../ui/mainwindow.py" line="333"/>
         <source>Failed to load project </source>
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="788"/>
+        <location filename="../../ui/mainwindow.py" line="828"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="788"/>
+        <location filename="../../ui/mainwindow.py" line="828"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="839"/>
+        <location filename="../../ui/mainwindow.py" line="879"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="881"/>
+        <location filename="../../ui/mainwindow.py" line="922"/>
         <source>Export to </source>
         <translation>导出至 </translation>
     </message>
@@ -606,6 +639,14 @@
         <location filename="../../ui/dl_manager.py" line="55"/>
         <source>Failed to set </source>
         <translation>无法设置 </translation>
+    </message>
+</context>
+<context>
+    <name>OCRConfigPanel</name>
+    <message>
+        <location filename="../../ui/dlconfig_parse_widgets.py" line="262"/>
+        <source>Keyword substitution for OCR results</source>
+        <translation>替换OCR文本中的关键词</translation>
     </message>
 </context>
 <context>
@@ -968,54 +1009,64 @@
         <translation>全局搜索</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="335"/>
+        <location filename="../../ui/mainwindowbars.py" line="340"/>
         <source>View</source>
         <translation>视图</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="336"/>
+        <location filename="../../ui/mainwindowbars.py" line="341"/>
         <source>Drawing Board </source>
         <translation>画板 </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="338"/>
+        <location filename="../../ui/mainwindowbars.py" line="343"/>
         <source>Text Editor</source>
         <translation>编辑器</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="358"/>
+        <location filename="../../ui/mainwindowbars.py" line="363"/>
         <source>Go</source>
         <translation>转到</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="359"/>
+        <location filename="../../ui/mainwindowbars.py" line="364"/>
         <source>Previous Page</source>
         <translation>上一页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="361"/>
+        <location filename="../../ui/mainwindowbars.py" line="366"/>
         <source>Next Page</source>
         <translation>下一页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="372"/>
+        <location filename="../../ui/mainwindowbars.py" line="377"/>
         <source>Run</source>
         <translation>运行</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="373"/>
+        <location filename="../../ui/mainwindowbars.py" line="378"/>
         <source>Translate page</source>
         <translation>翻译本页</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="340"/>
+        <location filename="../../ui/mainwindowbars.py" line="345"/>
         <source>Text Style Presets</source>
         <translation>字体样式预设</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindowbars.py" line="341"/>
+        <location filename="../../ui/mainwindowbars.py" line="346"/>
         <source>Dark Mode</source>
         <translation>深色模式</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="327"/>
+        <source>Keyword substitution for machine translation</source>
+        <translation>替换机翻结果中的关键词</translation>
+    </message>
+    <message>
+        <location filename="../../ui/mainwindowbars.py" line="329"/>
+        <source>Keyword substitution for OCR results</source>
+        <translation>替换OCR文本中的关键词</translation>
     </message>
 </context>
 <context>
@@ -1049,14 +1100,19 @@
 <context>
     <name>TranslatorConfigPanel</name>
     <message>
-        <location filename="../../ui/dlconfig_parse_widgets.py" line="202"/>
+        <location filename="../../ui/dlconfig_parse_widgets.py" line="208"/>
         <source>Source </source>
         <translation>源语言 </translation>
     </message>
     <message>
-        <location filename="../../ui/dlconfig_parse_widgets.py" line="204"/>
+        <location filename="../../ui/dlconfig_parse_widgets.py" line="210"/>
         <source>Target </source>
         <translation>目标语言 </translation>
+    </message>
+    <message>
+        <location filename="../../ui/dlconfig_parse_widgets.py" line="201"/>
+        <source>Keyword substitution for machine translation</source>
+        <translation>替换机翻结果中的关键词</translation>
     </message>
 </context>
 <context>
