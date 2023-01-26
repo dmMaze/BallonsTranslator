@@ -1,7 +1,15 @@
 # Changelogs
 
+### 2023-01-26
+[v1.3.24](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.24) 发布
+1. 选中文本迷你菜单支持*聚合词典专业划词翻译*[沙拉查词](https://saladict.crimx.com): [安装说明](doc/saladict_chs.md)
+<img src = "doc/src/saladict_doc.jpg">
+
+2. 支持替换OCR和机翻结果中的关键字, 见编辑菜单或设置面板 [#78](https://github.com/dmMaze/BallonsTranslator/issues/78)
+3. 修Bug
+
 ### 2023-01-08
-[v1.3.22](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.22) released
+[v1.3.22](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.22) 发布
 1. 支持删除并恢复被抹除文字
 2. 支持角度复位
 3. 修Bug
