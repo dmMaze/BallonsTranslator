@@ -3,7 +3,7 @@ from typing import List
 from dl import VALID_INPAINTERS, VALID_TEXTDETECTORS, VALID_TRANSLATORS, VALID_OCR, \
     TranslatorBase, DEFAULT_DEVICE
 from utils.logger import logger as LOGGER
-from .stylewidgets import ConfigComboBox
+from .stylewidgets import ConfigComboBox, NoBorderPushBtn
 from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit
@@ -189,6 +189,8 @@ class ModuleConfigParseWidget(QWidget):
 
 class TranslatorConfigPanel(ModuleConfigParseWidget):
 
+    show_MT_keyword_window = Signal()
+
     def __init__(self, module_name, *args, **kwargs) -> None:
         super().__init__(module_name, VALID_TRANSLATORS, *args, **kwargs)
         self.translator_combobox = self.module_combobox
@@ -196,6 +198,10 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
     
         self.source_combobox = ConfigComboBox()
         self.target_combobox = ConfigComboBox()
+        self.replaceMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation"), self)
+        self.replaceMTkeywordBtn.clicked.connect(self.show_MT_keyword_window)
+        self.replaceMTkeywordBtn.setFixedWidth(500)
+
         st_layout = QHBoxLayout()
         st_layout.setSpacing(15)
         st_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -203,7 +209,9 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         st_layout.addWidget(self.source_combobox)
         st_layout.addWidget(ParamNameLabel(self.tr('Target ')))
         st_layout.addWidget(self.target_combobox)
+        
         self.vlayout.insertLayout(1, st_layout) 
+        self.vlayout.addWidget(self.replaceMTkeywordBtn)
 
     def finishSetTranslator(self, translator: TranslatorBase):
         self.source_combobox.blockSignals(True)
@@ -242,8 +250,17 @@ class TextDetectConfigPanel(ModuleConfigParseWidget):
 
 
 class OCRConfigPanel(ModuleConfigParseWidget):
+    
+    show_OCR_keyword_window = Signal()
+
     def __init__(self, module_name: str, *args, **kwargs) -> None:
         super().__init__(module_name, VALID_OCR, *args, **kwargs)
         self.ocr_changed = self.module_changed
         self.ocr_combobox = self.module_combobox
         self.setOCR = self.setModule
+
+        self.replaceOCRkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for OCR results"), self)
+        self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
+        self.replaceOCRkeywordBtn.setFixedWidth(500)
+
+        self.vlayout.addWidget(self.replaceOCRkeywordBtn)

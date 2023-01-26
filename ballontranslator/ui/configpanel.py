@@ -355,7 +355,6 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_saladict)
 
         sublock = ConfigSubBlock(ConfigTextLabel(self.tr("<a href=\"https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md\">Installation guide</a>"), CONFIG_FONTSIZE_CONTENT - 2), vertical_layout=False)
-        
         sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         generalConfigPanel.addSublock(sublock)
 
@@ -439,14 +438,14 @@ class ConfigPanel(Widget):
     def on_effect_flag_changed(self):
         self.config.let_fnteffect_flag = self.let_effect_combox.currentIndex()
 
-    def on_source_flag_changed(self):
-        self.config.src_choice_flag = self.src_choice_combox.currentIndex()
+    # def on_source_flag_changed(self):
+    #     self.config.src_choice_flag = self.src_choice_combox.currentIndex()
 
-    def on_source_link_changed(self):
-        self.config.src_link_flag = self.src_link_textbox.text()
+    # def on_source_link_changed(self):
+    #     self.config.src_link_flag = self.src_link_textbox.text()
 
-    def on_source_force_download_changed(self):
-        self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
+    # def on_source_force_download_changed(self):
+    #     self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1

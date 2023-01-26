@@ -1,4 +1,5 @@
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Callable
+from ordered_set import OrderedSet
 import numpy as np
 import cv2
 import logging
@@ -20,6 +21,7 @@ class OCRBase(ModuleParamParser):
             if OCR.module_dict[key] == self.__class__:
                 self.name = key
                 break
+        self.postprocess_hooks: OrderedSet[Callable] = OrderedSet()
         self.setup_ocr()
 
     def setup_ocr(self):
@@ -27,16 +29,32 @@ class OCRBase(ModuleParamParser):
 
     def run_ocr(self, img: np.ndarray, blk_list: List[TextBlock] = None) -> Union[List[TextBlock], str]:
         if blk_list is None:
-            return self.ocr_img(img)
+            text = self.ocr_img(img)
+            for callback in self.postprocess_hooks:
+                text = callback(text)
         elif isinstance(blk_list, TextBlock):
             blk_list = [blk_list]
-        return self.ocr_blk_list(blk_list)
 
-    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        self.ocr_blk_list(img, blk_list)
+        for blk in blk_list:
+            for ii, t in enumerate(blk.text):
+                for callback in self.postprocess_hooks:
+                    blk.text[ii] = callback(t, blk=blk)
+        return blk_list
+
+    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
         raise NotImplementedError
 
     def ocr_img(self, img: np.ndarray) -> str:
         raise NotImplementedError
+
+    def register_postprocess_hooks(self, callbacks: Union[List, Callable]):
+        if callbacks is None:
+            return
+        if isinstance(callbacks, Callable):
+            callbacks = [callbacks]
+        for callback in callbacks:
+            self.postprocess_hooks.add(callback)
 
 
 from .model_32px import OCR32pxModel

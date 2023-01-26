@@ -295,7 +295,7 @@ class ImgtransThread(QThread):
 
     def _blktrans_pipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int):
         if mode >= 0:
-            self.ocr_thread.module.ocr_blk_list(tgt_img, blk_list)
+            self.ocr_thread.module.run_ocr(tgt_img, blk_list)
             self.finish_blktrans_stage.emit('ocr', 100)
         if mode != 0:
             self.translate_thread.module.translate_textblk_lst(blk_list)
@@ -347,7 +347,7 @@ class ImgtransThread(QThread):
             self.imgtrans_proj.pages[imgname] = blk_list
 
             if self.dl_config.enable_ocr:
-                self.ocr.ocr_blk_list(img, blk_list)
+                self.ocr.run_ocr(img, blk_list)
                 self.ocr_counter += 1
                 self.update_ocr_progress.emit(self.ocr_counter)
 
@@ -457,7 +457,7 @@ class DLManager(QObject):
         self.dl_config = config.dl
         self.imgtrans_proj = imgtrans_proj
 
-    def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox):
+    def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox, ocr_postprocess: Callable = None, translate_postprocess: Callable = None):
         dl_config = self.dl_config
         self.textdetect_thread = TextDetectThread(dl_config)
         self.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
@@ -495,6 +495,7 @@ class DLManager(QObject):
         translator_panel.source_combobox.currentTextChanged.connect(self.on_translatorsource_changed)
         translator_panel.target_combobox.currentTextChanged.connect(self.on_translatortarget_changed)
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
+        self.translate_postprocess = translate_postprocess
 
         self.inpaint_panel = inpainter_panel = config_panel.inpaint_config_panel
         inpainter_setup_params = merge_config_module_params(dl_config.inpainter_setup_params, VALID_INPAINTERS, INPAINTERS.get)
@@ -515,6 +516,7 @@ class DLManager(QObject):
         ocr_panel.setupModulesParamWidgets(ocr_setup_params)
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.setOCR)
+        self.ocr_postprocess = ocr_postprocess
 
         self.setTextDetector()
         self.setOCR()
@@ -705,6 +707,7 @@ class DLManager(QObject):
         if self.ocr is not None:
             self.dl_config.ocr = self.ocr.name
             self.ocr_panel.setOCR(self.ocr.name)
+            self.ocr_thread.module.register_postprocess_hooks(self.ocr_postprocess)
             LOGGER.info('OCR set to {}'.format(self.ocr.name))
 
     def on_finish_setinpainter(self):
@@ -720,6 +723,7 @@ class DLManager(QObject):
             self.dl_config.translator = translator.name
             self.update_translator_status.emit(self.dl_config.translator, self.dl_config.translate_source, self.dl_config.translate_target)
             self.translator_panel.finishSetTranslator(translator)
+            self.translate_thread.module.register_postprocess_hooks(self.translate_postprocess)
             LOGGER.info('Translator set to {}'.format(self.translator.name))
         else:
             LOGGER.error('invalid translator')

@@ -1,5 +1,6 @@
 import urllib.request
-from typing import Dict, List, Union, Set
+from ordered_set import OrderedSet
+from typing import Dict, List, Union, Set, Callable
 import time, requests, re, uuid, base64, hmac, functools, json, deepl
 import ctranslate2, sentencepiece as spm
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
@@ -76,6 +77,7 @@ class TranslatorBase(ModuleParamParser):
         self.lang_source: str = lang_source
         self.lang_target: str = lang_target
         self.lang_map: Dict = LANGMAP_GLOBAL.copy()
+        self.postprocess_hooks = OrderedSet()
         
         try:
             self.setup_translator()
@@ -98,6 +100,14 @@ class TranslatorBase(ModuleParamParser):
                 lang_target = self.supported_tgt_list[0]
                 self.set_source(lang_source)
                 self.set_target(lang_target)
+
+    def register_postprocess_hooks(self, callbacks: Union[List, Callable]):
+        if callbacks is None:
+            return
+        if isinstance(callbacks, Callable):
+            callbacks = [callbacks]
+        for callback in callbacks:
+            self.postprocess_hooks.add(callback)
 
     def _setup_translator(self):
         raise NotImplementedError
@@ -135,6 +145,12 @@ class TranslatorBase(ModuleParamParser):
             
         if isinstance(text, List):
             assert len(text_trans) == len(text)
+            for ii, t in enumerate(text_trans):
+                for callback in self.postprocess_hooks:
+                    text_trans[ii] = callback(t)
+        else:
+            for callback in self.postprocess_hooks:
+                text_trans = callback(text_trans)
 
         return text_trans
 
@@ -152,6 +168,8 @@ class TranslatorBase(ModuleParamParser):
         text_list = [blk.get_text() for blk in textblk_lst]
         translations = self.translate(text_list)
         for tr, blk in zip(translations, textblk_lst):
+            for callback in self.postprocess_hooks:
+                tr = callback(tr, blk=blk)
             blk.translation = tr
 
     def supported_languages(self) -> List[str]:

@@ -271,6 +271,8 @@ class ProgramConfig:
         textselect_mini_menu: bool = True,
         saladict_shortcut: str = "Alt+S",
         search_url: str = "https://www.google.com/search?q=",
+        ocr_sublist: dict = None,
+        mt_sublist: dict = None,
         **kwargs) -> None:
 
         if isinstance(dl, dict):
@@ -318,6 +320,8 @@ class ProgramConfig:
         self.textselect_mini_menu = textselect_mini_menu
         self.saladict_shortcut = saladict_shortcut
         self.search_url = search_url
+        self.ocr_sublist = [] if ocr_sublist is None else ocr_sublist
+        self.mt_sublist = [] if mt_sublist is None else mt_sublist
 
 class LruIgnoreArg:
 

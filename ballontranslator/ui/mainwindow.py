@@ -1,5 +1,5 @@
 import os.path as osp
-import os, re, copy
+import os, re, copy, traceback
 from typing import List
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
@@ -30,6 +30,7 @@ from . import constants as C
 from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
 from .drawing_commands import RunBlkTransCommand
+from .keywordsubwidget import KeywordSubWidget
 
 class PageListView(QListWidget):    
     def __init__(self, *args, **kwargs) -> None:
@@ -44,6 +45,7 @@ class MainWindow(FramelessWindow):
     save_on_page_changed = True
     opening_dir = False
     page_changing = False
+    postprocess_mt_toggle = True
     
     def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
         
@@ -86,6 +88,8 @@ class MainWindow(FramelessWindow):
         screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
         self.configPanel = ConfigPanel(self)
+        self.configPanel.trans_config_panel.show_MT_keyword_window.connect(self.show_MT_keyword_window)
+        self.configPanel.ocr_config_panel.show_OCR_keyword_window.connect(self.show_OCR_keyword_window)
         self.config = self.configPanel.config
 
         self.leftBar = LeftBar(self)
@@ -151,6 +155,16 @@ class MainWindow(FramelessWindow):
         self.presetPanel.hide()
         self.presetPanel.hide_signal.connect(self.save_config)
         self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
+
+        self.ocrSubWidget = KeywordSubWidget("Keyword substitution for OCR")
+        self.ocrSubWidget.setParent(self)
+        self.ocrSubWidget.setWindowFlags(Qt.WindowType.Window)
+        self.ocrSubWidget.hide()
+        self.mtSubWidget = KeywordSubWidget("Keyword substitution for machine translation")
+        self.mtSubWidget.setParent(self)
+        self.mtSubWidget.setWindowFlags(Qt.WindowType.Window)
+        self.mtSubWidget.hide()
+
         self.st_manager = SceneTextManager(self.app, self, self.canvas, self.textPanel)
         self.st_manager.new_textblk.connect(self.canvas.search_widget.on_new_textblk)
         self.canvas.search_widget.pairwidget_list = self.st_manager.pairwidget_list
@@ -213,7 +227,7 @@ class MainWindow(FramelessWindow):
         dl_manager.finish_translate_page.connect(self.finishTranslatePage)
         dl_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         dl_manager.page_trans_finished.connect(self.on_pagtrans_finished)
-        dl_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox)
+        dl_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox, self.ocr_postprocess, self.translate_postprocess)
         dl_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         dl_manager.imgtrans_thread.mask_postprocess = self.drawingPanel.rectPanel.post_process_mask
         dl_manager.blktrans_pipeline_finished.connect(self.on_blktrans_finished)
@@ -231,7 +245,7 @@ class MainWindow(FramelessWindow):
         self.drawingPanel.set_config(config.drawpanel)
         self.drawingPanel.initDLModule(dl_manager)
 
-        
+
         self.global_search_widget.imgtrans_proj = self.imgtrans_proj
         self.global_search_widget.setupReplaceThread(self.st_manager.pairwidget_list, self.st_manager.textblk_item_list)
         self.global_search_widget.replace_thread.finished.connect(self.on_global_replace_finished)
@@ -254,6 +268,20 @@ class MainWindow(FramelessWindow):
 
         if self.rightComicTransStackPanel.isHidden():
             self.setPaintMode()
+
+        try:
+            self.ocrSubWidget.loadCfgSublist(config.ocr_sublist)
+        except Exception as e:
+            LOGGER.error(traceback.format_exc())
+            config.ocr_sublist = []
+            self.ocrSubWidget.loadCfgSublist(config.ocr_sublist)
+
+        try:
+            self.mtSubWidget.loadCfgSublist(config.mt_sublist)
+        except Exception as e:
+            LOGGER.error(traceback.format_exc())
+            config.mt_sublist = []
+            self.mtSubWidget.loadCfgSublist(config.mt_sublist)
 
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
@@ -393,6 +421,8 @@ class MainWindow(FramelessWindow):
         self.titleBar.undo_trigger.connect(self.on_undo)
         self.titleBar.page_search_trigger.connect(self.on_page_search)
         self.titleBar.global_search_trigger.connect(self.on_global_search)
+        self.titleBar.replaceMTkeyword_trigger.connect(self.show_MT_keyword_window)
+        self.titleBar.replaceOCRkeyword_trigger.connect(self.show_OCR_keyword_window)
         self.titleBar.run_trigger.connect(self.leftBar.runImgtransBtn.click)
         self.titleBar.translate_page_trigger.connect(self.bottomBar.transTranspageBtn.click)
         self.titleBar.fontstyle_trigger.connect(self.show_fontstyle_presets)
@@ -539,6 +569,12 @@ class MainWindow(FramelessWindow):
                 se.setTextCursor(cursor)
                 
                 self.global_search_widget.commit_search()
+
+    def show_MT_keyword_window(self):
+        self.mtSubWidget.show()
+
+    def show_OCR_keyword_window(self):
+        self.ocrSubWidget.show()
 
     def on_req_update_pagetext(self):
         self.global_search_widget.searched_textstack_step = self.canvas.text_undo_stack.index()
@@ -718,6 +754,7 @@ class MainWindow(FramelessWindow):
             self.st_manager.updateTranslation()
 
     def on_imgtrans_pipeline_finished(self):
+        self.postprocess_mt_toggle = True
         pass
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
@@ -736,6 +773,9 @@ class MainWindow(FramelessWindow):
                     blk._alignment = 1
                 blk.translation = half_len(blk.translation)
                 blk.vertical = False
+
+        for blk in blk_list:
+            blk.translation = self.mtSubWidget.sub_text(blk.translation)
 
     def on_pagtrans_finished(self, page_index: int):
         blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
@@ -845,6 +885,7 @@ class MainWindow(FramelessWindow):
     def on_run_imgtrans(self):
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
+        self.postprocess_mt_toggle = False
         self.dl_manager.runImgtransPipeline()
 
     def on_transpanel_changed(self):
@@ -896,3 +937,12 @@ class MainWindow(FramelessWindow):
         self.config.darkmode = self.titleBar.darkModeAction.isChecked()
         self.resetStyleSheet(reverse_icon=True)
         self.save_config()
+
+    def ocr_postprocess(self, text: str, blk: TextBlock = None) -> str:
+        text = self.ocrSubWidget.sub_text(text)
+        return text
+
+    def translate_postprocess(self, text: str, blk: TextBlock = None) -> str:
+        if self.postprocess_mt_toggle:
+            text = self.mtSubWidget.sub_text(text)
+        return text
