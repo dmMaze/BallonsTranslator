@@ -30,6 +30,8 @@ class ConfigTextLabel(QLabel):
             font.setWeight(font_weight)
         font.setPointSize(fontsize)
         self.setFont(font)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.setOpenExternalLinks(True)
 
     def setActiveBackground(self):
         self.setAutoFillBackground(True)
@@ -351,6 +353,12 @@ class ConfigPanel(Widget):
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
 
         generalConfigPanel.addTextLabel(label_saladict)
+
+        sublock = ConfigSubBlock(ConfigTextLabel(self.tr("<a href=\"https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md\">Installation guide</a>"), CONFIG_FONTSIZE_CONTENT - 2), vertical_layout=False)
+        
+        sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        generalConfigPanel.addSublock(sublock)
+
         self.selectext_minimenu_checker = generalConfigPanel.addCheckBox(self.tr('Show mini menu when selecting text.'))
         self.selectext_minimenu_checker.stateChanged.connect(self.on_selectext_minimenu_changed)
         self.saladict_shortcut = QKeySequenceEdit("ALT+W", self)

@@ -144,6 +144,7 @@ Support English and Japanese text detection, training code and more details can 
 ## Misc
 * If your computer has an Nvidia GPU, the program will enable cuda acceleration for all models by default, which requires around 6G GPU memory, you can turn down the inpaint_size in the config panel to avoid OOM. 
 * Thanks to [bropines](https://github.com/bropines) for the Russian localisation.  
+* Add support for [saladict](https://saladict.crimx.com) (*All-in-one professional pop-up dictionary and page translator*) in the mini menu on text selection. [Installation guide](doc/saladict.md)
 
 ## Previews of fully automated translation results
 |            Original            |         Translated (CHS)         |         Translated (ENG)         |

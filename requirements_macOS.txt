@@ -28,3 +28,4 @@ piexif
 pycocoa
 pyobjc
 six
+keyboard
