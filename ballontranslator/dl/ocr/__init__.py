@@ -37,9 +37,13 @@ class OCRBase(ModuleParamParser):
 
         self.ocr_blk_list(img, blk_list)
         for blk in blk_list:
-            for ii, t in enumerate(blk.text):
+            if isinstance(blk.text, List):
+                for ii, t in enumerate(blk.text):
+                    for callback in self.postprocess_hooks:
+                        blk.text[ii] = callback(t, blk=blk)
+            else:
                 for callback in self.postprocess_hooks:
-                    blk.text[ii] = callback(t, blk=blk)
+                    blk.text = callback(blk.text, blk=blk)
         return blk_list
 
     def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
