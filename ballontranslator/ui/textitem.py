@@ -529,16 +529,23 @@ class TextBlkItem(QGraphicsTextItem):
         option.state = QStyle.State_None
         super().paint(painter, option, widget)
 
-    def startEdit(self) -> None:
+    def startEdit(self, pos: QPointF = None) -> None:
         self.pre_editing = False
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self.setFocus()
         self.begin_edit.emit(self.idx)
+        if pos is not None:
+            hit = self.layout.hitTest(pos, None)
+            cursor = self.textCursor()
+            cursor.clearSelection()
+            cursor.setPosition(hit)
+            self.setTextCursor(cursor)
 
     def endEdit(self) -> None:
         self.end_edit.emit(self.idx)
         cursor = self.textCursor()
+        self.old_cursorpos = cursor.position()
         cursor.clearSelection()
         self.setTextCursor(cursor)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -549,8 +556,8 @@ class TextBlkItem(QGraphicsTextItem):
         return self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
     
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:    
-        self.startEdit()
         super().mouseDoubleClickEvent(event)
+        self.startEdit(pos=event.pos())
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if not self.bound_checking or \
