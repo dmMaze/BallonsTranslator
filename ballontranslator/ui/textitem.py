@@ -68,6 +68,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.input_method_from = -1
         self.input_method_text = ''
         self.block_all_input = False
+        self.block_moving = False
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
@@ -530,6 +531,7 @@ class TextBlkItem(QGraphicsTextItem):
         super().paint(painter, option, widget)
 
     def startEdit(self, pos: QPointF = None) -> None:
+        self.block_moving = True
         self.pre_editing = False
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
@@ -538,9 +540,9 @@ class TextBlkItem(QGraphicsTextItem):
         if pos is not None:
             hit = self.layout.hitTest(pos, None)
             cursor = self.textCursor()
-            cursor.clearSelection()
             cursor.setPosition(hit)
             self.setTextCursor(cursor)
+        self.block_moving = False
 
     def endEdit(self) -> None:
         self.end_edit.emit(self.idx)
@@ -560,6 +562,8 @@ class TextBlkItem(QGraphicsTextItem):
         self.startEdit(pos=event.pos())
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.block_moving:
+            return
         if not self.bound_checking or \
             self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
             super().mouseMoveEvent(event)

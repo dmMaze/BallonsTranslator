@@ -101,7 +101,6 @@ class ControlBlockItem(QGraphicsRectItem):
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super().mouseMoveEvent(event)
-
         blk_item = self.ctrl.blk_item
         if blk_item is None:
             return
