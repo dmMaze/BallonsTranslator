@@ -379,7 +379,7 @@ class FontFormatPanel(Widget):
         self.fontsizebox = FontSizeBox(self)
         self.fontsizebox.setToolTip(self.tr("Font Size"))
         self.fontsizebox.setObjectName("FontSizeBox")
-        self.fontsizebox.fcombobox.setToolTip("Change font size")
+        self.fontsizebox.fcombobox.setToolTip(self.tr("Change font size"))
         self.fontsizebox.apply_fontsize.connect(self.onApplyFontsize)
         self.fontsizebox.fcombobox.editTextChanged.connect(self.onSizeEditorChanged)
 

@@ -1,9 +1,10 @@
 import numpy as np
 from typing import List, Union, Tuple
+import os
 
-from qtpy.QtWidgets import QShortcut, QMenu, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtWidgets import QShortcut, QMenu, QGraphicsScene, QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
-from qtpy.QtGui import QKeySequence, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
+from qtpy.QtGui import QDropEvent, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
@@ -112,6 +113,7 @@ class Canvas(QGraphicsScene):
     projstate_unsaved = False
     proj_savestate_changed = Signal(bool)
     textstack_changed = Signal()
+    drop_open_folder = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -132,6 +134,7 @@ class Canvas(QGraphicsScene):
         self.gv.hide_canvas.connect(self.on_hide_canvas)
         self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.gv.canvas = self
+        self.gv.setAcceptDrops(True)
         
         if not C.FLAG_QT6:
             # mitigate https://bugreports.qt.io/browse/QTBUG-93417
@@ -176,6 +179,12 @@ class Canvas(QGraphicsScene):
         self.drawingLayer = DrawingLayer()
         self.drawingLayer.setTransformationMode(Qt.TransformationMode.FastTransformation)
         self.textLayer = QGraphicsPixmapItem()
+
+        self.imgLayer.setAcceptDrops(True)
+        self.inpaintLayer.setAcceptDrops(True)
+        self.maskLayer.setAcceptDrops(True)
+        self.drawingLayer.setAcceptDrops(True)
+        self.textLayer.setAcceptDrops(True)
         
         self.addItem(self.baseLayer)
         self.inpaintLayer.setParentItem(self.baseLayer)
@@ -198,6 +207,27 @@ class Canvas(QGraphicsScene):
         self.saved_drawundo_step = 0
 
         self.clipboard_blks: List[TextBlock] = []
+
+        self.drop_folder: str = None
+
+    def dragEnterEvent(self, e: QGraphicsSceneDragDropEvent):
+        self.drop_folder = None
+        if e.mimeData().hasUrls():
+            urls = e.mimeData().urls()
+            ufolder = None
+            for url in urls:
+                furl = url.toLocalFile()
+                if os.path.isdir(furl):
+                    ufolder = furl
+                    break
+            if ufolder is not None:
+                e.acceptProposedAction()
+                self.drop_folder = ufolder
+
+    def dropEvent(self, event) -> None:
+        if self.drop_folder is not None:
+            self.drop_open_folder.emit(self.drop_folder)
+        return super().dropEvent(event)
 
     def textEditMode(self) -> bool:
         return self.editor_index == 1

@@ -547,7 +547,6 @@ class TextBlkItem(QGraphicsTextItem):
     def endEdit(self) -> None:
         self.end_edit.emit(self.idx)
         cursor = self.textCursor()
-        self.old_cursorpos = cursor.position()
         cursor.clearSelection()
         self.setTextCursor(cursor)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
