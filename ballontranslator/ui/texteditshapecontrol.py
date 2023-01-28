@@ -311,3 +311,14 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self.updateScale(self.current_scale)
             self.need_rescale = False
         self.setZValue(1)
+
+    def startEditing(self):
+        self.setCursor(Qt.CursorShape.IBeamCursor)
+        for ctrlb in self.ctrlblock_group:
+            ctrlb.hide()
+
+    def endEditing(self):
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+        if self.isVisible():
+            for ctrlb in self.ctrlblock_group:
+                ctrlb.show()

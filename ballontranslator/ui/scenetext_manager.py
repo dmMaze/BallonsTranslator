@@ -445,7 +445,7 @@ class SceneTextManager(QObject):
         self.txtblkShapeControl.setBlkItem(blk_item)
         self.canvas.editing_textblkitem = blk_item
         self.formatpanel.set_textblk_item(blk_item)
-        self.txtblkShapeControl.setCursor(Qt.CursorShape.IBeamCursor)
+        self.txtblkShapeControl.startEditing()
         e_trans = self.pairwidget_list[blk_item.idx].e_trans
         self.changeHoveringWidget(e_trans)
 
@@ -469,7 +469,7 @@ class SceneTextManager(QObject):
     def onTextBlkItemEndEdit(self, blk_id: int):
         self.canvas.editing_textblkitem = None
         self.formatpanel.set_textblk_item(None)
-        self.txtblkShapeControl.setCursor(Qt.CursorShape.SizeAllCursor)
+        self.txtblkShapeControl.endEditing()
 
     def editingTextItem(self) -> TextBlkItem:
         if self.txtblkShapeControl.isVisible() and self.canvas.editing_textblkitem is not None:
