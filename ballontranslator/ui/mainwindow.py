@@ -157,11 +157,11 @@ class MainWindow(FramelessWindow):
         self.presetPanel.hide_signal.connect(self.save_config)
         self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
 
-        self.ocrSubWidget = KeywordSubWidget("Keyword substitution for OCR")
+        self.ocrSubWidget = KeywordSubWidget(self.tr("Keyword substitution for OCR"))
         self.ocrSubWidget.setParent(self)
         self.ocrSubWidget.setWindowFlags(Qt.WindowType.Window)
         self.ocrSubWidget.hide()
-        self.mtSubWidget = KeywordSubWidget("Keyword substitution for machine translation")
+        self.mtSubWidget = KeywordSubWidget(self.tr("Keyword substitution for machine translation"))
         self.mtSubWidget.setParent(self)
         self.mtSubWidget.setWindowFlags(Qt.WindowType.Window)
         self.mtSubWidget.hide()
