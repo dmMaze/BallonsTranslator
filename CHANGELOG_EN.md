@@ -1,12 +1,14 @@
 # Changelogs
 
-### 2023-01-26
-[v1.3.24](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.24) released
+### 2023-01-27
+[v1.3.26](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.24) released
 1. Add support for [saladict](https://saladict.crimx.com) (*All-in-one professional pop-up dictionary and page translator*) in the mini menu on text selection. [Installation guide](doc/saladict.md) 
 <img src = "doc/src/saladict_doc.jpg">
 
-2. Support keyword substitution for OCR & machine translation results [#78](https://github.com/dmMaze/BallonsTranslator/issues/78): Edit -> ```Keyword substitution for machine translation```  
-3. Bugfix
+2. Support keyword substitution for OCR & machine translation results [#78](https://github.com/dmMaze/BallonsTranslator/issues/78): Edit -> ```Keyword substitution for machine translation```
+3. Support import folder with drag&drop [#77](https://github.com/dmMaze/BallonsTranslator/issues/77)
+4. Hide control blocks on start text editing. [#81](https://github.com/dmMaze/BallonsTranslator/issues/81)
+5. Bugfix
 
 ### 2023-01-08
 [v1.3.22](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.22) released
