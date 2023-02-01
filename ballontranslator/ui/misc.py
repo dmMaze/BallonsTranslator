@@ -185,6 +185,10 @@ class DLModuleConfig:
             self.translator_setup_params = dict()
         else:
             self.translator_setup_params = translator_setup_params
+            if 'google' in translator_setup_params:
+                if 'url' in translator_setup_params['google'] and \
+                    translator_setup_params['google']['url']['select'] == 'https://translate.google.cn/m':
+                    translator_setup_params['google']['url']['select'] = 'https://translate.google.com/m'
         if inpainter_setup_params is None:
             self.inpainter_setup_params = dict()
         else:

@@ -195,7 +195,7 @@ class GoogleTranslator(TranslatorBase):
                 # 'https://translate.google.cn/m',
                 'https://translate.google.com/m'
             ],
-            'select': 'https://translate.google.cn/m'
+            'select': 'https://translate.google.com/m'
         }
     }
     
