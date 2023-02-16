@@ -10,6 +10,8 @@ from typing import List, Union, Tuple
 from .cursor import rotateCursorList, resizeCursorList
 from .textitem import TextBlkItem
 
+CBEDGE_WIDTH = 30
+
 class ControlBlockItem(QGraphicsRectItem):
     DRAG_NONE = 0
     DRAG_RESHAPE = 1
@@ -183,8 +185,6 @@ class ControlBlockItem(QGraphicsRectItem):
             self.ctrl.blk_item.update()
             self.ctrl.updateBoundingRect()
             return super().mouseReleaseEvent(event)
-
-CBEDGE_WIDTH = 40
 
 class TextBlkShapeControl(QGraphicsRectItem):
     blk_item : TextBlkItem = None 
