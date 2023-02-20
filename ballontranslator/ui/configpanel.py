@@ -28,7 +28,7 @@ class ConfigTextLabel(QLabel):
         font = self.font()
         if font_weight is not None:
             font.setWeight(font_weight)
-        font.setPointSize(fontsize)
+        font.setPointSizeF(fontsize)
         self.setFont(font)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.setOpenExternalLinks(True)

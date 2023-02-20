@@ -691,7 +691,7 @@ class TextBlkItem(QGraphicsTextItem):
         
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setFamily(ffmat.family)
-        font.setPointSize(ffmat.size)
+        font.setPointSizeF(ffmat.size)
         font.setBold(ffmat.bold)
 
         self.document().setDefaultFont(font)
