@@ -28,7 +28,8 @@ PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF
 
 @lru_cache(maxsize=256)
 def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetrics:
-    font = QFont(ffamily, size, weight, italic)
+    font = QFont(ffamily, int(size), weight, italic)
+    font.setPointSizeF(size)
     return QFontMetrics(font)
 
 @lru_cache(maxsize=2048)
