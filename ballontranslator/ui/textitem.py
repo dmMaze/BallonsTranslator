@@ -519,7 +519,6 @@ class TextBlkItem(QGraphicsTextItem):
         if self.isSelected() and not self.is_editting():
             pen = QPen(TEXTRECT_SELECTED_COLOR, 3.5 / self.get_scale(), Qt.PenStyle.DashLine)
             painter.setPen(pen)
-            # painter.drawRect(br)
             painter.drawRect(self.unpadRect(br))
         elif draw_rect:
             pen = QPen(TEXTRECT_SHOW_COLOR, 3 / self.get_scale(), Qt.PenStyle.SolidLine)

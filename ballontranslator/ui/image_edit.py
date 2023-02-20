@@ -96,11 +96,13 @@ class StrokeImgItem(QGraphicsItem):
             pen.setWidthF(0)
             self.painter.setPen(pen)
             self.painter.setBrush(self.pen.color())
-            self.painter.drawEllipse(pnt1.x() - self._r, pnt1.y() - self._r, self._d, self._d)
+            rect = QRectF(pnt1.x() - self._r, pnt1.y() - self._r, self._d, self._d)
+            self.painter.drawEllipse(rect)
             self.painter.setPen(self.pen)
 
     def _line_to_rectangle(self, pnt1: QPointF, pnt2: QPointF):
-        self.painter.drawRect(pnt1.x() - self._r, pnt1.y() - self._r, self._d, self._d)
+        shape_rect = QRectF(pnt1.x() - self._r, pnt1.y() - self._r, self._d, self._d)
+        self.painter.drawRect(shape_rect)
 
     def lineTo(self, new_pnt: QPointF, update=True) -> QRectF:
         delta = self.cur_point - new_pnt
@@ -120,26 +122,6 @@ class StrokeImgItem(QGraphicsItem):
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         painter.drawImage(0, 0, self._img)
-
-
-class PenCursor(QCursor):
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.thickness = 2
-
-    def updatePenCursor(self, size: int, color: QColor):
-        
-        pen = QPen(color, self.thickness, Qt.PenStyle.DotLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-        if size < 20:
-            pen.setWidth(3)
-            pen.setStyle(Qt.PenStyle.SolidLine)
-        cur_pixmap = QPixmap(QSize(int(size), int(size)))
-        cur_pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(cur_pixmap)
-        painter.setPen(pen)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.drawEllipse(self.thickness, self.thickness, size-2*self.thickness, size-2*self.thickness)
-        painter.end()
 
 
 class PixmapItem(QGraphicsPixmapItem):

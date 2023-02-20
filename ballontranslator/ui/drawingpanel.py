@@ -495,16 +495,14 @@ class DrawingPanel(Widget):
         painter.setPen(pen)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if draw_shape:
+            shape_rect = QRectF(cursor_center-pen_radius + thickness, 
+                                cursor_center-pen_radius + thickness, 
+                                pen_size - 2*thickness, 
+                                pen_size - 2*thickness)
             if shape == PenShape.Circle:
-                painter.drawEllipse(cursor_center-pen_radius + thickness, 
-                                    cursor_center-pen_radius + thickness, 
-                                    pen_size - 2*thickness, 
-                                    pen_size - 2*thickness)
+                painter.drawEllipse(shape_rect)
             elif shape == PenShape.Rectangle:
-                painter.drawRect(cursor_center-pen_radius + thickness, 
-                                    cursor_center-pen_radius + thickness, 
-                                    pen_size - 2*thickness, 
-                                    pen_size - 2*thickness)
+                painter.drawRect(shape_rect)
             else:
                 raise NotImplementedError
             # elif shape == PenShape.Triangle:
