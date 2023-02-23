@@ -4,6 +4,7 @@ ICON_PATH = 'data/icons/[ICONNAME]'
 
 UI_PATH = osp.dirname(osp.abspath(__file__))
 PROGRAM_PATH = osp.dirname(UI_PATH)
+LOGGING_PATH = osp.join(PROGRAM_PATH, 'data/logs')
 
 LIBS_PATH = osp.join(PROGRAM_PATH, 'data/libs')
 
@@ -47,3 +48,5 @@ FLAG_QT6 = False
 
 SLIDERHANDLE_COLOR = (85,85,96)
 FOREGROUND_FONTCOLOR = (93,93,95)
+
+MAX_NUM_LOG = 7
