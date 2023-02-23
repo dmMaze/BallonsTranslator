@@ -524,6 +524,11 @@ class BottomBar(Widget):
         self.originalSlider = PaintQSlider(self.tr("Original image transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
         self.originalSlider.setFixedWidth(130)
         self.originalSlider.setRange(0, 100)
+
+        self.textlayerSlider = PaintQSlider(self.tr("Lettering transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
+        self.textlayerSlider.setFixedWidth(130)
+        self.textlayerSlider.setValue(100)
+        self.textlayerSlider.setRange(0, 100)
         
         self.hlayout.addWidget(self.ocrChecker)
         self.hlayout.addWidget(self.transChecker)
@@ -531,6 +536,7 @@ class BottomBar(Widget):
         self.hlayout.addWidget(self.transTranspageBtn)
         self.hlayout.addWidget(self.inpainterStatBtn)
         self.hlayout.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        self.hlayout.addWidget(self.textlayerSlider)
         self.hlayout.addWidget(self.originalSlider)
         self.hlayout.addWidget(self.paintChecker)
         self.hlayout.addWidget(self.texteditChecker)

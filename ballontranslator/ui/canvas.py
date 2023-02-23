@@ -277,6 +277,9 @@ class Canvas(QGraphicsScene):
         else:
             self.imgLayer.show()
 
+    def setTextLayerTransparency(self, transparency: float):
+        self.textLayer.setOpacity(transparency)
+
     def adjustScrollBar(self, scrollBar: QScrollBar, factor: float):
         scrollBar.setValue(int(factor * scrollBar.value() + ((factor - 1) * scrollBar.pageStep() / 2)))
 
@@ -562,6 +565,9 @@ class Canvas(QGraphicsScene):
 
     def setOriginalTransparencyBySlider(self, slider_value: int):
         self.setOriginalTransparency(slider_value / 100)
+
+    def setTextLayerTransparencyBySlider(self, slider_value: int):
+        self.setTextLayerTransparency(slider_value / 100)
 
     def setTextBlockMode(self, mode: bool):
         self.textblock_mode = mode

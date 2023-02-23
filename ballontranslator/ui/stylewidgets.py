@@ -292,7 +292,6 @@ class PaintQSlider(QSlider):
             painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,200))
             painter.drawRoundedRect(rect, r, r)
 
-
 class ConfigComboBox(QComboBox):
 
     def __init__(self, fix_size=True, *args, **kwargs) -> None:
