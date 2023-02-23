@@ -525,7 +525,7 @@ class BottomBar(Widget):
         self.originalSlider.setFixedWidth(130)
         self.originalSlider.setRange(0, 100)
 
-        self.textlayerSlider = PaintQSlider(self.tr("Lettering transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
+        self.textlayerSlider = PaintQSlider(self.tr("Lettering layer transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
         self.textlayerSlider.setFixedWidth(130)
         self.textlayerSlider.setValue(100)
         self.textlayerSlider.setRange(0, 100)

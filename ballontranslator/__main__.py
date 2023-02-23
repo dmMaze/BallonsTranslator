@@ -2,7 +2,8 @@ import sys
 import argparse
 import os.path as osp
 import os
-from utils.logger import logger as LOGGER
+# from utils.logger import logger as LOGGER
+from utils.logger import setup_logging, logger as LOGGER
 
 QT_APIS = ['pyqt5', 'pyqt6']
 
@@ -13,7 +14,7 @@ def main():
     args = parser.parse_args()
 
     if not args.qt_api in QT_APIS:
-        os.environ['QT_API'] = 'pyqt5'
+        os.environ['QT_API'] = 'pyqt6'
     else:
         os.environ['QT_API'] = args.qt_api
 
@@ -41,6 +42,9 @@ def main():
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     os.chdir(C.PROGRAM_PATH)
+
+    setup_logging(C.LOGGING_PATH)
+
     app = QApplication(sys.argv)
     translator = QTranslator()
     translator.load(
@@ -48,6 +52,8 @@ def main():
         osp.dirname(osp.abspath(__file__)) + "/data/translate",
     )
     app.installTranslator(translator)
+
+    print((QLocale.system().name()))
 
     C.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
     yahei = QFont('Microsoft YaHei UI')

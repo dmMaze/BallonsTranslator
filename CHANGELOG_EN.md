@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2023-02-23
+[v1.3.30](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.30) released
+1. Migrate to PyQt6 for better text rendering preview and [compatibility](https://github.com/Nuitka/Nuitka/issues/251) with nuitka
+2. Support set transparency of lettering layer (#88)
+3. Dump logs to data/logs
+
 ### 2023-01-27
 [v1.3.26](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.26) released
 1. Add support for [saladict](https://saladict.crimx.com) (*All-in-one professional pop-up dictionary and page translator*) in the mini menu on text selection. [Installation guide](doc/saladict.md) 
