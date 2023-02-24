@@ -1,4 +1,4 @@
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QRectF
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF
 from qtpy.QtWidgets import QGridLayout, QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
 
@@ -489,7 +489,7 @@ class DrawingPanel(Widget):
         if pen_size < 20:
             pen.setStyle(Qt.PenStyle.SolidLine)
 
-        cur_pixmap = QPixmap(QSize(map_size, map_size))
+        cur_pixmap = QPixmap(QSizeF(map_size, map_size).toSize())
         cur_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(cur_pixmap)
         painter.setPen(pen)

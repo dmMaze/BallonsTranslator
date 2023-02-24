@@ -371,8 +371,8 @@ class DeeplTranslator(TranslatorBase):
     
 
 
-SUGOIMODEL_TRANSLATOR_DIRPATH = 'data/models/sugoi_translator'
-SUGOIMODEL_TOKENIZATOR_PATH = SUGOIMODEL_TRANSLATOR_DIRPATH + "\\spm.ja.nopretok.model"
+SUGOIMODEL_TRANSLATOR_DIRPATH = 'data/models/sugoi_translator/'
+SUGOIMODEL_TOKENIZATOR_PATH = SUGOIMODEL_TRANSLATOR_DIRPATH + "spm.ja.nopretok.model"
 @register_translator('Sugoi')
 class SugoiTranslator(TranslatorBase):
 
