@@ -171,6 +171,8 @@ class TranslateThread(ModuleThread):
             self.dl_config.translate_target = self.translator.lang_target
             self.dl_config.translator = self.translator.name
         except Exception as e:
+            if old_translator is None:
+                old_translator = TRANSLATORS.module_dict['google']('简体中文', 'English', raise_unsupported_lang=False)
             self.translator = old_translator
             msg = self.tr('Failed to set translator ') + translator
             self.exception_occurred.emit(msg, repr(e), traceback.format_exc())
