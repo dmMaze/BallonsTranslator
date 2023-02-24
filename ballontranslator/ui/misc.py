@@ -152,7 +152,7 @@ class ProjHardSubExtract:
 class DLModuleConfig:
     def __init__(self, 
                  textdetector: str = 'ctd',
-                 ocr = "mit32px",
+                 ocr = "mit48px_ctc",
                  inpainter: str = 'lama_mpe',
                  translator = "google",
                  enable_ocr = True,
