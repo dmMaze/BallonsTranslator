@@ -282,7 +282,7 @@ class PaintQSlider(QSlider):
                 else:  # 在左侧绘制文字
                     x, y = rect.x() - rect.width(), rect.y()
                 painter.drawText(
-                    x, y-10, textw, rect.height()+20,
+                    int(x), int(y)-10, textw, rect.height()+20,
                     Qt.AlignmentFlag.AlignCenter, self.draw_content.replace("value", str(self.value()))
                 )
 

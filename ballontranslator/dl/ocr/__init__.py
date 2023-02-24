@@ -32,6 +32,7 @@ class OCRBase(ModuleParamParser):
             text = self.ocr_img(img)
             for callback in self.postprocess_hooks:
                 text = callback(text)
+            return text
         elif isinstance(blk_list, TextBlock):
             blk_list = [blk_list]
 

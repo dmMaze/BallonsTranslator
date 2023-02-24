@@ -1,7 +1,7 @@
-from .ocr import OCR, OCRBase, OCRMIT32px, OCRMIT48pxCTC
+from .ocr import OCR, OCRBase, OCRMIT32px, OCRMIT48pxCTC, MangaOCR
 from .textdetector import TEXTDETECTORS, TextDetectorBase, ComicTextDetector
-from .translators import TRANSLATORS, TranslatorBase
-from .inpaint import INPAINTERS, InpainterBase, PatchmatchInpainter, AOTInpainter
+from .translators import TRANSLATORS, TranslatorBase, SugoiTranslator
+from .inpaint import INPAINTERS, InpainterBase, PatchmatchInpainter, AOTInpainter, LamaInpainterMPE
 from .moduleparamparser import DEFAULT_DEVICE
 
 VALID_TEXTDETECTORS = list(TEXTDETECTORS.module_dict.keys())
