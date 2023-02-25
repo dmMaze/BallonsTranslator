@@ -8,7 +8,7 @@ block_cipher = None
 a = Analysis(
     ['__main__.py'],
     pathex=[
-        './', # 当前目录是***必须***的 
+        './', 
         './dl', 
         './dl/inpaint', 
         './dl/ocr', 
@@ -27,7 +27,7 @@ a = Analysis(
         './ui/framelesswindow/fw_qt6/windows', 
         './utils'],
     binaries=[],
-    datas=[('data', './data')], # data表示data文件夹内所有目录和文件，./data表示这些目录和文件放到打包项目data文件夹内
+    datas=[('data', './data')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -69,7 +69,21 @@ coll = COLLECT(
 )
 app = BUNDLE(
     coll,
-    name='__main__.app',
-    icon=None,
+    name='BallonsTranslator.app',
+    icon='icon.icns',
     bundle_identifier=None,
+    info_plist={
+      'CFBundleDisplayName': 'BallonsTranslator',
+      'CFBundleName': 'BallonsTranslator',
+      'CFBundlePackageType': 'APPL',
+      'CFBundleSignature': 'BATR',
+      'CFBundleShortVersionString': '1.3.30',
+      'CFBundleVersion': '1.3.30',
+      'CFBundleExecutable': '__main__',
+      'CFBundleIconFile': 'icon.icns',
+      'CFBundleIdentifier': 'dev.dmmaze.batr',
+      'CFBundleInfoDictionaryVersion': '6.0',
+      'LSApplicationCategoryType': 'public.app-category.graphics-design',
+      'LSEnvironment': {'LANG': 'zh_CN.UTF-8'},
+      }
 )
