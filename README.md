@@ -75,7 +75,7 @@ cd BallonsTranslator
 pip3 install -r requirements_macOS.txt
 
 # 打包应用
-cd BallonsTranslator/ballontranslator
+cd ballontranslator
 sudo pyinstaller __main__.spec
 
 # 打包好的`BallonsTranslator.app`在`dist`文件夹下
