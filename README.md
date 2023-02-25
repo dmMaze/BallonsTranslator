@@ -58,6 +58,30 @@ python ballontranslator
 
 如果要使用Sugoi翻译器(仅日译英), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data/models.  
 
+### Apple Silicon Mac 本地构建.app应用
+```
+# 安装Python 3.9.13虚拟环境
+brew install pyenv mecab
+env PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.9.13
+pyenv global 3.9.13
+python3 -m venv ballonstranslator
+source ballonstranslator/bin/activate
+
+# 克隆仓库
+git clone https://github.com/dmMaze/BallonsTranslator.git
+cd BallonsTranslator
+
+# 安装依赖
+pip3 install -r requirements_macOS.txt
+
+# 打包应用
+cd ballontranslator
+sudo pyinstaller __main__.spec
+
+# 打包好的`BallonsTranslator.app`在`dist`文件夹下
+# 需要注意的是，现在的应用还无法使用，需要到 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`data`并覆盖到`BallonsTranslator.app/Contents/Resources/data`, 覆盖的时候选择“合并”，覆盖完成后应用最终打包完整，开箱即用，将应用拖到macOS的应用程序文件夹即可，不需要再配置Python环境。
+```
+
 ## 一键翻译
 **建议在命令行终端下运行程序**, 首次运行请先配置好源语言/目标语言, 打开一个带图片的文件夹, 点击Run等待翻译完成  
 <img src="doc/src/run.gif">  

@@ -30,3 +30,4 @@ pyobjc
 six
 keyboard
 ordered-set
+pyinstaller
