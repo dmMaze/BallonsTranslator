@@ -53,8 +53,6 @@ def main():
     )
     app.installTranslator(translator)
 
-    print((QLocale.system().name()))
-
     C.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
     yahei = QFont('Microsoft YaHei UI')
     if yahei.exactMatch():
