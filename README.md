@@ -79,7 +79,7 @@ cd ballontranslator
 sudo pyinstaller __main__.spec
 
 # 打包好的`BallonsTranslator.app`在`dist`文件夹下
-# ⚠️⚠️⚠️ 需要注意的是，现在的应用还无法使用，需要到 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`datas`并覆盖到`BallonsTranslator.app/Contents/Resources/data`, 覆盖的时候选择“合并”，覆盖完成后应用最终打包完整，开箱即用，将应用拖到macOS的应用程序文件夹即可，不需要再配置Python环境。
+# 需要注意的是，现在的应用还无法使用，需要到 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`data`并覆盖到`BallonsTranslator.app/Contents/Resources/data`, 覆盖的时候选择“合并”，覆盖完成后应用最终打包完整，开箱即用，将应用拖到macOS的应用程序文件夹即可，不需要再配置Python环境。
 ```
 
 ## 一键翻译
