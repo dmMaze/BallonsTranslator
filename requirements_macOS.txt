@@ -31,3 +31,4 @@ six
 keyboard
 ordered-set
 pyinstaller
+opencc

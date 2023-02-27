@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2023-02-27
+[v1.3.32](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.32) 发布
+1. 修复繁体直排bug (#96)
+2. 彩云和deepl目标语言支持繁体 (#100)
+3. 支持读取.webp图片 (#85)
+
 ### 2023-02-23
 [v1.3.30](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.30) 发布
 1. 从PyQt5换到PyQt6以支持更好的嵌字预览, [避免PyQt5与nuitka的线程兼容性问题](https://github.com/Nuitka/Nuitka/issues/251)

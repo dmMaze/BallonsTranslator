@@ -25,3 +25,4 @@ docx2txt
 piexif
 keyboard
 ordered-set
+opencc

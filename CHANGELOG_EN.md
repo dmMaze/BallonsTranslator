@@ -1,5 +1,11 @@
 # Changelogs
 
+### 2023-02-27
+[v1.3.32](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.32) released
+1. fix incorrect orientation assignment for CHT  (#96)
+2. convert CHS to CHT if it is required for Caiyun & DeepL (#100)
+3. support for webp (#85)
+
 ### 2023-02-23
 [v1.3.30](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.30) released
 1. Migrate to PyQt6 for better text rendering preview and [compatibility](https://github.com/Nuitka/Nuitka/issues/251) with nuitka
