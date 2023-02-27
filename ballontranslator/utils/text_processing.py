@@ -9,8 +9,8 @@ FULL2HALF = dict((i + 0xFEE0, i) for i in range(0x21, 0x7F))
 FULL2HALF[0x3000] = 0x20
 FULL2HALF[0x3002] = 0x2E
 
-LANGSET_CJK = {'简体中文', '繁体中文', '日本語', '한국어'}
-LANGSET_CH = {'简体中文', '繁体中文'}
+LANGSET_CJK = {'简体中文', '繁體中文', '日本語', '한국어'}
+LANGSET_CH = {'简体中文', '繁體中文'}
 
 PUNSET_RIGHT_ENG = {'.', '?', '!', ':', ';', ')', '}', "\""}
 PUNCTUATION_L = {'「', '『', '【', '《', '〈', '〔', '［', '｛', '（', '(', '[', '{', '“', '‘'}

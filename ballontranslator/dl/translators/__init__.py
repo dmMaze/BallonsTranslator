@@ -8,6 +8,7 @@ from ..textdetector.textblock import TextBlock
 from ..moduleparamparser import ModuleParamParser
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
+from .hooks import chs2cht
 
 TRANSLATORS = Registry('translators')
 register_translator = TRANSLATORS.register_module
@@ -61,6 +62,7 @@ def check_language_support(check_type: str = 'source'):
 class TranslatorBase(ModuleParamParser):
 
     concate_text = True
+    cht_require_convert = False
     
     def __init__(self,
                  lang_source: str, 
@@ -100,6 +102,9 @@ class TranslatorBase(ModuleParamParser):
                 lang_target = self.supported_tgt_list[0]
                 self.set_source(lang_source)
                 self.set_target(lang_target)
+
+        if self.cht_require_convert:
+            self.register_postprocess_hooks(self._chs2cht)
 
     def register_postprocess_hooks(self, callbacks: Union[List, Callable]):
         if callbacks is None:
@@ -182,6 +187,12 @@ class TranslatorBase(ModuleParamParser):
     @property
     def supported_src_list(self) -> List[str]:
         return self.valid_lang_list
+    
+    def _chs2cht(self, text: str, blk: TextBlock = None):
+        if self.lang_target == '繁體中文':
+            return chs2cht(text)
+        else:
+            return text
 
 
 @register_translator('google')
@@ -290,12 +301,14 @@ class PapagoTranslator(TranslatorBase):
 class CaiyunTranslator(TranslatorBase):
 
     concate_text = False
+    cht_require_convert = True
     setup_params: Dict = {
         'token': '',
     }
 
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'zh'
+        self.lang_map['繁體中文'] = 'zh'
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'  
         
@@ -329,6 +342,7 @@ class CaiyunTranslator(TranslatorBase):
 class DeeplTranslator(TranslatorBase):
 
     concate_text = False
+    cht_require_convert = True
     setup_params: Dict = {
         'api_key': ''
     }

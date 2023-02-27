@@ -765,7 +765,6 @@ class MainWindow(FramelessWindow):
 
     def on_imgtrans_pipeline_finished(self):
         self.postprocess_mt_toggle = True
-        pass
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
         src_is_cjk = is_cjk(self.config.dl.translate_source)
