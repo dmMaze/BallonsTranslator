@@ -78,7 +78,7 @@ class CustomGV(QGraphicsView):
     def enterEvent(self, event: QEvent) -> None:
         self.setFocus()
         return super().enterEvent(event)
-
+    
 
 class Canvas(QGraphicsScene):
 
@@ -185,6 +185,7 @@ class Canvas(QGraphicsScene):
         self.maskLayer.setAcceptDrops(True)
         self.drawingLayer.setAcceptDrops(True)
         self.textLayer.setAcceptDrops(True)
+        self.baseLayer.setAcceptDrops(True)
         
         self.addItem(self.baseLayer)
         self.inpaintLayer.setParentItem(self.baseLayer)
@@ -209,8 +210,12 @@ class Canvas(QGraphicsScene):
         self.clipboard_blks: List[TextBlock] = []
 
         self.drop_folder: str = None
+        
+        im_rect = QRectF(0, 0, C.SCREEN_W, C.SCREEN_H)
+        self.baseLayer.setRect(im_rect)
 
     def dragEnterEvent(self, e: QGraphicsSceneDragDropEvent):
+        
         self.drop_folder = None
         if e.mimeData().hasUrls():
             urls = e.mimeData().urls()
@@ -227,6 +232,7 @@ class Canvas(QGraphicsScene):
     def dropEvent(self, event) -> None:
         if self.drop_folder is not None:
             self.drop_open_folder.emit(self.drop_folder)
+            self.drop_open_folder = None
         return super().dropEvent(event)
 
     def textEditMode(self) -> bool:
@@ -452,32 +458,33 @@ class Canvas(QGraphicsScene):
             self.mid_btn_pressed = True
             self.pan_initial_pos = event.screenPos()
             return
+        
+        if self.imgtrans_proj.img_valid:
+            if self.textblock_mode and len(self.selectedItems()) == 0 and self.textEditMode():
+                if btn == Qt.MouseButton.RightButton:
+                    return self.startCreateTextblock(event.scenePos())
+            elif self.creating_normal_rect:
+                if btn == Qt.MouseButton.RightButton or btn == Qt.MouseButton.LeftButton:
+                    return self.startCreateTextblock(event.scenePos(), hide_control=True)
 
-        if self.textblock_mode and len(self.selectedItems()) == 0:
-            if btn == Qt.MouseButton.RightButton:
-                return self.startCreateTextblock(event.scenePos())
-        elif self.creating_normal_rect:
-            if btn == Qt.MouseButton.RightButton or btn == Qt.MouseButton.LeftButton:
-                return self.startCreateTextblock(event.scenePos(), hide_control=True)
+            elif btn == Qt.MouseButton.LeftButton:
+                # user is drawing using the pen/inpainting tool
+                if self.alt_pressed:
+                    self.scale_tool_mode = True
+                    self.begin_scale_tool.emit(event.scenePos())
+                elif self.painting:
+                    self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.painting_pen)
 
-        elif btn == Qt.MouseButton.LeftButton:
-            # user is drawing using the pen/inpainting tool
-            if self.alt_pressed:
-                self.scale_tool_mode = True
-                self.begin_scale_tool.emit(event.scenePos())
-            elif self.painting:
-                self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.painting_pen)
-
-        elif btn == Qt.MouseButton.RightButton:
-            # user is drawing using eraser
-            if self.painting:
-                erasing = self.image_edit_mode == ImageEditMode.PenTool
-                self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.erasing_pen, erasing)
-            else:   # rubber band selection
-                self.rubber_band_origin = event.scenePos()
-                self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, self.rubber_band_origin).normalized())
-                self.rubber_band.show()
-                self.rubber_band.setZValue(1)
+            elif btn == Qt.MouseButton.RightButton:
+                # user is drawing using eraser
+                if self.painting:
+                    erasing = self.image_edit_mode == ImageEditMode.PenTool
+                    self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.erasing_pen, erasing)
+                else:   # rubber band selection
+                    self.rubber_band_origin = event.scenePos()
+                    self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, self.rubber_band_origin).normalized())
+                    self.rubber_band.show()
+                    self.rubber_band.setZValue(1)
 
         return super().mousePressEvent(event)
 

@@ -481,11 +481,14 @@ class TitleBar(Widget):
 
 
 class BottomBar(Widget):
+    
     textedit_checkchanged = Signal()
     paintmode_checkchanged = Signal()
     textblock_checkchanged = Signal()
     ocrcheck_statechanged = Signal(bool)
     transcheck_statechanged = Signal(bool)
+    inpaint_btn_clicked = Signal()
+
     def __init__(self, mainwindow: QMainWindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.setFixedHeight(BOTTOMBAR_HEIGHT)
@@ -507,6 +510,7 @@ class BottomBar(Widget):
                                                 self.tr('translate current page'),
                                                 self.tr('stop translation'))
         self.inpainterStatBtn = InpainterStatusButton()
+        self.inpainterStatBtn.clicked.connect(self.inpaintBtnClicked)
         self.transTranspageBtn.hide()
         self.hlayout = QHBoxLayout(self)
         self.paintChecker = QCheckBox()
@@ -562,3 +566,6 @@ class BottomBar(Widget):
         
     def transCheckerStateChanged(self):
         self.transcheck_statechanged.emit(self.transChecker.isChecked())
+
+    def inpaintBtnClicked(self):
+        self.inpaint_btn_clicked.emit()

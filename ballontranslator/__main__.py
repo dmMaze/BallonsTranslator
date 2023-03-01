@@ -53,7 +53,10 @@ def main():
     )
     app.installTranslator(translator)
 
-    C.LDPI = QGuiApplication.primaryScreen().logicalDotsPerInch()
+    ps = QGuiApplication.primaryScreen()
+    C.LDPI = ps.logicalDotsPerInch()
+    C.SCREEN_W = ps.geometry().width()
+    C.SCREEN_H = ps.geometry().height()
     yahei = QFont('Microsoft YaHei UI')
     if yahei.exactMatch():
         QGuiApplication.setFont(yahei)

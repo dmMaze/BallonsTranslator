@@ -452,6 +452,11 @@ class ConfigPanel(Widget):
         self.configTable.setCurrentItem(idx0, idx1)
         self.configTable.tableitem_pressed.emit(idx0, idx1)
 
+    def focusOnInpaint(self):
+        idx0, idx1 = self.inpaint_sub_block.idx0, self.inpaint_sub_block.idx1
+        self.configTable.setCurrentItem(idx0, idx1)
+        self.configTable.tableitem_pressed.emit(idx0, idx1)
+
     def showEvent(self, e) -> None:
         self.inpaint_sub_block.layout().addWidget(self.inpaint_config_panel)
         return super().showEvent(e)

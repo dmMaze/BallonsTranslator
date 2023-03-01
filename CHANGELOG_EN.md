@@ -1,7 +1,7 @@
 # Changelogs
 
 ### 2023-02-27
-[v1.3.32](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.32) released
+[v1.3.34](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.34) released
 1. fix incorrect orientation assignment for CHT  (#96)
 2. convert CHS to CHT if it is required for Caiyun & DeepL (#100)
 3. support for webp (#85)

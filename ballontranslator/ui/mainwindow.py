@@ -57,6 +57,8 @@ class MainWindow(FramelessWindow):
         self.setupShortcuts()
         self.showMaximized()
 
+        self.setAcceptDrops(True)
+
         if open_dir != '' and osp.exists(open_dir):
             self.openProj(open_dir)
         elif self.config.open_recent_on_startup:
@@ -139,7 +141,7 @@ class MainWindow(FramelessWindow):
         self.canvas.proj_savestate_changed.connect(self.on_savestate_changed)
         self.canvas.textstack_changed.connect(self.on_textstack_changed)
         self.canvas.run_blktrans.connect(self.on_run_blktrans)
-        self.canvas.drop_open_folder.connect(self.openDir)
+        self.canvas.drop_open_folder.connect(self.dropOpenDir)
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
         self.bottomBar.textlayerSlider.valueChanged.connect(self.canvas.setTextLayerTransparencyBySlider)
@@ -239,6 +241,7 @@ class MainWindow(FramelessWindow):
         self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
         self.bottomBar.ocrcheck_statechanged.connect(dl_manager.setOCRMode)
         self.bottomBar.transcheck_statechanged.connect(dl_manager.setTransMode)
+        self.bottomBar.inpaint_btn_clicked.connect(self.inpaintBtnClicked)
         self.bottomBar.translatorStatusbtn.clicked.connect(self.translatorStatusBtnPressed)
         self.bottomBar.transTranspageBtn.run_target.connect(self.on_transpagebtn_pressed)
 
@@ -301,9 +304,6 @@ class MainWindow(FramelessWindow):
         else:
             self.openJsonProj(proj_path)
 
-    def openImgtransProj(self, p: str, ):
-        pass
-
     def openDir(self, directory: str):
         try:
             self.opening_dir = True
@@ -318,6 +318,11 @@ class MainWindow(FramelessWindow):
             LOGGER.warning("Failed to load project from " + directory)
             self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + directory, '')
             return
+        
+    def dropOpenDir(self, directory: str):
+        if isinstance(directory, str) and osp.exists(directory):
+            self.leftBar.updateRecentProjList(directory)
+            self.openDir(directory)
 
     def openJsonProj(self, json_path: str):
         try:
@@ -735,6 +740,10 @@ class MainWindow(FramelessWindow):
     def translatorStatusBtnPressed(self):
         self.leftBar.configChecker.setChecked(True)
         self.configPanel.focusOnTranslator()
+
+    def inpaintBtnClicked(self):
+        self.leftBar.configChecker.setChecked(True)
+        self.configPanel.focusOnInpaint()
 
     def updateTranslatorStatus(self, translator: str, source: str, target: str):
         if translator == '':

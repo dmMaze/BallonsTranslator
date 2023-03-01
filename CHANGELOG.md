@@ -1,7 +1,7 @@
 # Changelogs
 
 ### 2023-02-27
-[v1.3.32](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.32) 发布
+[v1.3.34](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.34) 发布
 1. 修复繁体直排bug (#96)
 2. 彩云和deepl目标语言支持繁体 (#100)
 3. 支持读取.webp图片 (#85)
