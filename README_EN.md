@@ -28,7 +28,7 @@ preview
 
 # Usage
 
-Windows users can download Ballonstranslator-x.x.x-core.7z from [腾讯云](https://share.weiyun.com/xoRhz9i4) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and extract it to a folder named BallonTranslator, also download Ballonstranslator-x.x.x-patch.7z if there is any and extract it to the same folder.
+Windows users can download Ballonstranslator-x.x.x-core.7z from [One Drive](https://1drv.ms/u/s!AlBRd6SKRepfapXEdiIFun72Bls?e=onUera) and extract it to a folder named BallonTranslator, also download Ballonstranslator-x.x.x-patch.7z if there is any and extract it to the same folder.
 
 ## Run the source code
 
@@ -49,7 +49,7 @@ Install pytorch-cuda to enable GPU acceleration if you have a NVIDIA GPU.
 pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
 ```
 
-Download the **data** folder from https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing and move it into BallonsTranslator/ballontranslator, finally run
+Download the **data** folder from [One Drive](https://1drv.ms/u/s!AlBRd6SKRepfapXEdiIFun72Bls?e=onUera) and move it into BallonsTranslator/ballontranslator, finally run
 ```bash
 python ballontranslator
 ```

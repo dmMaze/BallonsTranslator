@@ -24,7 +24,7 @@
 
 # Использование
 
-Пользователи Windows могут загрузить Ballonstranslator-x.x.x-core.7z с сайта [腾讯云](https://share.weiyun.com/xoRhz9i4) или [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) и извлеките его в папку с именем BallonTranslator, также скачайте Ballonstranslator-x.x.x-patch.7z, если он есть, и извлеките его в ту же папку.
+Пользователи Windows могут загрузить Ballonstranslator-x.x.x-core.7z с сайта [腾讯云](https://share.weiyun.com/xoRhz9i4) или [One Drive](https://1drv.ms/u/s!AlBRd6SKRepfapXEdiIFun72Bls?e=onUera) и извлеките его в папку с именем BallonTranslator, также скачайте Ballonstranslator-x.x.x-patch.7z, если он есть, и извлеките его в ту же папку.
 
 ## Запуск из исходного кода (работает слегка с ошибками)
 
@@ -45,7 +45,7 @@ $ pip install -r requirements.txt
 pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
 ```
 
-Скачайте папку **data** с сайта https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing и переместите ее в BallonsTranslator/ballontranslator, наконец, выполните команду
+Скачайте папку **data** с сайта [One Drive](https://1drv.ms/u/s!AlBRd6SKRepfapXEdiIFun72Bls?e=onUera) и переместите ее в BallonsTranslator/ballontranslator, наконец, выполните команду
 
 ```bash
 python ballontranslator
