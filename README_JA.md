@@ -24,7 +24,7 @@
 
 # 使用方法
 
-Windowsユーザーは、[腾讯云](https://share.weiyun.com/xoRhz9i4)または[Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)からBallonstranslator-x.x.x-core.7zをダウンロードしてBallonTranslatorというフォルダに展開し、Ballonstranslator-x.x.x-patch.7zがあればこれもダウンロードして同じフォルダに展開してください。
+Windowsユーザーは、[腾讯云](https://share.weiyun.com/xoRhz9i4)または[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)(note: you also need to download latest Ballonstranslator-1.3.xx from GitHub release and extract it to overwrite **Ballontranslator-1.3.0-core** or older installation to get the app updated.)
 
 ## ソースコードの実行
 
@@ -45,7 +45,7 @@ NVIDIA GPUをお持ちの場合、GPUアクセラレーションを有効にす�
 pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
 ```
 
-https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing から **data** フォルダをダウンロードし、BallonsTranslator/ballontranslatorに移動して、最後に以下を実行します
+[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)  から **data** フォルダをダウンロードし、BallonsTranslator/ballontranslatorに移動して、最後に以下を実行します
 ```bash
 python ballontranslator
 ```
