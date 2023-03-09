@@ -48,66 +48,61 @@
         <source>Original image transparency: </source>
         <translation>原图透明度: </translation>
     </message>
-    <message>
-        <location filename="../../ui/mainwindowbars.py" line="528"/>
-        <source>Lettering layer transparency: </source>
-        <translation>嵌字层透明度</translation>
-    </message>
 </context>
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ui/canvas.py" line="580"/>
+        <location filename="../../ui/canvas.py" line="574"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="583"/>
+        <location filename="../../ui/canvas.py" line="577"/>
         <source>Apply font formatting</source>
         <translation>应用字体格式</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="584"/>
+        <location filename="../../ui/canvas.py" line="578"/>
         <source>Auto layout</source>
         <translation>自动排版</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="578"/>
+        <location filename="../../ui/canvas.py" line="572"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="579"/>
+        <location filename="../../ui/canvas.py" line="573"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="587"/>
+        <location filename="../../ui/canvas.py" line="581"/>
         <source>translate</source>
         <translation>翻译</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="588"/>
+        <location filename="../../ui/canvas.py" line="582"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="589"/>
+        <location filename="../../ui/canvas.py" line="583"/>
         <source>OCR and translate</source>
         <translation>OCR并翻译</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="590"/>
+        <location filename="../../ui/canvas.py" line="584"/>
         <source>OCR, translate and inpaint</source>
         <translation>OCR，翻译并抹字</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="581"/>
+        <location filename="../../ui/canvas.py" line="575"/>
         <source>Delete and Recover removed text</source>
         <translation>删除并恢复被抹除文字</translation>
     </message>
     <message>
-        <location filename="../../ui/canvas.py" line="585"/>
+        <location filename="../../ui/canvas.py" line="579"/>
         <source>Reset Angle</source>
         <translation>角度复位</translation>
     </message>
@@ -277,22 +272,22 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="377"/>
+        <location filename="../../ui/fontformatpanel.py" line="376"/>
         <source>Font Family</source>
         <translation>字体</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="381"/>
+        <location filename="../../ui/fontformatpanel.py" line="380"/>
         <source>Font Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="400"/>
+        <location filename="../../ui/fontformatpanel.py" line="399"/>
         <source>Change font color</source>
         <translation>改变文字颜色</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="425"/>
+        <location filename="../../ui/fontformatpanel.py" line="424"/>
         <source>Change stroke color</source>
         <translation>改变文字轮廓颜色</translation>
     </message>
@@ -307,37 +302,37 @@
         <translation type="obsolete">行间距: </translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="459"/>
+        <location filename="../../ui/fontformatpanel.py" line="458"/>
         <source>Global Font Format</source>
         <translation>全局字体格式</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="416"/>
+        <location filename="../../ui/fontformatpanel.py" line="415"/>
         <source>Stroke</source>
         <translation>轮廓</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="432"/>
+        <location filename="../../ui/fontformatpanel.py" line="431"/>
         <source>Change stroke width</source>
         <translation>修改轮廓宽度</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="449"/>
+        <location filename="../../ui/fontformatpanel.py" line="448"/>
         <source>Change letter spacing</source>
         <translation>修改字符间距</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="394"/>
+        <location filename="../../ui/fontformatpanel.py" line="393"/>
         <source>Change line spacing</source>
         <translation>修改行距</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="465"/>
+        <location filename="../../ui/fontformatpanel.py" line="464"/>
         <source>Effect</source>
         <translation>特效</translation>
     </message>
     <message>
-        <location filename="../../ui/fontformatpanel.py" line="383"/>
+        <location filename="../../ui/fontformatpanel.py" line="382"/>
         <source>Change font size</source>
         <translation>改变字体大小</translation>
     </message>
@@ -618,37 +613,37 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../ui/mainwindow.py" line="335"/>
+        <location filename="../../ui/mainwindow.py" line="334"/>
         <source>Failed to load project </source>
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="838"/>
+        <location filename="../../ui/mainwindow.py" line="829"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="838"/>
+        <location filename="../../ui/mainwindow.py" line="829"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="889"/>
+        <location filename="../../ui/mainwindow.py" line="880"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="932"/>
+        <location filename="../../ui/mainwindow.py" line="923"/>
         <source>Export to </source>
         <translation>导出至 </translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="161"/>
+        <location filename="../../ui/mainwindow.py" line="160"/>
         <source>Keyword substitution for OCR</source>
         <translation>替换OCR文本中的关键词</translation>
     </message>
     <message>
-        <location filename="../../ui/mainwindow.py" line="165"/>
+        <location filename="../../ui/mainwindow.py" line="164"/>
         <source>Keyword substitution for machine translation</source>
         <translation>替换机翻结果中的关键词</translation>
     </message>
