@@ -296,6 +296,7 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
+        label_sources = self.tr('Sources')
         label_lettering = self.tr('Lettering')
         label_saladict = self.tr("SalaDict")
     
@@ -307,6 +308,7 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_sources, CONFIG_FONTSIZE_TABLE),
             TableItem(label_lettering, CONFIG_FONTSIZE_TABLE),
             TableItem(label_saladict, CONFIG_FONTSIZE_TABLE)
         ])
@@ -330,6 +332,14 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
+
+        generalConfigPanel.addTextLabel(label_sources)
+        self.src_link_textbox = generalConfigPanel.addLineEdit('Source url')
+        self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
+        self.src_title_textbox = generalConfigPanel.addLineEdit('Title of your project')
+        self.src_title_textbox.textChanged.connect(self.on_source_title_changed)
+        self.src_force_download_checker = generalConfigPanel.addCheckBox(self.tr('Force download/redownload'))
+        self.src_force_download_checker.stateChanged.connect(self.on_source_force_download_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
@@ -441,11 +451,14 @@ class ConfigPanel(Widget):
     # def on_source_flag_changed(self):
     #     self.config.src_choice_flag = self.src_choice_combox.currentIndex()
 
-    # def on_source_link_changed(self):
-    #     self.config.src_link_flag = self.src_link_textbox.text()
+    def on_source_link_changed(self):
+        self.config.src_link_flag = self.src_link_textbox.text()
 
-    # def on_source_force_download_changed(self):
-    #     self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
+    def on_source_title_changed(self):
+        self.config.src_title_flag = self.src_title_textbox.text()
+
+    def on_source_force_download_changed(self):
+        self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
@@ -483,5 +496,8 @@ class ConfigPanel(Widget):
         self.let_uppercase_checker.setChecked(config.let_uppercase_flag)
         self.saladict_shortcut.setKeySequence(config.saladict_shortcut)
         self.searchurl_combobox.setCurrentText(config.search_url)
+        self.src_force_download_checker.setChecked(config.src_force_download_flag)
+        self.src_link_textbox.setText(config.src_link_flag)
+        self.src_title_textbox.setText(config.src_title_flag)
 
         self.blockSignals(False)

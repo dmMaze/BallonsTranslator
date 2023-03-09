@@ -1,11 +1,12 @@
 import requests
 import undetected_chromedriver as uc
-from undetected_chromedriver import ChromeOptions
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 import re
 import time
-from constants import SOURCE_DOWNLOAD_PATH
-from exceptions import ImagesNotFoundInRequest, NotValidUrl
+from .constants import SOURCE_DOWNLOAD_PATH
+from .exceptions import ImagesNotFoundInRequest, NotValidUrl
+from utils.logger import logger as LOGGER
 import os
 
 
@@ -34,6 +35,13 @@ class SourceBase:
     def ReturnNumberOfPages(self) -> int:
         return self.last_page_num
 
+    def ReturnFullPathToProject(self) -> str:
+        return self.path
+
+    def CheckLink(self):
+        if 'https://' not in self.url:
+            raise NotValidUrl(self.url)
+
     def CheckFiles(self, path):
 
         #  read known page number
@@ -59,64 +67,69 @@ class SourceBase:
             return False
 
     def FetchImageUrls(self, force_redownload: bool = False):
+        if self.url:
+            LOGGER.info('Scraping website for images')
+            #  set download path
+            if not self.title:
 
-        #  set download path
-        if not self.title:
+                #  filter url for illegal characters
+                _url = self.url.translate({ord(c): None for c in '\/:*?"<>|'})
+                self.path = rf'{SOURCE_DOWNLOAD_PATH}\{_url}'
 
-            #  filter url for illegal characters
-            _url = self.url.translate({ord(c): None for c in '\/:*?"<>|'})
-            self.path = rf'{SOURCE_DOWNLOAD_PATH}\{_url}'
+            else:
+                self.path = rf'{SOURCE_DOWNLOAD_PATH}\{self.title}'
 
-        else:
-            self.path = rf'{SOURCE_DOWNLOAD_PATH}\{self.title}'
+            path_to_page_num = rf'{self.path}\pages.txt'
 
-        path_to_page_num = rf'{self.path}\pages.txt'
+            #  check if the files are already downloaded
+            are_downloaded = False
+            if not os.path.exists(self.path):
+                os.makedirs(self.path)
+            elif os.path.exists(self.path) and force_redownload is False:
+                are_downloaded = self.CheckFiles(path_to_page_num)
 
-        #  check if the files are already downloaded
-        are_downloaded = False
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
-        elif os.path.exists(self.path) and force_redownload is False:
-            are_downloaded = self.CheckFiles(path_to_page_num)
+            if are_downloaded is False:
 
-        if are_downloaded is False:
+                #  initialize webdriver
+                options = Options()
+                # options.add_argument("--headless")
+                driver = uc.Chrome(options=options)
 
-            #  initialize webdriver
-            options = ChromeOptions()
-            options.add_argument('headless')
-            driver = uc.Chrome(options=options)
+                #  load page and wait for cloudflare to pass
+                driver.get(self.url)
+                time.sleep(10)
+                soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-            #  load page and wait for cloudflare to pass
-            driver.get(self.url)
-            time.sleep(10)
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
+                #  find all images and filter them
+                _elements = soup.find_all('img')
+                urls = [img['src'] for img in _elements]
+                images = [k for k in urls if 'https' in k]
+                temp_list = []
 
-            #  find all images and filter them
-            _elements = soup.find_all('img')
-            urls = [img['src'] for img in _elements]
-            images = [k for k in urls if 'https' in k]
-            temp_list = []
+                #  filter images for only those with numbers at the end and makes sure there are no duplicates
+                for i in images:
 
-            #  filter images for only those with numbers at the end and makes sure there are no duplicates
-            for i in images:
+                    try:
+                        temp = (re.search('https://(.*)/(.*?)jpg', i)).group(2)
 
-                try:
-                    temp = (re.search('https://(.*)/(.*?)jpg', i)).group(2)
+                        if any(k.isdigit() for k in temp) and temp not in temp_list and len(temp) < 10 and temp not in self.template:
+                            i = i.replace(' ', '%20')
+                            self.image_urls.append(i)
 
-                    if any(k.isdigit() for k in temp) and temp not in temp_list and len(temp) < 10 and temp not in self.template:
-                        i = i.replace(' ', '%20')
-                        self.image_urls.append(i)
+                        temp_list.append(temp)
 
-                    temp_list.append(temp)
+                    except AttributeError:
+                        pass
 
-                except AttributeError:
-                    pass
+                if not self.image_urls:
+                    raise ImagesNotFoundInRequest(self.image_urls)
 
-            #  download images
-            self.DownloadImages()
+                #  download images
+                self.DownloadImages()
 
     def DownloadImages(self):
         n = 1
+        LOGGER.info('Downloading images')
 
         for i in self.image_urls:
             img_data = requests.get(i).content
@@ -132,13 +145,11 @@ class SourceBase:
 
         self.SaveNumberOfPages(rf'{self.path}\pages.txt')
 
+        LOGGER.info('Download complete')
+
     def run(self, url: str, force_redownload: bool, title: str = ''):
         self.SetUrl(url)
         if title:
             self.SetTitle(title)
         self.FetchImageUrls(force_redownload)
 
-
-if __name__ == '__main__':
-    Source = SourceBase()
-    Source.run(url='https://nhentai.net/g/444882/', force_redownload=False, title='Pog')
