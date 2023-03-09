@@ -1,2 +1,0 @@
-class SourceNotImplemented(Exception):
-    pass
