@@ -1,0 +1,31 @@
+{
+    "eva-light": {
+        "@borderColor": "#b3b6bf",
+        "@qwidgetForegroundColor": "#5d5d5f",
+        "@widgetBackgroundColor": "#ebeef5",
+        "@emptyContentBackgroundColor": "#e1e4eb",
+        "@titleBarColor": "#6d6d6f",
+        "@pushBtnBackgroundColor": "rgba(198, 201, 207, 50%)",
+        "@noboderPushBtnBackgroundColor": "rgb(198, 201, 207)",
+        "@transtexteditBackgroundColor": "whitesmoke",
+        "@sliderHandleColor" : "#555560",
+        "@scrollBarBackground": "rgba(0, 0, 0, 30)",
+        "@scrollBarColor": "rgba(0, 0, 0, 30)",
+        "@scrollBarHoverColor": "rgba(0, 0, 0, 50)"
+    },
+    "eva-dark": {
+        "@borderColor": "#535671",
+        "@qwidgetForegroundColor": "#8e99b1",
+        "@qwidgetBackgroundColor": "#282c34",
+        "@widgetBackgroundColor": "#282c34",
+        "@emptyContentBackgroundColor": "#21252b",
+        "@titleBarColor": "#8c97af",
+        "@pushBtnBackgroundColor": "#21252b",
+        "@noboderPushBtnBackgroundColor": "#191d24",
+        "@transtexteditBackgroundColor": "#191d24",
+        "@sliderHandleColor" : "#96a4cd",
+        "@scrollBarBackground": "rgba(0, 0, 0, 30)",
+        "@scrollBarColor": "rgba(127, 127, 127, 100)",
+        "@scrollBarHoverColor": "rgba(127, 127, 127, 200)"
+    }
+}
