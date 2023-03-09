@@ -1,12 +1,24 @@
-from qtpy.QtWidgets import QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
-from qtpy.QtCore import Qt, QModelIndex, Signal, QSize
-from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
-from PyQt5 import QtCore
 from typing import List, Union, Tuple
+import json
 
+from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
+from qtpy.QtCore import Qt, QModelIndex, Signal, QSize, QEvent, QItemSelection
+from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
+
+from . import constants as C
+
+
+# nuitka seems to require import QtCore explicitly 
+if C.FLAG_QT6:
+    from PyQt6 import QtCore
+else:
+    from PyQt5 import QtCore
+
+
+from utils.logger import logger as LOGGER
 from .stylewidgets import Widget, ConfigComboBox
 from .misc import ProgramConfig, DLModuleConfig
-from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
+from .constants import CONFIG_PATH, CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .dlconfig_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 
 class ConfigTextLabel(QLabel):
@@ -16,13 +28,15 @@ class ConfigTextLabel(QLabel):
         font = self.font()
         if font_weight is not None:
             font.setWeight(font_weight)
-        font.setPointSize(fontsize)
+        font.setPointSizeF(fontsize)
         self.setFont(font)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.setOpenExternalLinks(True)
 
     def setActiveBackground(self):
         self.setAutoFillBackground(True)
         pal = self.palette()
-        pal.setColor(QPalette.Background, QColor(30, 147, 229, 51))
+        pal.setColor(QPalette.ColorRole.Window, QColor(30, 147, 229, 51))
         self.setPalette(pal)
 
 
@@ -46,15 +60,16 @@ class ConfigSubBlock(Widget):
             layout.addWidget(widget)
         else:
             layout.addLayout(widget)
+        self.widget = widget
         self.setContentsMargins(24, 6, 24, 6)
 
     def setIdx(self, idx0: int, idx1: int) -> None:
         self.idx0 = idx0
         self.idx1 = idx1
 
-    def enterEvent(self, a0: QtCore.QEvent) -> None:
+    def enterEvent(self, e: QEvent) -> None:
         self.pressed.emit(self.idx0, self.idx1)
-        return super().enterEvent(a0)
+        return super().enterEvent(e)
 
 
 class ConfigBlock(Widget):
@@ -95,14 +110,21 @@ class ConfigBlock(Widget):
         sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
         self.subblock_list.append(sublock)
 
-    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False):
-        combox = ConfigComboBox()
+    def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True) -> Tuple[ConfigComboBox, QWidget]:
+        combox = ConfigComboBox(fix_size=fix_size)
         combox.addItems(sel)
-        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
-        sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
-        sublock.layout().setSpacing(20)
-        self.addSublock(sublock)
-        return combox
+        if target_block is None:
+            sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
+            sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
+            sublock.layout().setSpacing(20)
+            self.addSublock(sublock)
+            return combox, sublock
+        else:
+            layout = target_block.layout()
+            layout.addSpacing(20)
+            layout.addWidget(ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal))
+            layout.addWidget(combox)
+            return combox, target_block
 
     def addBlockWidget(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout: bool = False) -> ConfigSubBlock:
         sublock = ConfigSubBlock(widget, name, discription, vertical_layout)
@@ -112,6 +134,9 @@ class ConfigBlock(Widget):
     def addCheckBox(self, name: str, discription: str = None) -> QCheckBox:
         checkbox = QCheckBox()
         if discription is not None:
+            font = checkbox.font()
+            font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
+            checkbox.setFont(font)
             checkbox.setText(discription)
             vertical_layout = True
         else:
@@ -154,7 +179,7 @@ class ConfigContent(QScrollArea):
         else:
             self.active_label = block.header
         self.active_label.setActiveBackground()
-        # self.ensureWidgetVisible(self.active_label)
+        self.ensureWidgetVisible(self.active_label, yMargin=self.active_label.height() * 7)
 
     def deactiveLabel(self):
         if self.active_label is not None:
@@ -165,8 +190,8 @@ class ConfigContent(QScrollArea):
 class TableItem(QStandardItem):
     def __init__(self, text, fontsize):
         super().__init__()
-        font = QFont('Arial', fontsize)
-        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+        font = self.font()
+        font.setPointSizeF(fontsize)
         self.setFont(font)
         self.setText(text)
         self.setEditable(False)
@@ -185,7 +210,7 @@ class TreeModel(QStandardItemModel):
         if role == Qt.ItemDataRole.SizeHintRole:
             size = QSize()
             item = self.itemFromIndex(index)
-            size.setHeight(item.font().pointSize()+40)
+            size.setHeight(item.font().pointSize()+20)
             return size
         else:
             return super().data(index, role)
@@ -202,8 +227,7 @@ class ConfigTable(QTreeView):
         self.selected: TableItem = None
         self.last_selected: TableItem = None
         self.setHeaderHidden(True)
-        self.setMinimumWidth(400)
-        self.expandAll()
+        self.setMinimumWidth(260)
 
     def addHeader(self, header: str) -> TableItem:
         rootNode = self.model().invisibleRootItem()
@@ -211,7 +235,7 @@ class ConfigTable(QTreeView):
         rootNode.appendRow(ti)
         return ti
 
-    def selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection) -> None:
+    def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         dis = deselected.indexes()
         sel = selected.indexes()
         model = self.model()
@@ -245,19 +269,22 @@ class ConfigTable(QTreeView):
             self.tableitem_pressed.emit(idx0, idx1)
 
 
-class GeneralPanel(QWidget):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-
-        layout = QVBoxLayout(self)
-        
-
-
 class ConfigPanel(Widget):
+
+    save_config = Signal()
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.config = ProgramConfig()
+
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf8') as f:
+                config_dict = json.loads(f.read())
+            self.config = ProgramConfig(**config_dict)
+        except Exception as e:
+            LOGGER.exception(e)
+            LOGGER.warning("Failed to load config file, using default config")
+            self.config = ProgramConfig()
+
         self.configTable = ConfigTable()
         self.configTable.tableitem_pressed.connect(self.onTableItemPressed)
         self.configContent = ConfigContent()
@@ -269,8 +296,8 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
-        label_sources = self.tr('Sources')
         label_lettering = self.tr('Lettering')
+        label_saladict = self.tr("SalaDict")
     
         dltableitem.appendRows([
             TableItem(label_text_det, CONFIG_FONTSIZE_TABLE),
@@ -280,8 +307,8 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_sources, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_lettering, CONFIG_FONTSIZE_TABLE)
+            TableItem(label_lettering, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_saladict, CONFIG_FONTSIZE_TABLE)
         ])
 
         dlConfigPanel.addTextLabel(label_text_det)
@@ -304,26 +331,46 @@ class ConfigPanel(Widget):
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
-        generalConfigPanel.addTextLabel(label_sources)
-        src_manual_str = self.tr('manual')
-        src_nhentai_str = self.tr('nhentai')
-        src_mangakakalot_str = self.tr('mangakakalot')
-        self.src_choice_combox = generalConfigPanel.addCombobox([src_manual_str, src_nhentai_str, src_mangakakalot_str], self.tr('source'))
-        self.src_choice_combox.currentIndexChanged.connect(self.on_source_flag_changed)
-        self.src_link_textbox = generalConfigPanel.addLineEdit('source url')
-        self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
-        self.src_force_download_checker = generalConfigPanel.addCheckBox(self.tr('Force download/redownload'))
-        self.src_force_download_checker.stateChanged.connect(self.on_source_force_download_changed)
-
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
         use_global_str = self.tr('use global setting')
-        self.let_fntsize_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font size'))
+        
+        self.let_fntsize_combox, letblk_0 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font size'))
         self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
-        self.let_fntstroke_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke'))
+        self.let_fntstroke_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke'), target_block=letblk_0)
         self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
-        self.let_fntcolor_combox = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
+        self.let_fntcolor_combox, letblk_1 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
         self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
+        self.let_alignment_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('alignment'), target_block=letblk_1)
+        self.let_alignment_combox.currentIndexChanged.connect(self.on_alignment_flag_changed)
+        self.let_effect_combox, letblk_2 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('effect'))
+        self.let_effect_combox.currentIndexChanged.connect(self.on_effect_flag_changed)
+
+        self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
+                discription=self.tr('Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to \"decide by program.\"'))
+        self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
+        self.let_uppercase_checker = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
+        self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
+
+        generalConfigPanel.addTextLabel(label_saladict)
+
+        sublock = ConfigSubBlock(ConfigTextLabel(self.tr("<a href=\"https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md\">Installation guide</a>"), CONFIG_FONTSIZE_CONTENT - 2), vertical_layout=False)
+        sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        generalConfigPanel.addSublock(sublock)
+
+        self.selectext_minimenu_checker = generalConfigPanel.addCheckBox(self.tr('Show mini menu when selecting text.'))
+        self.selectext_minimenu_checker.stateChanged.connect(self.on_selectext_minimenu_changed)
+        self.saladict_shortcut = QKeySequenceEdit("ALT+W", self)
+        self.saladict_shortcut.keySequenceChanged.connect(self.on_saladict_shortcut_changed)
+        self.saladict_shortcut.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
+
+        sublock = ConfigSubBlock(self.saladict_shortcut, self.tr("shortcut"), vertical_layout=False)
+        sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        generalConfigPanel.addSublock(sublock)
+        self.searchurl_combobox, _ = generalConfigPanel.addCombobox(["https://www.google.com/search?q=", "https://www.bing.com/search?q=", "https://duckduckgo.com/?q=", "https://yandex.com/search/?text=", "http://www.baidu.com/s?wd=", "https://search.yahoo.com/search;?p=", "https://www.urbandictionary.com/define.php?term="], self.tr("Search Engines"), fix_size=False)
+        self.searchurl_combobox.setEditable(True)
+        self.searchurl_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.searchurl_combobox.currentTextChanged.connect(self.on_searchurl_changed)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.configTable)
@@ -335,6 +382,8 @@ class ConfigPanel(Widget):
         hlayout.addWidget(splitter)
         hlayout.setSpacing(0)
         hlayout.setContentsMargins(96, 0, 0, 0)
+
+        self.configTable.expandAll()
 
     def addConfigBlock(self, header: str) -> Tuple[ConfigBlock, TableItem]:
         cb = ConfigBlock(header)
@@ -350,8 +399,8 @@ class ConfigPanel(Widget):
 
     def onTableItemPressed(self, idx0, idx1):
         self.configContent.setActiveLabel(idx0, idx1)
-        cb: ConfigBlock = self.configContent.config_block_list[idx0]
-        self.configContent.ensureWidgetVisible(cb.getSubBlockbyIdx(idx1))
+        # cb: ConfigBlock = self.configContent.config_block_list[idx0]
+        # self.configContent.ensureWidgetVisible(self.activel)
 
     def on_open_onstartup_changed(self):
         self.config.open_recent_on_startup = self.open_on_startup_checker.isChecked()
@@ -362,20 +411,49 @@ class ConfigPanel(Widget):
     def on_fntstroke_flag_changed(self):
         self.config.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
 
+    def on_autolayout_changed(self):
+        self.config.let_autolayout_flag = self.let_autolayout_checker.isChecked()
+
+    def on_uppercase_changed(self):
+        self.config.let_uppercase_flag = self.let_uppercase_checker.isChecked()
+
+    def on_selectext_minimenu_changed(self):
+        self.config.textselect_mini_menu = self.selectext_minimenu_checker.isChecked()
+
+    def on_saladict_shortcut_changed(self):
+        kstr = self.saladict_shortcut.keySequence().toString()
+        if kstr:
+            self.config.saladict_shortcut = self.saladict_shortcut.keySequence().toString()
+
+    def on_searchurl_changed(self):
+        url = self.searchurl_combobox.currentText()
+        self.config.search_url = url
+
     def on_fontcolor_flag_changed(self):
         self.config.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
 
-    def on_source_flag_changed(self):
-        self.config.src_choice_flag = self.src_choice_combox.currentIndex()
+    def on_alignment_flag_changed(self):
+        self.config.let_alignment_flag = self.let_alignment_combox.currentIndex()
 
-    def on_source_link_changed(self):
-        self.config.src_link_flag = self.src_link_textbox.text()
+    def on_effect_flag_changed(self):
+        self.config.let_fnteffect_flag = self.let_effect_combox.currentIndex()
 
-    def on_source_force_download_changed(self):
-        self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
+    # def on_source_flag_changed(self):
+    #     self.config.src_choice_flag = self.src_choice_combox.currentIndex()
+
+    # def on_source_link_changed(self):
+    #     self.config.src_link_flag = self.src_link_textbox.text()
+
+    # def on_source_force_download_changed(self):
+    #     self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
+        self.configTable.setCurrentItem(idx0, idx1)
+        self.configTable.tableitem_pressed.emit(idx0, idx1)
+
+    def focusOnInpaint(self):
+        idx0, idx1 = self.inpaint_sub_block.idx0, self.inpaint_sub_block.idx1
         self.configTable.setCurrentItem(idx0, idx1)
         self.configTable.tableitem_pressed.emit(idx0, idx1)
 
@@ -385,6 +463,25 @@ class ConfigPanel(Widget):
 
     def hideEvent(self, e) -> None:
         self.inpaint_sub_block.layout().removeWidget(self.inpaint_config_panel)
+        self.save_config.emit()
         return super().hideEvent(e)
         
-    
+    def setupConfig(self):
+        self.blockSignals(True)
+
+        config = self.config
+        if config.open_recent_on_startup:
+            self.open_on_startup_checker.setChecked(True)
+
+        self.let_effect_combox.setCurrentIndex(config.let_fnteffect_flag)
+        self.let_fntsize_combox.setCurrentIndex(config.let_fntsize_flag)
+        self.let_fntstroke_combox.setCurrentIndex(config.let_fntstroke_flag)
+        self.let_fntcolor_combox.setCurrentIndex(config.let_fntcolor_flag)
+        self.let_alignment_combox.setCurrentIndex(config.let_alignment_flag)
+        self.let_autolayout_checker.setChecked(config.let_autolayout_flag)
+        self.selectext_minimenu_checker.setChecked(config.textselect_mini_menu)
+        self.let_uppercase_checker.setChecked(config.let_uppercase_flag)
+        self.saladict_shortcut.setKeySequence(config.saladict_shortcut)
+        self.searchurl_combobox.setCurrentText(config.search_url)
+
+        self.blockSignals(False)

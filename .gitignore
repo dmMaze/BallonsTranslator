@@ -8,15 +8,13 @@ ballontranslator/data/testpacks/testpacks
 ballontranslator/data/*.png
 ballontranslator/ui/pagesources/projects
 release
-.venv
-ballontranslator/.venv
-.idea
-
 
 tmp.py
 dummy_scripts.py
 
 tmp
+TEST*
+ballontranslator/data/logs
 
 *.json
 .vscode
@@ -24,3 +22,5 @@ tmp
 *.zip
 *.ipynb
 *.dll
+*.docx
+*.doc

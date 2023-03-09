@@ -1,6 +1,8 @@
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Callable
+from ordered_set import OrderedSet
 import numpy as np
 import cv2
+import logging
 
 from ..textdetector.textblock import TextBlock
 
@@ -19,6 +21,7 @@ class OCRBase(ModuleParamParser):
             if OCR.module_dict[key] == self.__class__:
                 self.name = key
                 break
+        self.postprocess_hooks: OrderedSet[Callable] = OrderedSet()
         self.setup_ocr()
 
     def setup_ocr(self):
@@ -26,16 +29,37 @@ class OCRBase(ModuleParamParser):
 
     def run_ocr(self, img: np.ndarray, blk_list: List[TextBlock] = None) -> Union[List[TextBlock], str]:
         if blk_list is None:
-            return self.ocr_img(img)
+            text = self.ocr_img(img)
+            for callback in self.postprocess_hooks:
+                text = callback(text)
+            return text
         elif isinstance(blk_list, TextBlock):
             blk_list = [blk_list]
-        return self.ocr_blk_list(blk_list)
 
-    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        self.ocr_blk_list(img, blk_list)
+        for blk in blk_list:
+            if isinstance(blk.text, List):
+                for ii, t in enumerate(blk.text):
+                    for callback in self.postprocess_hooks:
+                        blk.text[ii] = callback(t, blk=blk)
+            else:
+                for callback in self.postprocess_hooks:
+                    blk.text = callback(blk.text, blk=blk)
+        return blk_list
+
+    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
         raise NotImplementedError
 
     def ocr_img(self, img: np.ndarray) -> str:
         raise NotImplementedError
+
+    def register_postprocess_hooks(self, callbacks: Union[List, Callable]):
+        if callbacks is None:
+            return
+        if isinstance(callbacks, Callable):
+            callbacks = [callbacks]
+        for callback in callbacks:
+            self.postprocess_hooks.add(callback)
 
 
 from .model_32px import OCR32pxModel
@@ -103,12 +127,8 @@ class OCRMIT32px(OCRBase):
 
 
 
-from .manga_ocr import MangaOcr
-MANGA_OCR_MODEL: MangaOcr = None
-def load_manga_ocr(device='cpu') -> MangaOcr:
-    manga_ocr = MangaOcr(device=device)
-    return manga_ocr
 
+MANGA_OCR_MODEL = None
 @register_OCR('manga_ocr')
 class MangaOCR(OCRBase):
     setup_params = {
@@ -125,6 +145,11 @@ class MangaOCR(OCRBase):
     device = DEFAULT_DEVICE
 
     def setup_ocr(self):
+
+        from .manga_ocr import MangaOcr
+        def load_manga_ocr(device='cpu') -> MangaOcr:
+            manga_ocr = MangaOcr(device=device)
+            return manga_ocr
         
         global MANGA_OCR_MODEL
         self.device = self.setup_params['device']['select']
@@ -138,9 +163,15 @@ class MangaOCR(OCRBase):
         return self.model(img)
 
     def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        im_h, im_w = img.shape[:2]
         for blk in blk_list:
             x1, y1, x2, y2 = blk.xyxy
-            blk.text = self.model(img[y1:y2, x1:x2])
+            if y2 < im_h and x2 < im_w and \
+                x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
+                blk.text = self.model(img[y1:y2, x1:x2])
+            else:
+                logging.warning('invalid textbbox to target img')
+                blk.text = ['']
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)

@@ -3,7 +3,7 @@ from typing import List
 import cv2
 import numpy as np
 from ..textblock import TextBlock
-from utils.imgproc_utils import draw_connected_labels, expand_textwindow, union_area
+from utils.imgproc_utils import draw_connected_labels, expand_textwindow, union_area, enlarge_window
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -159,7 +159,8 @@ def refine_undetected_mask(img: np.ndarray, mask_pred: np.ndarray, mask_refined:
 def refine_mask(img: np.ndarray, pred_mask: np.ndarray, blk_list: List[TextBlock], refine_mode: int = REFINEMASK_INPAINT) -> np.ndarray:
     mask_refined = np.zeros_like(pred_mask)
     for blk in blk_list:
-        bx1, by1, bx2, by2 = expand_textwindow(img.shape, blk.xyxy, expand_r=16)
+        # bx1, by1, bx2, by2 = expand_textwindow(img.shape, blk.xyxy, expand_r=16)
+        bx1, by1, bx2, by2 = enlarge_window(blk.xyxy, img.shape[1], img.shape[0])
         im = np.ascontiguousarray(img[by1: by2, bx1: bx2])
         msk = np.ascontiguousarray(pred_mask[by1: by2, bx1: bx2])
         mask_list = get_topk_masklist(im, msk)

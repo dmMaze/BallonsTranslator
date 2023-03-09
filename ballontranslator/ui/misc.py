@@ -1,16 +1,12 @@
-import cv2
+import cv2, re, json, os
+from pathlib import Path
 import numpy as np
 import os.path as osp
-import json
-import re
-import os
-from collections import OrderedDict
 from typing import Tuple, Union, List, Dict
-from qtpy.QtGui import QPixmap,  QColor, QImage
+from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
 
-from . import constants
-from .constants import DEFAULT_FONT_FAMILY
-from utils.logger import logger as LOGGER
+from . import constants as C
+from .constants import DEFAULT_FONT_FAMILY, STYLESHEET_PATH, THEME_PATH
 from utils.io_utils import find_all_imgs, NumpyEncoder, imread, imwrite
 from dl.textdetector.textblock import TextBlock
 
@@ -31,7 +27,7 @@ def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
     h = size.width()
     w = size.height()
     if isinstance(pixmap, QPixmap):
-        qimg = pixmap.toImage().convertToFormat(QImage.Format_RGBA8888)
+        qimg = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
     else:
         qimg = pixmap
 
@@ -43,19 +39,20 @@ def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
         return img
     else:
         return np.copy(img[:,:,:3])
-        return cv2.cvtColor(img[:, :, 0:3], cv2.COLOR_RGB2BGR)
 
-def ndarray2pixmap(img):
+def ndarray2pixmap(img, return_qimg=False):
     if len(img.shape) == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     height, width, channel = img.shape
     bytesPerLine = channel * width
     if channel == 4:
-        img_format = QImage.Format_RGBA8888
+        img_format = QImage.Format.Format_RGBA8888
     else:
-        img_format = QImage.Format_RGB888
+        img_format = QImage.Format.Format_RGB888
     img = np.ascontiguousarray(img)
     qImg = QImage(img.data, width, height, bytesPerLine, img_format).rgbSwapped()
+    if return_qimg:
+        return qImg
     return QPixmap(qImg)
 
 class TextBlkEncoder(NumpyEncoder):
@@ -86,261 +83,77 @@ class InvalidProgramConfigException(Exception):
     pass
 
 
-PROJTYPE_IMGTRANS = 'imgtrans'
-PROJTYPE_HARDSUBEXTRACT = 'hardsubextract'
+class FontFormat:
+    def __init__(self, 
+                 family: str = None,
+                 size: float = 24,
+                 stroke_width: float = 0,
+                 frgb=(0, 0, 0),
+                 srgb=(0, 0, 0),
+                 bold: bool = False,
+                 underline: bool = False,
+                 italic: bool = False, 
+                 alignment: int = 0,
+                 vertical: bool = False, 
+                 weight: int = 50, 
+                 line_spacing: float = 1.2,
+                 letter_spacing: float = 1.,
+                 opacity: float = 1.,
+                 shadow_radius: float = 0.,
+                 shadow_strength: float = 1.,
+                 shadow_color: Tuple = (0, 0, 0),
+                 shadow_offset: List = [0, 0],
+                 **kwargs) -> None:
+        self.family = family if family is not None else DEFAULT_FONT_FAMILY
+        self.size = size
+        self.stroke_width = stroke_width
+        self.frgb = frgb                  # font color
+        self.srgb = srgb                    # stroke color
+        self.bold = bold
+        self.underline = underline
+        self.italic = italic
+        self.weight: int = weight
+        self.alignment: int = alignment
+        self.vertical: bool = vertical
+        self.line_spacing = line_spacing
+        self.letter_spacing = letter_spacing
+        self.opacity = opacity
+        self.shadow_radius = shadow_radius
+        self.shadow_strength = shadow_strength
+        self.shadow_color = shadow_color
+        self.shadow_offset = shadow_offset
 
-class Proj:
-    def __init__(self) -> None:
-        pass
-    @staticmethod
-    def load(proj_path: str):
-        try:
-            with open(proj_path, 'r', encoding='utf8') as f:
-                proj_dict = json.loads(f.read())
-        except Exception as e:
-            raise ProjectLoadFailureException(e)
-        proj_type = proj_dict['type']
-        if proj_type == PROJTYPE_IMGTRANS:
-            proj = ProjImgTrans()
-        elif proj_type == PROJTYPE_HARDSUBEXTRACT:
-            proj = ProjHardSubExtract()
-        else:
-            raise NotImplementedProjException(proj_type)
-        proj.load_from_dict(proj_dict)
-        return proj
-
-
-class ProjImgTrans:
-
-    def __init__(self, directory: str = None):
-        self.type = PROJTYPE_IMGTRANS
-        self.directory: str
-        self.pages: OrderedDict[List[TextBlock]] = OrderedDict()
-        self.not_found_pages: Dict[List[TextBlock]] = {}
-        self.new_pages: List[str] = []
-        self.proj_path: str = None
-        self.current_img: str = None
-        self.img_array: np.ndarray = None
-        self.mask_array: np.ndarray = None
-        self.inpainted_array: np.ndarray = None
-        if directory is not None:
-            self.load(directory)
-
-    def load(self, directory: str) -> bool:
-        self.directory = directory
-        self.proj_path = osp.join(self.directory, 
-                            self.type+'_'+osp.basename(self.directory) + '.json')
-        new_proj = False
-        if not osp.exists(self.proj_path):
-            new_proj = True
-            self.new_project()
-        else:
-            try:
-                with open(self.proj_path, 'r', encoding='utf8') as f:
-                    proj_dict = json.loads(f.read())
-            except Exception as e:
-                raise ProjectLoadFailureException(e)
-            self.load_from_dict(proj_dict)
-        if not osp.exists(self.inpainted_dir()):
-            os.makedirs(self.inpainted_dir())
-        if not osp.exists(self.mask_dir()):
-            os.makedirs(self.mask_dir())
-        return new_proj
-
-    def mask_dir(self):
-        return osp.join(self.directory, 'mask')
-
-    def inpainted_dir(self):
-        return osp.join(self.directory, 'inpainted')
-
-    def result_dir(self):
-        return osp.join(self.directory, 'result')
-
-    def load_from_dict(self, proj_dict: dict):
-        self.set_current_img(None)
-        try:
-            self.pages = OrderedDict()
-            page_dict = proj_dict['pages']
-            not_found_pages = list(page_dict.keys())
-            found_pages = find_all_imgs(img_dir=self.directory, abs_path=False)
-            for imname in found_pages:
-                if imname in page_dict:
-                    self.pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
-                    not_found_pages.remove(imname)
-                else:
-                    self.pages[imname] = []
-                    self.new_pages.append(imname)
-            for imname in not_found_pages:
-                self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
-        except Exception as e:
-            raise ProjectNotSupportedException(e)
-        if 'current_img' in proj_dict:
-            current_img = proj_dict['current_img']
-            try:
-                self.set_current_img(current_img)
-            except ImgnameNotInProjectException:
-                LOGGER.warning(f'{current_img} not found.')
-        else:
-            self.set_current_img_byidx(0)
-
-    def set_current_img(self, imgname: str):
-        if imgname is not None:
-            if imgname not in self.pages:
-                raise ImgnameNotInProjectException
-            self.current_img = imgname
-            img_path = self.current_img_path()
-            mask_path = self.mask_path()
-            inpainted_path = self.inpainted_path()
-            self.img_array = imread(img_path)
-            im_h, im_w = self.img_array.shape[:2]
-            if osp.exists(mask_path):
-                self.mask_array = imread(mask_path, cv2.IMREAD_GRAYSCALE)
-            else:
-                self.mask_array = np.zeros((im_h, im_w), dtype=np.uint8)
-            self.inpainted_array = imread(inpainted_path) if osp.exists(inpainted_path) else np.copy(self.img_array)
-        else:
-            self.current_img = None
-            self.img_array = None
-            self.mask_array = None
-            self.inpainted_array = None
-
-    def set_current_img_byidx(self, idx: int):
-        num_pages = self.num_pages
-        if idx < 0:
-            idx = idx + self.num_pages
-        if idx < 0 or idx > num_pages - 1:
-            self.set_current_img(None)
-        else:
-            self.set_current_img(list(self.pages)[idx])
-
-    def get_blklist_byidx(self, idx: int) -> List[TextBlock]:
-        return self.pages[list(self.pages)[idx]]
-
-    @property
-    def num_pages(self) -> int:
-        return len(self.pages)
-
-    def new_project(self):
-        if not osp.exists(self.directory):
-            raise ProjectDirNotExistException
-        self.set_current_img(None)
-        imglist = find_all_imgs(self.directory, abs_path=False)
-        self.pages = OrderedDict()
-        for imgname in imglist:
-            self.pages[imgname] = []
-        self.set_current_img_byidx(0)
-        self.save()
-        
-    def save(self):
-        if not osp.exists(self.directory):
-            raise ProjectDirNotExistException
-        with open(self.proj_path, "w", encoding="utf-8") as f:
-            f.write(json.dumps(self.to_dict(), ensure_ascii=False, indent=4, separators=(',', ':'), cls=TextBlkEncoder))
-        # if save_mask and self.mask_valid:
-        #     self.save_mask(self.current_img, self.mask_array)
-        # if save_inpainted and self.inpainted_valid:
-        #     self.save_inpainted(self.current_img, self.inpainted_array)
-
-    def to_dict(self) -> Dict:
-        pages = self.pages.copy()
-        pages.update(self.not_found_pages)
-        return {
-            'directory': self.directory,
-            'pages': pages,
-            'current_img': self.current_img
-        }
-
-    def read_img(self, imgname: str) -> np.ndarray:
-        if imgname not in self.pages:
-            raise ImgnameNotInProjectException
-        return imread(osp.join(self.directory, imgname))
-
-    def save_mask(self, img_name, mask: np.ndarray):
-        imwrite(self.get_mask_path(img_name), mask)
-
-    def save_inpainted(self, img_name, inpainted: np.ndarray):
-        imwrite(self.get_inpainted_path(img_name), inpainted)
-
-    def current_img_path(self) -> str:
-        if self.current_img is None:
-            return None
-        return osp.join(self.directory, self.current_img)
-
-    def mask_path(self) -> str:
-        if self.current_img is None:
-            return None
-        return self.get_mask_path(self.current_img)
-
-    def inpainted_path(self) -> str:
-        if self.current_img is None:
-            return None
-        return self.get_inpainted_path(self.current_img)
-
-    def get_mask_path(self, imgname: str = None) -> str:
-        if imgname is None:
-            imgname = self.current_img
-        return osp.join(self.mask_dir(), osp.splitext(imgname)[0]+'.png')
-
-    def get_inpainted_path(self, imgname: str = None) -> str:
-        if imgname is None:
-            imgname = self.current_img
-        return osp.join(self.inpainted_dir(), osp.splitext(imgname)[0]+'.png')
-
-    def get_result_path(self, imgname: str) -> str:
-        return osp.join(self.result_dir(), osp.splitext(imgname)[0]+'.png')
-        
-    def backup(self):
-        raise NotImplementedError
-
-    @property
-    def is_empty(self):
-        return len(self.pages) == 0
-
-    @property
-    def img_valid(self):
-        return self.img_array is not None
-    
-    @property
-    def mask_valid(self):
-        return self.mask_array is not None
-
-    @property
-    def inpainted_valid(self):
-        return self.inpainted_array is not None
-
-    def set_next_img(self):
-        if self.current_img is not None:
-            keylist = list(self.pages.keys())
-            current_index = keylist.index(self.current_img)
-            next_index = (current_index + 1) % len(keylist)
-            self.set_current_img(keylist[next_index])
-
-    def set_prev_img(self):
-        if self.current_img is not None:
-            keylist = list(self.pages.keys())
-            current_index = keylist.index(self.current_img)
-            next_index = (current_index - 1 + len(keylist)) % len(keylist)
-            self.set_current_img(keylist[next_index])
-
-    def current_block_list(self) -> List[TextBlock]:
-        if self.current_img is not None:
-            assert self.current_img in self.pages
-            return self.pages[self.current_img]
-        else:
-            return None
+    def from_textblock(self, text_block: TextBlock):
+        self.family = text_block.font_family
+        self.size = px2pt(text_block.font_size)
+        self.stroke_width = text_block.stroke_width
+        self.frgb, self.srgb = text_block.get_font_colors()
+        self.bold = text_block.bold
+        self.weight = text_block.font_weight
+        self.underline = text_block.underline
+        self.italic = text_block.italic
+        self.alignment = text_block.alignment()
+        self.vertical = text_block.vertical
+        self.line_spacing = text_block.line_spacing
+        self.letter_spacing = text_block.letter_spacing
+        self.opacity = text_block.opacity
+        self.shadow_radius = text_block.shadow_radius
+        self.shadow_strength = text_block.shadow_strength
+        self.shadow_color = text_block.shadow_color
+        self.shadow_offset = text_block.shadow_offset
 
 
 class ProjHardSubExtract:
     def __init__(self):
-        self.type = PROJTYPE_HARDSUBEXTRACT
-        raise NotImplementedProjException(PROJTYPE_HARDSUBEXTRACT)
+        self.type = 'hardsubextract'
+        raise NotImplementedProjException('hardsubextract')
 
 
 class DLModuleConfig:
     def __init__(self, 
                  textdetector: str = 'ctd',
-                 ocr = "mit32px",
-                 inpainter: str = 'aot',
+                 ocr = "mit48px_ctc",
+                 inpainter: str = 'lama_mpe',
                  translator = "google",
                  enable_ocr = True,
                  enable_translate = True,
@@ -372,32 +185,17 @@ class DLModuleConfig:
             self.translator_setup_params = dict()
         else:
             self.translator_setup_params = translator_setup_params
+            if 'google' in translator_setup_params:
+                if 'url' in translator_setup_params['google'] and \
+                    translator_setup_params['google']['url']['select'] == 'https://translate.google.cn/m':
+                    translator_setup_params['google']['url']['select'] = 'https://translate.google.com/m'
         if inpainter_setup_params is None:
             self.inpainter_setup_params = dict()
         else:
-            inpainter_setup_params = inpainter_setup_params
+            self.inpainter_setup_params = inpainter_setup_params
         self.translate_source = translate_source
         self.translate_target = translate_target
         self.check_need_inpaint = check_need_inpaint
-
-    def load_from_dict(self, config_dict: dict):
-        try:
-            self.textdetector = config_dict['textdetector']
-            self.inpainter = config_dict['inpainter']
-            self.ocr = config_dict['ocr']
-            self.translator = config_dict['translator']
-            self.enable_ocr = config_dict['enable_ocr']
-            self.enable_translate = config_dict['enable_translate']
-            self.enable_inpaint = config_dict['enable_inpaint']
-            self.translator_setup_params = config_dict['translator_setup_params']
-            self.inpainter_setup_params = config_dict['inpainter_setup_params']
-            self.textdetector_setup_params = config_dict['textdetector_setup_params']
-            self.ocr_setup_params = config_dict['ocr_setup_params']
-            self.translate_source = config_dict['translate_source']
-            self.translate_target = config_dict['translate_target']
-            self.check_need_inpaint = config_dict['check_need_inpaint']
-        except Exception as e:
-            raise InvalidProgramConfigException(e)
 
     def __getitem__(self, item: str):
         if item == 'textdetector':
@@ -426,125 +224,121 @@ class DrawPanelConfig:
     def __init__(self, 
                  pentool_color: List = None,
                  pentool_width: float = 30.,
+                 pentool_shape: int = 0,
                  inpainter_width: float = 30.,
+                 inpainter_shape: int = 0,
                  current_tool: int = 0,
                  rectool_auto: bool = False, 
-                 rectool_method: int = 0) -> None:
+                 rectool_method: int = 0,
+                 recttool_dilate_ksize: int = 0,
+                 **kwargs) -> None:
         self.pentool_color = pentool_color if pentool_color is not None else [0, 0, 0]
         self.pentool_width = pentool_width
+        self.pentool_shape = pentool_shape
         self.inpainter_width = inpainter_width
+        self.inpainter_shape = inpainter_shape
         self.current_tool = current_tool
         self.rectool_auto = rectool_auto
         self.rectool_method = rectool_method
+        self.recttool_dilate_ksize = recttool_dilate_ksize
+
 
 class ProgramConfig:
-    def __init__(self, config_dict=None) -> None:
-        self.dl = DLModuleConfig()
-        self.recent_proj_list: list = []
-        self.imgtrans_paintmode = False
-        self.imgtrans_textedit = True
-        self.imgtrans_textblock = True
-        self.mask_transparency = 0
-        self.original_transparency = 0
-        self.global_fontformat = FontFormat()
-        self.drawpanel = DrawPanelConfig()
-        self.open_recent_on_startup = False
-        self.let_fntsize_flag = 0
-        self.let_fntstroke_flag = 0
-        self.let_fntcolor_flag = 0
-        self.src_choice_flag = 0
-        self.src_link_flag = ''
-        self.src_force_download_flag = False
-        if config_dict is not None:
-            self.load_from_dict(config_dict)
+    def __init__(
+        self, dl: Union[Dict, DLModuleConfig] = None,
+        drawpanel: Union[Dict, DrawPanelConfig] = None,
+        global_fontformat: Union[Dict, FontFormat] = None,
+        recent_proj_list: List[str] = list(),
+        imgtrans_paintmode: bool = False,
+        imgtrans_textedit: bool = True,
+        imgtrans_textblock: bool = True,
+        mask_transparency: float = 0.,
+        original_transparency: float = 0.,
+        open_recent_on_startup: bool = True, 
+        let_fntsize_flag: int = 0,
+        let_fntstroke_flag: int = 0,
+        let_fntcolor_flag: int = 0,
+        let_fnteffect_flag: int = 1,
+        let_alignment_flag: int = 0,
+        let_autolayout_flag: bool = True,
+        let_uppercase_flag: bool = True,
+        font_presets: dict = None,
+        fsearch_case: bool = False,
+        fsearch_whole_word: bool = False,
+        fsearch_regex: bool = False,
+        fsearch_range: int = 0,
+        gsearch_case: bool = False,
+        gsearch_whole_word: bool = False,
+        gsearch_regex: bool = False,
+        gsearch_range: int = 0,
+        darkmode: bool = False,
+        textselect_mini_menu: bool = True,
+        saladict_shortcut: str = "Alt+S",
+        search_url: str = "https://www.google.com/search?q=",
+        ocr_sublist: dict = None,
+        mt_sublist: dict = None,
+        **kwargs) -> None:
 
-    def load_from_dict(self, config_dict):
-        try:
-            # self.dl.load_from_dict(config_dict['dl'])
-            self.dl.load_from_dict(config_dict['dl'])
-            self.recent_proj_list = config_dict['recent_proj_list']
-            self.imgtrans_paintmode = config_dict['imgtrans_paintmode']
-            self.imgtrans_textedit = config_dict['imgtrans_textedit']
-            self.imgtrans_textblock = config_dict['imgtrans_textblock']
-            self.mask_transparency = config_dict['mask_transparency']
-            self.original_transparency = config_dict['original_transparency']
-            self.global_fontformat = FontFormat(**config_dict['global_fontformat'])
-            self.drawpanel = DrawPanelConfig(**config_dict['drawpanel'])
-            self.open_recent_on_startup = config_dict['open_recent_on_startup']
-            self.let_fntsize_flag = config_dict['let_fntsize_flag']
-            self.let_fntstroke_flag = config_dict['let_fntstroke_flag']
-            self.let_fntcolor_flag = config_dict['let_fntcolor_flag']
-            self.src_choice_flag = config_dict['src_choice_flag']
-            self.src_link_flag = config_dict['src_link_flag']
-            self.src_force_download_flag = config_dict['src_force_download_flag']
-        except Exception as e:
-            raise InvalidProgramConfigException(e)
+        if isinstance(dl, dict):
+            self.dl = DLModuleConfig(**dl)
+        elif dl is None:
+            self.dl = DLModuleConfig()
+        else:
+            self.dl = dl
+        if isinstance(drawpanel, dict):
+            self.drawpanel = DrawPanelConfig(**drawpanel)
+        elif drawpanel is None:
+            self.drawpanel = DrawPanelConfig()
+        else:
+            self.drawpanel = drawpanel
+        if isinstance(global_fontformat, dict):
+            self.global_fontformat = FontFormat(**global_fontformat)
+        elif global_fontformat is None:
+            self.global_fontformat = FontFormat()
+        else:
+            self.global_fontformat = global_fontformat
+        self.recent_proj_list = recent_proj_list
+        self.imgtrans_paintmode = imgtrans_paintmode
+        self.imgtrans_textedit = imgtrans_textedit
+        self.imgtrans_textblock = imgtrans_textblock
+        self.mask_transparency = mask_transparency
+        self.original_transparency = original_transparency
+        self.open_recent_on_startup = open_recent_on_startup
+        self.let_fntsize_flag = let_fntsize_flag
+        self.let_fntstroke_flag = let_fntstroke_flag
+        self.let_fntcolor_flag = let_fntcolor_flag
+        self.let_fnteffect_flag = let_fnteffect_flag
+        self.let_alignment_flag = let_alignment_flag
+        self.let_autolayout_flag = let_autolayout_flag
+        self.let_uppercase_flag = let_uppercase_flag
+        self.font_presets = {} if font_presets is None else font_presets
+        self.fsearch_case = fsearch_case
+        self.fsearch_whole_word = fsearch_whole_word
+        self.fsearch_regex = fsearch_regex
+        self.fsearch_range = fsearch_range
+        self.gsearch_case = gsearch_case
+        self.gsearch_whole_word = gsearch_whole_word
+        self.gsearch_regex = gsearch_regex
+        self.gsearch_range = gsearch_range
+        self.darkmode = darkmode
+        self.textselect_mini_menu = textselect_mini_menu
+        self.saladict_shortcut = saladict_shortcut
+        self.search_url = search_url
+        self.ocr_sublist = [] if ocr_sublist is None else ocr_sublist
+        self.mt_sublist = [] if mt_sublist is None else mt_sublist
 
-    def to_dict(self):
-        return {
-            'dl': vars(self.dl),
-            'recent_proj_list': self.recent_proj_list,
-            'imgtrans_textedit': self.imgtrans_textedit,
-            'imgtrans_paintmode': self.imgtrans_paintmode,
-            'imgtrans_textblock': self.imgtrans_textblock, 
-            'global_fontformat': self.global_fontformat.to_dict(),
-            'mask_transparency': self.mask_transparency,
-            'original_transparency': self.original_transparency,
-            'drawpanel': vars(self.drawpanel),
-            'open_recent_on_startup': self.open_recent_on_startup,
-            'let_fntsize_flag': self.let_fntsize_flag,
-            'let_fntstroke_flag': self.let_fntstroke_flag,
-            'let_fntcolor_flag': self.let_fntcolor_flag,
-            'src_choice_flag': self.src_choice_flag,
-            'src_link_flag': self.src_link_flag,
-            'src_force_download_flag': self.src_force_download_flag
-        }
+class LruIgnoreArg:
 
+    def __init__(self, **kwargs) -> None:
+        for key in kwargs:
+            setattr(self, key, kwargs[key])
 
-class FontFormat:
-    def __init__(self, 
-                 family: str = None,
-                 size: float = 24,
-                 stroke_width: float = 0,
-                 frgb=(0, 0, 0),
-                 srgb=(0, 0, 0),
-                 bold: bool = False,
-                 underline: bool = False,
-                 italic: bool = False, 
-                 alignment: int = 0,
-                 vertical: bool = False, 
-                 weight: int = 50, 
-                 alpha: int = 255,
-                 line_spacing: float = 1) -> None:
-        self.family = family if family is not None else DEFAULT_FONT_FAMILY
-        self.size = size
-        self.stroke_width = stroke_width
-        self.frgb = frgb                  # font color
-        self.srgb = srgb                    # stroke color
-        self.bold = bold
-        self.underline = underline
-        self.italic = italic
-        self.alpha = alpha
-        self.weight: int = weight
-        self.alignment: int = alignment
-        self.vertical: bool = vertical
-        self.line_spacing = line_spacing
+    def __hash__(self) -> int:
+        return hash(type(self))
 
-    def from_textblock(self, text_block: TextBlock):
-        self.family = text_block.font_family
-        self.size = px2pt(text_block.font_size)
-        self.stroke_width = text_block.stroke_width
-        self.frgb, self.srgb = text_block.get_font_colors()
-        self.bold = text_block.bold
-        self.weight = text_block.font_weight
-        self.underline = text_block.underline
-        self.italic = text_block.italic
-        self.alignment = text_block.alignment()
-        self.vertical = text_block.vertical
-        self.line_spacing = text_block.line_spacing
+    def __eq__(self, other):
+        return isinstance(other, type(self))
 
-    def to_dict(self):
-        return vars(self)
 
 span_pattern = re.compile(r'<span style=\"(.*?)\">', re.DOTALL)
 p_pattern = re.compile(r'<p style=\"(.*?)\">', re.DOTALL)
@@ -552,6 +346,7 @@ fragment_pattern = re.compile(r'<!--(.*?)Fragment-->', re.DOTALL)
 color_pattern = re.compile(r'color:(.*?);', re.DOTALL)
 td_pattern = re.compile(r'<td(.*?)>(.*?)</td>', re.DOTALL)
 table_pattern = re.compile(r'(.*?)<table', re.DOTALL)
+fontsize_pattern = re.compile(r'font-size:(.*?)pt;', re.DOTALL)
 
 
 def span_repl_func(matched, color):
@@ -572,7 +367,100 @@ def set_html_color(html, rgb):
         return span_pattern.sub(lambda matched: span_repl_func(matched, hex_color), html)
 
 def pt2px(pt):
-    return int(round(pt * constants.LDPI / 72.))
+    return int(round(pt * C.LDPI / 72.))
 
 def px2pt(px):
-    return px / constants.LDPI * 72.
+    return px / C.LDPI * 72.
+
+def html_max_fontsize(html:  str) -> float:
+    size_list = fontsize_pattern.findall(html)
+    size_list = [float(size) for size in size_list]
+    if len(size_list) > 0:
+        return max(size_list)
+    else:
+        return None
+
+def doc_replace(doc: QTextDocument, span_list: List, target: str) -> List:
+    len_replace = len(target)
+    cursor = QTextCursor(doc)
+    cursor.setPosition(0)
+    cursor.beginEditBlock()
+    pos_delta = 0
+    sel_list = []
+    for span in span_list:
+        sel_start = span[0] + pos_delta
+        sel_end = span[1] + pos_delta
+        cursor.setPosition(sel_start)
+        cursor.setPosition(sel_end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(target)
+        sel_list.append([sel_start, sel_end])
+        pos_delta += len_replace - (sel_end - sel_start)
+    cursor.endEditBlock()
+    return sel_list
+
+def doc_replace_no_shift(doc: QTextDocument, span_list: List, target: str):
+    cursor = QTextCursor(doc)
+    cursor.setPosition(0)
+    cursor.beginEditBlock()
+    for span in span_list:
+        cursor.setPosition(span[0])
+        cursor.setPosition(span[1], QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(target)
+    cursor.endEditBlock()
+
+def hex2rgb(h: str):  # rgb order (PIL)
+    return tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
+
+def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
+    if reverse_icon:
+        dark2light = True if theme == 'eva-light' else False
+        reverse_icon_color(dark2light)
+    with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
+        stylesheet = f.read()
+    with open(THEME_PATH, 'r', encoding='utf8') as f:
+        theme_dict: Dict = json.loads(f.read())
+    if not theme or theme not in theme_dict:
+        tgt_theme: Dict = theme_dict[list(theme_dict.keys())[0]]
+    else:
+        tgt_theme: Dict = theme_dict[theme]
+
+    C.FOREGROUND_FONTCOLOR = hex2rgb(tgt_theme['@qwidgetForegroundColor'])
+    C.SLIDERHANDLE_COLOR = hex2rgb(tgt_theme['@sliderHandleColor'])
+    for key, val in tgt_theme.items():
+        stylesheet = stylesheet.replace(key, val)
+    return stylesheet
+
+
+ICON_DIR = 'data/icons'
+
+LIGHTFILL_ACTIVE = "fill=\"#697187\""
+LIGHTFILL = "fill=\"#b3b6bf\""
+DARKFILL_ACTIVE = "fill=\"#96a4cd\""
+DARKFILL = "fill=\"#697186\""
+
+ICONREVERSE_DICT_LIGHT2DARK = {LIGHTFILL_ACTIVE: DARKFILL_ACTIVE, LIGHTFILL: DARKFILL}
+ICONREVERSE_DICT_DARK2LIGHT = {DARKFILL_ACTIVE: LIGHTFILL_ACTIVE, DARKFILL: LIGHTFILL}
+ICON_LIST = []
+
+def reverse_icon_color(dark2light: bool = False):
+    global ICON_LIST
+    if not ICON_LIST:
+        for filename in os.listdir(ICON_DIR):
+            file_suffix = Path(filename).suffix
+            if file_suffix.lower() != '.svg':
+                continue
+            else:
+                ICON_LIST.append(osp.join(ICON_DIR, filename))
+
+    if dark2light:
+        pattern = re.compile(re.escape(DARKFILL) + '|' + re.escape(DARKFILL_ACTIVE))
+        rep_dict = ICONREVERSE_DICT_DARK2LIGHT
+    else:
+        pattern = re.compile(re.escape(LIGHTFILL) + '|' + re.escape(LIGHTFILL_ACTIVE))
+        rep_dict = ICONREVERSE_DICT_LIGHT2DARK
+    for svgpath in ICON_LIST:
+        with open(svgpath, "r", encoding="utf-8") as f:
+            svg_content = f.read()
+            svg_content = pattern.sub(lambda m:rep_dict[m.group()], svg_content)
+        with open(svgpath, "w", encoding="utf-8") as f:
+            f.write(svg_content)

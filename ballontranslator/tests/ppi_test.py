@@ -1,7 +1,7 @@
 import sys, os
 
-from qtpy.QtCore import Qt, QRectF, QRect
-from qtpy.QtGui import QPixmap, QImage, QPainter, QFont, QColor
+from qtpy.QtCore import Qt, QRectF
+from qtpy.QtGui import QImage, QPainter, QFont, QColor
 from qtpy.QtWidgets import QApplication, QWidget
 
 def pt2px(pt):

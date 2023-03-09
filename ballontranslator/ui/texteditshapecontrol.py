@@ -10,26 +10,30 @@ from typing import List, Union, Tuple
 from .cursor import rotateCursorList, resizeCursorList
 from .textitem import TextBlkItem
 
+CBEDGE_WIDTH = 30
+
 class ControlBlockItem(QGraphicsRectItem):
     DRAG_NONE = 0
     DRAG_RESHAPE = 1
     DRAG_ROTATE = 2
     CURSOR_IDX = -1
-    def __init__(self, parent, idx: int, edge_len: float):
+    def __init__(self, parent, idx: int):
         super().__init__(parent)
-        # self.setParentItem(parent)
         self.idx = idx
         self.ctrl: TextBlkShapeControl = parent
-        self.edge_len = edge_len
-        self.visible_len = self.edge_len // 2
-        self.pen_width = 2
-        self.setPen(QPen(QColor(75, 75, 75), self.pen_width, Qt.PenStyle.SolidLine, Qt.SquareCap))
-        offset = self.edge_len // 4 + self.pen_width / 2
-        self.visible_rect = QRectF(offset, offset, self.visible_len, self.visible_len)
+        self.edge_width = 0
         self.drag_mode = self.DRAG_NONE
         self.setAcceptHoverEvents(True)
-        self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
-        self.setRect(0, 0, self.edge_len, self.edge_len)
+        self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.updateEdgeWidth(CBEDGE_WIDTH)
+    
+    def updateEdgeWidth(self, edge_width: float):
+        self.edge_width = edge_width
+        self.visible_len = self.edge_width // 2
+        self.pen_width = edge_width / CBEDGE_WIDTH * 2 
+        offset = self.edge_width // 4 + self.pen_width / 2
+        self.visible_rect = QRectF(offset, offset, self.visible_len, self.visible_len)
+        self.setRect(0, 0, self.edge_width, self.edge_width)
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         rect = QRectF(self.visible_rect)
@@ -56,22 +60,29 @@ class ControlBlockItem(QGraphicsRectItem):
         self.CURSOR_IDX = idx
         return super().hoverMoveEvent(event)
 
+    def hoverLeaveEvent(self, event: 'QGraphicsSceneHoverEvent') -> None:
+        if self.drag_mode == self.DRAG_NONE:
+            self.setCursor(Qt.CursorShape.SizeAllCursor)
+        return super().hoverLeaveEvent(event)
+
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         self.ctrl.ctrlblockPressed()
+        blk_item = self.ctrl.blk_item
         if event.button() == Qt.MouseButton.LeftButton:
-            self.ctrl.reshaping = True
             if self.visible_rect.contains(event.pos()):
+                self.ctrl.reshaping = True
                 self.drag_mode = self.DRAG_RESHAPE
-                self.ctrl.blk_item.startReshape()
+                self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+                blk_item.startReshape()
             else:
                 self.drag_mode = self.DRAG_ROTATE
+                self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
                 preview = self.ctrl.previewPixmap
-                preview.setPixmap(self.ctrl.blk_item.toPixmap())
-                preview.setOpacity(0.7)
-                preview.setScale(self.ctrl.blk_item.scale())
-                preview.setVisible(True)
 
-                rotate_vec = event.scenePos() - self.ctrl.pos() - self.ctrl.boundingRect().center()
+                preview.setPixmap(blk_item.toPixmap().copy(blk_item.unpadRect(blk_item.boundingRect()).toRect()))
+                preview.setOpacity(0.7)
+                preview.setVisible(True)
+                rotate_vec = event.scenePos() - self.ctrl.sceneBoundingRect().center()
                 self.updateAngleLabelPos()
                 rotation = np.rad2deg(math.atan2(rotate_vec.y(), rotate_vec.x()))
                 self.rotate_start = - rotation + self.ctrl.rotation() 
@@ -81,7 +92,7 @@ class ControlBlockItem(QGraphicsRectItem):
         angleLabel = self.ctrl.angleLabel
         sp = self.scenePos()
         gv = angleLabel.parent()
-        pos = gv.mapFromScene(sp.toPoint())
+        pos = gv.mapFromScene(sp)
         x = max(min(pos.x(), gv.width() - angleLabel.width()), 0)
         y = max(min(pos.y(), gv.height() - angleLabel.height()), 0)
         angleLabel.move(QPoint(x, y))
@@ -91,16 +102,16 @@ class ControlBlockItem(QGraphicsRectItem):
             angleLabel.raise_()
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        super().mouseMoveEvent(event)
         blk_item = self.ctrl.blk_item
-        if self.drag_mode == self.DRAG_RESHAPE:
-            
+        if blk_item is None:
+            return
+
+        if self.drag_mode == self.DRAG_RESHAPE:    
             block_group = self.ctrl.ctrlblock_group
-            old_pos = QPointF(block_group[0].scenePos())
-            super().mouseMoveEvent(event)
-            
             crect = self.ctrl.rect()
             pos_x, pos_y = 0, 0
-            opposite_block = block_group[(self.idx + 4) %8 ]
+            opposite_block = block_group[(self.idx + 4) % 8 ]
             oppo_pos = opposite_block.pos()
             if self.idx % 2 == 0:
                 if self.idx == 0:
@@ -138,20 +149,17 @@ class ControlBlockItem(QGraphicsRectItem):
                     crect.setX(pos_x+self.visible_len)
             
             self.ctrl.setRect(crect)
-            rect = QRectF()
-            rect.setTopLeft(blk_item.pos()+block_group[0].scenePos()-old_pos)
-            rect.setBottomRight(crect.bottomRight()-crect.topLeft()+rect.topLeft())
-            rect.setHeight(rect.height()/blk_item.scale())
-            rect.setWidth(rect.width()/blk_item.scale())
+            scale = self.ctrl.current_scale
             new_center = self.ctrl.sceneBoundingRect().center()
-            rect.setX(new_center.x()-rect.width()/2)
-            rect.setY(new_center.y()-rect.height()/2)
+            new_xy = QPointF(new_center.x() / scale - crect.width() / 2, new_center.y() / scale - crect.height() / 2)
+            rect = QRectF(new_xy.x(), new_xy.y(), crect.width(), crect.height())
             blk_item.setRect(rect)
 
         elif self.drag_mode == self.DRAG_ROTATE:   # rotating
-            rotate_vec = event.scenePos() - self.ctrl.pos() - self.ctrl.boundingRect().center()
+            rotate_vec = event.scenePos() - self.ctrl.sceneBoundingRect().center()
             rotation = np.rad2deg(math.atan2(rotate_vec.y(), rotate_vec.x()))
-            self.ctrl.setAngle(rotation+self.rotate_start)
+            self.ctrl.setAngle((rotation+self.rotate_start))
+            # angle = self.ctrl.rotation()
             angle = self.ctrl.rotation() + 45 * self.idx
             idx = self.get_angle_idx(angle)
             if self.CURSOR_IDX != idx:
@@ -178,10 +186,8 @@ class ControlBlockItem(QGraphicsRectItem):
             self.ctrl.updateBoundingRect()
             return super().mouseReleaseEvent(event)
 
-
 class TextBlkShapeControl(QGraphicsRectItem):
     blk_item : TextBlkItem = None 
-    cb_edge_len : float = 40
     ctrl_block: ControlBlockItem = None
     reshaping: bool = False
     
@@ -189,14 +195,14 @@ class TextBlkShapeControl(QGraphicsRectItem):
         super().__init__()
         self.gv = parent
         self.ctrlblock_group = [
-            ControlBlockItem(self, 0, self.cb_edge_len),
-            ControlBlockItem(self, 1, self.cb_edge_len),
-            ControlBlockItem(self, 2, self.cb_edge_len),
-            ControlBlockItem(self, 3, self.cb_edge_len),
-            ControlBlockItem(self, 4, self.cb_edge_len),
-            ControlBlockItem(self, 5, self.cb_edge_len),
-            ControlBlockItem(self, 6, self.cb_edge_len),
-            ControlBlockItem(self, 7, self.cb_edge_len),
+            ControlBlockItem(self, 0),
+            ControlBlockItem(self, 1),
+            ControlBlockItem(self, 2),
+            ControlBlockItem(self, 3),
+            ControlBlockItem(self, 4),
+            ControlBlockItem(self, 5),
+            ControlBlockItem(self, 6),
+            ControlBlockItem(self, 7),
         ]
         
         self.previewPixmap = QGraphicsPixmapItem(self)
@@ -205,7 +211,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
         pen.setDashPattern([7, 14])
         self.setPen(pen)
         self.setVisible(False)
-        self.setZValue(1)
 
         self.angleLabel = QLabel(parent)
         self.angleLabel.setText("{:.1f}°".format(self.rotation()))
@@ -213,6 +218,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.angleLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.angleLabel.setHidden(True)
 
+        self.current_scale = 1.
+        self.need_rescale = False
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
     def setBlkItem(self, blk_item: TextBlkItem):
@@ -220,7 +227,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
             return
         if self.blk_item is not None:
             self.blk_item.under_ctrl = False
-            self.blk_item.setFocus(Qt.FocusReason.NoFocusReason)
+            if self.blk_item.isEditing():
+                self.blk_item.endEdit()
             self.blk_item.update()
             
         self.blk_item = blk_item
@@ -235,16 +243,12 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def updateBoundingRect(self):
         if self.blk_item is None:
             return
-        br = self.blk_item.boundingRect()
-        center = br.center()
-        scale = self.blk_item.scale()
-        ds = 1 - scale
-        br = [0, 0, br.width()*scale, br.height()*scale]
+        abr = self.blk_item.absBoundingRect(qrect=True)
+        br = QRectF(0, 0, abr.width(), abr.height())
+        self.setRect(br)
         self.blk_item.setCenterTransform()
         self.setTransformOriginPoint(self.blk_item.transformOriginPoint())
-        self.setRect(*br)
-        pos = self.blk_item.pos()
-        self.setPos(pos.x()+ds*center.x(), pos.y()+ds*center.y())
+        self.setPos(abr.x(), abr.y())
         self.setAngle(self.blk_item.angle)
 
     def setRect(self, *args): 
@@ -257,11 +261,10 @@ class TextBlkShapeControl(QGraphicsRectItem):
         corner_pnts = xywh2xyxypoly(np.array([b_rect])).reshape(-1, 2)
         edge_pnts = (corner_pnts[[1, 2, 3, 0]] + corner_pnts) / 2
         pnts = [edge_pnts, corner_pnts]
-        offset = -0.5 * self.cb_edge_len
         for ii, ctrlblock in enumerate(self.ctrlblock_group):
             is_corner = not ii % 2
             idx = ii // 2
-            pos = pnts[is_corner][idx] + offset
+            pos = pnts[is_corner][idx] -0.5 * ctrlblock.edge_width
             ctrlblock.setPos(pos[0], pos[1])
 
     def setAngle(self, angle: int) -> None:
@@ -271,9 +274,11 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
     def ctrlblockPressed(self):
         self.scene().clearSelection()
+        if self.blk_item is not None:
+            self.blk_item.endEdit()
 
     def paint(self, painter: QPainter, option: 'QStyleOptionGraphicsItem', widget = ...) -> None:
-        painter.setCompositionMode(QPainter.RasterOp_NotDestination)
+        painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
         super().paint(painter, option, widget)
 
     def hideControls(self):
@@ -283,3 +288,36 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def showControls(self):
         for ctrl in self.ctrlblock_group:
             ctrl.show()
+
+    def updateScale(self, scale: float):
+        if not self.isVisible():
+            if scale != self.current_scale:
+                self.need_rescale = True
+                self.current_scale = scale
+            return
+
+        self.current_scale = scale
+        scale = 1 / scale
+        pen = self.pen()
+        pen.setWidthF(2 * scale)
+        self.setPen(pen)
+        for ctrl in self.ctrlblock_group:
+            ctrl.updateEdgeWidth(CBEDGE_WIDTH * scale)
+
+    def show(self) -> None:
+        super().show()
+        if self.need_rescale:
+            self.updateScale(self.current_scale)
+            self.need_rescale = False
+        self.setZValue(1)
+
+    def startEditing(self):
+        self.setCursor(Qt.CursorShape.IBeamCursor)
+        for ctrlb in self.ctrlblock_group:
+            ctrlb.hide()
+
+    def endEditing(self):
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+        if self.isVisible():
+            for ctrlb in self.ctrlblock_group:
+                ctrlb.show()

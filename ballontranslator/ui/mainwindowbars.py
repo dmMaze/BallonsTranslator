@@ -1,15 +1,16 @@
 import os.path as osp
-from collections import OrderedDict
-from typing import List
+from typing import List, Union
 
 from .stylewidgets import Widget, PaintQSlider
-from .constants import WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, DRAG_DIR_NONE, DRAG_DIR_VER, DRAG_DIR_BDIAG, DRAG_DIR_FDIAG
-from . import constants as c
+from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton
 from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QMouseEvent, QKeySequence
-if c.FLAG_QT6:
+
+from .framelesswindow import startSystemMove
+from . import constants as C
+if C.FLAG_QT6:
     from qtpy.QtGui import QAction
 else:
     from qtpy.QtWidgets import QAction
@@ -20,7 +21,7 @@ class ShowPageListChecker(QCheckBox):
 
 
 class OpenBtn(QToolButton):
-    def __init__(self, btn_width, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
 
@@ -31,6 +32,10 @@ class RunBtn(QPushButton):
 
 
 class StatusButton(QPushButton):
+    pass
+
+
+class TitleBarToolBtn(QToolButton):
     pass
 
 
@@ -58,6 +63,7 @@ class RunStopTextBtn(StatusButton):
         self.setText(self.run_text)
         if self.run_tool_tip is not None:
             self.setToolTip(self.run_tool_tip)
+        self.running = False
 
     def setStopText(self):
         self.setText(self.stop_text)
@@ -121,18 +127,23 @@ class LeftBar(Widget):
     imgTransChecked = Signal()
     configChecked = Signal()
     open_dir = Signal(str)
+    open_json_proj = Signal(str)
     save_proj = Signal()
+    save_config = Signal()
     run_imgtrans = Signal()
+    export_doc = Signal()
+    import_doc = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.mainwindow: QMainWindow = mainwindow
-        self.drag_resize_pos: QPoint = None
 
-        bar_width = 90
-        btn_width = 56
-        padding = (bar_width - btn_width) // 2
-        self.setFixedWidth(bar_width)
+        padding = (LEFTBAR_WIDTH - LEFTBTN_WIDTH) // 2
+        self.setFixedWidth(LEFTBAR_WIDTH)
         self.showPageListLabel = ShowPageListChecker()
+
+        self.globalSearchChecker = QCheckBox()
+        self.globalSearchChecker.setObjectName('GlobalSearchChecker')
+        self.globalSearchChecker.setToolTip(self.tr('Global Search (Ctrl+G)'))
 
         self.imgTransChecker = StateChecker('imgtrans')
         self.imgTransChecker.setObjectName('ImgTransChecker')
@@ -142,26 +153,21 @@ class LeftBar(Widget):
         self.configChecker.setObjectName('ConfigChecker')
         self.configChecker.checked.connect(self.stateCheckerChanged)
 
-        actionOpenFolder = QAction(self)
-        actionOpenFolder.setText(self.tr("Open Folder ..."))
+        actionOpenFolder = QAction(self.tr("Open Folder ..."), self)
         actionOpenFolder.triggered.connect(self.onOpenFolder)
         actionOpenFolder.setShortcut(QKeySequence.Open)
 
-        actionOpenProj = QAction(self)
-        actionOpenProj.setText(self.tr("Open Project ... *.json"))
+        actionOpenProj = QAction(self.tr("Open Project ... *.json"), self)
         actionOpenProj.triggered.connect(self.onOpenProj)
 
-        actionSaveProj = QAction(self)
-        actionSaveProj.setText(self.tr("Save Project"))
-        actionSaveProj.triggered.connect(self.onSaveProj)
+        actionSaveProj = QAction(self.tr("Save Project"), self)
+        self.save_proj = actionSaveProj.triggered
         actionSaveProj.setShortcut(QKeySequence.StandardKey.Save)
 
-        actionExportAsDoc = QAction(self)
-        actionExportAsDoc.setText(self.tr("Export as Doc"))
-        actionExportAsDoc.triggered.connect(self.onExportAsDoc)
-        actionImportFromDoc = QAction(self)
-        actionImportFromDoc.setText(self.tr("Import from Doc"))
-        actionImportFromDoc.triggered.connect(self.onImportFromDoc)
+        actionExportAsDoc = QAction(self.tr("Export as Doc"), self)
+        actionExportAsDoc.triggered.connect(self.export_doc)
+        actionImportFromDoc = QAction(self.tr("Import from Doc"), self)
+        actionImportFromDoc.triggered.connect(self.import_doc)
 
         self.recentMenu = QMenu(self.tr("Open Recent"), self)
         
@@ -174,38 +180,47 @@ class LeftBar(Widget):
             actionExportAsDoc,
             actionImportFromDoc
         ])
-        self.openBtn = OpenBtn(btn_width)
-        self.openBtn.setFixedSize(btn_width, btn_width)
+        self.openBtn = OpenBtn()
+        self.openBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.openBtn.setMenu(openMenu)
         self.openBtn.setPopupMode(QToolButton.InstantPopup)
     
         openBtnToolBar = QToolBar(self)
-        openBtnToolBar.setFixedSize(btn_width, btn_width)
+        openBtnToolBar.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         openBtnToolBar.addWidget(self.openBtn)
         
         self.runImgtransBtn = RunBtn()
-        self.runImgtransBtn.setFixedSize(btn_width, btn_width)
+        self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.runImgtransBtn.clicked.connect(self.run_imgtrans)
 
         vlayout = QVBoxLayout(self)
         vlayout.addWidget(openBtnToolBar)
         vlayout.addWidget(self.showPageListLabel)
+        vlayout.addWidget(self.globalSearchChecker)
         vlayout.addWidget(self.imgTransChecker)
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
         vlayout.addWidget(self.configChecker)
         vlayout.addWidget(self.runImgtransBtn)
-        vlayout.setContentsMargins(padding, 0, padding, btn_width/2)
+        vlayout.setContentsMargins(padding, 0, padding, int(LEFTBTN_WIDTH / 2))
         vlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        vlayout.setSpacing(btn_width/2)
+        vlayout.setSpacing(int(LEFTBTN_WIDTH / 2))
         self.setGeometry(0, 0, 300, 500)
         self.setMouseTracking(True)
 
-    def updateRecentProjList(self, proj_list: List[str]):
+    def initRecentProjMenu(self, proj_list: List[str]):
+        self.recent_proj_list = proj_list
+        for proj in proj_list:
+            action = QAction(proj, self)
+            self.recentMenu.addAction(action)
+            action.triggered.connect(self.recentActionTriggered)
+
+    def updateRecentProjList(self, proj_list: Union[str, List[str]]):
         if len(proj_list) == 0:
             return
         if isinstance(proj_list, str):
             proj_list = [proj_list]
-        proj_list = list(OrderedDict.fromkeys(proj_list))
+        if self.recent_proj_list == proj_list:
+            return
 
         actionlist = self.recentMenu.actions()
         if len(self.recent_proj_list) == 0:
@@ -244,6 +259,7 @@ class LeftBar(Widget):
                 self.recentMenu.removeAction(action)
                 self.recent_proj_list.pop()
 
+        self.save_config.emit()
 
     def recentActionTriggered(self):
         path = self.sender().text()
@@ -255,26 +271,17 @@ class LeftBar(Widget):
             self.recentMenu.removeAction(self.sender())
         
     def onOpenFolder(self) -> None:
-        # newdir = str(QFileDialog.getExistingDirectory(self, "Select Directory")).replace("/", "\\")
         dialog = QFileDialog()
-        dialog.setDefaultSuffix('.jpg')
-        folder_path = str(dialog.getExistingDirectory(self, "Select Directory"))
+        folder_path = str(dialog.getExistingDirectory(self, self.tr("Select Directory")))
         if osp.exists(folder_path):
-            self.open_dir.emit(folder_path)
             self.updateRecentProjList(folder_path)
-        # self.open_dir.emit(folder_path)
+            self.open_dir.emit(folder_path)
 
     def onOpenProj(self):
-        self.open_dir.emit()
-
-    def onSaveProj(self):
-        self.save_proj.emit()
-
-    def onExportAsDoc(self):
-        raise NotImplementedError
-
-    def onImportFromDoc(self):
-        raise NotImplementedError
+        dialog = QFileDialog()
+        json_path = str(dialog.getOpenFileUrl(self.parent(), self.tr('Import *.docx'), filter="*.json")[0].toLocalFile())
+        if osp.exists(json_path):
+            self.open_json_proj.emit(json_path)
 
     def stateCheckerChanged(self, checker_type: str):
         if checker_type == 'imgtrans':
@@ -284,94 +291,8 @@ class LeftBar(Widget):
             self.imgTransChecker.setChecked(False)
             self.configChecked.emit()
 
-    def mouseMoveEvent(self, e: QMouseEvent) -> None:
-        if not self.mainwindow.isMaximized():
-            if c.FLAG_QT6:
-                g_pos = e.globalPosition().toPoint()
-            else:
-                g_pos = e.globalPos()
-            ex = g_pos.x()
-            geow = self.mainwindow.geometry()
-            if ex - geow.left() < WINDOW_BORDER_WIDTH:
-                self.setCursor(Qt.CursorShape.SizeHorCursor)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-
-            if self.drag_resize_pos is not None:
-                self.setCursor(Qt.CursorShape.SizeHorCursor)
-                delta_x = ex - self.drag_resize_pos.x()
-                self.drag_resize_pos = g_pos
-                geow.setLeft(geow.left() + delta_x)
-                self.mainwindow.setGeometry(geow)
-        return super().mouseMoveEvent(e)
-
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        if c.FLAG_QT6:
-            g_pos = e.globalPosition().toPoint()
-        else:
-            g_pos = e.globalPos()
-        ex = g_pos.x()
-        geow = self.mainwindow.geometry()
-        if ex - geow.left() < WINDOW_BORDER_WIDTH:
-            self.drag_resize_pos = g_pos
-        return super().mousePressEvent(e)
-
-    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        return super().mouseReleaseEvent(e)
-
-    def leaveEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        return super().leaveEvent(e)
-
-
-class RightBar(Widget):
-    def __init__(self, mainwindow: QMainWindow):
-        super().__init__()
-        self.mainwindow = mainwindow
-        self.drag_resize_pos: QPoint = None
-        self.setFixedWidth(WINDOW_BORDER_WIDTH)
-        self.setMouseTracking(True)
-
-    def mouseMoveEvent(self, e:  QMouseEvent) -> None:
-        if not self.mainwindow.isMaximized():
-            if c.FLAG_QT6:
-                g_pos = e.globalPosition().toPoint()
-            else:
-                g_pos = e.globalPos()
-            ex = g_pos.x()
-            geow = self.mainwindow.geometry()
-            if ex - geow.right() < WINDOW_BORDER_WIDTH:
-                self.setCursor(Qt.CursorShape.SizeHorCursor)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-
-            if self.drag_resize_pos is not None:
-                self.setCursor(Qt.CursorShape.SizeHorCursor)
-                delta_x = ex - self.drag_resize_pos.x()
-                self.drag_resize_pos = g_pos
-                geow.setRight(geow.right() + delta_x)
-                self.mainwindow.setGeometry(geow)
-        return super().mouseMoveEvent(e)
-
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        if c.FLAG_QT6:
-            g_pos = e.globalPosition().toPoint()
-        else:
-            g_pos = e.globalPos()
-        ex = g_pos.x()
-        geow = self.mainwindow.geometry()
-        if ex - geow.right() < WINDOW_BORDER_WIDTH:
-            self.drag_resize_pos = g_pos
-        return super().mousePressEvent(e)
-
-    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        return super().mouseReleaseEvent(e)
-
-    def leaveEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        return super().leaveEvent(e)
+    def needleftStackWidget(self) -> bool:
+        return self.showPageListLabel.isChecked() or self.globalSearchChecker.isChecked()
 
 
 class TitleBar(Widget):
@@ -380,14 +301,90 @@ class TitleBar(Widget):
         super().__init__(parent, *args, **kwargs)
         self.mainwindow : QMainWindow = parent
         self.mPos: QPoint = None
-        self.drag_resize_pos: QPoint = None
-        self.drag_dir = DRAG_DIR_NONE
         self.normalsize = False
         self.proj_name = ''
         self.page_name = ''
         self.save_state = ''
-        self.setFixedHeight(40)
+        self.setFixedHeight(TITLEBAR_HEIGHT)
         self.setMouseTracking(True)
+
+        self.editToolBtn = TitleBarToolBtn(self)
+        self.editToolBtn.setText(self.tr('Edit'))
+
+        undoAction = QAction(self.tr('Undo'), self)
+        self.undo_trigger = undoAction.triggered
+        undoAction.setShortcut(QKeySequence.StandardKey.Undo)
+        redoAction = QAction(self.tr('Redo'), self)
+        self.redo_trigger = redoAction.triggered
+        redoAction.setShortcut(QKeySequence.StandardKey.Redo)
+        pageSearchAction = QAction(self.tr('Search'), self)
+        self.page_search_trigger = pageSearchAction.triggered
+        pageSearchAction.setShortcut(QKeySequence('Ctrl+F'))
+        globalSearchAction = QAction(self.tr('Global Search'), self)
+        self.global_search_trigger = globalSearchAction.triggered
+        globalSearchAction.setShortcut(QKeySequence('Ctrl+G'))
+
+        replaceMTkeyword = QAction(self.tr("Keyword substitution for machine translation"), self)
+        self.replaceMTkeyword_trigger = replaceMTkeyword.triggered
+        replaceOCRkeyword = QAction(self.tr("Keyword substitution for OCR results"), self)
+        self.replaceOCRkeyword_trigger = replaceOCRkeyword.triggered
+
+        editMenu = QMenu(self.editToolBtn)
+        editMenu.addActions([undoAction, redoAction])
+        editMenu.addSeparator()
+        editMenu.addActions([pageSearchAction, globalSearchAction, replaceOCRkeyword, replaceMTkeyword])
+        self.editToolBtn.setMenu(editMenu)
+        self.editToolBtn.setPopupMode(QToolButton.InstantPopup)
+
+        self.viewToolBtn = TitleBarToolBtn(self)
+        self.viewToolBtn.setText(self.tr('View'))
+        drawBoardAction = QAction(self.tr('Drawing Board '), self)
+        drawBoardAction.setShortcut(QKeySequence('P'))
+        texteditAction = QAction(self.tr('Text Editor'), self)
+        texteditAction.setShortcut(QKeySequence('T'))
+        fontStylePresetAction = QAction(self.tr('Text Style Presets'), self)
+        self.darkModeAction = darkModeAction = QAction(self.tr('Dark Mode'), self)
+        darkModeAction.setCheckable(True)
+
+        viewMenu = QMenu(self.viewToolBtn)
+        viewMenu.addActions([drawBoardAction, texteditAction])
+        viewMenu.addSeparator()
+        viewMenu.addAction(fontStylePresetAction)
+        viewMenu.addSeparator()
+        viewMenu.addAction(darkModeAction)
+        self.viewToolBtn.setMenu(viewMenu)
+        self.viewToolBtn.setPopupMode(QToolButton.InstantPopup)
+        self.textedit_trigger = texteditAction.triggered
+        self.drawboard_trigger = drawBoardAction.triggered
+        self.fontstyle_trigger = fontStylePresetAction.triggered
+        self.darkmode_trigger = darkModeAction.triggered
+
+        self.goToolBtn = TitleBarToolBtn(self)
+        self.goToolBtn.setText(self.tr('Go'))
+        prevPageAction = QAction(self.tr('Previous Page'), self)
+        prevPageAction.setShortcuts([QKeySequence.StandardKey.MoveToPreviousPage, QKeySequence('A')])
+        nextPageAction = QAction(self.tr('Next Page'), self)
+        nextPageAction.setShortcuts([QKeySequence.StandardKey.MoveToNextPage, QKeySequence('D')])
+        goMenu = QMenu(self.goToolBtn)
+        goMenu.addActions([prevPageAction, nextPageAction])
+        self.goToolBtn.setMenu(goMenu)
+        self.goToolBtn.setPopupMode(QToolButton.InstantPopup)
+        self.prevpage_trigger = prevPageAction.triggered
+        self.nextpage_trigger = nextPageAction.triggered
+
+        self.runToolBtn = TitleBarToolBtn(self)
+        self.runToolBtn.setText(self.tr('Run'))
+        runAction = QAction(self.tr('Run'), self)
+        translatePageAction = QAction(self.tr('Translate page'), self)
+        runMenu = QMenu(self.runToolBtn)
+        runMenu.addActions([runAction, translatePageAction])
+        self.runToolBtn.setMenu(runMenu)
+        self.runToolBtn.setPopupMode(QToolButton.InstantPopup)
+        self.run_trigger = runAction.triggered
+        self.translate_page_trigger = translatePageAction.triggered
+
+        self.iconLabel = QLabel(self)
+        self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
 
         self.titleLabel = QLabel('BallonTranslator')
         self.titleLabel.setObjectName('TitleLabel')
@@ -401,17 +398,22 @@ class TitleBar(Widget):
         self.closeBtn = QPushButton()
         self.closeBtn.setObjectName('closeBtn')
         self.closeBtn.clicked.connect(self.closebtn_clicked)
-        self.maxBtn.setFixedSize(72, 40)
+        self.maxBtn.setFixedSize(48, 27)
         hlayout = QHBoxLayout(self)
         hlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hlayout.addItem(QSpacerItem(0, 0,  QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        hlayout.addWidget(self.iconLabel)
+        hlayout.addWidget(self.editToolBtn)
+        hlayout.addWidget(self.viewToolBtn)
+        hlayout.addWidget(self.goToolBtn)
+        hlayout.addWidget(self.runToolBtn)
+        hlayout.addStretch()
         hlayout.addWidget(self.titleLabel)
-        hlayout.addItem(QSpacerItem(0, 0,  QSizePolicy.Policy.Expanding,  QSizePolicy.Policy.Expanding))
+        hlayout.addStretch()
         hlayout.addWidget(self.minBtn)
         hlayout.addWidget(self.maxBtn)
         hlayout.addWidget(self.closeBtn)
         hlayout.setContentsMargins(0, 0, 0, 0)
-        hlayout.setSpacing(0)        
+        hlayout.setSpacing(0) 
 
     def onMaxBtnClicked(self):
         if self.mainwindow.isMaximized():
@@ -425,24 +427,15 @@ class TitleBar(Widget):
         self.mainwindow.showMinimized()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if c.FLAG_QT6:
+
+        if C.FLAG_QT6:
             g_pos = event.globalPosition().toPoint()
         else:
             g_pos = event.globalPos()
         if event.button() == Qt.MouseButton.LeftButton:
             if not self.mainwindow.isMaximized() and \
                 event.pos().y() < WINDOW_BORDER_WIDTH:
-                self.drag_resize_pos = g_pos
-                x = event.pos().x()
-                if x < WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                    self.drag_dir = DRAG_DIR_FDIAG
-                elif x > self.width() - WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                    self.drag_dir = DRAG_DIR_BDIAG
-                else:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-                    self.drag_dir = DRAG_DIR_VER
+                pass
             else:
                 self.mPos = event.pos()
                 self.mPosGlobal = g_pos
@@ -450,66 +443,22 @@ class TitleBar(Widget):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self.mPos = None
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
         return super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if c.FLAG_QT6:
-            g_pos = event.globalPosition().toPoint()
-        else:
-            g_pos = event.globalPos()
         if self.mPos is not None:
-            self.mainwindow.show()
-            if self.mainwindow.isMaximized():
-                oldw = self.mainwindow.width()
-                newgeo = self.mainwindow.normalGeometry()
-                self.mainwindow.showNormal()
-                
-                if self.mPos.x() > newgeo.width():
-                    self.mPos = QPoint(newgeo.width()-oldw+self.mPos.x(), self.mPos.y())
-                else:
-                    self.mainwindow.move(g_pos - self.mPos)
+            if C.FLAG_QT6:
+                g_pos = event.globalPosition().toPoint()
             else:
-                self.mainwindow.move(g_pos-self.mPos)
-        elif not self.mainwindow.isMaximized():
-            y = event.pos().y()
-            x = event.pos().x()
-            if self.drag_dir != DRAG_DIR_NONE:
-                geo = self.mainwindow.geometry()
-                delta_y = g_pos.y() - self.drag_resize_pos.y()
-                delta_x = g_pos.x() - self.drag_resize_pos.x()
-                geo.setTop(geo.top() + delta_y)
-                if self.drag_dir == DRAG_DIR_BDIAG:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                    geo.setRight(geo.right() + delta_x)
-                elif self.drag_dir == DRAG_DIR_FDIAG:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                    geo.setLeft(geo.left() + delta_x)
-                elif self.drag_dir == DRAG_DIR_VER:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-                self.mainwindow.setGeometry(geo)
-                self.drag_resize_pos = g_pos
-            elif y < WINDOW_BORDER_WIDTH:
-                if x < WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                elif x > self.width() - WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                else:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
+                g_pos = event.globalPos()
+            startSystemMove(self.window(), g_pos)
 
     def hideEvent(self, e) -> None:
         self.mPos = None
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
         return super().hideEvent(e)
 
     def leaveEvent(self, e) -> None:
         self.mPos = None
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
         return super().leaveEvent(e)
 
     def setTitleContent(self, proj_name: str = None, page_name: str = None, save_state: str = None):
@@ -532,18 +481,19 @@ class TitleBar(Widget):
 
 
 class BottomBar(Widget):
+    
     textedit_checkchanged = Signal()
     paintmode_checkchanged = Signal()
     textblock_checkchanged = Signal()
     ocrcheck_statechanged = Signal(bool)
     transcheck_statechanged = Signal(bool)
+    inpaint_btn_clicked = Signal()
+
     def __init__(self, mainwindow: QMainWindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.setFixedHeight(BOTTOMBAR_HEIGHT)
         self.setMouseTracking(True)
         self.mainwindow = mainwindow
-        self.drag_resize_pos: QPoint = None
-        self.drag_dir = DRAG_DIR_NONE
 
         self.ocrChecker = TextChecker('ocr')
         self.ocrChecker.setObjectName('OCRChecker')
@@ -560,6 +510,7 @@ class BottomBar(Widget):
                                                 self.tr('translate current page'),
                                                 self.tr('stop translation'))
         self.inpainterStatBtn = InpainterStatusButton()
+        self.inpainterStatBtn.clicked.connect(self.inpaintBtnClicked)
         self.transTranspageBtn.hide()
         self.hlayout = QHBoxLayout(self)
         self.paintChecker = QCheckBox()
@@ -575,9 +526,13 @@ class BottomBar(Widget):
         self.textblockChecker.clicked.connect(self.onTextblockCheckerClicked)
         
         self.originalSlider = PaintQSlider(self.tr("Original image transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
-        self.originalSlider.setFixedHeight(40)
-        self.originalSlider.setFixedWidth(200)
+        self.originalSlider.setFixedWidth(130)
         self.originalSlider.setRange(0, 100)
+
+        self.textlayerSlider = PaintQSlider(self.tr("Lettering layer transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
+        self.textlayerSlider.setFixedWidth(130)
+        self.textlayerSlider.setValue(100)
+        self.textlayerSlider.setRange(0, 100)
         
         self.hlayout.addWidget(self.ocrChecker)
         self.hlayout.addWidget(self.transChecker)
@@ -585,11 +540,12 @@ class BottomBar(Widget):
         self.hlayout.addWidget(self.transTranspageBtn)
         self.hlayout.addWidget(self.inpainterStatBtn)
         self.hlayout.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        self.hlayout.addWidget(self.textlayerSlider)
         self.hlayout.addWidget(self.originalSlider)
         self.hlayout.addWidget(self.paintChecker)
         self.hlayout.addWidget(self.texteditChecker)
         self.hlayout.addWidget(self.textblockChecker)
-        self.hlayout.setContentsMargins(90, 0, 15, WINDOW_BORDER_WIDTH)
+        self.hlayout.setContentsMargins(60, 0, 10, WINDOW_BORDER_WIDTH)
 
 
     def onPaintCheckerPressed(self):
@@ -611,68 +567,5 @@ class BottomBar(Widget):
     def transCheckerStateChanged(self):
         self.transcheck_statechanged.emit(self.transChecker.isChecked())
 
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if not self.mainwindow.isMaximized():
-            if c.FLAG_QT6:
-                g_pos = event.globalPosition().toPoint()
-            else:
-                g_pos = event.globalPos()
-            ey = g_pos.y()
-            ex = g_pos.x()
-            geow = self.mainwindow.geometry()
-
-            if self.drag_dir != DRAG_DIR_NONE:
-                
-                delta_y = g_pos.y() - self.drag_resize_pos.y()
-                delta_x = g_pos.x() - self.drag_resize_pos.x()
-                geow.setBottom(geow.bottom() + delta_y)
-                if self.drag_dir == DRAG_DIR_BDIAG:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                    geow.setLeft(geow.left() + delta_x)
-                elif self.drag_dir == DRAG_DIR_FDIAG:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                    geow.setRight(geow.right() + delta_x)
-                elif self.drag_dir == DRAG_DIR_VER:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-                self.mainwindow.setGeometry(geow)
-                self.drag_resize_pos = g_pos
-            
-            elif geow.bottom() - ey < WINDOW_BORDER_WIDTH:
-                if geow.right() - ex < WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                elif ex - geow.left() < WINDOW_BORDER_WIDTH:
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                else:
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-
-        return super().mouseMoveEvent(event)
-
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        if c.FLAG_QT6:
-            g_pos = e.globalPosition().toPoint()
-        else:
-            g_pos = e.globalPos()
-        ey = g_pos.y()
-        ex = g_pos.x()
-        geow = self.mainwindow.geometry()
-        if geow.bottom() - ey < WINDOW_BORDER_WIDTH:
-            if geow.right() - ex < WINDOW_BORDER_WIDTH:
-                self.drag_dir = DRAG_DIR_FDIAG
-            elif ex - geow.left() < WINDOW_BORDER_WIDTH:
-                self.drag_dir = DRAG_DIR_BDIAG
-            else:
-                self.drag_dir = DRAG_DIR_VER
-            self.drag_resize_pos = g_pos
-        return super().mousePressEvent(e)
-
-    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
-        return super().mouseReleaseEvent(e)
-
-    def leaveEvent(self, e: QMouseEvent) -> None:
-        self.drag_resize_pos = None
-        self.drag_dir = DRAG_DIR_NONE
-        return super().leaveEvent(e)
+    def inpaintBtnClicked(self):
+        self.inpaint_btn_clicked.emit()

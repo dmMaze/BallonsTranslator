@@ -3,19 +3,12 @@ from typing import List
 from dl import VALID_INPAINTERS, VALID_TEXTDETECTORS, VALID_TRANSLATORS, VALID_OCR, \
     TranslatorBase, DEFAULT_DEVICE
 from utils.logger import logger as LOGGER
-from .stylewidgets import ConfigComboBox
-from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
-from . import constants as c
+from .stylewidgets import ConfigComboBox, NoBorderPushBtn
+from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QListView, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton, QSplitter, QStylePainter, QStyleOption, QStyle, QScrollArea, QLineEdit, QGroupBox, QGraphicsSimpleTextItem
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QFontMetricsF
-if c.FLAG_QT6:
-    from qtpy.QtGui import QAction
-else:
-    from qtpy.QtWidgets import QAction
-
-
 
 
 class ParamNameLabel(QLabel):
@@ -28,7 +21,7 @@ class ParamNameLabel(QLabel):
         labelwidth = 120
         fm = QFontMetricsF(font)
         fmw = fm.boundingRect(param_name).width()
-        labelwidth = max(fmw, labelwidth)
+        labelwidth = int(max(fmw, labelwidth))
         self.setFixedWidth(labelwidth)
         self.setText(param_name)
 
@@ -39,7 +32,7 @@ class ParamEditor(QLineEdit):
         super().__init__( *args, **kwargs)
         self.param_key = param_key
         self.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
-        self.setFixedHeight(45)
+        self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.textChanged.connect(self.on_text_changed)
 
     def on_text_changed(self):
@@ -52,7 +45,7 @@ class ParamComboBox(QComboBox):
         super().__init__( *args, **kwargs)
         self.param_key = param_key
         self.setFixedWidth(size)
-        self.setFixedHeight(45)
+        self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         options = [str(opt) for opt in options]
         self.addItems(options)
         self.currentTextChanged.connect(self.on_select_changed)
@@ -87,7 +80,7 @@ class ParamWidget(QWidget):
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
         param_layout.setContentsMargins(0, 0, 0, 0)
-        param_layout.setSpacing(20)
+        param_layout.setSpacing(14)
         for param_key in params:
             param_label = ParamNameLabel(param_key)
             if param_key == 'description':
@@ -100,7 +93,11 @@ class ParamWidget(QWidget):
             elif isinstance(params[param_key], dict):
                 param_dict = params[param_key]
                 if param_dict['type'] == 'selector':
-                    param_widget = ParamComboBox(param_key, param_dict['options'])
+                    if 'url' in param_key:
+                        size = CONFIG_COMBOBOX_MIDEAN
+                    else:
+                        size = CONFIG_COMBOBOX_SHORT
+                    param_widget = ParamComboBox(param_key, param_dict['options'], size=size)
 
                     # if cuda is not available, disable combobox 'cuda' item
                     # https://stackoverflow.com/questions/38915001/disable-specific-items-in-qcombobox
@@ -119,7 +116,7 @@ class ParamWidget(QWidget):
                     param_widget.paramwidget_edited.connect(self.paramwidget_edited)
             layout = QHBoxLayout()
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(15)
+            layout.setSpacing(10)
             layout.addWidget(param_label)
             layout.addWidget(param_widget)
             layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -192,6 +189,8 @@ class ModuleConfigParseWidget(QWidget):
 
 class TranslatorConfigPanel(ModuleConfigParseWidget):
 
+    show_MT_keyword_window = Signal()
+
     def __init__(self, module_name, *args, **kwargs) -> None:
         super().__init__(module_name, VALID_TRANSLATORS, *args, **kwargs)
         self.translator_combobox = self.module_combobox
@@ -199,6 +198,10 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
     
         self.source_combobox = ConfigComboBox()
         self.target_combobox = ConfigComboBox()
+        self.replaceMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation"), self)
+        self.replaceMTkeywordBtn.clicked.connect(self.show_MT_keyword_window)
+        self.replaceMTkeywordBtn.setFixedWidth(500)
+
         st_layout = QHBoxLayout()
         st_layout.setSpacing(15)
         st_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -206,7 +209,9 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         st_layout.addWidget(self.source_combobox)
         st_layout.addWidget(ParamNameLabel(self.tr('Target ')))
         st_layout.addWidget(self.target_combobox)
+        
         self.vlayout.insertLayout(1, st_layout) 
+        self.vlayout.addWidget(self.replaceMTkeywordBtn)
 
     def finishSetTranslator(self, translator: TranslatorBase):
         self.source_combobox.blockSignals(True)
@@ -216,10 +221,8 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.source_combobox.clear()
         self.target_combobox.clear()
 
-        for lang in translator.lang_map:
-            if translator.lang_map[lang] != '':
-                self.source_combobox.addItem(lang)
-                self.target_combobox.addItem(lang)
+        self.source_combobox.addItems(translator.supported_src_list)
+        self.target_combobox.addItems(translator.supported_tgt_list)
         self.translator_combobox.setCurrentText(translator.name)
         self.source_combobox.setCurrentText(translator.lang_source)
         self.target_combobox.setCurrentText(translator.lang_target)
@@ -247,8 +250,17 @@ class TextDetectConfigPanel(ModuleConfigParseWidget):
 
 
 class OCRConfigPanel(ModuleConfigParseWidget):
+    
+    show_OCR_keyword_window = Signal()
+
     def __init__(self, module_name: str, *args, **kwargs) -> None:
         super().__init__(module_name, VALID_OCR, *args, **kwargs)
         self.ocr_changed = self.module_changed
         self.ocr_combobox = self.module_combobox
         self.setOCR = self.setModule
+
+        self.replaceOCRkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for OCR results"), self)
+        self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
+        self.replaceOCRkeywordBtn.setFixedWidth(500)
+
+        self.vlayout.addWidget(self.replaceOCRkeywordBtn)

@@ -571,7 +571,8 @@ class OCR32pxModel:
         for blk_idx, textblk in enumerate(textblk_lst):
             for ii in range(len(textblk)):
                 textblk_lst_indices.append(blk_idx)
-                regions.append(textblk.get_transformed_region(img, ii, self.text_height))
+                region = textblk.get_transformed_region(img, ii, self.text_height, maxwidth=3064)
+                regions.append(region)
                 region_idx += 1
         # regions = [textblk.get_transformed_region(img, idx, self.text_height) for idx in range(len(textblk))]
         perm = range(len(regions))

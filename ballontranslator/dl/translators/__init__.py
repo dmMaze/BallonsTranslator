@@ -1,14 +1,14 @@
 import urllib.request
-from typing import Dict, List, Union
-import time, requests, re, uuid, base64, hmac
-import functools
-import json
+from ordered_set import OrderedSet
+from typing import Dict, List, Union, Set, Callable
+import time, requests, re, uuid, base64, hmac, functools, json, deepl
+import ctranslate2, sentencepiece as spm
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
 from ..textdetector.textblock import TextBlock
-from ..moduleparamparser import ModuleParamParser, DEFAULT_DEVICE
+from ..moduleparamparser import ModuleParamParser
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
-import deepl
+from .hooks import chs2cht
 
 TRANSLATORS = Registry('translators')
 register_translator = TRANSLATORS.register_module
@@ -41,24 +41,35 @@ SYSTEM_LANGMAP = {
 }
 
 
-def check_language_support(set_lang_method):
-    @functools.wraps(set_lang_method)
-    def wrapper(self, lang: str):
-        if not lang in self.lang_map or not self.lang_map[lang]:
-            msg = '\n'.join(self.supported_languages())
-            raise InvalidSourceOrTargetLanguage(lang, message=msg)
-        return set_lang_method(self, lang)
-    return wrapper
+def check_language_support(check_type: str = 'source'):
+    
+    def decorator(set_lang_method):
+        @functools.wraps(set_lang_method)
+        def wrapper(self, lang: str = ''):
+            if check_type == 'source':
+                supported_lang_list = self.supported_src_list
+            else:
+                supported_lang_list = self.supported_tgt_list
+            if not lang in supported_lang_list:
+                msg = '\n'.join(supported_lang_list)
+                raise InvalidSourceOrTargetLanguage(f'Invalid {check_type}: {lang}\n', message=msg)
+            return set_lang_method(self, lang)
+        return wrapper
+
+    return decorator
 
 
 class TranslatorBase(ModuleParamParser):
+
     concate_text = True
+    cht_require_convert = False
+    
     def __init__(self,
-                 lang_source: str = None, 
-                 lang_target: str = None,
+                 lang_source: str, 
+                 lang_target: str,
+                 raise_unsupported_lang: bool = True,
                  **setup_params) -> None:
         super().__init__(**setup_params)
-        self.sys_lang = SYSTEM_LANGMAP[SYSTEM_LANG] if SYSTEM_LANG in SYSTEM_LANGMAP else ''
         self.name = ''
         for key in TRANSLATORS.module_dict:
             if TRANSLATORS.module_dict[key] == self.__class__:
@@ -68,6 +79,7 @@ class TranslatorBase(ModuleParamParser):
         self.lang_source: str = lang_source
         self.lang_target: str = lang_target
         self.lang_map: Dict = LANGMAP_GLOBAL.copy()
+        self.postprocess_hooks = OrderedSet()
         
         try:
             self.setup_translator()
@@ -77,23 +89,30 @@ class TranslatorBase(ModuleParamParser):
             else:
                 raise TranslatorSetupFailure(e)
 
-        if lang_source is None or lang_source == '':
-            lang_source = 'Auto' if self.support_auto_souce() else self.default_lang()
-        if lang_target is None or lang_target == '':
-            lang_target = self.default_lang()
+        self.valid_lang_list = [lang for lang in self.lang_map if self.lang_map[lang] != '']
 
-        self.set_source(lang_source)
-        self.set_target(lang_target)
+        try:
+            self.set_source(lang_source)
+            self.set_target(lang_target)
+        except InvalidSourceOrTargetLanguage as e:
+            if raise_unsupported_lang:
+                raise e
+            else:
+                lang_source = self.supported_src_list[0]
+                lang_target = self.supported_tgt_list[0]
+                self.set_source(lang_source)
+                self.set_target(lang_target)
 
-    def support_auto_souce(self):
-        if self.lang_map['Auto']:
-            return True
-        return False
+        if self.cht_require_convert:
+            self.register_postprocess_hooks(self._chs2cht)
 
-    def default_lang(self):
-        if self.sys_lang in self.lang_map:
-            return self.sys_lang
-        return self.supported_languages()[0]
+    def register_postprocess_hooks(self, callbacks: Union[List, Callable]):
+        if callbacks is None:
+            return
+        if isinstance(callbacks, Callable):
+            callbacks = [callbacks]
+        for callback in callbacks:
+            self.postprocess_hooks.add(callback)
 
     def _setup_translator(self):
         raise NotImplementedError
@@ -101,11 +120,11 @@ class TranslatorBase(ModuleParamParser):
     def setup_translator(self):
         self._setup_translator()
 
-    @check_language_support
+    @check_language_support(check_type='source')
     def set_source(self, lang: str):
         self.lang_source = lang
 
-    @check_language_support
+    @check_language_support(check_type='target')
     def set_target(self, lang: str):
         self.lang_target = lang
 
@@ -131,6 +150,12 @@ class TranslatorBase(ModuleParamParser):
             
         if isinstance(text, List):
             assert len(text_trans) == len(text)
+            for ii, t in enumerate(text_trans):
+                for callback in self.postprocess_hooks:
+                    text_trans[ii] = callback(t)
+        else:
+            for callback in self.postprocess_hooks:
+                text_trans = callback(text_trans)
 
         return text_trans
 
@@ -148,16 +173,27 @@ class TranslatorBase(ModuleParamParser):
         text_list = [blk.get_text() for blk in textblk_lst]
         translations = self.translate(text_list)
         for tr, blk in zip(translations, textblk_lst):
+            for callback in self.postprocess_hooks:
+                tr = callback(tr, blk=blk)
             blk.translation = tr
 
     def supported_languages(self) -> List[str]:
-        return [lang for lang in self.lang_map if self.lang_map[lang]]
+        return self.valid_lang_list
 
-    def support_language(self, lang: str) -> bool:
-        if lang in self.lang_map:
-            if self.lang_map[lang]:
-                return True
-        return False
+    @property
+    def supported_tgt_list(self) -> List[str]:
+        return self.valid_lang_list
+
+    @property
+    def supported_src_list(self) -> List[str]:
+        return self.valid_lang_list
+    
+    def _chs2cht(self, text: str, blk: TextBlock = None):
+        if self.lang_target == '繁體中文':
+            return chs2cht(text)
+        else:
+            return text
+
 
 @register_translator('google')
 class GoogleTranslator(TranslatorBase):
@@ -167,10 +203,10 @@ class GoogleTranslator(TranslatorBase):
         'url': {
             'type': 'selector',
             'options': [
-                'https://translate.google.cn/m',
+                # 'https://translate.google.cn/m',
                 'https://translate.google.com/m'
             ],
-            'select': 'https://translate.google.cn/m'
+            'select': 'https://translate.google.com/m'
         }
     }
     
@@ -261,17 +297,18 @@ class PapagoTranslator(TranslatorBase):
         return translations
         
 
-
 @register_translator('caiyun')
 class CaiyunTranslator(TranslatorBase):
 
     concate_text = False
+    cht_require_convert = True
     setup_params: Dict = {
         'token': '',
     }
 
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'zh'
+        self.lang_map['繁體中文'] = 'zh'
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'  
         
@@ -300,10 +337,12 @@ class CaiyunTranslator(TranslatorBase):
 
         return translations
 
+
 @register_translator('Deepl')
 class DeeplTranslator(TranslatorBase):
 
     concate_text = False
+    cht_require_convert = True
     setup_params: Dict = {
         'api_key': ''
     }
@@ -332,7 +371,7 @@ class DeeplTranslator(TranslatorBase):
         self.lang_map['Română'] = 'ro'
         self.lang_map['Slovenčina'] = 'sk'
         self.lang_map['Slovenščina'] = 'sl'
-        self.lang_map['Svenska'] = 'sv' 
+        self.lang_map['Svenska'] = 'sv'
         
     def _translate(self, text: Union[str, List]) -> Union[str, List]:
         api_key = self.setup_params['api_key']
@@ -344,7 +383,114 @@ class DeeplTranslator(TranslatorBase):
         result = translator.translate_text(text, source_lang=source, target_lang=target)
         return [i.text for i in result]
     
-# # "dummy translator" is the name showed in the app
+
+
+SUGOIMODEL_TRANSLATOR_DIRPATH = 'data/models/sugoi_translator/'
+SUGOIMODEL_TOKENIZATOR_PATH = SUGOIMODEL_TRANSLATOR_DIRPATH + "spm.ja.nopretok.model"
+@register_translator('Sugoi')
+class SugoiTranslator(TranslatorBase):
+
+    concate_text = False
+    setup_params: Dict = {
+        'device': {
+            'type': 'selector',
+            'options': ['cpu', 'cuda'],
+            'select': 'cpu'
+        }
+    }
+
+    def _setup_translator(self):
+        self.lang_map['日本語'] = 'ja'
+        self.lang_map['English'] = 'en'
+        
+        self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.setup_params['device']['select'])
+        self.tokenizator = spm.SentencePieceProcessor(model_file=SUGOIMODEL_TOKENIZATOR_PATH)
+
+    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+        input_is_lst = True
+        if isinstance(text, str):
+            text = [text]
+            input_is_lst = False
+        
+        text = [i.replace(".", "@").replace("．", "@") for i in text]
+        tokenized_text = self.tokenizator.encode(text, out_type=str, enable_sampling=True, alpha=0.1, nbest_size=-1)
+        tokenized_translated = self.translator.translate_batch(tokenized_text)
+        text_translated = [''.join(text[0]["tokens"]).replace('▁', ' ').replace("@", ".") for text in tokenized_translated]
+        
+        if not input_is_lst:
+            return text_translated[0]
+        return text_translated
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        if param_key == 'device':
+            if hasattr(self, 'translator'):
+                delattr(self, 'translator')
+            self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.setup_params['device']['select'])
+
+    @property
+    def supported_tgt_list(self) -> List[str]:
+        return ['English']
+
+    @property
+    def supported_src_list(self) -> List[str]:
+        return ['日本語']
+
+
+@register_translator('Yandex')
+class YandexTranslator(TranslatorBase):
+
+    concate_text = False
+    setup_params: Dict = {
+        'api_key': ''
+    }
+
+    def _setup_translator(self):
+        self.lang_map['简体中文'] = 'zh'
+        self.lang_map['日本語'] = 'ja'
+        self.lang_map['English'] = 'en'
+        self.lang_map['한국어'] = 'ko'
+        self.lang_map['Tiếng Việt'] = 'vi'
+        self.lang_map['čeština'] = 'cs'
+        self.lang_map['Nederlands'] = 'nl'
+        self.lang_map['français'] = 'fr'
+        self.lang_map['Deutsch'] = 'de'
+        self.lang_map['magyar nyelv'] = 'hu'
+        self.lang_map['italiano'] = 'it'
+        self.lang_map['polski'] = 'pl'
+        self.lang_map['português'] = 'pt'
+        self.lang_map['limba română'] = 'ro'
+        self.lang_map['русский язык'] = 'ru'
+        self.lang_map['español'] = 'es'
+        self.lang_map['Türk dili'] = 'tr'
+
+        self.api_url = 'https://translate.api.cloud.yandex.net/translate/v2/translate'
+
+    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+
+        body = {
+            "targetLanguageCode": self.lang_map[self.lang_target],
+            "texts": text,
+            "folderId": '',
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Api-Key {0}".format(self.setup_params['api_key'])
+        }
+
+        translations = requests.post(self.api_url, json=body, headers=headers).json()['translations']
+        if isinstance(text, str):
+            return translations[0]['text']
+        tr_list = []
+        for tr in translations:
+            if 'text' in tr:
+                tr_list.append(tr['text'])
+            else:
+                tr_list.append('')
+        return tr_list
+
+# "dummy translator" is the name showed in the app
 # @register_translator('dummy translator')
 # class DummyTranslator(TranslatorBase):
 
@@ -368,9 +514,9 @@ class DeeplTranslator(TranslatorBase):
 #         do the setup here.  
 #         keys of lang_map are those languages options showed in the app, 
 #         assign corresponding language keys accepted by API to supported languages.  
-#         This translator only supports Chinese, Japanese, and English.
+#         Only the languages supported by the translator are assigned here, this translator only supports Japanese, and English.
+#         For a full list of languages see LANGMAP_GLOBAL in translator.__init__
 #         '''
-#         self.lang_map['简体中文'] = 'zh'
 #         self.lang_map['日本語'] = 'ja'
 #         self.lang_map['English'] = 'en'  
         
@@ -381,7 +527,9 @@ class DeeplTranslator(TranslatorBase):
 #         '''
 #         source = self.lang_map[self.lang_source]
 #         target = self.lang_map[self.lang_target]
-#         return text 
+        
+#         translation = text
+#         return translation
 
 #     def updateParam(self, param_key: str, param_content):
 #         '''
@@ -390,6 +538,21 @@ class DeeplTranslator(TranslatorBase):
 #         '''
 #         super().updateParam(param_key, param_content)
 #         if param_key == 'device':
+#             # get current state from setup_params
 #             # self.model.to(self.setup_params['device']['select'])
 #             pass
 
+#     @property
+#     def supported_tgt_list(self) -> List[str]:
+#         '''
+#         required only if the translator's language supporting is asymmetric, 
+#         for example, this translator only supports English -> Japanese, no Japanese -> English.
+#         '''
+#         return ['English']
+
+#     @property
+#     def supported_src_list(self) -> List[str]:
+#         '''
+#         required only if the translator's language supporting is asymmetric.
+#         '''
+#         return ['日本語']

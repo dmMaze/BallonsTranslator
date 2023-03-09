@@ -1,9 +1,10 @@
-from qtpy.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStylePainter, QStyleOption, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog
-from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Signal, QSizeF, QObject, QEvent
-from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QResizeEvent, QKeySequence, QPainter, QTextFrame, QTransform, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QColor, QTextFormat, QTextCursor, QTextCharFormat, QTextDocument
+from qtpy.QtWidgets import QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog, QPushButton
+from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Signal
+from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPainter, QFontMetrics, QColor
 from typing import List, Union, Tuple
 
-from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
+from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
+from . import constants as C
 
 
 class Widget(QWidget):
@@ -51,7 +52,7 @@ class SeparatorWidget(QFrame):
 
 
 class TaskProgressBar(Widget):
-    def __init__(self, task_name: str, description: str = '', *args, **kwargs) -> None:
+    def __init__(self, description: str = '', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.progressbar = QProgressBar(self)
@@ -84,47 +85,48 @@ class FrameLessMessageBox(QMessageBox):
 
 class ProgressMessageBox(QDialog):
     showed = Signal()
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, task_name: str = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setModal(True)
-        
-        self.detect_bar = TaskProgressBar('detect', self.tr('Detecting: '), self)
-        self.ocr_bar = TaskProgressBar('ocr', self.tr('OCR: '), self)
-        self.inpaint_bar = TaskProgressBar('inpaint', self.tr('Inpainting: '), self)
-        self.translate_bar = TaskProgressBar('translate', self.tr('Translating: '), self)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(0)
+        layout.setContentsMargins(20, 10, 20, 30)
+
+        self.task_progress_bar: TaskProgressBar = None
+        if task_name is not None:
+            self.task_progress_bar = TaskProgressBar(task_name)
+            layout.addWidget(self.task_progress_bar)
+
+    def updateTaskProgress(self, value: int, msg: str = ''):
+        if self.task_progress_bar is not None:
+            self.task_progress_bar.updateProgress(value, msg)
+
+    def setTaskName(self, task_name: str):
+        if self.task_progress_bar is not None:
+            self.task_progress_bar.description = task_name
+
+    def showEvent(self, e: QShowEvent) -> None:
+        self.showed.emit()
+        return super().showEvent(e)
+
+
+class ImgtransProgressMessageBox(ProgressMessageBox):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(None, *args, **kwargs)
+        
+        self.detect_bar = TaskProgressBar(self.tr('Detecting: '), self)
+        self.ocr_bar = TaskProgressBar(self.tr('OCR: '), self)
+        self.inpaint_bar = TaskProgressBar(self.tr('Inpainting: '), self)
+        self.translate_bar = TaskProgressBar(self.tr('Translating: '), self)
+
+        layout = self.layout()
         layout.addWidget(self.detect_bar)
         layout.addWidget(self.ocr_bar)
         layout.addWidget(self.inpaint_bar)
         layout.addWidget(self.translate_bar)
-        layout.setSpacing(0)
-        layout.setContentsMargins(20, 10, 20, 30)
-
-        self.setStyleSheet("""
-            QWidget {
-                font-family: "Arial";
-                font-size: 13pt;
-                /* border-style: none; */
-                color: #5d5d5f;
-                background-color: #ebeef5;
-
-            }
-            Widget {
-                background-color: #ebeef5;
-            }
-            QProgressBar {
-                border: 0px;
-                text-align: center;
-                max-height: 3px;
-                background-color: #e1e4eb;
-            }
-            QProgressBar::chunk {
-                background-color: rgb(30, 147, 229);
-            }
-        """)
 
     def updateDetectProgress(self, value: int, msg: str = ''):
         self.detect_bar.updateProgress(value, msg)
@@ -144,10 +146,17 @@ class ProgressMessageBox(QDialog):
         self.updateInpaintProgress(0)
         self.updateTranslateProgress(0)
 
-    def showEvent(self, e: QShowEvent) -> None:
-        self.showed.emit()
-        return super().showEvent(e)
+    def show_all_bars(self):
+        self.detect_bar.show()
+        self.ocr_bar.show()
+        self.translate_bar.show()
+        self.inpaint_bar.show()
 
+    def hide_all_bars(self):
+        self.detect_bar.hide()
+        self.ocr_bar.hide()
+        self.translate_bar.hide()
+        self.inpaint_bar.hide()
 
 class ColorPicker(QLabel):
     colorChanged = Signal(bool)
@@ -206,11 +215,13 @@ class PaintQSlider(QSlider):
 
     mouse_released = Signal()
 
-    def __init__(self, draw_content, *args, **kwargs):
-        super(PaintQSlider, self).__init__(*args, **kwargs)
+    def __init__(self, draw_content, orientation=Qt.Orientation.Horizontal, *args, **kwargs):
+        super(PaintQSlider, self).__init__(orientation, *args, **kwargs)
         self.draw_content = draw_content
         self.pressed: bool = False
         self.setStyle(SliderProxyStyle())
+        if orientation == Qt.Orientation.Horizontal:
+            self.setFixedHeight(HORSLIDER_FIXHEIGHT)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -228,7 +239,7 @@ class PaintQSlider(QSlider):
         self.initStyleOption(option)
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # 中间圆圈的位置
         rect = self.style().subControlRect(
@@ -248,15 +259,15 @@ class PaintQSlider(QSlider):
         if option.state & QStyle.State_MouseOver:  # 双重圆
             # 半透明大圆
             r = rect.height() / 2
-            painter.setBrush(QColor(85,85,96,100))
+            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,100))
             painter.drawRoundedRect(rect, r, r)
             # 实心小圆(上下左右偏移4)
             rect = rect.adjusted(4, 4, -4, -4)
             r = rect.height() / 2
-            painter.setBrush(QColor(85,85,96,255))
+            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,255))
             painter.drawRoundedRect(rect, r, r)
             if self.draw_content is not None:
-                painter.setPen(QColor(85,85,96,255))
+                painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
                 font = painter.font()
                 font.setPointSize(8)
                 fm = QFontMetrics(font)
@@ -271,16 +282,15 @@ class PaintQSlider(QSlider):
                 else:  # 在左侧绘制文字
                     x, y = rect.x() - rect.width(), rect.y()
                 painter.drawText(
-                    x, y-10, textw, rect.height()+20,
+                    int(x), int(y)-10, textw, rect.height()+20,
                     Qt.AlignmentFlag.AlignCenter, self.draw_content.replace("value", str(self.value()))
                 )
 
         else:  # 实心圆
             rect = rect.adjusted(4, 4, -4, -4)
             r = rect.height() / 2
-            painter.setBrush(QColor(85,85,96,200))
+            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,200))
             painter.drawRoundedRect(rect, r, r)
-
 
 class ConfigComboBox(QComboBox):
 
@@ -306,3 +316,24 @@ class ConfigComboBox(QComboBox):
             self.setFixedWidth(width)
         else:
             self.setMaximumWidth(width)
+
+
+class ClickableLabel(QLabel):
+
+    clicked = Signal()
+
+    def __init__(self, text=None, parent=None, *args, **kwargs):
+        super().__init__(parent=parent, *args, **kwargs)
+        if text is not None:
+            self.setText(text)
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        return super().mousePressEvent(e)          
+
+
+class NoBorderPushBtn(QPushButton):
+    pass
+
+

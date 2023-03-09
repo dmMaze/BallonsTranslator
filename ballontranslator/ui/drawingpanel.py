@@ -1,11 +1,6 @@
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QRect, QRectF
-from qtpy.QtWidgets import QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsEllipseItem
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF
+from qtpy.QtWidgets import QGridLayout, QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
-
-try:
-    from qtpy.QtWidgets import QUndoCommand
-except:
-    from qtpy.QtGui import QUndoCommand
 
 from typing import Union, Tuple, List
 import numpy as np
@@ -16,12 +11,13 @@ from utils.textblock_mask import canny_flood, connected_canny_flood
 from utils.logger import logger
 
 from .dl_manager import DLManager
-from .image_edit import ImageEditMode, StrokeItem, PixmapItem
+from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem
 from .configpanel import InpaintConfigPanel
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
-from .misc import DrawPanelConfig, ndarray2pixmap, pixmap2ndarray
+from .misc import DrawPanelConfig, ndarray2pixmap
 from .constants import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
+from .drawing_commands import InpaintUndoCommand, StrokeItemUndoCommand
 
 INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)
 MAX_PEN_SIZE = 1000
@@ -67,21 +63,33 @@ class InpaintPanel(Widget):
         super().__init__(*args, **kwargs)
 
         self.inpainter_panel = inpainter_panel
-        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Orientation.Horizontal)
-        self.thicknessSlider.setFixedHeight(50)
+        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px')
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         
         thickness_layout = QHBoxLayout()
-        thickness_label = ToolNameLabel(150, self.tr('Thickness'))
+        thickness_label = ToolNameLabel(100, self.tr('Thickness'))
         thickness_layout.addWidget(thickness_label)
         thickness_layout.addWidget(self.thicknessSlider)
-        thickness_layout.setSpacing(15)
+        thickness_layout.setSpacing(10)
+
+        shape_label = ToolNameLabel(100, self.tr('Shape'))
+        self.shapeCombobox = QComboBox(self)
+        self.shapeCombobox.addItems([
+            self.tr('Circle'),
+            self.tr('Rectangle'),
+            # self.tr('Triangle')
+        ])
+        self.shapeChanged = self.shapeCombobox.currentIndexChanged
+        shape_layout = QHBoxLayout()
+        shape_layout.addWidget(shape_label)
+        shape_layout.addWidget(self.shapeCombobox)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(thickness_layout)
-        layout.setSpacing(20)
+        layout.addLayout(shape_layout)
+        layout.setSpacing(14)
         self.vlayout = layout
 
     def on_thickness_changed(self):
@@ -99,19 +107,22 @@ class InpaintPanel(Widget):
         self.inpainter_panel.needInpaintChecker.setVisible(True)
         return super().hideEvent(e)
 
+    @property
+    def shape(self):
+        return self.shapeCombobox.currentIndex()
+
 
 class PenConfigPanel(Widget):
     thicknessChanged = Signal(int)
     colorChanged = Signal(list)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px', Qt.Orientation.Horizontal)
-        self.thicknessSlider.setFixedHeight(50)
+        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px')
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
-        self.alphaSlider = PaintQSlider(self.tr('alpha value'), Qt.Orientation.Horizontal)
-        self.alphaSlider.setFixedHeight(50)
+        self.alphaSlider = PaintQSlider(self.tr('alpha value') + ' value')
         self.alphaSlider.setRange(0, 255)
+        self.alphaSlider.setValue(255)
         self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
 
         self.colorPicker = ColorPicker()
@@ -126,16 +137,29 @@ class PenConfigPanel(Widget):
         color_layout.addWidget(self.alphaSlider)
         
         thickness_layout = QHBoxLayout()
-        thickness_label = ToolNameLabel(150, self.tr('Thickness'))
+        thickness_label = ToolNameLabel(100, self.tr('Thickness'))
         thickness_layout.addWidget(thickness_label)
         thickness_layout.addWidget(self.thicknessSlider)
-        thickness_layout.setSpacing(15)
+        thickness_layout.setSpacing(10)
+
+        shape_label = ToolNameLabel(100, self.tr('Shape'))
+        self.shapeCombobox = QComboBox(self)
+        self.shapeCombobox.addItems([
+            self.tr('Circle'),
+            self.tr('Rectangle'),
+            # self.tr('Triangle')
+        ])
+        self.shapeChanged = self.shapeCombobox.currentIndexChanged
+        shape_layout = QHBoxLayout()
+        shape_layout.addWidget(shape_label)
+        shape_layout.addWidget(self.shapeCombobox)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(color_layout)
         layout.addLayout(thickness_layout)
-        layout.setSpacing(30)
+        layout.addLayout(shape_layout)
+        layout.setSpacing(20)
 
     def on_thickness_changed(self):
         if self.thicknessSlider.hasFocus():
@@ -151,16 +175,27 @@ class PenConfigPanel(Widget):
 
     def on_color_changed(self):
         color = self.colorPicker.rgba()
+        color[-1] = self.alphaSlider.value()
         self.colorChanged.emit(color)
+
+    @property
+    def shape(self):
+        return self.shapeCombobox.currentIndex()
 
 
 class RectPanel(Widget):
+    dilate_ksize_changed = Signal()
     method_changed = Signal(int)
     delete_btn_clicked = Signal()
     inpaint_btn_clicked = Signal()
     def __init__(self, inpainter_panel: InpaintConfigPanel, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.inpainter_panel = inpainter_panel
+        self.dilate_label = ToolNameLabel()
+        self.dilate_label.setText(self.tr('Dilate'))
+        self.dilate_slider = PaintQSlider(self.tr('kernel size: ') + 'value px')
+        self.dilate_slider.setRange(0, 100)
+        self.dilate_slider.valueChanged.connect(self.dilate_ksize_changed)
         self.methodComboBox = QComboBox()
         self.methodComboBox.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.methodComboBox.setFixedWidth(CONFIG_COMBOBOX_SHORT)
@@ -169,20 +204,26 @@ class RectPanel(Widget):
         self.autoChecker.setToolTip(self.tr("run inpainting automatically."))
         self.autoChecker.stateChanged.connect(self.on_auto_changed)
         self.inpaint_btn = QPushButton(self.tr("Inpaint"))
+        self.inpaint_btn.setToolTip(self.tr("Space"))
         self.inpaint_btn.clicked.connect(self.inpaint_btn_clicked)
         self.delete_btn = QPushButton(self.tr("Delete"))
+        self.delete_btn.setToolTip(self.tr('Ctrl+D'))
         self.delete_btn.clicked.connect(self.delete_btn_clicked)
         self.btnlayout = QHBoxLayout()
         self.btnlayout.addWidget(self.inpaint_btn)
         self.btnlayout.addWidget(self.delete_btn)
-        hlayout = QHBoxLayout()
-        hlayout.addWidget(self.methodComboBox)
-        hlayout.addWidget(self.autoChecker)
+
+        glayout = QGridLayout()
+        glayout.addWidget(self.dilate_label, 0, 0)
+        glayout.addWidget(self.dilate_slider, 0, 1)
+        glayout.addWidget(self.autoChecker, 1, 0)
+        glayout.addWidget(self.methodComboBox, 1, 1)
+
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(hlayout)
+        layout.addLayout(glayout)
         layout.addLayout(self.btnlayout)
-        layout.setSpacing(20)
+        layout.setSpacing(14)
         self.vlayout = layout
 
     def showEvent(self, e) -> None:
@@ -212,6 +253,12 @@ class RectPanel(Widget):
     def auto(self) -> bool:
         return self.autoChecker.isChecked()
 
+    def post_process_mask(self, mask: np.ndarray) -> np.ndarray:
+        ksize = self.dilate_slider.value()
+        if ksize == 0:
+            return mask
+        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1),(ksize, ksize))
+        return cv2.dilate(mask, element)
 
 
 class DrawingPanel(Widget):
@@ -222,8 +269,10 @@ class DrawingPanel(Widget):
         super().__init__(*args, **kwargs)
         self.dl_manager: DLManager = None
         self.canvas = canvas
-        self.inpaint_stroke: StrokeItem = None
+        self.inpaint_stroke: StrokeImgItem = None
         self.rect_inpaint_dict: dict = None
+        self.inpaint_mask_array: np.ndarray = None
+        self.extracted_imask_array: np.ndarray = None
 
         border_pen = QPen(INPAINT_BRUSH_COLOR, 3, Qt.PenStyle.DashLine)
         self.inpaint_mask_item: PixmapItem = PixmapItem(border_pen)
@@ -248,6 +297,7 @@ class DrawingPanel(Widget):
         self.inpaintTool.checked.connect(self.on_use_inpainttool)
         self.inpaintConfigPanel = InpaintPanel(inpainter_panel)
         self.inpaintConfigPanel.thicknessChanged.connect(self.setInpaintToolWidth)
+        self.inpaintConfigPanel.shapeChanged.connect(self.setInpaintShape)
 
         self.rectTool = DrawToolCheckBox()
         self.rectTool.setObjectName("DrawRectTool")
@@ -256,13 +306,15 @@ class DrawingPanel(Widget):
         self.rectPanel = RectPanel(inpainter_panel)
         self.rectPanel.inpaint_btn_clicked.connect(self.on_rect_inpaintbtn_clicked)
         self.rectPanel.delete_btn_clicked.connect(self.on_rect_deletebtn_clicked)
-        
+        self.rectPanel.dilate_ksize_changed.connect(self.on_rectool_ksize_changed)
+
         self.penTool = DrawToolCheckBox()
         self.penTool.setObjectName("DrawPenTool")
         self.penTool.checked.connect(self.on_use_pentool)
         self.penConfigPanel = PenConfigPanel()
         self.penConfigPanel.thicknessChanged.connect(self.setPenToolWidth)
         self.penConfigPanel.colorChanged.connect(self.setPenToolColor)
+        self.penConfigPanel.shapeChanged.connect(self.setPenShape)
 
         toolboxlayout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         toolboxlayout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -273,9 +325,9 @@ class DrawingPanel(Widget):
 
         self.canvas.painting_pen = self.pentool_pen = \
             QPen(Qt.GlobalColor.black, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-
+        self.canvas.erasing_pen = self.erasing_pen = QPen(Qt.GlobalColor.black, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         self.inpaint_pen = QPen(INPAINT_BRUSH_COLOR, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-
+        
         self.setPenToolWidth(10)
         self.setPenToolColor([0, 0, 0, 127])
 
@@ -285,8 +337,7 @@ class DrawingPanel(Widget):
         self.toolConfigStackwidget.addWidget(self.penConfigPanel)
         self.toolConfigStackwidget.addWidget(self.rectPanel)
 
-        self.maskTransperancySlider = PaintQSlider(' value%', Qt.Orientation.Horizontal)
-        self.maskTransperancySlider.setFixedHeight(40)
+        self.maskTransperancySlider = PaintQSlider(' value%')
         self.maskTransperancySlider.valueChanged.connect(self.canvas.setMaskTransparencyBySlider)
         masklayout = QHBoxLayout()
         masklayout.addWidget(ToolNameLabel(220, self.tr('Mask Transparency')))
@@ -306,12 +357,17 @@ class DrawingPanel(Widget):
         dl_manager.inpaint_thread.exception_occurred.connect(self.on_inpaint_failed)
 
     def setInpaintToolWidth(self, width):
-        self.inpaint_pen.setWidth(width)
+        self.inpaint_pen.setWidthF(width)
         if self.isVisible():
             self.setInpaintCursor()
 
+    def setInpaintShape(self, shape: int):
+        self.setInpaintCursor()
+        self.canvas.painting_shape = shape
+
     def setPenToolWidth(self, width):
         self.pentool_pen.setWidthF(width)
+        self.erasing_pen.setWidthF(width)
         if self.isVisible():
             self.setPenCursor()
 
@@ -321,6 +377,12 @@ class DrawingPanel(Widget):
         self.pentool_pen.setColor(color)
         if self.isVisible():
             self.setPenCursor()
+        self.penConfigPanel.colorPicker.setPickerColor(color)
+        self.penConfigPanel.alphaSlider.setValue(color.alpha())
+
+    def setPenShape(self, shape: int):
+        self.setPenCursor()
+        self.canvas.painting_shape = shape
 
     def on_use_handtool(self) -> None:
         if self.currentTool is not None and self.currentTool != self.handTool:
@@ -335,6 +397,8 @@ class DrawingPanel(Widget):
         self.currentTool = self.inpaintTool
         self.canvas.image_edit_mode = ImageEditMode.InpaintTool
         self.canvas.painting_pen = self.inpaint_pen
+        self.canvas.erasing_pen = self.inpaint_pen
+        self.canvas.painting_shape = self.inpaintConfigPanel.shape
         self.toolConfigStackwidget.setCurrentWidget(self.inpaintConfigPanel)
         if self.isVisible():
             self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -345,6 +409,8 @@ class DrawingPanel(Widget):
             self.currentTool.setChecked(False)
         self.currentTool = self.penTool
         self.canvas.painting_pen = self.pentool_pen
+        self.canvas.painting_shape = self.penConfigPanel.shape
+        self.canvas.erasing_pen = self.erasing_pen
         self.canvas.image_edit_mode = ImageEditMode.PenTool
         self.toolConfigStackwidget.setCurrentWidget(self.penConfigPanel)
         if self.isVisible():
@@ -365,7 +431,11 @@ class DrawingPanel(Widget):
         pc = self.pentool_pen.color()
         config.pentool_color = [pc.red(), pc.green(), pc.blue(), pc.alpha()]
         config.pentool_width = self.pentool_pen.widthF()
+        config.pentool_shape = self.penConfigPanel.shape
+
         config.inpainter_width = self.inpaint_pen.widthF()
+        config.inpainter_shape = self.penConfigPanel.shape
+
         if self.currentTool == self.handTool:
             config.current_tool = ImageEditMode.HandTool
         elif self.currentTool == self.inpaintTool:
@@ -374,18 +444,22 @@ class DrawingPanel(Widget):
             config.current_tool = ImageEditMode.PenTool
         elif self.currentTool == self.rectTool:
             config.current_tool = ImageEditMode.RectTool
+        config.recttool_dilate_ksize = self.rectPanel.dilate_slider.value()
         config.rectool_auto = self.rectPanel.autoChecker.isChecked()
         config.rectool_method = self.rectPanel.methodComboBox.currentIndex()
         return config
 
     def set_config(self, config: DrawPanelConfig):
         self.setPenToolWidth(config.pentool_width)
-        self.penConfigPanel.thicknessSlider.setValue(config.pentool_width)
-        self.setInpaintToolWidth(config.inpainter_width)
-        self.inpaintConfigPanel.thicknessSlider.setValue(config.inpainter_width)
         self.setPenToolColor(config.pentool_color)
-        self.penConfigPanel.colorPicker.setPickerColor(config.pentool_color)
-
+        self.penConfigPanel.thicknessSlider.setValue(int(config.pentool_width))
+        self.penConfigPanel.shapeCombobox.setCurrentIndex(config.pentool_shape)
+        
+        self.setInpaintToolWidth(config.inpainter_width)
+        self.inpaintConfigPanel.thicknessSlider.setValue(int(config.inpainter_width))
+        self.inpaintConfigPanel.shapeCombobox.setCurrentIndex(config.inpainter_shape)
+        
+        self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
         self.rectPanel.methodComboBox.setCurrentIndex(config.rectool_method)
         if config.current_tool == ImageEditMode.HandTool:
@@ -397,7 +471,7 @@ class DrawingPanel(Widget):
         elif config.current_tool == ImageEditMode.RectTool:
             self.rectTool.setChecked(True)
 
-    def get_pen_cursor(self, pen_color: QColor = None, pen_size = None, draw_circle=True) -> QCursor:
+    def get_pen_cursor(self, pen_color: QColor = None, pen_size = None, draw_shape=True, shape=PenShape.Circle) -> QCursor:
         cross_size = 31
         cross_len = cross_size // 4
         thickness = 3
@@ -415,16 +489,24 @@ class DrawingPanel(Widget):
         if pen_size < 20:
             pen.setStyle(Qt.PenStyle.SolidLine)
 
-        cur_pixmap = QPixmap(QSize(map_size, map_size))
+        cur_pixmap = QPixmap(QSizeF(map_size, map_size).toSize())
         cur_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(cur_pixmap)
         painter.setPen(pen)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if draw_circle:
-            painter.drawEllipse(cursor_center-pen_radius + thickness, 
+        if draw_shape:
+            shape_rect = QRectF(cursor_center-pen_radius + thickness, 
                                 cursor_center-pen_radius + thickness, 
                                 pen_size - 2*thickness, 
                                 pen_size - 2*thickness)
+            if shape == PenShape.Circle:
+                painter.drawEllipse(shape_rect)
+            elif shape == PenShape.Rectangle:
+                painter.drawRect(shape_rect)
+            else:
+                raise NotImplementedError
+            # elif shape == PenShape.Triangle:
+                # painter.drawPolygon
         cross_left = (map_size  - 1 - cross_size) // 2 
         cross_right = map_size - cross_left
 
@@ -457,7 +539,7 @@ class DrawingPanel(Widget):
                 new_val = max(val+1, new_val)
             else:
                 new_val = min(val-1, new_val)
-            self.penConfigPanel.thicknessSlider.setValue(new_val)
+            self.penConfigPanel.thicknessSlider.setValue(int(new_val))
             self.setPenToolWidth(self.penConfigPanel.thicknessSlider.value())
 
         elif self.currentTool == self.inpaintTool:
@@ -467,7 +549,7 @@ class DrawingPanel(Widget):
                 new_val = max(val+1, new_val)
             else:
                 new_val = min(val-1, new_val)
-            self.inpaintConfigPanel.thicknessSlider.setValue(new_val)
+            self.inpaintConfigPanel.thicknessSlider.setValue(int(new_val))
             self.setInpaintToolWidth(self.inpaintConfigPanel.thicknessSlider.value())
 
     def showEvent(self, event) -> None:
@@ -476,26 +558,60 @@ class DrawingPanel(Widget):
             self.currentTool.setChecked(True)
         return super().showEvent(event)
 
-    def on_finish_painting(self, stroke_item: StrokeItem):
+    def on_finish_painting(self, stroke_item: StrokeImgItem):
+        stroke_item.finishPainting()
         if not self.canvas.imgtrans_proj.img_valid:
             self.canvas.removeItem(stroke_item)
             return
         if self.currentTool == self.penTool:
-            self.canvas.undoStack.push(StrokeItemUndoCommand(self.canvas, stroke_item))
+            rect, _, qimg = stroke_item.clip()
+            if rect is not None:
+                self.canvas.push_undo_command(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg))
+            self.canvas.removeItem(stroke_item)
         elif self.currentTool == self.inpaintTool:
-            self.mergeInpaintStroke(stroke_item)
+            self.inpaint_stroke = stroke_item
             if self.canvas.gv.ctrl_pressed:
                 return
             else:
                 self.runInpaint()
 
-    def mergeInpaintStroke(self, inpaint_stroke: StrokeItem):
-        if self.inpaint_stroke is None:
-            self.inpaint_stroke = inpaint_stroke
-        else:
-            if not inpaint_stroke.isEmpty():
-                self.inpaint_stroke.addStroke(inpaint_stroke.stroke)
-            self.canvas.removeItem(inpaint_stroke)
+    def on_finish_erasing(self, stroke_item: StrokeImgItem):
+        stroke_item.finishPainting()
+        # inpainted-erasing logic is essentially the same as inpainting
+        if self.currentTool == self.inpaintTool:
+            rect, mask, _ = stroke_item.clip(mask_only=True)
+            if mask is None:
+                self.canvas.removeItem(stroke_item)
+                return
+            mask = 255 - mask
+            mask_h, mask_w = mask.shape[:2]
+            mask_x, mask_y = rect[0], rect[1]
+            inpaint_rect = [mask_x, mask_y, mask_w + mask_x, mask_h + mask_y]
+            origin = self.canvas.imgtrans_proj.img_array
+            origin = origin[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+            inpainted = self.canvas.imgtrans_proj.inpainted_array
+            inpainted = inpainted[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+            inpaint_mask = self.canvas.imgtrans_proj.mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+            # no inpainted need to be erased
+            if inpaint_mask.sum() == 0:
+                self.canvas.removeItem(stroke_item)
+                return
+            mask = cv2.bitwise_and(mask, inpaint_mask)
+            inpaint_mask = np.zeros_like(inpainted)
+            inpaint_mask[mask > 0] = 1
+            erased_img = inpaint_mask * inpainted + (1 - inpaint_mask) * origin
+            self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, erased_img, mask, inpaint_rect))
+            self.canvas.removeItem(stroke_item)
+
+        elif self.currentTool == self.penTool:
+            rect, _, qimg = stroke_item.clip()
+            if self.canvas.erase_img_key is not None:
+                self.canvas.drawingLayer.removeQImage(self.canvas.erase_img_key)
+                self.canvas.erase_img_key = None
+                self.canvas.stroke_img_item = None
+            if rect is not None:
+                self.canvas.push_undo_command(StrokeItemUndoCommand(self.canvas.drawingLayer, rect, qimg, True))
+        
 
     def runInpaint(self, inpaint_dict=None):
 
@@ -503,20 +619,17 @@ class DrawingPanel(Widget):
             if self.inpaint_stroke is None:
                 return
             elif self.inpaint_stroke.parentItem() is None:
-                logger.warning("sth goes wrong")
-                self.canvas.removeItem(self.inpaint_stroke)
-                self.inpaint_stroke = None
+                logger.warning("inpainting goes wrong")
+                self.clearInpaintItems()
                 return
-            mask = self.inpaint_stroke.getSubimg(convert_mask=True)
-            pos = self.inpaint_stroke.subBlockPos()
+                
+            rect, mask, _ = self.inpaint_stroke.clip(mask_only=True)
             if mask is None:
-                self.canvas.removeItem(self.inpaint_stroke)
-                self.inpaint_stroke = None
+                self.clearInpaintItems()
                 return
-
             # we need to enlarge the mask window a bit to get better results
             mask_h, mask_w = mask.shape[:2]
-            mask_x, mask_y = pos.x(), pos.y()
+            mask_x, mask_y = rect[0], rect[1]
             img = self.canvas.imgtrans_proj.inpainted_array
             inpaint_rect = [mask_x, mask_y, mask_w + mask_x, mask_h + mask_y]
             rect_enlarged = enlarge_window(inpaint_rect, img.shape[1], img.shape[0])
@@ -525,7 +638,6 @@ class DrawingPanel(Widget):
             left = mask_x - rect_enlarged[0]
             right = rect_enlarged[2] - inpaint_rect[2]
 
-            # print('inpaint_rect: ', inpaint_rect, 'enlarged: ', rect_enlarged, 'ltrb: ', left, top, right, bottom)
             mask = cv2.copyMakeBorder(mask, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0)
             inpaint_rect = rect_enlarged
             img = img[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
@@ -539,55 +651,15 @@ class DrawingPanel(Widget):
         inpaint_rect = inpaint_dict['inpaint_rect']
         mask_array = self.canvas.imgtrans_proj.mask_array
         mask = cv2.bitwise_or(inpaint_dict['mask'], mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]])
-        
-        if self.inpaint_stroke is not None:
-            self.canvas.removeItem(self.inpaint_stroke)
-            self.inpaint_stroke = None
-        if self.inpaint_mask_item.scene() == self.canvas:
-            self.canvas.removeItem(self.inpaint_mask_item)
-       
-        self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
-        if self.currentTool == self.inpaintTool:
-            self.canvas.image_edit_mode = ImageEditMode.InpaintTool
-        elif self.currentTool == self.rectTool:
-            self.canvas.image_edit_mode = ImageEditMode.RectTool
-
-
-
-    def on_finish_erasing(self, stroke_item: StrokeItem):
-
-        # inpainted-erasing logic is essentially the same as inpainting
-        if self.currentTool == self.inpaintTool:
-            mask = 255 - stroke_item.getSubimg(convert_mask=True)
-            pos = stroke_item.subBlockPos()
-            self.canvas.removeItem(stroke_item)
-            if mask is None:
-                return
-            mask_h, mask_w = mask.shape[:2]
-            mask_x, mask_y = pos.x(), pos.y()
-            inpaint_rect = [mask_x, mask_y, mask_w + mask_x, mask_h + mask_y]
-            origin = self.canvas.imgtrans_proj.img_array
-            origin = origin[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-            inpainted = self.canvas.imgtrans_proj.inpainted_array
-            inpainted = inpainted[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-            inpaint_mask = self.canvas.imgtrans_proj.mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-            # no inpainted need to be erased
-            if inpaint_mask.sum() == 0:
-                return
-            mask = cv2.bitwise_and(mask, inpaint_mask)
-            inpaint_mask = np.zeros_like(inpainted)
-            inpaint_mask[mask > 0] = 1
-            erased_img = inpaint_mask * inpainted + (1 - inpaint_mask) * origin
-            self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased_img, mask, inpaint_rect))
+        self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
+        self.clearInpaintItems()
 
     def on_inpaint_failed(self):
         if self.currentTool == self.inpaintTool and self.inpaint_stroke is not None:
-            self.canvas.image_edit_mode = ImageEditMode.InpaintTool
-            self.canvas.removeItem(self.inpaint_stroke)
-            self.inpaint_stroke = None
+            self.clearInpaintItems()
 
     def on_canvasctrl_released(self):
-        if self.currentTool == self.inpaintTool:
+        if self.isVisible() and self.currentTool == self.inpaintTool:
             self.runInpaint()
 
     def on_begin_scale_tool(self, pos: QPointF):
@@ -615,7 +687,7 @@ class DrawingPanel(Widget):
         self.setCrossCursor()
         
     def setCrossCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor(draw_circle=False))
+        self.canvas.gv.setCursor(self.get_pen_cursor(draw_shape=False))
 
     def on_scale_tool(self, pos: QPointF):
         if self.scale_tool_pos is None:
@@ -625,7 +697,7 @@ class DrawingPanel(Widget):
         self.scale_circle.setRect(0, 0, radius, radius)
 
     def on_end_scale_tool(self):
-        circle_size = self.scale_circle.rect().width() / self.canvas.scale_factor
+        circle_size = int(self.scale_circle.rect().width() / self.canvas.scale_factor)
         self.scale_tool_pos = None
         self.canvas.removeItem(self.scale_circle)
 
@@ -647,10 +719,10 @@ class DrawingPanel(Widget):
             self.setInpaintCursor()
 
     def setPenCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor())
+        self.canvas.gv.setCursor(self.get_pen_cursor(shape=self.penConfigPanel.shape))
 
     def setInpaintCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor(INPAINT_BRUSH_COLOR, self.inpaint_pen.width()))
+        self.canvas.gv.setCursor(self.get_pen_cursor(INPAINT_BRUSH_COLOR, self.inpaint_pen.width(), shape=self.inpaintConfigPanel.shape))
 
     def on_handchecker_changed(self):
         if self.handTool.isChecked():
@@ -665,7 +737,7 @@ class DrawingPanel(Widget):
             im_h, im_w = img.shape[:2]
 
             xyxy = [rect.x(), rect.y(), rect.x() + rect.width(), rect.y() + rect.height()]
-            xyxy = np.array(xyxy) / self.canvas.scale_factor
+            xyxy = np.array(xyxy)
             xyxy[[0, 2]] = np.clip(xyxy[[0, 2]], 0, im_w - 1)
             xyxy[[1, 3]] = np.clip(xyxy[[1, 3]], 0, im_h - 1)
             x1, y1, x2, y2 = xyxy.astype(np.int64)
@@ -675,7 +747,9 @@ class DrawingPanel(Widget):
             if mode == 0:
                 im = np.copy(img[y1: y2, x1: x2])
                 maskseg_method = self.rectPanel.get_maskseg_method()
-                mask, ballon_mask, bub_dict = maskseg_method(im)
+                inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im)
+                mask = self.rectPanel.post_process_mask(inpaint_mask_array)
+
                 bground_bgr = bub_dict['bground_bgr']
                 need_inpaint = bub_dict['need_inpaint']
 
@@ -683,19 +757,20 @@ class DrawingPanel(Widget):
                 inpaint_dict['need_inpaint'] = need_inpaint
                 inpaint_dict['bground_bgr'] = bground_bgr
                 inpaint_dict['ballon_mask'] = ballon_mask
-                user_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
-                user_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
-                self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_mask))
+                user_preview_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
+                user_preview_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
+                self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_preview_mask))
                 self.inpaint_mask_item.setParentItem(self.canvas.baseLayer)
                 self.inpaint_mask_item.setPos(x1, y1)
                 if self.rectPanel.auto():
                     self.inpaintRect(inpaint_dict)
                 else:
+                    self.inpaint_mask_array = inpaint_mask_array
                     self.rect_inpaint_dict = inpaint_dict
-            else:
+            else:   # erasing
                 mask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
                 erased = self.canvas.imgtrans_proj.img_array[y1: y2, x1: x2]
-                self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, erased, mask, [x1, y1, x2, y2]))
+                self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, erased, mask, [x1, y1, x2, y2]))
                 self.canvas.image_edit_mode = ImageEditMode.RectTool
             self.setCrossCursor()
 
@@ -707,9 +782,8 @@ class DrawingPanel(Widget):
         ballon_mask = inpaint_dict['ballon_mask']
         if not need_inpaint and self.dl_manager.dl_config.check_need_inpaint:
             img[np.where(ballon_mask > 0)] = bground_bgr
-            self.canvas.undoStack.push(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect']))
-            self.canvas.image_edit_mode = ImageEditMode.RectTool
-            self.canvas.removeItem(self.inpaint_mask_item)
+            self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect']))
+            self.clearInpaintItems()
         else:
             self.runInpaint(inpaint_dict=inpaint_dict)
 
@@ -718,69 +792,41 @@ class DrawingPanel(Widget):
             self.inpaintRect(self.rect_inpaint_dict)
 
     def on_rect_deletebtn_clicked(self):
-        self.rect_inpaint_dict = None
-        self.canvas.image_edit_mode = ImageEditMode.RectTool
-        if self.inpaint_mask_item.scene() == self.canvas:
-            self.canvas.removeItem(self.inpaint_mask_item)
+        self.clearInpaintItems()
+
+    def on_rectool_ksize_changed(self):
+        if self.currentTool != self.rectTool or self.inpaint_mask_array is None or self.inpaint_mask_item is None:
+            return
+        mask = self.rectPanel.post_process_mask(self.inpaint_mask_array)
+        self.rect_inpaint_dict['mask'] = mask
+        user_preview_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
+        user_preview_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
+        self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_preview_mask))
 
     def on_rectchecker_changed(self):
         if not self.rectTool.isChecked():
-            if self.rect_inpaint_dict is not None:
-                self.rect_inpaint_dict = None
-                if self.inpaint_mask_item.scene() == self.canvas:
-                    self.canvas.removeItem(self.inpaint_mask_item)
+            self.clearInpaintItems()
 
     def hideEvent(self, e) -> None:
-        if self.inpaint_mask_item.scene() == self.canvas:
-            self.canvas.removeItem(self.inpaint_mask_item)
-        self.rect_inpaint_dict = None
+        self.clearInpaintItems()
         return super().hideEvent(e)
 
-class StrokeItemUndoCommand(QUndoCommand):
-    def __init__(self, canvas: Canvas, stroke_item: StrokeItem):
-        super().__init__()
-        self.stroke_pixmap = stroke_item.convertToPixmapItem()
-        
-    def undo(self):
-        self.stroke_pixmap.hide()
+    def clearInpaintItems(self):
 
-    def redo(self):
-        self.stroke_pixmap.show()
+        self.rect_inpaint_dict = None
+        self.inpaint_mask_array = None
+        if self.inpaint_mask_item is not None:
+            if self.inpaint_mask_item.scene() == self.canvas:
+                self.canvas.removeItem(self.inpaint_mask_item)
+            if self.rectTool.isChecked():
+                self.canvas.image_edit_mode = ImageEditMode.RectTool    
+            
+        if self.inpaint_stroke is not None:
+            if self.inpaint_stroke.scene() == self.canvas:
+                self.canvas.removeItem(self.inpaint_stroke)
+            self.inpaint_stroke = None
+            if self.inpaintTool.isChecked():
+                self.canvas.image_edit_mode = ImageEditMode.InpaintTool
 
-
-class InpaintUndoCommand(QUndoCommand):
-    def __init__(self, canvas: Canvas, inpainted: np.ndarray, mask: np.ndarray, inpaint_rect: List[int]):
-        super().__init__()
-        self.canvas = canvas
-        img_array = self.canvas.imgtrans_proj.inpainted_array
-        mask_array = self.canvas.imgtrans_proj.mask_array
-        img_view = img_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        self.undo_img = np.copy(img_view)
-        self.undo_mask = np.copy(mask_view)
-        self.redo_img = inpainted
-        self.redo_mask = mask
-        self.inpaint_rect = inpaint_rect
-
-    def redo(self) -> None:
-        inpaint_rect = self.inpaint_rect
-        img_array = self.canvas.imgtrans_proj.inpainted_array
-        mask_array = self.canvas.imgtrans_proj.mask_array
-        img_view = img_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        img_view[:] = self.redo_img
-        mask_view[:] = self.redo_mask
-        self.canvas.setInpaintLayer()
-        self.canvas.setMaskLayer()
-
-    def undo(self) -> None:
-        inpaint_rect = self.inpaint_rect
-        img_array = self.canvas.imgtrans_proj.inpainted_array
-        mask_array = self.canvas.imgtrans_proj.mask_array
-        img_view = img_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
-        img_view[:] = self.undo_img
-        mask_view[:] = self.undo_mask
-        self.canvas.setInpaintLayer()
-        self.canvas.setMaskLayer()
-
+    def handle_page_changed(self):
+        self.clearInpaintItems()

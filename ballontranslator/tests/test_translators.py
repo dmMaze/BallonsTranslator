@@ -1,19 +1,28 @@
 import sys, os
 import os.path as osp
 sys.path.append(osp.dirname(osp.dirname(__file__)))
-from dl.translators import TranslatorBase, GoogleTranslator, PapagoTranslator, TRANSLATORS, CaiyunTranslator, DeeplTranslator
+from dl.translators import *
+from ui.constants import PROGRAM_PATH
+os.chdir(PROGRAM_PATH)
 
-def test_translator(translator: TranslatorBase, test_list):
+def test_translator(translator: TranslatorBase, test_list: List):
     for test_dict in test_list:
         translator.set_source(test_dict['source'])
         translator.set_target(test_dict['target'])
         for text in test_dict['text_list']:
-            print(f'src: {text}, translation: {translator.translate(text)}')
+            translation = translator.translate(text)
+            print(f'src: {text}, translation: {translation}')
+            assert type(translation) == type(text)
+            if isinstance(translation, List):
+                assert len(translation) == len(text)
 
     text = ['', '', '', '', '', '', '']
-    print(f'src: {text}, translation: {translator.translate(text)}')
+    translation = translator.translate(text)
+    assert len(translation) == len(text)
+    print(f'src: {text}, translation: {translation}')
     text = ''
-    print(f'src: {text}, translation: {translator.translate(text)}')
+    translation = translator.translate(text)
+    print(f'src: {text}, translation: {translation}')
 
 engchscht_test_list = [
     {
@@ -30,25 +39,36 @@ engchscht_test_list = [
         'text_list': [
             ['', '', 'test ', '', '', ' English', '']
         ]
-    },
-    {
-        'source': 'English',
-        'target': '繁體中文',
-        'text_list': [
-            '中文测试',
-            ['', '', 'test ', '', '', ' English', '']
-        ]
     }
 ]
 
+jaeng_test_list = [
+    {
+        'source': '日本語',
+        'target': 'English',
+        'text_list': [
+            '日本語のテスト',
+            ['日本語の...テスト', 'ククク…何かしらねぇ 当ててごらんなさい']
+        ]
+    },
+]
+
 if __name__ == '__main__':
+
+    device = 'cuda'
 
     caiyun_setup_params = {
         'token': 'invalidtoken',
     }
     # ctranslator = CaiyunTranslator('简体中文', 'English', **caiyun_setup_params)
-    ptranslator = PapagoTranslator('简体中文', 'English')
-    gtranslator = GoogleTranslator('简体中文', 'English')
-    dtranslator = DeeplTranslator('简体中文', 'English')
-    test_translator(ptranslator, engchscht_test_list)
+    # ptranslator = PapagoTranslator('简体中文', 'English')
+    # gtranslator = GoogleTranslator('简体中文', 'English')
+    # dtranslator = DeeplTranslator('简体中文', 'English')
+    # sugoi_translator = SugoiTranslator('日本語', 'English', device= {'select': device})
+
+    yandex_setup_params = {
+        'api_key': 'invalidtoken'
+    }
+    yandex_translator = YandexTranslator('日本語', 'English', **yandex_setup_params)
+    test_translator(yandex_translator, engchscht_test_list)
 

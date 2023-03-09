@@ -2,6 +2,8 @@ import sys
 import argparse
 import os.path as osp
 import os
+# from utils.logger import logger as LOGGER
+from utils.logger import setup_logging, logger as LOGGER
 
 QT_APIS = ['pyqt5', 'pyqt6']
 
@@ -12,22 +14,37 @@ def main():
     args = parser.parse_args()
 
     if not args.qt_api in QT_APIS:
-        os.environ['QT_API'] = 'pyqt5'
+        os.environ['QT_API'] = 'pyqt6'
     else:
         os.environ['QT_API'] = args.qt_api
 
+    if sys.platform == 'darwin':
+        os.environ['QT_API'] = 'pyqt6'
+        LOGGER.info('running on macOS, set QT_API to pyqt6')
+
+    if sys.platform == 'win32':
+        import ctypes
+        myappid = u'BalloonsTranslator' # arbitrary string
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
     import qtpy
     from qtpy.QtWidgets import QApplication
-    from qtpy.QtCore import QTranslator, QLocale
+    from qtpy.QtCore import QTranslator, QLocale, Qt
+    from qtpy.QtGui import QIcon
+    from qtpy.QtGui import  QGuiApplication, QIcon, QFont
 
-    from ui.mainwindow import MainWindow
-    from ui import constants
-
-    
+    from ui import constants as C
     if qtpy.API_NAME[-1] == '6':
-        constants.FLAG_QT6 = True
-    
-    os.chdir(constants.PROGRAM_PATH)
+        C.FLAG_QT6 = True
+    else:
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
+        QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+
+    os.chdir(C.PROGRAM_PATH)
+
+    setup_logging(C.LOGGING_PATH)
+
     app = QApplication(sys.argv)
     translator = QTranslator()
     translator.load(
@@ -35,9 +52,20 @@ def main():
         osp.dirname(osp.abspath(__file__)) + "/data/translate",
     )
     app.installTranslator(translator)
-    ballontrans = MainWindow(app, open_dir=args.proj_dir)
 
+    ps = QGuiApplication.primaryScreen()
+    C.LDPI = ps.logicalDotsPerInch()
+    C.SCREEN_W = ps.geometry().width()
+    C.SCREEN_H = ps.geometry().height()
+    yahei = QFont('Microsoft YaHei UI')
+    if yahei.exactMatch():
+        QGuiApplication.setFont(yahei)
+
+    from ui.mainwindow import MainWindow
+    ballontrans = MainWindow(app, open_dir=args.proj_dir)
+    ballontrans.setWindowIcon(QIcon(C.ICON_PATH))
     ballontrans.show()
+    ballontrans.resetStyleSheet()
     sys.exit(app.exec())
 
 if __name__ == '__main__':

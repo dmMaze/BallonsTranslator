@@ -1,8 +1,10 @@
 import datetime
 import logging
 import os
-
+import os.path as osp
+from glob import glob
 import termcolor
+
 
 if os.name == "nt":  # Windows
     import colorama
@@ -62,6 +64,28 @@ class ColoredLogger(logging.Logger):
 
         self.addHandler(console)
         return
+
+
+def setup_logging(logfile_dir: str, max_num_logs=14):
+
+    if not osp.exists(logfile_dir):
+        os.makedirs(logfile_dir)
+    else:
+        old_logs = glob(osp.join(logfile_dir, '*.log'))
+        n_log = len(old_logs)
+        if n_log >= max_num_logs:
+            to_remove = n_log - max_num_logs + 1
+            try:
+                for ii in range(to_remove):
+                    os.remove(old_logs[ii])
+            except Exception as e:
+                logger.error(e)
+
+    logfilename = datetime.datetime.now().strftime('_%Y_%m_%d-%H_%M_%S.log')
+    logfilep = osp.join(logfile_dir, logfilename)
+    fh = logging.FileHandler(logfilep, mode='w')
+    fh.setLevel(logging.DEBUG)
+    logger.addHandler(fh)
 
 
 logging.setLoggerClass(ColoredLogger)

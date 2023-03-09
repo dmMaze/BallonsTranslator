@@ -1,12 +1,15 @@
+# To install pytorch cuda (gpu) version, please look https://pytorch.org/
+numpy
 urllib3==1.25.11 # https://github.com/psf/requests/issues/5740
 jaconv
 torch
+torchvision
 transformers
 fugashi
 unidic_lite
 tqdm
 opencv-python==4.5.*
-PyQt5<=5.15.4
+PyQt6>=6.4.2   #PyQt5>=5.15.9
 shapely
 pyclipper
 einops
@@ -14,4 +17,17 @@ termcolor
 bs4
 deepl
 qtpy
+pkuseg
+sentencepiece
+ctranslate2
+python-docx
+docx2txt
+piexif
+keyboard
+ordered-set
+opencc
 requests
+Pillow
+beautifulsoup4
+colorama
+undetected-chromedriver
