@@ -2,6 +2,7 @@ import time
 from typing import Union, List, Dict, Callable
 import numpy as np
 import traceback
+import os.path as osp
 
 from qtpy.QtCore import QThread, Signal, QObject, QLocale
 from qtpy.QtWidgets import QMessageBox
@@ -581,7 +582,8 @@ class DLManager(QObject):
         manga.run(url=url, force_redownload=force_redownload, title=title)
         proj_path = manga.ReturnFullPathToProject()
         LOGGER.info(proj_path)
-        self.imgtrans_proj.load(proj_path)
+        if proj_path:
+            self.imgtrans_proj.load(proj_path)
 
 
     def runImgtransPipeline(self):
