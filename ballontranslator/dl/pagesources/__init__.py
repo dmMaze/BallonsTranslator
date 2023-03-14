@@ -22,6 +22,7 @@ class SourceBase:
 
     def SetUrl(self, url):
         self.url = url
+        self.CheckLink()
 
     def SetTitle(self, title):
         self.title = title
@@ -41,7 +42,7 @@ class SourceBase:
 
     def CheckLink(self):
         if 'https://' not in self.url:
-            raise NotValidUrl(self.url)
+            self.url = 'https://' + self.url
 
     def CheckFiles(self, path):
 
@@ -66,64 +67,68 @@ class SourceBase:
             return True
         else:
             return False
+    @staticmethod
+    def ClearDirectory(path):
+        filelist = [f for f in os.listdir(path) if f.endswith(".jpg")]
+        for f in filelist:
+            os.remove(os.path.join(path, f))
 
     def FetchImageUrls(self, force_redownload: bool = False):
-        if self.url:
-            LOGGER.info('Scraping website for images')
+        LOGGER.info('Scraping website for images')
 
-            if not self.title:
-                _url = self.url.translate({ord(c): None for c in '\./:*?"<>|'})
-                self.path = rf'{SOURCE_DOWNLOAD_PATH}\{_url}'
+        if not self.title:
+            _url = self.url.translate({ord(c): None for c in '\./:*?"<>|'})
+            self.path = rf'{SOURCE_DOWNLOAD_PATH}\{_url}'
 
-            else:
-                self.path = rf'{SOURCE_DOWNLOAD_PATH}\{self.title}'
+        else:
+            self.path = rf'{SOURCE_DOWNLOAD_PATH}\{self.title}'
 
-            path_to_page_num = rf'{self.path}\pages.txt'
+        path_to_page_num = rf'{self.path}\pages.txt'
 
-            are_downloaded = False
-            if not os.path.exists(self.path):
-                os.makedirs(self.path)
-            elif os.path.exists(self.path) and force_redownload is False:
-                are_downloaded = self.CheckFiles(path_to_page_num)
+        are_downloaded = False
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
+        elif os.path.exists(self.path) and force_redownload is False:
+            are_downloaded = self.CheckFiles(path_to_page_num)
 
-            if are_downloaded is False:
+        if are_downloaded is False:
+            self.ClearDirectory(self.path)
 
-                options = Options()
-                # options.add_argument("--headless")
-                driver = uc.Chrome(options=options)
+            options = Options()
+            # options.add_argument("--headless")
+            driver = uc.Chrome(options=options)
 
-                #  wait for cloudflare to pass
-                driver.get(self.url)
-                time.sleep(10)
-                soup = BeautifulSoup(driver.page_source, 'html.parser')
-                driver.close()
+            #  wait for cloudflare to pass
+            driver.get(self.url)
+            time.sleep(10)
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            driver.close()
 
-                _elements = soup.find_all('img')
-                urls = [img['src'] for img in _elements]
-                images = [k for k in urls if 'https' in k]
-                temp_list = []
+            _elements = soup.find_all('img')
+            urls = [img['src'] for img in _elements]
+            images = [k for k in urls if 'https' in k]
+            temp_list = []
 
-                #  filter images for only those with numbers at the end and makes sure there are no duplicates
-                for i in images:
+            #  filter images for only those with numbers at the end and makes sure there are no duplicates
+            for i in images:
 
-                    try:
-                        temp = (re.search('https://(.*)/(.*?)jpg', i)).group(2)
+                try:
+                    temp = (re.search('https://(.*)/(.*?)jpg', i)).group(2)
 
-                        if any(k.isdigit() for k in temp) and temp not in temp_list and len(temp) < 10 and temp not in self.template:
-                            i = i.replace(' ', '%20')
-                            self.image_urls.append(i)
+                    if any(k.isdigit() for k in temp) and temp not in temp_list and len(temp) < 10 and temp not in self.template:
+                        i = i.replace(' ', '%20')
+                        self.image_urls.append(i)
 
-                        temp_list.append(temp)
+                    temp_list.append(temp)
 
-                    except AttributeError:
-                        pass
+                except AttributeError:
+                    pass
 
-                if not self.image_urls:
-                    raise ImagesNotFoundInRequest(self.image_urls)
+            if not self.image_urls:
+                raise ImagesNotFoundInRequest(self.image_urls)
 
-                self.WebsiteExceptions()
-                LOGGER.info(self.image_urls)
-                self.DownloadImages()
+            self.WebsiteExceptions()
+            self.DownloadImages()
 
     def WebsiteExceptions(self):
         urls = self.image_urls
@@ -150,8 +155,6 @@ class SourceBase:
         self.last_page_num = len(self.image_urls)
 
         self.SaveNumberOfPages(rf'{self.path}\pages.txt')
-
-        LOGGER.info('Download complete')
 
     def run(self, url: str, force_redownload: bool, title: str = ''):
         self.SetUrl(url)

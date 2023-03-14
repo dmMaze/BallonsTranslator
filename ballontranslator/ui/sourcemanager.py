@@ -17,12 +17,13 @@ class SourceManager(SourceBase):
         title = self.config_pnl.src_title_flag
         url = self.config_pnl.src_link_flag
         force_redownload = self.config_pnl.src_force_download_flag
-        LOGGER.info(f'Force download set to {force_redownload}')
-        LOGGER.info(f'Url set to {url}')
-        LOGGER.info(f'Project title set to {title}')
-        self.run(url=url, force_redownload=force_redownload, title=title)
-        proj_path = self.ReturnFullPathToProject()
-        LOGGER.info(f'Project path set to {proj_path}')
-        if proj_path:
-            self.menu.openDir(proj_path)
-
+        if url:
+            LOGGER.info(f'Force download set to {force_redownload}')
+            LOGGER.info(f'Url set to {url}')
+            LOGGER.info(f'Project title set to {title}')
+            self.run(url=url, force_redownload=force_redownload, title=title)
+            proj_path = self.ReturnFullPathToProject()
+            LOGGER.info(f'Project path set to {proj_path}')
+            if proj_path:
+                self.menu.openDir(proj_path)
+                LOGGER.info('Download complete')

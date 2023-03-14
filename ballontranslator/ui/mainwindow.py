@@ -320,6 +320,7 @@ class MainWindow(FramelessWindow):
             self.opening_dir = False
             LOGGER.exception(e)
             LOGGER.warning("Failed to load project from " + directory)
+            LOGGER.warning("If you were trying to download images check IMPLEMENTED_SOURCES.md for more information")
             self.dl_manager.handleRunTimeException(self.tr('Failed to load project ') + directory, '')
             return
         
