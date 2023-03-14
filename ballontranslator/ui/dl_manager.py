@@ -21,8 +21,8 @@ from .stylewidgets import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
 from .misc import DLModuleConfig, ProgramConfig
 from .imgtrans_proj import ProjImgTrans
+
 from dl.textdetector import TextBlock
-from dl.pagesources import SourceBase
 
 
 class ModuleThread(QThread):
@@ -571,23 +571,10 @@ class DLManager(QObject):
         if self.translate_thread.isRunning():
             self.translate_thread.terminate()
 
-    def source(self):
-        title = self.config.src_title_flag
-        url = self.config.src_link_flag
-        force_redownload = self.config.src_force_download_flag
-        LOGGER.info(f'Force download set to {force_redownload}')
-        LOGGER.info(f'Url set to {url}')
-        LOGGER.info(f'Project title set to {title}')
-        manga = SourceBase()
-        manga.run(url=url, force_redownload=force_redownload, title=title)
-        proj_path = manga.ReturnFullPathToProject()
-        LOGGER.info(proj_path)
-        if proj_path:
-            self.imgtrans_proj.load(proj_path)
-
-
-    def runImgtransPipeline(self):
-        self.source()
+    def runImgtransPipeline(self, menu):
+        from .sourcemanager import SourceManager
+        source = SourceManager(self.config, self.imgtrans_proj, menu)
+        source.download_source()
         if self.imgtrans_proj.is_empty:
             LOGGER.info('proj file is empty, nothing to do')
             self.progress_msgbox.hide()

@@ -908,7 +908,7 @@ class MainWindow(FramelessWindow):
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
         self.postprocess_mt_toggle = False
-        self.dl_manager.runImgtransPipeline()
+        self.dl_manager.runImgtransPipeline(self)
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()

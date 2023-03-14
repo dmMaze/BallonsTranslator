@@ -1,3 +1,4 @@
+import shutil
 import requests
 import undetected_chromedriver as uc
 from selenium.webdriver.chrome.options import Options
@@ -69,10 +70,8 @@ class SourceBase:
     def FetchImageUrls(self, force_redownload: bool = False):
         if self.url:
             LOGGER.info('Scraping website for images')
-            #  set download path
-            if not self.title:
 
-                #  filter url for illegal characters
+            if not self.title:
                 _url = self.url.translate({ord(c): None for c in '\./:*?"<>|'})
                 self.path = rf'{SOURCE_DOWNLOAD_PATH}\{_url}'
 
@@ -81,7 +80,6 @@ class SourceBase:
 
             path_to_page_num = rf'{self.path}\pages.txt'
 
-            #  check if the files are already downloaded
             are_downloaded = False
             if not os.path.exists(self.path):
                 os.makedirs(self.path)
@@ -90,17 +88,16 @@ class SourceBase:
 
             if are_downloaded is False:
 
-                #  initialize webdriver
                 options = Options()
                 # options.add_argument("--headless")
                 driver = uc.Chrome(options=options)
 
-                #  load page and wait for cloudflare to pass
+                #  wait for cloudflare to pass
                 driver.get(self.url)
                 time.sleep(10)
                 soup = BeautifulSoup(driver.page_source, 'html.parser')
+                driver.close()
 
-                #  find all images and filter them
                 _elements = soup.find_all('img')
                 urls = [img['src'] for img in _elements]
                 images = [k for k in urls if 'https' in k]
@@ -124,19 +121,28 @@ class SourceBase:
                 if not self.image_urls:
                     raise ImagesNotFoundInRequest(self.image_urls)
 
-                #  download images
+                self.WebsiteExceptions()
+                LOGGER.info(self.image_urls)
                 self.DownloadImages()
+
+    def WebsiteExceptions(self):
+        urls = self.image_urls
+        if any('nhentai' in k for k in urls):
+
+            for i, s in enumerate(urls):
+                urls[i] = s.replace('https://t', 'https://i').replace('t.jpg', '.jpg')
+
+            self.image_urls = urls
 
     def DownloadImages(self):
         n = 1
         LOGGER.info('Downloading images')
 
         for i in self.image_urls:
-            img_data = requests.get(i).content
+            img_data = requests.get(i, stream=True)
 
             with open(rf'{self.path}\{n:03}.jpg', 'wb') as image:
-                image.write(img_data)
-
+                shutil.copyfileobj(img_data.raw, image)
             n += 1
             #  Avoid IP ban
             time.sleep(1)
