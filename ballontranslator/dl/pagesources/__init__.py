@@ -73,7 +73,7 @@ class SourceBase:
             if not self.title:
 
                 #  filter url for illegal characters
-                _url = self.url.translate({ord(c): None for c in '\/:*?"<>|'})
+                _url = self.url.translate({ord(c): None for c in '\./:*?"<>|'})
                 self.path = rf'{SOURCE_DOWNLOAD_PATH}\{_url}'
 
             else:
