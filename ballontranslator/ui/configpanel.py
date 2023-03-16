@@ -336,10 +336,6 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_sources)
         self.src_link_textbox = generalConfigPanel.addLineEdit('Source url')
         self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
-        self.src_title_textbox = generalConfigPanel.addLineEdit('Title of your project')
-        self.src_title_textbox.textChanged.connect(self.on_source_title_changed)
-        self.src_force_download_checker = generalConfigPanel.addCheckBox(self.tr('Force download/redownload'))
-        self.src_force_download_checker.stateChanged.connect(self.on_source_force_download_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
@@ -454,12 +450,6 @@ class ConfigPanel(Widget):
     def on_source_link_changed(self):
         self.config.src_link_flag = self.src_link_textbox.text()
 
-    def on_source_title_changed(self):
-        self.config.src_title_flag = self.src_title_textbox.text()
-
-    def on_source_force_download_changed(self):
-        self.config.src_force_download_flag = self.src_force_download_checker.isChecked()
-
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
         self.configTable.setCurrentItem(idx0, idx1)
@@ -496,8 +486,6 @@ class ConfigPanel(Widget):
         self.let_uppercase_checker.setChecked(config.let_uppercase_flag)
         self.saladict_shortcut.setKeySequence(config.saladict_shortcut)
         self.searchurl_combobox.setCurrentText(config.search_url)
-        self.src_force_download_checker.setChecked(config.src_force_download_flag)
         self.src_link_textbox.setText(config.src_link_flag)
-        self.src_title_textbox.setText(config.src_title_flag)
 
         self.blockSignals(False)

@@ -273,8 +273,6 @@ class ProgramConfig:
         gsearch_range: int = 0,
         darkmode: bool = False,
         src_link_flag: str = '',
-        src_force_download_flag: bool = False,
-        src_title_flag: str = '',
         textselect_mini_menu: bool = True,
         saladict_shortcut: str = "Alt+S",
         search_url: str = "https://www.google.com/search?q=",
@@ -325,8 +323,6 @@ class ProgramConfig:
         self.gsearch_range = gsearch_range
         self.darkmode = darkmode
         self.src_link_flag = src_link_flag
-        self.src_force_download_flag = src_force_download_flag
-        self.src_title_flag = src_title_flag
         self.textselect_mini_menu = textselect_mini_menu
         self.saladict_shortcut = saladict_shortcut
         self.search_url = search_url

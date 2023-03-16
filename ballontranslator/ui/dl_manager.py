@@ -572,8 +572,8 @@ class DLManager(QObject):
             self.translate_thread.terminate()
 
     def runImgtransPipeline(self, menu):
-        from .sourcemanager import SourceManager
-        source = SourceManager(self.config, self.imgtrans_proj, menu)
+        from dl.pagesources import SourceDownload
+        source = SourceDownload(self.config, self.imgtrans_proj, menu)
         source.download_source()
         if self.imgtrans_proj.is_empty:
             LOGGER.info('proj file is empty, nothing to do')

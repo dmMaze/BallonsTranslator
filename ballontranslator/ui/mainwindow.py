@@ -128,9 +128,7 @@ class MainWindow(FramelessWindow):
         self.bottomBar.paintmode_checkchanged.connect(self.setPaintMode)
         self.bottomBar.textblock_checkchanged.connect(self.setTextBlockMode)
 
-        self.configPanel.src_title_textbox.setText(self.config.src_title_flag)
         self.configPanel.src_link_textbox.setText(self.config.src_link_flag)
-        self.configPanel.src_force_download_checker.setChecked(self.config.src_force_download_flag)
 
         mainHLayout = QHBoxLayout()
         mainHLayout.addWidget(self.leftBar)
