@@ -1,4 +1,5 @@
 import urllib.request
+from urllib3.exceptions import ConnectTimeoutError
 from ordered_set import OrderedSet
 from typing import Dict, List, Union, Set, Callable
 import time, requests, re, uuid, base64, hmac, functools, json, deepl
@@ -63,6 +64,7 @@ class TranslatorBase(ModuleParamParser):
 
     concate_text = True
     cht_require_convert = False
+    
     
     def __init__(self,
                  lang_source: str, 
@@ -193,6 +195,16 @@ class TranslatorBase(ModuleParamParser):
             return chs2cht(text)
         else:
             return text
+        
+    def delay(self) -> float:
+        if 'delay' in self.setup_params:
+            delay = self.setup_params['delay']
+            if delay:
+                try:
+                    return float(delay)
+                except:
+                    pass
+        return 0.
 
 
 @register_translator('google')
@@ -200,6 +212,7 @@ class GoogleTranslator(TranslatorBase):
 
     concate_text = True
     setup_params: Dict = {
+        'delay': '0.0',
         'url': {
             'type': 'selector',
             'options': [
@@ -207,7 +220,8 @@ class GoogleTranslator(TranslatorBase):
                 'https://translate.google.com/m'
             ],
             'select': 'https://translate.google.com/m'
-        }
+        },
+        
     }
     
     def _setup_translator(self):
@@ -247,7 +261,7 @@ class GoogleTranslator(TranslatorBase):
 class PapagoTranslator(TranslatorBase):
 
     concate_text = True
-    setup_params: Dict = None
+    setup_params: Dict = {'delay': '0.0'}
     papagoVer: str = None
 
     # https://github.com/zyddnys/manga-image-translator/blob/main/translators/papago.py
@@ -304,6 +318,7 @@ class CaiyunTranslator(TranslatorBase):
     cht_require_convert = True
     setup_params: Dict = {
         'token': '',
+        'delay': '0.0'
     }
 
     def _setup_translator(self):
@@ -344,7 +359,8 @@ class DeeplTranslator(TranslatorBase):
     concate_text = False
     cht_require_convert = True
     setup_params: Dict = {
-        'api_key': ''
+        'api_key': '',
+        'delay': '0.0',
     }
 
     def _setup_translator(self):
@@ -442,7 +458,8 @@ class YandexTranslator(TranslatorBase):
 
     concate_text = False
     setup_params: Dict = {
-        'api_key': ''
+        'api_key': '',
+        'delay': '0.0',
     }
 
     def _setup_translator(self):

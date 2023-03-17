@@ -217,6 +217,8 @@ class TranslateThread(ModuleThread):
 
     def _run_translate_pipeline(self):
         num_pages = len(self.imgtrans_proj.pages)
+        delay = self.translator.delay()
+
         while not self.pipeline_finished():
             if len(self.pipeline_pagekey_queue) == 0:
                 time.sleep(0.1)
@@ -227,6 +229,9 @@ class TranslateThread(ModuleThread):
             try:
                 self._translate_page(self.imgtrans_proj.pages, page_key, raise_exception=True, emit_finished=False)
             except Exception as e:
+                
+                # TODO: allowing retry/skip/terminate
+
                 msg = self.tr('Translation Failed.')
                 if isinstance(e, MissingTranslatorParams):
                     msg = msg + '\n' + str(e) + self.tr(' is required for ' + self.translator.name)
@@ -240,6 +245,9 @@ class TranslateThread(ModuleThread):
             self.blockSignals(False)
             self.finished_counter += 1
             self.progress_changed.emit(self.finished_counter)
+
+            if not self.pipeline_finished() and delay > 0:
+                time.sleep(delay)
 
 
 class ImgtransThread(QThread):
