@@ -21,19 +21,19 @@ class SourceDownload:
         if 'https://' not in self.url:
             self.url = 'https://' + self.url
 
-    def FetchImageUrls(self):
+    def FetchImages(self):
         config.load()
         job = DownloadJob(self.url)
         job.run()
         self.path = job.pathfmt.directory
 
-    def download_source(self):
+    def SyncSourceDownload(self):
         self.url = self.config_pnl.src_link_flag
         if self.url:
             LOGGER.info(f'Url set to {self.url}')
 
             self.ValidateUrl()
-            self.FetchImageUrls()
+            self.FetchImages()
 
             proj_path = self.ReturnFullPathToProject()
             LOGGER.info(f'Project path set to {proj_path}')

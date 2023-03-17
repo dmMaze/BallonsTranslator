@@ -571,10 +571,7 @@ class DLManager(QObject):
         if self.translate_thread.isRunning():
             self.translate_thread.terminate()
 
-    def runImgtransPipeline(self, menu):
-        from dl.pagesources import SourceDownload
-        source = SourceDownload(self.config, self.imgtrans_proj, menu)
-        source.download_source()
+    def runImgtransPipeline(self):
         if self.imgtrans_proj.is_empty:
             LOGGER.info('proj file is empty, nothing to do')
             self.progress_msgbox.hide()
@@ -608,6 +605,11 @@ class DLManager(QObject):
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show()
         self.imgtrans_thread.runBlktransPipeline(blk_list, tgt_img, mode)
+
+    def runSourceDownload(self, menu):
+        from dl.pagesources import SourceDownload
+        source = SourceDownload(self.config, self.imgtrans_proj, menu)
+        source.SyncSourceDownload()
 
     def on_finish_blktrans_stage(self, stage: str, progress: int):
         if stage == 'ocr':

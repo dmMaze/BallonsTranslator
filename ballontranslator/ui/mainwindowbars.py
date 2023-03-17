@@ -30,6 +30,11 @@ class RunBtn(QPushButton):
         super().__init__(*args, **kwargs)
         self.setText('Run')
 
+class SyncSourceBtn(QPushButton):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setText('Sync')
+
 
 class StatusButton(QPushButton):
     pass
@@ -131,6 +136,7 @@ class LeftBar(Widget):
     save_proj = Signal()
     save_config = Signal()
     run_imgtrans = Signal()
+    run_sync_source = Signal()
     export_doc = Signal()
     import_doc = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
@@ -193,6 +199,10 @@ class LeftBar(Widget):
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.runImgtransBtn.clicked.connect(self.run_imgtrans)
 
+        self.syncSourceBtn = SyncSourceBtn()
+        self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
+        self.syncSourceBtn.clicked.connect(self.run_sync_source)
+
         vlayout = QVBoxLayout(self)
         vlayout.addWidget(openBtnToolBar)
         vlayout.addWidget(self.showPageListLabel)
@@ -201,6 +211,7 @@ class LeftBar(Widget):
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
         vlayout.addWidget(self.configChecker)
         vlayout.addWidget(self.runImgtransBtn)
+        vlayout.addWidget(self.syncSourceBtn)
         vlayout.setContentsMargins(padding, 0, padding, int(LEFTBTN_WIDTH / 2))
         vlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         vlayout.setSpacing(int(LEFTBTN_WIDTH / 2))

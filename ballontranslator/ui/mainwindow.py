@@ -241,6 +241,7 @@ class MainWindow(FramelessWindow):
         dl_manager.imgtrans_thread.post_process_mask = self.drawingPanel.rectPanel.post_process_mask
 
         self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
+        self.leftBar.run_sync_source.connect(self.on_run_sync_source)
         self.bottomBar.ocrcheck_statechanged.connect(dl_manager.setOCRMode)
         self.bottomBar.transcheck_statechanged.connect(dl_manager.setTransMode)
         self.bottomBar.inpaint_btn_clicked.connect(self.inpaintBtnClicked)
@@ -907,7 +908,10 @@ class MainWindow(FramelessWindow):
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
         self.postprocess_mt_toggle = False
-        self.dl_manager.runImgtransPipeline(self)
+        self.dl_manager.runImgtransPipeline()
+
+    def on_run_sync_source(self):
+        self.dl_manager.runSourceDownload(self)
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
