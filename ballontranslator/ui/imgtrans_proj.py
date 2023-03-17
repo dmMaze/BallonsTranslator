@@ -89,7 +89,7 @@ class ProjImgTrans:
     def result_dir(self):
         return osp.join(self.directory, 'result')
     
-    def merge_variables(self, src_download_link: str = '', **kwargs):
+    def init_properties(self, src_download_link: str = '', **kwargs):
         self.src_download_link = src_download_link
 
     def load_from_dict(self, proj_dict: dict):
@@ -113,7 +113,7 @@ class ProjImgTrans:
                 self._idx2pagename[ii] = imname
             for imname in not_found_pages:
                 self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
-            self.merge_variables(**proj_dict)
+            self.init_properties(**proj_dict)
         except Exception as e:
             raise ProjectNotSupportedException(e)
         set_img_failed = False
@@ -192,7 +192,7 @@ class ProjImgTrans:
             self.pages[imgname] = []
             self._pagename2idx[imgname] = ii
             self._idx2pagename[ii] = imgname
-        self.merge_variables()
+        self.init_properties()
         self.set_current_img_byidx(0)
         self.save()
         
