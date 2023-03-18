@@ -21,6 +21,9 @@ class SourceDownload:
         if 'https://' not in self.url:
             self.url = 'https://' + self.url
 
+    def PassUrlToImgTransProj(self):
+        self.imgtrans_proj.src_download_link = self.url
+
     def FetchImages(self):
         config.load()
         job = DownloadJob(self.url)
@@ -34,6 +37,7 @@ class SourceDownload:
 
             self.ValidateUrl()
             self.FetchImages()
+            self.PassUrlToImgTransProj()
 
             proj_path = self.ReturnFullPathToProject()
             LOGGER.info(f'Project path set to {proj_path}')

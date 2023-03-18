@@ -444,8 +444,6 @@ class ConfigPanel(Widget):
     def on_effect_flag_changed(self):
         self.config.let_fnteffect_flag = self.let_effect_combox.currentIndex()
 
-    # def on_source_flag_changed(self):
-    #     self.config.src_choice_flag = self.src_choice_combox.currentIndex()
 
     def on_source_link_changed(self):
         self.config.src_link_flag = self.src_link_textbox.text()
