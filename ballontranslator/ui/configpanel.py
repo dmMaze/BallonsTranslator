@@ -97,7 +97,7 @@ class ConfigBlock(Widget):
             sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         self.addSublock(sublock)
         sublock.layout().setSpacing(20)
-        return le
+        return le, sublock
 
     def addTextLabel(self, text: str = None):
         label = ConfigTextLabel(text, CONFIG_FONTSIZE_HEADER)
@@ -272,6 +272,7 @@ class ConfigTable(QTreeView):
 class ConfigPanel(Widget):
 
     save_config = Signal()
+    update_source_download_status = Signal(str)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -334,7 +335,7 @@ class ConfigPanel(Widget):
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
         generalConfigPanel.addTextLabel(label_sources)
-        self.src_link_textbox = generalConfigPanel.addLineEdit('Source url')
+        self.src_link_textbox, self.src_link_sub_block = generalConfigPanel.addLineEdit('Source url')
         self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
@@ -447,6 +448,7 @@ class ConfigPanel(Widget):
 
     def on_source_link_changed(self):
         self.config.src_link_flag = self.src_link_textbox.text()
+        self.update_source_download_status.emit(self.config.src_link_flag)
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
@@ -455,6 +457,11 @@ class ConfigPanel(Widget):
 
     def focusOnInpaint(self):
         idx0, idx1 = self.inpaint_sub_block.idx0, self.inpaint_sub_block.idx1
+        self.configTable.setCurrentItem(idx0, idx1)
+        self.configTable.tableitem_pressed.emit(idx0, idx1)
+
+    def focusOnSourceDownload(self):
+        idx0, idx1 = self.src_link_sub_block.idx0, self.src_link_sub_block.idx1
         self.configTable.setCurrentItem(idx0, idx1)
         self.configTable.tableitem_pressed.emit(idx0, idx1)
 

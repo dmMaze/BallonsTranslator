@@ -451,6 +451,7 @@ class DLManager(QObject):
     imgtrans_proj: ProjImgTrans = None
 
     update_translator_status = Signal(str, str, str)
+    update_source_download_status = Signal(str)
     update_inpainter_status = Signal(str)
     finish_translate_page = Signal(str)
     canvas_inpaint_finished = Signal(dict)
@@ -529,6 +530,8 @@ class DLManager(QObject):
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.setOCR)
         self.ocr_postprocess = ocr_postprocess
+
+        self.on_finish_setsourcedownload()
 
         self.setTextDetector()
         self.setOCR()
@@ -613,11 +616,6 @@ class DLManager(QObject):
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show()
         self.imgtrans_thread.runBlktransPipeline(blk_list, tgt_img, mode)
-
-    def runSourceDownload(self, menu):
-        from dl.pagesources import SourceDownload
-        source = SourceDownload(self.config, self.imgtrans_proj, menu)
-        source.SyncSourceDownload()
 
     def on_finish_blktrans_stage(self, stage: str, progress: int):
         if stage == 'ocr':
@@ -745,6 +743,10 @@ class DLManager(QObject):
         else:
             LOGGER.error('invalid translator')
             self.update_translator_status.emit(self.tr('Invalid'), '', '')
+
+    def on_finish_setsourcedownload(self):
+        if self.config.src_link_flag:
+            self.update_source_download_status.emit(self.config.src_link_flag)
         
     def on_finish_translate_page(self, page_key: str):
         self.finish_translate_page.emit(page_key)

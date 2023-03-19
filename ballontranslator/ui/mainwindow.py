@@ -17,6 +17,7 @@ from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .dl_manager import DLManager
+from .pagesources import SourceDownload
 from .textedit_area import TextPanel, SourceTextEdit, SelectTextMiniMenu
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
@@ -229,6 +230,8 @@ class MainWindow(FramelessWindow):
 
         self.dl_manager = dl_manager = DLManager(config, self.imgtrans_proj)
         dl_manager.update_translator_status.connect(self.updateTranslatorStatus)
+        dl_manager.update_source_download_status.connect(self.updateSourceDownloadStatus)
+        self.configPanel.update_source_download_status.connect(self.updateSourceDownloadStatus)
         dl_manager.update_inpainter_status.connect(self.updateInpainterStatus)
         dl_manager.finish_translate_page.connect(self.finishTranslatePage)
         dl_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
@@ -245,6 +248,7 @@ class MainWindow(FramelessWindow):
         self.bottomBar.ocrcheck_statechanged.connect(dl_manager.setOCRMode)
         self.bottomBar.transcheck_statechanged.connect(dl_manager.setTransMode)
         self.bottomBar.inpaint_btn_clicked.connect(self.inpaintBtnClicked)
+        self.bottomBar.source_download_btn_clicked.connect(self.SourceDownloadBtnClicked)
         self.bottomBar.translatorStatusbtn.clicked.connect(self.translatorStatusBtnPressed)
         self.bottomBar.transTranspageBtn.run_target.connect(self.on_transpagebtn_pressed)
 
@@ -260,6 +264,9 @@ class MainWindow(FramelessWindow):
 
         self.configPanel.setupConfig()
         self.configPanel.save_config.connect(self.save_config)
+
+        self.source_download = SourceDownload(config, self.imgtrans_proj)
+        self.source_download.open_downloaded_proj.connect(self.openDir)
 
         textblock_mode = config.imgtrans_textblock
         if config.imgtrans_textedit:
@@ -749,6 +756,10 @@ class MainWindow(FramelessWindow):
         self.leftBar.configChecker.setChecked(True)
         self.configPanel.focusOnInpaint()
 
+    def SourceDownloadBtnClicked(self):
+        self.leftBar.configChecker.setChecked(True)
+        self.configPanel.focusOnSourceDownload()
+
     def updateTranslatorStatus(self, translator: str, source: str, target: str):
         if translator == '':
             self.bottomBar.translatorStatusbtn.hide()
@@ -757,6 +768,15 @@ class MainWindow(FramelessWindow):
             self.bottomBar.translatorStatusbtn.updateStatus(translator, source, target)
             self.bottomBar.translatorStatusbtn.show()
             self.bottomBar.transTranspageBtn.show()
+
+    def updateSourceDownloadStatus(self, url: str):
+        if url == '':
+            self.bottomBar.sourceStatusBtn.hide()
+            self.bottomBar.sourceStatusBtn.hide()
+        else:
+            self.bottomBar.sourceStatusBtn.updateStatus(url)
+            self.bottomBar.sourceStatusBtn.show()
+            self.bottomBar.sourceStatusBtn.show()
 
     def updateInpainterStatus(self, inpainter: str):
         self.bottomBar.inpainterStatBtn.updateStatus(inpainter)
@@ -911,7 +931,7 @@ class MainWindow(FramelessWindow):
         self.dl_manager.runImgtransPipeline()
 
     def on_run_sync_source(self):
-        self.dl_manager.runSourceDownload(self)
+        self.source_download.SyncSourceDownload()
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()

@@ -87,6 +87,10 @@ class InpainterStatusButton(StatusButton):
     def updateStatus(self, inpainter: str):
         self.setText(self.tr('Inpainter: ') + inpainter)
 
+class SourceDownloadStatusButton(StatusButton):
+    def updateStatus(self, source_url: str):
+        self.setText(self.tr('Source url: ') + source_url)
+
 
 class StateChecker(QCheckBox):
     checked = Signal(str)
@@ -499,6 +503,7 @@ class BottomBar(Widget):
     ocrcheck_statechanged = Signal(bool)
     transcheck_statechanged = Signal(bool)
     inpaint_btn_clicked = Signal()
+    source_download_btn_clicked = Signal()
 
     def __init__(self, mainwindow: QMainWindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
@@ -522,6 +527,8 @@ class BottomBar(Widget):
                                                 self.tr('stop translation'))
         self.inpainterStatBtn = InpainterStatusButton()
         self.inpainterStatBtn.clicked.connect(self.inpaintBtnClicked)
+        self.sourceStatusBtn = SourceDownloadStatusButton()
+        self.sourceStatusBtn.clicked.connect(self.SourceDownloadBtnClicked)
         self.transTranspageBtn.hide()
         self.hlayout = QHBoxLayout(self)
         self.paintChecker = QCheckBox()
@@ -550,6 +557,7 @@ class BottomBar(Widget):
         self.hlayout.addWidget(self.translatorStatusbtn)
         self.hlayout.addWidget(self.transTranspageBtn)
         self.hlayout.addWidget(self.inpainterStatBtn)
+        self.hlayout.addWidget(self.sourceStatusBtn)
         self.hlayout.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
         self.hlayout.addWidget(self.textlayerSlider)
         self.hlayout.addWidget(self.originalSlider)
@@ -580,3 +588,6 @@ class BottomBar(Widget):
 
     def inpaintBtnClicked(self):
         self.inpaint_btn_clicked.emit()
+
+    def SourceDownloadBtnClicked(self):
+        self.source_download_btn_clicked.emit()
