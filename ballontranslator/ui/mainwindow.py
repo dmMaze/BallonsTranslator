@@ -23,7 +23,7 @@ from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
-from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox
+from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox, SourceDownloadProgressMessageBox
 from .preset_widget import PresetPanel
 from .constants import CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
@@ -70,6 +70,7 @@ class MainWindow(FramelessWindow):
 
     def setStyleSheet(self, styleSheet: str) -> None:
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
+        self.source_download_msgbox.setStyleSheet(styleSheet)
         self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
         self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
         # sel_menu_size = self.selectext_minimenu.sizeHint()
@@ -208,6 +209,7 @@ class MainWindow(FramelessWindow):
         self.mainvlayout = mainVBoxLayout
         self.comicTransSplitter.setStretchFactor(1, 10)
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
+        self.source_download_msgbox = SourceDownloadProgressMessageBox()
         self.resetStyleSheet()
 
     def setupConfig(self):
@@ -265,8 +267,10 @@ class MainWindow(FramelessWindow):
         self.configPanel.setupConfig()
         self.configPanel.save_config.connect(self.save_config)
 
-        self.source_download = SourceDownload(config, self.imgtrans_proj)
+        self.source_download = SourceDownload(config, self.imgtrans_proj, self.source_download_msgbox)
         self.source_download.open_downloaded_proj.connect(self.openDir)
+        self.source_download.update_progress_bar.connect(self.source_download_msgbox.updateDownloadBar)
+        self.source_download.finished_downloading.connect(self.on_finished_sync_source)
 
         textblock_mode = config.imgtrans_textblock
         if config.imgtrans_textedit:
@@ -914,6 +918,13 @@ class MainWindow(FramelessWindow):
                                     size.height() - msg_size.height()))
         self.dl_manager.progress_msgbox.move(p)
 
+    def on_source_download_progressbox_showed(self):
+        msg_size = self.source_download_msgbox.size()
+        size = self.size()
+        p = self.mapToGlobal(QPoint(size.width() - msg_size.width(),
+                                    size.height() - msg_size.height()))
+        self.source_download_msgbox.move(p)
+
     def on_closebtn_clicked(self):
         if self.imsave_thread.isRunning():
             self.imsave_thread.finished.connect(self.close)
@@ -931,7 +942,16 @@ class MainWindow(FramelessWindow):
         self.dl_manager.runImgtransPipeline()
 
     def on_run_sync_source(self):
-        self.source_download.SyncSourceDownload()
+        self.source_download_msgbox.show_all_bars()
+        self.source_download_msgbox.zero_progress()
+        self.source_download_msgbox.show()
+        self.on_source_download_progressbox_showed()
+        self.source_download.start()
+
+    def on_finished_sync_source(self):
+        self.source_download_msgbox.hide_all_bars()
+        self.source_download_msgbox.hide()
+
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
