@@ -26,3 +26,9 @@ piexif
 keyboard
 ordered-set
 opencc
+requests
+Pillow
+beautifulsoup4
+colorama
+undetected-chromedriver
+gallery-dl
