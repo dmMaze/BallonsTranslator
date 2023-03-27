@@ -48,15 +48,15 @@ class LinuxFramelessWindow(QWidget):
             return False
 
         edges = 0
-        # pos = event.globalPosition().toPoint() - self.pos()
-        # if pos.x() < self.BORDER_WIDTH:
-        #     edges |= Qt.Edge.LeftEdge
-        # if pos.x() >= self.width()-self.BORDER_WIDTH:
-        #     edges |= Qt.Edge.RightEdge
-        # if pos.y() < self.BORDER_WIDTH:
-        #     edges |= Qt.Edge.TopEdge
-        # if pos.y() >= self.height()-self.BORDER_WIDTH:
-        #     edges |= Qt.Edge.BottomEdge
+        pos = event.globalPosition().toPoint() - self.pos()
+        if pos.x() < self.BORDER_WIDTH:
+            edges = edges | Qt.Edge.LeftEdge if edges != 0 else Qt.Edge.LeftEdge
+        if pos.x() >= self.width()-self.BORDER_WIDTH:
+            edges = edges | Qt.Edge.RightEdge if edges != 0 else Qt.Edge.RightEdge 
+        if pos.y() < self.BORDER_WIDTH:
+            edges = edges | Qt.Edge.TopEdge if edges != 0 else Qt.Edge.TopEdge
+        if pos.y() >= self.height()-self.BORDER_WIDTH:
+            edges = edges | Qt.Edge.BottomEdge if edges != 0 else Qt.Edge.BottomEdge 
 
         # change cursor
         if et == QEvent.Type.MouseMove and self.windowState() == Qt.WindowState.WindowNoState:
