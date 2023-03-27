@@ -42,7 +42,10 @@ class CMatT(ctypes.Structure):
         ('dtype', ctypes.c_int)
     ]
     
-PMLIB = ctypes.CDLL('data/libs/patchmatch_inpaint.dll')
+try:
+    PMLIB = ctypes.CDLL('data/libs/patchmatch_inpaint.dll')
+except:
+    PMLIB = ctypes.CDLL('data/libs/libpatchmatch.so')
 
 PMLIB.PM_set_random_seed.argtypes = [ctypes.c_uint]
 PMLIB.PM_set_verbose.argtypes = [ctypes.c_int]
