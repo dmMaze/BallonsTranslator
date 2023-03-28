@@ -9,6 +9,7 @@ ballontranslator/data/*.png
 ballontranslator/ui/pagesources/gallery-dl
 ballontranslator/gallery-dl
 release
+libs
 
 tmp.py
 dummy_scripts.py
@@ -23,5 +24,6 @@ ballontranslator/data/logs
 *.zip
 *.ipynb
 *.dll
+*.so
 *.docx
 *.doc
