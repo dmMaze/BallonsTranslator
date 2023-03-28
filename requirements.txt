@@ -30,5 +30,4 @@ requests
 Pillow
 beautifulsoup4
 colorama
-undetected-chromedriver
 gallery-dl
