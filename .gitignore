@@ -6,6 +6,7 @@ ballontranslator/data/models
 ballontranslator/data/testpacks/eng_dontupload
 ballontranslator/data/testpacks/testpacks
 release
+libs
 
 tmp.py
 dummy_scripts.py
@@ -20,5 +21,6 @@ ballontranslator/data/logs
 *.zip
 *.ipynb
 *.dll
+*.so
 *.docx
 *.doc
