@@ -10,6 +10,7 @@ unidic_lite
 tqdm
 opencv-python==4.5.*
 PyQt6>=6.4.2   #PyQt5>=5.15.9
+pywin32
 shapely
 pyclipper
 einops
