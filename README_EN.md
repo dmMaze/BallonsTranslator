@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](README.md) | English | [Русский](README_RU.md) | [日本語](README_JA.md)
+[简体中文](README.md) | English | [Русский](README_RU.md) | [日本語](README_JA.md) | [Indonesia](README_ID.md)
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.
 
@@ -17,14 +17,13 @@ preview
   - Improved manga->English, English->Chinese typesetting (based on the extraction of balloon regions.).
   
 * Image editing  
-  Support mask editing & inpainting (something like spot healing brush tool in PS) 
+  - Support mask editing & inpainting (something like spot healing brush tool in PS) 
+  - Adapted to images with extreme aspect ratio such as webtoons
   
 * Text editing  
   - Support rich text formatting and text style presets, translated texts can be edited interactively.
   - Support search & replace
   - Support export/import to/from word documents
-
-* Adapted to images with extreme aspect ratio such as webtoons
 
 # Usage
 
@@ -33,8 +32,6 @@ Windows users can download Ballonstranslator-x.x.x-core.7z from [MEGA](https://m
 ## Run the source code
 
 ```bash
-# First, you need to have Python(<=3.9 ) installed on your system.
-$ python --version
 
 # Clone this repo
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
@@ -51,9 +48,35 @@ pip install torch torchvision torchaudio --extra-index-url https://download.pyto
 
 Download the **data** folder from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and move it into BallonsTranslator/ballontranslator, finally run
 ```bash
+# For Linux or MacOS users, see [this script](https://github.com/dmMaze/BallonsTranslator/blob/master/ballontranslator/scripts/download_models.sh) and run to download ALL models
 python ballontranslator
 ```
 
+### Apple Silicon Mac native build .app application
+```
+### install python 3.9.13 virtual environment
+brew install pyenv mecab
+env PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.9.13
+pyenv global 3.9.13
+python3 -m venv ballonstranslator
+source ballonstranslator/bin/activate
+
+# Clone the repository
+git clone https://github.com/dmMaze/BallonsTranslator.git
+cd BallonsTranslator
+
+# Install the dependencies
+pip3 install -r requirements_macOS.txt
+
+# Package the application
+cd ballontranslator
+sudo pyinstaller __main__.spec
+
+# The packaged `BallonsTranslator.app` is in the `dist` folder
+# Note that the app is not functional yet, you need to go to [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), download `data` and overwrite it to `BallonsTranslator.app/Contents/Resources/data`.
+# When overwriting select "``Merge``, after the overwrite is done, the application is finally packaged and complete, out of the box, just drag the application to the macOS application folder, no need to configure the Python environment again.
+# Or see [this script](https://github.com/dmMaze/BallonsTranslator/blob/master/ballontranslator/scripts/download_models.sh)
+```
 
 To use Sugoi translator(Japanese-English only), download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data/models.  
 
@@ -61,7 +84,7 @@ To use Sugoi translator(Japanese-English only), download [offline model](https:/
 **It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.**, Please select the desired translator and set the source and target languages the first time you run the application. Open a folder containing images that need translation, click the "Run" button and wait for the process to complete.  
 <img src="doc/src/run.gif">  
 
-The font formats such as font size, color are determined by the program automatically in this process, you can predetermine those formats by change corresponding options from "decide by program" to "use global setting" in the config panel->Lettering.(global settings are those formats shown by the right font format panel when you are not editing any textblock in the scene)
+The font formats such as font size and color are determined by the program automatically in this process, you can predetermine those formats by change corresponding options from "decide by program" to "use global setting" in the config panel->Lettering. (global settings are those formats shown by the right font format panel when you are not editing any textblock in the scene)
 
 ## Image editing
 
@@ -98,8 +121,9 @@ ocr & translate selected area
 
 ## Shortcuts
 * ```A```/```D``` or ```pageUp```/```Down``` to turn the page
-* ```Ctrl+Z```, ```Ctrl+Y``` to undo/redo most operations, note the undo stack will be cleared after you turn the page.
-* ```T``` to text-editting mode, (or the "T" button on the bottom toolbar) press W to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
+* ```Ctrl+Z```, ```Ctrl+Shift+Z``` to undo/redo most operations. (note the undo stack will be cleared after you turn the page)
+* ```T``` to text-editting mode (or the "T" button on the bottom toolbar).
+* ```W``` to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
 * ```P``` to image-editting mode.  
 * In the image editing mode, use the slider on the right bottom to control the original image transparency.
 * The "OCR" and "A" button in the bottom toolbar controls whether to enable OCR and translation, if you disable them, the program will only do the text detection and removal.  
@@ -124,19 +148,19 @@ Support English and Japanese text detection, training code and more details can 
 ## OCR
  * mit_32px text recognition model is from manga-image-translator, support English and Japanese recognition and text color extraction.
  * mit_48px text recognition model is from manga-image-translator, support English, Japanese and Korean recognition and text color extraction.
- * [manga_ocr](https://github.com/kha-white/manga-ocr) is from [kha-white](https://github.com/kha-white), 
+ * [manga_ocr](https://github.com/kha-white/manga-ocr) is from [kha-white](https://github.com/kha-white), text recognition for Japanese, with the main focus being Japanese manga.
 
 ## Inpainting
-  * AOT is from manga-image-translator
-  * patchmatch is a non-dl algrithom from [PyPatchMatch](https://github.com/vacancy/PyPatchMatch), this program use a [modified version](https://github.com/dmMaze/PyPatchMatchInpaint) by me.
+  * AOT is from manga-image-translator.
+  * PatchMatch is an algorithm from [PyPatchMatch](https://github.com/vacancy/PyPatchMatch), this program use a [modified version](https://github.com/dmMaze/PyPatchMatchInpaint) by me. (Adobe uses this algorithm)
   
 
 ## Translators
 
  * <s> Please change the goolge translator url from *.cn to *.com if you are not blocked by GFW. </s> Google shuts down translate service in China, please set corresponding 'url' in config panel to *.com.
- * Caiyun translator need to require a [token](https://dashboard.caiyunapp.com/)
- * papago  
- * DeepL & Sugoi translator(and it's CT2 Translation conversion) thanks to [Snowad14](https://github.com/Snowad14)  
+ * Caiyun translator need to require a [token](https://dashboard.caiyunapp.com/).
+ * Papago.
+ * DeepL & Sugoi translator(and it's CT2 Translation conversion) thanks to [Snowad14](https://github.com/Snowad14).
 
  To add a new translator, please reference [how_to_add_new_translator](doc/how_to_add_new_translator.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
 

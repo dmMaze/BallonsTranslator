@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](README.md) | [English](README_RU.md) | [Русский](README_RU.md) | 日本語
+[简体中文](README.md)| [English](README_EN.md) | [Русский](README_RU.md) | 日本語 | [Indonesia](README_ID.md)
 
 ディープラーニングを活用したマンガ翻訳支援ツール。
 
@@ -29,9 +29,6 @@ Windowsユーザーは、[腾讯云](https://share.weiyun.com/xoRhz9i4)または
 ## ソースコードの実行
 
 ```bash
-# まず、Python(<=3.9 )がシステムにインストールされている必要があります。
-$ python --version
-
 # このリポジトリのクローン
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 

@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](README.md) | [English](README_EN.md) | Русский | [日本語](README_JA.md)
+[简体中文](README.md) | [English](README_EN.md) | Русский | [日本語](README_JA.md) | [Indonesia](README_ID.md)
 
 Еще один компьютерный инструмент для перевода комиксов/манги на основе глубокого обучения.
 
@@ -29,9 +29,6 @@
 ## Запуск из исходного кода (работает слегка с ошибками)
 
 ```bash
-# Во-первых, в вашей системе должен быть установлен Python(<=3.9 ).
-$ python --version
-
 # Клонируйте этот репозиторий
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 

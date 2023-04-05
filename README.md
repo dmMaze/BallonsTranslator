@@ -1,5 +1,5 @@
 # BallonTranslator
-简体中文 | [English](README_EN.md) | [Русский](README_RU.md) | [日本語](README_JA.md)
+简体中文 | [English](README_EN.md) | [Русский](README_RU.md) | [日本語](README_JA.md) | [Indonesia](README_ID.md)
 
 深度学习辅助漫画翻译工具, 支持一键机翻和简单的图像/文本编辑  
 
@@ -35,9 +35,6 @@ Windows用户可从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw
 ### 运行源码
 
 ```bash
-# 确保python<=3.9
-$ python --version
-
 # 克隆仓库
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
