@@ -108,6 +108,7 @@ class MainWindow(FramelessWindow):
         self.leftBar.save_proj.connect(self.save_proj)
         self.leftBar.export_doc.connect(self.on_export_doc)
         self.leftBar.import_doc.connect(self.on_import_doc)
+        self.leftBar.export_kra.connect(self.on_export_kra)
 
         self.pageList = PageListView()
         self.pageList.setHidden(True)

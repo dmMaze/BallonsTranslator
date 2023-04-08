@@ -143,6 +143,7 @@ class LeftBar(Widget):
     run_sync_source = Signal()
     export_doc = Signal()
     import_doc = Signal()
+    export_kra = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.mainwindow: QMainWindow = mainwindow
@@ -179,6 +180,9 @@ class LeftBar(Widget):
         actionImportFromDoc = QAction(self.tr("Import from Doc"), self)
         actionImportFromDoc.triggered.connect(self.import_doc)
 
+        actionExportAsKra = QAction(self.tr("Export as Krita Archive"), self)
+        actionExportAsKra.triggered.connect(self.export_kra)
+
         self.recentMenu = QMenu(self.tr("Open Recent"), self)
         
         openMenu = QMenu(self)
@@ -188,7 +192,8 @@ class LeftBar(Widget):
         openMenu.addActions([
             actionSaveProj,
             actionExportAsDoc,
-            actionImportFromDoc
+            actionImportFromDoc,
+            actionExportAsKra
         ])
         self.openBtn = OpenBtn()
         self.openBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
