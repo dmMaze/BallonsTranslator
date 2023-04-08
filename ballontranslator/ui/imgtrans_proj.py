@@ -9,7 +9,7 @@ from typing import Tuple, Union, List, Dict
 from utils.logger import logger as LOGGER
 from utils.io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
 from dl.textdetector.textblock import TextBlock
-from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException, TextBlkEncoder
+from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException, TextBlkEncoder, KritaFile
 
 
 def write_jpg_metadata(imgpath: str, metadata="a metadata"):
@@ -390,6 +390,56 @@ class ProjImgTrans:
         self._pagename2idx = pagename2idx
         self._idx2pagename = idx2pagename        
 
+    def kra_path(self) -> str:
+        return os.path.join(self.directory, self.proj_name() + "krita/")
+
+    def kra_exist(self) -> bool:
+        return osp.exists(self.kra_path())
+
+    def dump_kra(self, fin_page_signal=None):
+
+        cuts_dir = os.path.join(self.directory, "bubcuts")
+        if os.path.exists(cuts_dir):
+            shutil.rmtree(cuts_dir)
+        os.mkdir(cuts_dir)
+
+        document = KritaFile()
+        style = document.styles['Normal']
+        font = style.font
+        target_font = 'Arial'
+        font.name = target_font
+        for pagename, blklist in self.pages.items():
+            imgpath = os.path.join(self.directory, pagename)
+
+            cuts_path_list, cut_width_list = gen_ballon_cuts(
+                cuts_dir, imgpath, blklist)
+            paragraph = document.add_paragraph(pagename)
+            paragraph.style = document.styles['Normal']
+            table = document.add_table(
+                rows=len(cuts_path_list), cols=2, style='Table Grid')
+
+            for index, (cut_path, width) in enumerate(zip(cuts_path_list, cut_width_list)):
+                run = table.cell(index, 0).paragraphs[0].add_run()
+                run.style.font.name = target_font
+                blk: TextBlock = blklist[index]
+                bubdict = vars(blk).copy()
+                bubdict["imgkey"] = pagename
+                bubdict["rich_text"] = ''
+                bubdict["text"] = blk.get_text()
+                write_jpg_metadata(cut_path, metadata=json.dumps(
+                    bubdict, ensure_ascii=False, cls=TextBlkEncoder))
+                run.add_picture(cut_path, width=Inches(width/96 * 0.85))
+                table.cell(index, 1).text = bubdict["translation"]
+
+            document.add_page_break()
+
+            if fin_page_signal is not None:
+                fin_page_signal.emit()
+                # time.sleep(1)
+
+        kra_path = self.kra_path()
+        document.save(kra_path)
+        
 
 def gen_ballon_cuts(cuts_dir: str, imgpath: str, blk_list: List[TextBlock], resize=True) -> Tuple[List[str], List[int]]:
     img = imread(imgpath)

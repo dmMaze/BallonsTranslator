@@ -1,4 +1,4 @@
-import cv2, re, json, os
+import cv2, re, json, os, zipfile
 from pathlib import Path
 import numpy as np
 import os.path as osp
@@ -464,3 +464,61 @@ def reverse_icon_color(dark2light: bool = False):
             svg_content = pattern.sub(lambda m:rep_dict[m.group()], svg_content)
         with open(svgpath, "w", encoding="utf-8") as f:
             f.write(svg_content)
+
+
+class KritaFile():
+    def __init__(self):
+        self.create_mindoc(profile="")
+        self.svg = ''
+
+    def create_maindoc(self, profile, width, height):
+        doctype = "<!DOCTYPE DOC PUBLIC '-//KDE//DTD krita 2.0//EN' 'http://www.calligra.org/DTD/krita-2.0.dtd'>"
+        doc = '<DOC xmlns="http://www.calligra.org/DTD/krita" editor="Krita" syntaxVersion="2.0" kritaVersion="5.1.5">'
+        image = f'<IMAGE mime="application/x-kra" colorspacename="RGBA" description="" name="Unnamed" profile="{profile}"'
+        self.maindoc_start = bytes(
+            doctype + '\n' + doc + '\n' + image, encoding='utf8')
+        self.maindoc_image = bytes(
+            f'x-res="300" y-res="300" width="{width}" height="{height}"><layers>', encoding='utf8')
+        self.maindoc_end = b'</layers></IMAGE></DOC>'
+
+    def add_file_layer(self, filename, name, uuid, source):
+        start = '<layer intimeline = "0" channelflags = "" locked = "0" visible = "1" collapsed = "0" colorlabel = "0" scale = "false"  compositeop = "normal" scalingmethod = "0" nodetype = "filelayer" '
+        end = f'opacity = "255" colorspacename = "RGBA" x = "0" y = "0" name = "{name}" source = "{source}" filename = "{filename}" uuid = "{uuid}"/>'
+        self.file_layer = start + end
+
+    def add_text_layer(self, filename, name, uuid):
+        start = '<layer collapsed = "0" locked = "0" nodetype = "shapelayer" colorlabel = "0" intimeline = "0" channelflags = "" visible = "1" compositeop = "normal" '
+        end = f'opacity = "255" filename = "{filename}" x = "0" y = "0" name = "{name}" uuid = "{uuid}"/>'
+
+    def add_svg(self, width, height, viewBox):
+        start = b'<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN" "http: // www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">'
+        xmlns_start = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        xmlns_end = 'xmlns:krita="http://krita.org/namespaces/svg/krita" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" '
+        middle = f'width="{width}pt" height="{height}pt" viewBox="{viewBox}"><defs/>'
+        end = '</svg>'
+
+    def add_text(self,
+                 transform,
+                 fill,
+                 stroke_opacity="0",
+                 stroke="#000000",
+                 stroke_width="0",
+                 stroke_linecap="square",
+                 stroke_linejoin="bevel",
+                 font_family="Arial",
+                 font_size="0",
+                 font_size_adjust="1",
+                 letter_spacing="0"):
+        start = '<text id="shape0" krita:useRichText="true" krita:textVersion="2" transform="translate(0, 0)" fill="#000000" stroke-opacity="0" stroke="#000000" stroke-width="0" stroke-linecap="square" stroke-linejoin="bevel" font-family="Arial" font-size="0" font-size-adjust="1" letter-spacing="0">'
+        end = b'</text>'
+
+    def add_tspan(self, x, dy):
+        tspan = '<tspan x="2" dy="1">test</tspan>'
+
+    def write_kra_file(self):
+        RESULT = ''
+        MERGED = ''
+        PREVIEW = ''
+        with zipfile.ZipFile(RESULT, 'w') as zip:
+            zip.open('mergedimage.png', 'w').write(MERGED)
+            zip.open('preview.png', 'w').write(PREVIEW)

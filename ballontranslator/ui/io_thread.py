@@ -149,4 +149,37 @@ class ImportDocThread(ImgTransProjFileIOThread):
         self.progress_bar.hide()
         self.fin_io.emit()
 
-    
+
+class ExportKraThread(ImgTransProjFileIOThread):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.progress_bar.setTaskName(self.tr('Export as krita archive...'))
+
+    def exportAsKra(self, proj: ProjImgTrans):
+        kra_path = proj.kra_path()
+        if osp.exists(kra_path):
+            msg = QMessageBox()
+            msg.setText(self.tr('Overwrite ') + kra_path + '?')
+            msg.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            ret = msg.exec_()
+            if ret == QMessageBox.StandardButton.No:
+                return
+        if self.job is None:
+            self.proj = proj
+            self.job = self._export_as_kra
+            self.start()
+            self.progress_bar.updateTaskProgress(0)
+            self.progress_bar.show()
+
+    def _export_as_kra(self):
+        if self.proj is None:
+            return
+        self.fin_counter = 0
+        self.num_pages = self.proj.num_pages
+        if self.num_pages > 0:
+            self.proj.dump_kra_list(fin_page_signal=self.fin_page)
+        self.proj = None
+        self.progress_bar.hide()
+        self.fin_io.emit()

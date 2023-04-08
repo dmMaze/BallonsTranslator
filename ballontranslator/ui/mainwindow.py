@@ -21,8 +21,8 @@ from .textedit_area import TextPanel, SourceTextEdit, SelectTextMiniMenu
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
-from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
-from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox
+from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread, ExportKraThread
+from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox, SourceDownloadProgressMessageBox
 from .preset_widget import PresetPanel
 from .constants import CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
@@ -81,6 +81,8 @@ class MainWindow(FramelessWindow):
         self.export_doc_thread.fin_io.connect(self.on_fin_export_doc)
         self.import_doc_thread = ImportDocThread(self)
         self.import_doc_thread.fin_io.connect(self.on_fin_import_doc)
+        self.export_kra_thread = ExportKraThread()
+        self.export_kra_thread.fin_io.connect(self.on_fin_export_kra)
 
     def resetStyleSheet(self, reverse_icon: bool = False):
         theme = 'eva-dark' if self.config.darkmode else 'eva-light'
@@ -925,6 +927,11 @@ class MainWindow(FramelessWindow):
     def on_import_doc(self):
         self.import_doc_thread.importDoc(self.imgtrans_proj)
 
+    def on_export_kra(self):
+        if self.canvas.text_change_unsaved():
+            self.st_manager.updateTextBlkList()
+        self.export_kra_thread.exportAsKra(self.imgtrans_proj)
+
     def on_set_gsearch_widget(self):
         setup = self.leftBar.globalSearchChecker.isChecked()
         if setup:
@@ -942,6 +949,11 @@ class MainWindow(FramelessWindow):
 
     def on_fin_import_doc(self):
         self.st_manager.updateSceneTextitems()
+
+    def on_fin_export_kra(self):
+        msg = QMessageBox()
+        msg.setText(self.tr('Export to ') + self.imgtrans_proj.kra_path())
+        msg.exec_()
 
     def on_global_replace_finished(self):
         rt = self.global_search_widget.replace_thread
