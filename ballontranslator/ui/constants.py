@@ -12,6 +12,8 @@ STYLESHEET_PATH = osp.join(PROGRAM_PATH, 'data/config/stylesheet.css')
 THEME_PATH = osp.join(PROGRAM_PATH, 'data/config/themes.json')
 CONFIG_PATH = osp.join(PROGRAM_PATH, 'data/config/config.json')
 
+DOWNLOAD_PATH = osp.join(PROGRAM_PATH, 'gallery-dl')
+
 CONFIG_FONTSIZE_HEADER = 18
 CONFIG_FONTSIZE_TABLE = 14
 CONFIG_FONTSIZE_CONTENT = 14

@@ -30,6 +30,11 @@ class RunBtn(QPushButton):
         super().__init__(*args, **kwargs)
         self.setText('Run')
 
+class SyncSourceBtn(QPushButton):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setText('Sync')
+
 
 class StatusButton(QPushButton):
     pass
@@ -82,6 +87,10 @@ class InpainterStatusButton(StatusButton):
     def updateStatus(self, inpainter: str):
         self.setText(self.tr('Inpainter: ') + inpainter)
 
+class SourceDownloadStatusButton(StatusButton):
+    def updateStatus(self, source_url: str):
+        self.setText(self.tr('Source url: ') + source_url)
+
 
 class StateChecker(QCheckBox):
     checked = Signal(str)
@@ -131,6 +140,7 @@ class LeftBar(Widget):
     save_proj = Signal()
     save_config = Signal()
     run_imgtrans = Signal()
+    run_sync_source = Signal()
     export_doc = Signal()
     import_doc = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
@@ -193,6 +203,10 @@ class LeftBar(Widget):
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.runImgtransBtn.clicked.connect(self.run_imgtrans)
 
+        self.syncSourceBtn = SyncSourceBtn()
+        self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
+        self.syncSourceBtn.clicked.connect(self.run_sync_source)
+
         vlayout = QVBoxLayout(self)
         vlayout.addWidget(openBtnToolBar)
         vlayout.addWidget(self.showPageListLabel)
@@ -201,6 +215,7 @@ class LeftBar(Widget):
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
         vlayout.addWidget(self.configChecker)
         vlayout.addWidget(self.runImgtransBtn)
+        vlayout.addWidget(self.syncSourceBtn)
         vlayout.setContentsMargins(padding, 0, padding, int(LEFTBTN_WIDTH / 2))
         vlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         vlayout.setSpacing(int(LEFTBTN_WIDTH / 2))
@@ -488,6 +503,7 @@ class BottomBar(Widget):
     ocrcheck_statechanged = Signal(bool)
     transcheck_statechanged = Signal(bool)
     inpaint_btn_clicked = Signal()
+    source_download_btn_clicked = Signal()
 
     def __init__(self, mainwindow: QMainWindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
@@ -511,6 +527,8 @@ class BottomBar(Widget):
                                                 self.tr('stop translation'))
         self.inpainterStatBtn = InpainterStatusButton()
         self.inpainterStatBtn.clicked.connect(self.inpaintBtnClicked)
+        self.sourceStatusBtn = SourceDownloadStatusButton()
+        self.sourceStatusBtn.clicked.connect(self.SourceDownloadBtnClicked)
         self.transTranspageBtn.hide()
         self.hlayout = QHBoxLayout(self)
         self.paintChecker = QCheckBox()
@@ -539,6 +557,7 @@ class BottomBar(Widget):
         self.hlayout.addWidget(self.translatorStatusbtn)
         self.hlayout.addWidget(self.transTranspageBtn)
         self.hlayout.addWidget(self.inpainterStatBtn)
+        self.hlayout.addWidget(self.sourceStatusBtn)
         self.hlayout.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
         self.hlayout.addWidget(self.textlayerSlider)
         self.hlayout.addWidget(self.originalSlider)
@@ -569,3 +588,6 @@ class BottomBar(Widget):
 
     def inpaintBtnClicked(self):
         self.inpaint_btn_clicked.emit()
+
+    def SourceDownloadBtnClicked(self):
+        self.source_download_btn_clicked.emit()
