@@ -1,4 +1,4 @@
-import cv2, re, json, os, zipfile
+import cv2, re, json, os, uuid, zipfile
 from pathlib import Path
 import numpy as np
 import os.path as osp
@@ -470,30 +470,44 @@ def reverse_icon_color(dark2light: bool = False):
 
 class KritaFile():
     def __init__(self):
-        self.create_mindoc(profile="")
-        self.svg = ''
+        self.filename_counter = 0
+        self.profile = ''
+        self.file_layer = []
 
-    def create_maindoc(self, profile, width, height):
+    def setup_maindoc(self, profile, width, height):
         doctype = "<!DOCTYPE DOC PUBLIC '-//KDE//DTD krita 2.0//EN' 'http://www.calligra.org/DTD/krita-2.0.dtd'>"
         doc = '<DOC xmlns="http://www.calligra.org/DTD/krita" editor="Krita" syntaxVersion="2.0" kritaVersion="5.1.5">'
         image = f'<IMAGE mime="application/x-kra" colorspacename="RGBA" description="" name="Unnamed" profile="{profile}"'
-        self.maindoc_start = bytes(
-            doctype + '\n' + doc + '\n' + image, encoding='utf8')
-        self.maindoc_image = bytes(
-            f'x-res="300" y-res="300" width="{width}" height="{height}"><layers>', encoding='utf8')
-        self.maindoc_end = b'</layers></IMAGE></DOC>'
+        self.maindoc_start = doctype + '\n' + doc + '\n' + image
+        self.maindoc_image = f'x-res="300" y-res="300" width="{width}" height="{height}"><layers>'
+        self.maindoc_end = '</layers></IMAGE></DOC>'
 
-    def add_file_layer(self, filename, name, uuid, source):
+    def filename_counter_add(self):
+        self.filename_counter =+ 1
+
+    def add_file_layer(self, name, source, filename=None, layer_uuid=None):
+        if filename is None:
+            filename = f'layer{self.filename_counter}'
+            self.filename_counter_add()
+        if layer_uuid == None:
+            layer_uuid = uuid.uuid4()
+        
         start = '<layer intimeline = "0" channelflags = "" locked = "0" visible = "1" collapsed = "0" colorlabel = "0" scale = "false"  compositeop = "normal" scalingmethod = "0" nodetype = "filelayer" '
-        end = f'opacity = "255" colorspacename = "RGBA" x = "0" y = "0" name = "{name}" source = "{source}" filename = "{filename}" uuid = "{uuid}"/>'
-        self.file_layer = start + end
+        end = f'opacity = "255" colorspacename = "RGBA" x = "0" y = "0" name = "{name}" source = "{source}" filename = "{filename}" uuid = "{layer_uuid}"/>'
+        self.file_layer.append(start + end)
 
-    def add_text_layer(self, filename, name, uuid):
+    def add_text_layer(self, name, filename=None, layer_uuid=None):
+        if filename is None:
+            filename = f'layer{self.filename_counter}'
+            self.filename_counter_add()
+        if layer_uuid == None:
+            layer_uuid = uuid.uuid4()
+            
         start = '<layer collapsed = "0" locked = "0" nodetype = "shapelayer" colorlabel = "0" intimeline = "0" channelflags = "" visible = "1" compositeop = "normal" '
-        end = f'opacity = "255" filename = "{filename}" x = "0" y = "0" name = "{name}" uuid = "{uuid}"/>'
-
+        end = f'opacity = "255" filename = "{filename}" x = "0" y = "0" name = "{name}" uuid = "{layer_uuid}"/>'
+        
     def add_svg(self, width, height, viewBox):
-        start = b'<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN" "http: // www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">'
+        start = '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN" "http: // www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">'
         xmlns_start = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
         xmlns_end = 'xmlns:krita="http://krita.org/namespaces/svg/krita" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" '
         middle = f'width="{width}pt" height="{height}pt" viewBox="{viewBox}"><defs/>'
@@ -512,15 +526,25 @@ class KritaFile():
                  font_size_adjust="1",
                  letter_spacing="0"):
         start = '<text id="shape0" krita:useRichText="true" krita:textVersion="2" transform="translate(0, 0)" fill="#000000" stroke-opacity="0" stroke="#000000" stroke-width="0" stroke-linecap="square" stroke-linejoin="bevel" font-family="Arial" font-size="0" font-size-adjust="1" letter-spacing="0">'
-        end = b'</text>'
+        end = '</text>'
 
     def add_tspan(self, x, dy):
         tspan = '<tspan x="2" dy="1">test</tspan>'
 
-    def write_kra_file(self):
-        RESULT = ''
-        MERGED = ''
-        PREVIEW = ''
-        with zipfile.ZipFile(RESULT, 'w') as zip:
-            zip.open('mergedimage.png', 'w').write(MERGED)
-            zip.open('preview.png', 'w').write(PREVIEW)
+    def write_kra_file(self, thumbnail, path):
+        h, w, _ = thumbnail.shape
+        r = 256.0 / max(h, w)
+        small_thumbnail = cv2.resize(thumbnail, (int(w*r), int(h*r)))
+
+        merged = cv2.imencode('.png', thumbnail)[1].tobytes()
+        preview = cv2.imencode('.png', small_thumbnail)[1].tobytes()
+        
+        self.setup_maindoc(self.profile, w, h)
+        file_layers = ''.join(self.file_layer)
+        maindoc_content = self.maindoc_start + self.maindoc_image + file_layers + self.maindoc_end
+
+
+        with zipfile.ZipFile(path, 'w') as zip:
+            zip.open('mergedimage.png', 'w').write(merged)
+            zip.open('preview.png', 'w').write(preview)
+            zip.open('maindoc.xml', 'w').write(bytes(maindoc_content, encoding='utf-8'))

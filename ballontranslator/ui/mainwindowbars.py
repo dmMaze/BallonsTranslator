@@ -180,7 +180,7 @@ class LeftBar(Widget):
         actionImportFromDoc = QAction(self.tr("Import from Doc"), self)
         actionImportFromDoc.triggered.connect(self.import_doc)
 
-        actionExportAsKra = QAction(self.tr("Export as Krita Archive"), self)
+        actionExportAsKra = QAction(self.tr("Export as Krita Document"), self)
         actionExportAsKra.triggered.connect(self.export_kra)
 
         self.recentMenu = QMenu(self.tr("Open Recent"), self)

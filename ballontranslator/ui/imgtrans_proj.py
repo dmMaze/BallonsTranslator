@@ -399,56 +399,54 @@ class ProjImgTrans:
         self._pagename2idx = pagename2idx
         self._idx2pagename = idx2pagename        
 
-    def kra_path(self) -> str:
-        return os.path.join(self.directory, self.proj_name() + "krita/")
+    def dump_kra(self, text=1, original=1, mask=1, inpainted=1, result=1, kra_dir=None, copy_src_to=None,fin_page_signal=None):
+        # TODO
+        # if text is 1 put textboxes in one layer, if 2 separate them into diffent layers.
+        # if mask is 2 or something, crop/merge inpainted_img with mask so it becomes one layer.
+        # saving only one image at a time (current image).
+        # copy_src_to is (planned) for copying the mask, inpainted, and result dirs
+        # to another dir so it's referenced from there and not from the imgtrans project's files
+        
+        if kra_dir == None:
+            kra_dir = os.path.join(self.directory, 'krita')    
+        
+        os.makedirs(kra_dir, exist_ok=True)
+        
+        self.kra_path = kra_dir
 
-    def kra_exist(self) -> bool:
-        return osp.exists(self.kra_path())
+        def layer_src_path(path, kra_dir=kra_dir):
+            return os.path.relpath(path, kra_dir)
 
-    def dump_kra(self, fin_page_signal=None):
-
-        cuts_dir = os.path.join(self.directory, "bubcuts")
-        if os.path.exists(cuts_dir):
-            shutil.rmtree(cuts_dir)
-        os.mkdir(cuts_dir)
-
-        document = KritaFile()
-        style = document.styles['Normal']
-        font = style.font
-        target_font = 'Arial'
-        font.name = target_font
         for pagename, blklist in self.pages.items():
-            imgpath = os.path.join(self.directory, pagename)
+            kra_doc = KritaFile()
+            img = self.read_img(pagename)
 
-            cuts_path_list, cut_width_list = gen_ballon_cuts(
-                cuts_dir, imgpath, blklist)
-            paragraph = document.add_paragraph(pagename)
-            paragraph.style = document.styles['Normal']
-            table = document.add_table(
-                rows=len(cuts_path_list), cols=2, style='Table Grid')
-
-            for index, (cut_path, width) in enumerate(zip(cuts_path_list, cut_width_list)):
-                run = table.cell(index, 0).paragraphs[0].add_run()
-                run.style.font.name = target_font
-                blk: TextBlock = blklist[index]
-                bubdict = vars(blk).copy()
-                bubdict["imgkey"] = pagename
-                bubdict["rich_text"] = ''
-                bubdict["text"] = blk.get_text()
-                write_jpg_metadata(cut_path, metadata=json.dumps(
-                    bubdict, ensure_ascii=False, cls=TextBlkEncoder))
-                run.add_picture(cut_path, width=Inches(width/96 * 0.85))
-                table.cell(index, 1).text = bubdict["translation"]
-
-            document.add_page_break()
+            if text == 1:
+                # TODO
+                pass
+            if result == 1:
+                result_path = self.get_result_path(pagename)
+                src_path = layer_src_path(result_path)
+                kra_doc.add_file_layer('Result Layer', src_path)
+            if inpainted == 1:
+                inpaint_path = self.get_inpainted_path(pagename)
+                src_path = layer_src_path(inpaint_path)
+                kra_doc.add_file_layer('Inpaint Layer', src_path)
+            if mask == 1:
+                mask_path = self.get_mask_path(pagename)
+                src_path = layer_src_path(mask_path)
+                kra_doc.add_file_layer('Mask Layer', src_path)
+            if original == 1:
+                img_path = os.path.join(self.directory, pagename)
+                src_path = layer_src_path(img_path)
+                kra_doc.add_file_layer('Original Image', src_path)
+            
+            kra_file = pagename.split('.')[0] + '.kra'
+            kra_file_path = os.path.join(kra_dir, kra_file)
+            kra_doc.write_kra_file(thumbnail=img, path=kra_file_path)
 
             if fin_page_signal is not None:
                 fin_page_signal.emit()
-                # time.sleep(1)
-
-        kra_path = self.kra_path()
-        document.save(kra_path)
-        
 
 def gen_ballon_cuts(cuts_dir: str, imgpath: str, blk_list: List[TextBlock], resize=True) -> Tuple[List[str], List[int]]:
     img = imread(imgpath)

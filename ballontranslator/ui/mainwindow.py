@@ -1000,7 +1000,7 @@ class MainWindow(FramelessWindow):
 
     def on_fin_export_kra(self):
         msg = QMessageBox()
-        msg.setText(self.tr('Export to ') + self.imgtrans_proj.kra_path())
+        msg.setText(self.tr('Export to ') + self.imgtrans_proj.kra_path)
         msg.exec_()
 
     def on_global_replace_finished(self):
