@@ -52,31 +52,45 @@ python ballontranslator
 ```
 For Linux or MacOS users, see [this script](ballontranslator/scripts/download_models.sh) to download all models.
 
-### Apple Silicon Mac native build .app application
-```
-### install python 3.9.13 virtual environment
+### Apple Silicon native build .app application
+
+<details closed>
+<summary>Instructions</summary>
+<br>
+
+Install python 3.9.13 virtual environment
+```python
 brew install pyenv mecab
 env PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.9.13
 pyenv global 3.9.13
 python3 -m venv ballonstranslator
 source ballonstranslator/bin/activate
-
-# Clone the repository
+```
+Clone the repository
+```bash
 git clone https://github.com/dmMaze/BallonsTranslator.git
 cd BallonsTranslator
+```
 
-# Install the dependencies
+Install the dependencies
+```bash
 pip3 install -r requirements_macOS.txt
+```
 
-# Package the application
+Package the application
+```bash
 cd ballontranslator
 sudo pyinstaller __main__.spec
-
-# The packaged `BallonsTranslator.app` is in the `dist` folder
-# Note that the app is not functional yet, you need to go to [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), download `data` and overwrite it to `BallonsTranslator.app/Contents/Resources/data`.
-# When overwriting select "``Merge``, after the overwrite is done, the application is finally packaged and complete, out of the box, just drag the application to the macOS application folder, no need to configure the Python environment again.
-# Or see ballontranslator/scripts/download_models.sh
 ```
+
+The packaged `BallonsTranslator.app` is in the `dist` folder.
+Note that the app is not functional yet, you need to go to [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), download `data` and overwrite it to `BallonsTranslator.app/Contents/Resources/data`.
+When overwriting select `Merge`, after the overwrite is done, the application is finally packaged and complete, out of the box, just drag the application to the macOS application folder, no need to configure the Python environment again.
+Or see ballontranslator/scripts/download_models.sh
+
+</details>
+
+
 
 To use Sugoi translator(Japanese-English only), download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data/models.  
 
