@@ -11,8 +11,8 @@ preview
 
 # Features
 * Fully automated translation  
-  - Support automatic text-detection, recognition, removal, and translation, overall performance is dependent upon these modules.
-  - lettering is based on the formatting estimation of the original text.
+  - Support automatic text-detection, recognition, removal, and translation. Overall performance is dependent upon these modules.
+  - Lettering is based on the formatting estimation of the original text.
   - Works decently with manga and comics.
   - Improved manga->English, English->Chinese typesetting (based on the extraction of balloon regions.).
   
@@ -25,9 +25,9 @@ preview
   - Support search & replace
   - Support export/import to/from word documents
 
-# Usage
+# Installation
 
-Windows users can download Ballonstranslator-x.x.x-core.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)(note: you also need to download latest Ballonstranslator-1.3.xx from GitHub release and extract it to overwrite **Ballontranslator-1.3.0-core** or older installation to get the app updated.)
+**Windows users** can download Ballonstranslator-x.x.x-core.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) (note: you also need to download latest Ballonstranslator-1.3.xx from GitHub release and extract it to overwrite **Ballontranslator-1.3.0-core** or older installation to get the app updated.)
 
 ## Run the source code
 
@@ -48,9 +48,9 @@ pip install torch torchvision torchaudio --extra-index-url https://download.pyto
 
 Download the **data** folder from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and move it into BallonsTranslator/ballontranslator, finally run
 ```bash
-# For Linux or MacOS users, see [this script](https://github.com/dmMaze/BallonsTranslator/blob/master/ballontranslator/scripts/download_models.sh) and run to download ALL models
 python ballontranslator
 ```
+For Linux or MacOS users, see [this script](ballontranslator/scripts/download_models.sh) to download all models.
 
 ### Apple Silicon Mac native build .app application
 ```
@@ -75,14 +75,18 @@ sudo pyinstaller __main__.spec
 # The packaged `BallonsTranslator.app` is in the `dist` folder
 # Note that the app is not functional yet, you need to go to [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), download `data` and overwrite it to `BallonsTranslator.app/Contents/Resources/data`.
 # When overwriting select "``Merge``, after the overwrite is done, the application is finally packaged and complete, out of the box, just drag the application to the macOS application folder, no need to configure the Python environment again.
-# Or see [this script](https://github.com/dmMaze/BallonsTranslator/blob/master/ballontranslator/scripts/download_models.sh)
+# Or see ballontranslator/scripts/download_models.sh
 ```
 
 To use Sugoi translator(Japanese-English only), download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data/models.  
 
-## Fully automated translation
-**It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.**, Please select the desired translator and set the source and target languages the first time you run the application. Open a folder containing images that need translation, click the "Run" button and wait for the process to complete.  
+# Usage
+
+**It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.** 
 <img src="doc/src/run.gif">  
+- The first time you run the application, please select the translator and set the source and target languages by clicking the settings icon.
+- Open a folder containing images of a comic (manga/manhua/manhwa) that need translation by clicking the folder icon.
+- Click the `Run` button and wait for the process to complete.  
 
 The font formats such as font size and color are determined by the program automatically in this process, you can predetermine those formats by change corresponding options from "decide by program" to "use global setting" in the config panel->Lettering. (global settings are those formats shown by the right font format panel when you are not editing any textblock in the scene)
 
