@@ -34,7 +34,7 @@ preview
 ```bash
 
 # Clone this repo
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
+$ git clone --depth 1 https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
 # install requirements_macOS.txt on macOS
 $ pip install -r requirements.txt

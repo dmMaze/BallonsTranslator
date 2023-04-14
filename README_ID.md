@@ -33,7 +33,7 @@ Pengguna **Windows** dapat unduh Ballonstranslator-x.x.x-core.7z di [MEGA](https
 
 ```bash
 # Clone repo ini
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
+$ git clone --depth 1 https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
 # instal requirements_macOS.txt di macOS
 $ pip install -r requirements.txt
