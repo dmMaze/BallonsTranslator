@@ -4,11 +4,17 @@ from shapely.geometry import Polygon
 import math
 import copy
 import cv2
+import re
 
 from utils.imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
+
+# https://ayaka.shn.hk/hanregex/
+# https://medium.com/the-artificial-impostor/detecting-chinese-characters-in-unicode-strings-4ac839ba313a
+CJKPATTERN = re.compile(r'[\uac00-\ud7a3\u3040-\u30ff\u4e00-\u9FFF]')
+
 
 class TextBlock(object):
     def __init__(self, xyxy: List, 
@@ -262,7 +268,9 @@ class TextBlock(object):
         text = ''
         for t in self.text:
             if text and t:
-                if text[-1].isalpha() and t[0].isalpha():
+                if text[-1].isalpha() and t[0].isalpha() \
+                    and CJKPATTERN.search(text[-1]) is None \
+                    and CJKPATTERN.search(t[0]) is None:
                     text += ' '
             text += t
 

@@ -112,9 +112,9 @@ class KeywordSubWidget(Widget):
     def sub_text(self, text: str) -> str:
         for ii, subpair in enumerate(self.sublist):
             k = subpair['keyword']
-            if not k:
+            if k == '':
                 continue
-
+            
             regexr = k
             flag = re.DOTALL
             if not subpair['case_sens']:
@@ -129,5 +129,6 @@ class KeywordSubWidget(Widget):
                 LOGGER.error(f'Invalid regex expression at line {ii}:')
                 LOGGER.error(traceback.format_exc())
                 continue
-            
+        #     print(f'k: {k}, {text}')
+        # print('text: ', text)
         return text
