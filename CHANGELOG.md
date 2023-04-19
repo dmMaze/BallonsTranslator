@@ -1,5 +1,8 @@
 # Changelogs
 
+### 2023-04-15
+支持从某些源站下载/更新图片，感谢[ROKOLYT](https://github.com/ROKOLYT)
+
 ### 2023-02-27
 [v1.3.34](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.34) 发布
 1. 修复繁体直排bug (#96)

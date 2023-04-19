@@ -1,5 +1,8 @@
 # Changelogs
 
+### 2023-04-15
+Src download implementation based on gallery-dl (#131) thanks to [ROKOLYT](https://github.com/ROKOLYT)
+
 ### 2023-02-27
 [v1.3.34](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.34) released
 1. fix incorrect orientation assignment for CHT  (#96)
