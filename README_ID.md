@@ -42,7 +42,7 @@ $ pip install -r requirements.txt
 Instal pytorch-cuda untuk dapat akselerasi GPU jika Anda memiliki GPU NVIDIA.
 
 ```bash
-pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu116
 ```
 
 Unduhlah folder **data** dari [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) atau [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) dan pindahkan ke dalam BallonsTranslator/ballontranslator, akhirnya jalankan
