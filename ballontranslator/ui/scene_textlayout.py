@@ -44,7 +44,7 @@ def get_char_width(char: str, ffamily: str, size: float, weight: int, italic: bo
     return fm.width(char)
 
 def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, italic: bool, stroke_width: float) -> List[int]:
-    pixmap = QImage(line.naturalTextWidth(), line.height(), QImage.Format.Format_ARGB32)
+    pixmap = QImage(int(line.naturalTextWidth()), int(line.height()), QImage.Format.Format_ARGB32)
     pixmap.fill(Qt.GlobalColor.transparent)
     p = QPainter(pixmap)
     line.draw(p, QPointF(-line.x(), -line.y()))

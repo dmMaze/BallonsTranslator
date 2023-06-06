@@ -1,6 +1,7 @@
 import os.path as osp
 import os, re, copy, traceback
 from typing import List
+from PyQt6.QtWidgets import QListWidgetItem
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent
@@ -38,7 +39,23 @@ class PageListView(QListWidget):
         super().__init__(*args, **kwargs)
         self.setMaximumWidth(512)
         self.setIconSize(QSize(C.PAGELIST_THUMBNAIL_SIZE, C.PAGELIST_THUMBNAIL_SIZE))
+        self.setSortingEnabled(True)
 
+class PageListItem(QListWidgetItem):
+    def getNum(self,item_str):
+        frags= re.split("\s|-|_|\.",item_str)
+        for f in frags:
+            if re.match("/d+",f):
+                return int(f)
+        return item_str
+    def __lt__(self, other) -> bool:
+        print(self.getNum(self.text()),self.getNum(other.text()))
+        try:
+            self.getNum(self.text())<self.getNum(other.text())
+        except Exception:
+            return super().__lt__(other)
+        return super().__lt__(other)
+    
 
 class MainWindow(FramelessWindow):
 
@@ -358,10 +375,10 @@ class MainWindow(FramelessWindow):
         if self.pageList.count() != 0:
             self.pageList.clear()
         if len(self.imgtrans_proj.pages) >= C.PAGELIST_THUMBNAIL_MAXNUM:
-            item_func = lambda imgname: QListWidgetItem(imgname)
+            item_func = lambda imgname: PageListItem(imgname)
         else:
             item_func = lambda imgname:\
-                QListWidgetItem(QIcon(osp.join(self.imgtrans_proj.directory, imgname)), imgname)
+                PageListItem(QIcon(osp.join(self.imgtrans_proj.directory, imgname)), imgname)
         for imgname in self.imgtrans_proj.pages:
             lstitem =  item_func(imgname)
             self.pageList.addItem(lstitem)
