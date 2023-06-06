@@ -49,7 +49,6 @@ class PageListItem(QListWidgetItem):
                 return int(f)
         return item_str
     def __lt__(self, other) -> bool:
-        print(self.getNum(self.text()),self.getNum(other.text()))
         try:
             self.getNum(self.text())<self.getNum(other.text())
         except Exception:
