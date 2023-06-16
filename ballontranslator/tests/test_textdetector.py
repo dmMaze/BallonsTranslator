@@ -13,9 +13,9 @@ if __name__ == '__main__':
     os.makedirs(mask_dir, exist_ok=True)
     proj = ProjImgTrans(test_dir)
 
-    setup_params = ComicTextDetector.setup_params
-    setup_params['device']['select'] = 'cuda'
-    ctd = ComicTextDetector(**setup_params)
+    params = ComicTextDetector.params
+    params['device']['select'] = 'cuda'
+    ctd = ComicTextDetector(**params)
 
     for imgname in proj.pages:
         img_path = osp.join(proj.directory, imgname)

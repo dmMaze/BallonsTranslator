@@ -18,7 +18,7 @@ def test_inpainter(inpainter: InpainterBase, proj: ProjImgTrans, inpaint_by_bloc
 
     os.makedirs(SAVE_DIR, exist_ok=True)
     print('Testing inpainter:', inpainter.__class__.__name__)
-    print('Inpainter params:', inpainter.setup_params)
+    print('Inpainter params:', inpainter.params)
     inpainter.inpaint_by_block = inpaint_by_block
     print('inpaint by block: ', inpainter.inpaint_by_block)
     time_cost = 0
@@ -43,10 +43,10 @@ def test_inpainter(inpainter: InpainterBase, proj: ProjImgTrans, inpaint_by_bloc
 
 def test_aot(proj: ProjImgTrans, device: str = 'cpu', inpaint_size: int = 1024, inpaint_by_block=True, show=False):
     
-    setup_params = AOTInpainter.setup_params
-    setup_params['device']['select'] = device
-    setup_params['inpaint_size']['select'] = inpaint_size
-    aot = AOTInpainter(**setup_params)
+    params = AOTInpainter.params
+    params['device']['select'] = device
+    params['inpaint_size']['select'] = inpaint_size
+    aot = AOTInpainter(**params)
 
     img = np.ones((inpaint_size, inpaint_size, 3), dtype=np.uint8)
     mask = np.ones((inpaint_size, inpaint_size), dtype=np.uint8)

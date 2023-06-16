@@ -142,11 +142,3 @@ Untuk menambahkan penerjemah baru, silakan lihat [how_to_add_new_translator](doc
 * Jika komputer Anda memiliki GPU Nvidia, program ini akan mengaktifkan akselerasi cuda untuk semua model secara default dan membutuhkan sekitar 6G memori GPU, Anda dapat menurunkan inpaint_size pada panel konfigurasi untuk menghindari OOM. 
 * Terima kasih kepada [bropines] (https://github.com/bropines) untuk lokalisasi bahasa Rusia.  
 * Menambahkan [saladict](https://saladict.crimx.com) (*Kamus pop-up dan penerjemah halaman profesional lengkap*) di menu mini ketika pilih teks. [Panduan instalasi](doc/saladict.md)
-
-## Pratinjau hasil terjemahan otomatis penuh
-|            Asli            |         Terjemahan (CHS)         |         Terjemahan (ENG)         |
-| :-----------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------: |
-|![Original](ballontranslator/data/testpacks/manga/original2.jpg 'https://twitter.com/mmd_96yuki/status/1320122899005460481')| ![Translated (CHS)](doc/src/result2.png) | ![Translated (ENG)](doc/src/original2_eng.png) |
-|![Original](ballontranslator/data/testpacks/manga/original3.jpg 'https://twitter.com/_taroshin_/status/1231099378779082754')| ![Translated (CHS)](doc/src/original3.png) | ![Translated (ENG)](doc/src/original3_eng.png) |
-| ![Original](ballontranslator/data//testpacks/manga/AisazuNihaIrarenai-003.jpg) | ![Translated (CHS)](doc/src/AisazuNihaIrarenai-003.png) | ![Translated (ENG)](doc/src/AisazuNihaIrarenai-003_eng.png) |
-|           ![Original](ballontranslator/data//testpacks/comics/006049.jpg)           | ![Translated (CHS)](doc/src/006049.png) | |

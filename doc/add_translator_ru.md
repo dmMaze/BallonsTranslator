@@ -3,14 +3,14 @@
 
 ``` python
 @register_translator('dummy translator')
-class DummyTranslator(TranslatorBase):
+class DummyTranslator(BaseTranslator):
     concate_text = True
 
     # parameters showed in the config panel. 
     # keys are parameter names, if value type is str, it will be a text editor(required key)
     # if value type is dict, you need to spicify the 'type' of the parameter, 
     # following 'device' is a selector, options a cpu and cuda, default is cpu
-    setup_params: Dict = {
+    params: Dict = {
         'required_key': '', 
         'device': {
             'type': 'selector',
@@ -46,24 +46,24 @@ class DummyTranslator(TranslatorBase):
         '''
         super().updateParam(param_key, param_content)
         if param_key == 'device':
-            # self.model.to(self.setup_params['device']['select'])
+            # self.model.to(self.params['device']['select'])
             pass
 ```
 
-Во-первых, переводчик должен быть декорирован с помощью register_translator и наследоваться от базового класса TranslatorBase, параметр 'dummy translator' внутри декоратора - это имя переводчика, которое будет отображаться в интерфейсе, будьте осторожны, чтобы не дублировать имя существующего переводчика.  
+Во-первых, переводчик должен быть декорирован с помощью register_translator и наследоваться от базового класса BaseTranslator, параметр 'dummy translator' внутри декоратора - это имя переводчика, которое будет отображаться в интерфейсе, будьте осторожны, чтобы не дублировать имя существующего переводчика.  
 Сохраните concate_text на потом.  
 ``` python
 @register_translator('dummy translator')
-class DummyTranslator(TranslatorBase):  
+class DummyTranslator(BaseTranslator):  
     concate_text = True
 ```
 
-Если новый переводчик требует настраиваемых пользователем параметров, создайте словарь setup_params, как показано ниже, в противном случае оставьте его в покое или присвойте значение None.  
-Ключом в setup_params является соответствующее имя параметра, отображаемое в интерфейсе, значение может быть str, api_key ниже будет текстовый редактор с пустым значением по умолчанию в интерфейсе.  
+Если новый переводчик требует настраиваемых пользователем параметров, создайте словарь params, как показано ниже, в противном случае оставьте его в покое или присвойте значение None.  
+Ключом в params является соответствующее имя параметра, отображаемое в интерфейсе, значение может быть str, api_key ниже будет текстовый редактор с пустым значением по умолчанию в интерфейсе.  
 Значение параметра также может быть словарем, но должно быть указано как тип 'type', который будет показан как селектор в интерфейсе, следующее устройство является селектором, либо cpu, либо cuda, по умолчанию cpu.  
 
 ``` python
-    setup_params: Dict = {
+    params: Dict = {
         'api_key': '', 
         'device': {
             'type': 'selector',
@@ -95,7 +95,7 @@ class DummyTranslator(TranslatorBase):
 Некоторые апи, такие как Caiyun, поддерживают прямые текстовые таблицы в сообщениях, поэтому можно установить значение False.  
 ``` python
     def _translate(self, text: Union[str, List]) -> Union[str, List]:
-        api_key = self.setup_params['api_key']  # 如此获取用户修改过的api_key
+        api_key = self.params['api_key']  # 如此获取用户修改过的api_key
         source = self.lang_map[self.lang_source]
         target = self.lang_map[self.lang_target]
         return text
@@ -103,4 +103,4 @@ class DummyTranslator(TranslatorBase):
 Фиктивный переводчик не делает ничего, кроме возвращения оригинального текста.  
 После внедрения переводчика рекомендуется написать собственный тест переводчика для проверки правильности вывода, следуя примеру в tests/test_translators.py. Как только тест пройден, вы можете использовать его в своем приложении.   
 
-Наконец, updateParam выше будет вызываться автоматически, когда пользователь изменит параметр, по умолчанию он будет изменять только значение в setup_params, такое как api_key выше. Обычно это можно игнорировать, но если вам нужно изменить состояние транслятора, например, если это локальная модель трансляции, которая может переключаться между cuda и cpu, вы можете сделать это здесь.  
+Наконец, updateParam выше будет вызываться автоматически, когда пользователь изменит параметр, по умолчанию он будет изменять только значение в params, такое как api_key выше. Обычно это можно игнорировать, но если вам нужно изменить состояние транслятора, например, если это локальная модель трансляции, которая может переключаться между cuda и cpu, вы можете сделать это здесь.  

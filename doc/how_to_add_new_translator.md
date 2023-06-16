@@ -7,7 +7,7 @@ The following example DummyTranslator is commented out of ballontranslator/dl/tr
 
 # "dummy translator" is the name showed in the app
 @register_translator('dummy translator')
-class DummyTranslator(TranslatorBase):
+class DummyTranslator(BaseTranslator):
 
     concate_text = True
 
@@ -15,7 +15,7 @@ class DummyTranslator(TranslatorBase):
     # keys are parameter names, if value type is str, it will be a text editor(required key)
     # if value type is dict, you need to spicify the 'type' of the parameter, 
     # following 'device' is a selector, options a cpu and cuda, default is cpu
-    setup_params: Dict = {
+    params: Dict = {
         'api_key': '', 
         'device': {
             'type': 'selector',
@@ -53,8 +53,8 @@ class DummyTranslator(TranslatorBase):
         '''
         super().updateParam(param_key, param_content)
         if param_key == 'device':
-            # get current state from setup_params
-            # self.model.to(self.setup_params['device']['select'])
+            # get current state from params
+            # self.model.to(self.params['device']['select'])
             pass
 
     @property
@@ -73,20 +73,20 @@ class DummyTranslator(TranslatorBase):
         return ['日本語']
 ```
 
-First the translator must be decorated with register_translator and inherit from the base class TranslatorBase, the 'dummy translator' passed to the decorator is the name of the translator that will be displayed in the interface, be careful not to rename it with an existing translator.  
+First the translator must be decorated with register_translator and inherit from the base class BaseTranslator, the 'dummy translator' passed to the decorator is the name of the translator that will be displayed in the interface, be careful not to rename it with an existing translator.  
 This ```concate_text``` will be explained later, **set it to False if this translator is a offline model or target api accept str list**.  
 ``` python
 @register_translator('dummy translator')
-class DummyTranslator(TranslatorBase):  
+class DummyTranslator(BaseTranslator):  
     concate_text = True
 ```
 
-If the new translator requires user-configurable parameters, construct a dictionary named setup_params as below, otherwise leave it alone or assign None to it.  
+If the new translator requires user-configurable parameters, construct a dictionary named params as below, otherwise leave it alone or assign None to it.  
 
-The keys in setup_params is the corresponding parameter names displayed in the interface, if the corresponding value type is str, it will show in app as a text editor, in following example, the api_key be a text editor with an empty default value.  
+The keys in params is the corresponding parameter names displayed in the interface, if the corresponding value type is str, it will show in app as a text editor, in following example, the api_key be a text editor with an empty default value.  
 The value of the parameter can also be a dictionary, in which case it must be described by 'type', in following example, the 'device' parameter will be shown as a selector in app, valid options are 'cpu' and 'cuda.  
 ``` python
-    setup_params: Dict = {
+    params: Dict = {
         'api_key': '', 
         'device': {
             'type': 'selector',
@@ -99,7 +99,7 @@ The value of the parameter can also be a dictionary, in which case it must be de
 <img src="./src/new_translator.png">
 </p>
 <p align = "center">
-setup_params displayed in the app's config panel.
+params displayed in the app's config panel.
 </p>  
 
 Implement ```_setup_translator```: initialized the translator here. 

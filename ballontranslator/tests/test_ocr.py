@@ -16,7 +16,7 @@ def test_ocr(ocr: OCRBase, proj: ProjImgTrans):
 
     os.makedirs(SAVE_DIR, exist_ok=True)
     print('Testing OCR:', ocr.__class__.__name__)
-    print('OCR params:', ocr.setup_params)
+    print('OCR params:', ocr.params)
     
     for page_name in tqdm(proj.pages):
         blk_list = proj.pages[page_name]
@@ -27,10 +27,10 @@ def test_ocr(ocr: OCRBase, proj: ProjImgTrans):
 
 
 def test_mit48px(proj: ProjImgTrans, device: str = 'cpu', chunk_size: int = 16):
-    setup_params = OCRMIT48pxCTC.setup_params
-    setup_params['device']['select'] = device
-    setup_params['chunk_size']['select'] = chunk_size
-    ocr = OCRMIT48pxCTC(**setup_params)
+    params = OCRMIT48pxCTC.params
+    params['device']['select'] = device
+    params['chunk_size']['select'] = chunk_size
+    ocr = OCRMIT48pxCTC(**params)
     test_ocr(ocr, proj)
 
 

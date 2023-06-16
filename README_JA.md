@@ -133,11 +133,3 @@ Sugoi translatorは、[mingshiba](https://www.patreon.com/mingshiba)によって
 ## その他
 * あなたのコンピュータにNvidia GPUがある場合、プログラムはデフォルトですべてのモデルのcudaアクセラレーションを有効にし、およそ6G GPUメモリを必要とします。
 * ロシア語のローカライズを担当した[bropines](https://github.com/bropines)に感謝します。
-
-## 完全自動翻訳結果のプレビュー
-|            オリジナル            |         翻訳済み (中国語)         |         翻訳済み (英語)         |
-| :-----------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------: |
-|![Original](ballontranslator/data/testpacks/manga/original2.jpg 'https://twitter.com/mmd_96yuki/status/1320122899005460481')| ![Translated (CHS)](doc/src/result2.png) | ![Translated (ENG)](doc/src/original2_eng.png) |
-|![Original](ballontranslator/data/testpacks/manga/original3.jpg 'https://twitter.com/_taroshin_/status/1231099378779082754')| ![Translated (CHS)](doc/src/original3.png) | ![Translated (ENG)](doc/src/original3_eng.png) |
-| ![Original](ballontranslator/data//testpacks/manga/AisazuNihaIrarenai-003.jpg) | ![Translated (CHS)](doc/src/AisazuNihaIrarenai-003.png) | ![Translated (ENG)](doc/src/AisazuNihaIrarenai-003_eng.png) |
-|           ![Original](ballontranslator/data//testpacks/comics/006049.jpg)           | ![Translated (CHS)](doc/src/006049.png) | |

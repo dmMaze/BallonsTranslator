@@ -2,23 +2,25 @@ __pycache__
 inpainted
 mask
 result
-ballontranslator/data/models
-ballontranslator/data/testpacks/eng_dontupload
-ballontranslator/data/testpacks/testpacks
-ballontranslator/data/*.png
+data/models
+data/testpacks/eng_dontupload
+data/testpacks/testpacks
+data/*.png
 ballontranslator/ui/pagesources/gallery-dl
 ballontranslator/gallery-dl
 release
 libs
+icons
 
 tmp.py
 dummy_scripts.py
 
 tmp
 TEST*
-ballontranslator/data/logs
+logs
+ballontrans_pylibs_win
+config/config.json
 
-*.json
 .vscode
 .VSCodeCounter
 *.zip
@@ -27,3 +29,6 @@ ballontranslator/data/logs
 *.so
 *.docx
 *.doc
+*.pt
+*.ckpt
+*.onnx
