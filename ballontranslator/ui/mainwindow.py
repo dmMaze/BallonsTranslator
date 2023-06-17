@@ -50,10 +50,9 @@ class PageListItem(QListWidgetItem):
         return item_str
     def __lt__(self, other) -> bool:
         try:
-            self.getNum(self.text())<self.getNum(other.text())
+            return self.getNum(self.text())<self.getNum(other.text())
         except Exception:
-            return super().__lt__(other)
-        return super().__lt__(other)
+            return QListWidgetItem().__lt__(other)
     
 
 class MainWindow(FramelessWindow):
