@@ -228,6 +228,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                     char_idx += 1
                 it += 1
                 frag_idx += 1
+
             self.block_charfmt_lst.append(charfmt_lst)
             self.block_ideal_width.append(ideal_width)
             self.block_ideal_height.append(ideal_height)
@@ -394,7 +395,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 else:
                     yoff = -cfmt.tbr.top() - fm.ascent() + natral_shifted
-                    self.line_draw(painter, line, -natral_shifted, yoff, selected, selection)
+                    # print(natral_shifted, char, line.naturalTextWidth(), line.textLength())
+                    # self.line_draw(painter, line, -natral_shifted, yoff, selected, selection)
+                    self.line_draw(painter, line, 0, yoff, selected, selection)
 
             block = block.next()
 

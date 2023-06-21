@@ -2,7 +2,6 @@
 
 PyQt6-Qt6<=6.4.2    # framelesswindow is broken for qt>=6.4.3
 PyQt6<=6.4.2   #PyQt5>=5.15.9
-
 numpy
 urllib3==1.25.11 # https://github.com/psf/requests/issues/5740
 jaconv
@@ -13,8 +12,6 @@ fugashi
 unidic_lite
 tqdm
 opencv-python
-
-pywin32
 shapely
 pyclipper
 einops
@@ -36,3 +33,5 @@ Pillow
 beautifulsoup4
 colorama
 gallery-dl
+
+# pywin32 required on windows

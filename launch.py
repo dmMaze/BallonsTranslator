@@ -16,6 +16,10 @@ index_url = os.environ.get('INDEX_URL', "")
 QT_APIS = ['pyqt5', 'pyqt6']
 stored_commit_hash = None
 
+REQ_WIN = [
+    'pywin32'
+]
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--reinstall-torch", action='store_true', help="launch.py argument: install the appropriate version of torch even if you have some version already installed")
 parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
@@ -65,7 +69,7 @@ def run_pip(args, desc=None):
         return
 
     index_url_line = f' --index-url {index_url}' if index_url != '' else ''
-    return run(f'"{python}" -m pip {args} --no-cache-dir --prefer-binary{index_url_line}', desc=f"Installing {desc}", errdesc=f"Couldn't install {desc}", live=True)
+    return run(f'"{python}" -m pip {args} --prefer-binary{index_url_line}', desc=f"Installing {desc}", errdesc=f"Couldn't install {desc}", live=True)
 
 
 def commit_hash():
@@ -160,15 +164,29 @@ def main():
     sys.exit(app.exec())
 
 def prepare_environment():
-    torch_command = os.environ.get('TORCH_COMMAND', "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118")
+
+    req_updated = False
+    if sys.platform == 'win32':
+        for req in REQ_WIN:
+            try:
+                pkg_resources.require(req)
+            except Exception:
+                run_pip(f"install {req}", req)
+                req_updated = True
+
+    torch_command = os.environ.get('TORCH_COMMAND', "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118")
     if args.reinstall_torch or not is_installed("torch") or not is_installed("torchvision"):
         run(f'"{python}" -m {torch_command}', "Installing torch and torchvision", "Couldn't install torch", live=True)
-
+        req_updated = True
     try:
         pkg_resources.require(open(args.requirements,mode='r', encoding='utf8'))
     except Exception:
         run_pip(f"install -r {args.requirements}", "requirements")
+        req_updated = True
 
+    if req_updated:
+        import site
+        importlib.reload(site)
 
 if __name__ == '__main__':
 
