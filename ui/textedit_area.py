@@ -2,7 +2,7 @@ from typing import List, Union
 
 from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QFrame, QApplication, QHBoxLayout 
 from qtpy.QtCore import Signal, Qt, QSize, QEvent, QPoint
-from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QKeyEvent, QTextCursor, QMouseEvent
+from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QKeyEvent, QTextCursor, QMouseEvent, QKeySequence
 import keyboard
 
 from .stylewidgets import Widget, SeparatorWidget, ClickableLabel
@@ -80,13 +80,28 @@ class SourceTextEdit(QTextEdit):
         self.input_method_text = ''
         self.text_content_changed = False
         self.highlighting = False
-        self.ctrlv_pressed = False
+        self.paste_flag = False
 
         self.selected_text = ''
         self.cursorPositionChanged.connect(self.on_cursorpos_changed)
 
         self.cursor_coord = None
         self.block_all_input = False
+
+        self.in_acts = False
+
+    def contextMenuEvent(self, event):
+        menu = self.createStandardContextMenu()
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        acts = menu.actions()
+        self.in_acts = True
+        rst = menu.exec_(event.globalPos())
+
+        # future actions orders changes could break these comparsion
+        self.paste_flag = rst == acts[5]
+        if self.paste_flag or rst == acts[3] or rst == acts[6]:
+            self.handle_content_change()
+        self.in_acts = False
 
     def on_cursorpos_changed(self) -> None:
         cursor = self.textCursor()
@@ -135,50 +150,52 @@ class SourceTextEdit(QTextEdit):
             if not self.highlighting:
                 self.text_changed.emit()
                 
-        if self.hasFocus() and not self.pre_editing and not self.highlighting:
+        if self.hasFocus() and not self.pre_editing and not self.highlighting and not self.in_acts:
+            self.handle_content_change()
 
-            if not self.in_redo_undo:
-                
-                change_from = self.change_from
-                added_text = ''
-                input_method_used = False
-                
-                if self.ctrlv_pressed:
-                    self.ctrlv_pressed = False
+    def handle_content_change(self):
+        if not self.in_redo_undo:
+            
+            change_from = self.change_from
+            added_text = ''
+            input_method_used = False
+            
+            if self.paste_flag:
+                self.paste_flag = False
+                cursor = self.textCursor()
+                cursor.setPosition(change_from)
+                cursor.setPosition(self.textCursor().position(), QTextCursor.MoveMode.KeepAnchor)
+                added_text = cursor.selectedText()
+            
+            else:
+                if self.input_method_from != -1:
+                    added_text = self.input_method_text
+                    change_from = self.input_method_from
+                    input_method_used = True
+                elif self.change_added > 0:
+                    text = self.toPlainText()
+                    len_text = len(text)
                     cursor = self.textCursor()
-                    cursor.setPosition(change_from)
-                    cursor.setPosition(self.textCursor().position(), QTextCursor.MoveMode.KeepAnchor)
-                    added_text = cursor.selectedText()
-                
-                else:
-                    if self.input_method_from != -1:
-                        added_text = self.input_method_text
-                        change_from = self.input_method_from
-                        input_method_used = True
-                    elif self.change_added > 0:
-                        text = self.toPlainText()
-                        len_text = len(text)
-                        cursor = self.textCursor()
-                        
-                        if self.change_added >  len_text or change_from + self.change_added > len_text:
-                            self.change_added = 1
-                            change_from = self.textCursor().position() - 1
-                            cursor.setPosition(change_from)
-                            cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
-                            added_text = cursor.selectedText()
-                            if added_text == '…' or added_text == '—':
-                                    self.change_added = 2
-                                    change_from -= 1
+                    
+                    if self.change_added >  len_text or change_from + self.change_added > len_text:
+                        self.change_added = 1
+                        change_from = self.textCursor().position() - 1
                         cursor.setPosition(change_from)
-                        cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor) 
+                        cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
                         added_text = cursor.selectedText()
+                        if added_text == '…' or added_text == '—':
+                                self.change_added = 2
+                                change_from -= 1
+                    cursor.setPosition(change_from)
+                    cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor) 
+                    added_text = cursor.selectedText()
 
-                self.propagate_user_edited.emit(change_from, added_text, input_method_used)
-                undo_steps = self.document().availableUndoSteps()
-                new_steps = undo_steps - self.old_undo_steps
-                if new_steps > 0:
-                    self.old_undo_steps = undo_steps
-                    self.push_undo_stack.emit(new_steps)
+            self.propagate_user_edited.emit(change_from, added_text, input_method_used)
+            undo_steps = self.document().availableUndoSteps()
+            new_steps = undo_steps - self.old_undo_steps
+            if new_steps > 0:
+                self.old_undo_steps = undo_steps
+                self.push_undo_stack.emit(new_steps)
 
     def setHoverEffect(self, hover: bool):
         try:
@@ -240,7 +257,7 @@ class SourceTextEdit(QTextEdit):
                 self.redo_signal.emit()
                 return
             elif e.key() == Qt.Key.Key_V:
-                self.ctrlv_pressed = True
+                self.paste_flag = True
                 return super().keyPressEvent(e)
         elif e.key() == Qt.Key.Key_Return:
             e.accept()
