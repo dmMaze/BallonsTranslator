@@ -136,6 +136,7 @@ class SearchEditor(QPlainTextEdit):
         fm = QFontMetrics(self.font())
         h = fm.height() * self.document().size().height() * 1.05
         h += self.document().documentMargin() * 2
+        h = int(h)
         if self.geometry().height() != h:
             self.setFixedHeight(max(h, self.original_height))
             self.height_changed.emit()
