@@ -229,7 +229,7 @@ class Canvas(QGraphicsScene):
         self.maskLayer.setParentItem(self.baseLayer)
         self.drawingLayer.setParentItem(self.baseLayer)
         self.textLayer.setParentItem(self.baseLayer)
-        self.txtblkShapeControl.setParentItem(self.textLayer)
+        self.txtblkShapeControl.setParentItem(self.baseLayer)
 
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
