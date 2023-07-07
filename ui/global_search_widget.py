@@ -168,6 +168,9 @@ class SearchResultTree(QTreeView):
         rc = self.root_item.rowCount()
         if rc > 0:
             self.root_item.removeRows(0, rc)
+
+    def rowCount(self):
+        return self.root_item.rowCount()
         
 
 class GlobalReplaceThead(ThreadBase):
@@ -198,7 +201,7 @@ class GlobalReplaceThead(ThreadBase):
             self.start()
 
     def _search_proj(self, target: str):
-        row_count = self.srt.sm.rowCount()
+        row_count = self.srt.rowCount()
         doc = QTextDocument()
         doc.setUndoRedoEnabled(False)
         sceneitem_list = {'src': [], 'trans': []}
@@ -438,8 +441,8 @@ class GlobalSearchWidget(Widget):
         self.req_update_pagetext.emit()
         self.counter_sum = 0
 
-        match_src = True if self.range_combobox.currentIndex() != 0 else False
-        match_trans = True if self.range_combobox.currentIndex() != 1 else False
+        match_src = self.range_combobox.currentIndex() != 0
+        match_trans = self.range_combobox.currentIndex() != 1
         
         for pagename, page in self.imgtrans_proj.pages.items():
             page_match_counter = 0
@@ -496,8 +499,7 @@ class GlobalSearchWidget(Widget):
         if ret == QMessageBox.StandardButton.No:
             return
 
-        self.set_document_edited()
-        self.num_pages = self.search_tree.sm.rowCount()
+        self.num_pages = self.search_tree.rowCount()
         self.fin_page_counter = 0
         self.page_set = set()
         rerender_pages = []
@@ -511,18 +513,28 @@ class GlobalSearchWidget(Widget):
         self.progress_bar.updateTaskProgress(0)
         self.progress_bar.show()
         target = self.replace_editor.toPlainText()
+
+        replace_src = self.range_combobox.currentIndex() != 0
+        replace_trans = self.range_combobox.currentIndex() != 1
         
         for pagename, page_row in rerender_pages:
             self.req_move_page.emit(pagename, False)
             page_rst_item: PageSeachResultItem = self.search_tree.sm.item(page_row, 0)
-            for idx in page_rst_item.blkid2match['src']:
-                src = self.replace_thread.pairwidget_list[idx].e_source
-                src.setPlainText(pattern.sub(target, src.toPlainText()))
-            for idx, rstitem_list in page_rst_item.blkid2match['trans'].items():
-                item = self.textblk_item_list[idx]
-                span_list = [[rstitem.start, rstitem.end] for rstitem in rstitem_list]
-                doc_replace(item.document(), span_list, target)
-        self.req_move_page.emit(pagename, True)
+
+            if replace_src:
+                for idx in page_rst_item.blkid2match['src']:
+                    src = self.replace_thread.pairwidget_list[idx].e_source
+                    src.setPlainText(pattern.sub(target, src.toPlainText()))
+
+            if replace_trans:
+                for idx, rstitem_list in page_rst_item.blkid2match['trans'].items():
+                    item = self.textblk_item_list[idx]
+                    span_list = [[rstitem.start, rstitem.end] for rstitem in rstitem_list]
+                    doc_replace(item.document(), span_list, target)
+        
+        if len(rerender_pages) > 0:
+            self.req_move_page.emit(pagename, True)
+            self.set_document_edited()
 
     def sizeHint(self) -> QSize:
         size = super().sizeHint()
