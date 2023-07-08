@@ -101,7 +101,7 @@ class ProjImgTrans:
             self.not_found_pages = {}
             page_dict = proj_dict['pages']
             not_found_pages = list(page_dict.keys())
-            found_pages = find_all_imgs(img_dir=self.directory, abs_path=False)
+            found_pages = find_all_imgs(img_dir=self.directory, abs_path=False, sort=True)
             for ii, imname in enumerate(found_pages):
                 if imname in page_dict:
                     self.pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
@@ -184,7 +184,7 @@ class ProjImgTrans:
         if not osp.exists(self.directory):
             raise ProjectDirNotExistException
         self.set_current_img(None)
-        imglist = find_all_imgs(self.directory, abs_path=False)
+        imglist = find_all_imgs(self.directory, abs_path=False, sort=True)
         self.pages = {}
         self._pagename2idx = {}
         self._idx2pagename = {}

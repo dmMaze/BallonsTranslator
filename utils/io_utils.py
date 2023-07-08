@@ -28,7 +28,7 @@ class NumpyEncoder(json.JSONEncoder):
                 return int(obj)
         return json.JSONEncoder.default(self, obj)
 
-def find_all_imgs(img_dir, abs_path=False):
+def find_all_imgs(img_dir, abs_path=False, sort=False):
     imglist = []
     for filename in os.listdir(img_dir):
         file_suffix = Path(filename).suffix
@@ -38,6 +38,10 @@ def find_all_imgs(img_dir, abs_path=False):
             imglist.append(osp.join(img_dir, filename))
         else:
             imglist.append(filename)
+
+    if sort:
+        imglist.sort()
+        
     return imglist
 
 def imread(imgpath, read_type=cv2.IMREAD_COLOR):
