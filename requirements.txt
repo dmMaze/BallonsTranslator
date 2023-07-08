@@ -33,5 +33,7 @@ Pillow
 beautifulsoup4
 colorama
 gallery-dl
+openai
+pyyaml
 
 # pywin32 required on windows

@@ -29,7 +29,7 @@ class PapagoTranslator(BaseTranslator):
             papagoVer = re.search(r'"PPG .*,"(v[^"]*)', papagoVerData.text).group(1)
             self.papagoVer = PapagoTranslator.papagoVer = papagoVer
 
-    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+    def _translate(self, text: List[str]) -> List[str]:
         data = {}
         data['source'] = self.lang_map[self.lang_source]
         data['target'] = self.lang_map[self.lang_target]

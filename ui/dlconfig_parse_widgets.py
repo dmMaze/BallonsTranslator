@@ -4,11 +4,11 @@ from modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRA
     BaseTranslator, DEFAULT_DEVICE
 from utils.logger import logger as LOGGER
 from .stylewidgets import ConfigComboBox, NoBorderPushBtn
-from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
+from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit
+from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QFontMetricsF
+from qtpy.QtGui import QFontMetricsF, QDoubleValidator
 
 
 class ParamNameLabel(QLabel):
@@ -25,18 +25,47 @@ class ParamNameLabel(QLabel):
         self.setFixedWidth(labelwidth)
         self.setText(param_name)
 
-class ParamEditor(QLineEdit):
+class ParamLineEditor(QLineEdit):
     
     paramwidget_edited = Signal(str, str)
-    def __init__(self, param_key: str, *args, **kwargs) -> None:
+    def __init__(self, param_key: str, force_digital, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.param_key = param_key
         self.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
         self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.textChanged.connect(self.on_text_changed)
 
+        if force_digital:
+            validator = QDoubleValidator()
+            self.setValidator(validator)
+
     def on_text_changed(self):
         self.paramwidget_edited.emit(self.param_key, self.text())
+
+class ParamEditor(QPlainTextEdit):
+    
+    paramwidget_edited = Signal(str, str)
+    def __init__(self, param_key: str, *args, **kwargs) -> None:
+        super().__init__( *args, **kwargs)
+        self.param_key = param_key
+
+        if param_key == 'chat sample':
+            self.setFixedWidth(int(CONFIG_COMBOBOX_LONG * 1.2))
+            self.setFixedHeight(200)
+        else:
+            self.setFixedWidth(CONFIG_COMBOBOX_LONG)
+            self.setFixedHeight(100)
+        # self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
+        self.textChanged.connect(self.on_text_changed)
+
+    def on_text_changed(self):
+        self.paramwidget_edited.emit(self.param_key, self.text())
+
+    def setText(self, text: str):
+        self.setPlainText(text)
+
+    def text(self):
+        return self.toPlainText()
 
 
 class ParamComboBox(QComboBox):
@@ -56,6 +85,7 @@ class ParamComboBox(QComboBox):
 
 class ParamCheckerBox(QWidget):
     checker_changed = Signal(bool)
+    paramwidget_edited = Signal(str, str)
     def __init__(self, param_key: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.param_key = param_key
@@ -68,12 +98,26 @@ class ParamCheckerBox(QWidget):
         self.checker.stateChanged.connect(self.on_checker_changed)
 
     def on_checker_changed(self):
-        self.checker_changed.emit(self.checker.isChecked())
+        is_checked = self.checker.isChecked()
+        self.checker_changed.emit(is_checked)
+        checked = 'true' if is_checked else 'false'
+        self.paramwidget_edited.emit(self.param_key, checked)
+
+
+class ParamCheckBox(QCheckBox):
+    paramwidget_edited = Signal(str, bool)
+    def __init__(self, param_key: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.param_key = param_key
+        self.stateChanged.connect(self.on_checker_changed)
+
+    def on_checker_changed(self):
+        self.paramwidget_edited.emit(self.param_key, self.isChecked())
 
 
 class ParamWidget(QWidget):
 
-    paramwidget_edited = Signal(str, str)
+    paramwidget_edited = Signal(str, dict)
     def __init__(self, params, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         param_layout = QVBoxLayout(self)
@@ -83,13 +127,27 @@ class ParamWidget(QWidget):
         param_layout.setSpacing(14)
         for param_key in params:
             param_label = ParamNameLabel(param_key)
+
+            is_str = isinstance(params[param_key], str)
+            is_digital = isinstance(params[param_key], float) or isinstance(params[param_key], int)
+
             if param_key == 'description':
                 continue
             
-            elif isinstance(params[param_key], str):
-                param_widget = ParamEditor(param_key)
-                param_widget.setText(params[param_key])
-                param_widget.paramwidget_edited.connect(self.paramwidget_edited)
+            elif isinstance(params[param_key], bool):
+                    param_widget = ParamCheckBox(param_key)
+                    val = params[param_key]
+                    param_widget.setChecked(val)
+                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+
+            elif is_str or is_digital:
+                param_widget = ParamLineEditor(param_key, force_digital=is_digital)
+                val = params[param_key]
+                if is_digital:
+                    val = str(val)
+                param_widget.setText(val)
+                param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+
             elif isinstance(params[param_key], dict):
                 param_dict = params[param_key]
                 if param_dict['type'] == 'selector':
@@ -113,7 +171,13 @@ class ParamWidget(QWidget):
                     else:
                         param_widget.setCurrentIndex(0)
                         param_dict['select'] = param_widget.currentText()
-                    param_widget.paramwidget_edited.connect(self.paramwidget_edited)
+                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+                elif param_dict['type'] == 'editor':
+                    param_widget = ParamEditor(param_key)
+                    val = params[param_key]['content']
+                    param_widget.setText(val)
+                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+
             layout = QHBoxLayout()
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(10)
@@ -122,10 +186,14 @@ class ParamWidget(QWidget):
             layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             param_layout.addLayout(layout)
 
+    def on_paramwidget_edited(self, param_key, param_content):
+            content_dict = {'content': param_content}
+            self.paramwidget_edited.emit(param_key, content_dict)
+
 
 class ModuleConfigParseWidget(QWidget):
     module_changed = Signal(str)
-    paramwidget_edited = Signal(str, str)
+    paramwidget_edited = Signal(str, dict)
     def __init__(self, module_name: str, get_valid_module_keys, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.get_valid_module_keys = get_valid_module_keys

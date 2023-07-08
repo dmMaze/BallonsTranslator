@@ -35,7 +35,7 @@ class DummyTranslator(BaseTranslator):
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'  
         
-    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+    def _translate(self, text: List[str]) -> List[str]:
         '''
         do the translation here.  
         This translator do nothing but return the original text.
@@ -121,7 +121,7 @@ Implement ```_translate```, the following lang_source and lang_target are the la
 If prementioned ```concate_text``` is set to False, input could be str list(all text recognized in a page) or str, else the input could be concated text of a str list (['text1', 'text2'] -> 'text1 \n###\n text2'), set it to True only if this translator is a online api and don't accept str list to make fewer requests.
 
 ``` python
-def _translate(self, text: Union[str, List]) -> Union[str, List]:
+def _translate(self, text: List[str]) -> List[str]:
     '''
     do the translation here.  
     This translator do nothing but return the original text.

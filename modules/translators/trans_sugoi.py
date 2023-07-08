@@ -22,7 +22,7 @@ class SugoiTranslator(BaseTranslator):
         self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.params['device']['select'])
         self.tokenizator = spm.SentencePieceProcessor(model_file=SUGOIMODEL_TOKENIZATOR_PATH)
 
-    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+    def _translate(self, text: List[str]) -> List[str]:
         input_is_lst = True
         if isinstance(text, str):
             text = [text]

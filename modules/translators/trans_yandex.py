@@ -30,7 +30,7 @@ class YandexTranslator(BaseTranslator):
 
         self.api_url = 'https://translate.api.cloud.yandex.net/translate/v2/translate'
 
-    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+    def _translate(self, text: List[str]) -> List[str]:
 
         body = {
             "targetLanguageCode": self.lang_map[self.lang_target],

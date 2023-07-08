@@ -16,7 +16,7 @@ class CaiyunTranslator(BaseTranslator):
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'  
         
-    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+    def _translate(self, text: List[str]) -> List[str]:
 
         url = "http://api.interpreter.caiyunai.com/v1/translator"
         token = self.params['token']

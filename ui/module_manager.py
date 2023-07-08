@@ -794,29 +794,30 @@ class ModuleManager(QObject):
         else:
             self.update_translator_status.emit('', '', '')
     
-    def on_translatorparam_edited(self, param_key: str, param_content: str):
+    def on_translatorparam_edited(self, param_key: str, param_content: dict):
         if self.translator is not None:
             self.updateModuleSetupParam(self.translator, param_key, param_content)
             self.cfg_module.translator_params[self.translator.name] = self.translator.params
 
-    def on_inpainterparam_edited(self, param_key: str, param_content: str):
+    def on_inpainterparam_edited(self, param_key: str, param_content: dict):
         if self.inpainter is not None:
             self.updateModuleSetupParam(self.inpainter, param_key, param_content)
             self.cfg_module.inpainter_params[self.inpainter.name] = self.inpainter.params
 
-    def on_textdetectorparam_edited(self, param_key: str, param_content: str):
+    def on_textdetectorparam_edited(self, param_key: str, param_content: dict):
         if self.textdetector is not None:
             self.updateModuleSetupParam(self.textdetector, param_key, param_content)
             self.cfg_module.textdetector_params[self.textdetector.name] = self.textdetector.params
 
-    def on_ocrparam_edited(self, param_key: str, param_content: str):
+    def on_ocrparam_edited(self, param_key: str, param_content: dict):
         if self.ocr is not None:
             self.updateModuleSetupParam(self.ocr, param_key, param_content)
             self.cfg_module.ocr_params[self.ocr.name] = self.ocr.params
 
     def updateModuleSetupParam(self, 
                                module: Union[InpainterBase, BaseTranslator],
-                               param_key: str, param_content: str):
+                               param_key: str, param_content: dict):
+            param_content = param_content['content']
             module.updateParam(param_key, param_content)
         
     def handleRunTimeException(self, msg: str, detail: str = None, verbose: str = ''):

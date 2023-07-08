@@ -32,3 +32,4 @@ config/config.json
 *.pt
 *.ckpt
 *.onnx
+*.7z

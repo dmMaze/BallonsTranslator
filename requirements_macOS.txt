@@ -32,3 +32,6 @@ keyboard
 ordered-set
 pyinstaller
 opencc
+gallery-dl
+openai
+yaml

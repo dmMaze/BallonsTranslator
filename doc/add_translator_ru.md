@@ -30,7 +30,7 @@ class DummyTranslator(BaseTranslator):
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'  
         
-    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+    def _translate(self, text: List[str]) -> List[str]:
         '''
         do the translation here.  
         This translator do nothing but return the original text.
@@ -94,7 +94,7 @@ class DummyTranslator(BaseTranslator):
 Слишком медленно посылать запрос для каждого текстового блока, поэтому вся страница сшивается и переводится. concate_text настроен на автоматическое сшивание/разделение, и по умолчанию сшивает весь блок вместе с '\n###\n' в качестве разделителя, а затем разделяет переведенный текст обратно в текстовую таблицу с помощью '####'. Это работает для большинства проверенных мной переводчиков, но некоторые из них избавляются от #, поэтому вы можете отключить перевод concate_text блок за блоком или реализовать свой собственный метод сшивания.  
 Некоторые апи, такие как Caiyun, поддерживают прямые текстовые таблицы в сообщениях, поэтому можно установить значение False.  
 ``` python
-    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+    def _translate(self, text: List[str]) -> List[str]:
         api_key = self.params['api_key']  # 如此获取用户修改过的api_key
         source = self.lang_map[self.lang_source]
         target = self.lang_map[self.lang_target]

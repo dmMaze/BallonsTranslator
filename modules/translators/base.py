@@ -34,7 +34,8 @@ LANGMAP_GLOBAL = {
     'limba română': '',
     'русский язык': '',
     'español': '',
-    'Türk dili': ''        
+    'Türk dili': '',
+    'украї́нська мо́ва': '',  
 }
 
 SYSTEM_LANG = ''
@@ -130,27 +131,32 @@ class BaseTranslator(BaseModule):
     def set_target(self, lang: str):
         self.lang_target = lang
 
-    def _translate(self, text: Union[str, List]) -> Union[str, List]:
+    def _translate(self, text: List[str]) -> List[str]:
         raise NotImplementedError
 
     def translate(self, text: Union[str, List]) -> Union[str, List]:
         if text_is_empty(text):
             return text
 
-        concate_text = isinstance(text, List) and self.concate_text
+        is_list = isinstance(text, List)
+        concate_text = is_list and self.concate_text
         text_source = self.textlist2text(text) if concate_text else text
         
-        text_trans = self._translate(text_source)
+        src_is_list = isinstance(text_source, List)
+        if src_is_list: 
+            text_trans = self._translate(text_source)
+        else:
+            text_trans = self._translate([text_source])[0]
         
         if text_trans is None:
-            if isinstance(text, List):
+            if is_list:
                 text_trans = [''] * len(text)
             else:
                 text_trans = ''
         elif concate_text:
             text_trans = self.text2textlist(text_trans)
             
-        if isinstance(text, List):
+        if is_list:
             assert len(text_trans) == len(text)
             for ii, t in enumerate(text_trans):
                 for callback in self.postprocess_hooks:
