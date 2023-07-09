@@ -211,16 +211,26 @@ class GPTTranslator(BaseTranslator):
                 except openai.error.RateLimitError: # Server returned ratelimit response
                     ratelimit_attempt += 1
                     if ratelimit_attempt >= 3:
-                        raise
+                        new_translations = [''] * num_src
+                        break
                     self.logger.warn(f'Restarting request due to ratelimiting by openai servers. Attempt: {ratelimit_attempt}')
                     time.sleep(2)
                 except openai.error.APIError: # Server returned 500 error (probably server load)
                     retry_attempt += 1
                     if retry_attempt >= self.retry_attempts:
                         self.logger.error('OpenAI encountered a server error, possibly due to high server load. Use a different translator or try again later.')
-                        raise
+                        new_translations = [''] * num_src
+                        break
                     self.logger.warn(f'Restarting request due to a server error. Attempt: {retry_attempt}')
                     time.sleep(1)
+                except openai.error.ServiceUnavailableError:
+                    retry_attempt += 1
+                    if retry_attempt >= self.retry_attempts:
+                        self.logger.error('OpenAI encountered a server error, possibly due to high server load. Use a different translator or try again later.')
+                        new_translations = [''] * num_src
+                        break
+                    self.logger.warn(f'Restarting request due to a server error. Attempt: {retry_attempt}')
+                    time.sleep(2)
                 except InvalidNumTranslations:
                     retry_attempt += 1
                     message = f'number of translations does not match to source:\nprompt:\n    {prompt}\ntranslations:\n  {new_translations}\nopenai response:\n  {response}'
