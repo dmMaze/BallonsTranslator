@@ -37,12 +37,12 @@ class DeeplTranslator(BaseTranslator):
         self.lang_map['Slovenščina'] = 'sl'
         self.lang_map['Svenska'] = 'sv'
         
-    def _translate(self, text: List[str]) -> List[str]:
+    def _translate(self, src_list: List[str]) -> List[str]:
         api_key = self.params['api_key']
         translator = deepl.Translator(api_key)
         source = self.lang_map[self.lang_source]
         target = self.lang_map[self.lang_target]
         if source == 'EN-US':
             source = "EN"
-        result = translator.translate_text(text, source_lang=source, target_lang=target)
+        result = translator.translate_text(src_list, source_lang=source, target_lang=target)
         return [i.text for i in result]

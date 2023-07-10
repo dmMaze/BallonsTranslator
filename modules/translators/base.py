@@ -131,7 +131,7 @@ class BaseTranslator(BaseModule):
     def set_target(self, lang: str):
         self.lang_target = lang
 
-    def _translate(self, text: List[str]) -> List[str]:
+    def _translate(self, src_list: List[str]) -> List[str]:
         raise NotImplementedError
 
     def translate(self, text: Union[str, List]) -> Union[str, List]:

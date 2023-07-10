@@ -36,11 +36,11 @@ class BaiduTranslator(BaseTranslator):
         self.lang_map['日本語'] = 'jp'
         self.lang_map['English'] = 'en'  
     
-    def _translate(self, text: List[str]) -> List[str]:
+    def _translate(self, src_list: List[str]) -> List[str]:
 
         n_queries = []
         query_split_sizes = []
-        for query in text:
+        for query in src_list:
             batch = query.split('\n')
             query_split_sizes.append(len(batch))
             n_queries.extend(batch)

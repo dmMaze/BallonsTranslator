@@ -897,7 +897,7 @@ class MainWindow(FramelessWindow):
             blk = blkitem.blk
             blk._bounding_rect = blkitem.absBoundingRect()
             blk.vertical = blkitem.is_vertical
-            blk.text = []
+            blk.text = self.st_manager.pairwidget_list[blkitem.idx].e_source.toPlainText()
             blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
             blk_list.append(blk)
 

@@ -22,19 +22,13 @@ class SugoiTranslator(BaseTranslator):
         self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.params['device']['select'])
         self.tokenizator = spm.SentencePieceProcessor(model_file=SUGOIMODEL_TOKENIZATOR_PATH)
 
-    def _translate(self, text: List[str]) -> List[str]:
-        input_is_lst = True
-        if isinstance(text, str):
-            text = [text]
-            input_is_lst = False
+    def _translate(self, src_list: List[str]) -> List[str]:
         
-        text = [i.replace(".", "@").replace("．", "@") for i in text]
+        text = [i.replace(".", "@").replace("．", "@") for i in src_list]
         tokenized_text = self.tokenizator.encode(text, out_type=str, enable_sampling=True, alpha=0.1, nbest_size=-1)
         tokenized_translated = self.translator.translate_batch(tokenized_text)
         text_translated = [''.join(text[0]["tokens"]).replace('▁', ' ').replace("@", ".") for text in tokenized_translated]
         
-        if not input_is_lst:
-            return text_translated[0]
         return text_translated
 
     def updateParam(self, param_key: str, param_content):

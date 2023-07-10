@@ -313,12 +313,13 @@ class TransGoogle(BaseTranslator):
 
         self.googletrans = GoogleTranslator()
         
-    def _translate(self, text: List[str]) -> List[str]:
+    def _translate(self, src_list: List[str]) -> List[str]:
+        
         self.googletrans._source = self.lang_map[self.lang_source]
         self.googletrans._url_params['sl'] = self.lang_map[self.lang_source]
         self.googletrans._target = self.lang_map[self.lang_target]
         self.googletrans._url_params['tl'] = self.lang_map[self.lang_target]
         self.googletrans.__base_url = self.params['url']['select']
-        translations = self.googletrans.translate(text)
+        translations = [self.googletrans.translate(t) for t in src_list]
 
         return translations

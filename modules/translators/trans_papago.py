@@ -29,11 +29,11 @@ class PapagoTranslator(BaseTranslator):
             papagoVer = re.search(r'"PPG .*,"(v[^"]*)', papagoVerData.text).group(1)
             self.papagoVer = PapagoTranslator.papagoVer = papagoVer
 
-    def _translate(self, text: List[str]) -> List[str]:
+    def _translate(self, src_list: List[str]) -> List[str]:
         data = {}
         data['source'] = self.lang_map[self.lang_source]
         data['target'] = self.lang_map[self.lang_target]
-        data['text'] = text
+        data['text'] = src_list[0]
         data['honorific'] = "false"
 
         PAPAGO_URL = 'https://papago.naver.com/apis/n2mt/translate'
@@ -51,4 +51,4 @@ class PapagoTranslator(BaseTranslator):
         resp = requests.post(PAPAGO_URL, data, headers=headers)
         translations = resp.json()['translatedText']
     
-        return translations
+        return [translations]

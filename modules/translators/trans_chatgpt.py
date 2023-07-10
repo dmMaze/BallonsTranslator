@@ -190,12 +190,12 @@ class GPTTranslator(BaseTranslator):
                 prompt,
             ])
 
-    def _translate(self, text: List[str]) -> List[str]:
+    def _translate(self, src_list: List[str]) -> List[str]:
         translations = []
         # self.logger.debug(f'Temperature: {self.temperature}, TopP: {self.top_p}')
         from_lang = self.lang_map[self.lang_source]
         to_lang = self.lang_map[self.lang_target]
-        queries = text
+        queries = src_list
         # return_prompt = self.params['return prompt']
         chat_sample = self.chat_sample
         for prompt, num_src in self._assemble_prompts(from_lang, to_lang, queries):

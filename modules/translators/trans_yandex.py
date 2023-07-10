@@ -30,11 +30,11 @@ class YandexTranslator(BaseTranslator):
 
         self.api_url = 'https://translate.api.cloud.yandex.net/translate/v2/translate'
 
-    def _translate(self, text: List[str]) -> List[str]:
+    def _translate(self, src_list: List[str]) -> List[str]:
 
         body = {
             "targetLanguageCode": self.lang_map[self.lang_target],
-            "texts": text,
+            "texts": src_list,
             "folderId": '',
         }
 
@@ -44,8 +44,7 @@ class YandexTranslator(BaseTranslator):
         }
 
         translations = requests.post(self.api_url, json=body, headers=headers).json()['translations']
-        if isinstance(text, str):
-            return translations[0]['text']
+
         tr_list = []
         for tr in translations:
             if 'text' in tr:
