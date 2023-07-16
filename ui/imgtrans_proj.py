@@ -338,7 +338,6 @@ class ProjImgTrans:
 
 
     def load_doc(self, doc_path, delete_tmp_folder=True, fin_page_signal=None):
-
         tmp_bubble_folder = osp.join(self.directory, 'img_folder')
         os.makedirs(tmp_bubble_folder, exist_ok=True)
         docx2txt.process(doc_path, tmp_bubble_folder)
@@ -350,7 +349,7 @@ class ProjImgTrans:
         bub_index = 0
         for tbl in re.findall(r'<w:tbl>(.*?)</w:tbl>', body_xml_str, re.DOTALL):
             for tr in re.findall(r'<w:tr(.*?)>(.*?)</w:tr>', tbl, re.DOTALL):
-                if re.findall(r'<pic:cNvPr id=\"0\" name=\"(.*?)\"/>', tr[1]):
+                if re.findall(r'<pic:cNvPr id=\"(.*?)\" name=\"(.*?)\"(.*?)>', tr[1]):
                     bub_index += 1
                     translation = ""
                     for paragraph in re.findall(r'<w:p(.*?)>(.*?)</w:p>', tr[1], re.DOTALL):
@@ -360,7 +359,13 @@ class ProjImgTrans:
                     translation = translation[:-1]
                     if len(translation) != 0 and translation[0] == "\n":
                         translation = translation[1:]
-                    bubpath = os.path.join(tmp_bubble_folder, "image"+str(bub_index)+".jpg")
+
+
+                    bubpath = os.path.join(tmp_bubble_folder, "image"+str(bub_index))
+                    if osp.exists(bubpath+'.jpg'):
+                        bubpath = bubpath + '.jpg'
+                    else:
+                        bubpath = bubpath + '.jpeg'
 
                     meta_dict = read_jpg_metadata(bubpath)
                     meta_dict["translation"] = translation
