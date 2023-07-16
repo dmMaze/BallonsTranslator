@@ -795,10 +795,47 @@ class MainWindow(FramelessWindow):
         if page_key is None:
             self.bottomBar.transTranspageBtn.setRunText()
             return
-        if run_target and self.canvas.text_change_unsaved():
-            self.st_manager.updateTextBlkList()
+        # if run_target and self.canvas.text_change_unsaved():
+        #     self.st_manager.updateTextBlkList()
+        
+        # self.module_manager.translatePage(run_target, page_key)
+
+        blkitem_list = self.st_manager.textblk_item_list
+
+        if len(blkitem_list) < 1:
+            if self.bottomBar.transTranspageBtn.running:
+                self.bottomBar.transTranspageBtn.setRunText()
+            return
+        
+        self.translateBlkitemList(blkitem_list, -1)
+
+
+    def translateBlkitemList(self, blkitem_list: List, mode: int) -> bool:
+
+        tgt_img = self.imgtrans_proj.img_array
+        if tgt_img is None:
+            return False
+        
+        if len(blkitem_list) < 1:
+            return False
+        
         self.global_search_widget.set_document_edited()
-        self.module_manager.translatePage(run_target, page_key)
+        
+        im_h, im_w = tgt_img.shape[:2]
+
+        blk_list, blk_ids = [], []
+        for blkitem in blkitem_list:
+            blk = blkitem.blk
+            blk._bounding_rect = blkitem.absBoundingRect()
+            blk.vertical = blkitem.is_vertical
+            blk.text = self.st_manager.pairwidget_list[blkitem.idx].e_source.toPlainText()
+            blk_ids.append(blkitem.idx)
+            blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
+            blk_list.append(blk)
+
+        self.module_manager.runBlktransPipeline(blk_list, tgt_img, mode, blk_ids)
+        return True
+
 
     def finishTranslatePage(self, page_key):
         self.bottomBar.transTranspageBtn.setRunText()
@@ -884,33 +921,19 @@ class MainWindow(FramelessWindow):
             self.global_search_widget.set_document_edited()
 
     def on_run_blktrans(self, mode: int):
-        tgt_img = self.imgtrans_proj.img_array
-        if tgt_img is None:
-            return
         blkitem_list = self.canvas.selected_text_items()
-        if len(blkitem_list) < 1:
+        self.translateBlkitemList(blkitem_list, mode)
+
+    def on_blktrans_finished(self, mode: int, blk_ids: List[int]):
+
+        if self.bottomBar.transTranspageBtn.running:
+            self.bottomBar.transTranspageBtn.setRunText()
+
+        if len(blk_ids) < 1:
             return
+        
+        blkitem_list = [self.st_manager.textblk_item_list[idx] for idx in blk_ids]
 
-        im_h, im_w = tgt_img.shape[:2]
-        blk_list = []
-        for blkitem in blkitem_list:
-            blk = blkitem.blk
-            blk._bounding_rect = blkitem.absBoundingRect()
-            blk.vertical = blkitem.is_vertical
-            blk.text = self.st_manager.pairwidget_list[blkitem.idx].e_source.toPlainText()
-            blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
-            blk_list.append(blk)
-
-        # c = visualize_textblocks(tgt_img.copy(), blk_list)
-        # import cv2
-        # cv2.imshow('xx', c)
-        # cv2.waitKey(0)
-        self.module_manager.runBlktransPipeline(blk_list, tgt_img, mode)
-
-    def on_blktrans_finished(self, mode: int):
-        blkitem_list = self.canvas.selected_text_items()
-        if len(blkitem_list) < 1:
-            return
         pairw_list = []
         for blk in blkitem_list:
             pairw_list.append(self.st_manager.pairwidget_list[blk.idx])

@@ -262,6 +262,7 @@ class ImgtransThread(QThread):
     exception_occurred = Signal(str, str)
 
     finish_blktrans_stage = Signal(str, int)
+    finish_blktrans = Signal(int, list)
 
     def __init__(self, 
                  cfg_module: ModuleConfig, 
@@ -301,17 +302,17 @@ class ImgtransThread(QThread):
         self.job = self._imgtrans_pipeline
         self.start()
 
-    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int):
-        self.job = lambda : self._blktrans_pipeline(blk_list, tgt_img, mode)
+    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int]):
+        self.job = lambda : self._blktrans_pipeline(blk_list, tgt_img, mode, blk_ids)
         self.start()
 
-    def _blktrans_pipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int):
+    def _blktrans_pipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int]):
         if mode >= 0:
             self.ocr_thread.module.run_ocr(tgt_img, blk_list)
-            self.finish_blktrans_stage.emit('ocr', 100)
+            self.finish_blktrans.emit(mode, blk_ids)
         if mode != 0:
             self.translate_thread.module.translate_textblk_lst(blk_list)
-            self.finish_blktrans_stage.emit('translate', 100)
+            self.finish_blktrans.emit(mode, blk_ids)
         if mode > 1:
             im_h, im_w = tgt_img.shape[:2]
             progress_prod = 100. / len(blk_list) if len(blk_list) > 0 else 0
@@ -329,7 +330,7 @@ class ImgtransThread(QThread):
                         inpainted = self.inpaint_thread.inpainter.inpaint(im, mask)
                         blk.region_inpaint_dict = {'img': im, 'mask': mask, 'inpaint_rect': [x1, y1, x2, y2], 'inpainted': inpainted}
                     self.finish_blktrans_stage.emit('inpaint', int((ii+1) * progress_prod))
-        self.finish_blktrans_stage.emit(str(mode), 0)
+        self.finish_blktrans.emit(mode, blk_ids)
 
     def _imgtrans_pipeline(self):
         self.detect_counter = 0
@@ -457,7 +458,7 @@ class ModuleManager(QObject):
     canvas_inpaint_finished = Signal(dict)
 
     imgtrans_pipeline_finished = Signal()
-    blktrans_pipeline_finished = Signal(int)
+    blktrans_pipeline_finished = Signal(int, list)
     page_trans_finished = Signal(int)
 
     run_canvas_inpaint = False
@@ -500,6 +501,7 @@ class ModuleManager(QObject):
         self.imgtrans_thread.update_inpaint_progress.connect(self.on_update_inpaint_progress)
         self.imgtrans_thread.exception_occurred.connect(self.handleRunTimeException)
         self.imgtrans_thread.finish_blktrans_stage.connect(self.on_finish_blktrans_stage)
+        self.imgtrans_thread.finish_blktrans.connect(self.on_finish_blktrans)
 
         self.translator_panel = translator_panel = config_panel.trans_config_panel        
         translator_params = merge_config_module_params(cfg_module.translator_params, GET_VALID_TRANSLATORS(), TRANSLATORS.get)
@@ -604,7 +606,7 @@ class ModuleManager(QObject):
         self.progress_msgbox.show()
         self.imgtrans_thread.runImgtransPipeline(self.imgtrans_proj)
 
-    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int):
+    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int]):
         self.terminateRunningThread()
         self.progress_msgbox.hide_all_bars()
         if mode >= 0:
@@ -615,7 +617,7 @@ class ModuleManager(QObject):
             self.progress_msgbox.translate_bar.show()
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show()
-        self.imgtrans_thread.runBlktransPipeline(blk_list, tgt_img, mode)
+        self.imgtrans_thread.runBlktransPipeline(blk_list, tgt_img, mode, blk_ids)
 
     def on_finish_blktrans_stage(self, stage: str, progress: int):
         if stage == 'ocr':
@@ -624,11 +626,12 @@ class ModuleManager(QObject):
             self.progress_msgbox.updateTranslateProgress(progress)
         elif stage == 'inpaint':
             self.progress_msgbox.updateInpaintProgress(progress)
-        elif stage in {'-1', '0', '1', '2'}:
-            self.blktrans_pipeline_finished.emit(int(stage))
-            self.progress_msgbox.hide()
         else:
             raise NotImplementedError(f'Unknown stage: {stage}')
+        
+    def on_finish_blktrans(self, mode: int, blk_ids: List):
+        self.blktrans_pipeline_finished.emit(mode, blk_ids)
+        self.progress_msgbox.hide()
 
     def on_update_detect_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
