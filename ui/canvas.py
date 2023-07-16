@@ -151,6 +151,8 @@ class Canvas(QGraphicsScene):
     textstack_changed = Signal()
     drop_open_folder = Signal(str)
 
+    context_menu_requested = Signal(QPoint)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scale_factor = 1.
@@ -171,6 +173,9 @@ class Canvas(QGraphicsScene):
         self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.gv.canvas = self
         self.gv.setAcceptDrops(True)
+
+        self.gv.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self.context_menu_requested.connect(self.createCustomContextMenu)
         
         if not C.FLAG_QT6:
             # mitigate https://bugreports.qt.io/browse/QTBUG-93417
@@ -546,17 +551,20 @@ class Canvas(QGraphicsScene):
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+
+        self.hide_rubber_band()
+
+        Qt.MouseButton.LeftButton
         if btn == Qt.MouseButton.MiddleButton:
             self.mid_btn_pressed = False
-        elif self.creating_textblock:
-            btn = 0 if btn == Qt.MouseButton.LeftButton else 1
-            return self.endCreateTextblock(btn=btn)
-        elif btn == Qt.MouseButton.RightButton:
+        if self.creating_textblock:
+            tgt = 0 if btn == Qt.MouseButton.LeftButton else 1
+            self.endCreateTextblock(btn=tgt)
+        if btn == Qt.MouseButton.RightButton:
             if self.stroke_img_item is not None:
                 self.finish_erasing.emit(self.stroke_img_item)
-            if self.rubber_band.isVisible():
-                self.rubber_band.hide()
-                self.rubber_band_origin = None
+            if self.textEditMode():
+                self.context_menu_requested.emit(event.screenPos())
         elif btn == Qt.MouseButton.LeftButton:
             if self.stroke_img_item is not None:
                 self.finish_painting.emit(self.stroke_img_item)
@@ -631,8 +639,8 @@ class Canvas(QGraphicsScene):
     def setTextBlockMode(self, mode: bool):
         self.textblock_mode = mode
 
-    def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent):
-        if self.textEditMode():
+    def createCustomContextMenu(self, pos: QPoint):
+        if self.textEditMode() and not self.creating_textblock:
             menu = QMenu(self.gv)
             copy_act = menu.addAction(self.tr("Copy"))
             paste_act = menu.addAction(self.tr("Paste"))
@@ -648,16 +656,16 @@ class Canvas(QGraphicsScene):
             ocr_translate_act = menu.addAction(self.tr("OCR and translate"))
             ocr_translate_inpaint_act = menu.addAction(self.tr("OCR, translate and inpaint"))
 
-            rst = menu.exec_(event.screenPos())
+            rst = menu.exec(pos)
             
             if rst == delete_act:
                 self.delete_textblks.emit(0)
             elif rst == delete_recover_act:
                 self.delete_textblks.emit(1)
             elif rst == copy_act:
-                self.copy_textblks.emit(event.scenePos())
+                self.copy_textblks.emit(pos.toPointF())
             elif rst == paste_act:
-                self.paste_textblks.emit(event.scenePos())
+                self.paste_textblks.emit(pos.toPointF())
             elif rst == format_act:
                 self.format_textblks.emit()
             elif rst == layout_act:
@@ -672,6 +680,11 @@ class Canvas(QGraphicsScene):
                 self.run_blktrans.emit(1)
             elif rst == ocr_translate_inpaint_act:
                 self.run_blktrans.emit(2)
+
+    def hide_rubber_band(self):
+        if self.rubber_band.isVisible():
+            self.rubber_band.hide()
+            self.rubber_band_origin = None
     
     def on_hide_canvas(self):
         self.clear_states()

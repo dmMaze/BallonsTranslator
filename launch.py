@@ -130,6 +130,7 @@ def main():
     if qtpy.API_NAME[-1] == '6':
         C.FLAG_QT6 = True
     else:
+        C.FLAG_QT6 = False
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
