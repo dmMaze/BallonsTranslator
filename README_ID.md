@@ -25,9 +25,9 @@ pratinjau
   - Mendukung pencarian & penggantian kata
   - Mendukung ekspor/impor ke/dari dokumen word
 
-# Usage
+# Instalasi
 
-Pengguna Windows dapat unduh Ballonstranslator-x.x.x-core.7z di [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) atau [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)(catatan: Anda juga perlu mengunduh Ballonstranslator-1.3.xx terbaru di rilis GitHub mengekstraknya untuk menimpa **Ballontranslator-1.3.0-core** atau instalasi yang lebih lama agar aplikasi dapat diperbarui.)
+**Pengguna Windows** dapat unduh Ballonstranslator-x.x.x-core.7z di [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) atau [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) (catatan: Anda juga perlu mengunduh Ballonstranslator-1.3.xx terbaru di rilis GitHub mengekstraknya untuk menimpa **Ballontranslator-1.3.0-core** atau instalasi yang lebih lama agar aplikasi dapat diperbarui.)
 
 ## Jalankan kode sumber
 
@@ -47,15 +47,21 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 Unduhlah folder **data** dari [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) atau [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) dan pindahkan ke dalam BallonsTranslator/ballontranslator, akhirnya jalankan
 ```bash
-# Untuk pengguna Linux atau MacOS, lihat [skrip ini] (https://github.com/dmMaze/BallonsTranslator/blob/master/ballontranslator/scripts/download_models.sh) dan jalankan untuk mengunduh SEMUA model
 python ballontranslator
 ```
 
+Untuk pengguna Linux atau MacOS, lihat [script ini](ballontranslator/scripts/download_models.sh) dan jalankan untuk mengunduh semua model
+
 Untuk menggunakan Sugoi translator (hanya bahasa Jepang-Inggris), unduh [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), pindahkan "sugoi_translator" ke dalam BallonsTranslator/ballontranslator/data/models.
 
-## Penerjemahan sepenuhnya otomatis
-**Disarankan untuk menjalankan program di terminal jika program ini mendadak berhenti dan tidak meninggalkan informasi, lihat gif berikut ini**, Pilih penerjemah yang diinginkan dan atur bahasa sumber dan target saat pertama kali menjalankan aplikasi. Buka folder yang berisi gambar-gambar yang mau diterjemahkan, klik tombol "Run" dan tunggu hingga proses selesai.  
+# Penggunaan
+**Disarankan untuk menjalankan program di terminal jika program ini crash dan tidak meninggalkan informasi, lihat gif berikut ini**
 <img src="doc/src/run.gif">  
+
+- Pilih penerjemah yang diinginkan dan atur sumber dan target bahasa. 
+ - Buka folder yang berisi gambar manga/manhua/webtoon yang ingin diterjemahkan.
+ - Klik tombol "Run" dan tunggu hingga proses selesai.
+
 
 Format font seperti ukuran font dan warna ditentukan oleh program secara otomatis dalam proses ini, Anda dapat menentukan format tersebut sebelum memulai proses dengan mengubah opsi yang sesuai dari "decide by program" menjadi "use global setting" di panel konfigurasi->Lettering. (pengaturan global adalah format yang ditampilkan oleh panel format font yang tepat ketika Anda tidak mengedit blok teks apa pun di adegan)
 

@@ -1,42 +1,44 @@
 #!/usr/bin/env bash
 
 
-CTD_MODEL_LINK="https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt"
-CTD_ONNX_MODEL_LINK="https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx"
-
-AOT_INPAINTER_MODEL_LINK="https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting.ckpt"
-LAMA_MPE_INPAINTER_MODEL_LINK="https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting_lama_mpe.ckpt"
-
-SUGOI_TRANSLATOR_MODEL_LINK="https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/sugoi-models.zip"
-
-MANGA_OCR_MODEL_LINK="https://huggingface.co/kha-white/manga-ocr-base"
-MIT48PX_OCR_MODEL_LINK="https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/ocr-ctc.zip"
-
+# Get the most of the models https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3 here
+# Place them in data/models
 
 pushd $(dirname "$0") &> /dev/null
 
 set -e 
 
 PWD="$(pwd)"
-MODELS_DIR="$PWD/../data/models"
-LIBS_DIR="$PWD/../data/libs"
+MODELS_DIR="$PWD/../../data/models"
+LIBS_DIR="$PWD/../../data/libs"
+
+echo $PWD
+echo $MODELS_DIR
+echo $LIBS_DIR
 
 mkdir -p $MODELS_DIR
 cd $MODELS_DIR
 
-wget -c $CTD_MODEL_LINK
+# Comic Text Detector
+wget -c "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt"
 
-wget -c $CTD_ONNX_MODEL_LINK
+# Comic Text Detector for CPU
+wget -c "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx"
 
-wget -c $AOT_INPAINTER_MODEL_LINK -O aot_inpainter.ckpt
+# AOT Inpainter
+wget -c "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting.ckpt" -O aot_inpainter.ckpt
 
-wget -c $LAMA_MPE_INPAINTER_MODEL_LINK -O lama_mpe.ckpt
+# LaMa Inpainter
+wget -c "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting_lama_mpe.ckpt" -O lama_mpe.ckpt
 
-wget -c $SUGOI_TRANSLATOR_MODEL_LINK ; unzip -d sugoi_translator sugoi-models.zip
+# Sugoi Translator
+wget -c "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/sugoi-models.zip" ; unzip -d sugoi_translator sugoi-models.zip
 
-wget -c $MIT48PX_OCR_MODEL_LINK; unzip ocr-ctc.zip; mv ocr-ctc.ckpt mit48pxctc_ocr.ckpt; rm alphabet-all-v5.txt
+# MIT_48PX_CTC OCR
+wget -c "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/ocr-ctc.zip"; unzip ocr-ctc.zip; mv ocr-ctc.ckpt mit48pxctc_ocr.ckpt; rm alphabet-all-v5.txt
 
-git lfs install; git clone $MANGA_OCR_MODEL_LINK
+# Manga OCR
+git lfs install; git clone "https://huggingface.co/kha-white/manga-ocr-base"
 
 mkdir -p $LIBS_DIR
 echo $LIBS_DIR
