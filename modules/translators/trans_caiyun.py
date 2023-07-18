@@ -1,6 +1,6 @@
 from .base import *
 
-@register_translator('caiyun')
+@register_translator('Caiyun')
 class CaiyunTranslator(BaseTranslator):
 
     concate_text = False

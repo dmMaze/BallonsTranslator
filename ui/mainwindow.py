@@ -62,7 +62,7 @@ class MainWindow(FramelessWindow):
         self.setAcceptDrops(True)
 
         if open_dir != '' and osp.exists(open_dir):
-            self.openProj(open_dir)
+            self.OpenProj(open_dir)
         elif self.config.open_recent_on_startup:
             if len(self.leftBar.recent_proj_list) > 0:
                 proj_dir = self.leftBar.recent_proj_list[0]

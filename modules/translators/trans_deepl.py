@@ -1,7 +1,7 @@
 from .base import *
 import deepl
 
-@register_translator('Deepl')
+@register_translator('DeepL')
 class DeeplTranslator(BaseTranslator):
 
     concate_text = False
@@ -15,12 +15,12 @@ class DeeplTranslator(BaseTranslator):
         self.lang_map['简体中文'] = 'zh'
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'EN-US'
-        self.lang_map['français'] = 'fr'
+        self.lang_map['Français'] = 'fr'
         self.lang_map['Deutsch'] = 'de'
-        self.lang_map['italiano'] = 'it'
-        self.lang_map['português'] = 'pt'
+        self.lang_map['Italiano'] = 'it'
+        self.lang_map['Português'] = 'pt'
         self.lang_map['русский язык'] = 'ru'
-        self.lang_map['español'] = 'es'
+        self.lang_map['Español'] = 'es'
         self.lang_map['български език'] = 'bg'
         self.lang_map['Český Jazyk'] = 'cs'
         self.lang_map['Dansk'] = 'da'
@@ -36,6 +36,7 @@ class DeeplTranslator(BaseTranslator):
         self.lang_map['Slovenčina'] = 'sk'
         self.lang_map['Slovenščina'] = 'sl'
         self.lang_map['Svenska'] = 'sv'
+        self.lang_map['Indonesia'] = 'id'
         
     def _translate(self, src_list: List[str]) -> List[str]:
         api_key = self.params['api_key']

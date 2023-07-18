@@ -23,6 +23,7 @@ config/config.json
 
 .vscode
 .VSCodeCounter
+.idea
 *.zip
 *.ipynb
 *.dll

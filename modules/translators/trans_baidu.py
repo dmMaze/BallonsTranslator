@@ -3,7 +3,7 @@ from .base import *
 import random
 import hashlib
 
-@register_translator('baidu')
+@register_translator('Baidu')
 class BaiduTranslator(BaseTranslator):
     concate_text = False
     cht_require_convert = True
