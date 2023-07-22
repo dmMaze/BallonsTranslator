@@ -280,7 +280,7 @@ class Canvas(QGraphicsScene):
     def dropEvent(self, event) -> None:
         if self.drop_folder is not None:
             self.drop_open_folder.emit(self.drop_folder)
-            self.drop_open_folder = None
+            self.drop_folder = None
         return super().dropEvent(event)
 
     def textEditMode(self) -> bool:
