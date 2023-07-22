@@ -259,6 +259,7 @@ class ProgramConfig:
         let_fntsize_flag: int = 0,
         let_fntstroke_flag: int = 0,
         let_fntcolor_flag: int = 0,
+        let_fnt_scolor_flag: int = 0,
         let_fnteffect_flag: int = 1,
         let_alignment_flag: int = 0,
         let_autolayout_flag: bool = True,
@@ -311,6 +312,7 @@ class ProgramConfig:
         self.let_fntsize_flag = let_fntsize_flag
         self.let_fntstroke_flag = let_fntstroke_flag
         self.let_fntcolor_flag = let_fntcolor_flag
+        self.let_fnt_scolor_flag = let_fnt_scolor_flag
         self.let_fnteffect_flag = let_fnteffect_flag
         self.let_alignment_flag = let_alignment_flag
         self.let_autolayout_flag = let_autolayout_flag

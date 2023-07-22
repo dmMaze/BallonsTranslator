@@ -341,14 +341,18 @@ class ConfigPanel(Widget):
         
         self.let_fntsize_combox, letblk_0 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font size'))
         self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
-        self.let_fntstroke_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke'), target_block=letblk_0)
+        self.let_fntstroke_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke size'), target_block=letblk_0)
         self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
-        self.let_fntcolor_combox, letblk_1 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font & stroke color'))
+        
+        self.let_fntcolor_combox, letblk_1 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font color'))
         self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
-        self.let_alignment_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('alignment'), target_block=letblk_1)
-        self.let_alignment_combox.currentIndexChanged.connect(self.on_alignment_flag_changed)
+        self.let_fnt_scolor_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke color'), target_block=letblk_1)
+        self.let_fnt_scolor_combox.currentIndexChanged.connect(self.on_font_scolor_flag_changed)
+
         self.let_effect_combox, letblk_2 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('effect'))
         self.let_effect_combox.currentIndexChanged.connect(self.on_effect_flag_changed)
+        self.let_alignment_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('alignment'), target_block=letblk_2)
+        self.let_alignment_combox.currentIndexChanged.connect(self.on_alignment_flag_changed)
 
         self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to \"decide by program.\"'))
@@ -436,6 +440,9 @@ class ConfigPanel(Widget):
     def on_fontcolor_flag_changed(self):
         self.config.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
 
+    def on_font_scolor_flag_changed(self):
+        self.config.let_fnt_scolor_flag = self.let_fnt_scolor_combox.currentIndex()
+
     def on_alignment_flag_changed(self):
         self.config.let_alignment_flag = self.let_alignment_combox.currentIndex()
 
@@ -482,6 +489,7 @@ class ConfigPanel(Widget):
         self.let_fntsize_combox.setCurrentIndex(config.let_fntsize_flag)
         self.let_fntstroke_combox.setCurrentIndex(config.let_fntstroke_flag)
         self.let_fntcolor_combox.setCurrentIndex(config.let_fntcolor_flag)
+        self.let_fnt_scolor_combox.setCurrentIndex(config.let_fnt_scolor_flag)
         self.let_alignment_combox.setCurrentIndex(config.let_alignment_flag)
         self.let_autolayout_checker.setChecked(config.let_autolayout_flag)
         self.selectext_minimenu_checker.setChecked(config.textselect_mini_menu)

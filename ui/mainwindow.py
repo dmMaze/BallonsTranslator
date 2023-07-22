@@ -873,6 +873,7 @@ class MainWindow(FramelessWindow):
         override_fnt_size = self.config.let_fntsize_flag == 1
         override_fnt_stroke = self.config.let_fntstroke_flag == 1
         override_fnt_color = self.config.let_fntcolor_flag == 1
+        override_fnt_scolor = self.config.let_fnt_scolor_flag == 1
         override_alignment = self.config.let_alignment_flag == 1
         override_effect = self.config.let_fnteffect_flag == 1
         gf = self.textPanel.formatpanel.global_format
@@ -882,8 +883,11 @@ class MainWindow(FramelessWindow):
                 blk.font_size = pt2px(gf.size)
             if override_fnt_stroke:
                 blk.default_stroke_width = gf.stroke_width
+                blk.stroke_decide_by_colordiff = False
             if override_fnt_color:
-                blk.set_font_colors(gf.frgb, gf.srgb, accumulate=False)
+                blk.set_font_colors(frgb=gf.frgb, accumulate=False)
+            if override_fnt_scolor:
+                blk.set_font_colors(srgb=gf.srgb, accumulate=False)
             if override_alignment:
                 blk._alignment = gf.alignment
             if override_effect:

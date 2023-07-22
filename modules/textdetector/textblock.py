@@ -47,6 +47,7 @@ class TextBlock(object):
                  _bounding_rect: List = None,
                  accumulate_color = True,
                  default_stroke_width = 0.2,
+                 stroke_decide_by_colordiff: bool = True,
                  font_weight = 50, 
                  _target_lang: str = "",
                  opacity: float = 1.,
@@ -94,6 +95,7 @@ class TextBlock(object):
 
         self._bounding_rect = _bounding_rect
         self.default_stroke_width = default_stroke_width
+        self.stroke_decide_by_colordiff = stroke_decide_by_colordiff
         self.font_weight = font_weight
         self.accumulate_color = accumulate_color
 
@@ -276,15 +278,31 @@ class TextBlock(object):
 
         return text.strip()
 
-    def set_font_colors(self, frgb, srgb, accumulate=True):
+    def set_font_colors(self, frgb=None, srgb=None, accumulate=True):
+        
+        num_lines = max(1, len(self.lines))
+        if self.accumulate_color != accumulate:
+            if self.accumulate_color:
+                mul = 1 / num_lines
+            else:
+                mul = num_lines
+            if frgb is None:
+                self.fg_r, self.fg_g, self.fg_b = int(self.fg_r * mul), int(self.fg_g * mul), int(self.fg_b * mul)
+            if srgb is None:
+                self.bg_r, self.bg_g, self.bg_b = int(self.bg_r * mul), int(self.bg_g * mul), int(self.bg_b * mul)
+        
         self.accumulate_color = accumulate
         num_lines = len(self.lines) if accumulate and len(self.lines) > 0 else 1
+
         # set font color
-        frgb = np.array(frgb) * num_lines
-        self.fg_r, self.fg_g, self.fg_b = frgb
+        if frgb is not None:
+            frgb = np.array(frgb) * num_lines
+            self.fg_r, self.fg_g, self.fg_b = frgb
+
         # set stroke color  
-        srgb = np.array(srgb) * num_lines
-        self.bg_r, self.bg_g, self.bg_b = srgb
+        if srgb is not None:
+            srgb = np.array(srgb) * num_lines
+            self.bg_r, self.bg_g, self.bg_b = srgb
 
     def get_font_colors(self, bgr=False):
         num_lines = len(self.lines)
@@ -332,10 +350,11 @@ class TextBlock(object):
 
     @property
     def stroke_width(self):
-        diff = color_difference(*self.get_font_colors())
-        if diff > 15:
-            return self.default_stroke_width
-        return 0
+        if self.stroke_decide_by_colordiff:
+            diff = color_difference(*self.get_font_colors())
+            if diff < 15:
+                return 0
+        return self.default_stroke_width
 
     def adjust_pos(self, dx: int, dy: int):
         self.xyxy[0] += dx
