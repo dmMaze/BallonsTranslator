@@ -15,12 +15,12 @@ class PapagoTranslator(BaseTranslator):
         self.lang_map['English'] = 'en'
         self.lang_map['한국어'] = 'ko'
         self.lang_map['Tiếng Việt'] = 'vi'
-        self.lang_map['français'] = 'fr'
+        self.lang_map['Français'] = 'fr'
         self.lang_map['Deutsch'] = 'de'
-        self.lang_map['italiano'] = 'it'
-        self.lang_map['português'] = 'pt'
+        self.lang_map['Italiano'] = 'it'
+        self.lang_map['Português'] = 'pt'
         self.lang_map['русский язык'] = 'ru'
-        self.lang_map['español'] = 'es'        
+        self.lang_map['Español'] = 'es'        
         
         if self.papagoVer is None:
             script = requests.get('https://papago.naver.com', proxies=PROXY)

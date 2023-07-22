@@ -31,7 +31,7 @@ class DeeplTranslator(BaseTranslator):
         self.lang_map['Lietuvių'] = 'lt'
         self.lang_map['latviešu'] = 'lv'
         self.lang_map['Nederlands'] = 'nl'
-        self.lang_map['Język polski'] = 'pl'
+        self.lang_map['Polski'] = 'pl'
         self.lang_map['Română'] = 'ro'
         self.lang_map['Slovenčina'] = 'sk'
         self.lang_map['Slovenščina'] = 'sl'
