@@ -1,8 +1,7 @@
 from typing import List, Union, Tuple
-import json
 
 from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
-from qtpy.QtCore import Qt, QModelIndex, Signal, QSize, QEvent, QItemSelection
+from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
 
 from . import constants as C
@@ -278,28 +277,7 @@ class ConfigPanel(Widget):
         super().__init__(*args, **kwargs)
 
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf8') as f:
-                config_dict = json.loads(f.read())
-
-            # transfer older config file
-            if 'dl' in config_dict:
-                dl = config_dict.pop('dl')
-                if not 'module' in config_dict:
-                    if 'textdetector_setup_params' in dl:
-                        textdetector_params = dl.pop('textdetector_setup_params')
-                        dl['textdetector_params'] = textdetector_params
-                    if 'inpainter_setup_params' in dl:
-                        inpainter_params = dl.pop('inpainter_setup_params')
-                        dl['inpainter_params'] = inpainter_params
-                    if 'ocr_setup_params' in dl:
-                        ocr_params = dl.pop('ocr_setup_params')
-                        dl['ocr_params'] = ocr_params
-                    if 'translator_setup_params' in dl:
-                        translator_params = dl.pop('translator_setup_params')
-                        dl['translator_params'] = translator_params
-                    config_dict['module'] = dl
-
-            self.config = ProgramConfig(**config_dict)
+            self.config = ProgramConfig.load(CONFIG_PATH)
         except Exception as e:
             LOGGER.exception(e)
             LOGGER.warning("Failed to load config file, using default config")

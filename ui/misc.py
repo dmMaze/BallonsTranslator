@@ -332,6 +332,43 @@ class ProgramConfig:
         self.ocr_sublist = [] if ocr_sublist is None else ocr_sublist
         self.mt_sublist = [] if mt_sublist is None else mt_sublist
 
+    @staticmethod
+    def load(cfg_path: str):
+        
+        with open(cfg_path, 'r', encoding='utf8') as f:
+            config_dict = json.loads(f.read())
+
+        # for backward compatibility
+        if 'dl' in config_dict:
+            dl = config_dict.pop('dl')
+            if not 'module' in config_dict:
+                if 'textdetector_setup_params' in dl:
+                    textdetector_params = dl.pop('textdetector_setup_params')
+                    dl['textdetector_params'] = textdetector_params
+                if 'inpainter_setup_params' in dl:
+                    inpainter_params = dl.pop('inpainter_setup_params')
+                    dl['inpainter_params'] = inpainter_params
+                if 'ocr_setup_params' in dl:
+                    ocr_params = dl.pop('ocr_setup_params')
+                    dl['ocr_params'] = ocr_params
+                if 'translator_setup_params' in dl:
+                    translator_params = dl.pop('translator_setup_params')
+                    dl['translator_params'] = translator_params
+                config_dict['module'] = dl
+
+        if 'module' in config_dict:
+            module_cfg = config_dict['module']
+            trans_params = module_cfg['translator_params']
+            repl_pairs = {'baidu': 'Baidu', 'caiyun': 'Caiyun', 'chatgpt': 'ChatGPT', 'Deepl': 'DeepL', 'papago': 'Papago'}
+            for k, i in repl_pairs.items():
+                if k in trans_params:
+                    trans_params[i] = trans_params.pop(k)
+            if module_cfg['translator'] in repl_pairs:
+                module_cfg['translator'] = repl_pairs[module_cfg['translator']]
+            
+
+        return ProgramConfig(**config_dict)
+
 class LruIgnoreArg:
 
     def __init__(self, **kwargs) -> None:
