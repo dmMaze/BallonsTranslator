@@ -897,7 +897,7 @@ class MainWindow(FramelessWindow):
             blk.letter_spacing = gf.letter_spacing
             sw = blk.stroke_width
             if sw > 0:
-                blk.font_size -= int(blk.font_size * sw)
+                blk.font_size = int(blk.font_size / (1 + sw))
 
         self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
         
