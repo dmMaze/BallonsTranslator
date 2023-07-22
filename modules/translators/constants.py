@@ -227,7 +227,8 @@ DEEPL_LANGUAGE_TO_CODE = {
     "slovak": "sk",
     "slovenian": "sl",
     "swedish": "sv",
-    "chinese": "zh"
+    "chinese": "zh",
+    "indonesia": "id"
 }
 
 DEEPL_CODE_TO_LANGUAGE = {v: k for k, v in DEEPL_LANGUAGE_TO_CODE.items()}

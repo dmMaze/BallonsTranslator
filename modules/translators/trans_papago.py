@@ -1,6 +1,6 @@
 from .base import *
 
-@register_translator('papago')
+@register_translator('Papago')
 class PapagoTranslator(BaseTranslator):
 
     concate_text = True

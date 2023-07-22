@@ -12,7 +12,7 @@ from .base import BaseTranslator, register_translator
 class InvalidNumTranslations(Exception):
     pass
 
-@register_translator('chatgpt')
+@register_translator('ChatGPT')
 class GPTTranslator(BaseTranslator):
     concate_text = False
     cht_require_convert = True

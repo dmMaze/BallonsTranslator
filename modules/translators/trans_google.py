@@ -300,16 +300,17 @@ class TransGoogle(BaseTranslator):
         self.lang_map['Tiếng Việt'] = 'vi'
         self.lang_map['čeština'] = 'cs'
         self.lang_map['Nederlands'] = 'nl'
-        self.lang_map['français'] = 'fr'
+        self.lang_map['Français'] = 'fr'
         self.lang_map['Deutsch'] = 'de'
         self.lang_map['magyar nyelv'] = 'hu'
-        self.lang_map['italiano'] = 'it'
-        self.lang_map['polski'] = 'pl'
-        self.lang_map['português'] = 'pt'
-        self.lang_map['limba română'] = 'ro'
+        self.lang_map['Italiano'] = 'it'
+        self.lang_map['Polski'] = 'pl'
+        self.lang_map['Português'] = 'pt'
+        self.lang_map['Limba română'] = 'ro'
         self.lang_map['русский язык'] = 'ru'
-        self.lang_map['español'] = 'es'
+        self.lang_map['Español'] = 'es'
         self.lang_map['Türk dili'] = 'tr'
+        self.lang_map['Indonesia'] = 'id'
 
         self.googletrans = GoogleTranslator()
         

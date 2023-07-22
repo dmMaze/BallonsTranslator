@@ -35,5 +35,6 @@ colorama
 gallery-dl
 openai
 pyyaml
-
+httpx[socks,brotli]
+langdetect
 # pywin32 required on windows
