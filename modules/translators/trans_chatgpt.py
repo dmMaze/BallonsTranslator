@@ -8,6 +8,7 @@ from typing import List, Dict, Union
 import yaml
 from .base import BaseTranslator, register_translator
 
+OPENAI_ORIGINAL_API_BASE = 'https://api.openai.com/v1'
 
 class InvalidNumTranslations(Exception):
     pass
@@ -63,6 +64,7 @@ class GPTTranslator(BaseTranslator):
         'top p': 1,
         # 'return prompt': False,
         'retry attempts': 5,
+        '3rd party api url': ''
     }
 
     def _setup_translator(self):
@@ -290,9 +292,18 @@ class GPTTranslator(BaseTranslator):
 
         # If no response with text is found, return the first response's content (which may be empty)
         return response.choices[0].message.content
-    
+
+    @property
+    def api_url(self):
+        url = self.params['3rd party api url'].strip()
+        if not url:
+            url = OPENAI_ORIGINAL_API_BASE
+        return url
+
     def _request_translation(self, prompt, chat_sample: List):
         openai.api_key = self.params['api key']
+        openai.api_base = self.api_url
+        
         model = self.model
         if model == 'gpt3':
             return self._request_translation_gpt3(prompt)
