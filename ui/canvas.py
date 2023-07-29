@@ -87,19 +87,29 @@ class CustomGV(QGraphicsView):
         return super().keyReleaseEvent(event)
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
-        if e.key() == Qt.Key.Key_Control:
+        key = e.key()
+        if key == Qt.Key.Key_Control:
             self.ctrl_pressed = True
 
-        if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            if e.key() == Qt.Key.Key_V:
+        modifiers = e.modifiers()
+        if modifiers == Qt.KeyboardModifier.ControlModifier:
+            if key == Qt.Key.Key_V:
                 # self.ctrlv_pressed.emit(e)
                 if self.canvas.handle_ctrlv():
                     e.accept()
                     return
-            if e.key() == Qt.Key.Key_C:
+            if key == Qt.Key.Key_C:
                 if self.canvas.handle_ctrlc():
                     e.accept()
                     return
+                
+        elif modifiers & Qt.KeyboardModifier.ControlModifier and modifiers & Qt.KeyboardModifier.ShiftModifier:
+            if key == Qt.Key.Key_C:
+                self.canvas.copy_src_signal.emit()
+                e.accept()
+            elif key == Qt.Key.Key_V:
+                self.canvas.paste_src_signal.emit()
+                e.accept()
 
         return super().keyPressEvent(e)
 
@@ -127,6 +137,9 @@ class Canvas(QGraphicsScene):
     delete_textblks = Signal(int)
     copy_textblks = Signal(QPointF)
     paste_textblks = Signal(QPointF)
+    copy_src_signal = Signal()
+    paste_src_signal = Signal()
+
     format_textblks = Signal()
     layout_textblks = Signal()
     reset_angle = Signal()
@@ -238,6 +251,7 @@ class Canvas(QGraphicsScene):
 
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
+
         self.stroke_img_item: StrokeImgItem = None
         self.erase_img_key = None
 
@@ -644,9 +658,12 @@ class Canvas(QGraphicsScene):
             menu = QMenu(self.gv)
             copy_act = menu.addAction(self.tr("Copy"))
             paste_act = menu.addAction(self.tr("Paste"))
-            delete_act = menu.addAction(self.tr("Delete"), )
+            delete_act = menu.addAction(self.tr("Delete"))
+            copy_src_act = menu.addAction(self.tr("Copy source text"))
+            paste_src_act = menu.addAction(self.tr("Paste source text"))
             delete_recover_act = menu.addAction(self.tr("Delete and Recover removed text"))
             menu.addSeparator()
+
             format_act = menu.addAction(self.tr("Apply font formatting"))
             layout_act = menu.addAction(self.tr("Auto layout"))
             angle_act = menu.addAction(self.tr("Reset Angle"))
@@ -666,6 +683,10 @@ class Canvas(QGraphicsScene):
                 self.copy_textblks.emit(pos.toPointF())
             elif rst == paste_act:
                 self.paste_textblks.emit(pos.toPointF())
+            elif rst == copy_src_act:
+                self.copy_src_signal.emit()
+            elif rst == paste_src_act:
+                self.paste_src_signal.emit()
             elif rst == format_act:
                 self.format_textblks.emit()
             elif rst == layout_act:

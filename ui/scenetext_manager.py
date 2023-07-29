@@ -6,7 +6,7 @@ import cv2
 
 from qtpy.QtWidgets import QApplication, QWidget
 from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QPoint
-from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat
+from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat, QClipboard
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -265,6 +265,23 @@ class PasteBlkItemsCommand(QUndoCommand):
     def undo(self):
         self.ctrl.deleteTextblkItemList(self.blk_list, self.pwidget_list)
 
+
+class PasteSrcItemsCommand(QUndoCommand):
+    def __init__(self, src_list: List[SourceTextEdit], paste_list: List[str]):
+        super().__init__()
+        self.src_list = src_list
+        self.paste_list = paste_list
+        self.ori_text_list = [src.toPlainText() for src in src_list]
+
+    def redo(self):
+        for src, text in zip(self.src_list, self.paste_list):
+            src.setPlainText(text)
+
+    def undo(self):
+        for src, text in zip(self.src_list, self.ori_text_list):
+            src.setPlainText(text)
+
+
 class SceneTextManager(QObject):
     new_textblk = Signal(int)
     def __init__(self, 
@@ -284,6 +301,8 @@ class SceneTextManager(QObject):
         self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
         self.canvas.copy_textblks.connect(self.onCopyBlkItems)
         self.canvas.paste_textblks.connect(self.onPasteBlkItems)
+        self.canvas.copy_src_signal.connect(self.on_copy_src)
+        self.canvas.paste_src_signal.connect(self.on_paste_src)
         self.canvas.format_textblks.connect(self.onFormatTextblks)
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvas.reset_angle.connect(self.onResetAngle)
@@ -441,9 +460,13 @@ class SceneTextManager(QObject):
             if self.txtblkShapeControl.blk_item == blk_item:
                 self.txtblkShapeControl.updateBoundingRect()
 
+    @property
+    def app_clipborad(self) -> QClipboard:
+        return self.app.clipboard()
+
     def onBlkitemPaste(self, idx: int):
         blk_item = self.textblk_item_list[idx]
-        text = self.app.clipboard().text()
+        text = self.app_clipborad.text()
         cursor = blk_item.textCursor()
         cursor.insertText(text)
 
@@ -564,9 +587,32 @@ class SceneTextManager(QObject):
             pair_widget_list.append(pairw)
         if len(blkitem_list) > 0:
             self.canvas.clearSelection()
-
             self.canvas.push_undo_command(PasteBlkItemsCommand(blkitem_list, pair_widget_list, self))
-        pass
+    
+    def on_copy_src(self):
+        blks = self.canvas.selected_text_items()
+        if len(blks) == 0:
+            return
+        src_list = [self.pairwidget_list[blk.idx].e_source.toPlainText().strip().replace('\n', ' ') for blk in blks]
+        src_txt = '\n'.join(src_list)
+        self.app_clipborad.setText(src_txt, QClipboard.Mode.Clipboard)
+
+    def on_paste_src(self):
+        blks = self.canvas.selected_text_items()
+        if len(blks) == 0:
+            return
+
+        src_widget_list = [self.pairwidget_list[blk.idx].e_source for blk in blks]
+        text_list = self.app_clipborad.text().split('\n')
+        
+        n_paragraph = min(len(src_widget_list), len(text_list))
+        if n_paragraph < 1:
+            return
+        
+        src_widget_list = src_widget_list[:n_paragraph]
+        text_list = text_list[:n_paragraph]
+
+        self.canvas.push_undo_command(PasteSrcItemsCommand(src_widget_list, text_list))
 
     def onFormatTextblks(self):
         self.apply_fontformat(self.formatpanel.global_format)
@@ -776,7 +822,6 @@ class SceneTextManager(QObject):
         blkitem.layout.reLayout()
         blkitem.repaint_background()
 
-
     def onEndCreateTextBlock(self, rect: QRectF):
         if rect.width() > 1 and rect.height() > 1:
             xyxy = np.array([rect.x(), rect.y(), rect.right(), rect.bottom()])        
@@ -791,8 +836,8 @@ class SceneTextManager(QObject):
 
     def on_paste2selected_textitems(self):
         blkitems = self.canvas.selected_text_items()
-        text = self.app.clipboard().text()
-        if len(blkitems) < 1 or not text:
+        text = self.app_clipborad.text()
+        if len(blkitems) < 1:
             return
         etrans = [self.pairwidget_list[blkitem.idx].e_trans for blkitem in blkitems]
         self.canvas.push_undo_command(MultiPasteCommand(text, blkitems, etrans))
