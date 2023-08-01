@@ -34,3 +34,5 @@ config/config.json
 *.ckpt
 *.onnx
 *.7z
+venv
+pip
