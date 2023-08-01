@@ -7,7 +7,7 @@ SYSLANG = QLocale.system().name()
 
 if __name__ == '__main__':
     program_dir = osp.dirname(osp.dirname(osp.abspath(__file__)))
-    translate_dir = osp.dirname(osp.abspath(__file__)).replace('scripts', 'data/translate')
+    translate_dir = osp.dirname(osp.abspath(__file__)).replace('scripts', 'translate')
     translate_path = osp.join(translate_dir, SYSLANG+'.ts')
 
     cmd = 'pylupdate5 -verbose '+ \
