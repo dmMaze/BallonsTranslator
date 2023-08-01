@@ -280,9 +280,8 @@ class ProgramConfig:
         search_url: str = "https://www.google.com/search?q=",
         ocr_sublist: dict = None,
         mt_sublist: dict = None,
+        display_lang: str = C.DEFAULT_DISPLAY_LANG,
         **kwargs) -> None:
-
-
 
         if isinstance(module, dict):
             self.module = ModuleConfig(**module)
@@ -333,6 +332,7 @@ class ProgramConfig:
         self.search_url = search_url
         self.ocr_sublist = [] if ocr_sublist is None else ocr_sublist
         self.mt_sublist = [] if mt_sublist is None else mt_sublist
+        self.display_lang = display_lang
 
     @staticmethod
     def load(cfg_path: str):

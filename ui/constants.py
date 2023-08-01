@@ -1,4 +1,5 @@
 import os.path as osp
+import os
 
 ICON_PATH = 'icons/[ICONNAME]'
 
@@ -55,3 +56,19 @@ SLIDERHANDLE_COLOR = (85,85,96)
 FOREGROUND_FONTCOLOR = (93,93,95)
 
 MAX_NUM_LOG = 7
+
+TRANSLATE_DIR = osp.join(PROGRAM_PATH, 'translate')
+DISPLAY_LANGUAGE_MAP = {
+    'English': 'English',
+    '简体中文': 'zh_CN',
+    'Русский': 'ru_RU'
+}
+VALID_LANG_SET = set(list(DISPLAY_LANGUAGE_MAP.values()))
+
+for p in os.listdir(TRANSLATE_DIR):
+    if p.endswith('.qm'):
+        lang = p.replace('.qm', '')
+        if lang not in VALID_LANG_SET:
+            DISPLAY_LANGUAGE_MAP[lang] = lang
+
+DEFAULT_DISPLAY_LANG = 'English'

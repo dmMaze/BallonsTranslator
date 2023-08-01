@@ -1,14 +1,14 @@
 import os.path as osp
 from typing import List, Union
 
-from .stylewidgets import Widget, PaintQSlider
-from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
-
 from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton
 from qtpy.QtCore import Qt, Signal, QPoint
-from qtpy.QtGui import QMouseEvent, QKeySequence
+from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup
 
+from .stylewidgets import Widget, PaintQSlider
+from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import startSystemMove
+from .misc import ProgramConfig
 from . import constants as C
 if C.FLAG_QT6:
     from qtpy.QtGui import QAction
@@ -311,9 +311,15 @@ class LeftBar(Widget):
 
 
 class TitleBar(Widget):
+
     closebtn_clicked = Signal()
+    display_lang_changed = Signal(str)
+
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
+
+        config: ProgramConfig = parent.config
+
         self.mainwindow : QMainWindow = parent
         self.mPos: QPoint = None
         self.normalsize = False
@@ -353,7 +359,22 @@ class TitleBar(Widget):
 
         self.viewToolBtn = TitleBarToolBtn(self)
         self.viewToolBtn.setText(self.tr('View'))
-        drawBoardAction = QAction(self.tr('Drawing Board '), self)
+
+        self.displayLanguageMenu = QMenu(self.tr("Display Language"), self)
+        self.lang_ac_group = lang_ac_group = QActionGroup(self)
+        lang_ac_group.setExclusive(True)
+        lang_actions = []
+        for lang, lang_code in C.DISPLAY_LANGUAGE_MAP.items():
+            la = QAction(lang, self)
+            if lang_code == config.display_lang:
+                la.setChecked(True)
+            la.triggered.connect(self.on_displaylang_triggered)
+            la.setCheckable(True)
+            lang_ac_group.addAction(la)
+            lang_actions.append(la)
+        self.displayLanguageMenu.addActions(lang_actions)
+
+        drawBoardAction = QAction(self.tr('Drawing Board'), self)
         drawBoardAction.setShortcut(QKeySequence('P'))
         texteditAction = QAction(self.tr('Text Editor'), self)
         texteditAction.setShortcut(QKeySequence('T'))
@@ -362,6 +383,7 @@ class TitleBar(Widget):
         darkModeAction.setCheckable(True)
 
         viewMenu = QMenu(self.viewToolBtn)
+        viewMenu.addMenu(self.displayLanguageMenu)
         viewMenu.addActions([drawBoardAction, texteditAction])
         viewMenu.addSeparator()
         viewMenu.addAction(fontStylePresetAction)
@@ -440,6 +462,10 @@ class TitleBar(Widget):
 
     def onMinBtnClicked(self):
         self.mainwindow.showMinimized()
+
+    def on_displaylang_triggered(self):
+        ac = self.lang_ac_group.checkedAction()
+        self.display_lang_changed.emit(C.DISPLAY_LANGUAGE_MAP[ac.text()])
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
 

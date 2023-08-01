@@ -100,11 +100,31 @@ def load_translators(translators = None):
 def load_modules():
     load_translators()
 
+BT = None
+APP = None
+
+def restart():
+    global BT
+    print('restarting...\n')
+    BT.close()
+    os.execv(sys.executable, ['python'] + sys.argv)
+
+
 def main():
+
+    from utils import appinfo
+
+    commit = commit_hash()
+
+    print('py version: ', sys.version)
+    print('py executable: ', sys.executable)
+    print(f'version: {appinfo.version}')
+    print(f'branch: {appinfo.branch}')
+    print(f"Commit hash: {commit}")
+
+    prepare_environment()
+
     from utils.logger import setup_logging, logger as LOGGER
-
-    # parser = argparse.ArgumentParser()
-
 
     if not args.qt_api in QT_APIS:
         os.environ['QT_API'] = 'pyqt6'
@@ -127,6 +147,7 @@ def main():
     from qtpy.QtGui import  QGuiApplication, QIcon, QFont
 
     from ui import constants as C
+    C.DEFAULT_DISPLAY_LANG = QLocale.system().name()
     if qtpy.API_NAME[-1] == '6':
         C.FLAG_QT6 = True
     else:
@@ -142,12 +163,24 @@ def main():
     load_modules()
 
     app = QApplication(sys.argv)
-    translator = QTranslator()
-    translator.load(
-        QLocale.system().name(),
-        osp.dirname(osp.abspath(__file__)) + "/translate",
-    )
-    app.installTranslator(translator)
+    from ui.misc import ProgramConfig
+
+    try:
+        config = ProgramConfig.load(C.CONFIG_PATH)
+    except Exception as e:
+        LOGGER.exception(e)
+        LOGGER.warning("Failed to load config file, using default config")
+        config = ProgramConfig()
+
+    lang = config.display_lang
+    langp = osp.join(C.TRANSLATE_DIR, lang + '.qm')
+    if osp.exists(langp):
+        translator = QTranslator()
+        translator.load(lang, osp.dirname(osp.abspath(__file__)) + "/translate")
+        app.installTranslator(translator)
+    elif lang != 'English':
+        LOGGER.warning(f'target display language file {langp} doesnt exist.')
+    LOGGER.info(f'set display language to {lang}')
 
     ps = QGuiApplication.primaryScreen()
     C.LDPI = ps.logicalDotsPerInch()
@@ -158,7 +191,12 @@ def main():
         QGuiApplication.setFont(yahei)
 
     from ui.mainwindow import MainWindow
-    ballontrans = MainWindow(app, open_dir=args.proj_dir)
+
+    ballontrans = MainWindow(app, config, open_dir=args.proj_dir)
+    global BT
+    BT = ballontrans
+    BT.restart_signal.connect(restart)
+
     ballontrans.setWindowIcon(QIcon(C.ICON_PATH))
     ballontrans.show()
     ballontrans.resetStyleSheet()
@@ -191,15 +229,4 @@ def prepare_environment():
 
 if __name__ == '__main__':
 
-    from utils import appinfo
-
-    commit = commit_hash()
-
-    print('py version: ', sys.version)
-    print('py executable: ', sys.executable)
-    print(f'version: {appinfo.version}')
-    print(f'branch: {appinfo.branch}')
-    print(f"Commit hash: {commit}")
-
-    prepare_environment()
     main()

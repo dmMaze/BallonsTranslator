@@ -13,11 +13,9 @@ if C.FLAG_QT6:
 else:
     from PyQt5 import QtCore
 
-
-from utils.logger import logger as LOGGER
 from .stylewidgets import Widget, ConfigComboBox
-from .misc import ProgramConfig, ModuleConfig
-from .constants import CONFIG_PATH, CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
+from .misc import ProgramConfig
+from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .dlconfig_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 
 class ConfigTextLabel(QLabel):
@@ -273,16 +271,11 @@ class ConfigPanel(Widget):
     save_config = Signal()
     update_source_download_status = Signal(str)
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, config: ProgramConfig, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        try:
-            self.config = ProgramConfig.load(CONFIG_PATH)
-        except Exception as e:
-            LOGGER.exception(e)
-            LOGGER.warning("Failed to load config file, using default config")
-            self.config = ProgramConfig()
-
+        self.config = config
+        
         self.configTable = ConfigTable()
         self.configTable.tableitem_pressed.connect(self.onTableItemPressed)
         self.configContent = ConfigContent()

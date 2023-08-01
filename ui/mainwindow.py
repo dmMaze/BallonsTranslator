@@ -3,7 +3,7 @@ import os, re, traceback
 from typing import List
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
-from qtpy.QtCore import Qt, QPoint, QSize, QEvent
+from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
 from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
 
 from utils.logger import logger as LOGGER
@@ -11,7 +11,7 @@ from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from modules.textdetector.textblock import TextBlock
 
-from .misc import pt2px, parse_stylesheet
+from .misc import pt2px, parse_stylesheet, ProgramConfig
 from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -46,11 +46,16 @@ class MainWindow(FramelessWindow):
     opening_dir = False
     page_changing = False
     postprocess_mt_toggle = True
+
+    translator = None
+
+    restart_signal = Signal()
     
-    def __init__(self, app: QApplication, open_dir='', *args, **kwargs) -> None:
+    def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', *args, **kwargs) -> None:
         
         super().__init__(*args, **kwargs)
 
+        self.config = config
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
         self.app = app
         self.setupThread()
@@ -92,7 +97,7 @@ class MainWindow(FramelessWindow):
     def setupUi(self):
         screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
-        self.configPanel = ConfigPanel(self)
+        self.configPanel = ConfigPanel(self.config, self)
         self.configPanel.trans_config_panel.show_MT_keyword_window.connect(self.show_MT_keyword_window)
         self.configPanel.ocr_config_panel.show_OCR_keyword_window.connect(self.show_OCR_keyword_window)
         self.config = self.configPanel.config
@@ -126,6 +131,7 @@ class MainWindow(FramelessWindow):
         
         self.titleBar = TitleBar(self)
         self.titleBar.closebtn_clicked.connect(self.on_closebtn_clicked)
+        self.titleBar.display_lang_changed.connect(self.on_display_lang_changed)
         self.bottomBar = BottomBar(self)
         self.bottomBar.textedit_checkchanged.connect(self.setTextEditMode)
         self.bottomBar.paintmode_checkchanged.connect(self.setPaintMode)
@@ -262,7 +268,6 @@ class MainWindow(FramelessWindow):
         self.drawingPanel.set_config(config.drawpanel)
         self.drawingPanel.initDLModule(module_manager)
 
-
         self.global_search_widget.imgtrans_proj = self.imgtrans_proj
         self.global_search_widget.setupReplaceThread(self.st_manager.pairwidget_list, self.st_manager.textblk_item_list)
         self.global_search_widget.replace_thread.finished.connect(self.on_global_replace_finished)
@@ -314,6 +319,9 @@ class MainWindow(FramelessWindow):
 
     def setupConfigUI(self):
         self.centralStackWidget.setCurrentIndex(1)
+
+    def set_display_lang(self, lang: str):
+        self.retranslateUI()
 
     def OpenProj(self, proj_path: str):
         if osp.isdir(proj_path):
@@ -392,12 +400,22 @@ class MainWindow(FramelessWindow):
 
     def changeEvent(self, event: QEvent):
         if event.type() == QEvent.Type.WindowStateChange:
-            
             if self.windowState() & Qt.WindowState.WindowMaximized:
                 self.titleBar.maxBtn.setChecked(True)
         elif event.type() == QEvent.Type.ActivationChange:
             self.canvas.on_activation_changed()
+
         super().changeEvent(event)
+    
+    def retranslateUI(self):
+        # according to https://stackoverflow.com/questions/27635068/how-to-retranslate-dynamically-created-widgets
+        # we got to do it manually ... I'd rather restart the program
+        msg = QMessageBox()
+        msg.setText(self.tr('Restart to apply changes? \n'))
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        ret = msg.exec_()
+        if ret == QMessageBox.StandardButton.Yes:
+            self.restart_signal.emit()
 
     def save_config(self):
         self.config.imgtrans_paintmode = self.bottomBar.paintChecker.isChecked()
@@ -966,6 +984,11 @@ class MainWindow(FramelessWindow):
             mb.exec()
             return
         self.close()
+
+    def on_display_lang_changed(self, lang: str):
+        if lang != self.config.display_lang:
+            self.config.display_lang = lang
+            self.set_display_lang(lang)
 
     def on_run_imgtrans(self):
         if self.bottomBar.textblockChecker.isChecked():
