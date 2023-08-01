@@ -4,7 +4,7 @@ import os
 
 from qtpy.QtWidgets import QShortcut, QMenu, QGraphicsScene, QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
-from qtpy.QtGui import QDropEvent, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
+from qtpy.QtGui import QKeySequence, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
@@ -500,12 +500,7 @@ class Canvas(QGraphicsScene):
             return False        
         if self.editing_textblkitem is not None and self.editing_textblkitem.isEditing():
             return False
-
-        if len(self.selected_text_items()) > 0:
-            self.paste2selected_textitems.emit()
-        else:
-            self.paste_textblks.emit(self.scene_cursor_pos())
-
+        self.on_paste()
         return True
 
     def handle_ctrlc(self):
@@ -513,10 +508,7 @@ class Canvas(QGraphicsScene):
             return False        
         if self.editing_textblkitem is not None and self.editing_textblkitem.isEditing():
             return False
-
-        if len(self.selected_text_items()) > 0:
-            self.copy_textblks.emit(self.scene_cursor_pos())
-        
+        self.on_copy()
         return True
 
     def scene_cursor_pos(self):
@@ -657,10 +649,15 @@ class Canvas(QGraphicsScene):
         if self.textEditMode() and not self.creating_textblock:
             menu = QMenu(self.gv)
             copy_act = menu.addAction(self.tr("Copy"))
+            copy_act.setShortcut(QKeySequence.StandardKey.Copy)
             paste_act = menu.addAction(self.tr("Paste"))
+            paste_act.setShortcut(QKeySequence.StandardKey.Paste)
             delete_act = menu.addAction(self.tr("Delete"))
+            delete_act.setShortcut(QKeySequence("Ctrl+D"))
             copy_src_act = menu.addAction(self.tr("Copy source text"))
+            copy_src_act.setShortcut(QKeySequence("Ctrl+Shift+C"))
             paste_src_act = menu.addAction(self.tr("Paste source text"))
+            paste_src_act.setShortcut(QKeySequence("Ctrl+Shift+V"))
             delete_recover_act = menu.addAction(self.tr("Delete and Recover removed text"))
             menu.addSeparator()
 
@@ -680,9 +677,9 @@ class Canvas(QGraphicsScene):
             elif rst == delete_recover_act:
                 self.delete_textblks.emit(1)
             elif rst == copy_act:
-                self.copy_textblks.emit(pos.toPointF())
+                self.on_copy(pos.toPointF())
             elif rst == paste_act:
-                self.paste_textblks.emit(pos.toPointF())
+                self.on_paste(pos.toPointF())
             elif rst == copy_src_act:
                 self.copy_src_signal.emit()
             elif rst == paste_src_act:
@@ -701,6 +698,26 @@ class Canvas(QGraphicsScene):
                 self.run_blktrans.emit(1)
             elif rst == ocr_translate_inpaint_act:
                 self.run_blktrans.emit(2)
+
+    @property
+    def have_selected_blkitem(self):
+        return len(self.selected_text_items()) > 0
+
+    def on_paste(self, p: QPointF = None):
+        if self.textEditMode():
+            if p is None:
+                p = self.scene_cursor_pos()
+            if self.have_selected_blkitem:
+                self.paste2selected_textitems.emit()
+            else:
+                self.paste_textblks.emit(p)
+
+    def on_copy(self, p: QPointF = None):
+        if self.textEditMode():
+            if self.have_selected_blkitem:
+                if p is None:
+                    p = self.scene_cursor_pos()
+                self.copy_textblks.emit(p)
 
     def hide_rubber_band(self):
         if self.rubber_band.isVisible():

@@ -477,12 +477,17 @@ class GlobalRepalceAllCommand(QUndoCommand):
 
 
 class MultiPasteCommand(QUndoCommand):
-    def __init__(self, text: str, blkitems: List[TextBlkItem], etrans: List[TransTextEdit]) -> None:
+    def __init__(self, text_list: Union[str, List], blkitems: List[TextBlkItem], etrans: List[TransTextEdit]) -> None:
         super().__init__()
         self.op_counter = -1
         self.blkitems = blkitems
         self.etrans = etrans
-        for blkitem, etran in zip(self.blkitems, self.etrans):
+
+        if len(blkitems) > 0:
+            if isinstance(text_list, str):
+                text_list = [text_list] * len(blkitems)
+
+        for blkitem, etran, text in zip(self.blkitems, self.etrans, text_list):
             etran.setPlainTextAndKeepUndoStack(text)
             blkitem.setPlainTextAndKeepUndoStack(text)
 

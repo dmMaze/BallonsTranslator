@@ -534,6 +534,8 @@ class MainWindow(FramelessWindow):
             if self.drawingPanel.isVisible():
                 if self.drawingPanel.currentTool == self.drawingPanel.rectTool:
                     self.drawingPanel.rectPanel.delete_btn.click()
+            elif self.canvas.textEditMode():
+                self.canvas.delete_textblks.emit(0)
 
     def shortcutSelectAll(self):
         if self.centralStackWidget.currentIndex() == 0:

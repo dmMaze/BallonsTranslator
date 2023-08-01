@@ -564,10 +564,14 @@ class SceneTextManager(QObject):
             pos_x = int(pos_x / self.canvas.scale_factor)
             pos_y = int(pos_y / self.canvas.scale_factor)
 
-        for blkitems in selected_blks:
-            blk = copy.deepcopy(blkitems.blk)
+        textlist = []
+        for blkitem in selected_blks:
+            blk = copy.deepcopy(blkitem.blk)
             blk.adjust_pos(-pos_x, -pos_y)
             self.canvas.clipboard_blks.append(blk)
+            textlist.append(blkitem.toPlainText().strip())
+        textlist = '\n'.join(textlist)
+        self.app_clipborad.setText(textlist, QClipboard.Mode.Clipboard)
 
 
     def onPasteBlkItems(self, pos: QPointF):
@@ -837,8 +841,21 @@ class SceneTextManager(QObject):
     def on_paste2selected_textitems(self):
         blkitems = self.canvas.selected_text_items()
         text = self.app_clipborad.text()
-        if len(blkitems) < 1:
+
+        num_blk = len(blkitems)
+        if num_blk < 1:
             return
+        
+        if num_blk > 1:
+            text_list = text.rstrip().split('\n')
+            num_text = len(text_list)
+            if num_text > 1:
+                if num_text > num_blk:
+                    text_list = text_list[:num_blk]
+                elif num_text < num_blk:
+                    text_list = text_list + [text_list[-1]] * (num_blk - num_text)
+                text = text_list
+        
         etrans = [self.pairwidget_list[blkitem.idx].e_trans for blkitem in blkitems]
         self.canvas.push_undo_command(MultiPasteCommand(text, blkitems, etrans))
 
