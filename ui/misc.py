@@ -2,14 +2,12 @@ import cv2, re, json, os
 from pathlib import Path
 import numpy as np
 import os.path as osp
-from typing import Tuple, Union, List, Dict
 from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
 
 from . import constants as C
-from .constants import DEFAULT_FONT_FAMILY, STYLESHEET_PATH, THEME_PATH
-from utils.io_utils import find_all_imgs, NumpyEncoder, imread, imwrite
+from utils.io_utils import NumpyEncoder
+from utils.structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
 from modules.textdetector.textblock import TextBlock
-
 
 # return bgr tuple
 def qrgb2bgr(color: Union[QColor, Tuple, List] = None) -> Tuple[int, int, int]:
@@ -82,46 +80,27 @@ class InvalidModuleConfigException(Exception):
 class InvalidProgramConfigException(Exception):
     pass
 
+@nested_dataclass
+class FontFormat(Config):
 
-class FontFormat:
-    def __init__(self, 
-                 family: str = None,
-                 size: float = 24,
-                 stroke_width: float = 0,
-                 frgb=(0, 0, 0),
-                 srgb=(0, 0, 0),
-                 bold: bool = False,
-                 underline: bool = False,
-                 italic: bool = False, 
-                 alignment: int = 0,
-                 vertical: bool = False, 
-                 weight: int = 50, 
-                 line_spacing: float = 1.2,
-                 letter_spacing: float = 1.,
-                 opacity: float = 1.,
-                 shadow_radius: float = 0.,
-                 shadow_strength: float = 1.,
-                 shadow_color: Tuple = (0, 0, 0),
-                 shadow_offset: List = [0, 0],
-                 **kwargs) -> None:
-        self.family = family if family is not None else DEFAULT_FONT_FAMILY
-        self.size = size
-        self.stroke_width = stroke_width
-        self.frgb = frgb                  # font color
-        self.srgb = srgb                    # stroke color
-        self.bold = bold
-        self.underline = underline
-        self.italic = italic
-        self.weight: int = weight
-        self.alignment: int = alignment
-        self.vertical: bool = vertical
-        self.line_spacing = line_spacing
-        self.letter_spacing = letter_spacing
-        self.opacity = opacity
-        self.shadow_radius = shadow_radius
-        self.shadow_strength = shadow_strength
-        self.shadow_color = shadow_color
-        self.shadow_offset = shadow_offset
+    family: str = C.DEFAULT_FONT_FAMILY
+    size: float = 24
+    stroke_width: float = 0
+    frgb: Tuple = (0, 0, 0)
+    srgb: Tuple = (0, 0, 0)
+    bold: bool = False
+    underline: bool = False
+    italic: bool = False
+    alignment: int = 0
+    vertical: bool = False
+    weight: int = 50
+    line_spacing: float = 1.2
+    letter_spacing: float = 1.
+    opacity: float = 1.
+    shadow_radius: float = 0.
+    shadow_strength: float = 1.
+    shadow_color: Tuple = (0, 0, 0)
+    shadow_offset: List = field(default_factory=lambda: [0., 0.])
 
     def from_textblock(self, text_block: TextBlock):
         self.family = text_block.font_family
@@ -148,191 +127,76 @@ class ProjHardSubExtract:
         self.type = 'hardsubextract'
         raise NotImplementedProjException('hardsubextract')
 
-
-class ModuleConfig:
-    def __init__(self, 
-                 textdetector: str = 'ctd',
-                 ocr = "mit48px_ctc",
-                 inpainter: str = 'lama_mpe',
-                 translator = "google",
-                 enable_ocr = True,
-                 enable_translate = True,
-                 enable_inpaint = True,
-                 textdetector_params = None,
-                 ocr_params = None,
-                 translator_params = None,
-                 inpainter_params = None,
-                 translate_source = '日本語',
-                 translate_target = '简体中文',
-                 check_need_inpaint = True,
-                 ) -> None:
-
-        self.textdetector = textdetector
-        self.ocr = ocr
-        self.inpainter = inpainter
-        self.translator = translator
-        self.enable_ocr = enable_ocr
-        self.enable_translate = enable_translate
-        self.enable_inpaint = enable_inpaint
-        if textdetector_params is None:
-            self.textdetector_params = dict()
-        else:
-            self.textdetector_params = textdetector_params
-        if ocr_params is None:
-            self.ocr_params = dict()
-        else:
-            self.ocr_params = ocr_params
-        if translator_params is None:
-            self.translator_params = dict()
-        else:
-            self.translator_params = translator_params
-            if 'google' in translator_params:
-                if 'url' in translator_params['google'] and \
-                    translator_params['google']['url']['select'] == 'https://translate.google.cn/m':
-                    translator_params['google']['url']['select'] = 'https://translate.google.com/m'
-        if inpainter_params is None:
-            self.inpainter_params = dict()
-        else:
-            self.inpainter_params = inpainter_params
-        self.translate_source = translate_source
-        self.translate_target = translate_target
-        self.check_need_inpaint = check_need_inpaint
-
-    def __getitem__(self, item: str):
-        if item == 'textdetector':
-            return self.textdetector
-        elif item == 'ocr':
-            return self.ocr
-        elif item == 'translator':
-            return self.translator
-        elif item == 'inpainter':
-            return self.inpainter
-        else:
-            raise KeyError(item)
+@nested_dataclass
+class ModuleConfig(Config):
+    textdetector: str = 'ctd'
+    ocr: str = "mit48px_ctc"
+    inpainter: str = 'lama_mpe'
+    translator: str = "google"
+    enable_ocr: bool = True
+    enable_translate: bool = True
+    enable_inpaint: bool = True
+    textdetector_params: Dict = field(default_factory=lambda: dict())
+    ocr_params: Dict = field(default_factory=lambda: dict())
+    translator_params: Dict = field(default_factory=lambda: dict())
+    inpainter_params: Dict = field(default_factory=lambda: dict())
+    translate_source: str = '日本語'
+    translate_target: str = '简体中文'
+    check_need_inpaint: bool = True
 
     def get_params(self, module_key: str) -> dict:
-        if module_key == 'textdetector':
-            return self.textdetector_params
-        elif module_key == 'ocr':
-            return self.ocr_params
-        elif module_key == 'translator':
-            return self.translator_params
-        elif module_key == 'inpainter':
-            return self.inpainter_params
+        return self[module_key + '_params']
 
+@nested_dataclass
+class DrawPanelConfig(Config):
+    pentool_color: List = field(default_factory=lambda: [0, 0, 0])
+    pentool_width: float = 30.
+    pentool_shape: int = 0
+    inpainter_width: float = 30.
+    inpainter_shape: int = 0
+    current_tool: int = 0
+    rectool_auto: bool = False
+    rectool_method: int = 0
+    recttool_dilate_ksize: int = 0
 
-class DrawPanelConfig:
-    def __init__(self, 
-                 pentool_color: List = None,
-                 pentool_width: float = 30.,
-                 pentool_shape: int = 0,
-                 inpainter_width: float = 30.,
-                 inpainter_shape: int = 0,
-                 current_tool: int = 0,
-                 rectool_auto: bool = False, 
-                 rectool_method: int = 0,
-                 recttool_dilate_ksize: int = 0,
-                 **kwargs) -> None:
-        self.pentool_color = pentool_color if pentool_color is not None else [0, 0, 0]
-        self.pentool_width = pentool_width
-        self.pentool_shape = pentool_shape
-        self.inpainter_width = inpainter_width
-        self.inpainter_shape = inpainter_shape
-        self.current_tool = current_tool
-        self.rectool_auto = rectool_auto
-        self.rectool_method = rectool_method
-        self.recttool_dilate_ksize = recttool_dilate_ksize
+@nested_dataclass
+class ProgramConfig(Config):
 
-
-class ProgramConfig:
-    def __init__(
-        self, module: Union[Dict, ModuleConfig] = None,
-        drawpanel: Union[Dict, DrawPanelConfig] = None,
-        global_fontformat: Union[Dict, FontFormat] = None,
-        recent_proj_list: List[str] = list(),
-        imgtrans_paintmode: bool = False,
-        imgtrans_textedit: bool = True,
-        imgtrans_textblock: bool = True,
-        mask_transparency: float = 0.,
-        original_transparency: float = 0.,
-        open_recent_on_startup: bool = True, 
-        let_fntsize_flag: int = 0,
-        let_fntstroke_flag: int = 0,
-        let_fntcolor_flag: int = 0,
-        let_fnt_scolor_flag: int = 0,
-        let_fnteffect_flag: int = 1,
-        let_alignment_flag: int = 0,
-        let_autolayout_flag: bool = True,
-        let_uppercase_flag: bool = True,
-        font_presets: dict = None,
-        fsearch_case: bool = False,
-        fsearch_whole_word: bool = False,
-        fsearch_regex: bool = False,
-        fsearch_range: int = 0,
-        gsearch_case: bool = False,
-        gsearch_whole_word: bool = False,
-        gsearch_regex: bool = False,
-        gsearch_range: int = 0,
-        darkmode: bool = False,
-        src_link_flag: str = '',
-        textselect_mini_menu: bool = True,
-        saladict_shortcut: str = "Alt+S",
-        search_url: str = "https://www.google.com/search?q=",
-        ocr_sublist: dict = None,
-        mt_sublist: dict = None,
-        display_lang: str = C.DEFAULT_DISPLAY_LANG,
-        **kwargs) -> None:
-
-        if isinstance(module, dict):
-            self.module = ModuleConfig(**module)
-        elif module is None:
-            self.module = ModuleConfig()
-        else:
-            self.module = module
-        if isinstance(drawpanel, dict):
-            self.drawpanel = DrawPanelConfig(**drawpanel)
-        elif drawpanel is None:
-            self.drawpanel = DrawPanelConfig()
-        else:
-            self.drawpanel = drawpanel
-        if isinstance(global_fontformat, dict):
-            self.global_fontformat = FontFormat(**global_fontformat)
-        elif global_fontformat is None:
-            self.global_fontformat = FontFormat()
-        else:
-            self.global_fontformat = global_fontformat
-        self.recent_proj_list = recent_proj_list
-        self.imgtrans_paintmode = imgtrans_paintmode
-        self.imgtrans_textedit = imgtrans_textedit
-        self.imgtrans_textblock = imgtrans_textblock
-        self.mask_transparency = mask_transparency
-        self.original_transparency = original_transparency
-        self.open_recent_on_startup = open_recent_on_startup
-        self.let_fntsize_flag = let_fntsize_flag
-        self.let_fntstroke_flag = let_fntstroke_flag
-        self.let_fntcolor_flag = let_fntcolor_flag
-        self.let_fnt_scolor_flag = let_fnt_scolor_flag
-        self.let_fnteffect_flag = let_fnteffect_flag
-        self.let_alignment_flag = let_alignment_flag
-        self.let_autolayout_flag = let_autolayout_flag
-        self.let_uppercase_flag = let_uppercase_flag
-        self.font_presets = {} if font_presets is None else font_presets
-        self.fsearch_case = fsearch_case
-        self.fsearch_whole_word = fsearch_whole_word
-        self.fsearch_regex = fsearch_regex
-        self.fsearch_range = fsearch_range
-        self.gsearch_case = gsearch_case
-        self.gsearch_whole_word = gsearch_whole_word
-        self.gsearch_regex = gsearch_regex
-        self.gsearch_range = gsearch_range
-        self.darkmode = darkmode
-        self.src_link_flag = src_link_flag
-        self.textselect_mini_menu = textselect_mini_menu
-        self.saladict_shortcut = saladict_shortcut
-        self.search_url = search_url
-        self.ocr_sublist = [] if ocr_sublist is None else ocr_sublist
-        self.mt_sublist = [] if mt_sublist is None else mt_sublist
-        self.display_lang = display_lang
+    module: ModuleConfig = field(default_factory=lambda: ModuleConfig()),
+    drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
+    global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
+    recent_proj_list: List = field(default_factory=lambda: [])
+    imgtrans_paintmode: bool = False
+    imgtrans_textedit: bool = True
+    imgtrans_textblock: bool = True
+    mask_transparency: float = 0.
+    original_transparency: float = 0.
+    open_recent_on_startup: bool = True 
+    let_fntsize_flag: int = 0
+    let_fntstroke_flag: int = 0
+    let_fntcolor_flag: int = 0
+    let_fnt_scolor_flag: int = 0
+    let_fnteffect_flag: int = 1
+    let_alignment_flag: int = 0
+    let_autolayout_flag: bool = True
+    let_uppercase_flag: bool = True
+    font_presets: dict = field(default_factory=lambda: dict())
+    fsearch_case: bool = False
+    fsearch_whole_word: bool = False
+    fsearch_regex: bool = False
+    fsearch_range: int = 0
+    gsearch_case: bool = False
+    gsearch_whole_word: bool = False
+    gsearch_regex: bool = False
+    gsearch_range: int = 0
+    darkmode: bool = False
+    src_link_flag: str = ''
+    textselect_mini_menu: bool = True
+    saladict_shortcut: str = "Alt+S"
+    search_url: str = "https://www.google.com/search?q="
+    ocr_sublist: dict = field(default_factory=lambda: [])
+    mt_sublist: dict = field(default_factory=lambda: [])
+    display_lang: str = C.DEFAULT_DISPLAY_LANG
 
     @staticmethod
     def load(cfg_path: str):
@@ -459,9 +323,9 @@ def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
     if reverse_icon:
         dark2light = True if theme == 'eva-light' else False
         reverse_icon_color(dark2light)
-    with open(STYLESHEET_PATH, "r", encoding='utf-8') as f:
+    with open(C.STYLESHEET_PATH, "r", encoding='utf-8') as f:
         stylesheet = f.read()
-    with open(THEME_PATH, 'r', encoding='utf8') as f:
+    with open(C.THEME_PATH, 'r', encoding='utf8') as f:
         theme_dict: Dict = json.loads(f.read())
     if not theme or theme not in theme_dict:
         tgt_theme: Dict = theme_dict[list(theme_dict.keys())[0]]

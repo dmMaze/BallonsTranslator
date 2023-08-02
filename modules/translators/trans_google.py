@@ -280,15 +280,6 @@ class TransGoogle(BaseTranslator):
     concate_text = True
     params: Dict = {
         'delay': '0.0',
-        'url': {
-            'type': 'selector',
-            'options': [
-                # 'https://translate.google.cn/m',
-                'https://translate.google.com/m'
-            ],
-            'select': 'https://translate.google.com/m'
-        },
-        
     }
     
     def _setup_translator(self):
@@ -320,7 +311,7 @@ class TransGoogle(BaseTranslator):
         self.googletrans._url_params['sl'] = self.lang_map[self.lang_source]
         self.googletrans._target = self.lang_map[self.lang_target]
         self.googletrans._url_params['tl'] = self.lang_map[self.lang_target]
-        self.googletrans.__base_url = self.params['url']['select']
+        self.googletrans.__base_url = "https://translate.google.com/m"
         translations = [self.googletrans.translate(t) for t in src_list]
 
         return translations

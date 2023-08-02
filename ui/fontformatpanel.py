@@ -353,6 +353,14 @@ class SizeControlLabel(QLabel):
                 self.size_ctrl_changed.emit(self.cur_pos - new_pos)
             self.cur_pos = new_pos
         return super().mouseMoveEvent(e)
+    
+# dict(FontFormat)
+# local_fformat_change_to_func = {
+#     'frgb': None,
+# }
+# global_fformat_change_to_func = {
+#     FontFormat.
+# }
 
 
 class FontFormatPanel(Widget):

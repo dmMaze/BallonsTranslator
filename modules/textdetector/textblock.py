@@ -7,6 +7,7 @@ import cv2
 import re
 
 from utils.imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
+from utils.structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
@@ -16,97 +17,57 @@ LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
 CJKPATTERN = re.compile(r'[\uac00-\ud7a3\u3040-\u30ff\u4e00-\u9FFF]')
 
 
-class TextBlock(object):
-    def __init__(self, xyxy: List, 
-                 lines: List = None, 
-                 language: str = 'unknown',
-                 vertical: bool = False, 
-                 font_size: float = -1,
-                 distance: List = None,
-                 angle: int = 0,
-                 vec: List = None,
-                 norm: float = -1,
-                 merged: bool = False,
-                 sort_weight: float = -1,
-                 text: List = None,
-                 translation: str = "",
-                 fg_r = 0,
-                 fg_g = 0,
-                 fg_b = 0,
-                 bg_r = 0,
-                 bg_g = 0,
-                 bg_b = 0,                
-                 line_spacing = 1.,
-                 letter_spacing = 1.,
-                 font_family: str = "",
-                 bold: bool = False,
-                 underline: bool = False,
-                 italic: bool = False,
-                 _alignment: int = -1,
-                 rich_text: str = "",
-                 _bounding_rect: List = None,
-                 accumulate_color = True,
-                 default_stroke_width = 0.2,
-                 stroke_decide_by_colordiff: bool = True,
-                 font_weight = 50, 
-                 _target_lang: str = "",
-                 opacity: float = 1.,
-                 shadow_radius: float = 0.,
-                 shadow_strength: float = 1.,
-                 shadow_color: Tuple = (0, 0, 0),
-                 shadow_offset: List = [0, 0],
-                 **kwargs) -> None:
-        self.xyxy = [int(num) for num in xyxy]                    # boundingbox of textblock
-        self.lines = [] if lines is None else lines     # polygons of textlines
-        self.vertical = vertical            # orientation of textlines
-        self.language = language
-        self.font_size = font_size          # font pixel size
-        self.distance = None if distance is None else np.array(distance, np.float64)   # distance between textlines and "origin"          
-        self.angle = angle                  # rotation angle of textlines
+@nested_dataclass
+class TextBlock:
+    xyxy: List = field(default_factory = lambda: [0, 0, 0, 0])
+    lines: List = field(default_factory = lambda: [])
+    language: str = 'unknown'
+    vertical: bool = False
+    font_size: float = -1.
+    distance: np.ndarray = None
+    angle: int = 0
+    vec: List = None
+    norm: float = -1
+    merged: bool = False
+    sort_weight: float = -1
+    text: List = field(default_factory = lambda : [])
+    translation: str = ""
+    fg_r: int = 0
+    fg_g: int = 0
+    fg_b: int = 0
+    bg_r: int = 0
+    bg_g: int = 0
+    bg_b: int = 0
+    line_spacing: float = 1.
+    letter_spacing: float = 1.
+    font_family: str = ""
+    bold: bool = False
+    underline: bool = False
+    italic: bool = False
+    _alignment: int = -1
+    rich_text: str = ""
+    _bounding_rect: List = None
+    accumulate_color: bool = True
+    default_stroke_width: float = 0.2
+    stroke_decide_by_colordiff: bool = True
+    font_weight: int = 50
+    _target_lang: str = ""
+    opacity: float = 1.
+    shadow_radius: float = 0.
+    shadow_strength: float = 1.
+    shadow_color: Tuple = (0, 0, 0)
+    shadow_offset: List = field(default_factory = lambda : [0., 0.])
 
-        self.vec = None if vec is None else np.array(vec, np.float64) # primary vector of textblock
-        self.norm = norm                    # primary norm of textblock
-        self.merged = merged
-        self.sort_weight = sort_weight
+    region_mask: np.ndarray = None
+    region_inpaint_dict: Dict = None
 
-        self.text = text if text is not None else []
-        self.prob = 1
-
-        self.translation = translation
-
-        # note they're accumulative rgb values of textlines
-        self.fg_r = fg_r                       
-        self.fg_g = fg_g
-        self.fg_b = fg_b
-        self.bg_r = bg_r
-        self.bg_g = bg_g
-        self.bg_b = bg_b
-
-        # self.stroke_width = stroke_width
-        self.font_family: str = font_family
-        self.bold: bool = bold
-        self.underline: bool = underline
-        self.italic: bool = italic
-        self.rich_text = rich_text
-        self.line_spacing = line_spacing
-        self.letter_spacing = letter_spacing
-        self._alignment = _alignment
-        self._target_lang = _target_lang
-
-        self._bounding_rect = _bounding_rect
-        self.default_stroke_width = default_stroke_width
-        self.stroke_decide_by_colordiff = stroke_decide_by_colordiff
-        self.font_weight = font_weight
-        self.accumulate_color = accumulate_color
-
-        self.opacity = opacity
-        self.shadow_radius = shadow_radius
-        self.shadow_strength = shadow_strength
-        self.shadow_color = shadow_color
-        self.shadow_offset = shadow_offset
-
-        self.region_mask: np.ndarray = None
-        self.region_inpaint_dict: dict = None
+    def __post_init__(self):
+        if self.xyxy is not None:
+            self.xyxy = [int(num) for num in self.xyxy]
+        if self.distance is not None:
+            self.distance = np.array(self.distance, np.float32)
+        if self.vec is not None:
+            self.vec = np.array(self.vec, np.float32)
 
     def adjust_bbox(self, with_bbox=False, x_range=None, y_range=None):
         lines = self.lines_array().astype(np.int32)
