@@ -2,6 +2,8 @@ import json, os, cv2
 import os.path as osp
 import numpy as np
 from pathlib import Path
+import importlib
+from typing import List, Dict, Callable
 
 IMG_EXT = ['.bmp', '.jpg', '.png', '.jpeg', '.webp']
 NP_BOOL_TYPES = (np.bool_, np.bool8)
@@ -75,4 +77,36 @@ def text_is_empty(text) -> bool:
         return True    
     elif text is None:
         return True
+    
+def empty_func(*args, **kwargs):
+    return
 
+def get_obj_from_str(string, reload=False):
+    module, cls = string.rsplit(".", 1)
+    if reload:
+        module_imp = importlib.import_module(module)
+        importlib.reload(module_imp)
+    return getattr(importlib.import_module(module, package=None), cls)
+
+def get_module_from_str(module_str: str):
+    return importlib.import_module(module_str, package=None)
+
+def build_funcmap(module_str: str, params_names: List[str], func_prefix: str = '', func_suffix: str = '', fallback_func: Callable = None, verbose: bool = True) -> Dict:
+    
+    if fallback_func is None:
+        fallback_func = empty_func
+
+    module = get_module_from_str(module_str)
+
+    funcmap = {}
+    for param in params_names:
+        tgt_func = f'{func_prefix}{param}{func_suffix}'
+        try:
+            tgt_func = getattr(module, tgt_func)
+        except Exception as e:
+            if verbose:
+                print(f'failed to import {tgt_func} from {module_str}: {e}')
+            tgt_func = fallback_func
+        funcmap[param] = tgt_func
+
+    return funcmap

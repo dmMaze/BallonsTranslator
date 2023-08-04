@@ -17,9 +17,9 @@ from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
 from .pagesources import SourceDownload
-from .textedit_area import TextPanel, SourceTextEdit, SelectTextMiniMenu
+from .textedit_area import SourceTextEdit, SelectTextMiniMenu
 from .drawingpanel import DrawingPanel
-from .scenetext_manager import SceneTextManager
+from .scenetext_manager import SceneTextManager, TextPanel
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox, SourceDownloadProgressMessageBox
@@ -31,6 +31,8 @@ from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
+
+from . import shared_widget as SW
 
 class PageListView(QListWidget):    
     def __init__(self, *args, **kwargs) -> None:
@@ -145,8 +147,8 @@ class MainWindow(FramelessWindow):
         mainHLayout.setContentsMargins(0, 0, 0, 0)
         mainHLayout.setSpacing(0)
 
-        # set up comic canvas
-        self.canvas = Canvas()
+        # set up canvas
+        SW.canvas = self.canvas = Canvas()
         self.canvas.imgtrans_proj = self.imgtrans_proj
         self.canvas.gv.hide_canvas.connect(self.onHideCanvas)
         self.canvas.proj_savestate_changed.connect(self.on_savestate_changed)
@@ -180,7 +182,7 @@ class MainWindow(FramelessWindow):
         self.mtSubWidget.setWindowFlags(Qt.WindowType.Window)
         self.mtSubWidget.hide()
 
-        self.st_manager = SceneTextManager(self.app, self, self.canvas, self.textPanel)
+        SW.st_manager = self.st_manager = SceneTextManager(self.app, self, self.canvas, self.textPanel)
         self.st_manager.new_textblk.connect(self.canvas.search_widget.on_new_textblk)
         self.canvas.search_widget.pairwidget_list = self.st_manager.pairwidget_list
         self.canvas.search_widget.textblk_item_list = self.st_manager.textblk_item_list

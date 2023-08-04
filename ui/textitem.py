@@ -8,7 +8,7 @@ from qtpy.QtGui import QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTe
 
 from modules.textdetector.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
-from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern, html_max_fontsize
+from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern, set_html_color
 from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
 from .text_graphical_effect import apply_shadow_effect
 
@@ -251,7 +251,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.letter_spacing = 1.
             self.setLetterSpacing(font_fmt.letter_spacing, repaint_background=False)
         self.update_effect(font_fmt, repaint=False)
-        self.setStrokeWidth(font_fmt.stroke_width, repaint=False)
+        self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
         self.repaint_background()
 
     def setCenterTransform(self):
@@ -482,25 +482,6 @@ class TextBlkItem(QGraphicsTextItem):
                 pos.setY(pos.y() + delta_x * np.sin(rad))
             self.setPos(pos)
 
-    def setStrokeWidth(self, stroke_width: float, padding=True, repaint=True):
-        if self.stroke_width == stroke_width:
-            return
-
-        if stroke_width > 0 and padding:
-            p = self.layout.max_font_size(to_px=True) * stroke_width / 2
-            self.setPadding(p)
-
-        self.stroke_width = stroke_width
-
-        if repaint:
-            self.repaint_background()
-            self.update()
-
-    def setStrokeColor(self, scolor):
-        self.stroke_color = scolor if isinstance(scolor, QColor) else QColor(*scolor)
-        self.repaint_background()
-        self.update()
-
     def get_scale(self) -> float:
         tl = self.topLevelItem()
         if tl is not None:
@@ -630,13 +611,6 @@ class TextBlkItem(QGraphicsTextItem):
 
         return html.replace('>\n<', '><')
 
-    def setAlignment(self, alignment):
-        doc = self.document()
-        op = doc.defaultTextOption()
-        op.setAlignment(alignment)
-        doc.setDefaultTextOption(op)
-        self.repaint_background()
-
     def alignment(self):
         return self.document().defaultTextOption().alignment()
 
@@ -745,27 +719,212 @@ class TextBlkItem(QGraphicsTextItem):
         self.blk.opacity = self.opacity()
         self.blk.set_font_colors(fmt.frgb, fmt.srgb, accumulate=False)
 
-    def setLineSpacing(self, line_spacing: float):
-        self.line_spacing = line_spacing
-        self.layout.setLineSpacing(self.line_spacing)
-        self.repaint_background()
 
-    def setLetterSpacing(self, letter_spacing: float, repaint_background=True, force=False):
-        if self.letter_spacing == letter_spacing and not force:
-            return
-        self.letter_spacing = letter_spacing
-        if self.is_vertical:
-            self.layout.setLetterSpacing(letter_spacing)
+    def set_cursor_cfmt(self, cursor: QTextCursor, cfmt, merge_char: bool = False):
+        if merge_char:
+            cursor.mergeCharFormat(cfmt)
+        cursor.mergeBlockCharFormat(cfmt)
+        cursor.clearSelection()
+        self.setTextCursor(cursor)
+
+    def _before_set_ffmt(self, set_selected: bool, restore_cursor: bool):
+        self.is_formatting = True
+        cursor = self.textCursor()
+
+        cursor_pos = None
+        if restore_cursor:
+            cursor_pos = (cursor.position(), cursor.anchor().__pos__()) if restore_cursor else None
+
+        if set_selected:
+            has_set_all = not cursor.hasSelection()
+            if has_set_all:
+                cursor.select(QTextCursor.SelectionType.Document)
         else:
-            char_fmt = QTextCharFormat()
-            char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-            char_fmt.setFontLetterSpacing(letter_spacing * 100)
+            has_set_all = False
             cursor = QTextCursor(self.document())
             cursor.select(QTextCursor.SelectionType.Document)
-            cursor.mergeCharFormat(char_fmt)
-            # cursor.mergeBlockCharFormat(char_fmt)
+
+        return cursor, dict(cursor_pos=cursor_pos, has_set_all=has_set_all)
+
+    def _after_set_ffmt(self, cursor: QTextCursor, repaint_background: bool, restore_cursor: bool, cursor_pos: Tuple, has_set_all: bool):
+        
+        if restore_cursor:
+            if cursor_pos is not None:
+                pos1, pos2 = cursor_pos
+                if has_set_all:
+                    cursor.setPosition(pos1)
+                else:
+                    cursor.setPosition(min(pos1, pos2))
+                    cursor.setPosition(max(pos1, pos2), QTextCursor.MoveMode.KeepAnchor)
+                self.setTextCursor(cursor)
+
         if repaint_background:
             self.repaint_background()
+
+        self.is_formatting = False
+
+    def setFontFamily(self, value: str, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
+        self._set_font_family(value, cursor)
+        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+
+    def _set_font_family(self, value: str, cursor: QTextCursor):
+        doc = self.document()
+        lastpos = doc.rootFrame().lastPosition()
+        if cursor.selectionStart() == 0 and \
+            cursor.selectionEnd() == lastpos:
+            font = doc.defaultFont()
+            font.setFamily(value)
+            doc.setDefaultFont(font)
+
+        sel_start = cursor.selectionStart()
+        sel_end = cursor.selectionEnd()
+        block = doc.firstBlock()
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                fragment = it.fragment()
+                
+                frag_start = fragment.position()
+                frag_end = frag_start + fragment.length()
+                pos2 = min(frag_end, sel_end)
+                pos1 = max(frag_start, sel_start)
+                if pos1 < pos2:
+                    cfmt = fragment.charFormat()
+                    under_line = cfmt.fontUnderline()
+                    cfont = cfmt.font()
+                    font = QFont(value, cfont.pointSize(), cfont.weight(), cfont.italic())
+                    font.setPointSizeF(cfont.pointSizeF())
+                    font.setBold(font.bold())
+                    font.setWordSpacing(cfont.wordSpacing())
+                    font.setLetterSpacing(cfont.letterSpacingType(), cfont.letterSpacing())
+                    cfmt.setFont(font)
+                    cfmt.setFontUnderline(under_line)
+                    cursor.setPosition(pos1)
+                    cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
+                    cursor.setCharFormat(cfmt)
+                it += 1
+            block = block.next()
+
+        cfmt = cursor.charFormat()
+        cfmt.setFontFamily(value)
+        self.set_cursor_cfmt(cursor, cfmt)
+
+    def setFontWeight(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
+        cfmt = QTextCharFormat()
+        cfmt.setFontWeight(value)
+        self.set_cursor_cfmt(cursor, cfmt, True)
+        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+
+    def setFontItalic(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
+        cfmt = QTextCharFormat()
+        cfmt.setFontItalic(value)
+        self.set_cursor_cfmt(cursor, cfmt, True)
+        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+
+    def setFontUnderline(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
+        cfmt = QTextCharFormat()
+        cfmt.setFontUnderline(value)
+        self.set_cursor_cfmt(cursor, cfmt, True)
+        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+
+    def setLineSpacing(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        self.is_formatting = True
+        self.line_spacing = value
+        self.layout.setLineSpacing(self.line_spacing)
+        if repaint_background:
+            self.repaint_background()
+            self.update()
+        self.is_formatting = False
+
+    def setLetterSpacing(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False, force=False):
+        
+        if self.letter_spacing == value and not force:
+            return
+        
+        self.is_formatting = True
+        
+        self.letter_spacing = value
+        if self.is_vertical:
+            self.layout.setLetterSpacing(value)
+        else:
+            cursor = QTextCursor(self.document())
+            char_fmt = cursor.charFormat()
+            char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+            char_fmt.setFontLetterSpacing(value * 100)
+            cursor.select(QTextCursor.SelectionType.Document)
+            self.set_cursor_cfmt(cursor, char_fmt, True)
+
+        if repaint_background:
+            self.repaint_background()
+            self.update()
+
+        self.is_formatting = True
+
+    def setFontColor(self, value: Tuple, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, force=False):
+        cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
+        if not self.document().isEmpty():
+            fraghtml = cursor.selection().toHtml()
+            cursor.insertHtml(set_html_color(fraghtml, value))
+        else:
+            cfmt = cursor.charFormat()
+            cfmt.setForeground(QColor(*value))
+            self.set_cursor_cfmt(cursor, cfmt, True)
+        self._after_set_ffmt(cursor, repaint_background=repaint_background, restore_cursor=restore_cursor, **after_kwargs)
+
+    def setStrokeColor(self, scolor, **kwargs):
+        self.stroke_color = scolor if isinstance(scolor, QColor) else QColor(*scolor)
+        self.repaint_background()
+        self.update()
+
+    def setStrokeWidth(self, stroke_width: float, padding=True, repaint_background=True, restore_cursor=False, **kwargs):
+        if self.stroke_width == stroke_width:
+            return
+        
+        cursor, after_kwargs = self._before_set_ffmt(set_selected=False, restore_cursor=restore_cursor)
+
+        if stroke_width > 0 and padding:
+            p = self.layout.max_font_size(to_px=True) * stroke_width / 2
+            self.setPadding(p)
+
+        self.stroke_width = stroke_width
+
+        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+        if repaint_background:
+            self.update()
+
+    def setFontSize(self, value: float, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, **kwargs):
+        cursor, after_kwargs = self._before_set_ffmt(set_selected=set_selected, restore_cursor=restore_cursor)
+
+        if self.stroke_width != 0:
+            repaint_background = True
+        if repaint_background:
+            fs = pt2px(max(self.layout.max_font_size(), value))
+            self.layout.relayout_on_changed = False
+            self.setPadding(fs * self.stroke_width / 2)
+            self.layout.relayout_on_changed = True
+        cfmt = QTextCharFormat()
+        cfmt.setFontPointSize(value)
+        self.set_cursor_cfmt(cursor, cfmt, True)
+
+        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+
+    def setAlignment(self, value, restore_cursor=False, repaint_background=True, *args, **kwargs):
+        cursor, after_kwargs = self._before_set_ffmt(set_selected=False, restore_cursor=restore_cursor)
+        if isinstance(value, int):
+            value = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][value]
+        doc = self.document()
+        op = doc.defaultTextOption()
+        op.setAlignment(value)
+        doc.setDefaultTextOption(op)
+        if repaint_background:
+            self.repaint_background()
+            self.update()
+        self._after_set_ffmt(cursor, repaint_background=False, restore_cursor=restore_cursor, **after_kwargs)
+
 
     def get_char_fmts(self) -> List[QTextCharFormat]:
         cursor = self.textCursor()
@@ -773,7 +932,6 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         char_fmts = []
         while True:
-            
             cursor.movePosition(QTextCursor.MoveOperation.NextCharacter)
             cursor.clearSelection()
             char_fmts.append(cursor.charFormat())

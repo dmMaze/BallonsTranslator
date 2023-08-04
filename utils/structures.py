@@ -53,3 +53,7 @@ class Config:
     
     def __setitem__(self, key: str, value):
         self.__setattr__(key, value)
+
+    @classmethod
+    def params(cls):
+        return cls.__annotations__

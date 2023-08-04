@@ -205,11 +205,11 @@ class ColorPicker(QLabel):
 
     def rgb(self) -> List:
         color = self.color
-        return [color.red(), color.green(), color.blue()]
+        return (color.red(), color.green(), color.blue())
 
     def rgba(self) -> List:
         color = self.color
-        return [color.red(), color.green(), color.blue(), color.alpha()]
+        return (color.red(), color.green(), color.blue(), color.alpha())
 
 
 class SliderProxyStyle(QProxyStyle):

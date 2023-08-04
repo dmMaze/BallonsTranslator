@@ -1,5 +1,5 @@
 
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Any
 import numpy as np
 import copy
 import cv2
@@ -14,14 +14,15 @@ except:
 
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
-from .textedit_area import TextPanel, TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu
-from .fontformatpanel import set_textblk_fontsize
+from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
 from .misc import FontFormat, ProgramConfig, pt2px
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
 from utils.imgproc_utils import extract_ballon_region, rotate_polygons
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
+from .fontformatpanel import FontFormatPanel
 
+from . import funcmaps as FM
 
 class CreateItemCommand(QUndoCommand):
     def __init__(self, blk_item: TextBlkItem, ctrl, parent=None):
@@ -282,6 +283,19 @@ class PasteSrcItemsCommand(QUndoCommand):
             src.setPlainText(text)
 
 
+class TextPanel(Widget):
+    def __init__(self, app: QApplication, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        layout = QVBoxLayout(self)
+        self.textEditList = TextEditListScrollArea(self)
+        self.activePair: TransPairWidget = None
+        self.formatpanel = FontFormatPanel(app, self)
+        layout.addWidget(self.formatpanel)
+        layout.addWidget(self.textEditList)
+        layout.setContentsMargins(0, 0, 5, 0)
+        layout.setSpacing(14)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
 class SceneTextManager(QObject):
     new_textblk = Signal(int)
     def __init__(self, 
@@ -312,7 +326,6 @@ class SceneTextManager(QObject):
         self.textEditList = textpanel.textEditList
         self.formatpanel = textpanel.formatpanel
         self.formatpanel.effect_panel.apply.connect(self.on_apply_effect)
-        self.formatpanel.global_format_changed.connect(self.onGlobalFormatChanged)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
         self.textblk_item_list: List[TextBlkItem] = []
@@ -525,7 +538,7 @@ class SceneTextManager(QObject):
         self.txtblkShapeControl.updateBoundingRect()
 
     def onTextBlkItemMoved(self):
-        selected_blks = self.get_selected_blkitems()
+        selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(MoveBlkItemsCommand(selected_blks, self.txtblkShapeControl))
         
@@ -538,14 +551,14 @@ class SceneTextManager(QObject):
             self.canvas.push_undo_command(RotateItemCommand(blk_item, new_angle, self.txtblkShapeControl))
 
     def onDeleteBlkItems(self, mode: int):
-        selected_blks = self.get_selected_blkitems()
+        selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
             selected_blks.append(self.txtblkShapeControl.blk_item)
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(DeleteBlkItemsCommand(selected_blks, mode, self))
 
     def onCopyBlkItems(self, pos: QPointF):
-        selected_blks = self.get_selected_blkitems()
+        selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
             selected_blks.append(self.txtblkShapeControl.blk_item)
 
@@ -622,7 +635,7 @@ class SceneTextManager(QObject):
         self.apply_fontformat(self.formatpanel.global_format)
 
     def onAutoLayoutTextblks(self):
-        selected_blks = self.get_selected_blkitems()
+        selected_blks = self.canvas.selected_text_items()
         old_html_lst, old_rect_lst, trans_widget_lst = [], [], []
         selected_blks = [blk for blk in selected_blks if not blk.is_vertical]
         if len(selected_blks) > 0:
@@ -635,7 +648,7 @@ class SceneTextManager(QObject):
             self.canvas.push_undo_command(AutoLayoutCommand(selected_blks, old_rect_lst, old_html_lst, trans_widget_lst))
 
     def onResetAngle(self):
-        selected_blks = self.get_selected_blkitems()
+        selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(ResetAngleCommand(selected_blks, self.txtblkShapeControl))
 
@@ -769,8 +782,7 @@ class SceneTextManager(QObject):
         if resize_ratio != 1:
             new_font_size = blkitem.font().pointSizeF() * resize_ratio
             blkitem.textCursor().clearSelection()
-            set_textblk_fontsize(blkitem, new_font_size)
-
+            blkitem.setFontSize(new_font_size)
 
         scale = blkitem.scale()
         if scale != 1 and not fmt.alignment == 0:
@@ -917,11 +929,8 @@ class SceneTextManager(QObject):
         
         propagate_user_edit(edit, blk_item, pos, added_text, input_method_used)
 
-    def onGlobalFormatChanged(self):
-        self.apply_fontformat(self.formatpanel.global_format)
-
     def apply_fontformat(self, fontformat: FontFormat):
-        selected_blks = self.get_selected_blkitems()
+        selected_blks = self.canvas.selected_text_items()
         trans_widget_list = []
         for blk in selected_blks:
             trans_widget_list.append(self.pairwidget_list[blk.idx].e_trans)
@@ -930,17 +939,9 @@ class SceneTextManager(QObject):
 
     def on_apply_effect(self):
         format = self.formatpanel.active_format
-        selected_blks = self.get_selected_blkitems()
+        selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(ApplyEffectCommand(selected_blks, format))
-
-    def get_selected_blkitems(self) -> List[TextBlkItem]:
-        selections = self.canvas.selectedItems()
-        selected_blks = []
-        for selection in selections:
-            if isinstance(selection, TextBlkItem):
-                selected_blks.append(selection)
-        return selected_blks
 
     def updateTextBlkItemIdx(self):
         for ii, blk_item in enumerate(self.textblk_item_list):

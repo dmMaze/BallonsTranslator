@@ -7,7 +7,6 @@ import keyboard
 
 from .stylewidgets import Widget, SeparatorWidget, ClickableLabel
 from .textitem import TextBlock
-from .fontformatpanel import FontFormatPanel
 from .misc import ProgramConfig
 import webbrowser
 
@@ -329,18 +328,4 @@ class TextEditListScrollArea(QScrollArea):
     def removeWidget(self, widget: TransPairWidget):
         widget.setVisible(False)
         self.vlayout.removeWidget(widget)
-
-
-class TextPanel(Widget):
-    def __init__(self, app: QApplication, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        layout = QVBoxLayout(self)
-        self.textEditList = TextEditListScrollArea(self)
-        self.activePair: TransPairWidget = None
-        self.formatpanel = FontFormatPanel(app, self)
-        layout.addWidget(self.formatpanel)
-        layout.addWidget(self.textEditList)
-        layout.setContentsMargins(0, 0, 5, 0)
-        layout.setSpacing(14)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 

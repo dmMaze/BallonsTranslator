@@ -6,10 +6,11 @@ from typing import List
 
 class SizeComboBox(QComboBox):
     
-    apply_change = Signal(float)
-    def __init__(self, val_range: List = None, *args, **kwargs) -> None:
+    param_changed = Signal(str, float)
+    def __init__(self, val_range: List = None, param_name: str = '', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.text_changed_by_user = False
+        self.param_name = param_name
         self.editTextChanged.connect(self.on_text_changed)
         self.currentIndexChanged.connect(self.on_current_index_changed)
         self.setEditable(True)
@@ -59,4 +60,4 @@ class SizeComboBox(QComboBox):
     def check_change(self):
         if self.text_changed_by_user:
             self.text_changed_by_user = False
-            self.apply_change.emit(self.value())
+            self.param_changed.emit(self.param_name, self.value())
