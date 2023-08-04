@@ -162,7 +162,7 @@ class DrawPanelConfig(Config):
 @nested_dataclass
 class ProgramConfig(Config):
 
-    module: ModuleConfig = field(default_factory=lambda: ModuleConfig()),
+    module: ModuleConfig = field(default_factory=lambda: ModuleConfig())
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
     recent_proj_list: List = field(default_factory=lambda: [])
