@@ -897,6 +897,7 @@ class MainWindow(FramelessWindow):
 
     def on_pagtrans_finished(self, page_index: int):
         blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
+
         self.postprocess_translations(blk_list)
                 
         # override font format if necessary
@@ -930,10 +931,10 @@ class MainWindow(FramelessWindow):
             blk.line_spacing = gf.line_spacing
             blk.letter_spacing = gf.letter_spacing
             sw = blk.stroke_width
-            if sw > 0 and pcfg.module.enable_ocr:
+            if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect:
                 blk.font_size = int(blk.font_size / (1 + sw))
 
-        self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag
+        self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and pcfg.module.enable_detect
         
         if page_index != self.pageList.currentIndex().row():
             self.pageList.setCurrentRow(page_index)
@@ -941,7 +942,7 @@ class MainWindow(FramelessWindow):
             self.imgtrans_proj.set_current_img_byidx(page_index)
             self.canvas.updateCanvas()
             self.st_manager.updateSceneTextitems()
-        
+
         self.saveCurrentPage(False, False)
         if page_index + 1 == self.imgtrans_proj.num_pages:
             self.st_manager.auto_textlayout_flag = False
@@ -1003,6 +1004,7 @@ class MainWindow(FramelessWindow):
             self.set_display_lang(lang)
 
     def on_run_imgtrans(self):
+
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
         self.postprocess_mt_toggle = False
@@ -1021,7 +1023,7 @@ class MainWindow(FramelessWindow):
                         textblk.default_stroke_width = 0.2
                         textblk.text = []
                         textblk.set_font_colors((0, 0, 0), (0, 0, 0), True)
-                    if pcfg.module.enable_translate or all_disabled:
+                    if pcfg.module.enable_translate or all_disabled or pcfg.module.enable_ocr:
                         textblk.rich_text = ''
                     textblk.vertical = textblk.src_is_vertical
         self.module_manager.runImgtransPipeline()
