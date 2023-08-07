@@ -6,7 +6,6 @@ from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QC
 
 from . import constants as C
 
-
 # nuitka seems to require import QtCore explicitly 
 if C.FLAG_QT6:
     from PyQt6 import QtCore
@@ -14,7 +13,7 @@ else:
     from PyQt5 import QtCore
 
 from .stylewidgets import Widget, ConfigComboBox
-from .misc import ProgramConfig
+from .config import pcfg
 from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .dlconfig_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 
@@ -271,10 +270,8 @@ class ConfigPanel(Widget):
     save_config = Signal()
     update_source_download_status = Signal(str)
 
-    def __init__(self, config: ProgramConfig, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-
-        self.config = config
         
         self.configTable = ConfigTable()
         self.configTable.tableitem_pressed.connect(self.onTableItemPressed)
@@ -400,52 +397,50 @@ class ConfigPanel(Widget):
 
     def onTableItemPressed(self, idx0, idx1):
         self.configContent.setActiveLabel(idx0, idx1)
-        # cb: ConfigBlock = self.configContent.config_block_list[idx0]
-        # self.configContent.ensureWidgetVisible(self.activel)
 
     def on_open_onstartup_changed(self):
-        self.config.open_recent_on_startup = self.open_on_startup_checker.isChecked()
+        pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
 
     def on_fntsize_flag_changed(self):
-        self.config.let_fntsize_flag = self.let_fntsize_combox.currentIndex()
+        pcfg.let_fntsize_flag = self.let_fntsize_combox.currentIndex()
 
     def on_fntstroke_flag_changed(self):
-        self.config.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
+        pcfg.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
 
     def on_autolayout_changed(self):
-        self.config.let_autolayout_flag = self.let_autolayout_checker.isChecked()
+        pcfg.let_autolayout_flag = self.let_autolayout_checker.isChecked()
 
     def on_uppercase_changed(self):
-        self.config.let_uppercase_flag = self.let_uppercase_checker.isChecked()
+        pcfg.let_uppercase_flag = self.let_uppercase_checker.isChecked()
 
     def on_selectext_minimenu_changed(self):
-        self.config.textselect_mini_menu = self.selectext_minimenu_checker.isChecked()
+        pcfg.textselect_mini_menu = self.selectext_minimenu_checker.isChecked()
 
     def on_saladict_shortcut_changed(self):
         kstr = self.saladict_shortcut.keySequence().toString()
         if kstr:
-            self.config.saladict_shortcut = self.saladict_shortcut.keySequence().toString()
+            pcfg.saladict_shortcut = self.saladict_shortcut.keySequence().toString()
 
     def on_searchurl_changed(self):
         url = self.searchurl_combobox.currentText()
-        self.config.search_url = url
+        pcfg.search_url = url
 
     def on_fontcolor_flag_changed(self):
-        self.config.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
+        pcfg.let_fntcolor_flag = self.let_fntcolor_combox.currentIndex()
 
     def on_font_scolor_flag_changed(self):
-        self.config.let_fnt_scolor_flag = self.let_fnt_scolor_combox.currentIndex()
+        pcfg.let_fnt_scolor_flag = self.let_fnt_scolor_combox.currentIndex()
 
     def on_alignment_flag_changed(self):
-        self.config.let_alignment_flag = self.let_alignment_combox.currentIndex()
+        pcfg.let_alignment_flag = self.let_alignment_combox.currentIndex()
 
     def on_effect_flag_changed(self):
-        self.config.let_fnteffect_flag = self.let_effect_combox.currentIndex()
+        pcfg.let_fnteffect_flag = self.let_effect_combox.currentIndex()
 
 
     def on_source_link_changed(self):
-        self.config.src_link_flag = self.src_link_textbox.text()
-        self.update_source_download_status.emit(self.config.src_link_flag)
+        pcfg.src_link_flag = self.src_link_textbox.text()
+        self.update_source_download_status.emit(pcfg.src_link_flag)
 
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
@@ -474,21 +469,20 @@ class ConfigPanel(Widget):
     def setupConfig(self):
         self.blockSignals(True)
 
-        config = self.config
-        if config.open_recent_on_startup:
+        if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
 
-        self.let_effect_combox.setCurrentIndex(config.let_fnteffect_flag)
-        self.let_fntsize_combox.setCurrentIndex(config.let_fntsize_flag)
-        self.let_fntstroke_combox.setCurrentIndex(config.let_fntstroke_flag)
-        self.let_fntcolor_combox.setCurrentIndex(config.let_fntcolor_flag)
-        self.let_fnt_scolor_combox.setCurrentIndex(config.let_fnt_scolor_flag)
-        self.let_alignment_combox.setCurrentIndex(config.let_alignment_flag)
-        self.let_autolayout_checker.setChecked(config.let_autolayout_flag)
-        self.selectext_minimenu_checker.setChecked(config.textselect_mini_menu)
-        self.let_uppercase_checker.setChecked(config.let_uppercase_flag)
-        self.saladict_shortcut.setKeySequence(config.saladict_shortcut)
-        self.searchurl_combobox.setCurrentText(config.search_url)
-        self.src_link_textbox.setText(config.src_link_flag)
+        self.let_effect_combox.setCurrentIndex(pcfg.let_fnteffect_flag)
+        self.let_fntsize_combox.setCurrentIndex(pcfg.let_fntsize_flag)
+        self.let_fntstroke_combox.setCurrentIndex(pcfg.let_fntstroke_flag)
+        self.let_fntcolor_combox.setCurrentIndex(pcfg.let_fntcolor_flag)
+        self.let_fnt_scolor_combox.setCurrentIndex(pcfg.let_fnt_scolor_flag)
+        self.let_alignment_combox.setCurrentIndex(pcfg.let_alignment_flag)
+        self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
+        self.selectext_minimenu_checker.setChecked(pcfg.textselect_mini_menu)
+        self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
+        self.saladict_shortcut.setKeySequence(pcfg.saladict_shortcut)
+        self.searchurl_combobox.setCurrentText(pcfg.search_url)
+        self.src_link_textbox.setText(pcfg.src_link_flag)
 
         self.blockSignals(False)

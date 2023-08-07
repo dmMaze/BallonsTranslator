@@ -2,11 +2,11 @@ from typing import Tuple, List, Union
 import numpy as np
 import cv2
 
-from qtpy.QtCore import QRectF, Qt, QPointF, QSize, QPoint, QDateTime
-from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsPathItem, QGraphicsItem
-from qtpy.QtGui import QPen, QColor, QPainterPath, QCursor, QPainter, QPixmap, QImage, QBrush
+from qtpy.QtCore import QRectF, Qt, QPointF, QSize
+from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsItem
+from qtpy.QtGui import QPen, QPainter, QPixmap, QImage, QBrush
 
-from .misc import DrawPanelConfig, pixmap2ndarray, ndarray2pixmap
+from .misc import pixmap2ndarray
 
 SIZE_MAX = 2147483647
 

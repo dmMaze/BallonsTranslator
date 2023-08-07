@@ -2,7 +2,7 @@ from gallery_dl.job import DownloadJob
 from gallery_dl import config, util
 from qtpy.QtCore import Signal, QThread
 from utils.logger import logger as LOGGER
-from ui.misc import ProgramConfig
+from ui.config import ProgramConfig
 from ui.imgtrans_proj import ProjImgTrans
 from ui.constants import DOWNLOAD_PATH
 import os

@@ -2,7 +2,6 @@ import time
 from typing import Union, List, Dict, Callable
 import numpy as np
 import traceback
-import os.path as osp
 
 from qtpy.QtCore import QThread, Signal, QObject, QLocale
 from qtpy.QtWidgets import QMessageBox
@@ -16,13 +15,13 @@ from modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     BaseTranslator, InpainterBase, TextDetectorBase, OCRBase
 import modules
 modules.translators.SYSTEM_LANG = QLocale.system().name()
+from modules.textdetector import TextBlock
 
 from .stylewidgets import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
-from .misc import ModuleConfig, ProgramConfig
+from .config import pcfg
+cfg_module = pcfg.module
 from .imgtrans_proj import ProjImgTrans
-
-from modules.textdetector import TextBlock
 
 
 class ModuleThread(QThread):
@@ -30,9 +29,8 @@ class ModuleThread(QThread):
     exception_occurred = Signal(str, str, str)
     finish_set_module = Signal()
 
-    def __init__(self, cfg_module: ModuleConfig, module_key: str, MODULE_REGISTER: Registry, *args, **kwargs) -> None:
+    def __init__(self, module_key: str, MODULE_REGISTER: Registry, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.cfg_module = cfg_module
         self.job = None
         self.module: Union[TextDetectorBase, BaseTranslator, InpainterBase, OCRBase] = None
         self.module_register = MODULE_REGISTER
@@ -47,7 +45,7 @@ class ModuleThread(QThread):
         try:
             module: Union[TextDetectorBase, BaseTranslator, InpainterBase, OCRBase] \
                 = self.module_register.module_dict[module_name]
-            params = self.cfg_module.get_params(self.module_key)[module_name]
+            params = cfg_module.get_params(self.module_key)[module_name]
             if params is not None:
                 self.module = module(**params)
             else:
@@ -83,8 +81,8 @@ class InpaintThread(ModuleThread):
 
     finish_inpaint = Signal(dict)
     inpainting = False    
-    def __init__(self, cfg_module: ModuleConfig, *args, **kwargs) -> None:
-        super().__init__(cfg_module, 'inpainter', INPAINTERS, *args, **kwargs)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__('inpainter', INPAINTERS, *args, **kwargs)
 
     @property
     def inpainter(self) -> InpainterBase:
@@ -119,8 +117,8 @@ class InpaintThread(ModuleThread):
 class TextDetectThread(ModuleThread):
     
     finish_detect_page = Signal(str)
-    def __init__(self, cfg_module: ModuleConfig, *args, **kwargs) -> None:
-        super().__init__(cfg_module, 'textdetector', TEXTDETECTORS, *args, **kwargs)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__('textdetector', TEXTDETECTORS, *args, **kwargs)
 
     def setTextDetector(self, textdetector: str):
         self.job = lambda : self._set_module(textdetector)
@@ -134,8 +132,8 @@ class TextDetectThread(ModuleThread):
 class OCRThread(ModuleThread):
 
     finish_ocr_page = Signal(str)
-    def __init__(self, cfg_module: ModuleConfig, *args, **kwargs) -> None:
-        super().__init__(cfg_module, 'ocr', OCR, *args, **kwargs)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__('ocr', OCR, *args, **kwargs)
 
     def setOCR(self, ocr: str):
         self.job = lambda : self._set_module(ocr)
@@ -150,28 +148,28 @@ class TranslateThread(ModuleThread):
     finish_translate_page = Signal(str)
     progress_changed = Signal(int)
 
-    def __init__(self, cfg_module: ModuleConfig, *args, **kwargs) -> None:
-        super().__init__(cfg_module, 'translator', TRANSLATORS, *args, **kwargs)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__('translator', TRANSLATORS, *args, **kwargs)
         self.translator: BaseTranslator = self.module
 
     def _set_translator(self, translator: str):
         
         old_translator = self.translator
-        source, target = self.cfg_module.translate_source, self.cfg_module.translate_target
+        source, target = cfg_module.translate_source, cfg_module.translate_target
         if self.translator is not None:
             if self.translator.name == translator:
                 return
         
         try:
-            params = self.cfg_module.translator_params[translator]
+            params = cfg_module.translator_params[translator]
             translator_module: BaseTranslator = TRANSLATORS.module_dict[translator]
             if params is not None:
                 self.translator = translator_module(source, target, raise_unsupported_lang=False, **params)
             else:
                 self.translator = translator_module(source, target, raise_unsupported_lang=False)
-            self.cfg_module.translate_source = self.translator.lang_source
-            self.cfg_module.translate_target = self.translator.lang_target
-            self.cfg_module.translator = self.translator.name
+            cfg_module.translate_source = self.translator.lang_source
+            cfg_module.translate_target = self.translator.lang_target
+            cfg_module.translator = self.translator.name
         except Exception as e:
             if old_translator is None:
                 old_translator = TRANSLATORS.module_dict['google']('简体中文', 'English', raise_unsupported_lang=False)
@@ -265,14 +263,12 @@ class ImgtransThread(QThread):
     finish_blktrans = Signal(int, list)
 
     def __init__(self, 
-                 cfg_module: ModuleConfig, 
                  textdetect_thread: TextDetectThread,
                  ocr_thread: OCRThread,
                  translate_thread: TranslateThread,
                  inpaint_thread: InpaintThread,
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.cfg_module = cfg_module
         self.textdetect_thread = textdetect_thread
         self.ocr_thread = ocr_thread
         self.translate_thread = translate_thread
@@ -343,7 +339,7 @@ class ImgtransThread(QThread):
             self.parallel_trans = not self.translator.is_computational_intensive()
         else:
             self.parallel_trans = False
-        if self.cfg_module.enable_translate and self.parallel_trans:
+        if cfg_module.enable_translate and self.parallel_trans:
             self.translate_thread.runTranslatePipeline(self.imgtrans_proj)
 
         for imgname in self.imgtrans_proj.pages:
@@ -359,12 +355,12 @@ class ImgtransThread(QThread):
             self.update_detect_progress.emit(self.detect_counter)
             self.imgtrans_proj.pages[imgname] = blk_list
 
-            if self.cfg_module.enable_ocr:
+            if cfg_module.enable_ocr:
                 self.ocr.run_ocr(img, blk_list)
                 self.ocr_counter += 1
                 self.update_ocr_progress.emit(self.ocr_counter)
 
-                if self.cfg_module.enable_translate:
+                if cfg_module.enable_translate:
                     try:
                         if self.parallel_trans:
                             self.translate_thread.push_pagekey_queue(imgname)
@@ -373,11 +369,11 @@ class ImgtransThread(QThread):
                             self.translate_counter += 1
                             self.update_translate_progress.emit(self.translate_counter)
                     except Exception as e:
-                        self.cfg_module.enable_translate = False
+                        cfg_module.enable_translate = False
                         self.update_translate_progress.emit(num_pages)
                         self.exception_occurred.emit(self.tr('Translation Failed.'), repr(e))
                         
-            if self.cfg_module.enable_inpaint:
+            if cfg_module.enable_inpaint:
                 inpainted = self.inpainter.inpaint(img, mask, blk_list)
                 self.imgtrans_proj.save_inpainted(imgname, inpainted)
                 self.inpaint_counter += 1
@@ -389,21 +385,21 @@ class ImgtransThread(QThread):
         return self.detect_counter == self.num_pages
 
     def ocr_finished(self) -> bool:
-        if self.imgtrans_proj is None or not self.cfg_module.enable_ocr:
+        if self.imgtrans_proj is None or not cfg_module.enable_ocr:
             return True
         return self.ocr_counter == self.num_pages
 
     def translate_finished(self) -> bool:
         if self.imgtrans_proj is None \
-            or not self.cfg_module.enable_ocr \
-            or not self.cfg_module.enable_translate:
+            or not cfg_module.enable_ocr \
+            or not cfg_module.enable_translate:
             return True
         if self.parallel_trans:
             return self.translate_thread.pipeline_finished()
         return self.translate_counter == self.num_pages
 
     def inpaint_finished(self) -> bool:
-        if self.imgtrans_proj is None or not self.cfg_module.enable_inpaint:
+        if self.imgtrans_proj is None or not cfg_module.enable_inpaint:
             return True
         return self.inpaint_counter == self.num_pages
 
@@ -414,15 +410,15 @@ class ImgtransThread(QThread):
 
     def recent_finished_index(self, ref_counter=None) -> int:
         counter = self.detect_counter
-        if self.cfg_module.enable_ocr:
+        if cfg_module.enable_ocr:
             counter = min(counter, self.ocr_counter)
-            if self.cfg_module.enable_translate:
+            if cfg_module.enable_translate:
                 if self.parallel_trans:
                     counter = min(counter, self.translate_thread.finished_counter)
                 else:
                     counter = min(counter, self.translate_counter)
                     
-        if self.cfg_module.enable_inpaint:
+        if cfg_module.enable_inpaint:
             counter = min(counter, self.inpaint_counter)
         
         if ref_counter is not None:
@@ -463,38 +459,34 @@ class ModuleManager(QObject):
 
     run_canvas_inpaint = False
     def __init__(self, 
-                 config: ProgramConfig, 
                  imgtrans_proj: ProjImgTrans,
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.config = config
-        self.cfg_module = config.module
         self.imgtrans_proj = imgtrans_proj
 
     def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox, ocr_postprocess: Callable = None, translate_postprocess: Callable = None):
-        cfg_module = self.cfg_module
-        self.textdetect_thread = TextDetectThread(cfg_module)
+        self.textdetect_thread = TextDetectThread()
         self.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
         self.textdetect_thread.exception_occurred.connect(self.handleRunTimeException)
 
-        self.ocr_thread = OCRThread(cfg_module)
+        self.ocr_thread = OCRThread()
         self.ocr_thread.finish_set_module.connect(self.on_finish_setocr)
         self.ocr_thread.exception_occurred.connect(self.handleRunTimeException)
 
-        self.translate_thread = TranslateThread(cfg_module)
+        self.translate_thread = TranslateThread()
         self.translate_thread.progress_changed.connect(self.on_update_translate_progress)
         self.translate_thread.finish_set_module.connect(self.on_finish_settranslator)
         self.translate_thread.finish_translate_page.connect(self.on_finish_translate_page)
         self.translate_thread.exception_occurred.connect(self.handleRunTimeException)        
 
-        self.inpaint_thread = InpaintThread(cfg_module)
+        self.inpaint_thread = InpaintThread()
         self.inpaint_thread.finish_set_module.connect(self.on_finish_setinpainter)
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
         self.inpaint_thread.exception_occurred.connect(self.handleRunTimeException)        
 
         self.progress_msgbox = imgtrans_progress_msgbox
 
-        self.imgtrans_thread = ImgtransThread(cfg_module, self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread)
+        self.imgtrans_thread = ImgtransThread(self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread)
         self.imgtrans_thread.update_detect_progress.connect(self.on_update_detect_progress)
         self.imgtrans_thread.update_ocr_progress.connect(self.on_update_ocr_progress)
         self.imgtrans_thread.update_translate_progress.connect(self.on_update_translate_progress)
@@ -537,7 +529,7 @@ class ModuleManager(QObject):
 
         self.setTextDetector()
         self.setOCR()
-        if self.cfg_module.enable_translate:
+        if cfg_module.enable_translate:
             self.setTranslator()
         self.setInpainter()
 
@@ -593,12 +585,12 @@ class ModuleManager(QObject):
         self.terminateRunningThread()
         
         self.progress_msgbox.show_all_bars()
-        if not self.cfg_module.enable_ocr:
+        if not cfg_module.enable_ocr:
             self.progress_msgbox.ocr_bar.hide()
             self.progress_msgbox.translate_bar.hide()
         else:
             self.progress_msgbox.ocr_bar.show()
-            if not self.cfg_module.enable_translate:
+            if not cfg_module.enable_translate:
                 self.progress_msgbox.translate_bar.hide()
             else:
                 self.progress_msgbox.translate_bar.show()
@@ -685,16 +677,16 @@ class ModuleManager(QObject):
 
     def setTranslator(self, translator: str = None):
         if translator is None:
-            translator = self.cfg_module.translator
+            translator = cfg_module.translator
         if self.translate_thread.isRunning():
             LOGGER.warning('Terminating a running translation thread.')
             self.translate_thread.terminate()
-        self.update_translator_status.emit('...', self.cfg_module.translate_source, self.cfg_module.translate_target)
+        self.update_translator_status.emit('...', cfg_module.translate_source, cfg_module.translate_target)
         self.translate_thread.setTranslator(translator)
 
     def setInpainter(self, inpainter: str = None):
         if inpainter is None:
-            inpainter =self.cfg_module.inpainter
+            inpainter =cfg_module.inpainter
         if self.inpaint_thread.isRunning():
             LOGGER.warning('Terminating a running inpaint thread.')
             self.inpaint_thread.terminate()
@@ -702,7 +694,7 @@ class ModuleManager(QObject):
 
     def setTextDetector(self, textdetector: str = None):
         if textdetector is None:
-            textdetector = self.cfg_module.textdetector
+            textdetector = cfg_module.textdetector
         if self.textdetect_thread.isRunning():
             LOGGER.warning('Terminating a running text detection thread.')
             self.textdetect_thread.terminate()
@@ -710,7 +702,7 @@ class ModuleManager(QObject):
 
     def setOCR(self, ocr: str = None):
         if ocr is None:
-            ocr = self.cfg_module.ocr
+            ocr = cfg_module.ocr
         if self.ocr_thread.isRunning():
             LOGGER.warning('Terminating a running OCR thread.')
             self.ocr_thread.terminate()
@@ -718,28 +710,28 @@ class ModuleManager(QObject):
 
     def on_finish_setdetector(self):
         if self.textdetector is not None:
-            self.cfg_module.textdetector = self.textdetector.name
+            cfg_module.textdetector = self.textdetector.name
             LOGGER.info('Text detector set to {}'.format(self.textdetector.name))
 
     def on_finish_setocr(self):
         if self.ocr is not None:
-            self.cfg_module.ocr = self.ocr.name
+            cfg_module.ocr = self.ocr.name
             self.ocr_panel.setOCR(self.ocr.name)
             self.ocr_thread.module.register_postprocess_hooks(self.ocr_postprocess)
             LOGGER.info('OCR set to {}'.format(self.ocr.name))
 
     def on_finish_setinpainter(self):
         if self.inpainter is not None:
-            self.cfg_module.inpainter = self.inpainter.name
+            cfg_module.inpainter = self.inpainter.name
             self.inpaint_panel.setInpainter(self.inpainter.name)
-            self.update_inpainter_status.emit(self.cfg_module.inpainter)
+            self.update_inpainter_status.emit(cfg_module.inpainter)
             LOGGER.info('Inpainter set to {}'.format(self.inpainter.name))
 
     def on_finish_settranslator(self):
         translator = self.translator
         if translator is not None:
-            self.cfg_module.translator = translator.name
-            self.update_translator_status.emit(self.cfg_module.translator, self.cfg_module.translate_source, self.cfg_module.translate_target)
+            cfg_module.translator = translator.name
+            self.update_translator_status.emit(cfg_module.translator, cfg_module.translate_source, cfg_module.translate_target)
             self.translator_panel.finishSetTranslator(translator)
             self.translate_thread.module.register_postprocess_hooks(self.translate_postprocess)
             LOGGER.info('Translator set to {}'.format(self.translator.name))
@@ -748,8 +740,8 @@ class ModuleManager(QObject):
             self.update_translator_status.emit(self.tr('Invalid'), '', '')
 
     def on_finish_setsourcedownload(self):
-        if self.config.src_link_flag:
-            self.update_source_download_status.emit(self.config.src_link_flag)
+        if pcfg.src_link_flag:
+            self.update_source_download_status.emit(pcfg.src_link_flag)
         
     def on_finish_translate_page(self, page_key: str):
         self.finish_translate_page.emit(page_key)
@@ -773,49 +765,49 @@ class ModuleManager(QObject):
         text = self.translator_panel.source_combobox.currentText()
         if self.translator is not None:
             self.translator.set_source(text)
-        self.cfg_module.translate_source = text
-        self.update_translator_status.emit(self.cfg_module.translator, self.cfg_module.translate_source, self.cfg_module.translate_target)
+        cfg_module.translate_source = text
+        self.update_translator_status.emit(cfg_module.translator, cfg_module.translate_source, cfg_module.translate_target)
 
     def on_translatortarget_changed(self):
         text = self.translator_panel.target_combobox.currentText()
         if self.translator is not None:
             self.translator.set_target(text)
-        self.cfg_module.translate_target = text
-        self.update_translator_status.emit(self.cfg_module.translator, self.cfg_module.translate_source, self.cfg_module.translate_target)
+        cfg_module.translate_target = text
+        self.update_translator_status.emit(cfg_module.translator, cfg_module.translate_source, cfg_module.translate_target)
 
     def setOCRMode(self, enable: bool):
-        self.cfg_module.enable_ocr = enable
+        cfg_module.enable_ocr = enable
         if not enable:
-            self.cfg_module.enable_translate = False
+            cfg_module.enable_translate = False
 
     def setTransMode(self, enable: bool):
-        self.cfg_module.enable_translate = enable
+        cfg_module.enable_translate = enable
         if enable:
             if self.translator is None:
                 self.setTranslator()
-            self.update_translator_status.emit(self.cfg_module.translator, self.cfg_module.translate_source, self.cfg_module.translate_target)
+            self.update_translator_status.emit(cfg_module.translator, cfg_module.translate_source, cfg_module.translate_target)
         else:
             self.update_translator_status.emit('', '', '')
     
     def on_translatorparam_edited(self, param_key: str, param_content: dict):
         if self.translator is not None:
             self.updateModuleSetupParam(self.translator, param_key, param_content)
-            self.cfg_module.translator_params[self.translator.name] = self.translator.params
+            cfg_module.translator_params[self.translator.name] = self.translator.params
 
     def on_inpainterparam_edited(self, param_key: str, param_content: dict):
         if self.inpainter is not None:
             self.updateModuleSetupParam(self.inpainter, param_key, param_content)
-            self.cfg_module.inpainter_params[self.inpainter.name] = self.inpainter.params
+            cfg_module.inpainter_params[self.inpainter.name] = self.inpainter.params
 
     def on_textdetectorparam_edited(self, param_key: str, param_content: dict):
         if self.textdetector is not None:
             self.updateModuleSetupParam(self.textdetector, param_key, param_content)
-            self.cfg_module.textdetector_params[self.textdetector.name] = self.textdetector.params
+            cfg_module.textdetector_params[self.textdetector.name] = self.textdetector.params
 
     def on_ocrparam_edited(self, param_key: str, param_content: dict):
         if self.ocr is not None:
             self.updateModuleSetupParam(self.ocr, param_key, param_content)
-            self.cfg_module.ocr_params[self.ocr.name] = self.ocr.params
+            cfg_module.ocr_params[self.ocr.name] = self.ocr.params
 
     def updateModuleSetupParam(self, 
                                module: Union[InpainterBase, BaseTranslator],
@@ -839,5 +831,5 @@ class ModuleManager(QObject):
                 self.inpaint_thread.terminate()
 
     def on_inpainter_checker_changed(self, is_checked: bool):
-        self.cfg_module.check_need_inpaint = is_checked
+        cfg_module.check_need_inpaint = is_checked
         InpainterBase.check_need_inpaint = is_checked

@@ -16,7 +16,7 @@ def font_formating(push_undostack: bool = False):
 
     def func_wrapper(formatting_func):
 
-        def wrapper(param_name: str, value: str, act_ffmt: FontFormat, is_global: bool, blkitems: TextBlkItem = None, *args, **kwargs):
+        def wrapper(param_name: str, value: str, act_ffmt: FontFormat, is_global: bool, blkitems: TextBlkItem = None, set_focus: bool = False, *args, **kwargs):
             act_ffmt[param_name] = value
             if is_global:
                 blkitems = SW.canvas.selected_text_items()
@@ -24,6 +24,9 @@ def font_formating(push_undostack: bool = False):
                 blkitems = blkitems if isinstance(blkitems, List) else [blkitems]
             if len(blkitems) > 0:
                 formatting_func(param_name, value, act_ffmt, is_global, blkitems, *args, **kwargs)
+            if set_focus:
+                if not SW.canvas.hasFocus():
+                    SW.canvas.setFocus()
         return wrapper
     
     return func_wrapper

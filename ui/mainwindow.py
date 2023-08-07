@@ -11,7 +11,8 @@ from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from modules.textdetector.textblock import TextBlock
 
-from .misc import pt2px, parse_stylesheet, ProgramConfig
+from .misc import pt2px, parse_stylesheet
+from .config import ProgramConfig, pcfg
 from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -57,7 +58,6 @@ class MainWindow(FramelessWindow):
         
         super().__init__(*args, **kwargs)
 
-        self.config = config
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
         self.app = app
         self.setupThread()
@@ -70,7 +70,7 @@ class MainWindow(FramelessWindow):
 
         if open_dir != '' and osp.exists(open_dir):
             self.OpenProj(open_dir)
-        elif self.config.open_recent_on_startup:
+        elif pcfg.open_recent_on_startup:
             if len(self.leftBar.recent_proj_list) > 0:
                 proj_dir = self.leftBar.recent_proj_list[0]
                 if osp.exists(proj_dir):
@@ -93,16 +93,15 @@ class MainWindow(FramelessWindow):
         self.import_doc_thread.fin_io.connect(self.on_fin_import_doc)
 
     def resetStyleSheet(self, reverse_icon: bool = False):
-        theme = 'eva-dark' if self.config.darkmode else 'eva-light'
+        theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
         self.setStyleSheet(parse_stylesheet(theme, reverse_icon))
 
     def setupUi(self):
         screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
-        self.configPanel = ConfigPanel(self.config, self)
+        self.configPanel = ConfigPanel(self)
         self.configPanel.trans_config_panel.show_MT_keyword_window.connect(self.show_MT_keyword_window)
         self.configPanel.ocr_config_panel.show_OCR_keyword_window.connect(self.show_OCR_keyword_window)
-        self.config = self.configPanel.config
 
         self.leftBar = LeftBar(self)
         self.leftBar.showPageListLabel.clicked.connect(self.pageLabelStateChanged)
@@ -139,7 +138,7 @@ class MainWindow(FramelessWindow):
         self.bottomBar.paintmode_checkchanged.connect(self.setPaintMode)
         self.bottomBar.textblock_checkchanged.connect(self.setTextBlockMode)
 
-        self.configPanel.src_link_textbox.setText(self.config.src_link_flag)
+        self.configPanel.src_link_textbox.setText(pcfg.src_link_flag)
 
         mainHLayout = QHBoxLayout()
         mainHLayout.addWidget(self.leftBar)
@@ -164,6 +163,10 @@ class MainWindow(FramelessWindow):
         self.textPanel.formatpanel.effect_panel.setParent(self)
         self.textPanel.formatpanel.effect_panel.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.CustomizeWindowHint)
         self.textPanel.formatpanel.fontfmtLabel.clicked.connect(self.show_fontstyle_presets)
+        self.textPanel.formatpanel.foldTextBtn.checkStateChanged.connect(self.fold_textarea)
+        self.textPanel.formatpanel.sourceBtn.checkStateChanged.connect(self.show_source_text)
+        self.textPanel.formatpanel.transBtn.checkStateChanged.connect(self.show_trans_text)
+
         
         self.presetPanel = PresetPanel(self)
         self.presetPanel.setParent(self)
@@ -204,7 +207,7 @@ class MainWindow(FramelessWindow):
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
 
-        self.selectext_minimenu = self.st_manager.selectext_minimenu = SelectTextMiniMenu(self.app, self.configPanel.config, self)
+        self.selectext_minimenu = self.st_manager.selectext_minimenu = SelectTextMiniMenu(self.app, self)
         self.selectext_minimenu.block_current_editor.connect(self.st_manager.on_block_current_editor)
         self.selectext_minimenu.hide()
 
@@ -225,23 +228,27 @@ class MainWindow(FramelessWindow):
 
     def setupConfig(self):
 
-        config = self.st_manager.config = self.config
-
-        self.bottomBar.originalSlider.setValue(int(config.original_transparency * 100))
-        self.drawingPanel.maskTransperancySlider.setValue(int(config.mask_transparency * 100))
-        self.leftBar.initRecentProjMenu(config.recent_proj_list)
+        self.bottomBar.originalSlider.setValue(int(pcfg.original_transparency * 100))
+        self.drawingPanel.maskTransperancySlider.setValue(int(pcfg.mask_transparency * 100))
+        self.leftBar.initRecentProjMenu(pcfg.recent_proj_list)
         self.leftBar.save_config.connect(self.save_config)
         self.leftBar.imgTransChecker.setChecked(True)
-        self.st_manager.formatpanel.global_format = config.global_fontformat
-        self.st_manager.formatpanel.set_active_format(config.global_fontformat)
+        self.st_manager.formatpanel.global_format = pcfg.global_fontformat
+        self.st_manager.formatpanel.set_active_format(pcfg.global_fontformat)
         
         self.rightComicTransStackPanel.setHidden(True)
         self.st_manager.setTextEditMode(False)
+        self.st_manager.formatpanel.foldTextBtn.setChecked(pcfg.fold_textarea)
+        self.st_manager.formatpanel.transBtn.setCheckState(pcfg.show_trans_text)
+        self.st_manager.formatpanel.sourceBtn.setCheckState(pcfg.show_source_text)
+        self.fold_textarea(pcfg.fold_textarea)
+        self.show_trans_text(pcfg.show_trans_text)
+        self.show_source_text(pcfg.show_source_text)
 
-        self.bottomBar.ocrChecker.setCheckState(config.module.enable_ocr)
-        self.bottomBar.transChecker.setChecked(config.module.enable_translate)
+        self.bottomBar.ocrChecker.setCheckState(pcfg.module.enable_ocr)
+        self.bottomBar.transChecker.setChecked(pcfg.module.enable_translate)
 
-        self.module_manager = module_manager = ModuleManager(config, self.imgtrans_proj)
+        self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
         module_manager.update_translator_status.connect(self.updateTranslatorStatus)
         module_manager.update_source_download_status.connect(self.updateSourceDownloadStatus)
         self.configPanel.update_source_download_status.connect(self.updateSourceDownloadStatus)
@@ -265,9 +272,9 @@ class MainWindow(FramelessWindow):
         self.bottomBar.translatorStatusbtn.clicked.connect(self.translatorStatusBtnPressed)
         self.bottomBar.transTranspageBtn.run_target.connect(self.on_transpagebtn_pressed)
 
-        self.titleBar.darkModeAction.setChecked(config.darkmode)
+        self.titleBar.darkModeAction.setChecked(pcfg.darkmode)
 
-        self.drawingPanel.set_config(config.drawpanel)
+        self.drawingPanel.set_config(pcfg.drawpanel)
         self.drawingPanel.initDLModule(module_manager)
 
         self.global_search_widget.imgtrans_proj = self.imgtrans_proj
@@ -277,40 +284,46 @@ class MainWindow(FramelessWindow):
         self.configPanel.setupConfig()
         self.configPanel.save_config.connect(self.save_config)
 
-        self.source_download = SourceDownload(config, self.imgtrans_proj, self.source_download_msgbox)
+        self.source_download = SourceDownload(pcfg, self.imgtrans_proj, self.source_download_msgbox)
         self.source_download.open_downloaded_proj.connect(self.openDir)
         self.source_download.update_progress_bar.connect(self.source_download_msgbox.updateDownloadBar)
         self.source_download.finished_downloading.connect(self.on_finished_sync_source)
 
-        textblock_mode = config.imgtrans_textblock
-        if config.imgtrans_textedit:
+        textblock_mode = pcfg.imgtrans_textblock
+        if pcfg.imgtrans_textedit:
             if textblock_mode:
                 self.bottomBar.textblockChecker.setChecked(True)
             self.bottomBar.texteditChecker.click()
-        elif config.imgtrans_paintmode:
+        elif pcfg.imgtrans_paintmode:
             self.bottomBar.paintChecker.click()
 
-        self.presetPanel.initPresets(config.font_presets)
+        self.presetPanel.initPresets(pcfg.font_presets)
 
-        self.canvas.search_widget.set_config(config)
-        self.global_search_widget.set_config(config)
+        self.canvas.search_widget.whole_word_toggle.setChecked(pcfg.fsearch_whole_word)
+        self.canvas.search_widget.case_sensitive_toggle.setChecked(pcfg.fsearch_case)
+        self.canvas.search_widget.regex_toggle.setChecked(pcfg.fsearch_regex)
+        self.canvas.search_widget.range_combobox.setCurrentIndex(pcfg.fsearch_range)
+        self.global_search_widget.whole_word_toggle.setChecked(pcfg.gsearch_whole_word)
+        self.global_search_widget.case_sensitive_toggle.setChecked(pcfg.gsearch_case)
+        self.global_search_widget.regex_toggle.setChecked(pcfg.gsearch_regex)
+        self.global_search_widget.range_combobox.setCurrentIndex(pcfg.gsearch_range)
 
         if self.rightComicTransStackPanel.isHidden():
             self.setPaintMode()
 
         try:
-            self.ocrSubWidget.loadCfgSublist(config.ocr_sublist)
+            self.ocrSubWidget.loadCfgSublist(pcfg.ocr_sublist)
         except Exception as e:
             LOGGER.error(traceback.format_exc())
-            config.ocr_sublist = []
-            self.ocrSubWidget.loadCfgSublist(config.ocr_sublist)
+            pcfg.ocr_sublist = []
+            self.ocrSubWidget.loadCfgSublist(pcfg.ocr_sublist)
 
         try:
-            self.mtSubWidget.loadCfgSublist(config.mt_sublist)
+            self.mtSubWidget.loadCfgSublist(pcfg.mt_sublist)
         except Exception as e:
             LOGGER.error(traceback.format_exc())
-            config.mt_sublist = []
-            self.mtSubWidget.loadCfgSublist(config.mt_sublist)
+            pcfg.mt_sublist = []
+            self.mtSubWidget.loadCfgSublist(pcfg.mt_sublist)
 
     def setupImgTransUI(self):
         self.centralStackWidget.setCurrentIndex(0)
@@ -420,13 +433,13 @@ class MainWindow(FramelessWindow):
             self.restart_signal.emit()
 
     def save_config(self):
-        self.config.imgtrans_paintmode = self.bottomBar.paintChecker.isChecked()
-        self.config.imgtrans_textedit = self.bottomBar.texteditChecker.isChecked()
-        self.config.mask_transparency = self.canvas.mask_transparency
-        self.config.original_transparency = self.canvas.original_transparency
-        self.config.drawpanel = self.drawingPanel.get_config()
+        pcfg.imgtrans_paintmode = self.bottomBar.paintChecker.isChecked()
+        pcfg.imgtrans_textedit = self.bottomBar.texteditChecker.isChecked()
+        pcfg.mask_transparency = self.canvas.mask_transparency
+        pcfg.original_transparency = self.canvas.original_transparency
+        pcfg.drawpanel = self.drawingPanel.get_config()
         with open(CONFIG_PATH, 'w', encoding='utf8') as f:
-            f.write(json_dump_nested_obj(self.config))
+            f.write(json_dump_nested_obj(pcfg))
 
     def onHideCanvas(self):
         self.canvas.alt_pressed = False
@@ -691,7 +704,7 @@ class MainWindow(FramelessWindow):
     def setTextBlockMode(self):
         mode = self.bottomBar.textblockChecker.isChecked()
         self.canvas.setTextBlockMode(mode)
-        self.config.imgtrans_textblock = mode
+        pcfg.imgtrans_textblock = mode
         self.st_manager.showTextblkItemRect(mode)
 
     def save_proj(self):
@@ -727,7 +740,7 @@ class MainWindow(FramelessWindow):
             self.bottomBar.textlayerSlider.setValue(100)
 
         restore_textblock_mode = False
-        if self.config.imgtrans_textblock:
+        if pcfg.imgtrans_textblock:
             restore_textblock_mode = True
             self.bottomBar.textblockChecker.click()
 
@@ -868,8 +881,8 @@ class MainWindow(FramelessWindow):
         self.postprocess_mt_toggle = True
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
-        src_is_cjk = is_cjk(self.config.module.translate_source)
-        tgt_is_cjk = is_cjk(self.config.module.translate_target)
+        src_is_cjk = is_cjk(pcfg.module.translate_source)
+        tgt_is_cjk = is_cjk(pcfg.module.translate_target)
         if tgt_is_cjk:
             for blk in blk_list:
                 if src_is_cjk:
@@ -892,12 +905,12 @@ class MainWindow(FramelessWindow):
         self.postprocess_translations(blk_list)
                 
         # override font format if necessary
-        override_fnt_size = self.config.let_fntsize_flag == 1
-        override_fnt_stroke = self.config.let_fntstroke_flag == 1
-        override_fnt_color = self.config.let_fntcolor_flag == 1
-        override_fnt_scolor = self.config.let_fnt_scolor_flag == 1
-        override_alignment = self.config.let_alignment_flag == 1
-        override_effect = self.config.let_fnteffect_flag == 1
+        override_fnt_size = pcfg.let_fntsize_flag == 1
+        override_fnt_stroke = pcfg.let_fntstroke_flag == 1
+        override_fnt_color = pcfg.let_fntcolor_flag == 1
+        override_fnt_scolor = pcfg.let_fnt_scolor_flag == 1
+        override_alignment = pcfg.let_alignment_flag == 1
+        override_effect = pcfg.let_fnteffect_flag == 1
         gf = self.textPanel.formatpanel.global_format
         
         for blk in blk_list:
@@ -925,7 +938,7 @@ class MainWindow(FramelessWindow):
             if sw > 0:
                 blk.font_size = int(blk.font_size / (1 + sw))
 
-        self.st_manager.auto_textlayout_flag = self.config.let_autolayout_flag
+        self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag
         
         if page_index != self.pageList.currentIndex().row():
             self.pageList.setCurrentRow(page_index)
@@ -990,8 +1003,8 @@ class MainWindow(FramelessWindow):
         self.close()
 
     def on_display_lang_changed(self, lang: str):
-        if lang != self.config.display_lang:
-            self.config.display_lang = lang
+        if lang != pcfg.display_lang:
+            pcfg.display_lang = lang
             self.set_display_lang(lang)
 
     def on_run_imgtrans(self):
@@ -1022,6 +1035,18 @@ class MainWindow(FramelessWindow):
         fmt_name = self.textPanel.formatpanel.fontfmtLabel.text()
         self.presetPanel.updateCurrentFontFormat(fmt, fmt_name)
         self.presetPanel.show()
+
+    def fold_textarea(self, fold: bool):
+        pcfg.fold_textarea = fold
+        self.textPanel.textEditList.setFoldTextarea(fold)
+
+    def show_source_text(self, show: bool):
+        pcfg.show_source_text = show
+        self.textPanel.textEditList.setSourceVisible(show)
+
+    def show_trans_text(self, show: bool):
+        pcfg.show_trans_text = show
+        self.textPanel.textEditList.setTransVisible(show)
 
     def on_export_doc(self):
         if self.canvas.text_change_unsaved():
@@ -1058,7 +1083,7 @@ class MainWindow(FramelessWindow):
         rt.background_list = None
 
     def on_darkmode_triggered(self):
-        self.config.darkmode = self.titleBar.darkModeAction.isChecked()
+        pcfg.darkmode = self.titleBar.darkModeAction.isChecked()
         self.resetStyleSheet(reverse_icon=True)
         self.save_config()
 

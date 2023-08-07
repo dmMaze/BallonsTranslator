@@ -15,7 +15,8 @@ from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem
 from .configpanel import InpaintConfigPanel
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
-from .misc import DrawPanelConfig, ndarray2pixmap
+from .misc import ndarray2pixmap
+from .config import DrawPanelConfig, pcfg
 from .constants import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from .drawing_commands import InpaintUndoCommand, StrokeItemUndoCommand
 
@@ -780,7 +781,7 @@ class DrawingPanel(Widget):
         need_inpaint = inpaint_dict['need_inpaint']
         bground_bgr = inpaint_dict['bground_bgr']
         ballon_mask = inpaint_dict['ballon_mask']
-        if not need_inpaint and self.module_manager.cfg_module.check_need_inpaint:
+        if not need_inpaint and pcfg.module.check_need_inpaint:
             img[np.where(ballon_mask > 0)] = bground_bgr
             self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect']))
             self.clearInpaintItems()

@@ -15,14 +15,14 @@ except:
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
-from .misc import FontFormat, ProgramConfig, pt2px
+from .misc import FontFormat, pt2px
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
 from utils.imgproc_utils import extract_ballon_region, rotate_polygons
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
 from .fontformatpanel import FontFormatPanel
+from .config import pcfg
 
-from . import funcmaps as FM
 
 class CreateItemCommand(QUndoCommand):
     def __init__(self, blk_item: TextBlkItem, ctrl, parent=None):
@@ -283,6 +283,38 @@ class PasteSrcItemsCommand(QUndoCommand):
             src.setPlainText(text)
 
 
+class RearrangeBlksCommand(QUndoCommand):
+
+    def __init__(self, rmap: Tuple, ctrl, parent=None):
+        super().__init__(parent)
+        self.ctrl: SceneTextManager = ctrl
+        self.src_ids, self.tgt_ids = rmap
+        self.nr = len(self.src_ids)
+
+    def redo(self):
+        self.rearrage_blk_ids(self.src_ids, self.tgt_ids)
+
+    def undo(self):
+        self.rearrage_blk_ids(self.tgt_ids, self.src_ids)
+
+    def rearrage_blk_ids(self, src_ids, tgt_ids):
+        blks: List[TextBlkItem] = []
+        pws: List[TransPairWidget] = []
+        for ii, src_idx in enumerate(src_ids):
+            pos = src_idx - ii
+            pw = self.ctrl.pairwidget_list.pop(pos)
+            self.ctrl.textEditList.removeWidget(pw, remove_checked=False)
+            blk = self.ctrl.textblk_item_list.pop(pos)
+            pws.append(pw)
+            blks.append(blk)
+
+        for ii, tgt_idx in enumerate(tgt_ids):
+            self.ctrl.textblk_item_list.insert(tgt_idx, blks[ii])
+            self.ctrl.pairwidget_list.insert(tgt_idx, pws[ii])
+            self.ctrl.textEditList.insertPairWidget(pws[ii], tgt_idx)
+
+        self.ctrl.updateTextBlkItemIdx()    # some optimization could be done here
+
 class TextPanel(Widget):
     def __init__(self, app: QApplication, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -293,7 +325,7 @@ class TextPanel(Widget):
         layout.addWidget(self.formatpanel)
         layout.addWidget(self.textEditList)
         layout.setContentsMargins(0, 0, 5, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(7)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
 class SceneTextManager(QObject):
@@ -324,20 +356,20 @@ class SceneTextManager(QObject):
         self.textpanel = textpanel
 
         self.textEditList = textpanel.textEditList
+        self.textEditList.selection_changed.connect(self.on_transwidget_selection_changed)
+        self.textEditList.rearrange_blks.connect(self.on_rearrange_blks)
         self.formatpanel = textpanel.formatpanel
         self.formatpanel.effect_panel.apply.connect(self.on_apply_effect)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
         self.textblk_item_list: List[TextBlkItem] = []
-        self.pairwidget_list: List[TransPairWidget] = []
+        self.pairwidget_list: List[TransPairWidget] = self.textEditList.pairwidget_list
 
         self.editing_flag = False
         self.auto_textlayout_flag = False
         self.hovering_transwidget : TransTextEdit = None
 
         self.prev_blkitem: TextBlkItem = None
-
-        self.config: ProgramConfig = None
 
     def setTextEditMode(self, edit: bool = False):
         self.editing_flag = edit
@@ -360,6 +392,7 @@ class SceneTextManager(QObject):
         for blkitem in self.textblk_item_list:
             self.canvas.removeItem(blkitem)
         self.textblk_item_list.clear()
+        self.textEditList.clearAllSelected()
         for textwidget in self.pairwidget_list:
             self.textEditList.removeWidget(textwidget)
         self.pairwidget_list.clear()
@@ -391,7 +424,7 @@ class SceneTextManager(QObject):
                 self.layout_textblk(blk_item, text=translation)
         self.addTextBlkItem(blk_item)
 
-        pair_widget = TransPairWidget(blk, len(self.pairwidget_list))
+        pair_widget = TransPairWidget(blk, len(self.pairwidget_list), pcfg.fold_textarea)
         self.pairwidget_list.append(pair_widget)
         self.textEditList.addPairWidget(pair_widget)
         pair_widget.e_source.setPlainText(blk_item.blk.get_text())
@@ -411,6 +444,7 @@ class SceneTextManager(QObject):
         pair_widget.e_trans.undo_signal.connect(self.on_textedit_undo)
         pair_widget.e_trans.show_select_menu.connect(self.on_show_select_menu)
         pair_widget.e_trans.focus_out.connect(self.on_pairw_focusout)
+        pair_widget.drag_move.connect(self.textEditList.handle_drag_pos)
 
         self.new_textblk.emit(blk_item.idx)
         return blk_item
@@ -452,20 +486,21 @@ class SceneTextManager(QObject):
         self.txtblkShapeControl.setBlkItem(None)
 
     def recoverTextblkItem(self, blkitem: TextBlkItem, p_widget: TransPairWidget):
-        # recovered order is different from before
-        blkitem.idx = len(self.textblk_item_list)
-        p_widget.idx = len(self.pairwidget_list)
         self.textblk_item_list.append(blkitem)
         blkitem.setParentItem(self.canvas.textLayer)
         self.pairwidget_list.append(p_widget)
-        self.textEditList.addPairWidget(p_widget)
+        self.textEditList.insertPairWidget(p_widget, p_widget.idx)
         self.updateTextBlkItemIdx()
 
     def recoverTextblkItemList(self, blkitem_list: List[TextBlkItem], p_widget_list: List[TransPairWidget]):
         for blkitem, p_widget in zip(blkitem_list, p_widget_list):
-            self.recoverTextblkItem(blkitem, p_widget)
+            self.textblk_item_list.append(blkitem)
+            blkitem.setParentItem(self.canvas.textLayer)
+            self.pairwidget_list.append(p_widget)
+            self.textEditList.insertPairWidget(p_widget, p_widget.idx)
             if self.txtblkShapeControl.blk_item is not None and blkitem.isSelected():
                 blkitem.setSelected(False)
+        self.updateTextBlkItemIdx()
         
     def onTextBlkItemSizeChanged(self, idx: int):
         blk_item = self.textblk_item_list[idx]
@@ -663,8 +698,8 @@ class SceneTextManager(QObject):
         blk_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, fmt.letter_spacing * 100)
         text_size_func = lambda text: get_text_size(QFontMetrics(blk_font), text)
         
-        src_is_cjk = is_cjk(self.config.module.translate_source)
-        tgt_is_cjk = is_cjk(self.config.module.translate_target)
+        src_is_cjk = is_cjk(pcfg.module.translate_source)
+        tgt_is_cjk = is_cjk(pcfg.module.translate_target)
 
         if mask is None:
             bounding_rect = blkitem.absBoundingRect()
@@ -683,10 +718,10 @@ class SceneTextManager(QObject):
             text = blkitem.toPlainText()
             restore_charfmts = True
 
-        if self.config.let_uppercase_flag:
+        if pcfg.let_uppercase_flag:
             text = text.upper()
         
-        words, delimiter = seg_text(text, self.config.module.translate_target)
+        words, delimiter = seg_text(text, pcfg.module.translate_target)
         if len(words) == 0:
             return
 
@@ -697,7 +732,7 @@ class SceneTextManager(QObject):
         delimiter_len = text_size_func(delimiter)[0]
  
         adaptive_fntsize = False
-        if self.auto_textlayout_flag and self.config.let_fntsize_flag == 0:
+        if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0:
             if not tgt_is_cjk:
                 adaptive_fntsize = True
             
@@ -888,7 +923,7 @@ class SceneTextManager(QObject):
         self.canvas.undo_textedit()
 
     def on_show_select_menu(self, pos: QPoint, selected_text: str):
-        if self.config.textselect_mini_menu:
+        if pcfg.textselect_mini_menu:
             if not selected_text:
                 if self.selectext_minimenu.isVisible():
                     self.selectext_minimenu.hide()
@@ -937,6 +972,21 @@ class SceneTextManager(QObject):
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(ApplyFontformatCommand(selected_blks, trans_widget_list, fontformat))
 
+    def on_transwidget_selection_changed(self):
+        selitems = self.canvas.selected_text_items()
+        selset = {pw.idx: pw for pw in self.textEditList.checked_list}
+        for blkitem in selitems:
+            if blkitem.idx not in selset:
+                blkitem.setSelected(False)
+            else:
+                selset.pop(blkitem.idx)
+        for idx in selset:
+            self.textblk_item_list[idx].setSelected(True)
+
+    def on_rearrange_blks(self, mv_map: Tuple[np.ndarray]):
+        self.canvas.push_undo_command(RearrangeBlksCommand(mv_map, self))
+        pass
+
     def on_apply_effect(self):
         format = self.formatpanel.active_format
         selected_blks = self.canvas.selected_text_items()
@@ -947,6 +997,9 @@ class SceneTextManager(QObject):
         for ii, blk_item in enumerate(self.textblk_item_list):
             blk_item.idx = ii
             self.pairwidget_list[ii].updateIndex(ii)
+        cl = self.textEditList.checked_list
+        if len(cl) != 0:
+            cl.sort(key=lambda x: x.idx)
 
     def updateTextBlkList(self):
         cbl = self.imgtrans_proj.current_block_list()

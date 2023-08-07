@@ -147,6 +147,7 @@ def main():
     from qtpy.QtGui import  QGuiApplication, QIcon, QFont
 
     from ui import constants as C
+    from ui import config as program_config
     C.DEFAULT_DISPLAY_LANG = QLocale.system().name()
     if qtpy.API_NAME[-1] == '6':
         C.FLAG_QT6 = True
@@ -163,7 +164,7 @@ def main():
     load_modules()
 
     app = QApplication(sys.argv)
-    from ui.misc import ProgramConfig
+    from ui.config import ProgramConfig
 
     try:
         config = ProgramConfig.load(C.CONFIG_PATH)
@@ -171,6 +172,7 @@ def main():
         LOGGER.exception(e)
         LOGGER.warning("Failed to load config file, using default config")
         config = ProgramConfig()
+    program_config.pcfg = config
 
     lang = config.display_lang
     langp = osp.join(C.TRANSLATE_DIR, lang + '.qm')

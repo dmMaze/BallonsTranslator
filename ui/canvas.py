@@ -121,10 +121,10 @@ class CustomGV(QGraphicsView):
         self.hide_canvas.emit()
         return super().hideEvent(event)
 
-    def enterEvent(self, event: QEvent) -> None:
-        self.setFocus()
-        return super().enterEvent(event)
-    
+    # def enterEvent(self, event: QEvent) -> None:
+    #   # not sure why i add it
+        # self.setFocus()
+    #     return super().enterEvent(event)
 
 class Canvas(QGraphicsScene):
 

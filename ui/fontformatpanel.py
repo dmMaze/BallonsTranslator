@@ -1,12 +1,10 @@
-import functools
-from typing import List, Tuple, Union, Any
 import copy
 
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
+from qtpy.QtWidgets import QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QColor, QTextCharFormat, QMouseEvent, QFont, QTextCursor
+from qtpy.QtGui import QMouseEvent, QTextCursor
 
-from .stylewidgets import Widget, ColorPicker, ClickableLabel
+from .stylewidgets import Widget, ColorPicker, ClickableLabel, CheckableLabel, TextChecker
 from .misc import FontFormat
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanel
@@ -333,6 +331,10 @@ class FontFormatPanel(Widget):
         self.effect_panel = TextEffectPanel()
         self.effect_panel.hide()
 
+        self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
+        self.sourceBtn = TextChecker(self.tr("Source"))
+        self.transBtn = TextChecker(self.tr("Translation"))
+
         FONTFORMAT_SPACING = 6
 
         hl0 = QHBoxLayout()
@@ -360,12 +362,22 @@ class FontFormatPanel(Widget):
         hl3.addWidget(self.effectBtn)
         hl3.setContentsMargins(3, 3, 3, 3)
         hl3.setSpacing(13)
+        hl4 = QHBoxLayout()
+        hl4.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hl4.addWidget(self.foldTextBtn)
+        hl4.addWidget(self.sourceBtn)
+        hl4.addWidget(self.transBtn)
+        hl4.setStretch(0, 1)
+        hl4.setStretch(1, 1)
+        hl4.setStretch(2, 1)
+        hl4.setSpacing(0)
 
         self.vlayout.addLayout(hl0)
         self.vlayout.addLayout(hl1)
         self.vlayout.addLayout(hl2)
         self.vlayout.addLayout(hl3)
-        self.vlayout.setContentsMargins(7, 7, 7, 7)
+        self.vlayout.addLayout(hl4)
+        self.vlayout.setContentsMargins(7, 7, 7, 0)
         self.setFixedWidth(C.TEXTEDIT_FIXWIDTH)
 
         self.focusOnColorDialog = False
@@ -379,7 +391,7 @@ class FontFormatPanel(Widget):
         if self.global_mode():
             func(param_name, value, self.global_format, is_global=True)
         else:
-            func(param_name, value, self.active_format, is_global=False, blkitems=self.textblk_item)
+            func(param_name, value, self.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True)
 
     def changingColor(self):
         self.focusOnColorDialog = True

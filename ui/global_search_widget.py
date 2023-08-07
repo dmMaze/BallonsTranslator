@@ -8,7 +8,8 @@ import os.path as osp
 
 from utils.logger import logger as LOGGER
 from .page_search_widget import SearchEditor, HighlightMatched, SEARCHRST_HIGHLIGHT_COLOR
-from .misc import ProgramConfig, doc_replace, doc_replace_no_shift
+from .misc import doc_replace
+from .config import pcfg
 from .stylewidgets import Widget, NoBorderPushBtn, ProgressMessageBox
 from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
@@ -288,7 +289,6 @@ class GlobalSearchWidget(Widget):
 
     def __init__(self, parent: QWidget = None, *args, **kwargs) -> None:
         super().__init__(parent)
-        self.config: ProgramConfig = None
         self.imgtrans_proj: ProjImgTrans = None
 
         self.search_rstedit_list: List[SourceTextEdit] = []
@@ -390,27 +390,20 @@ class GlobalSearchWidget(Widget):
         self.replace_thread.proj = self.imgtrans_proj
 
     def on_whole_word_clicked(self):
-        self.config.gsearch_whole_word = self.whole_word_toggle.isChecked()
+        pcfg.gsearch_whole_word = self.whole_word_toggle.isChecked()
         self.commit_search()
 
     def on_regex_clicked(self):
-        self.config.gsearch_regex = self.regex_toggle.isChecked()
+        pcfg.gsearch_regex = self.regex_toggle.isChecked()
         self.commit_search()
 
     def on_case_clicked(self):
-        self.config.gsearch_case = self.case_sensitive_toggle.isChecked()
+        pcfg.gsearch_case = self.case_sensitive_toggle.isChecked()
         self.commit_search()
 
     def on_range_changed(self):
-        self.config.gsearch_range = self.range_combobox.currentIndex()
+        pcfg.gsearch_range = self.range_combobox.currentIndex()
         self.commit_search()
-    
-    def set_config(self, config: ProgramConfig):
-        self.config = config
-        self.whole_word_toggle.setChecked(config.gsearch_whole_word)
-        self.case_sensitive_toggle.setChecked(config.gsearch_case)
-        self.regex_toggle.setChecked(config.gsearch_regex)
-        self.range_combobox.setCurrentIndex(config.gsearch_range)
 
     def get_regex_pattern(self) -> re.Pattern:
         target_text = self.search_editor.toPlainText()

@@ -5,10 +5,10 @@ from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, Q
 from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup
 
-from .stylewidgets import Widget, PaintQSlider
+from .stylewidgets import Widget, PaintQSlider, TextChecker
 from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import startSystemMove
-from .misc import ProgramConfig
+from .config import pcfg
 from . import constants as C
 if C.FLAG_QT6:
     from qtpy.QtGui import QAction
@@ -105,31 +105,6 @@ class StateChecker(QCheckBox):
         super().setChecked(check)
         if check:
             self.checked.emit(self.checker_type)
-
-
-class TextChecker(QLabel):
-    checkStateChanged = Signal(bool)
-    def __init__(self, text: str, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setText(text)
-        self.checked = False
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-    def setCheckState(self, checked: bool):
-        self.checked = checked
-        if checked:
-            self.setStyleSheet("QLabel { background-color: rgb(30, 147, 229); color: white; }")
-        else:
-            self.setStyleSheet("")
-
-    def isChecked(self):
-        return self.checked
-
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.setCheckState(not self.checked)
-            self.checkStateChanged.emit(self.checked)
-
 
 class LeftBar(Widget):
     recent_proj_list = []
@@ -318,8 +293,6 @@ class TitleBar(Widget):
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
 
-        config: ProgramConfig = parent.config
-
         self.mainwindow : QMainWindow = parent
         self.mPos: QPoint = None
         self.normalsize = False
@@ -366,7 +339,7 @@ class TitleBar(Widget):
         lang_actions = []
         for lang, lang_code in C.DISPLAY_LANGUAGE_MAP.items():
             la = QAction(lang, self)
-            if lang_code == config.display_lang:
+            if lang_code == pcfg.display_lang:
                 la.setChecked(True)
             la.triggered.connect(self.on_displaylang_triggered)
             la.setCheckable(True)

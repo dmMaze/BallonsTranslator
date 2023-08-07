@@ -352,10 +352,68 @@ class ClickableLabel(QLabel):
     def mousePressEvent(self, e: QMouseEvent) -> None:
         if e.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
-        return super().mousePressEvent(e)          
+        return super().mousePressEvent(e)
+    
+class IgnoreMouseLabel(QLabel):
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        e.ignore()
+        return super().mousePressEvent(e)
+    
+class CheckableLabel(QLabel):
+
+    checkStateChanged = Signal(bool)
+
+    def __init__(self, checked_text: str, unchecked_text: str, default_checked: bool = False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.checked_text = checked_text
+        self.unchecked_text = unchecked_text
+        self.checked = default_checked
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if default_checked:
+            self.setText(checked_text)
+        else:
+            self.setText(unchecked_text)
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.setChecked(not self.checked)
+            self.checkStateChanged.emit(self.checked)
+        return super().mousePressEvent(e)
+
+    def setChecked(self, checked: bool):
+        self.checked = checked
+        if checked:
+            self.setText(self.checked_text)
+        else:
+            self.setText(self.unchecked_text)
 
 
 class NoBorderPushBtn(QPushButton):
     pass
+
+class TextChecker(QLabel):
+    checkStateChanged = Signal(bool)
+    def __init__(self, text: str, checked: bool = False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setText(text)
+        self.setCheckState(checked)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def setCheckState(self, checked: bool):
+        self.checked = checked
+        if checked:
+            self.setStyleSheet("QLabel { background-color: rgb(30, 147, 229); color: white; }")
+        else:
+            self.setStyleSheet("")
+
+    def isChecked(self):
+        return self.checked
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setCheckState(not self.checked)
+            self.checkStateChanged.emit(self.checked)
 
 

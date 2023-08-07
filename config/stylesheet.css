@@ -54,13 +54,13 @@ ConfigSubBlock::hover {
 SourceTextEdit {
     font-size: 17px;
     background-color: @emptyContentBackgroundColor;
-    border-radius: 7px;
+    border-radius: 5px;
     border-style: none;
 }
 
 TransTextEdit {
     font-size: 17px;
-    border-radius: 7px;
+    border-radius: 5px;
     background-color: @transtexteditBackgroundColor;
 }
 
@@ -597,17 +597,17 @@ QScrollBar:vertical {
     /* background: transparent; 背景透明 */
     width: 10px; /*宽度*/
     margin: 0px 0px 0px 0px; /**/
-    padding-top: 12px; /*距离上面12px*/
-    padding-bottom: 12px; /*距离底部12px*/
+    padding-top: 0px; /*距离上面12px*/
+    padding-bottom: 0px; /*距离底部12px*/
     background: @scrollBarBackground
 }
 /*横向滚动条*/
 QScrollBar:horizontal {
     background: @scrollBarBackground;
-    height: 10px; /*高度*/
+    height: 7px; /*高度*/
     margin: 0px 0px 0px 0px;
-    padding-left: 12px; /*距离左边12px*/
-    padding-right: 12px; /*距离右边12px*/
+    padding-left: 0px; /*距离左边12px*/
+    padding-right: 0px; /*距离右边12px*/
 }
 
 /*当鼠标放到纵向或者横向滚动条上面时*/
@@ -714,6 +714,10 @@ QLabel#angleLabel {
 }
 
 .ClickableLabel::hover {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+.CheckableLabel::hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 

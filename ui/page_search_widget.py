@@ -1,15 +1,11 @@
 from qtpy.QtWidgets import QHBoxLayout, QComboBox, QTextEdit, QLabel, QPlainTextEdit, QCheckBox, QVBoxLayout,  QGraphicsDropShadowEffect, QWidget
 from qtpy.QtCore import Qt, QTimer, Signal
-from qtpy.QtGui import QKeyEvent, QTextDocument, QTextCursor, QHideEvent, QInputMethodEvent, QFontMetrics, QColor, QShowEvent, QSyntaxHighlighter, QTextCharFormat
-try:
-    from qtpy.QtWidgets import QUndoCommand
-except:
-    from qtpy.QtGui import QUndoCommand
+from qtpy.QtGui import QKeyEvent, QTextCursor, QHideEvent, QInputMethodEvent, QFontMetrics, QColor, QShowEvent, QSyntaxHighlighter, QTextCharFormat
 
 from typing import List, Union, Tuple, Dict
 import re
 
-from .misc import ProgramConfig
+from .config import pcfg
 from .stylewidgets import Widget, ClickableLabel
 from .textitem import TextBlkItem
 from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
@@ -193,7 +189,6 @@ class PageSearchWidget(Widget):
 
     def __init__(self, parent: QWidget = None, *args, **kwargs) -> None:
         super().__init__(parent)
-        self.config: ProgramConfig = None
 
         self.search_rstedit_list: List[SourceTextEdit] = []
         self.search_counter_list: List[int] = []
@@ -666,27 +661,20 @@ class PageSearchWidget(Widget):
         self.updateCounterText()
 
     def on_whole_word_clicked(self):
-        self.config.fsearch_whole_word = self.whole_word_toggle.isChecked()
+        pcfg.fsearch_whole_word = self.whole_word_toggle.isChecked()
         self.page_search()
 
     def on_regex_clicked(self):
-        self.config.fsearch_regex = self.regex_toggle.isChecked()
+        pcfg.fsearch_regex = self.regex_toggle.isChecked()
         self.page_search()
 
     def on_case_clicked(self):
-        self.config.fsearch_case = self.case_sensitive_toggle.isChecked()
+        pcfg.fsearch_case = self.case_sensitive_toggle.isChecked()
         self.page_search()
 
     def on_range_changed(self):
-        self.config.fsearch_range = self.range_combobox.currentIndex()
+        pcfg.fsearch_range = self.range_combobox.currentIndex()
         self.page_search()
-    
-    def set_config(self, config: ProgramConfig):
-        self.config = config
-        self.whole_word_toggle.setChecked(config.fsearch_whole_word)
-        self.case_sensitive_toggle.setChecked(config.fsearch_case)
-        self.regex_toggle.setChecked(config.fsearch_regex)
-        self.range_combobox.setCurrentIndex(config.fsearch_range)
 
     def on_commit_search(self):
         self.page_search()
