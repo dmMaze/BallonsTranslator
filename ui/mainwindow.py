@@ -245,9 +245,6 @@ class MainWindow(FramelessWindow):
         self.show_trans_text(pcfg.show_trans_text)
         self.show_source_text(pcfg.show_source_text)
 
-        self.bottomBar.ocrChecker.setCheckState(pcfg.module.enable_ocr)
-        self.bottomBar.transChecker.setChecked(pcfg.module.enable_translate)
-
         self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
         module_manager.update_translator_status.connect(self.updateTranslatorStatus)
         module_manager.update_source_download_status.connect(self.updateSourceDownloadStatus)
@@ -265,8 +262,6 @@ class MainWindow(FramelessWindow):
 
         self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
         self.leftBar.run_sync_source.connect(self.on_run_sync_source)
-        self.bottomBar.ocrcheck_statechanged.connect(module_manager.setOCRMode)
-        self.bottomBar.transcheck_statechanged.connect(module_manager.setTransMode)
         self.bottomBar.inpaint_btn_clicked.connect(self.inpaintBtnClicked)
         self.bottomBar.source_download_btn_clicked.connect(self.SourceDownloadBtnClicked)
         self.bottomBar.translatorStatusbtn.clicked.connect(self.translatorStatusBtnPressed)
@@ -935,7 +930,7 @@ class MainWindow(FramelessWindow):
             blk.line_spacing = gf.line_spacing
             blk.letter_spacing = gf.letter_spacing
             sw = blk.stroke_width
-            if sw > 0:
+            if sw > 0 and pcfg.module.enable_ocr:
                 blk.font_size = int(blk.font_size / (1 + sw))
 
         self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag
@@ -1011,6 +1006,24 @@ class MainWindow(FramelessWindow):
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
         self.postprocess_mt_toggle = False
+
+        all_disabled = pcfg.module.all_stages_disabled()
+        if pcfg.module.enable_detect:
+            for page in self.imgtrans_proj.pages:
+                self.imgtrans_proj.pages[page].clear()
+        else:
+            self.st_manager.updateTextBlkList()
+            textblk: TextBlock = None
+            for blklist in self.imgtrans_proj.pages.values():
+                for textblk in blklist:
+                    if pcfg.module.enable_ocr:
+                        textblk.stroke_decide_by_colordiff = True
+                        textblk.default_stroke_width = 0.2
+                        textblk.text = []
+                        textblk.set_font_colors((0, 0, 0), (0, 0, 0), True)
+                    if pcfg.module.enable_translate or all_disabled:
+                        textblk.rich_text = ''
+                    textblk.vertical = textblk.src_is_vertical
         self.module_manager.runImgtransPipeline()
 
     def on_run_sync_source(self):

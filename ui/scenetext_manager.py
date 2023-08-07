@@ -881,6 +881,7 @@ class SceneTextManager(QObject):
             xywh = np.copy(xyxy)
             xywh[[2, 3]] -= xywh[[0, 1]]
             block.set_lines_by_xywh(xywh)
+            block.src_is_vertical = self.formatpanel.global_format.vertical
             blk_item = TextBlkItem(block, len(self.textblk_item_list), set_format=False, show_rect=True)
             blk_item.set_fontformat(self.formatpanel.global_format)
             self.canvas.push_undo_command(CreateItemCommand(blk_item, self))

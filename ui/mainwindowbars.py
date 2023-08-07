@@ -384,9 +384,23 @@ class TitleBar(Widget):
 
         self.runToolBtn = TitleBarToolBtn(self)
         self.runToolBtn.setText(self.tr('Run'))
+
+        self.stageActions = stageActions = [
+            QAction(self.tr('Enable Text Dection'), self),
+            QAction(self.tr('Enable OCR'), self),
+            QAction(self.tr('Enable Translation'), self),
+            QAction(self.tr('Enable Inpainting'), self)
+        ]
+        for idx, sa in enumerate(stageActions):
+            sa.setCheckable(True)
+            sa.setChecked(pcfg.module.stage_enabled(idx))
+            sa.triggered.connect(self.stageEnableStateChanged)
+
         runAction = QAction(self.tr('Run'), self)
         translatePageAction = QAction(self.tr('Translate page'), self)
         runMenu = QMenu(self.runToolBtn)
+        runMenu.addActions(stageActions)
+        runMenu.addSeparator()
         runMenu.addActions([runAction, translatePageAction])
         self.runToolBtn.setMenu(runMenu)
         self.runToolBtn.setPopupMode(QToolButton.InstantPopup)
@@ -423,7 +437,20 @@ class TitleBar(Widget):
         hlayout.addWidget(self.maxBtn)
         hlayout.addWidget(self.closeBtn)
         hlayout.setContentsMargins(0, 0, 0, 0)
-        hlayout.setSpacing(0) 
+        hlayout.setSpacing(0)
+
+    def stageEnableStateChanged(self):
+        sender = self.sender()
+        idx= self.stageActions.index(sender)
+        checked = sender.isChecked()
+        if idx == 0:
+            pcfg.module.enable_detect = checked
+        elif idx == 1:
+            pcfg.module.enable_ocr = checked
+        elif idx == 2:
+            pcfg.module.enable_translate = checked
+        elif idx == 3:
+            pcfg.module.enable_inpaint = checked
 
     def onMaxBtnClicked(self):
         if self.mainwindow.isMaximized():
@@ -499,8 +526,6 @@ class BottomBar(Widget):
     textedit_checkchanged = Signal()
     paintmode_checkchanged = Signal()
     textblock_checkchanged = Signal()
-    ocrcheck_statechanged = Signal(bool)
-    transcheck_statechanged = Signal(bool)
     inpaint_btn_clicked = Signal()
     source_download_btn_clicked = Signal()
 
@@ -510,14 +535,6 @@ class BottomBar(Widget):
         self.setMouseTracking(True)
         self.mainwindow = mainwindow
 
-        self.ocrChecker = TextChecker('ocr')
-        self.ocrChecker.setObjectName('OCRChecker')
-        self.ocrChecker.setToolTip(self.tr('Enable/disable ocr'))
-        self.ocrChecker.checkStateChanged.connect(self.OCRStateChanged)
-        self.transChecker = QCheckBox()
-        self.transChecker.setObjectName('TransChecker')
-        self.transChecker.setToolTip(self.tr('Enable/disable translation'))
-        self.transChecker.clicked.connect(self.transCheckerStateChanged)
         self.translatorStatusbtn = TranslatorStatusButton()
         self.translatorStatusbtn.setHidden(True)
         self.transTranspageBtn = RunStopTextBtn(self.tr('translate page'),
@@ -551,8 +568,6 @@ class BottomBar(Widget):
         self.textlayerSlider.setValue(100)
         self.textlayerSlider.setRange(0, 100)
         
-        self.hlayout.addWidget(self.ocrChecker)
-        self.hlayout.addWidget(self.transChecker)
         self.hlayout.addWidget(self.translatorStatusbtn)
         self.hlayout.addWidget(self.transTranspageBtn)
         self.hlayout.addWidget(self.inpainterStatBtn)
@@ -578,12 +593,6 @@ class BottomBar(Widget):
 
     def onTextblockCheckerClicked(self):
         self.textblock_checkchanged.emit()
-
-    def OCRStateChanged(self):
-        self.ocrcheck_statechanged.emit(self.ocrChecker.isChecked())
-        
-    def transCheckerStateChanged(self):
-        self.transcheck_statechanged.emit(self.transChecker.isChecked())
 
     def inpaintBtnClicked(self):
         self.inpaint_btn_clicked.emit()

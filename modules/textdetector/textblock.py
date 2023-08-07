@@ -57,6 +57,7 @@ class TextBlock:
     shadow_strength: float = 1.
     shadow_color: Tuple = (0, 0, 0)
     shadow_offset: List = field(default_factory = lambda : [0., 0.])
+    src_is_vertical: bool = False
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
@@ -185,9 +186,8 @@ class TextBlock:
         return blk_dict
 
     def get_transformed_region(self, img: np.ndarray, idx: int, textheight: int, maxwidth: int = None) -> np.ndarray :
-        direction = 'v' if self.vertical else 'h'
+        direction = 'v' if self.src_is_vertical else 'h'
         src_pts = np.array(self.lines[idx], dtype=np.float64)
-        im_h, im_w = img.shape[:2]
 
         middle_pnt = (src_pts[[1, 2, 3, 0]] + src_pts) / 2
         vec_v = middle_pnt[2] - middle_pnt[0]   # vertical vectors of textlines
@@ -223,6 +223,7 @@ class TextBlock:
             h, w = region.shape[: 2]
             if w > maxwidth:
                 region = cv2.resize(region, (maxwidth, h))
+
         return region
 
     def get_text(self):
@@ -397,7 +398,7 @@ def examine_textblk(blk: TextBlock, im_w: int, im_h: int, sort: bool = False) ->
     if abs(blk.angle) < 3:
         blk.angle = 0
     blk.font_size = font_size
-    blk.vertical = vertical
+    blk.vertical = blk.src_is_vertical = vertical
     blk.vec = primary_vec
     blk.norm = primary_norm
     if sort:

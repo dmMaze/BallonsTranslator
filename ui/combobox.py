@@ -39,6 +39,7 @@ class SizeComboBox(QComboBox):
     def on_text_changed(self):
         if self.hasFocus():
             self.text_changed_by_user = True
+            self.check_change()
 
     def on_current_index_changed(self):
         if self.hasFocus():

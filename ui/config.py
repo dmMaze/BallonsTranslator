@@ -11,6 +11,7 @@ class ModuleConfig(Config):
     ocr: str = "mit48px_ctc"
     inpainter: str = 'lama_mpe'
     translator: str = "google"
+    enable_detect: bool = True
     enable_ocr: bool = True
     enable_translate: bool = True
     enable_inpaint: bool = True
@@ -24,6 +25,22 @@ class ModuleConfig(Config):
 
     def get_params(self, module_key: str) -> dict:
         return self[module_key + '_params']
+    
+    def stage_enabled(self, idx: int):
+        if idx == 0:
+            return self.enable_detect
+        elif idx == 1:
+            return self.enable_ocr
+        elif idx == 2:
+            return self.enable_translate
+        elif idx == 3:
+            return self.enable_inpaint
+        else:
+            raise Exception(f'not supported stage idx: {idx}')
+        
+    def all_stages_disabled(self):
+        return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
+        
 
 @nested_dataclass
 class DrawPanelConfig(Config):
@@ -78,6 +95,8 @@ class ProgramConfig(Config):
     ocr_sublist: dict = field(default_factory=lambda: [])
     mt_sublist: dict = field(default_factory=lambda: [])
     display_lang: str = C.DEFAULT_DISPLAY_LANG
+
+
 
     @staticmethod
     def load(cfg_path: str):
