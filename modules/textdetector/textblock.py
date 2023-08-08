@@ -57,7 +57,7 @@ class TextBlock:
     shadow_strength: float = 1.
     shadow_color: Tuple = (0, 0, 0)
     shadow_offset: List = field(default_factory = lambda : [0., 0.])
-    src_is_vertical: bool = False
+    src_is_vertical: bool = None
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
@@ -69,6 +69,8 @@ class TextBlock:
             self.distance = np.array(self.distance, np.float32)
         if self.vec is not None:
             self.vec = np.array(self.vec, np.float32)
+        if self.src_is_vertical is None:
+            self.src_is_vertical = self.vertical
 
     def adjust_bbox(self, with_bbox=False, x_range=None, y_range=None):
         lines = self.lines_array().astype(np.int32)
