@@ -107,9 +107,15 @@ class CustomGV(QGraphicsView):
             if key == Qt.Key.Key_C:
                 self.canvas.copy_src_signal.emit()
                 e.accept()
+                return
             elif key == Qt.Key.Key_V:
                 self.canvas.paste_src_signal.emit()
                 e.accept()
+                return
+            elif key == Qt.Key.Key_D:
+                self.canvas.delete_textblks.emit(1)
+                e.accept()
+                return
 
         return super().keyPressEvent(e)
 
@@ -659,6 +665,7 @@ class Canvas(QGraphicsScene):
             paste_src_act = menu.addAction(self.tr("Paste source text"))
             paste_src_act.setShortcut(QKeySequence("Ctrl+Shift+V"))
             delete_recover_act = menu.addAction(self.tr("Delete and Recover removed text"))
+            delete_recover_act.setShortcut(QKeySequence("Ctrl+Shift+D"))
             menu.addSeparator()
 
             format_act = menu.addAction(self.tr("Apply font formatting"))
