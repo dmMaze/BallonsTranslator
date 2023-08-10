@@ -51,7 +51,6 @@ class TextBlock:
     default_stroke_width: float = 0.2
     stroke_decide_by_colordiff: bool = True
     font_weight: int = 50
-    _target_lang: str = ""
     opacity: float = 1.
     shadow_radius: float = 0.
     shadow_strength: float = 1.

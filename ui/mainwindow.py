@@ -855,7 +855,7 @@ class MainWindow(FramelessWindow):
 
         blk_list, blk_ids = [], []
         for blkitem in blkitem_list:
-            blk = blkitem.blk
+            blk: TextBlock = blkitem.blk
             blk._bounding_rect = blkitem.absBoundingRect()
             blk.vertical = blkitem.is_vertical
             blk.text = self.st_manager.pairwidget_list[blkitem.idx].e_source.toPlainText()

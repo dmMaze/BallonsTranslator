@@ -1,7 +1,6 @@
 from typing import Tuple, List, Dict, Union, Callable
 from ordered_set import OrderedSet
 import numpy as np
-import cv2
 import logging
 
 from ..textdetector.textblock import TextBlock
@@ -36,6 +35,8 @@ class OCRBase(BaseModule):
         elif isinstance(blk_list, TextBlock):
             blk_list = [blk_list]
 
+        for blk in blk_list:
+            blk.text = []
         self.ocr_blk_list(img, blk_list)
         for blk in blk_list:
             if isinstance(blk.text, List):
