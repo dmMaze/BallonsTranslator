@@ -17,7 +17,7 @@ class BaseModule:
 
     def updateParam(self, param_key: str, param_content):
         self_param_content = self.params[param_key]
-        if isinstance(self_param_content, str) or isinstance(self_param_content, float) or isinstance(self_param_content, int):
+        if isinstance(self_param_content, (str, float, int)):
             self.params[param_key] = param_content
         else:
             param_dict = self.params[param_key]

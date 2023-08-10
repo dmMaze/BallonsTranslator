@@ -170,7 +170,7 @@ class Canvas(QGraphicsScene):
     textstack_changed = Signal()
     drop_open_folder = Signal(str)
 
-    context_menu_requested = Signal(QPoint)
+    context_menu_requested = Signal(QPoint, bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -194,7 +194,7 @@ class Canvas(QGraphicsScene):
         self.gv.setAcceptDrops(True)
 
         self.gv.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        self.context_menu_requested.connect(self.createCustomContextMenu)
+        self.context_menu_requested.connect(self.on_create_contextmenu)
         
         if not C.FLAG_QT6:
             # mitigate https://bugreports.qt.io/browse/QTBUG-93417
@@ -576,7 +576,7 @@ class Canvas(QGraphicsScene):
             if self.stroke_img_item is not None:
                 self.finish_erasing.emit(self.stroke_img_item)
             if self.textEditMode():
-                self.context_menu_requested.emit(event.screenPos())
+                self.context_menu_requested.emit(event.screenPos(), False)
         elif btn == Qt.MouseButton.LeftButton:
             if self.stroke_img_item is not None:
                 self.finish_painting.emit(self.stroke_img_item)
@@ -651,7 +651,7 @@ class Canvas(QGraphicsScene):
     def setTextBlockMode(self, mode: bool):
         self.textblock_mode = mode
 
-    def createCustomContextMenu(self, pos: QPoint):
+    def on_create_contextmenu(self, pos: QPoint, is_textpanel: bool):
         if self.textEditMode() and not self.creating_textblock:
             menu = QMenu(self.gv)
             copy_act = menu.addAction(self.tr("Copy"))
@@ -666,6 +666,7 @@ class Canvas(QGraphicsScene):
             paste_src_act.setShortcut(QKeySequence("Ctrl+Shift+V"))
             delete_recover_act = menu.addAction(self.tr("Delete and Recover removed text"))
             delete_recover_act.setShortcut(QKeySequence("Ctrl+Shift+D"))
+
             menu.addSeparator()
 
             format_act = menu.addAction(self.tr("Apply font formatting"))

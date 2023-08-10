@@ -75,6 +75,8 @@ class DeleteBlkItemsCommand(QUndoCommand):
         self.highlighter_list = []
         self.old_counter_sum = self.sw.counter_sum
         self.sw_changed = False
+
+        blk_list.sort(key=lambda blk: blk.idx)
         
         for blkitem in blk_list:
             if not isinstance(blkitem, TextBlkItem):
@@ -252,6 +254,7 @@ class PasteBlkItemsCommand(QUndoCommand):
         super().__init__(parent)
         self.op_counter = 0
         self.blk_list = blk_list
+        blk_list.sort(key=lambda blk: blk.idx)
         for blkitem in blk_list:
             blkitem.setSelected(True)
         self.pwidget_list = pwidget_list
@@ -354,8 +357,9 @@ class SceneTextManager(QObject):
         self.canvas.reset_angle.connect(self.onResetAngle)
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
-
         self.textEditList = textpanel.textEditList
+        self.textEditList.focus_out.connect(self.on_textedit_focusout)
+        self.textEditList.textpanel_contextmenu_requested.connect(canvas.on_create_contextmenu)
         self.textEditList.selection_changed.connect(self.on_transwidget_selection_changed)
         self.textEditList.rearrange_blks.connect(self.on_rearrange_blks)
         self.formatpanel = textpanel.formatpanel
@@ -486,17 +490,17 @@ class SceneTextManager(QObject):
         self.txtblkShapeControl.setBlkItem(None)
 
     def recoverTextblkItem(self, blkitem: TextBlkItem, p_widget: TransPairWidget):
-        self.textblk_item_list.append(blkitem)
+        self.textblk_item_list.insert(blkitem.idx, blkitem)
         blkitem.setParentItem(self.canvas.textLayer)
-        self.pairwidget_list.append(p_widget)
+        self.pairwidget_list.insert(p_widget.idx, p_widget)
         self.textEditList.insertPairWidget(p_widget, p_widget.idx)
         self.updateTextBlkItemIdx()
 
     def recoverTextblkItemList(self, blkitem_list: List[TextBlkItem], p_widget_list: List[TransPairWidget]):
         for blkitem, p_widget in zip(blkitem_list, p_widget_list):
-            self.textblk_item_list.append(blkitem)
+            self.textblk_item_list.insert(blkitem.idx, blkitem)
             blkitem.setParentItem(self.canvas.textLayer)
-            self.pairwidget_list.append(p_widget)
+            self.pairwidget_list.insert(p_widget.idx, p_widget)
             self.textEditList.insertPairWidget(p_widget, p_widget.idx)
             if self.txtblkShapeControl.blk_item is not None and blkitem.isSelected():
                 blkitem.setSelected(False)
@@ -983,6 +987,12 @@ class SceneTextManager(QObject):
                 selset.pop(blkitem.idx)
         for idx in selset:
             self.textblk_item_list[idx].setSelected(True)
+
+    def on_textedit_focusout(self):
+        fw = self.app.focusWidget()
+        if fw == self.canvas.gv or isinstance(fw, (SourceTextEdit, TransTextEdit)):
+            self.textEditList.clearDrag()
+            self.textEditList.clearAllSelected()
 
     def on_rearrange_blks(self, mv_map: Tuple[np.ndarray]):
         self.canvas.push_undo_command(RearrangeBlksCommand(mv_map, self))

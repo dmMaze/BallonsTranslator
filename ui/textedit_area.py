@@ -1,9 +1,8 @@
 from typing import List, Union
-from PyQt6 import QtGui
 
-from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout 
+from qtpy.QtWidgets import QMenu, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint
-from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
+from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence
 import keyboard
 
 from .stylewidgets import Widget, SeparatorWidget, ClickableLabel, IgnoreMouseLabel
@@ -11,6 +10,12 @@ from .textitem import TextBlock
 from .config import pcfg
 import webbrowser
 import numpy as np
+
+
+STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
+STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
+STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
+
 
 class SelectTextMiniMenu(Widget):
 
@@ -297,9 +302,6 @@ class SourceTextEdit(QTextEdit):
 class TransTextEdit(SourceTextEdit):
     pass
 
-STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
-STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
-STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
 
 
 
@@ -383,6 +385,7 @@ class TransPairWidget(Widget):
             self.e_source.idx = idx
             self.e_trans.idx = idx
 
+
 class TextEditListScrollArea(QScrollArea):
 
     textblock_list: List[TextBlock] = []
@@ -390,6 +393,8 @@ class TextEditListScrollArea(QScrollArea):
     remove_textblock = Signal()
     selection_changed = Signal()   # this signal could only emit in on_widget_checkstate_changed, i.e. via user op
     rearrange_blks = Signal(object)
+    textpanel_contextmenu_requested = Signal(QPoint, bool)
+    focus_out = Signal()
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -412,6 +417,14 @@ class TextEditListScrollArea(QScrollArea):
 
         self.drag_to_pos: int = -1
         self.setAcceptDrops(True)
+
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+
+    def mouseReleaseEvent(self, e: QMouseEvent):
+        if e.button() == Qt.MouseButton.RightButton:
+            pos = self.mapToGlobal(e.position()).toPoint()
+            self.textpanel_contextmenu_requested.emit(pos, True)
+        super().mouseReleaseEvent(e)
 
     def mouseMoveEvent(self, e: QMouseEvent) -> None:
         if self.drag is None and self.sel_anchor_widget is not None:
@@ -589,9 +602,8 @@ class TextEditListScrollArea(QScrollArea):
         self.vlayout.removeWidget(widget)
     
     def focusOutEvent(self, e: QFocusEvent) -> None:
-        self.clearDrag()
-        self.clearAllSelected()
-        return super().focusOutEvent(e)
+        self.focus_out.emit()
+        super().focusOutEvent(e)
     
     def setFoldTextarea(self, fold: bool):
         for pw in self.pairwidget_list:
