@@ -313,7 +313,7 @@ class TransPairWidget(Widget):
         self.e_source = SourceTextEdit(idx, self, fold)
         self.e_trans = TransTextEdit(idx, self, fold)
         self.idx_label = IgnoreMouseLabel(self)
-        self.idx_label.setText(str(idx).zfill(2))
+        self.idx_label.setText(str(idx + 1).zfill(2))   # showed index start from 1!
         self.textblock = textblock
         self.idx = idx
         self.checked = False
@@ -376,11 +376,12 @@ class TransPairWidget(Widget):
             self.check_state_changed.emit(self, shift_pressed, ctrl_pressed)
         return super().mouseReleaseEvent(e)
 
-    def updateIndex(self, idx):
-        self.idx = idx
-        self.idx_label.setText(str(idx).zfill(2))
-        self.e_source.idx = idx
-        self.e_trans.idx = idx
+    def updateIndex(self, idx: int):
+        if self.idx != idx:
+            self.idx = idx
+            self.idx_label.setText(str(idx + 1).zfill(2))
+            self.e_source.idx = idx
+            self.e_trans.idx = idx
 
 class TextEditListScrollArea(QScrollArea):
 
