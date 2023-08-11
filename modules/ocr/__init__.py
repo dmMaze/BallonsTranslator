@@ -246,10 +246,66 @@ class OCRMIT48pxCTC(OCRBase):
         self.chunk_size = chunk_size
         self.model.max_chunk_size = chunk_size
     
+import sys, platform
+if sys.platform == 'darwin' and platform.mac_ver()[0] >= '10.15':
+    from .macos_ocr import get_supported_languages
+    langs = list(get_supported_languages()[0])
+    APPLEVISIONFRAMEWORK = None
+    @register_OCR('macos_ocr')
+    class OCRApple(OCRBase):
+        params = {
+            'Language': {
+                'type':'selector',
+                'options': langs
+            },
+            # 'Recognition Level': {
+            #     'type': 'selector',
+            #     'options': [
+            #         'Fast',
+            #         'Accurate'
+            #     ]
+            # }
+        }
+        language = 'en-US'
+        # recognition = 'Accurate'
 
+        def setup_ocr(self):
+            global APPLEVISIONFRAMEWORK
+            from .macos_ocr import AppleOCR
+            if APPLEVISIONFRAMEWORK is None:
+                self.model = APPLEVISIONFRAMEWORK = AppleOCR()
+            else:
+                self.model = APPLEVISIONFRAMEWORK
 
-    
+        def ocr_img(self, img: np.ndarray) -> str:
+            return self.model(img)
 
-    
+        def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+            pass
 
-    
+        def updateParam(self, param_key: str, param_content):
+            super().updateParam(param_key, param_content)
+            language = self.params['language']['select']
+            # recognition = self.params['recognition level']['select']
+
+            self.language = language
+            # self.recognition = recognition
+
+if sys.platform == 'win32':
+    WINDOWSOCRENGINE = None
+    @register_OCR('WindowsOCR')
+    class OCRWindows(OCRBase):
+
+        def setup_ocr(self):
+            global WINDOWSOCRENGINE
+            from .windows_ocr import WindowsOCR
+            if WINDOWSOCRENGINE is None:
+                self.engine = WINDOWSOCRENGINE = WindowsOCR()
+            else:
+                self.engine = WINDOWSOCRENGINE
+
+        def ocr_img(self, img: np.ndarray) -> str:
+            self.engine(img)
+
+        def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
+            pass

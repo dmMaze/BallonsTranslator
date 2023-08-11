@@ -37,4 +37,10 @@ openai
 pyyaml
 httpx[socks,brotli]
 langdetect
-# pywin32 required on windows
+pywin32; sys_platform == 'win32'
+winsdk; sys_platform == 'win32'
+pyobjc-core; sys_platform == 'darwin'
+pyobjc-framework-cocoa; sys_platform == 'darwin'
+pyobjc-framework-coreml; sys_platform == 'darwin'
+pyobjc-framework-quartz; sys_platform == 'darwin'
+pyobjc-framework-vision; sys_platform == 'darwin'

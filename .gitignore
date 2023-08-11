@@ -36,3 +36,4 @@ config/config.json
 *.7z
 venv
 pip
+.DS_Store
