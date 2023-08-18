@@ -1,5 +1,6 @@
 from typing import Dict
 from utils.logger import logger as LOGGER
+import gc
 
 GPUINTENSIVE_SET = {'cuda', 'hip'}
 
@@ -48,4 +49,9 @@ if hasattr(torch, 'cuda'):
     DEFAULT_DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 else:
     DEFAULT_DEVICE = 'cpu'
+
+def gc_collect():
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
 
