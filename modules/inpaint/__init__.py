@@ -6,7 +6,7 @@ from utils.registry import Registry
 from utils.textblock_mask import extract_ballon_mask
 from utils.imgproc_utils import enlarge_window
 
-from ..base import BaseModule, DEFAULT_DEVICE
+from ..base import BaseModule, DEFAULT_DEVICE, gc_collect
 from ..textdetector import TextBlock
 
 INPAINTERS = Registry('inpainters')
@@ -44,7 +44,14 @@ class InpainterBase(BaseModule):
                         img = img.copy()
                         img[np.where(ballon_msk > 0)] = average_bg_color
                         return img
-            return self._inpaint(img, mask)
+            try:
+                return self._inpaint(img, mask)
+            except Exception as e:
+                if isinstance(e, torch.cuda.OutOfMemoryError):
+                    gc_collect()
+                    return self._inpaint(img, mask)
+                else:
+                    raise e
         else:
             im_h, im_w = img.shape[:2]
             inpainted = np.copy(img)

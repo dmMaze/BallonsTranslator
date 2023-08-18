@@ -594,6 +594,13 @@ class SceneTextManager(QObject):
         if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
             selected_blks.append(self.txtblkShapeControl.blk_item)
         if len(selected_blks) > 0:
+            # img, mask = self.imgtrans_proj.img_array, self.imgtrans_proj.mask_array
+            # for blk in selected_blks:
+            #     x, y, w, h = blk.absBoundingRect()
+            #     x2, y2 = x+w, y+h
+            #     imname = str(blk.idx).zfill(2) + '.png'
+            #     cv2.imwrite(imname, img[y: y2, x: x2])
+            #     cv2.imwrite('mask_' + imname, mask[y: y2, x: x2])
             self.canvas.push_undo_command(DeleteBlkItemsCommand(selected_blks, mode, self))
 
     def onCopyBlkItems(self, pos: QPointF):
