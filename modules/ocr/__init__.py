@@ -258,6 +258,9 @@ if platform.mac_ver()[0] >= '10.15':
                 'options': list(get_supported_languages()[0]),
                 'select': 'en-US',
             },
+            # While this does appear 
+            # it doesn't update the languages available
+            # different recog level, different available langs
             # 'recognition_level': {
             #     'type': 'selector',
             #     'options': [
@@ -306,10 +309,22 @@ if platform.mac_ver()[0] >= '10.15':
             self.confidence = self.params['confidence_level']
             self.model.min_confidence = self.confidence
 
-if platform.system() == 'Windows':
+if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
+    from .windows_ocr import get_supported_language_packs
+
+    languages_display_name = [lang.display_name for lang in get_supported_language_packs()]
+    languages_tag = [lang.language_tag for lang in get_supported_language_packs()]
     WINDOWSOCRENGINE = None
-    @register_OCR('WindowsOCR')
+    @register_OCR('windows_ocr')
     class OCRWindows(OCRBase):
+        params = {
+            'language': {
+                'type':'selector',
+                'options': languages_display_name,
+                'select': languages_display_name[0],
+            }
+        }
+        language = languages_display_name[0]
 
         def setup_ocr(self):
             global WINDOWSOCRENGINE
@@ -323,4 +338,18 @@ if platform.system() == 'Windows':
             self.engine(img)
 
         def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
-            pass
+            im_h, im_w = img.shape[:2]
+            for blk in blk_list:
+                x1, y1, x2, y2 = blk.xyxy
+                if y2 < im_h and x2 < im_w and \
+                    x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
+                    blk.text = self.engine(img[y1:y2, x1:x2])
+                else:
+                    logging.warning('invalid textbbox to target img')
+                    blk.text = ['']
+        
+        def updateParam(self, param_key: str, param_content):
+            super().updateParam(param_key, param_content)
+            self.language = self.params['language']['select']
+            tag_name = languages_tag[languages_display_name.index(self.language)]
+            self.engine.lang = tag_name
