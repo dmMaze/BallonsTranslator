@@ -68,9 +68,9 @@ class MacFramelessWindow(QWidget):
         # hide title bar buttons and title
         self.__nsWindow.setShowsToolbarButton_(False)
         self.__nsWindow.setTitleVisibility_(Cocoa.NSWindowTitleHidden)
-        self.__nsWindow.standardWindowButton_(Cocoa.NSWindowCloseButton).setHidden_(True)
-        self.__nsWindow.standardWindowButton_(Cocoa.NSWindowZoomButton).setHidden_(True)
-        self.__nsWindow.standardWindowButton_(Cocoa.NSWindowMiniaturizeButton).setHidden_(True)
+        # self.__nsWindow.standardWindowButton_(Cocoa.NSWindowCloseButton).setHidden_(True)
+        # self.__nsWindow.standardWindowButton_(Cocoa.NSWindowZoomButton).setHidden_(True)
+        # self.__nsWindow.standardWindowButton_(Cocoa.NSWindowMiniaturizeButton).setHidden_(True)
 
 
 class AcrylicWindow(MacFramelessWindow):
