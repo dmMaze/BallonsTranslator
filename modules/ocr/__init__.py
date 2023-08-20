@@ -246,34 +246,37 @@ class OCRMIT48pxCTC(OCRBase):
         self.chunk_size = chunk_size
         self.model.max_chunk_size = chunk_size
     
-import sys, platform
-if sys.platform == 'darwin' and platform.mac_ver()[0] >= '10.15':
+import platform
+if platform.mac_ver()[0] >= '10.15':
     from .macos_ocr import get_supported_languages
-    langs = list(get_supported_languages()[0])
     APPLEVISIONFRAMEWORK = None
     @register_OCR('macos_ocr')
     class OCRApple(OCRBase):
         params = {
-            'Language': {
+            'language': {
                 'type':'selector',
-                'options': langs
+                'options': list(get_supported_languages()[0]),
+                'select': 'en-US',
             },
-            # 'Recognition Level': {
+            # 'recognition_level': {
             #     'type': 'selector',
             #     'options': [
-            #         'Fast',
-            #         'Accurate'
-            #     ]
-            # }
+            #         'accurate',
+            #         'fast',
+            #     ],
+            #     'select': 'accurate',
+            # },
+            'confidence_level': '0.1',
         }
         language = 'en-US'
-        # recognition = 'Accurate'
+        recognition = 'accurate'
+        confidence = '0.1'
 
         def setup_ocr(self):
             global APPLEVISIONFRAMEWORK
             from .macos_ocr import AppleOCR
             if APPLEVISIONFRAMEWORK is None:
-                self.model = APPLEVISIONFRAMEWORK = AppleOCR()
+                self.model = APPLEVISIONFRAMEWORK = AppleOCR(lang=[self.language])
             else:
                 self.model = APPLEVISIONFRAMEWORK
 
@@ -281,17 +284,29 @@ if sys.platform == 'darwin' and platform.mac_ver()[0] >= '10.15':
             return self.model(img)
 
         def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
-            pass
+            im_h, im_w = img.shape[:2]
+            for blk in blk_list:
+                x1, y1, x2, y2 = blk.xyxy
+                if y2 < im_h and x2 < im_w and \
+                    x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
+                    blk.text = self.model(img[y1:y2, x1:x2])
+                else:
+                    logging.warning('invalid textbbox to target img')
+                    blk.text = ['']
 
         def updateParam(self, param_key: str, param_content):
             super().updateParam(param_key, param_content)
-            language = self.params['language']['select']
-            # recognition = self.params['recognition level']['select']
+            self.language = self.params['language']['select']
+            self.model.lang = [self.language]
 
-            self.language = language
-            # self.recognition = recognition
+            # self.recognition = self.params['recognition_level']['select']
+            # self.model.recog_level = self.recognition
+            # self.params['language']['options'] = list(get_supported_languages(self.recognition)[0])
 
-if sys.platform == 'win32':
+            self.confidence = self.params['confidence_level']
+            self.model.min_confidence = self.confidence
+
+if platform.system() == 'Windows':
     WINDOWSOCRENGINE = None
     @register_OCR('WindowsOCR')
     class OCRWindows(OCRBase):
