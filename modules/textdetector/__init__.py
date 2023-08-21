@@ -92,4 +92,4 @@ class ComicTextDetector(TextDetectorBase):
         if device != self.device:
             self.setup_detector()
         elif detect_size != self.detect_size:
-            self.detector.detect_size = (detect_size, detect_size)
+            self.detector.detect_size = detect_size
