@@ -57,6 +57,7 @@ class TextBlock:
     shadow_color: Tuple = (0, 0, 0)
     shadow_offset: List = field(default_factory = lambda : [0., 0.])
     src_is_vertical: bool = None
+    detected_font_size: int = -1
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
@@ -70,6 +71,8 @@ class TextBlock:
             self.vec = np.array(self.vec, np.float32)
         if self.src_is_vertical is None:
             self.src_is_vertical = self.vertical
+        if self.detected_font_size == -1:
+            self.detected_font_size = self.font_size
 
     def adjust_bbox(self, with_bbox=False, x_range=None, y_range=None):
         lines = self.lines_array().astype(np.int32)
@@ -570,6 +573,7 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
             lines[..., 1] = np.clip(lines[..., 1], 0, im_h-1)
             blk.lines = lines.astype(np.int64).tolist()
             blk.font_size += expand_size
+        blk.detected_font_size = blk.font_size
             
     return final_blk_list
 

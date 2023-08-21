@@ -1025,6 +1025,7 @@ class MainWindow(FramelessWindow):
                         textblk.set_font_colors((0, 0, 0), (0, 0, 0), True)
                     if pcfg.module.enable_translate or all_disabled or pcfg.module.enable_ocr:
                         textblk.rich_text = ''
+                        textblk.font_size = textblk.detected_font_size
                     textblk.vertical = textblk.src_is_vertical
         self.module_manager.runImgtransPipeline()
 
