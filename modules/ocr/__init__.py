@@ -333,6 +333,12 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
                 self.engine = WINDOWSOCRENGINE = WindowsOCR()
             else:
                 self.engine = WINDOWSOCRENGINE
+            self.engine.lang = self.get_engine_lang()
+
+        def get_engine_lang(self) -> str:
+            language = self.params['language']['select'] 
+            tag_name = languages_tag[languages_display_name.index(language)]
+            return tag_name
 
         def ocr_img(self, img: np.ndarray) -> str:
             self.engine(img)
@@ -350,6 +356,4 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
         
         def updateParam(self, param_key: str, param_content):
             super().updateParam(param_key, param_content)
-            self.language = self.params['language']['select']
-            tag_name = languages_tag[languages_display_name.index(self.language)]
-            self.engine.lang = tag_name
+            self.engine.lang = self.get_engine_lang()
