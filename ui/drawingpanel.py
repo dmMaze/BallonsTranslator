@@ -168,15 +168,14 @@ class PenConfigPanel(Widget):
 
     def on_alpha_changed(self):
         if self.alphaSlider.hasFocus():
-            alpha = self.alphaSlider.value()
             color = self.colorPicker.rgba()
-            color[-1] = alpha
+            color = (color[0], color[1], color[2], self.alphaSlider.value())
             self.colorPicker.setPickerColor(color)
             self.colorChanged.emit(color)
 
     def on_color_changed(self):
         color = self.colorPicker.rgba()
-        color[-1] = self.alphaSlider.value()
+        color = (color[0], color[1], color[2], self.alphaSlider.value())
         self.colorChanged.emit(color)
 
     @property
