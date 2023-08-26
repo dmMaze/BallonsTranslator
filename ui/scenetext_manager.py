@@ -712,8 +712,22 @@ class SceneTextManager(QObject):
         src_is_cjk = is_cjk(pcfg.module.translate_source)
         tgt_is_cjk = is_cjk(pcfg.module.translate_target)
 
+        restore_charfmts = False
+        if text is None:
+            text = blkitem.toPlainText()
+            restore_charfmts = True
+
+        if pcfg.let_uppercase_flag:
+            text = text.upper()
+
         if mask is None:
-            bounding_rect = blkitem.absBoundingRect()
+            im_h, im_w = img.shape[:2]
+            bounding_rect = blkitem.absBoundingRect(max_h=im_h, max_w=im_w)
+            if bounding_rect[2] <= 0 or bounding_rect[3] <= 0:
+                blkitem.setPlainText(text)
+                if len(self.pairwidget_list) > blkitem.idx:
+                    self.pairwidget_list[blkitem.idx].e_trans.setPlainText(text)
+                return
             if tgt_is_cjk:
                 max_enlarge_ratio = 2.5
             else:
@@ -723,14 +737,6 @@ class SceneTextManager(QObject):
         else:
             mask_xyxy = [bounding_rect[0], bounding_rect[1], bounding_rect[0]+bounding_rect[2], bounding_rect[1]+bounding_rect[3]]
         region_x, region_y, region_w, region_h = region_rect
-
-        restore_charfmts = False
-        if text is None:
-            text = blkitem.toPlainText()
-            restore_charfmts = True
-
-        if pcfg.let_uppercase_flag:
-            text = text.upper()
         
         words, delimiter = seg_text(text, pcfg.module.translate_target)
         if len(words) == 0:
@@ -776,7 +782,6 @@ class SceneTextManager(QObject):
                     # print(1.8 * text_area / ballon_area)
                     resize_ratio = max(ballon_area / 1.5 / text_area, 0.5)
                     
-
         if resize_ratio != 1:
             new_font_size = blk_font.pointSizeF() * resize_ratio
             blk_font.setPointSizeF(new_font_size)
