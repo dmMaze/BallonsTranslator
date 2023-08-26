@@ -42,13 +42,13 @@ class MoveByKeyCommand(QUndoCommand):
         for blk, pos in zip(self.blkitems, self.ori_pos_list):
             blk.setPos(pos)
             if blk.under_ctrl and self.shape_ctrl.blk_item == blk:
-                self.shape_ctrl.setPos(pos)
+                self.shape_ctrl.updateBoundingRect()
 
     def redo(self):
         for blk, pos in zip(self.blkitems, self.end_pos_list):
             blk.setPos(pos)
             if blk.under_ctrl and self.shape_ctrl.blk_item == blk:
-                self.shape_ctrl.setPos(pos)
+                self.shape_ctrl.updateBoundingRect()
 
     def mergeWith(self, other: QUndoCommand) -> bool:
         canmerge = self.blkitems == other.blkitems and self.direction == other.direction
