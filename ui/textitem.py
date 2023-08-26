@@ -955,3 +955,32 @@ class TextBlkItem(QGraphicsTextItem):
         cursor = QTextCursor(self.document())
         cursor.select(QTextCursor.SelectionType.Document)
         cursor.insertText(text)
+
+    def shrinkSize(self):
+        mh, mw = self.layout.minSize()
+        if mh == 0 or mw == 0:
+            return
+        br = self.absBoundingRect(qrect=True)
+        align_tl = align_tr = align_c = False
+        br_w, br_h = br.width(), br.height()
+        if br_w > mw or br_h > mh:
+            if self.is_vertical:
+                align_tr = True
+            else:
+                alignment = self.alignment()
+                if alignment == Qt.AlignmentFlag.AlignLeft:
+                    align_tl = True
+                elif alignment == Qt.AlignmentFlag.AlignRight:
+                    align_tr = True
+                else:
+                    align_c = True
+            ml, mt = br.left(), br.top()
+            extra_w, extra_h = br_w - mw, br_h - mh
+            extra_w = max(0, extra_w)
+            extra_h = max(0, extra_h)
+            if align_c:
+                ml += extra_w / 2
+                mt += extra_h / 2
+            elif align_tr:
+                ml += extra_w
+            self.setRect(QRectF(ml, mt, mw, mh))

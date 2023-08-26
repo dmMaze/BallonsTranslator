@@ -184,7 +184,7 @@ class AutoLayoutCommand(QUndoCommand):
         self.new_html_lst = []
         for item in items:
             self.new_html_lst.append(item.toHtml())
-            self.new_rect_lst.append(item.absBoundingRect())
+            self.new_rect_lst.append(item.absBoundingRect(qrect=True))
         self.counter = 0
 
     def redo(self):

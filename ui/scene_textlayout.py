@@ -156,6 +156,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
         self.relayout_on_changed = True
 
+        # relative bottom/right
+        self.y_bottom = 0 
+        self.x_right = 0
+
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
         self.max_width = max_width
@@ -241,6 +245,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         if to_px:
             fs = pt2px(fs)
         return fs
+
+    def minSize(self):
+        return (self.y_bottom, self.x_right)
+    
 
 class VerticalTextDocumentLayout(SceneTextLayout):
 
@@ -522,6 +530,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         option.setWrapMode(QTextOption.WrapAnywhere)
         tl.setTextOption(option)
         
+        y_bottom = 0
         while True:
             line = tl.createLine()
             if not line.isValid():
@@ -597,11 +606,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
                 line_bottom = char_yoffset_lst[-1]
+                y_bottom = available_height
             else:
                 char_yoffset_lst.append(char_bottom)
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
                 line_bottom = char_yoffset_lst[-1]
+                y_bottom = max(y_bottom, line_bottom)
 
             line.setPosition(QPointF(x_offset, line_y_offset))
             blk_char_yoffset.append([line_y_offset, line_bottom])
@@ -610,6 +621,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         tl.endLayout()
             
         self.layout_left = x_offset - self.draw_shifted
+        self.x_right = self.max_width - self.layout_left
+        self.y_bottom = y_bottom
         self.x_offset_lst.append(x_offset)
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)
@@ -623,6 +636,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.reLayout()
 
 
+
 class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def __init__(self, doc: QTextDocument):
@@ -633,6 +647,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         doc = self.document()
         doc_margin = self.document().documentMargin()
         self.y_bottom = 0
+        self.x_right = 0
         block = doc.firstBlock()
         while block.isValid():
             self.layoutBlock(block)
@@ -711,6 +726,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
         line_idx = 0
         tl.beginLayout()
+        x_right = 0
         while True:
             line = tl.createLine()
             if not line.isValid():
@@ -718,11 +734,14 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             line.setLeadingIncluded(False)
             line.setLineWidth(self.available_width)
             line.setPosition(QPointF(doc_margin, y_offset))
+            tw = line.naturalTextWidth()
+            x_right = max(tw, x_right)
             self.y_bottom = idea_height + y_offset + line.descent()    #????
             y_offset += idea_height * self.line_spacing
             line_idx += 1
         tl.endLayout()
         self.y_offset_lst.append(y_offset)
+        self.x_right = x_right
         return 1
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:

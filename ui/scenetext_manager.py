@@ -699,7 +699,7 @@ class SceneTextManager(QObject):
             self.canvas.push_undo_command(ResetAngleCommand(selected_blks, self.txtblkShapeControl))
 
     def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
-        
+        old_br = blkitem.absBoundingRect()
         img = self.imgtrans_proj.img_array
         if img is None:
             return
@@ -839,11 +839,15 @@ class SceneTextManager(QObject):
         if scale != 1 and not fmt.alignment == 0:
             xywh = (np.array(xywh, np.float64) * scale).astype(np.int32).tolist()
 
-        if fmt.alignment == 0:
+        if fmt.alignment == 0 or fmt.alignment == 2:
             x_shift = (scale - 1) * xywh[2] // 2 + xywh[0] * scale
             y_shift = (scale - 1) * xywh[3] // 2 + xywh[1] * scale
             xywh[0] = int(abs_centroid[0] * scale) + x_shift
             xywh[1] = int(abs_centroid[1] * scale)  + y_shift
+        if fmt.alignment == 2:
+            ex_w, ex_h = xywh[2] - old_br[2], xywh[3] - old_br[3]
+            if ex_w > 0:
+                xywh[0] -= ex_w
 
         if restore_charfmts:
             char_fmts = blkitem.get_char_fmts()        
@@ -854,6 +858,7 @@ class SceneTextManager(QObject):
             self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
         if restore_charfmts:
             self.restore_charfmts(blkitem, text, new_text, char_fmts)
+        blkitem.shrinkSize()
     
     def restore_charfmts(self, blkitem: TextBlkItem, text: str, new_text: str, char_fmts: List[QTextCharFormat]):
         cursor = blkitem.textCursor()

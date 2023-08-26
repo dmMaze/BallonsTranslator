@@ -943,6 +943,10 @@ class MainWindow(FramelessWindow):
             self.canvas.updateCanvas()
             self.st_manager.updateSceneTextitems()
 
+        if not pcfg.module.enable_detect:
+            for blkitem in self.st_manager.textblk_item_list:
+                blkitem.shrinkSize()
+
         self.saveCurrentPage(False, False)
         if page_index + 1 == self.imgtrans_proj.num_pages:
             self.st_manager.auto_textlayout_flag = False
