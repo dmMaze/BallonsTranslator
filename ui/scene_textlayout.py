@@ -157,8 +157,8 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.relayout_on_changed = True
 
         # relative bottom/right
-        self.y_bottom = 0 
-        self.x_right = 0
+        self.shrink_height = 0 
+        self.shrink_width = 0
 
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
@@ -247,7 +247,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         return fs
 
     def minSize(self):
-        return (self.y_bottom, self.x_right)
+        return (self.shrink_height, self.shrink_width)
     
 
 class VerticalTextDocumentLayout(SceneTextLayout):
@@ -275,6 +275,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.layout_left = 0
         self.line_spaces_lst = []
         self.draw_shifted = 0
+        self.shrink_height = 0
+        self.shrink_width = 0
         doc = self.document()
         doc_margin = doc.documentMargin()
         block = doc.firstBlock()
@@ -530,7 +532,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         option.setWrapMode(QTextOption.WrapAnywhere)
         tl.setTextOption(option)
         
-        y_bottom = 0
+        shrink_height = 0
         while True:
             line = tl.createLine()
             if not line.isValid():
@@ -606,13 +608,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
                 line_bottom = char_yoffset_lst[-1]
-                y_bottom = available_height
+                shrink_height = available_height
             else:
                 char_yoffset_lst.append(char_bottom)
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
                 line_bottom = char_yoffset_lst[-1]
-                y_bottom = max(y_bottom, line_bottom)
+                shrink_height = max(shrink_height, line_bottom)
 
             line.setPosition(QPointF(x_offset, line_y_offset))
             blk_char_yoffset.append([line_y_offset, line_bottom])
@@ -621,8 +623,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         tl.endLayout()
             
         self.layout_left = x_offset - self.draw_shifted
-        self.x_right = self.max_width - self.layout_left
-        self.y_bottom = y_bottom
+        self.shrink_width = max(self.max_width - self.layout_left, self.shrink_width)
+        self.shrink_height = max(shrink_height, self.shrink_height)
         self.x_offset_lst.append(x_offset)
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)
@@ -646,15 +648,15 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
     def reLayout(self):
         doc = self.document()
         doc_margin = self.document().documentMargin()
-        self.y_bottom = 0
-        self.x_right = 0
+        self.shrink_height = 0
+        self.shrink_width = 0
         block = doc.firstBlock()
         while block.isValid():
             self.layoutBlock(block)
             block = block.next()
         
         if len(self.y_offset_lst) > 0:
-            new_height = self.y_bottom - doc_margin
+            new_height = self.shrink_height - doc_margin
         else:
             new_height = doc_margin
         if new_height > self.available_height:
@@ -726,7 +728,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
         line_idx = 0
         tl.beginLayout()
-        x_right = 0
+        shrink_width = 0
         while True:
             line = tl.createLine()
             if not line.isValid():
@@ -735,13 +737,13 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             line.setLineWidth(self.available_width)
             line.setPosition(QPointF(doc_margin, y_offset))
             tw = line.naturalTextWidth()
-            x_right = max(tw, x_right)
-            self.y_bottom = idea_height + y_offset + line.descent()    #????
+            shrink_width = max(tw, shrink_width)
+            self.shrink_height = max(idea_height + y_offset + line.descent(), self.shrink_height)    #????
             y_offset += idea_height * self.line_spacing
             line_idx += 1
         tl.endLayout()
         self.y_offset_lst.append(y_offset)
-        self.x_right = x_right
+        self.shrink_width = max(shrink_width, self.shrink_width)
         return 1
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:

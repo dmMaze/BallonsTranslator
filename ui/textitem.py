@@ -334,7 +334,7 @@ class TextBlkItem(QGraphicsTextItem):
             w = min(max_w, x1) - x
         if qrect:
             return QRectF(x, y, w, h)
-        return [int(x), int(y), int(w), int(h)]
+        return [math.ceil(x), math.ceil(y), math.ceil(w), math.ceil(h)]
 
     def shape(self) -> QPainterPath:
         path = QPainterPath()
@@ -984,3 +984,4 @@ class TextBlkItem(QGraphicsTextItem):
             elif align_tr:
                 ml += extra_w
             self.setRect(QRectF(ml, mt, mw, mh))
+            self.blk._bounding_rect = self.absBoundingRect()

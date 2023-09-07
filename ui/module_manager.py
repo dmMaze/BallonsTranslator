@@ -680,7 +680,6 @@ class ModuleManager(QObject):
                 and self.imgtrans_thread.translate_finished() \
                     and self.imgtrans_thread.inpaint_finished():
             self.progress_msgbox.hide()
-            self.imgtrans_proj.save()
             self.imgtrans_pipeline_finished.emit()
 
     def setTranslator(self, translator: str = None):

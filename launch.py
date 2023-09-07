@@ -122,6 +122,9 @@ def main():
     print(f'branch: {appinfo.branch}')
     print(f"Commit hash: {commit}")
 
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(APP_DIR)
+
     prepare_environment()
 
     from utils.logger import setup_logging, logger as LOGGER

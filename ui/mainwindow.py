@@ -947,9 +947,11 @@ class MainWindow(FramelessWindow):
             for blkitem in self.st_manager.textblk_item_list:
                 blkitem.shrinkSize()
 
-        self.saveCurrentPage(False, False)
         if page_index + 1 == self.imgtrans_proj.num_pages:
             self.st_manager.auto_textlayout_flag = False
+            self.imgtrans_proj.save()
+
+        self.saveCurrentPage(False, False)
 
     def on_savestate_changed(self, unsaved: bool):
         save_state = self.tr('unsaved') if unsaved else self.tr('saved')

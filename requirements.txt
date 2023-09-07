@@ -27,7 +27,7 @@ docx2txt
 piexif
 keyboard
 ordered-set
-opencc
+opencc-python-reimplemented
 requests
 Pillow
 beautifulsoup4
