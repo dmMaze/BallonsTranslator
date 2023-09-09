@@ -8,7 +8,7 @@
 # Distributed under terms of the MIT license.
 
 import ctypes, os
-import os.path as osp
+import sys
 from typing import Optional, Union
 
 import numpy as np
@@ -42,8 +42,10 @@ class CMatT(ctypes.Structure):
         ('dtype', ctypes.c_int)
     ]
     
-if os.name == 'nt':
+if sys.platform == "win32":
     patchmatchlib = 'data/libs/patchmatch_inpaint.dll'
+elif sys.platform == "darwin":
+    patchmatchlib = 'data/libs/libpatchmatch_inpaint.dylib'
 else:
     patchmatchlib = 'data/libs/libpatchmatch.so'
 
