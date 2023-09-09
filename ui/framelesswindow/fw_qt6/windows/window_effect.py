@@ -1,9 +1,8 @@
 # coding:utf-8
 import sys
 import warnings
-from ctypes import POINTER, byref, c_bool, c_int, cdll, pointer, sizeof
+from ctypes import POINTER, byref, c_bool, c_int, pointer, sizeof, WinDLL
 from ctypes.wintypes import DWORD, LONG, LPCVOID
-from platform import platform
 
 import win32api
 import win32con
@@ -13,6 +12,7 @@ from .c_structures import (ACCENT_POLICY, ACCENT_STATE, DWMNCRENDERINGPOLICY,
                            DWMWINDOWATTRIBUTE, MARGINS,
                            WINDOWCOMPOSITIONATTRIB,
                            WINDOWCOMPOSITIONATTRIBDATA, DWM_BLURBEHIND)
+from ..utils.win32_utils import isGreaterEqualWin10, isGreaterEqualWin11, IsCompositionEnabled
 
 
 class WindowsWindowEffect:
@@ -22,8 +22,8 @@ class WindowsWindowEffect:
         self.window = window
 
         # Declare the function signature of the API
-        self.user32 = cdll.LoadLibrary("user32")
-        self.dwmapi = cdll.LoadLibrary("dwmapi")
+        self.user32 = WinDLL("user32")
+        self.dwmapi = WinDLL("dwmapi")
         self.SetWindowCompositionAttribute = self.user32.SetWindowCompositionAttribute
         self.DwmExtendFrameIntoClientArea = self.dwmapi.DwmExtendFrameIntoClientArea
         self.DwmEnableBlurBehindWindow = self.dwmapi.DwmEnableBlurBehindWindow
@@ -65,7 +65,7 @@ class WindowsWindowEffect:
         animationId: int
             Turn on matte animation
         """
-        if "Windows-7" in platform():
+        if not isGreaterEqualWin10():
             warnings.warn("The acrylic effect is only available on Win10+")
             return
 
@@ -82,7 +82,7 @@ class WindowsWindowEffect:
         self.winCompAttrData.Attribute = WINDOWCOMPOSITIONATTRIB.WCA_ACCENT_POLICY.value
         self.SetWindowCompositionAttribute(hWnd, pointer(self.winCompAttrData))
 
-    def setMicaEffect(self, hWnd, isDarkMode=False):
+    def setMicaEffect(self, hWnd, isDarkMode=False, isAlt=False):
         """ Add the mica effect to the window (Win11 only)
 
         Parameters
@@ -92,8 +92,11 @@ class WindowsWindowEffect:
 
         isDarkMode: bool
             whether to use dark mode mica effect
+
+        isAlt: bool
+            whether to enable mica alt effect
         """
-        if sys.getwindowsversion().build < 22000:
+        if not isGreaterEqualWin11():
             warnings.warn("The mica effect is only available on Win11")
             return
 
@@ -113,7 +116,9 @@ class WindowsWindowEffect:
         if sys.getwindowsversion().build < 22523:
             self.DwmSetWindowAttribute(hWnd, 1029, byref(c_int(1)), 4)
         else:
-            self.DwmSetWindowAttribute(hWnd, 38, byref(c_int(2)), 4)
+            self.DwmSetWindowAttribute(hWnd, 38, byref(c_int(4 if isAlt else 2)), 4)
+
+        self.DwmSetWindowAttribute(hWnd, 20, byref(c_int(1*isDarkMode)), 4)
 
     def setAeroEffect(self, hWnd):
         """ Add the aero effect to the window
@@ -163,6 +168,9 @@ class WindowsWindowEffect:
         hWnd: int or `sip.voidptr`
             Window handle
         """
+        if not IsCompositionEnabled():
+            return
+
         hWnd = int(hWnd)
         margins = MARGINS(-1, -1, -1, -1)
         self.DwmExtendFrameIntoClientArea(hWnd, byref(margins))
@@ -175,6 +183,9 @@ class WindowsWindowEffect:
         hWnd: int or `sip.voidptr`
             Window handle
         """
+        if not IsCompositionEnabled():
+            return
+
         hWnd = int(hWnd)
         self.DwmSetWindowAttribute(
             hWnd,
@@ -235,6 +246,23 @@ class WindowsWindowEffect:
             | win32con.WS_CAPTION
             | win32con.CS_DBLCLKS
             | win32con.WS_THICKFRAME,
+        )
+
+    @staticmethod
+    def disableMaximizeButton(hWnd):
+        """ Disable the maximize button of window
+
+        Parameters
+        ----------
+        hWnd : int or `sip.voidptr`
+            Window handle
+        """
+        hWnd = int(hWnd)
+        style = win32gui.GetWindowLong(hWnd, win32con.GWL_STYLE)
+        win32gui.SetWindowLong(
+            hWnd,
+            win32con.GWL_STYLE,
+            style & ~win32con.WS_MAXIMIZEBOX,
         )
 
     def enableBlurBehindWindow(self, hWnd):

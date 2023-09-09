@@ -203,6 +203,71 @@ class APPBARDATA(Structure):
     ]
 
 
+class Taskbar:
+
+    LEFT = 0
+    TOP = 1
+    RIGHT = 2
+    BOTTOM = 3
+    NO_POSITION = 4
+
+    AUTO_HIDE_THICKNESS = 2
+
+    @staticmethod
+    def isAutoHide():
+        """ detect whether the taskbar is hidden automatically """
+        appbarData = APPBARDATA(sizeof(APPBARDATA), 0,
+                                0, 0, RECT(0, 0, 0, 0), 0)
+        taskbarState = windll.shell32.SHAppBarMessage(
+            shellcon.ABM_GETSTATE, byref(appbarData))
+
+        return taskbarState == shellcon.ABS_AUTOHIDE
+
+    @classmethod
+    def getPosition(cls, hWnd):
+        """ get the position of auto-hide task bar
+
+        Parameters
+        ----------
+        hWnd: int or `sip.voidptr`
+            window handle
+        """
+        if isGreaterEqualWin8_1():
+            monitorInfo = getMonitorInfo(
+                hWnd, win32con.MONITOR_DEFAULTTONEAREST)
+            if not monitorInfo:
+                return cls.NO_POSITION
+
+            monitor = RECT(*monitorInfo['Monitor'])
+            appbarData = APPBARDATA(sizeof(APPBARDATA), 0, 0, 0, monitor, 0)
+            positions = [cls.LEFT, cls.TOP, cls.RIGHT, cls.BOTTOM]
+            for position in positions:
+                appbarData.uEdge = position
+                if windll.shell32.SHAppBarMessage(11, byref(appbarData)):
+                    return position
+
+            return cls.NO_POSITION
+
+        appbarData = APPBARDATA(sizeof(APPBARDATA), win32gui.FindWindow(
+            "Shell_TrayWnd", None), 0, 0, RECT(0, 0, 0, 0), 0)
+        if appbarData.hWnd:
+            windowMonitor = win32api.MonitorFromWindow(
+                hWnd, win32con.MONITOR_DEFAULTTONEAREST)
+            if not windowMonitor:
+                return cls.NO_POSITION
+
+            taskbarMonitor = win32api.MonitorFromWindow(
+                appbarData.hWnd, win32con.MONITOR_DEFAULTTOPRIMARY)
+            if not taskbarMonitor:
+                return cls.NO_POSITION
+
+            if taskbarMonitor == windowMonitor:
+                windll.shell32.SHAppBarMessage(
+                    shellcon.ABM_GETTASKBARPOS, byref(appbarData))
+                return appbarData.uEdge
+
+        return cls.NO_POSITION
+
 
 class WindowsMoveResize:
     """ Tool class for moving and resizing Mac OS window """
