@@ -133,11 +133,6 @@ git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
 # 进入`BallonsTranslator`工作目录
 cd BallonsTranslator
 
-# 请事先安装pyenv，用于安装Python，建议用Homebrew安装
-brew install pyenv
-
-# 如果没有Homebrew，则参考(https://github.com/pyenv/pyenv-installer)安装pyenv
-
 # 运行构建脚本，运行到pyinstaller环节会要求输入开机密码，输入密码后按下回车即可
 sh build-macos-app.sh
 ```
