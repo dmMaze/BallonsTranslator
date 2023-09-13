@@ -55,29 +55,88 @@ python ballontranslator
 
 如果要使用Sugoi翻译器(仅日译英), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data/models.  
 
-### Apple Silicon Mac 本地构建.app应用
-```
-# 安装Python 3.9.13虚拟环境
-brew install pyenv mecab
-env PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.9.13
-pyenv global 3.9.13
-python3 -m venv ballonstranslator
-source ballonstranslator/bin/activate
+### 构建macOS应用（本方法兼容intel和apple silicon芯片）
+![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
 
-# 克隆仓库
-git clone https://github.com/dmMaze/BallonsTranslator.git
+#### 1、准备工作
+-   从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA")下载`libs`和`models`。
+
+> 📌截止2023年9月11日Google Drive资源尚未更新到最新，因此不要从Google Drive下载`libs`和`models`。
+<img width="1268" alt="截屏2023-09-08 13 44 55_7g32SMgxIf" src="https://github.com/dmMaze/BallonsTranslator/assets/134026642/40fbb9b8-a788-4a6e-8e69-0248abaee21a">
+
+-  下载`libopencv_world.4.4.0.dylib`和`libpatchmatch_inpaint.dylib`。
+
+> 📌下面的压缩包中的`dylib`均为`fat`文件，同时兼容intel芯片和apple芯片的Mac设备
+
+[libopencv_world.4.4.0.dylib.zip](https://github.com/dmMaze/BallonsTranslator/files/12571658/libopencv_world.4.4.0.dylib.zip)
+
+[libpatchmatch_inpaint.dylib.zip](https://github.com/dmMaze/BallonsTranslator/files/12571660/libpatchmatch_inpaint.dylib.zip)
+
+-  将下载的资源全部放入名为`data`文件夹，最后的目录树结构应该如下所示：
+
+```
+data
+├── libopencv_world.4.4.0.dylib
+├── libpatchmatch_inpaint.dylib
+├── libs
+│   └── patchmatch_inpaint.dll
+└── models
+    ├── aot_inpainter.ckpt
+    ├── comictextdetector.pt
+    ├── comictextdetector.pt.onnx
+    ├── lama_mpe.ckpt
+    ├── manga-ocr-base
+    │   ├── README.md
+    │   ├── config.json
+    │   ├── preprocessor_config.json
+    │   ├── pytorch_model.bin
+    │   ├── special_tokens_map.json
+    │   ├── tokenizer_config.json
+    │   └── vocab.txt
+    ├── mit32px_ocr.ckpt
+    ├── mit48pxctc_ocr.ckpt
+    └── pkuseg
+        ├── postag
+        │   ├── features.pkl
+        │   └── weights.npz
+        ├── postag.zip
+        └── spacy_ontonotes
+            ├── features.msgpack
+            └── weights.npz
+
+7 directories, 23 files
+```
+
+-  安装pyenv命令行工具，这是用于管理Python版本的工具
+```
+# 通过Homebrew途径安装
+brew install pyenv
+
+# 通过官方自动脚本途径安装
+curl https://pyenv.run | bash
+
+# 安装完后需要设置shell环境
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
+echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
+echo 'eval "$(pyenv init -)"' >> ~/.zshrc
+```
+
+
+#### 2、构建应用
+```
+# 进入`data`工作目录
+cd data
+
+# 克隆仓库`dev`分支
+git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
+
+# 进入`BallonsTranslator`工作目录
 cd BallonsTranslator
 
-# 安装依赖
-pip3 install -r requirements_macOS.txt
-
-# 打包应用
-cd ballontranslator
-sudo pyinstaller __main__.spec
-
-# 打包好的`BallonsTranslator.app`在`dist`文件夹下
-# 需要注意的是，现在的应用还无法使用，需要到 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或者 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载`data`并覆盖到`BallonsTranslator.app/Contents/Resources/data`, 覆盖的时候选择“合并”，覆盖完成后应用最终打包完整，开箱即用，将应用拖到macOS的应用程序文件夹即可，不需要再配置Python环境。
+# 运行构建脚本，运行到pyinstaller环节会要求输入开机密码，输入密码后按下回车即可
+sh build-macos-app.sh
 ```
+> 📌打包好的应用在`./data/BallonsTranslator/dist/BallonsTranslator.app`，将应用拖到macOS的应用程序文件夹即完成安装，开箱即用，不需要另外配置Python环境。
 
 ## 一键翻译
 **建议在命令行终端下运行程序**, 首次运行请先配置好源语言/目标语言, 打开一个带图片的文件夹, 点击Run等待翻译完成  
