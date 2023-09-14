@@ -61,46 +61,92 @@ python ballontranslator
 ```
 For Linux or MacOS users, see [this script](ballontranslator/scripts/download_models.sh) and run to download ALL models
 
-## Apple Silicon native build .app application
+### Build macOS application (compatible with both intel and apple silicon chips)
+![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
 
-<details closed>
-<summary>Instructions</summary>
-<br>
+#### 1. Preparation
+-   Download libs and models from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA")
 
-Install python 3.9.13 virtual environment
-```python
-brew install pyenv mecab
-env PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.9.13
-pyenv global 3.9.13
-python3 -m venv ballonstranslator
-source ballonstranslator/bin/activate
+> 📌As of September 11, 2023, Google Drive resources have not been updated to the latest version, so do not download libs and models from Google Drive.
+> 
+<img width="1268" alt="截屏2023-09-08 13 44 55_7g32SMgxIf" src="https://github.com/dmMaze/BallonsTranslator/assets/134026642/40fbb9b8-a788-4a6e-8e69-0248abaee21a">
+
+-  Download libopencv_world.4.4.0.dylib and libpatchmatch_inpaint.dylib.
+
+> 📌The dylib files in the compressed package below are fat files, compatible with both intel and apple silicon chips for Mac devices.
+
+[libopencv_world.4.4.0.dylib.zip](https://github.com/dmMaze/BallonsTranslator/files/12571658/libopencv_world.4.4.0.dylib.zip)
+
+[libpatchmatch_inpaint.dylib.zip](https://github.com/dmMaze/BallonsTranslator/files/12571660/libpatchmatch_inpaint.dylib.zip)
+
+-  Put all the downloaded resources into a folder called data, the final directory tree structure should look like:
+
+```
+data
+├── libopencv_world.4.4.0.dylib
+├── libpatchmatch_inpaint.dylib
+├── libs
+│   └── patchmatch_inpaint.dll
+└── models
+    ├── aot_inpainter.ckpt
+    ├── comictextdetector.pt
+    ├── comictextdetector.pt.onnx
+    ├── lama_mpe.ckpt
+    ├── manga-ocr-base
+    │   ├── README.md
+    │   ├── config.json
+    │   ├── preprocessor_config.json
+    │   ├── pytorch_model.bin
+    │   ├── special_tokens_map.json
+    │   ├── tokenizer_config.json
+    │   └── vocab.txt
+    ├── mit32px_ocr.ckpt
+    ├── mit48pxctc_ocr.ckpt
+    └── pkuseg
+        ├── postag
+        │   ├── features.pkl
+        │   └── weights.npz
+        ├── postag.zip
+        └── spacy_ontonotes
+            ├── features.msgpack
+            └── weights.npz
+
+7 directories, 23 files
 ```
 
-Clone the repository
-```bash
-git clone https://github.com/dmMaze/BallonsTranslator.git
+-  Install pyenv command line tool for managing Python versions. Recommend installing via Homebrew.
+```
+# Install via Homebrew
+brew install pyenv
+
+# Install via official script
+curl https://pyenv.run | bash
+
+# Set shell environment after install
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
+echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
+echo 'eval "$(pyenv init -)"' >> ~/.zshrc
+```
+
+
+#### 2、Build the application
+```
+# Enter the `data` working directory
+cd data
+
+# Clone the `dev` branch of the repo
+git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
+
+# Enter the `BallonsTranslator` working directory
 cd BallonsTranslator
-```
 
-Install the dependencies
-```bash
-pip3 install -r requirements_macOS.txt
+# Run the build script, will ask for password at pyinstaller step, enter password and press enter
+sh build-macos-app.sh
 ```
+> 📌The packaged app is at ./data/BallonsTranslator/dist/BallonsTranslator.app, drag the app to macOS application folder to install. Ready to use out of box without extra Python config.
 
-Package the application
-```bash
-cd ballontranslator
-sudo pyinstaller __main__.spec
-```
-
-The packaged `BallonsTranslator.app` is in the `dist` folder
-Note that the app is not functional yet, you need to go to [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), download `data` and overwrite it to `BallonsTranslator.app/Contents/Resources/data`.
-When overwriting select "``Merge``, after the overwrite is done, the application is finally packaged and complete, out of the box, just drag the application to the macOS application folder, no need to configure the Python environment again.
-Or see [this script](ballontranslator/scripts/download_models.sh)
 
 </details>
-
-
 
 To use Sugoi translator(Japanese-English only), download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data/models.  
 
