@@ -91,6 +91,10 @@ class BaseTranslator(BaseModule):
                 raise e
             else:
                 raise TranslatorSetupFailure(e)
+            
+        # enable traditional chinese by converting from simplified chinese
+        if self.cht_require_convert and not self.lang_map['繁體中文']:
+            self.lang_map['繁體中文'] = self.lang_map['简体中文']
 
         self.valid_lang_list = [lang for lang in self.lang_map if self.lang_map[lang] != '']
 
