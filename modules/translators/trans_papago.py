@@ -4,7 +4,7 @@ from .base import *
 class PapagoTranslator(BaseTranslator):
 
     concate_text = True
-    params: Dict = {'delay': '0.0'}
+    params: Dict = {'delay': 0.0}
     papagoVer: str = None
 
     # https://github.com/zyddnys/manga-image-translator/blob/main/translators/papago.py

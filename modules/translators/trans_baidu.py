@@ -10,7 +10,7 @@ class BaiduTranslator(BaseTranslator):
     params: Dict = {
         'token': '',
         'appId': '',
-        'delay': '0.0'
+        'delay': 0.0
     }
     @staticmethod
     def get_json(from_lang, to_lang, query_text,BAIDU_APP_ID,BAIDU_SECRET_KEY):

@@ -7,7 +7,7 @@ class CaiyunTranslator(BaseTranslator):
     cht_require_convert = True
     params: Dict = {
         'token': '',
-        'delay': '0.0'
+        'delay': 0.0
     }
 
     def _setup_translator(self):

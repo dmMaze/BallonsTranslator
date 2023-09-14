@@ -279,7 +279,7 @@ class TransGoogle(BaseTranslator):
 
     concate_text = True
     params: Dict = {
-        'delay': '0.0',
+        'delay': 0.0,
     }
     
     def _setup_translator(self):

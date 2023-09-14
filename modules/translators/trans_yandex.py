@@ -6,7 +6,7 @@ class YandexTranslator(BaseTranslator):
     concate_text = False
     params: Dict = {
         'api_key': '',
-        'delay': '0.0',
+        'delay': 0.0,
     }
 
     def _setup_translator(self):
