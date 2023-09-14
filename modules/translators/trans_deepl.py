@@ -8,7 +8,7 @@ class DeeplTranslator(BaseTranslator):
     cht_require_convert = True
     params: Dict = {
         'api_key': '',
-        'delay': '0.0',
+        'delay': 0.0,
     }
 
     def _setup_translator(self):
@@ -37,10 +37,13 @@ class DeeplTranslator(BaseTranslator):
         self.lang_map['Slovenščina'] = 'sl'
         self.lang_map['Svenska'] = 'sv'
         self.lang_map['Indonesia'] = 'id'
+        self.lang_map['украї́нська мо́ва'] = 'uk'
+        self.lang_map['한국어'] = 'ko'
         
     def _translate(self, src_list: List[str]) -> List[str]:
         api_key = self.params['api_key']
         translator = deepl.Translator(api_key)
+        deepl.Language()
         source = self.lang_map[self.lang_source]
         target = self.lang_map[self.lang_target]
         if source == 'EN-US':

@@ -173,28 +173,40 @@ def translate(
         return targetTextArray
 
 
-# Example Call
-# translate("明天你好", "ZH", "EN", True, True, "socks5://127.0.0.1:7890")
-
-
 @register_translator('DeepL Free')
 class DeepLX(BaseTranslator):
     cht_require_convert = True
     params: Dict = {
-        'delay': '0.0',
+        'delay': 0.0,
     }
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'zh'
         self.lang_map['日本語'] = 'ja'
-        self.lang_map['English'] = 'en'
+        self.lang_map['English'] = 'EN-US'
         self.lang_map['Français'] = 'fr'
         self.lang_map['Deutsch'] = 'de'
         self.lang_map['Italiano'] = 'it'
         self.lang_map['Português'] = 'pt'
         self.lang_map['русский язык'] = 'ru'
-        self.lang_map['Indonesia'] = 'id'
         self.lang_map['Español'] = 'es'
-
+        self.lang_map['български език'] = 'bg'
+        self.lang_map['Český Jazyk'] = 'cs'
+        self.lang_map['Dansk'] = 'da'
+        self.lang_map['Ελληνικά'] = 'el'
+        self.lang_map['Eesti'] = 'et'
+        self.lang_map['Suomi'] = 'fi'
+        self.lang_map['Magyar'] = 'hu'
+        self.lang_map['Lietuvių'] = 'lt'
+        self.lang_map['latviešu'] = 'lv'
+        self.lang_map['Nederlands'] = 'nl'
+        self.lang_map['Polski'] = 'pl'
+        self.lang_map['Română'] = 'ro'
+        self.lang_map['Slovenčina'] = 'sk'
+        self.lang_map['Slovenščina'] = 'sl'
+        self.lang_map['Svenska'] = 'sv'
+        self.lang_map['Indonesia'] = 'id'
+        self.lang_map['украї́нська мо́ва'] = 'uk'
+        self.lang_map['한국어'] = 'ko'
 
     def _translate(self, src_list: List[str]) -> List[str]:
         result = []
