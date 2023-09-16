@@ -43,7 +43,6 @@ class DeeplTranslator(BaseTranslator):
     def _translate(self, src_list: List[str]) -> List[str]:
         api_key = self.params['api_key']
         translator = deepl.Translator(api_key)
-        deepl.Language()
         source = self.lang_map[self.lang_source]
         target = self.lang_map[self.lang_target]
         if source == 'EN-US':
