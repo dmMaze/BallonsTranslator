@@ -60,7 +60,9 @@ python ballontranslator
 
 #### 通过远程脚本一键构建应用
 在终端中输入下面的命令自动完成所有构建步骤，由于从github和huggingface下载模型，需要比较好的网络条件
-`curl -L https://raw.githubusercontent.com/hyrulelinks/BallonsTranslator/dev/macos-build-script.sh | bash`
+```
+curl -L https://raw.githubusercontent.com/hyrulelinks/BallonsTranslator/dev/macos-build-script.sh | bash
+```
 
 ⚠️ 如果网络条件不佳，需要从网盘下载需要的文件，请按照下面的步骤操作
 #### 1、准备工作
