@@ -58,6 +58,13 @@ python ballontranslator
 ### 构建macOS应用（本方法兼容intel和apple silicon芯片）
 ![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
 
+#### 通过远程脚本一键构建应用
+在终端中输入下面的命令自动完成所有构建步骤，由于从github和huggingface下载模型，需要比较好的网络条件
+```
+curl -L https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/macos-build-script.sh | bash
+```
+
+⚠️ 如果网络条件不佳，需要从网盘下载需要的文件，请按照下面的步骤操作
 #### 1、准备工作
 -   从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA")下载`libs`和`models`。
 
