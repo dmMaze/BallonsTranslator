@@ -202,6 +202,10 @@ def main():
     BT = ballontrans
     BT.restart_signal.connect(restart)
 
+    if C.SCREEN_W > 1707:   # higher than 2560 (1440p) / 1.5
+        # https://github.com/dmMaze/BallonsTranslator/issues/220
+        BT.comicTransSplitter.setHandleWidth(12)
+
     ballontrans.setWindowIcon(QIcon(C.ICON_PATH))
     ballontrans.show()
     ballontrans.resetStyleSheet()
