@@ -4,6 +4,7 @@ import numpy as np
 from pathlib import Path
 import importlib
 from typing import List, Dict, Callable
+import re
 
 IMG_EXT = ['.bmp', '.jpg', '.png', '.jpeg', '.webp']
 NP_BOOL_TYPES = (np.bool_, np.bool8)
@@ -42,7 +43,7 @@ def find_all_imgs(img_dir, abs_path=False, sort=False):
             imglist.append(filename)
 
     if sort:
-        imglist.sort()
+        imglist.sort(key=lambda f: int(re.sub('\D', '', f)))
         
     return imglist
 
