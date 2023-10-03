@@ -107,7 +107,7 @@ class ConfigBlock(Widget):
         self.subblock_list.append(sublock)
 
     def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True) -> Tuple[ConfigComboBox, QWidget]:
-        combox = ConfigComboBox(fix_size=fix_size)
+        combox = ConfigComboBox(fix_size=fix_size, scrollWidget=self)
         combox.addItems(sel)
         if target_block is None:
             sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
@@ -302,19 +302,19 @@ class ConfigPanel(Widget):
         ])
 
         dlConfigPanel.addTextLabel(label_text_det)
-        self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'))
+        self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'), scrollWidget=self)
         self.detect_sub_block = dlConfigPanel.addBlockWidget(self.detect_config_panel)
         
         dlConfigPanel.addTextLabel(label_text_ocr)
-        self.ocr_config_panel = OCRConfigPanel(self.tr('OCR'))
+        self.ocr_config_panel = OCRConfigPanel(self.tr('OCR'), scrollWidget=self)
         self.ocr_sub_block = dlConfigPanel.addBlockWidget(self.ocr_config_panel)
 
         dlConfigPanel.addTextLabel(label_inpaint)
-        self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'))
+        self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'), scrollWidget=self)
         self.inpaint_sub_block = dlConfigPanel.addBlockWidget(self.inpaint_config_panel)
 
         dlConfigPanel.addTextLabel(label_translator)
-        self.trans_config_panel = TranslatorConfigPanel(label_translator)
+        self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
         self.trans_sub_block = dlConfigPanel.addBlockWidget(self.trans_config_panel)
 
         generalConfigPanel.addTextLabel(label_startup)

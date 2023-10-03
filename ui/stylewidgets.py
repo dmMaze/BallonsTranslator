@@ -314,10 +314,24 @@ class PaintQSlider(QSlider):
             painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,200))
             painter.drawRoundedRect(rect, r, r)
 
-class ConfigComboBox(QComboBox):
+class CustomComboBox(QComboBox):
+    # https://stackoverflow.com/questions/3241830/qt-how-to-disable-mouse-scrolling-of-qcombobox
+    def __init__(self, scrollWidget=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)  
+        self.scrollWidget=scrollWidget
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    def __init__(self, fix_size=True, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def wheelEvent(self, *args, **kwargs):
+        if self.scrollWidget is None or self.hasFocus():
+            return super().wheelEvent(*args, **kwargs)
+        else:
+            return self.scrollWidget.wheelEvent(*args, **kwargs)
+        
+
+class ConfigComboBox(CustomComboBox):
+
+    def __init__(self, fix_size=True, scrollWidget: QWidget = None, *args, **kwargs) -> None:
+        super().__init__(scrollWidget, *args, **kwargs)
         self.fix_size = fix_size
         self.adjustSize()
 

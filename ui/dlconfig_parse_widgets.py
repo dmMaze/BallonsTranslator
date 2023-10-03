@@ -1,9 +1,9 @@
-from typing import List
+from typing import List, Callable
 
 from modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRANSLATORS, GET_VALID_OCR, \
     BaseTranslator, DEFAULT_DEVICE
 from utils.logger import logger as LOGGER
-from .stylewidgets import ConfigComboBox, NoBorderPushBtn
+from .stylewidgets import ConfigComboBox, NoBorderPushBtn, CustomComboBox
 from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 
 from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit
@@ -68,10 +68,10 @@ class ParamEditor(QPlainTextEdit):
         return self.toPlainText()
 
 
-class ParamComboBox(QComboBox):
+class ParamComboBox(CustomComboBox):
     paramwidget_edited = Signal(str, str)
-    def __init__(self, param_key: str, options: List[str], size=CONFIG_COMBOBOX_SHORT, *args, **kwargs) -> None:
-        super().__init__( *args, **kwargs)
+    def __init__(self, param_key: str, options: List[str], size=CONFIG_COMBOBOX_SHORT, scrollWidget: QWidget = None, *args, **kwargs) -> None:
+        super().__init__(scrollWidget=scrollWidget, *args, **kwargs)
         self.param_key = param_key
         self.setFixedWidth(size)
         self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
@@ -118,7 +118,7 @@ class ParamCheckBox(QCheckBox):
 class ParamWidget(QWidget):
 
     paramwidget_edited = Signal(str, dict)
-    def __init__(self, params, *args, **kwargs) -> None:
+    def __init__(self, params, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         param_layout = QVBoxLayout(self)
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -155,7 +155,7 @@ class ParamWidget(QWidget):
                         size = CONFIG_COMBOBOX_MIDEAN
                     else:
                         size = CONFIG_COMBOBOX_SHORT
-                    param_widget = ParamComboBox(param_key, param_dict['options'], size=size)
+                    param_widget = ParamComboBox(param_key, param_dict['options'], size=size, scrollWidget=scrollWidget)
 
                     # if cuda is not available, disable combobox 'cuda' item
                     # https://stackoverflow.com/questions/38915001/disable-specific-items-in-qcombobox
@@ -194,10 +194,10 @@ class ParamWidget(QWidget):
 class ModuleConfigParseWidget(QWidget):
     module_changed = Signal(str)
     paramwidget_edited = Signal(str, dict)
-    def __init__(self, module_name: str, get_valid_module_keys, *args, **kwargs) -> None:
+    def __init__(self, module_name: str, get_valid_module_keys: Callable, scrollWidget: QWidget, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.get_valid_module_keys = get_valid_module_keys
-        self.module_combobox = ConfigComboBox()
+        self.module_combobox = ConfigComboBox(scrollWidget=scrollWidget)
         self.params_layout = QHBoxLayout()
         self.params_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -214,7 +214,7 @@ class ModuleConfigParseWidget(QWidget):
         layout.setSpacing(30)
         self.vlayout = layout
 
-    def addModulesParamWidgets(self, module_dict: dict):
+    def addModulesParamWidgets(self, module_dict: dict, scrollWidget: QWidget = None):
         invalid_module_keys = []
         valid_modulekeys = self.get_valid_module_keys()
 
@@ -232,7 +232,7 @@ class ModuleConfigParseWidget(QWidget):
             self.module_combobox.addItem(module)
             params = module_dict[module]
             if params is not None:
-                param_widget = ParamWidget(params)
+                param_widget = ParamWidget(params, scrollWidget=scrollWidget)
                 param_widget.paramwidget_edited.connect(self.paramwidget_edited)
                 self.param_widget_map[module] = param_widget
                 self.params_layout.addWidget(param_widget)
@@ -271,13 +271,13 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
 
     show_MT_keyword_window = Signal()
 
-    def __init__(self, module_name, *args, **kwargs) -> None:
-        super().__init__(module_name, GET_VALID_TRANSLATORS, *args, **kwargs)
+    def __init__(self, module_name, scrollWidget: QWidget = None, *args, **kwargs) -> None:
+        super().__init__(module_name, GET_VALID_TRANSLATORS, scrollWidget=scrollWidget, *args, **kwargs)
         self.translator_combobox = self.module_combobox
         self.translator_changed = self.module_changed
     
-        self.source_combobox = ConfigComboBox()
-        self.target_combobox = ConfigComboBox()
+        self.source_combobox = ConfigComboBox(scrollWidget=scrollWidget)
+        self.target_combobox = ConfigComboBox(scrollWidget=scrollWidget)
         self.replaceMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation"), self)
         self.replaceMTkeywordBtn.clicked.connect(self.show_MT_keyword_window)
         self.replaceMTkeywordBtn.setFixedWidth(500)
@@ -313,8 +313,8 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
 
 
 class InpaintConfigPanel(ModuleConfigParseWidget):
-    def __init__(self, module_name: str, *args, **kwargs) -> None:
-        super().__init__(module_name, GET_VALID_INPAINTERS, *args, **kwargs)
+    def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
+        super().__init__(module_name, GET_VALID_INPAINTERS, scrollWidget = scrollWidget, *args, **kwargs)
         self.inpainter_changed = self.module_changed
         self.inpainter_combobox = self.module_combobox
         self.setInpainter = self.setModule
@@ -322,8 +322,8 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         self.vlayout.addWidget(self.needInpaintChecker)
 
 class TextDetectConfigPanel(ModuleConfigParseWidget):
-    def __init__(self, module_name: str, *args, **kwargs) -> None:
-        super().__init__(module_name, GET_VALID_TEXTDETECTORS, *args, **kwargs)
+    def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
+        super().__init__(module_name, GET_VALID_TEXTDETECTORS, scrollWidget = scrollWidget, *args, **kwargs)
         self.detector_changed = self.module_changed
         self.detector_combobox = self.module_combobox
         self.setDetector = self.setModule
@@ -333,8 +333,8 @@ class OCRConfigPanel(ModuleConfigParseWidget):
     
     show_OCR_keyword_window = Signal()
 
-    def __init__(self, module_name: str, *args, **kwargs) -> None:
-        super().__init__(module_name, GET_VALID_OCR, *args, **kwargs)
+    def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
+        super().__init__(module_name, GET_VALID_OCR, scrollWidget = scrollWidget, *args, **kwargs)
         self.ocr_changed = self.module_changed
         self.ocr_combobox = self.module_combobox
         self.setOCR = self.setModule
