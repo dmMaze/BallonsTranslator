@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Union, Tuple
 import os
 
-from qtpy.QtWidgets import QShortcut, QMenu, QGraphicsScene, QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtWidgets import QSlider, QMenu, QGraphicsScene, QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
 from qtpy.QtGui import QKeySequence, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
 
@@ -24,6 +24,16 @@ CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
 CANVAS_SCALE_SPEED = 0.1
 
+
+QKEY = Qt.Key
+QNUMERIC_KEYS = {QKEY.Key_0:0,QKEY.Key_1:1,QKEY.Key_2:2,QKEY.Key_3:3,QKEY.Key_4:4,QKEY.Key_5:5,QKEY.Key_6:6,QKEY.Key_7:7,QKEY.Key_8:8,QKEY.Key_9:9}
+
+ARROWKEY2DIRECTION = {
+    QKEY.Key_Left: QPointF(-1., 0.),
+    QKEY.Key_Right: QPointF(1., 0.),
+    QKEY.Key_Up: QPointF(0., -1.),
+    QKEY.Key_Down: QPointF(0., 1.),
+}
 
 class MoveByKeyCommand(QUndoCommand):
     def __init__(self, blkitems: List[TextBlkItem], direction: QPointF, shape_ctrl: TextBlkShapeControl) -> None:
@@ -81,38 +91,38 @@ class CustomGV(QGraphicsView):
         return super().wheelEvent(event)
 
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key.Key_Control:
+        if event.key() == QKEY.Key_Control:
             self.ctrl_pressed = False
             self.ctrl_released.emit()
         return super().keyReleaseEvent(event)
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
         key = e.key()
-        if key == Qt.Key.Key_Control:
+        if key == QKEY.Key_Control:
             self.ctrl_pressed = True
 
         modifiers = e.modifiers()
         if modifiers == Qt.KeyboardModifier.ControlModifier:
-            if key == Qt.Key.Key_V:
+            if key == QKEY.Key_V:
                 # self.ctrlv_pressed.emit(e)
                 if self.canvas.handle_ctrlv():
                     e.accept()
                     return
-            if key == Qt.Key.Key_C:
+            if key == QKEY.Key_C:
                 if self.canvas.handle_ctrlc():
                     e.accept()
                     return
                 
         elif modifiers & Qt.KeyboardModifier.ControlModifier and modifiers & Qt.KeyboardModifier.ShiftModifier:
-            if key == Qt.Key.Key_C:
+            if key == QKEY.Key_C:
                 self.canvas.copy_src_signal.emit()
                 e.accept()
                 return
-            elif key == Qt.Key.Key_V:
+            elif key == QKEY.Key_V:
                 self.canvas.paste_src_signal.emit()
                 e.accept()
                 return
-            elif key == Qt.Key.Key_D:
+            elif key == QKEY.Key_D:
                 self.canvas.delete_textblks.emit(1)
                 e.accept()
                 return
@@ -177,6 +187,7 @@ class Canvas(QGraphicsScene):
         self.scale_factor = 1.
         self.mask_transparency = 0
         self.original_transparency = 0
+        self.text_transparency = 0
         self.textblock_mode = False
         self.creating_textblock = False
         self.create_block_origin: QPointF = None
@@ -275,12 +286,9 @@ class Canvas(QGraphicsScene):
         im_rect = QRectF(0, 0, C.SCREEN_W, C.SCREEN_H)
         self.baseLayer.setRect(im_rect)
 
-        self.arrowkey2direction = {
-            Qt.Key.Key_Left: QPointF(-1., 0.),
-            Qt.Key.Key_Right: QPointF(1., 0.),
-            Qt.Key.Key_Up: QPointF(0., -1.),
-            Qt.Key.Key_Down: QPointF(0., 1.),
-        }
+        self.textlayer_trans_slider: QSlider = None
+        self.originallayer_trans_slider: QSlider = None
+        self.masklayer_trans_slider: QSlider = None
 
     def dragEnterEvent(self, e: QGraphicsSceneDragDropEvent):
         
@@ -353,6 +361,7 @@ class Canvas(QGraphicsScene):
 
     def setTextLayerTransparency(self, transparency: float):
         self.textLayer.setOpacity(transparency)
+        self.text_transparency = transparency
 
     def adjustScrollBar(self, scrollBar: QScrollBar, factor: float):
         scrollBar.setValue(int(factor * scrollBar.value() + ((factor - 1) * scrollBar.pageStep() / 2)))
@@ -405,20 +414,31 @@ class Canvas(QGraphicsScene):
         key = event.key()
         if self.editing_textblkitem is not None:
             return super().keyPressEvent(event)
-        elif key == Qt.Key.Key_Alt:
+        elif key == QKEY.Key_Alt:
             self.alt_pressed = True
-        elif key in self.arrowkey2direction:
+        elif key in ARROWKEY2DIRECTION:
             sel_blkitems = self.selected_text_items()
             if len(sel_blkitems) > 0:
-                direction = self.arrowkey2direction[key]
+                direction = ARROWKEY2DIRECTION[key]
                 cmd = MoveByKeyCommand(sel_blkitems, direction, self.txtblkShapeControl)
                 self.push_undo_command(cmd)
                 event.setAccepted(True)
                 return
+        elif key in QNUMERIC_KEYS:
+            value = QNUMERIC_KEYS[key]
+            self.set_active_layer_transparency(value * 10)
         return super().keyPressEvent(event)
+    
+    def set_active_layer_transparency(self, value: int):
+        if self.textEditMode():
+            opacity = self.textLayer.opacity() * 100
+            if value == 0 and opacity == 0:
+                value = 100
+            self.textlayer_trans_slider.setValue(value)
+            self.originallayer_trans_slider.setValue(100 - value)
 
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key.Key_Alt:
+        if event.key() == QKEY.Key_Alt:
             self.alt_pressed = False
         return super().keyReleaseEvent(event)
 
@@ -493,13 +513,15 @@ class Canvas(QGraphicsScene):
         
         return super().mouseMoveEvent(event)
 
-    def selected_text_items(self) -> List[TextBlkItem]:
-        sel_titem = []
+    def selected_text_items(self, sort: bool = True) -> List[TextBlkItem]:
+        sel_textitems = []
         selitems = self.selectedItems()
         for sel in selitems:
             if isinstance(sel, TextBlkItem):
-                sel_titem.append(sel)
-        return sel_titem
+                sel_textitems.append(sel)
+        if sort:
+            sel_textitems.sort(key = lambda x : x.idx)
+        return sel_textitems
 
     def handle_ctrlv(self) -> bool:
         if not self.textEditMode():

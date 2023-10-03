@@ -154,6 +154,9 @@ class MainWindow(FramelessWindow):
         self.canvas.textstack_changed.connect(self.on_textstack_changed)
         self.canvas.run_blktrans.connect(self.on_run_blktrans)
         self.canvas.drop_open_folder.connect(self.dropOpenDir)
+        self.canvas.originallayer_trans_slider = self.bottomBar.originalSlider
+        self.canvas.textlayer_trans_slider = self.bottomBar.textlayerSlider
+        # self.canvas.masklayer_trans_slider = self.bottomBar.mask
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
         self.bottomBar.textlayerSlider.valueChanged.connect(self.canvas.setTextLayerTransparencyBySlider)
