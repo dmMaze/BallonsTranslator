@@ -198,6 +198,7 @@ OCR并翻译选中文本框
 * Ctrl++/-或滚轮缩放画布
 * Ctrl+A可选中界面中所有文本块
 * Ctrl+F查找当前页, Ctrl+G全局查找
+* 0-9调整嵌字/原图透明度
 
 <img src="doc/src/configpanel.png">  
 

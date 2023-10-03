@@ -204,6 +204,7 @@ OCR & Translate Selected Area
 * Set parameters of automatic modules in the config panel.  
 * ```Ctrl++```/```Ctrl+-``` (Also ```Ctrl+Shift+=```) to resize image.
 * ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
+* ```0-9``` to adjust opacity of lettering layer
   
 <img src="doc/src/configpanel.png">  
 
