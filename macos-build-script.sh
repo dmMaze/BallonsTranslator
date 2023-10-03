@@ -77,10 +77,10 @@ unzip 'libopencv_world.4.4.0.dylib.zip' -d data/libs
 unzip 'libpatchmatch_inpaint.dylib.zip' -d data/libs
 rm -rf libopencv_world.4.4.0.dylib.zip libpatchmatch_inpaint.dylib.zip
 
-# Comment lines 213-229 of launch.py
+# Comment lines 217-233 of launch.py
 cp launch.py launch.py.bak # backup launch.py
-sed -i '' '213,229s|^| \#|' launch.py # comment specfied lines
-sed -n '213,229p' launch.py # check if comment is successful
+sed -i '' '217,233s|^| \#|' launch.py # comment specfied lines
+sed -n '217,233p' launch.py # check if comment is successful
 
 # Build macOS app via pyinstaller
 sudo pyinstaller launch.spec
