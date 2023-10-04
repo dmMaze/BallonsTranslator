@@ -145,7 +145,6 @@ class AOTInpainter(InpainterBase):
             'options': [
                 'cpu',
                 'cuda',
-                'hip'
             ],
             'select': DEFAULT_DEVICE
         },
@@ -251,7 +250,6 @@ class LamaInpainterMPE(InpainterBase):
             'options': [
                 'cpu',
                 'cuda',
-                'hip'
             ],
             'select': DEFAULT_DEVICE
         }

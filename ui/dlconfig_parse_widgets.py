@@ -126,15 +126,14 @@ class ParamWidget(QWidget):
         param_layout.setContentsMargins(0, 0, 0, 0)
         param_layout.setSpacing(14)
         for param_key in params:
-            param_label = ParamNameLabel(param_key)
+            if param_key == 'description':
+                continue
 
+            param_label = ParamNameLabel(param_key)
             is_str = isinstance(params[param_key], str)
             is_digital = isinstance(params[param_key], float) or isinstance(params[param_key], int)
 
-            if param_key == 'description':
-                continue
-            
-            elif isinstance(params[param_key], bool):
+            if isinstance(params[param_key], bool):
                     param_widget = ParamCheckBox(param_key)
                     val = params[param_key]
                     param_widget.setChecked(val)
@@ -155,6 +154,11 @@ class ParamWidget(QWidget):
                         size = CONFIG_COMBOBOX_MIDEAN
                     else:
                         size = CONFIG_COMBOBOX_SHORT
+
+                    if param_key == 'device' and 'hip' in param_dict['options']:
+                        param_dict['options'].remove('hip')
+                        if param_dict['select']  == 'hip':
+                            param_dict['select'] = DEFAULT_DEVICE
                     param_widget = ParamComboBox(param_key, param_dict['options'], size=size, scrollWidget=scrollWidget)
 
                     # if cuda is not available, disable combobox 'cuda' item
@@ -264,10 +268,10 @@ class ModuleConfigParseWidget(QWidget):
             if widget is None:
                 # lazy load widgets
                 params = self.module_dict[module]
-                param_widget = ParamWidget(params, scrollWidget=self)
-                param_widget.paramwidget_edited.connect(self.paramwidget_edited)
-                self.param_widget_map[module] = param_widget
-                self.params_layout.addWidget(param_widget)
+                widget = ParamWidget(params, scrollWidget=self)
+                widget.paramwidget_edited.connect(self.paramwidget_edited)
+                self.param_widget_map[module] = widget
+                self.params_layout.addWidget(widget)
             else:
                 widget.show()
             self.visibleWidget = widget

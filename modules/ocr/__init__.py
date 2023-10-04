@@ -89,7 +89,6 @@ class OCRMIT32px(OCRBase):
             'options': [
                 'cpu',
                 'cuda',
-                'hip'
             ],
             'select': DEFAULT_DEVICE
         },
@@ -138,7 +137,6 @@ class MangaOCR(OCRBase):
             'options': [
                 'cpu',
                 'cuda',
-                'hip'
             ],
             'select': DEFAULT_DEVICE
         }
@@ -209,7 +207,6 @@ class OCRMIT48pxCTC(OCRBase):
             'options': [
                 'cpu',
                 'cuda',
-                'hip'
             ],
             'select': DEFAULT_DEVICE
         },

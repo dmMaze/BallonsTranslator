@@ -2,7 +2,7 @@ from typing import Dict
 from utils.logger import logger as LOGGER
 import gc
 
-GPUINTENSIVE_SET = {'cuda', 'hip'}
+GPUINTENSIVE_SET = {'cuda'}
 
 class BaseModule:
 
