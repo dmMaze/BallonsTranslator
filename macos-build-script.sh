@@ -77,6 +77,25 @@ unzip 'libopencv_world.4.4.0.dylib.zip' -d data/libs
 unzip 'libpatchmatch_inpaint.dylib.zip' -d data/libs
 rm -rf libopencv_world.4.4.0.dylib.zip libpatchmatch_inpaint.dylib.zip
 
+## Thin .dylib files
+arch=$(uname -m)
+if [ "$arch" = "arm64" ]; then
+  ditto data/libs/libopencv_world.4.4.0.dylib data/libs/libopencv_world2.4.4.0.dylib --arch arm64
+  ditto data/libs/libpatchmatch_inpaint.dylib data/libs/libpatchmatch_inpaint2.dylib --arch arm64
+  rm -rf data/libs/libopencv_world.4.4.0.dylib libpatchmatch_inpaint.dylib
+  mv data/libs/libopencv_world2.4.4.0.dylib data/libs/libopencv_world.4.4.0.dylib
+  mv data/libs/libpatchmatch_inpaint2.dylib data/libs/libpatchmatch_inpaint.dylib
+else
+  ditto data/libs/libopencv_world.4.4.0.dylib data/libs/libopencv_world2.4.4.0.dylib --arch x86_64
+  ditto data/libs/libpatchmatch_inpaint.dylib data/libs/libpatchmatch_inpaint2.dylib --arch x86_64
+  rm -rf data/libs/libopencv_world.4.4.0.dylib libpatchmatch_inpaint.dylib
+  mv data/libs/libopencv_world2.4.4.0.dylib data/libs/libopencv_world.4.4.0.dylib
+  mv data/libs/libpatchmatch_inpaint2.dylib data/libs/libpatchmatch_inpaint.dylib
+fi
+
+# Delete all .DS_Store files
+sudo find ./ -name '.DS_Store' -delete
+
 # Build macOS app via pyinstaller
 sudo pyinstaller launch.spec
 
