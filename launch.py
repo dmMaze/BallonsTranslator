@@ -212,6 +212,9 @@ def main():
     sys.exit(app.exec())
 
 def prepare_environment():
+    if getattr(sys, 'frozen', False):
+        print('Running as app, skip dependency installation')
+        return
 
     req_updated = False
     if sys.platform == 'win32':
