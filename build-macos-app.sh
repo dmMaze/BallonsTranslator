@@ -20,10 +20,5 @@ pip install pyinstaller
 ditto ../libs data/libs -V
 ditto ../models data/models -V
 
-# Comment lines 217-233 of launch.py
-cp launch.py launch.py.bak # backup launch.py
-sed -i '' '217,233s|^| \#|' launch.py # comment specfied lines
-sed -n '217,233p' launch.py # check if comment is successful
-
 # Build macOS app via pyinstaller
 sudo pyinstaller launch.spec
