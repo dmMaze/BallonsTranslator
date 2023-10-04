@@ -507,7 +507,7 @@ class ModuleManager(QObject):
 
         self.translator_panel = translator_panel = config_panel.trans_config_panel        
         translator_params = merge_config_module_params(cfg_module.translator_params, GET_VALID_TRANSLATORS(), TRANSLATORS.get)
-        translator_panel.addModulesParamWidgets(translator_params, config_panel)
+        translator_panel.addModulesParamWidgets(translator_params)
         translator_panel.translator_changed.connect(self.setTranslator)
         translator_panel.source_combobox.currentTextChanged.connect(self.on_translatorsource_changed)
         translator_panel.target_combobox.currentTextChanged.connect(self.on_translatortarget_changed)
@@ -516,7 +516,7 @@ class ModuleManager(QObject):
 
         self.inpaint_panel = inpainter_panel = config_panel.inpaint_config_panel
         inpainter_params = merge_config_module_params(cfg_module.inpainter_params, GET_VALID_INPAINTERS(), INPAINTERS.get)
-        inpainter_panel.addModulesParamWidgets(inpainter_params, config_panel)
+        inpainter_panel.addModulesParamWidgets(inpainter_params)
         inpainter_panel.paramwidget_edited.connect(self.on_inpainterparam_edited)
         inpainter_panel.inpainter_changed.connect(self.setInpainter)
         inpainter_panel.needInpaintChecker.checker_changed.connect(self.on_inpainter_checker_changed)
@@ -524,13 +524,13 @@ class ModuleManager(QObject):
 
         self.textdetect_panel = textdetector_panel = config_panel.detect_config_panel
         textdetector_params = merge_config_module_params(cfg_module.textdetector_params, GET_VALID_TEXTDETECTORS(), TEXTDETECTORS.get)
-        textdetector_panel.addModulesParamWidgets(textdetector_params, config_panel)
+        textdetector_panel.addModulesParamWidgets(textdetector_params)
         textdetector_panel.paramwidget_edited.connect(self.on_textdetectorparam_edited)
         textdetector_panel.detector_changed.connect(self.setTextDetector)
 
         self.ocr_panel = ocr_panel = config_panel.ocr_config_panel
         ocr_params = merge_config_module_params(cfg_module.ocr_params, GET_VALID_OCR(), OCR.get)
-        ocr_panel.addModulesParamWidgets(ocr_params, config_panel)
+        ocr_panel.addModulesParamWidgets(ocr_params)
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.setOCR)
         self.ocr_postprocess = ocr_postprocess

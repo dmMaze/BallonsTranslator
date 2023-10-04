@@ -214,7 +214,10 @@ class ModuleConfigParseWidget(QWidget):
         layout.setSpacing(30)
         self.vlayout = layout
 
-    def addModulesParamWidgets(self, module_dict: dict, scrollWidget: QWidget = None):
+        self.visibleWidget: QWidget = None
+        self.module_dict: dict = {}
+
+    def addModulesParamWidgets(self, module_dict: dict):
         invalid_module_keys = []
         valid_modulekeys = self.get_valid_module_keys()
 
@@ -232,16 +235,14 @@ class ModuleConfigParseWidget(QWidget):
             self.module_combobox.addItem(module)
             params = module_dict[module]
             if params is not None:
-                param_widget = ParamWidget(params, scrollWidget=scrollWidget)
-                param_widget.paramwidget_edited.connect(self.paramwidget_edited)
-                self.param_widget_map[module] = param_widget
-                self.params_layout.addWidget(param_widget)
-                param_widget.hide()
+                self.param_widget_map[module] = None
 
         if len(invalid_module_keys) > 0:
             LOGGER.warning(F'Invalid module keys: {invalid_module_keys}')
             for ik in invalid_module_keys:
                 module_dict.pop(ik)
+
+        self.module_dict = module_dict
 
         num_widgets_after = len(self.param_widget_map)
         if num_widgets_before == 0 and num_widgets_after > 0:
@@ -256,11 +257,20 @@ class ModuleConfigParseWidget(QWidget):
 
     def updateModuleParamWidget(self):
         module = self.module_combobox.currentText()
-        for key in self.param_widget_map:
-            if key == module:
-                self.param_widget_map[key].show()
+        if self.visibleWidget is not None:
+            self.visibleWidget.hide()
+        if module in self.param_widget_map:
+            widget: QWidget = self.param_widget_map[module]
+            if widget is None:
+                # lazy load widgets
+                params = self.module_dict[module]
+                param_widget = ParamWidget(params, scrollWidget=self)
+                param_widget.paramwidget_edited.connect(self.paramwidget_edited)
+                self.param_widget_map[module] = param_widget
+                self.params_layout.addWidget(param_widget)
             else:
-                self.param_widget_map[key].hide()
+                widget.show()
+            self.visibleWidget = widget
 
     def on_module_changed(self):
         self.updateModuleParamWidget()
