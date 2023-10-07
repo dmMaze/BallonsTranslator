@@ -25,6 +25,19 @@ else
     fi
 fi
 
+# OpenCV installation check
+echo "STEP 3: Check installation of OpenCV."
+python3 -c "import cv2" 2>/dev/null
+if [ $? -eq 0 ]; then
+    opencv_version=$(python3 -c "import cv2; print(cv2.__version__)")
+    echo "INFO: OpenCV is installed. Version: $opencv_version"
+else
+    echo "ERROR: OpenCV is not installed."
+    echo "ERROR: Please install OpenCV before running this script."
+    echo "INFO: Recommand install via Homebrew with command 'brew install opencv'."
+    exit 1
+fi
+
 # Create required directories
 mkdir data/libs
 mkdir data/models
@@ -34,7 +47,7 @@ mkdir data/models/pkuseg/postag
 mkdir data/models/pkuseg/spacy_ontonotes
 
 # Download required data files
-echo "STEP 3: Download required data files."
+echo "STEP 4: Download required data files."
 
 ## Download models
 echo "INFO: Download aot_inpainter model."
@@ -99,7 +112,7 @@ else
     mv data/libs/libpatchmatch_inpaint2.dylib data/libs/libpatchmatch_inpaint.dylib
 fi
 
-# Checklist of required data files
+# Checklist of required files
 check_list="
 data/alphabet-all-v5.txt
 data/libs
@@ -131,7 +144,7 @@ data/pkusegscores.json
 "
 
 # Validate required data files exist
-echo "STEP 4: Validate required data files exist."
+echo "STEP 5: Validate required data files exist."
 fail=false
 for item in $check_list; do
     if [ ! -e "$item" ]; then
@@ -148,18 +161,18 @@ else
 fi
 
 # Install Python dependencies
-echo "STEP 5: Install Python dependencies."
+echo "STEP 6: Install Python dependencies."
 pip3 install -r requirements.txt
 pip3 install pyinstaller
 
 # Delete .DS_Store files 
-echo "STEP 6: Delete .DS_Store files."
+echo "STEP 7: Delete .DS_Store files."
 sudo find ./ -name '.DS_Store'
 echo "INFO: All .DS_Store files found must be deleted."
 sudo find ./ -name '.DS_Store' -delete
 
 # Create packaged app
-echo "STEP 7: Create packaged app."
+echo "STEP 8: Create packaged app."
 echo "INFO: Use the pyinstaller spec file to bundle the app."
 sudo pyinstaller launch.spec
 
