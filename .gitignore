@@ -37,3 +37,6 @@ config/config.json
 venv
 pip
 .DS_Store
+
+fonts/*
+!fonts/put fonts here.txt

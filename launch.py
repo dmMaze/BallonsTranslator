@@ -1,3 +1,4 @@
+from pathlib import Path
 import sys
 import argparse
 import os.path as osp
@@ -19,6 +20,10 @@ stored_commit_hash = None
 REQ_WIN = [
     'pywin32'
 ]
+
+PATH_ROOT=Path(__file__).parent  
+PATH_FONTS=PATH_ROOT/'fonts'
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--reinstall-torch", action='store_true', help="launch.py argument: install the appropriate version of torch even if you have some version already installed")
@@ -148,6 +153,7 @@ def main():
     from qtpy.QtCore import QTranslator, QLocale, Qt
     from qtpy.QtGui import QIcon
     from qtpy.QtGui import  QGuiApplication, QIcon, QFont
+    from qtpy.QtGui import  QFontDatabase
 
     from ui import constants as C
     from ui import config as program_config
@@ -191,6 +197,12 @@ def main():
     C.LDPI = ps.logicalDotsPerInch()
     C.SCREEN_W = ps.geometry().width()
     C.SCREEN_H = ps.geometry().height()
+
+    # Fonts
+    # Load custom fonts if they exist
+    for font in os.listdir(PATH_FONTS):
+        if font.endswith(('.ttf','.otf')):
+            QFontDatabase.addApplicationFont((PATH_FONTS/font).as_posix())
     yahei = QFont('Microsoft YaHei UI')
     if yahei.exactMatch():
         QGuiApplication.setFont(yahei)
