@@ -9,7 +9,7 @@ from utils.registry import Registry
 OCR = Registry('OCR')
 register_OCR = OCR.register_module
 
-from ..base import BaseModule, DEFAULT_DEVICE
+from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR
 
 class OCRBase(BaseModule):
 
@@ -84,14 +84,7 @@ class OCRMIT32px(OCRBase):
             ],
             'select': 16
         },
-        'device': {
-            'type': 'selector',
-            'options': [
-                'cpu',
-                'cuda',
-            ],
-            'select': DEFAULT_DEVICE
-        },
+        'device': DEVICE_SELECTOR(),
         'description': 'OCRMIT32px'
     }
     device = DEFAULT_DEVICE
@@ -132,14 +125,7 @@ MANGA_OCR_MODEL = None
 @register_OCR('manga_ocr')
 class MangaOCR(OCRBase):
     params = {
-        'device': {
-            'type': 'selector',
-            'options': [
-                'cpu',
-                'cuda',
-            ],
-            'select': DEFAULT_DEVICE
-        }
+        'device': DEVICE_SELECTOR()
     }
     device = DEFAULT_DEVICE
 
@@ -202,14 +188,7 @@ class OCRMIT48pxCTC(OCRBase):
             ],
             'select': 16
         },
-        'device': {
-            'type': 'selector',
-            'options': [
-                'cpu',
-                'cuda',
-            ],
-            'select': DEFAULT_DEVICE
-        },
+        'device': DEVICE_SELECTOR(),
         'description': 'mit48px_ctc'
     }
     device = DEFAULT_DEVICE

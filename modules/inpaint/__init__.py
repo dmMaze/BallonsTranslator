@@ -6,7 +6,7 @@ from utils.registry import Registry
 from utils.textblock_mask import extract_ballon_mask
 from utils.imgproc_utils import enlarge_window
 
-from ..base import BaseModule, DEFAULT_DEVICE, gc_collect
+from ..base import BaseModule, DEFAULT_DEVICE, gc_collect, DEVICE_SELECTOR
 from ..textdetector import TextBlock
 
 INPAINTERS = Registry('inpainters')
@@ -140,14 +140,7 @@ class AOTInpainter(InpainterBase):
             ], 
             'select': 2048
         }, 
-        'device': {
-            'type': 'selector',
-            'options': [
-                'cpu',
-                'cuda',
-            ],
-            'select': DEFAULT_DEVICE
-        },
+        'device': DEVICE_SELECTOR(),
         'description': 'manga-image-translator inpainter'
     }
 
@@ -245,14 +238,7 @@ class LamaInpainterMPE(InpainterBase):
             ], 
             'select': 2048
         }, 
-        'device': {
-            'type': 'selector',
-            'options': [
-                'cpu',
-                'cuda',
-            ],
-            'select': DEFAULT_DEVICE
-        }
+        'device': DEVICE_SELECTOR()
     }
 
     device = DEFAULT_DEVICE

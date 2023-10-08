@@ -7,7 +7,7 @@ from utils.registry import Registry
 TEXTDETECTORS = Registry('textdetectors')
 register_textdetectors = TEXTDETECTORS.register_module
 
-from ..base import BaseModule, DEFAULT_DEVICE
+from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR
 
 class TextDetectorBase(BaseModule):
 
@@ -51,14 +51,7 @@ class ComicTextDetector(TextDetectorBase):
             'options': [1, 2, 4, 6, 8, 12, 16, 24, 32], 
             'select': 4
         },
-        'device': {
-            'type': 'selector',
-            'options': [
-                'cpu',
-                'cuda',
-            ],
-            'select': DEFAULT_DEVICE
-        },
+        'device': DEVICE_SELECTOR(),
         'description': 'ComicTextDetector'
     }
 

@@ -155,10 +155,6 @@ class ParamWidget(QWidget):
                     else:
                         size = CONFIG_COMBOBOX_SHORT
 
-                    if param_key == 'device' and 'hip' in param_dict['options']:
-                        param_dict['options'].remove('hip')
-                        if param_dict['select']  == 'hip':
-                            param_dict['select'] = DEFAULT_DEVICE
                     param_widget = ParamComboBox(param_key, param_dict['options'], size=size, scrollWidget=scrollWidget)
 
                     # if cuda is not available, disable combobox 'cuda' item

@@ -448,10 +448,18 @@ def merge_config_module_params(config_params: Dict, module_keys: List, get_modul
                 if ck not in module_key_set:
                     LOGGER.warning(f'Found invalid {module_key} config: {ck}')
                     cfg_param.pop(ck)
+
             for mk in module_key_set:
                 if mk not in cfg_key_set:
                     LOGGER.info(f'Found new {module_key} config: {mk}')
                     cfg_param[mk] = module_params[mk]
+                else:
+                    mparam = module_params[mk]
+                    if isinstance(mparam, dict):
+                        if 'type' in mparam and mparam['type'] == 'selector' \
+                            and cfg_param[mk]['options'] != mparam['options']:
+                            LOGGER.info(f'Update {mk} options')
+                            cfg_param[mk]['options'] = mparam['options']
     return config_params
 
 class ModuleManager(QObject):
