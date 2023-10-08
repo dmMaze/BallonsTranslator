@@ -32,12 +32,18 @@ preview
 
 **Windows users** can download Ballonstranslator-x.x.x-core.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) (note: you also need to download latest Ballonstranslator-1.3.xx from GitHub release and extract it to overwrite **Ballontranslator-1.3.0-core** or older installation to get the app updated.)
 
+
+## Auto installer
+
+Everything is simple here, go to the repository, download the file and follow the instructions.
+
+[Link](https://github.com/bropines/Ballon-translator-portable)
+
 ## Run the source code
 
 If you're not on Windows or may want to run the latest development.
 
 ```bash
-
 # Clone this repo
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
