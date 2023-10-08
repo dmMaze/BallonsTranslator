@@ -4,7 +4,7 @@ import os
 
 from qtpy.QtWidgets import QSlider, QMenu, QGraphicsScene, QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
-from qtpy.QtGui import QKeySequence, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor
+from qtpy.QtGui import QKeySequence, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
@@ -74,6 +74,7 @@ class CustomGV(QGraphicsView):
     ctrl_pressed = False
     scale_up_signal = Signal()
     scale_down_signal = Signal()
+    scale_with_value = Signal(float)
     view_resized = Signal()
     hide_canvas = Signal()
     ctrl_released = Signal()
@@ -137,6 +138,13 @@ class CustomGV(QGraphicsView):
         self.hide_canvas.emit()
         return super().hideEvent(event)
 
+    def event(self, e):
+        if isinstance(e, QNativeGestureEvent):
+            if e.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
+                self.scale_with_value.emit(e.value() + 1)
+                e.setAccepted(True)
+
+        return super().event(e)
     # def enterEvent(self, event: QEvent) -> None:
     #   # not sure why i add it
         # self.setFocus()
@@ -198,6 +206,7 @@ class Canvas(QGraphicsScene):
         self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.gv.scale_down_signal.connect(self.scaleDown)
         self.gv.scale_up_signal.connect(self.scaleUp)
+        self.gv.scale_with_value.connect(self.scaleBy)
         self.gv.view_resized.connect(self.onViewResized)
         self.gv.hide_canvas.connect(self.on_hide_canvas)
         self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -322,6 +331,9 @@ class Canvas(QGraphicsScene):
 
     def scaleDown(self):
         self.scaleImage(1 - CANVAS_SCALE_SPEED)
+
+    def scaleBy(self, value: float):
+        self.scaleImage(value)
 
     def setImageLayer(self):
         if not self.imgtrans_proj.img_valid:
