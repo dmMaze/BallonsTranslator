@@ -1,6 +1,9 @@
-from typing import Dict
-from utils.logger import logger as LOGGER
 import gc
+import os
+from typing import Dict
+from copy import deepcopy
+
+from utils.logger import logger as LOGGER
 
 GPUINTENSIVE_SET = {'cuda'}
 
@@ -42,16 +45,32 @@ class BaseModule:
             return True
         return False
 
-
 import torch
 
 if hasattr(torch, 'cuda'):
     DEFAULT_DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+elif hasattr(torch, 'backends') and hasattr(torch.backends, 'mps'):
+    DEFAULT_DEVICE = 'mps'
 else:
     DEFAULT_DEVICE = 'cpu'
 
 def gc_collect():
     gc.collect()
-    torch.cuda.empty_cache()
-    torch.cuda.ipc_collect()
+    if DEFAULT_DEVICE == 'cuda':
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+    elif DEFAULT_DEVICE == 'mps':
+        torch.mps.empty_cache()
+
+DEVICE_SELECTOR = lambda : deepcopy(
+    {
+        'type': 'selector',
+        'options': [
+            'cpu',
+            'cuda',
+            'mps'
+        ],
+        'select': DEFAULT_DEVICE
+    }
+)
 

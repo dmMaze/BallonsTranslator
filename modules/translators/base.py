@@ -5,7 +5,7 @@ import time, requests, re, uuid, base64, hmac, functools, json
 
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
 from ..textdetector.textblock import TextBlock
-from ..base import BaseModule
+from ..base import BaseModule, DEVICE_SELECTOR
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
 from .hooks import chs2cht

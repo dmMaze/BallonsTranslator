@@ -8,11 +8,7 @@ class SugoiTranslator(BaseTranslator):
 
     concate_text = False
     params: Dict = {
-        'device': {
-            'type': 'selector',
-            'options': ['cpu', 'cuda'],
-            'select': 'cpu'
-        }
+        'device': DEVICE_SELECTOR()
     }
 
     def _setup_translator(self):
