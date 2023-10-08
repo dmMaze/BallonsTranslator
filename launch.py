@@ -149,11 +149,9 @@ def main():
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
     import qtpy
-    from qtpy.QtWidgets import QApplication
+    from qtpy.QtWidgets import QApplication, QStyleFactory
     from qtpy.QtCore import QTranslator, QLocale, Qt
-    from qtpy.QtGui import QIcon
-    from qtpy.QtGui import  QGuiApplication, QIcon, QFont
-    from qtpy.QtGui import  QFontDatabase
+    from qtpy.QtGui import QIcon, QFontDatabase, QGuiApplication, QFont
 
     from ui import constants as C
     from ui import config as program_config
@@ -214,7 +212,7 @@ def main():
     BT = ballontrans
     BT.restart_signal.connect(restart)
 
-    if C.SCREEN_W > 1707:   # higher than 2560 (1440p) / 1.5
+    if C.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
         # https://github.com/dmMaze/BallonsTranslator/issues/220
         BT.comicTransSplitter.setHandleWidth(10)
 

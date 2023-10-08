@@ -69,14 +69,17 @@ QComboBox {
     font-size: 14px;
     padding-left: 8px;
     border: 1px solid @borderColor;
+    background-color: @transtexteditBackgroundColor;
 }
 
 QLineEdit {
     border: 1px solid @borderColor;
+    background-color: @transtexteditBackgroundColor;
 }
 
 QPlainTextEdit {
     border: 1px solid @borderColor;
+    background-color: @transtexteditBackgroundColor;
 }
 
 QPlainTextEdit:focus {
@@ -491,7 +494,8 @@ QCheckBox#TextblockChecker::indicator:checked{
 OpenBtn {
     border-style: none;
     image: url(icons/openbtn.svg);
-    
+    background-color: @widgetBackgroundColor;
+
 }
 
 OpenBtn::hover {
