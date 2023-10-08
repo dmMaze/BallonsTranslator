@@ -6,7 +6,7 @@ from utils.registry import Registry
 from utils.textblock_mask import extract_ballon_mask
 from utils.imgproc_utils import enlarge_window
 
-from ..base import BaseModule, DEFAULT_DEVICE, gc_collect, DEVICE_SELECTOR
+from ..base import BaseModule, DEFAULT_DEVICE, gc_collect, DEVICE_SELECTOR, GPUINTENSIVE_SET
 from ..textdetector import TextBlock
 
 INPAINTERS = Registry('inpainters')
@@ -156,7 +156,7 @@ class AOTInpainter(InpainterBase):
         else:
             self.model = AOTMODEL
             self.model.to(self.device)
-        self.inpaint_by_block = True if self.device == 'cuda' else False
+        self.inpaint_by_block = self.device not in GPUINTENSIVE_SET
         self.inpaint_size = int(self.params['inpaint_size']['select'])
 
     def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -214,10 +214,7 @@ class AOTInpainter(InpainterBase):
             param_device = self.params['device']['select']
             self.model.to(param_device)
             self.device = param_device
-            if param_device == 'cuda':
-                self.inpaint_by_block = False
-            else:
-                self.inpaint_by_block = True
+            self.inpaint_by_block = param_device not in GPUINTENSIVE_SET
 
         elif param_key == 'inpaint_size':
             self.inpaint_size = int(self.params['inpaint_size']['select'])
@@ -253,7 +250,7 @@ class LamaInpainterMPE(InpainterBase):
         else:
             self.model = LAMA_MPE
             self.model.to(self.device)
-        self.inpaint_by_block = True if self.device == 'cuda' else False
+        self.inpaint_by_block = self.device not in GPUINTENSIVE_SET
         self.inpaint_size = int(self.params['inpaint_size']['select'])
 
     def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -318,10 +315,7 @@ class LamaInpainterMPE(InpainterBase):
             param_device = self.params['device']['select']
             self.model.to(param_device)
             self.device = param_device
-            if param_device == 'cuda':
-                self.inpaint_by_block = False
-            else:
-                self.inpaint_by_block = True
+            self.inpaint_by_block = param_device not in GPUINTENSIVE_SET
 
         elif param_key == 'inpaint_size':
             self.inpaint_size = int(self.params['inpaint_size']['select'])

@@ -5,7 +5,7 @@ from copy import deepcopy
 
 from utils.logger import logger as LOGGER
 
-GPUINTENSIVE_SET = {'cuda'}
+GPUINTENSIVE_SET = {'cuda', 'mps'}
 
 class BaseModule:
 
@@ -45,14 +45,14 @@ class BaseModule:
             return True
         return False
 
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import torch
 
-if hasattr(torch, 'cuda'):
+DEFAULT_DEVICE = 'cpu'
+if hasattr(torch, 'cuda') and torch.cuda.is_available():
     DEFAULT_DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-elif hasattr(torch, 'backends') and hasattr(torch.backends, 'mps'):
+elif hasattr(torch, 'backends') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
     DEFAULT_DEVICE = 'mps'
-else:
-    DEFAULT_DEVICE = 'cpu'
 
 def gc_collect():
     gc.collect()
