@@ -1,4 +1,5 @@
 import copy
+import sys
 
 from qtpy.QtWidgets import QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt
@@ -18,10 +19,17 @@ class IncrementalBtn(QPushButton):
 
 
 class QFontChecker(QCheckBox):
-    pass
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if sys.platform == 'darwin':
+            self.setStyleSheet("min-width: 45px")
 
 class AlignmentChecker(QCheckBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if sys.platform == 'darwin':
+            self.setStyleSheet("min-width: 15px")
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if self.isChecked():
             return event.accept()
