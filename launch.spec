@@ -107,8 +107,8 @@ a = Analysis([
         ('translate', './translate'),
         ('ui', './ui'),
         ('utils', './utils'),
-        #('venv/lib/python3.11/site-packages/spacy_pkuseg', './spacy_pkuseg'),
-        #('venv/lib/python3.11/site-packages/torchvision', './torchvision'),
+        ('venv/lib/python3.11/site-packages/spacy_pkuseg', './spacy_pkuseg'),
+        ('venv/lib/python3.11/site-packages/torchvision', './torchvision'),
         ],
     hiddenimports=[
         'PyQt6',
