@@ -5,8 +5,10 @@ PyQt6<=6.4.2   #PyQt5>=5.15.9
 numpy
 urllib3==1.25.11 # https://github.com/psf/requests/issues/5740
 jaconv
-torch
-torchvision
+torch; sys_platform == 'win32'
+torchvision; sys_platform == 'win32'
+torch -f https://download.pytorch.org/whl/nightly/cpu; sys_platform == 'darwin'
+torchvision -f https://download.pytorch.org/whl/nightly/cpu; sys_platform == 'darwin'
 transformers
 fugashi
 unidic_lite
