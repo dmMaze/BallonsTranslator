@@ -26,7 +26,8 @@ echo "STEP 2: Create and activate Python virtual environment"
 python_version=$(python3 -V 2>&1 | cut -d" " -f2 | cut -d"." -f1-2)
 
 if ! which python3 >/dev/null 2>&1; then
-    echo "ERROR: The 'python3' command not found. Please check the environment configuration."
+    echo "ERROR: ❌ The 'python3' command not found."
+    echo "ERROR: Please check the Python environment configuration."
     exit 1
 else
     echo "INFO: The 'python3' command found." 
@@ -60,7 +61,7 @@ else
 fi
 
 # Download extra data files
-echo "STEP 4: Download extra data files."
+echo "STEP 4: Download data files."
 
 # Function to calculate file hash
 calculate_hash() {
@@ -70,7 +71,6 @@ calculate_hash() {
 
 # Function to download and process files
 download_and_process_files() {
-    echo "INFO: STEP 4: Downloading data files..."
     local files=(
         'inpainting.ckpt|https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3|no_zip||aot_inpainter.ckpt|data/models|878d541c68648969bc1b042a6e997f3a58e49b6c07c5636ad55130736977149f'
         'comictextdetector.pt|https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3|no_zip||comictextdetector.pt|data/models|1f90fa60aeeb1eb82e2ac1167a66bf139a8a61b8780acd351ead55268540cccb'
@@ -174,23 +174,32 @@ download_and_process_files() {
     done
 }
 
+# Function to thin libraries based on system architecture
+thin_liarary_files() {
+    local arch=$(uname -m)
+    
+    # Thin multi-architecture library files into compatible single arch libraries
+    echo "INFO: System architecture is $arch."
+    echo "INFO: Extracting architecture specific libraries..."
+    if [ "$arch" = "arm64" ]; then
+        ditto --arch arm64 "$LIBS_DIR/libopencv_world.4.4.0.dylib" "$LIBS_DIR/libopencv_world2.4.4.0.dylib"
+        ditto --arch arm64 "$LIBS_DIR/libpatchmatch_inpaint.dylib" "$LIBS_DIR/libpatchmatch_inpaint2.dylib"
+    else
+        ditto --arch x86_64 "$LIBS_DIR/libopencv_world.4.4.0.dylib" "$LIBS_DIR/libopencv_world2.4.4.0.dylib"
+        ditto --arch x86_64 "$LIBS_DIR/libpatchmatch_inpaint.dylib" "$LIBS_DIR/libpatchmatch_inpaint2.dylib"
+    fi
+    
+    # Remove fat libraries
+    rm "$LIBS_DIR/libopencv_world.4.4.0.dylib" "$LIBS_DIR/libpatchmatch_inpaint.dylib"
+    mv "$LIBS_DIR/libopencv_world2.4.4.0.dylib" "$LIBS_DIR/libopencv_world.4.4.0.dylib"
+    mv "$LIBS_DIR/libpatchmatch_inpaint2.dylib" "$LIBS_DIR/libpatchmatch_inpaint.dylib"
+    
+    echo "INFO: ✅ Single architecture library files generated."
+}
+
 # Call the download functions
 download_and_process_files
-
-# Extract libraries based on architecture
-local arch=$(uname -m)
-if [ "$arch" = "arm64" ]; then
-    ditto --arch arm64 "$LIBS_DIR/libopencv_world.4.4.0.dylib" "$LIBS_DIR/libopencv_world2.4.4.0.dylib"
-    ditto --arch arm64 "$LIBS_DIR/libpatchmatch_inpaint.dylib" "$LIBS_DIR/libpatchmatch_inpaint2.dylib"
-else
-    ditto --arch x86_64 "$LIBS_DIR/libopencv_world.4.4.0.dylib" "$LIBS_DIR/libopencv_world2.4.4.0.dylib"
-    ditto --arch x86_64 "$LIBS_DIR/libpatchmatch_inpaint.dylib" "$LIBS_DIR/libpatchmatch_inpaint2.dylib"
-fi
-
-# Remove unnecessary libraries
-rm "$LIBS_DIR/libopencv_world.4.4.0.dylib" "$LIBS_DIR/libpatchmatch_inpaint.dylib"
-mv "$LIBS_DIR/libopencv_world2.4.4.0.dylib" "$LIBS_DIR/libopencv_world.4.4.0.dylib"
-mv "$LIBS_DIR/libpatchmatch_inpaint2.dylib" "$LIBS_DIR/libpatchmatch_inpaint.dylib"
+thin_liarary_files
 
 # Checklist of extra data files
 check_list="
