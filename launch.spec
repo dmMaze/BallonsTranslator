@@ -107,8 +107,8 @@ a = Analysis([
         ('translate', './translate'),
         ('ui', './ui'),
         ('utils', './utils'),
-        *(collect_data_files('spacy_pkuseg', Tree) if sys.platform == 'darwin' else []),
-        *(collect_data_files('torchvision', Tree) if sys.platform == 'darwin' else []),
+        #('venv/lib/python3.11/site-packages/spacy_pkuseg', './spacy_pkuseg'),
+        #('venv/lib/python3.11/site-packages/torchvision', './torchvision'),
         ],
     hiddenimports=[
         'PyQt6',
