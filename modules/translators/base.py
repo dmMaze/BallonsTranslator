@@ -2,13 +2,13 @@ import urllib.request
 from ordered_set import OrderedSet
 from typing import Dict, List, Union, Set, Callable
 import time, requests, re, uuid, base64, hmac, functools, json
+from collections import OrderedDict
 
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
 from ..textdetector.textblock import TextBlock
 from ..base import BaseModule, DEVICE_SELECTOR
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
-from .hooks import chs2cht
 
 TRANSLATORS = Registry('translators')
 register_translator = TRANSLATORS.register_module
@@ -66,6 +66,9 @@ class BaseTranslator(BaseModule):
 
     concate_text = True
     cht_require_convert = False
+
+    _postprocess_hooks = OrderedDict()
+    _preprocess_hooks = OrderedDict()
     
     def __init__(self,
                  lang_source: str, 
@@ -82,7 +85,6 @@ class BaseTranslator(BaseModule):
         self.lang_source: str = lang_source
         self.lang_target: str = lang_target
         self.lang_map: Dict = LANGMAP_GLOBAL.copy()
-        self.postprocess_hooks = OrderedSet()
         
         try:
             self.setup_translator()
@@ -109,17 +111,6 @@ class BaseTranslator(BaseModule):
                 lang_target = self.supported_tgt_list[0]
                 self.set_source(lang_source)
                 self.set_target(lang_target)
-
-        if self.cht_require_convert:
-            self.register_postprocess_hooks(self._chs2cht)
-
-    def register_postprocess_hooks(self, callbacks: Union[List, Callable]):
-        if callbacks is None:
-            return
-        if isinstance(callbacks, Callable):
-            callbacks = [callbacks]
-        for callback in callbacks:
-            self.postprocess_hooks.add(callback)
 
     def _setup_translator(self):
         raise NotImplementedError
@@ -162,12 +153,12 @@ class BaseTranslator(BaseModule):
             
         if is_list:
             assert len(text_trans) == len(text)
-            for ii, t in enumerate(text_trans):
-                for callback in self.postprocess_hooks:
-                    text_trans[ii] = callback(t)
-        else:
-            for callback in self.postprocess_hooks:
-                text_trans = callback(text_trans)
+            # for ii, t in enumerate(text_trans):
+            #     for callback in self._postprocess_hooks:
+            #         text_trans[ii] = callback(t)
+        # else:
+        #     for callback in self._postprocess_hooks:
+        #         text_trans = callback(text_trans)
 
         return text_trans
 
@@ -184,9 +175,11 @@ class BaseTranslator(BaseModule):
     def translate_textblk_lst(self, textblk_lst: List[TextBlock]):
         text_list = [blk.get_text() for blk in textblk_lst]
         translations = self.translate(text_list)
+
+        for callback_name, callback in self._postprocess_hooks.items():
+            callback(translations = translations, textblocks = textblk_lst, translator = self)
+
         for tr, blk in zip(translations, textblk_lst):
-            for callback in self.postprocess_hooks:
-                tr = callback(tr, blk=blk)
             blk.translation = tr
 
     def supported_languages(self) -> List[str]:
@@ -199,12 +192,6 @@ class BaseTranslator(BaseModule):
     @property
     def supported_src_list(self) -> List[str]:
         return self.valid_lang_list
-    
-    def _chs2cht(self, text: str, blk: TextBlock = None):
-        if self.lang_target == '繁體中文':
-            return chs2cht(text)
-        else:
-            return text
         
     def delay(self) -> float:
         if 'delay' in self.params:

@@ -1,10 +1,15 @@
-import json, os, cv2
+import json, os, sys, time, io
 import os.path as osp
-import numpy as np
 from pathlib import Path
 import importlib
 from typing import List, Dict, Callable
-import re
+import base64
+import traceback
+
+import requests
+from PIL import Image
+import cv2
+import numpy as np
 from natsort import natsorted
 
 IMG_EXT = ['.bmp', '.jpg', '.png', '.jpeg', '.webp']
@@ -111,4 +116,45 @@ def build_funcmap(module_str: str, params_names: List[str], func_prefix: str = '
             tgt_func = fallback_func
         funcmap[param] = tgt_func
 
-    return funcmap
+    return
+
+def _b64encode(x: bytes) -> str:
+    return base64.b64encode(x).decode("utf-8")
+
+def img2b64(img):
+    """
+    Convert a PIL image to a base64-encoded string.
+    """
+    if isinstance(img, np.ndarray):
+        img = Image.fromarray(img)
+    buffered = io.BytesIO()
+    img.save(buffered, format='PNG')
+    return _b64encode(buffered.getvalue())
+
+def save_encoded_image(b64_image: str, output_path: str):
+    with open(output_path, "wb") as image_file:
+        image_file.write(base64.b64decode(b64_image))
+
+def submit_request(url, data, exist_on_exception=True, auth=None, wait_time = 5):
+    response = None
+    try:
+        while True:
+            try:
+                response = requests.post(url, data=data, auth=auth)
+                response.raise_for_status()
+                break
+            except Exception as e:
+                if wait_time > 0:
+                    print(traceback.format_exc(), file=sys.stderr)
+                    print(f'sleep {wait_time} sec...')
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise e
+    except Exception as e:
+        print(traceback.format_exc(), file=sys.stderr)
+        if response is not None:
+            print('response content: ' + response.text)
+        if exist_on_exception:
+            exit()
+    return response

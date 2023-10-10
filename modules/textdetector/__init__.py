@@ -1,6 +1,8 @@
 import numpy as np
 import cv2
 from typing import Dict, List, Tuple
+from collections import OrderedDict
+
 from .textblock import TextBlock
 
 from utils.registry import Registry
@@ -10,6 +12,9 @@ register_textdetectors = TEXTDETECTORS.register_module
 from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR
 
 class TextDetectorBase(BaseModule):
+
+    _postprocess_hooks = OrderedDict()
+    _preprocess_hooks = OrderedDict()
 
     def __init__(self, **params) -> None:
         super().__init__(**params)

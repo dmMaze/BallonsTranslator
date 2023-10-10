@@ -1,16 +1,41 @@
 import gc
 import os
-from typing import Dict
+import time
+from typing import Dict, List, Callable, Union
 from copy import deepcopy
+from collections import OrderedDict
 
 from utils.logger import logger as LOGGER
 
 GPUINTENSIVE_SET = {'cuda', 'mps'}
 
+def register_hooks(hooks_registered: OrderedDict, callbacks: Union[List, Callable, Dict]):
+    if callbacks is None:
+        return
+    if isinstance(callbacks, (Dict, OrderedDict)):
+        for k, v in callbacks.items():
+            hooks_registered[k] = v
+    else:
+        nhooks = len(hooks_registered)
+
+        if isinstance(callbacks, Callable):
+            callbacks = [callbacks]
+        for callback in callbacks:
+            hk = 'hook_' + str(nhooks).zfill(2)
+            while True:
+                if hk not in hooks_registered:
+                    break
+                hk = hk + '_' + str(time.time_ns())
+            hooks_registered[hk] = callback
+            nhooks += 1
+
 class BaseModule:
 
     params: Dict = None
     logger = LOGGER
+
+    _preprocess_hooks: OrderedDict = None
+    _postprocess_hooks: OrderedDict = None
 
     def __init__(self, **params) -> None:
         if params:
@@ -18,6 +43,22 @@ class BaseModule:
                 self.params = params
             else:
                 self.params.update(params)
+
+    @classmethod
+    def register_postprocess_hooks(cls, callbacks: Union[List, Callable]):
+        """
+        these hooks would be shared among all objects inherited from the same super class
+        """
+        assert cls._postprocess_hooks is not None
+        register_hooks(cls._postprocess_hooks, callbacks)
+
+    @classmethod
+    def register_preprocess_hooks(cls, callbacks: Union[List, Callable, Dict]):
+        """
+        these hooks would be shared among all objects inherited from the same super class
+        """
+        assert cls._preprocess_hooks is not None
+        register_hooks(cls._preprocess_hooks, callbacks)
 
     def updateParam(self, param_key: str, param_content):
         self_param_content = self.params[param_key]

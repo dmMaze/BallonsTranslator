@@ -1112,11 +1112,17 @@ class MainWindow(FramelessWindow):
         self.resetStyleSheet(reverse_icon=True)
         self.save_config()
 
-    def ocr_postprocess(self, text: str, blk: TextBlock = None) -> str:
-        text = self.ocrSubWidget.sub_text(text)
-        return text
+    def ocr_postprocess(self, textblocks: List[TextBlock], img, ocr_module=None, **kwargs):
+        for blk in textblocks:
+            if isinstance(blk.text, List):
+                for ii, t in enumerate(blk.text):
+                    blk.text[ii] = self.ocrSubWidget.sub_text(t)
+            else:
+                blk.text = self.ocrSubWidget.sub_text(blk.text)
 
-    def translate_postprocess(self, text: str, blk: TextBlock = None) -> str:
-        if self.postprocess_mt_toggle:
-            text = self.mtSubWidget.sub_text(text)
-        return text
+    def translate_postprocess(self, translations: List[str] = None, textblocks: List[TextBlock] = None, translator = None):
+        if not self.postprocess_mt_toggle:
+            return
+        
+        for ii, tr in enumerate(translations):
+            translations[ii] = self.mtSubWidget.sub_text(tr)

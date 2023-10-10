@@ -520,7 +520,8 @@ class ModuleManager(QObject):
         translator_panel.source_combobox.currentTextChanged.connect(self.on_translatorsource_changed)
         translator_panel.target_combobox.currentTextChanged.connect(self.on_translatortarget_changed)
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
-        self.translate_postprocess = translate_postprocess
+        from modules.translators.hooks import chs2cht
+        BaseTranslator.register_postprocess_hooks({'chs2cht': chs2cht, 'keyword_sub': translate_postprocess})
 
         self.inpaint_panel = inpainter_panel = config_panel.inpaint_config_panel
         inpainter_params = merge_config_module_params(cfg_module.inpainter_params, GET_VALID_INPAINTERS(), INPAINTERS.get)
@@ -541,7 +542,7 @@ class ModuleManager(QObject):
         ocr_panel.addModulesParamWidgets(ocr_params)
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.setOCR)
-        self.ocr_postprocess = ocr_postprocess
+        OCRBase.register_postprocess_hooks(ocr_postprocess)
 
         self.on_finish_setsourcedownload()
 
@@ -732,7 +733,6 @@ class ModuleManager(QObject):
         if self.ocr is not None:
             cfg_module.ocr = self.ocr.name
             self.ocr_panel.setOCR(self.ocr.name)
-            self.ocr_thread.module.register_postprocess_hooks(self.ocr_postprocess)
             LOGGER.info('OCR set to {}'.format(self.ocr.name))
 
     def on_finish_setinpainter(self):
@@ -748,7 +748,6 @@ class ModuleManager(QObject):
             cfg_module.translator = translator.name
             self.update_translator_status.emit(cfg_module.translator, cfg_module.translate_source, cfg_module.translate_target)
             self.translator_panel.finishSetTranslator(translator)
-            self.translate_thread.module.register_postprocess_hooks(self.translate_postprocess)
             LOGGER.info('Translator set to {}'.format(self.translator.name))
         else:
             LOGGER.error('invalid translator')
