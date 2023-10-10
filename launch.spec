@@ -13,11 +13,11 @@ version = "1.3.35.dev." + commit_hash
 block_cipher = None
 
 a = Analysis([
-    'launch.py',
-    ],
+        'launch.py',
+        ],
     pathex=[
-    './scripts',
-    ],
+        './scripts',
+        ],
     binaries=[],
     datas=[
         ('config', './config'),
