@@ -2,12 +2,15 @@
 Finds panel order for manga page.
 >> python .\modules\textdetector\panel_finder.py <path-to-images>
 """
-from pathlib import Path
+import json
 import sys
+from pathlib import Path
 
 import cv2 as cv
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
+from shapely import Polygon
+from shapely.ops import nearest_points
 
 KERNEL_SIZE = 7
 BORDER_SIZE = 10
@@ -102,11 +105,11 @@ def calc_panel_contours(im: Image.Image):
     return contours
 
 
-def determine_panel_order_from_contours(contours):
-    """
-    build a tree of regions that are determined vertically
-    order by an n like pattern
-    """
+def calc_panel_bboxes_xyxy(img: Image.Image):
+    contours = calc_panel_contours(img)
+    panel_bboxes = [cv.boundingRect(c) for c in contours]
+    panel_bboxes_xyxy = [xywh_to_xyxy(i) for i in panel_bboxes]
+    return panel_bboxes_xyxy
 
 
 def draw_contours(im, contours):
@@ -140,17 +143,17 @@ def draw_contours(im, contours):
     return img
 
 
-def save_draw_contours(pth: Path | str):
-    if str:
-        pth = Path(pth)
-    pth_out = pth.parent / (pth.stem + "-contours")
+def save_draw_contours(path: Path | str):
+    path = Path(path)
+
+    pth_out = path.parent / (path.stem + "-contours")
 
     if not pth_out.exists():
         pth_out.mkdir()
 
     # Glob get all images in folder
 
-    pths = [i for i in pth.iterdir() if i.suffix in [".png", ".jpg", ".jpeg"]]
+    pths = [i for i in path.iterdir() if i.suffix in [".png", ".jpg", ".jpeg"]]
     for t in pths:
         print(t)
         im = Image.open(t)
@@ -184,16 +187,24 @@ def order_panels(contours, img_gray):
         # Reorder contours based on reverse z-order,
 
         cs = [bounding_boxes[i] for i in group]
-        ymax, xmax = img_gray.shape
-        order_scores = [1 * (ymax - i[1]) + i[0] * 1 for i in cs]
 
+        order_scores = order_read_direction_scores(cs)
         # Sort the list based on the location score value
         combined_list = list(zip(group, order_scores))
         sorted_list = sorted(combined_list, key=lambda x: x[1], reverse=True)
+
         c.extend(sorted_list)
 
     ordered_contours = [contours[i[0]] for i in c]
     return ordered_contours
+
+
+def order_read_direction_scores(cs):
+    """
+    Smaller means read first, larger means read last
+    """
+    order_scores = [1 * (-i[1]) + i[0] * 1 for i in cs]
+    return order_scores
 
 
 def generate_vertical_bounding_box_groups_indices(bounding_boxes):
@@ -250,5 +261,172 @@ def check_overlap(range1, range2):
         return True
 
 
+# Convert xyxy bounding boxes to shapely polygons
+def polygon_from_xyxy(x, y, x2, y2):
+    return Polygon([(x, y), (x2, y), (x2, y2), (x, y2)])
+
+
+def closest_text_to_panel_index(text_bboxes_xyxy, panel_bboxes_xyxy):
+    closest_boxes = []
+
+    # Iterate over each text bounding box
+    for t_index, text_box in enumerate(text_bboxes_xyxy):
+        # Initialize minimum distance to a large number
+        min_dist = float("inf")
+        # Initialize nearest box
+        # Convert text bounding box to Polygon
+        text_poly = polygon_from_xyxy(*text_box)
+        # Iterate over each panel bounding box
+
+        p_index = 0
+        for p_index, panel_box in enumerate(panel_bboxes_xyxy):
+            # Convert panel bounding box to Polygon
+            panel_poly = polygon_from_xyxy(*panel_box)
+            # Find the nearest points between the text and panel bounding boxes
+            nearest_pts = nearest_points(text_poly, panel_poly)
+            # Calculate the distance between the nearest points
+            dist = nearest_pts[0].distance(nearest_pts[1])
+            # If the distance is less than the minimum distance
+            if dist < min_dist:
+                # Update the minimum distance
+                min_dist = dist
+                # Update the nearest box
+                if not dist:
+                    break
+        # Append the nearest box to the list of closest boxes
+        closest_boxes.append((p_index, t_index))
+    order_indices_dict = {i: [] for i in range(len(panel_bboxes_xyxy))}
+    for order_index in closest_boxes:
+        order_indices_dict[order_index[0]].append(order_index[1])
+    return order_indices_dict
+
+
+def xywh_to_xyxy(xywh):
+    return [xywh[0], xywh[1], xywh[0] + xywh[2], xywh[1] + xywh[3]]
+
+
+def xyxy_to_xywh(xyxy):
+    return [xyxy[0], xyxy[1], xyxy[2] - xyxy[0], xyxy[3] - xyxy[1]]
+
+
+def reorder_boxes_indices(text_bboxes_xyxy, panel_bboxes_xyxy):
+    panel_text_order = closest_text_to_panel_index(text_bboxes_xyxy, panel_bboxes_xyxy)
+    box_orders = []
+    for i in range(len(panel_bboxes_xyxy)):
+        text_inds = panel_text_order[i]
+
+        orders = order_read_direction_scores(
+            [xyxy_to_xywh(i) for i in [text_bboxes_xyxy[i] for i in text_inds]],
+        )
+        # print(orders)
+        bbox_inds = np.argsort(orders)[::-1]
+        box_orders.extend([text_inds[i] for i in bbox_inds])
+    return box_orders
+
+
+def draw_bboxes(img, text_bboxes_xyxy, panel_bboxes_xyxy):
+    image_ = img.copy()
+    # Create a drawing object
+    draw = ImageDraw.Draw(image_)
+
+    # Draw black boxes on the image
+    for i, box in enumerate(text_bboxes_xyxy):
+        # draw.rectangle(xywh_to_xyxy(box), fill="black")
+        draw.rectangle(box, outline="red")
+        draw.text(
+            box[:2],
+            str(i),
+            fill="red",
+            stroke_width=2,
+            font=ImageFont.truetype("arial.ttf", 50),
+        )
+
+    for i, box in enumerate(panel_bboxes_xyxy):
+        # draw.rectangle(xywh_to_xyxy(box), fill="black")
+        draw.rectangle(box, outline="blue")
+        draw.text(
+            box[:2],
+            str(i),
+            fill="blue",
+            stroke_width=2,
+            font=ImageFont.truetype("arial.ttf", 50),
+        )
+
+    # Show the image
+    return image_
+
+
+def extract_text_info_from_ballons(data):
+    pages = data["pages"]
+    extracted_data = {
+        k1: [
+            {k: v for k, v in d.items() if k in ["text", "xyxy", "_bounding_rect"]}
+            for d in pages[k1]
+        ]
+        for k1 in pages.keys()
+    }
+    return extracted_data
+
+
+def text_bboxes_from_ballons(text_info):
+    text_bboxes_xyxy = [i["xyxy"] for i in text_info]
+    return text_bboxes_xyxy
+
+
+def save_panel_text_order(path: Path | str):
+    path = Path(path)
+    path_json = path / (f"imgtrans_{path.stem}" + ".json")
+    pth_out = path.parent / (path.stem + "-panel-text-order")
+
+    if not pth_out.exists():
+        pth_out.mkdir()
+
+    # Glob get all images in folder
+    with open(path_json, encoding="utf8") as f:
+        data = json.load(f)
+
+    pages = data["pages"]
+    pages_keys = list(pages.keys())
+
+    for k in pages_keys:
+        page_info = pages[k]
+        text_bboxes = text_bboxes_from_ballons(page_info)
+        img = Image.open(path / k)
+        panel_bboxes = calc_panel_bboxes_xyxy(img)
+
+        text_reorderered_index = reorder_boxes_indices(text_bboxes, panel_bboxes)
+        text_bboxes = [text_bboxes[i] for i in text_reorderered_index]
+
+        img_out = draw_bboxes(img, text_bboxes, panel_bboxes)
+        img_out.save(pth_out / k)
+
+def reorder_text_block_data(path: Path | str):
+    path = Path(path)
+    path_json = path / (f"imgtrans_{path.stem}" + ".json")
+
+    # Glob get all images in folder
+    with open(path_json, encoding="utf8") as f:
+        data = json.load(f)
+
+    pages = data["pages"]
+    pages_keys = list(pages.keys())
+
+    pages_reordered = {}
+    for k in pages_keys:
+        page_info = pages[k]
+        text_bboxes = text_bboxes_from_ballons(page_info)
+        img = Image.open(path / k)
+        panel_bboxes = calc_panel_bboxes_xyxy(img)
+
+        text_reorderered_index = reorder_boxes_indices(text_bboxes, panel_bboxes)
+        pages_reordered[k] = [page_info[i] for i in text_reorderered_index]
+
+    data["pages"] = pages_reordered
+
+    with open(path_json, 'w', encoding="utf8") as f:
+        json.dump(data, f)
+
+
 if __name__ == "__main__":
     save_draw_contours(sys.argv[1])
+    save_panel_text_order(sys.argv[1])
