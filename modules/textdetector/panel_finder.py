@@ -400,6 +400,32 @@ def save_panel_text_order(path: Path | str):
         img_out = draw_bboxes(img, text_bboxes, panel_bboxes)
         img_out.save(pth_out / k)
 
+def reorder_text_block_data(path: Path | str):
+    path = Path(path)
+    path_json = path / (f"imgtrans_{path.stem}" + ".json")
+
+    # Glob get all images in folder
+    with open(path_json, encoding="utf8") as f:
+        data = json.load(f)
+
+    pages = data["pages"]
+    pages_keys = list(pages.keys())
+
+    pages_reordered = {}
+    for k in pages_keys:
+        page_info = pages[k]
+        text_bboxes = text_bboxes_from_ballons(page_info)
+        img = Image.open(path / k)
+        panel_bboxes = calc_panel_bboxes_xyxy(img)
+
+        text_reorderered_index = reorder_boxes_indices(text_bboxes, panel_bboxes)
+        pages_reordered[k] = [page_info[i] for i in text_reorderered_index]
+
+    data["pages"] = pages_reordered
+
+    with open(path_json, 'w', encoding="utf8") as f:
+        json.dump(data, f)
+
 
 if __name__ == "__main__":
     save_draw_contours(sys.argv[1])
