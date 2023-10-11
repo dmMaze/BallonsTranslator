@@ -116,7 +116,7 @@ def build_funcmap(module_str: str, params_names: List[str], func_prefix: str = '
             tgt_func = fallback_func
         funcmap[param] = tgt_func
 
-    return
+    return funcmap
 
 def _b64encode(x: bytes) -> str:
     return base64.b64encode(x).decode("utf-8")
