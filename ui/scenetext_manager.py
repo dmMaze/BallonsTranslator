@@ -1,5 +1,5 @@
 
-from typing import List, Union, Tuple, Any
+from typing import List, Union, Tuple
 import numpy as np
 import copy
 import cv2
@@ -350,8 +350,6 @@ class SceneTextManager(QObject):
         self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
         self.canvas.copy_textblks.connect(self.onCopyBlkItems)
         self.canvas.paste_textblks.connect(self.onPasteBlkItems)
-        self.canvas.copy_src_signal.connect(self.on_copy_src)
-        self.canvas.paste_src_signal.connect(self.on_paste_src)
         self.canvas.format_textblks.connect(self.onFormatTextblks)
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvas.reset_angle.connect(self.onResetAngle)
@@ -651,31 +649,6 @@ class SceneTextManager(QObject):
         if len(blkitem_list) > 0:
             self.canvas.clearSelection()
             self.canvas.push_undo_command(PasteBlkItemsCommand(blkitem_list, pair_widget_list, self))
-    
-    def on_copy_src(self):
-        blks = self.canvas.selected_text_items()
-        if len(blks) == 0:
-            return
-        src_list = [self.pairwidget_list[blk.idx].e_source.toPlainText().strip().replace('\n', ' ') for blk in blks]
-        src_txt = '\n'.join(src_list)
-        self.app_clipborad.setText(src_txt, QClipboard.Mode.Clipboard)
-
-    def on_paste_src(self):
-        blks = self.canvas.selected_text_items()
-        if len(blks) == 0:
-            return
-
-        src_widget_list = [self.pairwidget_list[blk.idx].e_source for blk in blks]
-        text_list = self.app_clipborad.text().split('\n')
-        
-        n_paragraph = min(len(src_widget_list), len(text_list))
-        if n_paragraph < 1:
-            return
-        
-        src_widget_list = src_widget_list[:n_paragraph]
-        text_list = text_list[:n_paragraph]
-
-        self.canvas.push_undo_command(PasteSrcItemsCommand(src_widget_list, text_list))
 
     def onFormatTextblks(self):
         self.apply_fontformat(self.formatpanel.global_format)

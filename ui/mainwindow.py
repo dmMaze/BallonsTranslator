@@ -4,13 +4,13 @@ from typing import List
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
-from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter
+from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QClipboard
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from modules.textdetector.textblock import TextBlock
-
+from modules.translators.trans_chatgpt import GPTTranslator
 from .misc import pt2px, parse_stylesheet
 from .config import ProgramConfig, pcfg
 from .imgtrans_proj import ProjImgTrans
@@ -20,7 +20,7 @@ from .module_manager import ModuleManager
 from .pagesources import SourceDownload
 from .textedit_area import SourceTextEdit, SelectTextMiniMenu
 from .drawingpanel import DrawingPanel
-from .scenetext_manager import SceneTextManager, TextPanel
+from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox, SourceDownloadProgressMessageBox
@@ -156,7 +156,8 @@ class MainWindow(FramelessWindow):
         self.canvas.drop_open_folder.connect(self.dropOpenDir)
         self.canvas.originallayer_trans_slider = self.bottomBar.originalSlider
         self.canvas.textlayer_trans_slider = self.bottomBar.textlayerSlider
-        # self.canvas.masklayer_trans_slider = self.bottomBar.mask
+        self.canvas.copy_src_signal.connect(self.on_copy_src)
+        self.canvas.paste_src_signal.connect(self.on_paste_src)
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
         self.bottomBar.textlayerSlider.valueChanged.connect(self.canvas.setTextLayerTransparencyBySlider)
@@ -1126,3 +1127,37 @@ class MainWindow(FramelessWindow):
         
         for ii, tr in enumerate(translations):
             translations[ii] = self.mtSubWidget.sub_text(tr)
+
+    def on_copy_src(self):
+        blks = self.canvas.selected_text_items()
+        if len(blks) == 0:
+            return
+        
+        if isinstance(self.module_manager.translator, GPTTranslator):
+            src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText() for blk in blks]
+            src_txt = ''
+            for (prompt, num_src) in self.module_manager.translator._assemble_prompts(src_list, max_tokens=4294967295):
+                src_txt += prompt
+            src_txt = src_txt.strip()
+        else:
+            src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText().strip().replace('\n', ' ') for blk in blks]
+            src_txt = '\n'.join(src_list)
+
+        self.st_manager.app_clipborad.setText(src_txt, QClipboard.Mode.Clipboard)
+
+    def on_paste_src(self):
+        blks = self.canvas.selected_text_items()
+        if len(blks) == 0:
+            return
+
+        src_widget_list = [self.st_manager.pairwidget_list[blk.idx].e_source for blk in blks]
+        text_list = self.st_manager.app_clipborad.text().split('\n')
+        
+        n_paragraph = min(len(src_widget_list), len(text_list))
+        if n_paragraph < 1:
+            return
+        
+        src_widget_list = src_widget_list[:n_paragraph]
+        text_list = text_list[:n_paragraph]
+
+        self.canvas.push_undo_command(PasteSrcItemsCommand(src_widget_list, text_list))

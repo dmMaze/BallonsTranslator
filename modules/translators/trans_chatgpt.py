@@ -142,9 +142,16 @@ class GPTTranslator(BaseTranslator):
         else:
             return None
 
-    def _assemble_prompts(self, from_lang: str, to_lang: str, queries: List[str]) -> List[str]:
+    def _assemble_prompts(self, queries: List[str], from_lang: str = None, to_lang: str = None, max_tokens = None) -> List[str]:
+        if from_lang is None:
+            from_lang = self.lang_map[self.lang_source]
+        if to_lang is None:
+            to_lang = self.lang_map[self.lang_target]
+            
         prompt = ''
-        max_tokens = self.max_tokens
+
+        if max_tokens is None:
+            max_tokens = self.max_tokens
         # return_prompt = self.params['return prompt']
         prompt_template = self.params['prompt template']['content'].format(to_lang=to_lang).rstrip()
         prompt += prompt_template
@@ -200,7 +207,7 @@ class GPTTranslator(BaseTranslator):
         queries = src_list
         # return_prompt = self.params['return prompt']
         chat_sample = self.chat_sample
-        for prompt, num_src in self._assemble_prompts(from_lang, to_lang, queries):
+        for prompt, num_src in self._assemble_prompts(queries, from_lang, to_lang):
             ratelimit_attempt = 0
             retry_attempt = 0
             while True:
