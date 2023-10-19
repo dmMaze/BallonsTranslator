@@ -9,6 +9,7 @@ from ..textdetector.textblock import TextBlock
 from ..base import BaseModule, DEVICE_SELECTOR
 from utils.registry import Registry
 from utils.io_utils import text_is_empty
+from utils.logger import logger as LOGGER
 
 TRANSLATORS = Registry('translators')
 register_translator = TRANSLATORS.register_module
@@ -152,7 +153,12 @@ class BaseTranslator(BaseModule):
             text_trans = self.text2textlist(text_trans)
             
         if is_list:
-            assert len(text_trans) == len(text)
+            try:
+                assert len(text_trans) == len(text)
+            except:
+                LOGGER.error('This translator seems to messed up the translation which resulted in inconsistent translated line count.\n \
+                             Set concate_text to False or change textblk_break in the source code may solve the problem.')
+                raise
             # for ii, t in enumerate(text_trans):
             #     for callback in self._postprocess_hooks:
             #         text_trans[ii] = callback(t)
