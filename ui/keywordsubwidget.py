@@ -121,14 +121,11 @@ class KeywordSubWidget(Widget):
                 flag |= re.IGNORECASE
             if not subpair['use_reg']:
                 regexr = re.escape(regexr)
-
             try: 
-                pattern = re.compile(regexr, flag)
-                text = pattern.sub(subpair['sub'], text)
+                text = re.sub(regexr, subpair['sub'], text)
             except Exception as e:
                 LOGGER.error(f'Invalid regex expression at line {ii}:')
                 LOGGER.error(traceback.format_exc())
                 continue
-        #     print(f'k: {k}, {text}')
-        # print('text: ', text)
+
         return text

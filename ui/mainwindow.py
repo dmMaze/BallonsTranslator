@@ -1114,11 +1114,8 @@ class MainWindow(FramelessWindow):
 
     def ocr_postprocess(self, textblocks: List[TextBlock], img, ocr_module=None, **kwargs):
         for blk in textblocks:
-            if isinstance(blk.text, List):
-                for ii, t in enumerate(blk.text):
-                    blk.text[ii] = self.ocrSubWidget.sub_text(t)
-            else:
-                blk.text = self.ocrSubWidget.sub_text(blk.text)
+            text = blk.get_text()
+            blk.text = self.ocrSubWidget.sub_text(text)
 
     def translate_postprocess(self, translations: List[str] = None, textblocks: List[TextBlock] = None, translator = None):
         if not self.postprocess_mt_toggle:
