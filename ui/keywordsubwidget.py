@@ -1,9 +1,9 @@
 import re, traceback
 
-from qtpy.QtWidgets import QHeaderView, QTableView, QAbstractItemView, QListWidget, QHBoxLayout, QListWidgetItem, QWidget, QGridLayout, QPushButton, QVBoxLayout
-from qtpy.QtCore import Qt, Signal, QModelIndex
-from qtpy.QtGui import QContextMenuEvent, QShowEvent, QHideEvent, QStandardItem, QStandardItemModel
-from typing import List, Union, Dict
+from qtpy.QtWidgets import QHeaderView, QTableView, QWidget, QVBoxLayout
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QStandardItem, QStandardItemModel
+from typing import List, Dict
 
 from utils.logger import logger as LOGGER
 from .misc import FontFormat

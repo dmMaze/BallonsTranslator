@@ -1,7 +1,7 @@
 from typing import List, Callable
 
 from modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRANSLATORS, GET_VALID_OCR, \
-    BaseTranslator, DEFAULT_DEVICE
+    BaseTranslator, DEFAULT_DEVICE, GPUINTENSIVE_SET
 from utils.logger import logger as LOGGER
 from .stylewidgets import ConfigComboBox, NoBorderPushBtn, CustomComboBox
 from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
@@ -163,7 +163,7 @@ class ParamWidget(QWidget):
                     if param_key == 'device' and DEFAULT_DEVICE == 'cpu':
                         param_dict['select'] = 'cpu'
                         for ii, device in enumerate(param_dict['options']):
-                            if device == 'cuda':
+                            if device in GPUINTENSIVE_SET:
                                 model = param_widget.model()
                                 item = model.item(ii, 0)
                                 item.setEnabled(False)

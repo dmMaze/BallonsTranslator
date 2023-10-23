@@ -50,6 +50,8 @@ import json
 import httpx
 from langdetect import detect
 
+from utils.logger import logger as LOGGER
+
 
 deeplAPI = "https://www2.deepl.com/jsonrpc"
 headers = {
@@ -179,10 +181,12 @@ class DeepLX(BaseTranslator):
     params: Dict = {
         'delay': 0.0,
     }
+    concate_text = True
+    
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'zh'
         self.lang_map['日本語'] = 'ja'
-        self.lang_map['English'] = 'EN-US'
+        self.lang_map['English'] = 'en'
         self.lang_map['Français'] = 'fr'
         self.lang_map['Deutsch'] = 'de'
         self.lang_map['Italiano'] = 'it'
@@ -207,6 +211,7 @@ class DeepLX(BaseTranslator):
         self.lang_map['Indonesia'] = 'id'
         self.lang_map['украї́нська мо́ва'] = 'uk'
         self.lang_map['한국어'] = 'ko'
+        self.textblk_break = '\n'
 
     def _translate(self, src_list: List[str]) -> List[str]:
         result = []
@@ -224,5 +229,6 @@ class DeepLX(BaseTranslator):
             #     t1 = e
             tl = translate(t,source,target)
             result.append(tl)
+            
         return result 
     
