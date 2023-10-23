@@ -5,6 +5,7 @@ from modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRA
 from utils.logger import logger as LOGGER
 from .stylewidgets import ConfigComboBox, NoBorderPushBtn, CustomComboBox
 from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
+from .config import pcfg
 
 from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit
 from qtpy.QtCore import Qt, Signal
@@ -353,4 +354,11 @@ class OCRConfigPanel(ModuleConfigParseWidget):
         self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
         self.replaceOCRkeywordBtn.setFixedWidth(500)
 
+        self.restoreEmptyOCRChecker = QCheckBox(self.tr("Delete and restore region where OCR return empty string."), self)
+        self.restoreEmptyOCRChecker.clicked.connect(self.on_restore_empty_ocr)
+
         self.vlayout.addWidget(self.replaceOCRkeywordBtn)
+        self.vlayout.addWidget(self.restoreEmptyOCRChecker)
+
+    def on_restore_empty_ocr(self):
+        pcfg.restore_ocr_empty = self.restoreEmptyOCRChecker.isChecked()

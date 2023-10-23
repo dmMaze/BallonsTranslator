@@ -234,7 +234,7 @@ class TextBlock:
 
         return region
 
-    def get_text(self):
+    def get_text(self) -> str:
         if isinstance(self.text, str):
             return self.text
         text = ''

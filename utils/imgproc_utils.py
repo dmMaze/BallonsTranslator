@@ -354,3 +354,60 @@ def square_pad_resize(img: np.ndarray, tgt_size: int):
         img = cv2.resize(img, (tgt_size, tgt_size), interpolation=cv2.INTER_LINEAR)
 
     return img, down_scale_ratio, pad_h, pad_w
+
+
+
+def get_block_mask(xywh: List, mask_array: np.ndarray, angle: int):
+    x, y, w, h = xywh
+    im_h, im_w = mask_array.shape[:2]
+
+    if angle != 0:
+        cx, cy = x + int(round(w / 2)), y + int(round(h / 2))
+        poly = xywh2xyxypoly(np.array([[x, y, w, h]]))
+        poly = rotate_polygons([cx, cy], poly, -angle)
+        
+        x1, x2 = np.min(poly[..., ::2]), np.max(poly[..., ::2])
+        y1, y2 = np.min(poly[..., 1::2]), np.max(poly[..., 1::2])
+        
+        if x2 < 0 or x2 - x1 < 2 or x1 >= im_w - 1 \
+            or y2 < 0 or y2 - y1 < 2 or y1 >= im_h - 1:
+            return None, None
+        else:
+            poly[..., ::2] -= cx - int((x2 - x1) / 2)
+            poly[..., 1::2] -= cy - int((y2 - y1) / 2)
+            itmsk = np.zeros((y2 - y1, x2 - x1), np.uint8)
+            
+            cv2.fillPoly(itmsk, poly.reshape(-1, 4, 2), color=(255))
+            px1, px2, py1, py2 = 0, im_w, 0, im_h
+            if x1 < 0:
+                px1 = -x1
+                x1 = 0
+            if x2 > im_w:
+                px2 = im_w - x2
+                x2 = im_w
+            if y1 < 0:
+                py1 = -y1
+                y1 = 0
+            if y2 > im_h:
+                py2 = im_h - y2
+                y2 = im_h
+            itmsk = itmsk[py1: py2, px1: px2]
+            msk = cv2.bitwise_and(mask_array[y1: y2, x1: x2], itmsk)
+    else:
+        x1, y1, x2, y2 = x, y, x+w, y+h
+        if x2 < 0 or x2 - x1 < 2 or x1 >= im_w - 1 \
+            or y2 < 0 or y2 - y1 < 2 or y1 >= im_h - 1:
+            return None, None
+        else:
+            if x1 < 0:
+                x1 = 0
+            if x2 > im_w:
+                x2 = im_w
+            if y1 < 0:
+                y1 = 0
+            if y2 > im_h:
+                y2 = im_h
+            msk = mask_array[y1: y2, x1: x2]
+
+    return msk, [x1, y1, x2, y2]
+        

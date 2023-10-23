@@ -484,5 +484,6 @@ class ConfigPanel(Widget):
         self.saladict_shortcut.setKeySequence(pcfg.saladict_shortcut)
         self.searchurl_combobox.setCurrentText(pcfg.search_url)
         self.src_link_textbox.setText(pcfg.src_link_flag)
+        self.ocr_config_panel.restoreEmptyOCRChecker.setChecked(pcfg.restore_ocr_empty)
 
         self.blockSignals(False)

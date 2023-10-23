@@ -93,9 +93,9 @@ class ProgramConfig(Config):
     saladict_shortcut: str = "Alt+S"
     search_url: str = "https://www.google.com/search?q="
     ocr_sublist: dict = field(default_factory=lambda: [])
+    restore_ocr_empty: bool = False
     mt_sublist: dict = field(default_factory=lambda: [])
     display_lang: str = C.DEFAULT_DISPLAY_LANG
-
 
 
     @staticmethod

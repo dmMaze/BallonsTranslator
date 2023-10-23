@@ -242,11 +242,25 @@ class ProjImgTrans:
         if imgname is None:
             imgname = self.current_img
         return osp.join(self.mask_dir(), osp.splitext(imgname)[0]+'.png')
+    
+    def load_mask_by_imgname(self, imgname: str) -> np.ndarray:
+        mask = None
+        mp = self.get_mask_path(imgname)
+        if osp.exists(mp):
+            mask = imread(mp, cv2.IMREAD_GRAYSCALE)
+        return mask
 
     def get_inpainted_path(self, imgname: str = None) -> str:
         if imgname is None:
             imgname = self.current_img
         return osp.join(self.inpainted_dir(), osp.splitext(imgname)[0]+'.png')
+    
+    def load_inpainted_by_imgname(self, imgname: str) -> np.ndarray:
+        inpainted = None
+        mp = self.get_inpainted_path(imgname)
+        if osp.exists(mp):
+            inpainted = imread(mp)
+        return inpainted
 
     def get_result_path(self, imgname: str) -> str:
         return osp.join(self.result_dir(), osp.splitext(imgname)[0]+'.png')

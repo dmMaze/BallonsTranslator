@@ -10,8 +10,8 @@ from qtpy.QtWidgets import QMessageBox
 
 from utils.logger import logger as LOGGER
 from utils.registry import Registry
-from utils.imgproc_utils import enlarge_window
-from utils.io_utils import imread
+from utils.imgproc_utils import enlarge_window, get_block_mask
+from utils.io_utils import imread, text_is_empty
 from modules.translators import MissingTranslatorParams
 from modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     GET_VALID_TRANSLATORS, GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_OCR, \
@@ -346,13 +346,16 @@ class ImgtransThread(QThread):
 
         for imgname in self.imgtrans_proj.pages:
             img = self.imgtrans_proj.read_img(imgname)
+            im_h, im_w = img.shape[:2]
 
             mask = blk_list = None
+            need_save_mask = False
+            blk_removed: List[TextBlock] = []
             if cfg_module.enable_detect:
                 mask, blk_list = self.textdetector.detect(img)
                 if self.mask_postprocess is not None:
                     mask = self.mask_postprocess(mask)
-                self.imgtrans_proj.save_mask(imgname, mask)
+                need_save_mask = True
                 self.detect_counter += 1
                 self.update_detect_progress.emit(self.detect_counter)
                 self.imgtrans_proj.pages[imgname] = blk_list
@@ -363,7 +366,47 @@ class ImgtransThread(QThread):
             if cfg_module.enable_ocr:
                 self.ocr.run_ocr(img, blk_list)
                 self.ocr_counter += 1
+
+                if pcfg.restore_ocr_empty:
+                    blk_list_updated = []
+                    for blk in blk_list:
+                        text = blk.get_text()
+                        if text_is_empty(text):
+                            blk_removed.append(blk)
+                        else:
+                            blk_list_updated.append(blk)
+
+                    if len(blk_removed) > 0:
+                        blk_list.clear()
+                        blk_list += blk_list_updated
+                        
+                        if mask is None:
+                            mask = self.imgtrans_proj.load_mask_by_imgname(imgname)
+                        if mask is not None:
+                            inpainted = None
+                            if not cfg_module.enable_inpaint:
+                                inpainted = self.imgtrans_proj.load_inpainted_by_imgname(imgname)
+                            for blk in blk_removed:
+                                xywh = blk.bounding_rect()
+                                blk_mask, xyxy = get_block_mask(xywh, mask, blk.angle)
+                                x1, y1, x2, y2 = xyxy
+                                if blk_mask is not None:
+                                    mask[y1: y2, x1: x2] = 0
+                                    if inpainted is not None:
+                                        mskpnt = np.where(blk_mask)
+                                        inpainted[y1: y2, x1: x2][mskpnt] = img[y1: y2, x1: x2][mskpnt]
+                                    need_save_mask = True
+                            if inpainted is not None and need_save_mask:
+                                self.imgtrans_proj.save_inpainted(imgname, inpainted)
+                            if need_save_mask:
+                                self.imgtrans_proj.save_mask(imgname, mask)
+                                need_save_mask = False
+
                 self.update_ocr_progress.emit(self.ocr_counter)
+
+            if need_save_mask and mask is not None:
+                self.imgtrans_proj.save_mask(imgname, mask)
+                need_save_mask = False
 
             if cfg_module.enable_translate:
                 try:
@@ -380,9 +423,7 @@ class ImgtransThread(QThread):
                         
             if cfg_module.enable_inpaint:
                 if mask is None:
-                    mp = self.imgtrans_proj.get_mask_path(imgname)
-                    if osp.exists(mp):
-                        mask = imread(mp, cv2.IMREAD_GRAYSCALE)
+                    mask = self.imgtrans_proj.load_mask_by_imgname(imgname)
                     
                 if mask is not None:
                     inpainted = self.inpainter.inpaint(img, mask, blk_list)
@@ -390,6 +431,9 @@ class ImgtransThread(QThread):
                     
                 self.inpaint_counter += 1
                 self.update_inpaint_progress.emit(self.inpaint_counter)
+            else:
+                if len(blk_removed) > 0:
+                    self.imgtrans_proj.load_mask_by_imgname
         
     def detect_finished(self) -> bool:
         if self.imgtrans_proj is None:
