@@ -17,7 +17,7 @@ from .canvas import Canvas
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
 from .misc import FontFormat, pt2px
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
-from utils.imgproc_utils import extract_ballon_region, rotate_polygons
+from utils.imgproc_utils import extract_ballon_region, rotate_polygons, get_block_mask
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
 from .fontformatpanel import FontFormatPanel
@@ -68,7 +68,6 @@ class DeleteBlkItemsCommand(QUndoCommand):
         img_array = self.canvas.imgtrans_proj.inpainted_array
         mask_array = self.canvas.imgtrans_proj.mask_array
         original_array = self.canvas.imgtrans_proj.img_array
-        im_h, im_w = img_array.shape[:2]
 
         self.search_rstedit_list: List[SourceTextEdit] = []
         self.search_counter_list = []
@@ -87,55 +86,9 @@ class DeleteBlkItemsCommand(QUndoCommand):
 
             if mode == 1:
                 is_empty = False
-                x, y, w, h = blkitem.absBoundingRect()
-                if blkitem.rotation() != 0:
-                    cx, cy = x + int(round(w / 2)), y + int(round(h / 2))
-                    poly = xywh2xyxypoly(np.array([[x, y, w, h]]))
-                    poly = rotate_polygons([cx, cy], poly, -blkitem.rotation())
-                    
-                    x1, x2 = np.min(poly[..., ::2]), np.max(poly[..., ::2])
-                    y1, y2 = np.min(poly[..., 1::2]), np.max(poly[..., 1::2])
-                    
-                    if x2 < 0 or x2 - x1 < 2 or x1 >= im_w - 1 \
-                        or y2 < 0 or y2 - y1 < 2 or y1 >= im_h - 1:
-                        is_empty = True
-                    else:
-                        poly[..., ::2] -= cx - int((x2 - x1) / 2)
-                        poly[..., 1::2] -= cy - int((y2 - y1) / 2)
-                        itmsk = np.zeros((y2 - y1, x2 - x1), np.uint8)
-                        
-                        cv2.fillPoly(itmsk, poly.reshape(-1, 4, 2), color=(255))
-                        px1, px2, py1, py2 = 0, im_w, 0, im_h
-                        if x1 < 0:
-                            px1 = -x1
-                            x1 = 0
-                        if x2 > im_w:
-                            px2 = im_w - x2
-                            x2 = im_w
-                        if y1 < 0:
-                            py1 = -y1
-                            y1 = 0
-                        if y2 > im_h:
-                            py2 = im_h - y2
-                            y2 = im_h
-                        itmsk = itmsk[py1: py2, px1: px2]
-                        msk = cv2.bitwise_and(mask_array[y1: y2, x1: x2], itmsk)
-
-                else:
-                    x1, y1, x2, y2 = x, y, x+w, y+h
-                    if x2 < 0 or x2 - x1 < 2 or x1 >= im_w - 1 \
-                        or y2 < 0 or y2 - y1 < 2 or y1 >= im_h - 1:
-                        is_empty = True
-                    else:
-                        if x1 < 0:
-                            x1 = 0
-                        if x2 > im_w:
-                            x2 = im_w
-                        if y1 < 0:
-                            y1 = 0
-                        if y2 > im_h:
-                            y2 = im_h
-                        msk = mask_array[y1: y2, x1: x2]
+                msk, (x1, y1, x2, y2) = get_block_mask(blkitem.absBoundingRect(), mask_array, blkitem.rotation())
+                if msk is None:
+                    is_empty = True
                 if is_empty:
                     self.undo_img_list.append(None)
                     self.redo_img_list.append(None)
@@ -146,7 +99,6 @@ class DeleteBlkItemsCommand(QUndoCommand):
                     self.undo_img_list.append(np.copy(img_array[y1: y2, x1: x2]))
                     self.redo_img_list.append(np.copy(original_array[y1: y2, x1: x2]))
                     self.inpaint_rect_lst.append([x1, y1, x2, y2])
-
 
             rst_idx = self.sw.get_result_edit_index(pw.e_trans)
             if rst_idx != -1:
