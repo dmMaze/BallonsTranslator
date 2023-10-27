@@ -85,7 +85,6 @@ class ProgramConfig(Config):
     gsearch_regex: bool = False
     gsearch_range: int = 0
     darkmode: bool = False
-    src_link_flag: str = ''
     textselect_mini_menu: bool = True
     fold_textarea: bool = False
     show_source_text: bool = True

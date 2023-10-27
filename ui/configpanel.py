@@ -268,7 +268,6 @@ class ConfigTable(QTreeView):
 class ConfigPanel(Widget):
 
     save_config = Signal()
-    update_source_download_status = Signal(str)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -320,10 +319,6 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
-
-        generalConfigPanel.addTextLabel(label_sources)
-        self.src_link_textbox, self.src_link_sub_block = generalConfigPanel.addLineEdit('Source url')
-        self.src_link_textbox.textChanged.connect(self.on_source_link_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
@@ -437,11 +432,6 @@ class ConfigPanel(Widget):
     def on_effect_flag_changed(self):
         pcfg.let_fnteffect_flag = self.let_effect_combox.currentIndex()
 
-
-    def on_source_link_changed(self):
-        pcfg.src_link_flag = self.src_link_textbox.text()
-        self.update_source_download_status.emit(pcfg.src_link_flag)
-
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
         self.configTable.setCurrentItem(idx0, idx1)
@@ -449,11 +439,6 @@ class ConfigPanel(Widget):
 
     def focusOnInpaint(self):
         idx0, idx1 = self.inpaint_sub_block.idx0, self.inpaint_sub_block.idx1
-        self.configTable.setCurrentItem(idx0, idx1)
-        self.configTable.tableitem_pressed.emit(idx0, idx1)
-
-    def focusOnSourceDownload(self):
-        idx0, idx1 = self.src_link_sub_block.idx0, self.src_link_sub_block.idx1
         self.configTable.setCurrentItem(idx0, idx1)
         self.configTable.tableitem_pressed.emit(idx0, idx1)
 
@@ -483,7 +468,6 @@ class ConfigPanel(Widget):
         self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
         self.saladict_shortcut.setKeySequence(pcfg.saladict_shortcut)
         self.searchurl_combobox.setCurrentText(pcfg.search_url)
-        self.src_link_textbox.setText(pcfg.src_link_flag)
         self.ocr_config_panel.restoreEmptyOCRChecker.setChecked(pcfg.restore_ocr_empty)
 
         self.blockSignals(False)

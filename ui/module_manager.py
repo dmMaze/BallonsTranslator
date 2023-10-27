@@ -510,7 +510,6 @@ class ModuleManager(QObject):
     imgtrans_proj: ProjImgTrans = None
 
     update_translator_status = Signal(str, str, str)
-    update_source_download_status = Signal(str)
     update_inpainter_status = Signal(str)
     finish_translate_page = Signal(str)
     canvas_inpaint_finished = Signal(dict)
@@ -587,8 +586,6 @@ class ModuleManager(QObject):
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.setOCR)
         OCRBase.register_postprocess_hooks(ocr_postprocess)
-
-        self.on_finish_setsourcedownload()
 
         self.setTextDetector()
         self.setOCR()
@@ -796,10 +793,6 @@ class ModuleManager(QObject):
         else:
             LOGGER.error('invalid translator')
             self.update_translator_status.emit(self.tr('Invalid'), '', '')
-
-    def on_finish_setsourcedownload(self):
-        if pcfg.src_link_flag:
-            self.update_source_download_status.emit(pcfg.src_link_flag)
         
     def on_finish_translate_page(self, page_key: str):
         self.finish_translate_page.emit(page_key)

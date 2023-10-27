@@ -17,13 +17,12 @@ from .imgtrans_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
-from .pagesources import SourceDownload
 from .textedit_area import SourceTextEdit, SelectTextMiniMenu
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
-from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox, SourceDownloadProgressMessageBox
+from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox
 from .preset_widget import PresetPanel
 from .constants import CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
@@ -78,7 +77,6 @@ class MainWindow(FramelessWindow):
 
     def setStyleSheet(self, styleSheet: str) -> None:
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
-        self.source_download_msgbox.setStyleSheet(styleSheet)
         self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
         self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
         # sel_menu_size = self.selectext_minimenu.sizeHint()
@@ -137,8 +135,6 @@ class MainWindow(FramelessWindow):
         self.bottomBar.textedit_checkchanged.connect(self.setTextEditMode)
         self.bottomBar.paintmode_checkchanged.connect(self.setPaintMode)
         self.bottomBar.textblock_checkchanged.connect(self.setTextBlockMode)
-
-        self.configPanel.src_link_textbox.setText(pcfg.src_link_flag)
 
         mainHLayout = QHBoxLayout()
         mainHLayout.addWidget(self.leftBar)
@@ -227,7 +223,6 @@ class MainWindow(FramelessWindow):
         self.mainvlayout = mainVBoxLayout
         self.comicTransSplitter.setStretchFactor(1, 10)
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
-        self.source_download_msgbox = SourceDownloadProgressMessageBox()
         self.resetStyleSheet()
 
     def setupConfig(self):
@@ -251,8 +246,6 @@ class MainWindow(FramelessWindow):
 
         self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
         module_manager.update_translator_status.connect(self.updateTranslatorStatus)
-        module_manager.update_source_download_status.connect(self.updateSourceDownloadStatus)
-        self.configPanel.update_source_download_status.connect(self.updateSourceDownloadStatus)
         module_manager.update_inpainter_status.connect(self.updateInpainterStatus)
         module_manager.finish_translate_page.connect(self.finishTranslatePage)
         module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
@@ -265,9 +258,7 @@ class MainWindow(FramelessWindow):
         module_manager.imgtrans_thread.post_process_mask = self.drawingPanel.rectPanel.post_process_mask
 
         self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
-        self.leftBar.run_sync_source.connect(self.on_run_sync_source)
         self.bottomBar.inpaint_btn_clicked.connect(self.inpaintBtnClicked)
-        self.bottomBar.source_download_btn_clicked.connect(self.SourceDownloadBtnClicked)
         self.bottomBar.translatorStatusbtn.clicked.connect(self.translatorStatusBtnPressed)
         self.bottomBar.transTranspageBtn.run_target.connect(self.on_transpagebtn_pressed)
 
@@ -282,11 +273,6 @@ class MainWindow(FramelessWindow):
 
         self.configPanel.setupConfig()
         self.configPanel.save_config.connect(self.save_config)
-
-        self.source_download = SourceDownload(pcfg, self.imgtrans_proj, self.source_download_msgbox)
-        self.source_download.open_downloaded_proj.connect(self.openDir)
-        self.source_download.update_progress_bar.connect(self.source_download_msgbox.updateDownloadBar)
-        self.source_download.finished_downloading.connect(self.on_finished_sync_source)
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
@@ -799,10 +785,6 @@ class MainWindow(FramelessWindow):
         self.leftBar.configChecker.setChecked(True)
         self.configPanel.focusOnInpaint()
 
-    def SourceDownloadBtnClicked(self):
-        self.leftBar.configChecker.setChecked(True)
-        self.configPanel.focusOnSourceDownload()
-
     def updateTranslatorStatus(self, translator: str, source: str, target: str):
         if translator == '':
             self.bottomBar.translatorStatusbtn.hide()
@@ -811,15 +793,6 @@ class MainWindow(FramelessWindow):
             self.bottomBar.translatorStatusbtn.updateStatus(translator, source, target)
             self.bottomBar.translatorStatusbtn.show()
             self.bottomBar.transTranspageBtn.show()
-
-    def updateSourceDownloadStatus(self, url: str):
-        if url == '':
-            self.bottomBar.sourceStatusBtn.hide()
-            self.bottomBar.sourceStatusBtn.hide()
-        else:
-            self.bottomBar.sourceStatusBtn.updateStatus(url)
-            self.bottomBar.sourceStatusBtn.show()
-            self.bottomBar.sourceStatusBtn.show()
 
     def updateInpainterStatus(self, inpainter: str):
         self.bottomBar.inpainterStatBtn.updateStatus(inpainter)
@@ -991,13 +964,6 @@ class MainWindow(FramelessWindow):
                                     size.height() - msg_size.height()))
         self.module_manager.progress_msgbox.move(p)
 
-    def on_source_download_progressbox_showed(self):
-        msg_size = self.source_download_msgbox.size()
-        size = self.size()
-        p = self.mapToGlobal(QPoint(size.width() - msg_size.width(),
-                                    size.height() - msg_size.height()))
-        self.source_download_msgbox.move(p)
-
     def on_closebtn_clicked(self):
         if self.imsave_thread.isRunning():
             self.imsave_thread.finished.connect(self.close)
@@ -1038,18 +1004,6 @@ class MainWindow(FramelessWindow):
                         textblk.font_size = textblk.detected_font_size
                     textblk.vertical = textblk.src_is_vertical
         self.module_manager.runImgtransPipeline()
-
-    def on_run_sync_source(self):
-        self.source_download_msgbox.show_all_bars()
-        self.source_download_msgbox.zero_progress()
-        self.source_download_msgbox.show()
-        self.on_source_download_progressbox_showed()
-        self.source_download.start()
-
-    def on_finished_sync_source(self):
-        self.source_download_msgbox.hide_all_bars()
-        self.source_download_msgbox.hide()
-
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()

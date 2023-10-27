@@ -37,8 +37,6 @@ class ProjImgTrans:
         self.new_pages: List[str] = []
         self.proj_path: str = None
 
-        self.src_download_link: str = ''
-
         self.current_img: str = None
         self.img_array: np.ndarray = None
         self.mask_array: np.ndarray = None
@@ -88,9 +86,6 @@ class ProjImgTrans:
 
     def result_dir(self):
         return osp.join(self.directory, 'result')
-    
-    def init_properties(self, src_download_link: str = '', **kwargs):
-        self.src_download_link = src_download_link
 
     def load_from_dict(self, proj_dict: dict):
         self.set_current_img(None)
@@ -113,7 +108,6 @@ class ProjImgTrans:
                 self._idx2pagename[ii] = imname
             for imname in not_found_pages:
                 self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
-            self.init_properties(**proj_dict)
         except Exception as e:
             raise ProjectNotSupportedException(e)
         set_img_failed = False
@@ -192,7 +186,6 @@ class ProjImgTrans:
             self.pages[imgname] = []
             self._pagename2idx[imgname] = ii
             self._idx2pagename[ii] = imgname
-        self.init_properties()
         self.set_current_img_byidx(0)
         self.save()
         
@@ -209,7 +202,6 @@ class ProjImgTrans:
             'directory': self.directory,
             'pages': pages,
             'current_img': self.current_img,
-            'src_download_link': self.src_download_link
         }
 
     def read_img(self, imgname: str) -> np.ndarray:

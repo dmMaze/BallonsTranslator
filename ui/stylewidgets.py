@@ -158,27 +158,6 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         self.translate_bar.hide()
         self.inpaint_bar.hide()
 
-class SourceDownloadProgressMessageBox(ProgressMessageBox):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(None, *args, **kwargs)
-
-        self.download_bar = TaskProgressBar(self.tr('Downloading: '), self)
-
-        layout = self.layout()
-        layout.addWidget(self.download_bar)
-
-    def updateDownloadBar(self, value: int, msg: str = ''):
-        self.download_bar.updateProgress(value, msg)
-
-    def zero_progress(self):
-        self.updateDownloadBar(0)
-
-    def show_all_bars(self):
-        self.download_bar.show()
-
-    def hide_all_bars(self):
-        self.download_bar.hide()
-
 
 class ColorPicker(QLabel):
     colorChanged = Signal(bool)
