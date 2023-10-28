@@ -283,7 +283,6 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
-        label_sources = self.tr('Sources')
         label_lettering = self.tr('Lettering')
         label_saladict = self.tr("SalaDict")
     
@@ -295,7 +294,6 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_sources, CONFIG_FONTSIZE_TABLE),
             TableItem(label_lettering, CONFIG_FONTSIZE_TABLE),
             TableItem(label_saladict, CONFIG_FONTSIZE_TABLE)
         ])
