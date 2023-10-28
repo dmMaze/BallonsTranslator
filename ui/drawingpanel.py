@@ -64,7 +64,7 @@ class InpaintPanel(Widget):
         super().__init__(*args, **kwargs)
 
         self.inpainter_panel = inpainter_panel
-        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px')
+        self.thicknessSlider = PaintQSlider()
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         
@@ -118,10 +118,10 @@ class PenConfigPanel(Widget):
     colorChanged = Signal(list)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.thicknessSlider = PaintQSlider(self.tr('pen thickness ') + 'value px')
+        self.thicknessSlider = PaintQSlider()
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
-        self.alphaSlider = PaintQSlider(self.tr('alpha value') + ' value')
+        self.alphaSlider = PaintQSlider()
         self.alphaSlider.setRange(0, 255)
         self.alphaSlider.setValue(255)
         self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
@@ -193,7 +193,7 @@ class RectPanel(Widget):
         self.inpainter_panel = inpainter_panel
         self.dilate_label = ToolNameLabel()
         self.dilate_label.setText(self.tr('Dilate'))
-        self.dilate_slider = PaintQSlider(self.tr('kernel size: ') + 'value px')
+        self.dilate_slider = PaintQSlider()
         self.dilate_slider.setRange(0, 100)
         self.dilate_slider.valueChanged.connect(self.dilate_ksize_changed)
         self.methodComboBox = QComboBox()
@@ -337,7 +337,7 @@ class DrawingPanel(Widget):
         self.toolConfigStackwidget.addWidget(self.penConfigPanel)
         self.toolConfigStackwidget.addWidget(self.rectPanel)
 
-        self.maskTransperancySlider = PaintQSlider(' value%')
+        self.maskTransperancySlider = PaintQSlider()
         self.maskTransperancySlider.valueChanged.connect(self.canvas.setMaskTransparencyBySlider)
         masklayout = QHBoxLayout()
         masklayout.addWidget(ToolNameLabel(220, self.tr('Mask Transparency')))

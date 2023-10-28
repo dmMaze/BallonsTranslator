@@ -442,10 +442,8 @@ class TitleBar(Widget):
     def onMaxBtnClicked(self):
         if self.mainwindow.isMaximized():
             self.mainwindow.showNormal()
-            self.mainwindow.updateGeometry()
         else:
             self.mainwindow.showMaximized()
-            self.mainwindow.updateGeometry()
 
     def onMinBtnClicked(self):
         self.mainwindow.showMinimized()
@@ -543,12 +541,12 @@ class BottomBar(Widget):
         self.textblockChecker.setObjectName('TextblockChecker')
         self.textblockChecker.clicked.connect(self.onTextblockCheckerClicked)
         
-        self.originalSlider = PaintQSlider(self.tr("Original image transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
-        self.originalSlider.setFixedWidth(130)
+        self.originalSlider = PaintQSlider(self.tr("Original image transparency"), Qt.Orientation.Horizontal, self, minimumWidth=90)
+        self.originalSlider.setFixedWidth(150)
         self.originalSlider.setRange(0, 100)
 
-        self.textlayerSlider = PaintQSlider(self.tr("Lettering layer transparency: ") + "value%", Qt.Orientation.Horizontal, self, minimumWidth=90)
-        self.textlayerSlider.setFixedWidth(130)
+        self.textlayerSlider = PaintQSlider(self.tr("Lettering layer transparency"), Qt.Orientation.Horizontal, self, minimumWidth=90)
+        self.textlayerSlider.setFixedWidth(150)
         self.textlayerSlider.setValue(100)
         self.textlayerSlider.setRange(0, 100)
         

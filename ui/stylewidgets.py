@@ -216,7 +216,7 @@ class PaintQSlider(QSlider):
 
     mouse_released = Signal()
 
-    def __init__(self, draw_content, orientation=Qt.Orientation.Horizontal, *args, **kwargs):
+    def __init__(self, draw_content = None, orientation=Qt.Orientation.Horizontal, *args, **kwargs):
         super(PaintQSlider, self).__init__(orientation, *args, **kwargs)
         self.draw_content = draw_content
         self.pressed: bool = False
@@ -246,50 +246,65 @@ class PaintQSlider(QSlider):
         rect = self.style().subControlRect(
             QStyle.CC_Slider, option, QStyle.SC_SliderHandle, self)
         
+        value = self.value()
+        
         # 画中间白色线条
         painter.setPen(QColor(85,85,96))
         painter.setBrush(QColor(85,85,96))
         if self.orientation() == Qt.Orientation.Horizontal:
             y = self.height() / 2
-            painter.drawLine(QPointF(0, y), QPointF(self.width(), y))
+            painter.drawLine(QPointF(4, y), QPointF(self.width() - 8, y))
         else:
             x = self.width() / 2
             painter.drawLine(QPointF(x, 0), QPointF(x, self.height()))
         # 画圆
         painter.setPen(Qt.NoPen)
+
+        r = rect.height() // 2
+        vr = int((value - self.minimum()) / (self.maximum() - self.minimum()) * r)
+        rect = QRect(rect.x() - vr, rect.y(), rect.width(), rect.width())
+
         if option.state & QStyle.State_MouseOver:  # 双重圆
-            # 半透明大圆
+            
             r = rect.height() / 2
             painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,100))
             painter.drawRoundedRect(rect, r, r)
             # 实心小圆(上下左右偏移4)
-            rect = rect.adjusted(4, 4, -4, -4)
-            r = rect.height() / 2
+            rect_inner = rect.adjusted(4, 4, -4, -4)
+            r = rect_inner.height() // 2
             painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,255))
-            painter.drawRoundedRect(rect, r, r)
-            if self.draw_content is not None:
-                painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
-                font = painter.font()
-                font.setPointSize(8)
-                fm = QFontMetrics(font)
-                painter.setFont(font)
-                draw_content = self.draw_content.replace("value", str(self.value()))
-                textw = fm.width(draw_content)
+            painter.drawRoundedRect(rect_inner, r, r)
 
-                if self.orientation() == Qt.Orientation.Horizontal:  # 在上方绘制文字
-                    x, y = rect.x() - textw/2 + rect.width()/2, rect.y() - rect.height()
-                    x = min(max(0, x), self.width()-textw)
-                    # x = rect.x()
-                else:  # 在左侧绘制文字
-                    x, y = rect.x() - rect.width(), rect.y()
+            painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
+            font = painter.font()
+            font.setPointSize(8)
+            fm = QFontMetrics(font)
+            painter.setFont(font)
+
+            is_hor = self.orientation() == Qt.Orientation.Horizontal
+            if is_hor:  # 在上方绘制文字
+                x, y = rect.x(), rect.y()
+                dx, dy = x, y
+                if value < (self.maximum() + self.minimum()) / 2:
+                    dx += rect.width()
+                else:
+                    dx -= rect.width()
+            else:  # 在左侧绘制文字
+                x, y = rect.x() - rect.width(), rect.y()
+
+
+            painter.drawText(
+                dx, self.height() - fm.height(), str(value), 
+            )
+
+            if self.draw_content is not None:
                 painter.drawText(
-                    int(x), int(y)-10, textw, rect.height()+20,
-                    Qt.AlignmentFlag.AlignCenter, self.draw_content.replace("value", str(self.value()))
+                    0, dy, self.draw_content, 
                 )
 
         else:  # 实心圆
             rect = rect.adjusted(4, 4, -4, -4)
-            r = rect.height() / 2
+            r = rect.height() // 2
             painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,200))
             painter.drawRoundedRect(rect, r, r)
 

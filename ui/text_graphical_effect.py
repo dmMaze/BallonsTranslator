@@ -93,7 +93,7 @@ class TextEffectPanel(Widget):
 
         # opacity
         opacity_label = QLabel(self.tr('Opacity'))
-        self.opacity_slider = PaintQSlider(self.tr('Opacity: ') + 'value %')
+        self.opacity_slider = PaintQSlider(self.tr('Opacity'))
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.valueChanged.connect(self.on_opacity_changed)
 
@@ -102,16 +102,16 @@ class TextEffectPanel(Widget):
         self.shadow_color_picker = ColorPicker(self)
         self.shadow_color_picker.colorChanged.connect(self.on_shadow_color_changed)
         self.shadow_color_picker.setToolTip(self.tr('Change shadow color'))
-        self.shadow_radius_slider = PaintQSlider(self.tr('radius: ') + 'value %')
+        self.shadow_radius_slider = PaintQSlider(self.tr('radius'))
         self.shadow_radius_slider.setRange(0, 200)
         self.shadow_radius_slider.valueChanged.connect(self.on_shadow_radius_changed)
-        self.shadow_strength_slider = PaintQSlider(self.tr('strength: ') + 'value %')
+        self.shadow_strength_slider = PaintQSlider(self.tr('strength'))
         self.shadow_strength_slider.setRange(0, 300)
         self.shadow_strength_slider.valueChanged.connect(self.on_shadow_strength_changed)
-        self.shadow_xoffset_slider = PaintQSlider(self.tr('x offset: ') + 'value %')
+        self.shadow_xoffset_slider = PaintQSlider(self.tr('x offset'))
         self.shadow_xoffset_slider.setRange(-100, 100)
         self.shadow_xoffset_slider.valueChanged.connect(self.on_shadow_xoffset_changed)
-        self.shadow_yoffset_slider = PaintQSlider(self.tr('y offset: ') + 'value %')
+        self.shadow_yoffset_slider = PaintQSlider(self.tr('y offset'))
         self.shadow_yoffset_slider.setRange(-100, 100)
         self.shadow_yoffset_slider.valueChanged.connect(self.on_shadow_yoffset_changed)
 

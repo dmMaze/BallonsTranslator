@@ -57,7 +57,6 @@ class MainWindow(FramelessWindow):
         
         super().__init__(*args, **kwargs)
 
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
         self.app = app
         self.setupThread()
         self.setupUi()
@@ -79,8 +78,6 @@ class MainWindow(FramelessWindow):
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
         self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
         self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
-        # sel_menu_size = self.selectext_minimenu.sizeHint()
-        # self.selectext_minimenu.setFixedWidth(sel_menu_size.width())
         return super().setStyleSheet(styleSheet)
 
     def setupThread(self):

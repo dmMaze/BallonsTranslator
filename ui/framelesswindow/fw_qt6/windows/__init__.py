@@ -3,11 +3,14 @@ import sys
 from ctypes import cast
 from ctypes.wintypes import LPRECT, MSG
 
+from pkg_resources import parse_version
 import win32con
 import win32gui
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCloseEvent, QCursor
 from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtCore import PYQT_VERSION_STR
+installed_version = PYQT_VERSION_STR
 
 # from ..titlebar import TitleBar
 from ..utils import win32_utils as win_utils
@@ -42,7 +45,6 @@ class WindowsFramelessWindow(QWidget):
         # solve issue #5
         self.windowHandle().screenChanged.connect(self.__onScreenChanged)
 
-        self.resize(500, 500)
         # self.titleBar.raise_()
 
     # def setTitleBar(self, titleBar):
