@@ -369,7 +369,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     if char_idx < sel_end and char_idx >= sel_start:
                         selected = True
                 
-                natral_shifted = max(line.naturalTextWidth() - cfmt.br.width(), 0)
+                # natral_shifted = max(line.naturalTextWidth() - cfmt.br.width(), 0)
+                natral_shifted = 0
                 if char in PUNSET_VERNEEDROTATE:
                     char = blk_text[char_idx]
                     line_x, line_y = line.x(), line.y()
@@ -402,27 +403,27 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 elif char in PUNSET_PAUSEORSTOP:
                     pun_tbr, pun_br = cfmt.punc_rect(char)
-                    act_rect = cfmt.punc_actual_rect(line, char, cache=True)
-                    yoff = -act_rect[1]
+                    if char in {'⁇', '⁉', '⁈', '‼'}:
+                        act_rect = cfmt.punc_actual_rect(line, char, cache=True)
+                        yoff = -act_rect[1]
+                    else:
+                        yoff = min(pun_br.top() - pun_tbr.top(), cfmt.br.top() - cfmt.tbr.top())
                     xoff = -pun_tbr.left()
-                    yoff += self.draw_shifted
                     if num_lspaces > 0:
-                        if natral_shifted == 0:
-                            natral_shifted = num_lspaces * cfmt.space_width
-                        else:
-                            natral_shifted -= self.draw_shifted
+                        natral_shifted = num_lspaces * cfmt.space_width
                         xoff -= natral_shifted
                         yoff += natral_shifted
                     if self.punc_align_center or char in {'⁇', '⁉', '⁈', '‼'}:
                         xoff += (cfmt.br.width() - pun_tbr.width()) / 2
                     else:
                         xoff += cfmt.br.width() - pun_tbr.width()
-                        xoff -= self.draw_shifted
                     self.line_draw(painter, line, xoff, yoff, selected, selection)
 
                 else:
+                    if num_lspaces > 0:
+                        natral_shifted = num_lspaces * cfmt.space_width
                     yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - fm.ascent())
-                    self.line_draw(painter, line, 0, yoff, selected, selection)
+                    self.line_draw(painter, line, -natral_shifted, yoff + natral_shifted, selected, selection)
 
             block = block.next()
 
