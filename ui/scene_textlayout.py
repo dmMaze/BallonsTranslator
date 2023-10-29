@@ -32,7 +32,7 @@ PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏'
 PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF)
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=512)
 def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetrics:
     font = QFont(ffamily, int(size), weight, italic)
     font.setPointSizeF(size)
@@ -104,16 +104,16 @@ class CharFontFormat:
 
     @cached_property
     def br(self) -> QRectF:
-        # return get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())[1]
+        return get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())[1]
         _, br1 = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
-        _, br2 = get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())
+        _, br2 = get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())
         return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
 
     @cached_property
     def tbr(self) -> QRectF:
-        # return get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())[0]
+        return get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())[0]
         br1, _ = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
-        br2, _ = get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())
+        br2, _ = get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())
         return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
 
     @cached_property
@@ -381,14 +381,21 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         yoff =  -non_bracket_br[1] - non_bracket_br[3]
                         if self.punc_align_center:
-                            yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
+                            if TEXTLAYOUT_QTVERSION:
+                                yoff = -non_bracket_br[1] - cfmt.tbr.width() / 2
+                            else:
+                                yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                         else:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                     else:   # () （）
-                        non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
+                        if ON_MACOS:
+                            non_bracket_br = cfmt.punc_actual_rect(line, char, cache=False)
+                        else:
+                            non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         xoff = -non_bracket_br[0]
-                        if TEXTLAYOUT_QTVERSION:
+                        if TEXTLAYOUT_QTVERSION and not ON_MACOS:
                             yoff =  -non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
+                            # yoff = 0
                         else:
                             yoff = -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
 

@@ -139,10 +139,6 @@ def main():
     else:
         os.environ['QT_API'] = args.qt_api
 
-    if sys.platform == 'darwin':
-        os.environ['QT_API'] = 'pyqt6'
-        LOGGER.info('running on macOS, set QT_API to pyqt6')
-
     if sys.platform == 'win32':
         import ctypes
         myappid = u'BalloonsTranslator' # arbitrary string
@@ -152,7 +148,9 @@ def main():
     from qtpy.QtWidgets import QApplication, QStyleFactory
     from qtpy.QtCore import QTranslator, QLocale, Qt
     from qtpy.QtGui import QIcon, QFontDatabase, QGuiApplication, QFont
-    from qtpy import API
+    from qtpy import API, QT_VERSION
+
+    LOGGER.info(f'QT_API: {API}, QT Version: {QT_VERSION}')
 
     from ui import constants as C
     from ui import config as program_config
