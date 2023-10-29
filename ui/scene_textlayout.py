@@ -374,9 +374,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     char = blk_text[char_idx]
                     line_x, line_y = line.x(), line.y()
 
-                    if char in PUNSET_NONBRACKET:
-                        non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
-
                     y_x = line_y - line_x
                     y_p_x = line_y + line_x
                     transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
@@ -390,17 +387,15 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         yoff = -pun_top - fm.ascent() - cfmt.br.width()
                         hight_comp = 0
                     elif char in PUNSET_NONBRACKET:
+                        non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         yoff =  -non_bracket_br[1] - non_bracket_br[3]
                         if self.punc_align_center:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                         else:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                     else:
-                        if ON_MACOS:
-                            non_bracket_br = cfmt.punc_actual_rect(line, char=char+self._doc_text, cache=True)
-                        else:
-                            non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
-                        yoff =  -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
+                        non_bracket_br = cfmt.punc_actual_rect(line, char=char, cache=False)
+                        yoff =  -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
 
                     self.line_draw(painter, line, hight_comp,  yoff, selected, selection)
                     painter.setTransform(inv_transform, True)
