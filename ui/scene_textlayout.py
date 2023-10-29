@@ -1,3 +1,6 @@
+import sys
+ON_MACOS = sys.platform == 'darwin'
+
 from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF, QSize
 from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
 
@@ -18,7 +21,7 @@ PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 # https://www.w3.org/TR/2022/DNOTE-clreq-20220801/#tables_of_chinese_punctuation_marks
 # https://www.w3.org/TR/2022/DNOTE-clreq-20220801/#glyphs_sizes_and_positions_in_character_faces_of_punctuation_marks
 PUNSET_PAUSEORSTOP = {'。', '．', '，', '、', '：', '；', '！', '‼', '？', '⁇', '⁉', '⁈', '♥'}     # dont need to rotate, 
-PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛'}
+PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
 PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗', '〕', '］', '｝'}
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 
@@ -359,7 +362,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                     if char in PUNSET_NONBRACKET:
                         non_bracket_br = cfmt.punc_actual_rect(line, char)
-            
+
                     y_x = line_y - line_x
                     y_p_x = line_y + line_x
                     transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
@@ -369,7 +372,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     hight_comp = pun_tbr.width() - pun_br.width()
 
                     if char.isalpha():
-                        yoff = -cfmt.tbr.top() - fm.ascent() - cfmt.tbr.width()
+                        pun_top = cfmt.punc_rect('f')[0].top()
+                        yoff = -pun_top - fm.ascent() - cfmt.br.width()
                         hight_comp = 0
                     elif char in PUNSET_NONBRACKET:
                         yoff =  -non_bracket_br[1] - non_bracket_br[3]
@@ -378,7 +382,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         else:
                             yoff = yoff - cfmt.tbr.width() + non_bracket_br[3]
                     else:
-                        yoff = -pun_tbr.top() - fm.ascent() - pun_tbr.height() / 2 - cfmt.br.width() / 2
+                        yoff = -pun_tbr.top() - fm.ascent()
+                        if yoff >= 0 and line.height() >= cfmt.br.height():
+                            yoff = cfmt.br.top() - cfmt.tbr.top() - cfmt.br.width()
+                        else:
+                            yoff = yoff - pun_tbr.height() / 2 - cfmt.br.width() / 2
 
                     self.line_draw(painter, line, hight_comp,  yoff, selected, selection)
                     painter.setTransform(inv_transform, True)
@@ -404,9 +412,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     self.line_draw(painter, line, xoff, yoff, selected, selection)
 
                 else:
-                    yoff = -cfmt.tbr.top() - fm.ascent() + natral_shifted
-                    # print(natral_shifted, char, line.naturalTextWidth(), line.textLength())
-                    # self.line_draw(painter, line, -natral_shifted, yoff, selected, selection)
+                    yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - fm.ascent())
                     self.line_draw(painter, line, 0, yoff, selected, selection)
 
             block = block.next()
@@ -518,7 +524,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
         layout_first_block = block == doc.firstBlock()
         if layout_first_block:
-            
             x_offset = self.max_width - doc_margin - block_width
             self.x_offset_lst = [self.max_width - doc_margin]
             self.y_offset_lst = []
