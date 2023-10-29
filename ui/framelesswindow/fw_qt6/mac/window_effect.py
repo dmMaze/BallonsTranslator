@@ -1,7 +1,7 @@
 # coding:utf-8
 import Cocoa
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QWidget
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QWidget
 from ..utils.mac_utils import getNSWindow
 
 

@@ -210,6 +210,23 @@ class SliderProxyStyle(QProxyStyle):
         else:
             r.setWidth(r.height())
         return r
+    
+def slider_subcontrol_rect(r: QRect, widget: QWidget):
+    if widget.orientation() == Qt.Orientation.Horizontal:
+        y = widget.height() // 4
+        h = y * 2
+        r = QRect(r.x(), y, r.width(), h)
+    else:
+        x = widget.width() // 4
+        w = x * 2
+        r = QRect(x, r.y(), w, r.height())
+
+    # seems a bit dumb, otherwise the handle is buggy
+    if r.height() < r.width():
+        r.setHeight(r.width())
+    else:
+        r.setWidth(r.height())
+    return r
 
 
 class PaintQSlider(QSlider):
@@ -220,7 +237,7 @@ class PaintQSlider(QSlider):
         super(PaintQSlider, self).__init__(orientation, *args, **kwargs)
         self.draw_content = draw_content
         self.pressed: bool = False
-        self.setStyle(SliderProxyStyle(None))
+        # self.setStyle(SliderProxyStyle(None))
         if orientation == Qt.Orientation.Horizontal:
             self.setFixedHeight(HORSLIDER_FIXHEIGHT)
 
@@ -245,6 +262,7 @@ class PaintQSlider(QSlider):
         # 中间圆圈的位置
         rect = self.style().subControlRect(
             QStyle.CC_Slider, option, QStyle.SC_SliderHandle, self)
+        rect = slider_subcontrol_rect(rect, self)
         
         value = self.value()
         

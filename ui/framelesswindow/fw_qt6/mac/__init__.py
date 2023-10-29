@@ -1,8 +1,8 @@
 # coding:utf-8
 import Cocoa
 import objc
-from PyQt6.QtCore import QEvent, Qt
-from PyQt6.QtWidgets import QWidget
+from qtpy.QtCore import QEvent, Qt
+from qtpy.QtWidgets import QWidget
 
 # from ..titlebar import TitleBar
 from .window_effect import MacWindowEffect

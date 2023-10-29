@@ -14,7 +14,7 @@ python = sys.executable
 git = os.environ.get('GIT', "git")
 skip_install = False
 index_url = os.environ.get('INDEX_URL', "")
-QT_APIS = ['pyqt5', 'pyqt6']
+QT_APIS = ['pyqt5', 'pyqt6', 'pyside6']
 stored_commit_hash = None
 
 REQ_WIN = [
@@ -202,7 +202,7 @@ def main():
         if font.endswith(('.ttf','.otf')):
             QFontDatabase.addApplicationFont((PATH_FONTS/font).as_posix())
     yahei = QFont('Microsoft YaHei UI')
-    if yahei.exactMatch():
+    if yahei.exactMatch() and not sys.platform == 'darwin':
         QGuiApplication.setFont(yahei)
 
     C.APP_DEFAULT_FONT = app.font().defaultFamily()

@@ -382,8 +382,8 @@ class TextBlkItem(QGraphicsTextItem):
         doc = self.document()
         html = doc.toHtml()
         doc_margin = doc.documentMargin()
-        doc.disconnect()
-        doc.documentLayout().disconnect()
+        doc.blockSignals(True)
+        doc.documentLayout().blockSignals(True)
         default_font = doc.defaultFont()
 
         doc = QTextDocument()
