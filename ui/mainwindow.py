@@ -389,6 +389,7 @@ class MainWindow(FramelessWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.st_manager.hovering_transwidget = None
+        self.st_manager.blockSignals(True)
         self.canvas.prepareClose()
         self.save_config()
         if not self.imgtrans_proj.is_empty:

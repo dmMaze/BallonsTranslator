@@ -1,7 +1,7 @@
 # coding:utf-8
-from PyQt6.QtCore import QCoreApplication, QEvent, Qt
-from PyQt6.QtGui import QMouseEvent
-from PyQt6.QtWidgets import QWidget
+from qtpy.QtCore import QCoreApplication, QEvent, Qt
+from qtpy.QtGui import QMouseEvent
+from qtpy.QtWidgets import QWidget
 
 # from ..titlebar import TitleBar
 from ..utils.linux_utils import LinuxMoveResize

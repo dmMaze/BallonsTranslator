@@ -3,12 +3,16 @@ from typing import List, Union, Tuple
 from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
+from qtpy import API
 
 from . import constants as C
 
 # nuitka seems to require import QtCore explicitly 
 if C.FLAG_QT6:
-    from PyQt6 import QtCore
+    if API == 'pyside6':
+        from PySide6 import QtCore
+    else:
+        from PyQt6 import QtCore
 else:
     from PyQt5 import QtCore
 

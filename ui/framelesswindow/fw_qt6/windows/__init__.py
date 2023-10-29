@@ -6,11 +6,11 @@ from ctypes.wintypes import LPRECT, MSG
 from pkg_resources import parse_version
 import win32con
 import win32gui
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QCloseEvent, QCursor
-from PyQt6.QtWidgets import QApplication, QWidget
-from PyQt6.QtCore import PYQT_VERSION_STR
-installed_version = PYQT_VERSION_STR
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QCloseEvent, QCursor
+from qtpy.QtWidgets import QApplication, QWidget
+from qtpy import QT_VERSION
+installed_version = QT_VERSION
 
 # from ..titlebar import TitleBar
 from ..utils import win32_utils as win_utils
