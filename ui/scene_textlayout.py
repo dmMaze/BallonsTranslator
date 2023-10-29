@@ -392,7 +392,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     elif char in PUNSET_NONBRACKET:
                         yoff =  -non_bracket_br[1] - non_bracket_br[3]
                         if self.punc_align_center:
-                            yoff = yoff - cfmt.tbr.width() / 2 + non_bracket_br[3] / 3
+                            yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                         else:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                     else:
