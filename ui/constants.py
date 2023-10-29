@@ -73,3 +73,5 @@ for p in os.listdir(TRANSLATE_DIR):
             DISPLAY_LANGUAGE_MAP[lang] = lang
 
 DEFAULT_DISPLAY_LANG = 'English'
+
+USE_PYSIDE6 = False

@@ -152,10 +152,12 @@ def main():
     from qtpy.QtWidgets import QApplication, QStyleFactory
     from qtpy.QtCore import QTranslator, QLocale, Qt
     from qtpy.QtGui import QIcon, QFontDatabase, QGuiApplication, QFont
+    from qtpy import API
 
     from ui import constants as C
     from ui import config as program_config
     C.DEFAULT_DISPLAY_LANG = QLocale.system().name()
+    C.USE_PYSIDE6 = API == 'pyside6'
     if qtpy.API_NAME[-1] == '6':
         C.FLAG_QT6 = True
     else:
@@ -252,5 +254,4 @@ def prepare_environment():
         importlib.reload(site)
 
 if __name__ == '__main__':
-
     main()

@@ -1,8 +1,11 @@
 import sys
+import pkg_resources
 ON_MACOS = sys.platform == 'darwin'
 
 from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF, QSize
 from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
+from qtpy import QT_VERSION
+TEXTLAYOUT_QTVERSION = pkg_resources.parse_version(QT_VERSION) > pkg_resources.parse_version('6.4.2')
 
 import cv2
 import numpy as np
@@ -101,14 +104,14 @@ class CharFontFormat:
 
     @cached_property
     def br(self) -> QRectF:
-        return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[1]
+        # return get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())[1]
         _, br1 = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
         _, br2 = get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())
         return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
 
     @cached_property
     def tbr(self) -> QRectF:
-        return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[0]
+        # return get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())[0]
         br1, _ = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
         br2, _ = get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())
         return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
@@ -134,12 +137,12 @@ class CharFontFormat:
     def size(self) -> float:
         return self.font.pointSizeF()
 
-    def punc_actual_rect(self, line: QTextLine, char: str, cache=False) -> List[int]:
+    def punc_actual_rect(self, line: QTextLine, char: str, cache=False, stroke_width=0) -> List[int]:
         if cache:
             line = LruIgnoreArg(line=line)
-            ar = punc_actual_rect_cached(line, char, self.family, self.size, self.weight, self.font.italic(), self.stroke_width)
+            ar = punc_actual_rect_cached(line, char, self.family, self.size, self.weight, self.font.italic(), stroke_width)
         else:
-            ar =  punc_actual_rect(line, self.family, self.size, self.weight, self.font.italic(), self.stroke_width)
+            ar =  punc_actual_rect(line, self.family, self.size, self.weight, self.font.italic(), stroke_width)
         return ar
 
 
@@ -175,6 +178,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.shrink_width = 0
 
         self._doc_text: str = ''
+        
+        self._is_painting_stroke = False
+        self._draw_offset = []
 
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
@@ -324,82 +330,67 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         line_pos.setX(x_shift + line_pos.x())
                         line.setPosition(line_pos)
                     block = block.next()
+        self.updateDrawOffsets()
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
-    def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
+    def updateDrawOffsets(self):
+        if self._is_painting_stroke and len(self._draw_offset) > 0:
+            return
+        self._draw_offset.clear()
         doc = self.document()
-        painter.save()
         block = doc.firstBlock()
-        cursor_block = None
-        context_sel = context.selections
-        has_selection = False
-        selection = None
-        if len(context_sel) > 0:
-            has_selection = True
-            selection = context_sel[0]
-
         while block.isValid():
-            blpos, bllen = block.position(), block.length()
+            blk_no = block.blockNumber()
+            _draw_offsets = []
+            self._draw_offset.append(_draw_offsets)
+
             layout = block.layout()
             blk_text = block.text()
             blk_text_len = len(blk_text)
-            blk_no = block.blockNumber()
+            
             line_spaces_lst = self.line_spaces_lst[blk_no]
 
-            if context.cursorPosition >= blpos and context.cursorPosition < blpos + bllen:
-                cursor_block = block
-
             for ii in range(layout.lineCount()):
+                xy_offsets = [0, 0]
+                _draw_offsets.append(xy_offsets)
+
                 line = layout.lineAt(ii)
                 if line.textLength() == 0:
                     continue
                 num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
                 char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
                 if char_idx < 0:
-                    line.draw(painter, QPointF(0, 0))
                     continue
 
                 char = blk_text[char_idx]
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 fm = cfmt.font_metrics
-                selected = False
-                if has_selection:
-                    sel_start = selection.cursor.selectionStart() - blpos 
-                    sel_end = selection.cursor.selectionEnd() - blpos
-                    if char_idx < sel_end and char_idx >= sel_start:
-                        selected = True
                 
                 # natral_shifted = max(line.naturalTextWidth() - cfmt.br.width(), 0)
                 natral_shifted = 0
                 if char in PUNSET_VERNEEDROTATE:
                     char = blk_text[char_idx]
-                    line_x, line_y = line.x(), line.y()
-
-                    y_x = line_y - line_x
-                    y_p_x = line_y + line_x
-                    transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
-                    inv_transform = QTransform(0, -1, 0, 1, 0, 0, -y_x, y_p_x, 1)
-                    painter.setTransform(transform, True)
                     pun_tbr, pun_br = cfmt.punc_rect(char)
-                    hight_comp = pun_tbr.width() - pun_br.width()
 
                     if char.isalpha():
+                        xoff = 0
                         pun_top = cfmt.punc_rect('f')[0].top()
                         yoff = -pun_top - fm.ascent() - cfmt.br.width()
-                        hight_comp = 0
                     elif char in PUNSET_NONBRACKET:
+                        xoff = pun_tbr.width() - pun_br.width()
                         non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         yoff =  -non_bracket_br[1] - non_bracket_br[3]
                         if self.punc_align_center:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                         else:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
-                    else:
-                        non_bracket_br = cfmt.punc_actual_rect(line, char=char, cache=False)
-                        yoff =  -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
-
-                    self.line_draw(painter, line, hight_comp,  yoff, selected, selection)
-                    painter.setTransform(inv_transform, True)
+                    else:   # () （）
+                        non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
+                        xoff = -non_bracket_br[0]
+                        if TEXTLAYOUT_QTVERSION:
+                            yoff =  -non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
+                        else:
+                            yoff = -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
 
                 elif char in PUNSET_PAUSEORSTOP:
                     pun_tbr, pun_br = cfmt.punc_rect(char)
@@ -417,13 +408,80 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         xoff += (cfmt.br.width() - pun_tbr.width()) / 2
                     else:
                         xoff += cfmt.br.width() - pun_tbr.width()
-                    self.line_draw(painter, line, xoff, yoff, selected, selection)
 
                 else:
-                    if num_lspaces > 0:
-                        natral_shifted = num_lspaces * cfmt.space_width
-                    yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - fm.ascent())
-                    self.line_draw(painter, line, -natral_shifted, yoff + natral_shifted, selected, selection)
+                    empty_spacing = num_lspaces * cfmt.space_width
+                    if TEXTLAYOUT_QTVERSION:
+                        xshift = max(line.naturalTextWidth() - cfmt.br.width(), 0)
+                    else:
+                        xshift = empty_spacing
+                        
+                    xoff = -xshift
+                    yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - fm.ascent()) + empty_spacing
+
+                xy_offsets[0], xy_offsets[1] = xoff, yoff
+            block = block.next()
+
+
+    def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
+        doc = self.document()
+        painter.save()
+        block = doc.firstBlock()
+        cursor_block = None
+        context_sel = context.selections
+        has_selection = False
+        selection = None
+        if len(context_sel) > 0:
+            has_selection = True
+            selection = context_sel[0]
+
+
+        while block.isValid():
+            blk_no = block.blockNumber()
+            blpos, bllen = block.position(), block.length()
+            layout = block.layout()
+            blk_text = block.text()
+            blk_text_len = len(blk_text)
+            
+            line_spaces_lst = self.line_spaces_lst[blk_no]
+
+            if context.cursorPosition >= blpos and context.cursorPosition < blpos + bllen:
+                cursor_block = block
+
+            for ii in range(layout.lineCount()):
+                line = layout.lineAt(ii)
+                if line.textLength() == 0:
+                    continue
+                num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
+                char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
+                if char_idx < 0:
+                    line.draw(painter, QPointF(0, 0))
+                    continue
+
+                xoff, yoff = self._draw_offset[blk_no][ii]
+
+                char = blk_text[char_idx]
+                cfmt = self.get_char_fontfmt(blk_no, char_idx)
+                fm = cfmt.font_metrics
+                selected = False
+                if has_selection:
+                    sel_start = selection.cursor.selectionStart() - blpos 
+                    sel_end = selection.cursor.selectionEnd() - blpos
+                    if char_idx < sel_end and char_idx >= sel_start:
+                        selected = True
+                
+                if char in PUNSET_VERNEEDROTATE:
+                    line_x, line_y = line.x(), line.y()
+
+                    y_x = line_y - line_x
+                    y_p_x = line_y + line_x
+                    transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
+                    inv_transform = QTransform(0, -1, 0, 1, 0, 0, -y_x, y_p_x, 1)
+                    painter.setTransform(transform, True)
+                    self.line_draw(painter, line, xoff,  yoff, selected, selection)
+                    painter.setTransform(inv_transform, True)
+                else:
+                    self.line_draw(painter, line, xoff, yoff, selected, selection)
 
             block = block.next()
 
@@ -456,9 +514,15 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
                 painter.fillRect(QRectF(x, y, fm.height(), 2), painter.pen().brush())
                 if self.has_selection == has_selection:
-                    self.update.emit(QRectF(x, y, fm.height(), 2))
+                    if C.USE_PYSIDE6:
+                        self.update.emit()
+                    else:
+                        self.update.emit(QRectF(x, y, fm.height(), 2))
                 else:
-                    self.update.emit(QRectF(0, 0, self.max_width, self.max_height))
+                    if C.USE_PYSIDE6:
+                        self.update.emit()
+                    else:
+                        self.update.emit(QRectF(0, 0, self.max_width, self.max_height))
             self.has_selection = has_selection  # update this flag when drawing the cursor
         painter.restore()
 

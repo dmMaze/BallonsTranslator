@@ -150,8 +150,10 @@ class TextBlkItem(QGraphicsTextItem):
         doc = self.document().clone()
         doc.setDocumentMargin(self.padding())
         layout = VerticalTextDocumentLayout(doc) if self.is_vertical else HorizontalTextDocumentLayout(doc)
+        layout._draw_offset = self.layout._draw_offset
         layout.line_spacing = self.line_spacing
         layout.letter_spacing = self.letter_spacing
+        layout._is_painting_stroke = True
         rect = self.rect()
         layout.setMaxSize(rect.width(), rect.height(), False)
         doc.setDocumentLayout(layout)
