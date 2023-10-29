@@ -64,6 +64,9 @@ def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, ita
 
 @lru_cache(maxsize=2048)
 def punc_actual_rect_cached(line: LruIgnoreArg, char: str, family: str, size: float, weight: int, italic: bool, stroke_width: float) -> List[int]:
+    '''
+    char is actually not used, but can be set as some cache flag
+    '''
     # QtextLine line is invisibale to lru
     return punc_actual_rect(line.line, family, size, weight, italic, stroke_width)
 
@@ -98,18 +101,26 @@ class CharFontFormat:
 
     @cached_property
     def br(self) -> QRectF:
-        return get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())[1]
+        return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[1]
+        _, br1 = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
+        _, br2 = get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())
+        return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
 
     @cached_property
     def tbr(self) -> QRectF:
-        return get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())[0]
+        return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[0]
+        br1, _ = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
+        br2, _ = get_punc_rect('大', self.family, self.size, self.weight, self.font.italic())
+        return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
 
     @cached_property
     def space_width(self) -> int:
         return get_char_width(' ', self.family, self.size, self.weight, self.font.italic())
 
-    def punc_rect(self, punc: str) -> List[QRectF]:
-        return get_punc_rect(punc, self.family, self.size, self.weight, self.font.italic())
+    def punc_rect(self, punc: str, family: str = None) -> List[QRectF]:
+        if family is None:
+            family = self.family
+        return get_punc_rect(punc, family, self.size, self.weight, self.font.italic())
 
     @property
     def family(self) -> str:
@@ -163,6 +174,8 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.shrink_height = 0 
         self.shrink_width = 0
 
+        self._doc_text: str = ''
+
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
         self.max_width = max_width
@@ -199,6 +212,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     def documentChanged(self, position: int, charsRemoved: int, charsAdded: int) -> None:
         if not self.relayout_on_changed:
             return
+        self._doc_text = self.document().toPlainText()
         self._max_font_size = -1
         block = self.document().firstBlock()
         self.block_charfmt_lst = []
@@ -361,7 +375,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     line_x, line_y = line.x(), line.y()
 
                     if char in PUNSET_NONBRACKET:
-                        non_bracket_br = cfmt.punc_actual_rect(line, char)
+                        non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
 
                     y_x = line_y - line_x
                     y_p_x = line_y + line_x
@@ -380,13 +394,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         if self.punc_align_center:
                             yoff = yoff - cfmt.tbr.width() / 2 + non_bracket_br[3] / 3
                         else:
-                            yoff = yoff - cfmt.tbr.width() + non_bracket_br[3]
+                            yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                     else:
-                        yoff = -pun_tbr.top() - fm.ascent()
-                        if yoff >= 0 and line.height() >= cfmt.br.height():
-                            yoff = cfmt.br.top() - cfmt.tbr.top() - cfmt.br.width()
+                        if ON_MACOS:
+                            non_bracket_br = cfmt.punc_actual_rect(line, char=char+self._doc_text, cache=True)
                         else:
-                            yoff = yoff - pun_tbr.height() / 2 - cfmt.br.width() / 2
+                            non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
+                        yoff =  -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
 
                     self.line_draw(painter, line, hight_comp,  yoff, selected, selection)
                     painter.setTransform(inv_transform, True)

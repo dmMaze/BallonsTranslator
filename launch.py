@@ -205,6 +205,8 @@ def main():
     if yahei.exactMatch():
         QGuiApplication.setFont(yahei)
 
+    C.APP_DEFAULT_FONT = app.font().defaultFamily()
+
     from ui.mainwindow import MainWindow
 
     ballontrans = MainWindow(app, config, open_dir=args.proj_dir)
