@@ -866,6 +866,6 @@ class Canvas(QGraphicsScene):
 
     def prepareClose(self):
         self.blockSignals(True)
-        self.text_undo_stack.disconnect(True)
-        self.draw_undo_stack.disconnect(True)
+        self.text_undo_stack.blockSignals(True)
+        self.draw_undo_stack.blockSignals(True)
 
