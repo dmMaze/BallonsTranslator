@@ -1,4 +1,5 @@
 import sys
+import re
 import pkg_resources
 ON_MACOS = sys.platform == 'darwin'
 
@@ -23,13 +24,22 @@ PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 
 # https://www.w3.org/TR/2022/DNOTE-clreq-20220801/#tables_of_chinese_punctuation_marks
 # https://www.w3.org/TR/2022/DNOTE-clreq-20220801/#glyphs_sizes_and_positions_in_character_faces_of_punctuation_marks
-PUNSET_PAUSEORSTOP = {'。', '．', '，', '、', '：', '；', '！', '‼', '？', '⁇', '⁉', '⁈', '♥'}     # dont need to rotate, 
+PUNSET_PAUSEORSTOP = {'。', '．', '，', '、', '：', '；', '！', '？'}     # dont need to rotate, 
+PUNSET_ALIGNTOP = {'。', '．', '，', '、'}
 PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
 PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗', '〕', '］', '｝'}
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 
 PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '●', '•', '~'}
 PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF)
+
+Dingbats_vertical_aligncenter = r'\u2700-\u275A\u2761-\u2767\u2776-\u27BF'
+Miscellaneous_Symbols_Pattern = r'\u2600-\u26FF'  # align center in vertical mode
+
+vertical_force_aligncentel_pattern = re.compile('[' + Dingbats_vertical_aligncenter + Miscellaneous_Symbols_Pattern + r'⁁⁂⁇⁈⁉⁊⁋⁎※⁑⁒⁕⁖⁘⁙⁛⁜‼‽]')
+
+def vertical_force_aligncentel(char: str) -> bool:
+    return char in PUNSET_PAUSEORSTOP or vertical_force_aligncentel_pattern.match(char) is not None
 
 
 @lru_cache(maxsize=512)
@@ -283,7 +293,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.layout_left = 0
         self.force_single_char = True
         self.has_selection = False
-        self.punc_align_center = True
         self.draw_shifted = 0
 
         self.need_ideal_width = True
@@ -380,11 +389,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         xoff = pun_tbr.width() - pun_br.width()
                         non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         yoff =  -non_bracket_br[1] - non_bracket_br[3]
-                        if self.punc_align_center:
-                            if TEXTLAYOUT_QTVERSION:
-                                yoff = -non_bracket_br[1] - cfmt.tbr.width() / 2
-                            else:
-                                yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
+                        if TEXTLAYOUT_QTVERSION:
+                            yoff = -non_bracket_br[1] - cfmt.tbr.width() / 2
                         else:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                     else:   # () （）
@@ -399,22 +405,15 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         else:
                             yoff = -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
 
-                elif char in PUNSET_PAUSEORSTOP:
+                elif vertical_force_aligncentel(char):
                     pun_tbr, pun_br = cfmt.punc_rect(char)
-                    if char in {'⁇', '⁉', '⁈', '‼'}:
-                        act_rect = cfmt.punc_actual_rect(line, char, cache=True)
-                        yoff = -act_rect[1]
-                    else:
-                        yoff = min(pun_br.top() - pun_tbr.top(), cfmt.br.top() - cfmt.tbr.top())
-                    xoff = -pun_tbr.left()
+                    act_rect = cfmt.punc_actual_rect(line, char, cache=False)
+                    yoff = -act_rect[1]
+                    xoff = -act_rect[0] + (cfmt.tbr.width() - act_rect[2]) / 2 + cfmt.tbr.left()
                     if num_lspaces > 0:
                         natral_shifted = num_lspaces * cfmt.space_width
                         xoff -= natral_shifted
                         yoff += natral_shifted
-                    if self.punc_align_center or char in {'⁇', '⁉', '⁈', '‼'}:
-                        xoff += (cfmt.br.width() - pun_tbr.width()) / 2
-                    else:
-                        xoff += cfmt.br.width() - pun_tbr.width()
 
                 else:
                     empty_spacing = num_lspaces * cfmt.space_width
@@ -657,8 +656,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         if next_char_idx < blk_text_len and blk_text[next_char_idx] == char:
                             tbr_h -= let_sp_offset
                     tbr_h += let_sp_offset
-                elif char in PUNSET_PAUSEORSTOP:
-                    if char in {'⁇', '⁉', '⁈', '‼'}:
+                elif vertical_force_aligncentel(char):
+                    if char not in PUNSET_ALIGNTOP:
                         tbr_h = cfmt.punc_actual_rect(line, char, cache=True)[3]
                     else:
                         tbr, br = cfmt.punc_rect(char)
