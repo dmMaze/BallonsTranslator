@@ -395,21 +395,15 @@ class TitleBar(Widget):
         self.translate_page_trigger = translatePageAction.triggered
 
         self.iconLabel = QLabel(self)
-        self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
+        if not C.ON_MACOS:
+            self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
+        else:
+            self.iconLabel.setFixedWidth(LEFTBAR_WIDTH)
 
         self.titleLabel = QLabel('BallonTranslator')
         self.titleLabel.setObjectName('TitleLabel')
         self.titleLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.minBtn = QPushButton()
-        self.minBtn.setObjectName('minBtn')
-        self.minBtn.clicked.connect(self.onMinBtnClicked)
-        self.maxBtn = QCheckBox()
-        self.maxBtn.setObjectName('maxBtn')
-        self.maxBtn.clicked.connect(self.onMaxBtnClicked)
-        self.closeBtn = QPushButton()
-        self.closeBtn.setObjectName('closeBtn')
-        self.closeBtn.clicked.connect(self.closebtn_clicked)
-        self.maxBtn.setFixedSize(48, 27)
+        
         hlayout = QHBoxLayout(self)
         hlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hlayout.addWidget(self.iconLabel)
@@ -420,9 +414,21 @@ class TitleBar(Widget):
         hlayout.addStretch()
         hlayout.addWidget(self.titleLabel)
         hlayout.addStretch()
-        hlayout.addWidget(self.minBtn)
-        hlayout.addWidget(self.maxBtn)
-        hlayout.addWidget(self.closeBtn)
+
+        if not C.ON_MACOS:
+            self.minBtn = QPushButton()
+            self.minBtn.setObjectName('minBtn')
+            self.minBtn.clicked.connect(self.onMinBtnClicked)
+            self.maxBtn = QCheckBox()
+            self.maxBtn.setObjectName('maxBtn')
+            self.maxBtn.clicked.connect(self.onMaxBtnClicked)
+            self.maxBtn.setFixedSize(48, 27)
+            self.closeBtn = QPushButton()
+            self.closeBtn.setObjectName('closeBtn')
+            self.closeBtn.clicked.connect(self.closebtn_clicked)
+            hlayout.addWidget(self.minBtn)
+            hlayout.addWidget(self.maxBtn)
+            hlayout.addWidget(self.closeBtn)
         hlayout.setContentsMargins(0, 0, 0, 0)
         hlayout.setSpacing(0)
 

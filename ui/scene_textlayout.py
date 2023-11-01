@@ -1,7 +1,5 @@
-import sys
 import re
 import pkg_resources
-ON_MACOS = sys.platform == 'darwin'
 
 from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF, QSize
 from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
@@ -394,12 +392,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         else:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                     else:   # () （）
-                        if ON_MACOS:
+                        if C.ON_MACOS:
                             non_bracket_br = cfmt.punc_actual_rect(line, char, cache=False)
                         else:
                             non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         xoff = -non_bracket_br[0]
-                        if TEXTLAYOUT_QTVERSION and not ON_MACOS:
+                        if TEXTLAYOUT_QTVERSION and not C.ON_MACOS:
                             yoff =  -non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
                             # yoff = 0
                         else:

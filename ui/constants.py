@@ -1,5 +1,6 @@
 import os.path as osp
 import os
+import sys
 
 ICON_PATH = 'icons/[ICONNAME]'
 
@@ -16,8 +17,8 @@ CONFIG_PATH = osp.join(PROGRAM_PATH, 'config/config.json')
 DOWNLOAD_PATH = osp.join(PROGRAM_PATH, 'gallery-dl')
 
 CONFIG_FONTSIZE_HEADER = 18
-CONFIG_FONTSIZE_TABLE = 14
-CONFIG_FONTSIZE_CONTENT = 14
+CONFIG_FONTSIZE_TABLE = 16
+CONFIG_FONTSIZE_CONTENT = 16
 
 CONFIG_COMBOBOX_HEIGHT = 30 
 CONFIG_COMBOBOX_SHORT = 200
@@ -75,3 +76,4 @@ for p in os.listdir(TRANSLATE_DIR):
 DEFAULT_DISPLAY_LANG = 'English'
 
 USE_PYSIDE6 = False
+ON_MACOS = sys.platform == 'darwin'

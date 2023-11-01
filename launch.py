@@ -204,6 +204,12 @@ def main():
     yahei = QFont('Microsoft YaHei UI')
     if yahei.exactMatch() and not sys.platform == 'darwin':
         QGuiApplication.setFont(yahei)
+        C.DEFAULT_FONT_FAMILY = 'Microsoft YaHei UI'
+        C.APP_DEFAULT_FONT = 'Microsoft YaHei UI'
+    else:
+        app_font = app.font().family()
+        C.DEFAULT_FONT_FAMILY = app_font
+        C.APP_DEFAULT_FONT = app_font
 
     C.APP_DEFAULT_FONT = app.font().defaultFamily()
 

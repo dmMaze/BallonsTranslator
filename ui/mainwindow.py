@@ -399,7 +399,8 @@ class MainWindow(FramelessWindow):
     def changeEvent(self, event: QEvent):
         if event.type() == QEvent.Type.WindowStateChange:
             if self.windowState() & Qt.WindowState.WindowMaximized:
-                self.titleBar.maxBtn.setChecked(True)
+                if not C.ON_MACOS:
+                    self.titleBar.maxBtn.setChecked(True)
         elif event.type() == QEvent.Type.ActivationChange:
             self.canvas.on_activation_changed()
 

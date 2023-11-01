@@ -179,7 +179,10 @@ class ConfigContent(QScrollArea):
         else:
             self.active_label = block.header
         self.active_label.setActiveBackground()
-        self.ensureWidgetVisible(self.active_label, yMargin=self.active_label.height() * 7)
+        if C.USE_PYSIDE6:
+            self.ensureWidgetVisible(self.active_label, ymargin=self.active_label.height() * 7)
+        else:
+            self.ensureWidgetVisible(self.active_label, yMargin=self.active_label.height() * 7)
 
     def deactiveLabel(self):
         if self.active_label is not None:
