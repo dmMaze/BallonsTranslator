@@ -253,7 +253,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                         ideal_width = w_
 
                 if self.need_ideal_height:
-                    h_ = cfmt.punc_rect('fg')[0].height()
+                    h_ = cfmt.punc_rect('木fg')[0].height()
                     if ideal_height < h_:
                         ideal_height = h_
 
@@ -795,7 +795,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         tl.setTextOption(option)
         font = block.charFormat().font()
-        tbr = get_punc_rect('字fg', font.family(), font.pointSizeF(), font.weight(), font.italic())[0]
+        tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
         fm = QFontMetrics(font)
         doc_margin = self.document().documentMargin()
 
@@ -805,7 +805,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         if block == doc.firstBlock():
             self.x_offset_lst = []
             self.y_offset_lst = []
-            y_offset = -tbr.top() - fm.ascent() + doc_margin
+            # y_offset = -tbr.top() - fm.ascent() + doc_margin
+            y_offset = min(br.top() - tbr.top(), -tbr.top() - fm.ascent()) + doc_margin
         else:
             y_offset = self.y_offset_lst[-1]
 
@@ -816,12 +817,17 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             line = tl.createLine()
             if not line.isValid():
                 break
-            line.setLeadingIncluded(False)
+            # line.setLeadingIncluded(False)
             line.setLineWidth(self.available_width)
-            line.setPosition(QPointF(doc_margin, y_offset))
+            # print(line.naturalTextRect().height(), idea_height, tbr.height(), line.ascent(), line.descent())
+            if C.ON_MACOS and idea_height - line.ascent() > line.ascent() - line.descent():
+                line.setPosition(QPointF(doc_margin, y_offset + idea_height - line.descent()))
+            else:
+                line.setPosition(QPointF(doc_margin, y_offset))
             tw = line.naturalTextWidth()
             shrink_width = max(tw, shrink_width)
             self.shrink_height = max(idea_height + y_offset + line.descent(), self.shrink_height)    #????
+            self.shrink_height = max(idea_height + y_offset, self.shrink_height)    #????
             y_offset += idea_height * self.line_spacing
             line_idx += 1
         tl.endLayout()
