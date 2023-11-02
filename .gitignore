@@ -15,8 +15,8 @@ icons
 tmp.py
 dummy_scripts.py
 
+test_dir
 tmp
-TEST*
 logs
 ballontrans_pylibs_win
 config/config.json

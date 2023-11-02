@@ -3,12 +3,14 @@ import sys
 import argparse
 import os.path as osp
 import os
-
 import importlib
 import re
 import subprocess
 import importlib.util
 import pkg_resources
+import time
+
+T_LAUNCH = time.time()
 
 python = sys.executable
 git = os.environ.get('GIT', "git")

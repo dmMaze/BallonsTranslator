@@ -124,7 +124,7 @@ class KeywordSubWidget(Widget):
             try: 
                 text = re.sub(regexr, subpair['sub'], text)
             except Exception as e:
-                LOGGER.error(f'Invalid regex expression at line {ii}:')
+                LOGGER.error(f'Invalid regex expression {regexr} at {ii+1}:')
                 LOGGER.error(traceback.format_exc())
                 continue
 
