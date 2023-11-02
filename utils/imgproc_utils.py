@@ -378,7 +378,7 @@ def get_block_mask(xywh: List, mask_array: np.ndarray, angle: int):
             itmsk = np.zeros((y2 - y1, x2 - x1), np.uint8)
             
             cv2.fillPoly(itmsk, poly.reshape(-1, 4, 2), color=(255))
-            px1, px2, py1, py2 = 0, im_w, 0, im_h
+            px1, px2, py1, py2 = 0, itmsk.shape[1], 0, itmsk.shape[0]
             if x1 < 0:
                 px1 = -x1
                 x1 = 0

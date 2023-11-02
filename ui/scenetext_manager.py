@@ -87,7 +87,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
 
             if mode == 1:
                 is_empty = False
-                msk, (x1, y1, x2, y2) = get_block_mask(blkitem.absBoundingRect(), mask_array, blkitem.rotation())
+                msk, xyxy = get_block_mask(blkitem.absBoundingRect(), mask_array, blkitem.rotation())
                 if msk is None:
                     is_empty = True
                 if is_empty:
@@ -96,6 +96,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
                     self.inpaint_rect_lst.append(None)
                     self.mask_pnts.append(None)
                 else:
+                    x1, y1, x2, y2 = xyxy
                     self.mask_pnts.append(np.where(msk))
                     self.undo_img_list.append(np.copy(img_array[y1: y2, x1: x2]))
                     self.redo_img_list.append(np.copy(original_array[y1: y2, x1: x2]))
