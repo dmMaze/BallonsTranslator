@@ -77,3 +77,5 @@ DEFAULT_DISPLAY_LANG = 'English'
 
 USE_PYSIDE6 = False
 ON_MACOS = sys.platform == 'darwin'
+
+DEBUG = False

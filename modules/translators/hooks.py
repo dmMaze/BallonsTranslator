@@ -6,7 +6,7 @@ CHS2CHT_CONVERTER = None
 
 from .base import BaseTranslator, TextBlock
 
-def chs2cht(translations: List[str] = None, textblocks: List[TextBlock] = None, translator: BaseTranslator = None,) -> str:
+def chs2cht(translations: List[str] = None, textblocks: List[TextBlock] = None, translator: BaseTranslator = None, **kwargs) -> str:
     
     if not translator.cht_require_convert or translator.lang_target != '繁體中文':
         return

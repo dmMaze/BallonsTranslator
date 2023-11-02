@@ -29,8 +29,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--reinstall-torch", action='store_true', help="launch.py argument: install the appropriate version of torch even if you have some version already installed")
 parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
 parser.add_argument("--qt-api", default='', choices=QT_APIS, help='Set qt api')
+parser.add_argument("--debug", action='store_true')
 parser.add_argument("--requirements", default='requirements.txt')
 args, _ = parser.parse_known_args()
+
 
 def is_installed(package):
     try:
@@ -117,6 +119,9 @@ def restart():
 
 def main():
 
+    if args.debug:
+        os.environ['BALLOONTRANS_DEBUG'] = '1' 
+
     from utils import appinfo
 
     commit = commit_hash()
@@ -154,6 +159,8 @@ def main():
 
     from ui import constants as C
     from ui import config as program_config
+
+    C.DEBUG = args.debug
     C.DEFAULT_DISPLAY_LANG = QLocale.system().name()
     C.USE_PYSIDE6 = API == 'pyside6'
     if qtpy.API_NAME[-1] == '6':
