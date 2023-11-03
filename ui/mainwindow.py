@@ -861,7 +861,7 @@ class MainWindow(FramelessWindow):
                 else:
                     blk.translation = half_len(blk.translation)
                     blk.translation = re.sub(r'([?.!"])\s+', r'\1', blk.translation)    # remove spaces following punctuations
-        elif src_is_cjk:
+        else:
             for blk in blk_list:
                 if blk.vertical:
                     blk._alignment = 1
@@ -870,6 +870,8 @@ class MainWindow(FramelessWindow):
 
         for blk in blk_list:
             blk.translation = self.mtSubWidget.sub_text(blk.translation)
+            if pcfg.let_uppercase_flag:
+                blk.translation = blk.translation.upper()
 
     def on_pagtrans_finished(self, page_index: int):
         blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
@@ -910,7 +912,8 @@ class MainWindow(FramelessWindow):
             if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect:
                 blk.font_size = int(blk.font_size / (1 + sw))
 
-        self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and pcfg.module.enable_detect
+        self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
+            (pcfg.module.enable_detect or pcfg.module.enable_translate)
         
         if page_index != self.pageList.currentIndex().row():
             self.pageList.setCurrentRow(page_index)
@@ -1000,7 +1003,7 @@ class MainWindow(FramelessWindow):
                         textblk.set_font_colors((0, 0, 0), (0, 0, 0), True)
                     if pcfg.module.enable_translate or all_disabled or pcfg.module.enable_ocr:
                         textblk.rich_text = ''
-                        textblk.font_size = textblk.detected_font_size
+                        # textblk.font_size = textblk.detected_font_size ???
                     textblk.vertical = textblk.src_is_vertical
         self.module_manager.runImgtransPipeline()
 

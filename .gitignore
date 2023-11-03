@@ -6,6 +6,7 @@ data/models
 data/testpacks/eng_dontupload
 data/testpacks/testpacks
 data/*.png
+data/testpacks
 ballontranslator/ui/pagesources/gallery-dl
 ballontranslator/gallery-dl
 release

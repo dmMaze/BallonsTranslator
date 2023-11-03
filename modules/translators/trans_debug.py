@@ -25,7 +25,7 @@ if os.environ.get('BALLOONTRANS_DEBUG', ''):
             return copy.copy(src_list)
         
     def transhook_copy_original(translations: List[str] = None, textblocks: List[TextBlock] = None, translator: BaseTranslator = None, **kwargs):
-        if textblocks is not None:
+        if textblocks is not None and isinstance(translator, TransOriginal):
             for ii, _ in enumerate(translations):
                 translations[ii] = textblocks[ii].translation
 

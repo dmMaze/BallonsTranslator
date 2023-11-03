@@ -647,9 +647,6 @@ class SceneTextManager(QObject):
             text = blkitem.toPlainText()
             restore_charfmts = True
 
-        if pcfg.let_uppercase_flag:
-            text = text.upper()
-
         if mask is None:
             im_h, im_w = img.shape[:2]
             bounding_rect = blkitem.absBoundingRect(max_h=im_h, max_w=im_w)
@@ -679,7 +676,7 @@ class SceneTextManager(QObject):
         delimiter_len = text_size_func(delimiter)[0]
  
         adaptive_fntsize = False
-        if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0:
+        if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0 and pcfg.module.enable_detect:
             if not tgt_is_cjk:
                 adaptive_fntsize = True
             
@@ -713,7 +710,7 @@ class SceneTextManager(QObject):
                     resize_ratio = max(ballon_area / 1.5 / text_area, 0.5)
                     
         if resize_ratio != 1:
-            new_font_size = blk_font.pointSizeF() * resize_ratio
+            new_font_size = blk_font.pointSizeF() * resize_ratio   
             blk_font.setPointSizeF(new_font_size)
             wl_list = (np.array(wl_list, np.float64) * resize_ratio).astype(np.int32).tolist()
             line_height = int(line_height * resize_ratio)
@@ -723,7 +720,7 @@ class SceneTextManager(QObject):
         if max_central_width != np.inf:
             max_central_width = max(int(max_central_width * text_w), 0.75 * region_rect[2])
 
-        padding = pt2px(blk_font.pointSize()) + 20   # dummpy padding variable
+        padding = pt2px(blk_font.pointSizeF()) + 20   # dummpy padding variable
         if fmt.alignment == 1:
             if len(blkitem.blk) > 0:
                 centroid = blkitem.blk.center().astype(np.int64).tolist()
