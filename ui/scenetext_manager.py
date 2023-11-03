@@ -307,10 +307,11 @@ class SceneTextManager(QObject):
         self.canvas.format_textblks.connect(self.onFormatTextblks)
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvas.reset_angle.connect(self.onResetAngle)
+        self.canvas.incanvas_selection_changed.connect(self.on_incanvas_selection_changed)
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
         self.textEditList = textpanel.textEditList
-        self.textEditList.focus_out.connect(self.on_textedit_focusout)
+        self.textEditList.focus_out.connect(self.on_textedit_list_focusout)
         self.textEditList.textpanel_contextmenu_requested.connect(canvas.on_create_contextmenu)
         self.textEditList.selection_changed.connect(self.on_transwidget_selection_changed)
         self.textEditList.rearrange_blks.connect(self.on_rearrange_blks)
@@ -384,6 +385,7 @@ class SceneTextManager(QObject):
         self.pairwidget_list.append(pair_widget)
         self.textEditList.addPairWidget(pair_widget)
         pair_widget.e_source.setPlainText(blk_item.blk.get_text())
+        pair_widget.e_source.focus_in.connect(self.onTransWidgetHoverEnter)
         pair_widget.e_source.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
         pair_widget.e_source.push_undo_stack.connect(self.on_push_edit_stack)
         pair_widget.e_source.redo_signal.connect(self.on_textedit_redo)
@@ -488,10 +490,12 @@ class SceneTextManager(QObject):
             self.hovering_transwidget.setHoverEffect(False)
         self.hovering_transwidget = edit
         if edit is not None:
+            pw = self.pairwidget_list[edit.idx]
+            h = pw.height()
             if C.USE_PYSIDE6:
-                self.textEditList.ensureWidgetVisible(edit, ymargin=edit.geometry().height())
+                self.textEditList.ensureWidgetVisible(pw, ymargin=h)
             else:
-                self.textEditList.ensureWidgetVisible(edit, yMargin=edit.geometry().height())
+                self.textEditList.ensureWidgetVisible(pw, yMargin=h)
             edit.setHoverEffect(True)
 
     def onLeftbuttonPressed(self, blk_id: int):
@@ -627,6 +631,13 @@ class SceneTextManager(QObject):
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(ResetAngleCommand(selected_blks, self.txtblkShapeControl))
+
+    def on_incanvas_selection_changed(self):
+        if self.canvas.textEditMode():
+            self.textEditList.clearDrag()
+            self.textEditList.clearAllSelected(emit_signal=False)
+            textitems = self.canvas.selected_text_items()
+            self.textEditList.set_selected_list([t.idx for t in textitems])
 
     def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
         old_br = blkitem.absBoundingRect()
@@ -932,15 +943,16 @@ class SceneTextManager(QObject):
         for idx in selset:
             self.textblk_item_list[idx].setSelected(True)
 
-    def on_textedit_focusout(self):
+    def on_textedit_list_focusout(self):
         fw = self.app.focusWidget()
-        if fw == self.canvas.gv or isinstance(fw, (SourceTextEdit, TransTextEdit)):
+        focusing_edit = isinstance(fw, (SourceTextEdit, TransTextEdit))
+        if fw == self.canvas.gv or focusing_edit:
             self.textEditList.clearDrag()
+        if focusing_edit:
             self.textEditList.clearAllSelected()
 
     def on_rearrange_blks(self, mv_map: Tuple[np.ndarray]):
         self.canvas.push_undo_command(RearrangeBlksCommand(mv_map, self))
-        pass
 
     def on_apply_effect(self):
         format = self.formatpanel.active_format

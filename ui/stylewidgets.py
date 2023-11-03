@@ -295,7 +295,7 @@ class PaintQSlider(QSlider):
 
             painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
             font = painter.font()
-            font.setPointSize(8)
+            font.setPointSizeF(10)
             fm = QFontMetrics(font)
             painter.setFont(font)
 

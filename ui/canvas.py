@@ -189,6 +189,7 @@ class Canvas(QGraphicsScene):
     drop_open_folder = Signal(str)
 
     context_menu_requested = Signal(QPoint, bool)
+    incanvas_selection_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -421,6 +422,8 @@ class Canvas(QGraphicsScene):
             blk_item = self.txtblkShapeControl.blk_item
             if blk_item is not None and blk_item.isEditing():
                 blk_item.endEdit()
+        if self.hasFocus():
+            self.incanvas_selection_changed.emit()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()

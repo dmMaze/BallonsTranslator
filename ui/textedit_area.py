@@ -324,16 +324,17 @@ class TransPairWidget(Widget):
         vlayout.addWidget(self.e_source)
         vlayout.addWidget(self.e_trans)
         vlayout.addWidget(SeparatorWidget(self))
-        vlayout.setSpacing(5)
+        spacing = 7
+        vlayout.setSpacing(spacing)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setContentsMargins(0, 0, 0, 0)
-        vlayout.setContentsMargins(0, 5, 5, 5)
+        vlayout.setContentsMargins(0, spacing, spacing, spacing)
 
         hlayout = QHBoxLayout(self)
         hlayout.addWidget(self.idx_label)
         hlayout.addLayout(vlayout)
         hlayout.setContentsMargins(0, 0, 0, 0)
-        hlayout.setSpacing(5)
+        hlayout.setSpacing(spacing)
 
         self.setAcceptDrops(True)
 
@@ -582,14 +583,28 @@ class TextEditListScrollArea(QScrollArea):
             self.sel_anchor_widget = self.checked_list[0]
         if check_changed:
             self.selection_changed.emit()
+            if pwc.checked:
+                pwc.e_trans.focus_in.emit(pwc.idx)
 
-    def clearAllSelected(self):
+    def set_selected_list(self, selection_indices: List):
+        self.clearAllSelected(emit_signal=False)
+        self.clearDrag()
+        for idx in selection_indices:
+            pw = self.pairwidget_list[idx]
+            pw._set_checked_state(True)
+            self.checked_list.append(pw)
+            if idx == 0:
+                self.sel_anchor_widget = pw
+
+
+    def clearAllSelected(self, emit_signal=True):
         self.sel_anchor_widget = None
         if len(self.checked_list) > 0:
             for w in self.checked_list:
                 w._set_checked_state(False)
             self.checked_list.clear()
-            self.selection_changed.emit()
+            if emit_signal:
+                self.selection_changed.emit()
 
     def removeWidget(self, widget: TransPairWidget, remove_checked: bool = True):
         widget.setVisible(False)
