@@ -36,6 +36,8 @@ gallery-dl
 openai
 pyyaml
 natsort
+py7zr
+multivolumefile
 httpx[socks,brotli]
 langdetect
 pywin32; sys_platform == 'win32'

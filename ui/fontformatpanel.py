@@ -6,11 +6,11 @@ from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QMouseEvent, QTextCursor
 
 from .stylewidgets import Widget, ColorPicker, ClickableLabel, CheckableLabel, TextChecker
-from .misc import FontFormat
+from utils.fontformat import FontFormat
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanel
 from .combobox import SizeComboBox
-from . import constants as C
+from utils import shared as C
 from . import funcmaps as FM
 
 

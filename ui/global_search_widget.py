@@ -9,13 +9,13 @@ import os.path as osp
 from utils.logger import logger as LOGGER
 from .page_search_widget import SearchEditor, HighlightMatched, SEARCHRST_HIGHLIGHT_COLOR
 from .misc import doc_replace
-from .config import pcfg
+from utils.config import pcfg
 from .stylewidgets import Widget, NoBorderPushBtn, ProgressMessageBox
 from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
-from .imgtrans_proj import ProjImgTrans
+from .config_proj import ProjImgTrans
 from .io_thread import ThreadBase
-from . import constants as C
+from utils import shared as C
 
 SEARCHRST_FONTSIZE = 10.3
 

@@ -1,8 +1,8 @@
 # modified from https://github.com/zhiyiYo/PyQt-Frameless-Window
 
-from .. import constants as C
+from utils import shared
 
-if not C.FLAG_QT6:
+if not shared.FLAG_QT6:
 
     from .fw_qt5.utils import startSystemMove
     from .fw_qt5 import FramelessWindow

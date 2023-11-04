@@ -2,7 +2,7 @@ from typing import List
 from qtpy.QtGui import QFont
 
 from . import shared_widget as SW
-from .misc import FontFormat
+from utils.fontformat import FontFormat
 from .textitem import TextBlkItem
 
 global_default_set_kwargs = dict(set_selected=False, restore_cursor=False)

@@ -1,5 +1,5 @@
 from utils.io_utils import build_funcmap
-from .misc import FontFormat
+from utils.fontformat import FontFormat
 
 
 handle_ffmt_change = build_funcmap('ui.fontformat_commands', 

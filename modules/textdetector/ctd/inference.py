@@ -13,7 +13,7 @@ from utils.imgproc_utils import letterbox, xyxy2yolo, get_yololabel_strings, squ
 
 from ..yolov5.yolov5_utils import non_max_suppression
 from ..db_utils import SegDetectorRepresenter
-from ..textblock import TextBlock, group_output
+from utils.textblock import TextBlock, group_output
 from .textmask import refine_mask, refine_undetected_mask, REFINEMASK_INPAINT, REFINEMASK_ANNOTATION
 from pathlib import Path
 from typing import Union, List, Tuple, Callable

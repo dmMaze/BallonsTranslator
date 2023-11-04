@@ -3,8 +3,8 @@ from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Si
 from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPainter, QFontMetrics, QColor
 from typing import List, Union, Tuple
 
-from .constants import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
-from . import constants as C
+from utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
+from utils import shared as C
 
 
 class Widget(QWidget):

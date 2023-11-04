@@ -192,12 +192,6 @@ def seg_ch_pkg(text: str):
             import pkuseg
         except:
             import spacy_pkuseg as pkuseg
-        PKUSEG_HOME = osp.join(osp.dirname(osp.dirname(osp.abspath(__file__))), 'data/models/pkuseg')
-        if not osp.exists(osp.join(PKUSEG_HOME, 'postag.zip')) or not osp.exists(osp.join(PKUSEG_HOME, 'spacy_ontonotes.zip')):
-            if osp.exists(osp.join(PKUSEG_HOME, 'postag')) and osp.exists(osp.join(PKUSEG_HOME, 'spacy_ontonotes')):
-                os.makedirs(osp.join(PKUSEG_HOME, 'spacy_ontonotes.zip'), exist_ok=True)
-                os.makedirs(osp.join(PKUSEG_HOME, 'postag.zip'), exist_ok=True)
-        pkuseg.config.pkuseg_home = PKUSEG_HOME
         CHSEG = pkuseg.pkuseg(postag=True)
 
     # pkuseg won't work with half-width punctuations

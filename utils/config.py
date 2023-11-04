@@ -1,8 +1,8 @@
 import json
 
-from . import constants as C
-from .misc import FontFormat
-from utils.structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
+from . import shared
+from .fontformat import FontFormat
+from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
 
 
 @nested_dataclass
@@ -94,7 +94,7 @@ class ProgramConfig(Config):
     ocr_sublist: dict = field(default_factory=lambda: [])
     restore_ocr_empty: bool = False
     mt_sublist: dict = field(default_factory=lambda: [])
-    display_lang: str = C.DEFAULT_DISPLAY_LANG
+    display_lang: str = field(default_factory=lambda: shared.DEFAULT_DISPLAY_LANG) # to always apply shared.DEFAULT_DISPLAY_LANG
 
 
     @staticmethod

@@ -72,25 +72,10 @@ calculate_hash() {
 # Function to download and process files
 download_and_process_files() {
     local files=(
-        'inpainting.ckpt|https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3|no_zip||aot_inpainter.ckpt|data/models|878d541c68648969bc1b042a6e997f3a58e49b6c07c5636ad55130736977149f'
-        'comictextdetector.pt|https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3|no_zip||comictextdetector.pt|data/models|1f90fa60aeeb1eb82e2ac1167a66bf139a8a61b8780acd351ead55268540cccb'
-        'comictextdetector.pt.onnx|https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3|no_zip||comictextdetector.pt.onnx|data/models|1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f'
-        'inpainting_lama_mpe.ckpt|https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3|no_zip||lama_mpe.ckpt|data/models|d625aa1b3e0d0408acfd6928aa84f005867aa8dbb9162480346a4e20660786cc'
-        'README.md|https://huggingface.co/kha-white/manga-ocr-base/resolve/main|no_zip||README.md|data/models/manga-ocr-base|32f413afcc4295151e77d25202c5c5d81ef621b46f947da1c3bde13256dc0d5f'
-        'config.json|https://huggingface.co/kha-white/manga-ocr-base/resolve/main|no_zip||config.json|data/models/manga-ocr-base|8c0e395de8fa699daaac21aee33a4ba9bd1309cfbff03147813d2a025f39f349'
-        'preprocessor_config.json|https://huggingface.co/kha-white/manga-ocr-base/resolve/main|no_zip||preprocessor_config.json|data/models/manga-ocr-base|af4eb4d79cf61b47010fc0bc9352ee967579c417423b4917188d809b7e048948'
-        'pytorch_model.bin|https://huggingface.co/kha-white/manga-ocr-base/resolve/main|no_zip||pytorch_model.bin|data/models/manga-ocr-base|c63e0bb5b3ff798c5991de18a8e0956c7ee6d1563aca6729029815eda6f5c2eb'
-        'special_tokens_map.json|https://huggingface.co/kha-white/manga-ocr-base/resolve/main|no_zip||special_tokens_map.json|data/models/manga-ocr-base|303df45a03609e4ead04bc3dc1536d0ab19b5358db685b6f3da123d05ec200e3'
-        'tokenizer_config.json|https://huggingface.co/kha-white/manga-ocr-base/resolve/main|no_zip||tokenizer_config.json|data/models/manga-ocr-base|d775ad1deac162dc56b84e9b8638f95ed8a1f263d0f56f4f40834e26e205e266'
-        'vocab.txt|https://huggingface.co/kha-white/manga-ocr-base/resolve/main|no_zip||vocab.txt|data/models/manga-ocr-base|344fbb6b8bf18c57839e924e2c9365434697e0227fac00b88bb4899b78aa594d'
-        'ocr.zip|https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3|zip|ocr.ckpt|mit32px_ocr.ckpt|data/models|d9f619a9dccce8ce88357d1b17d25f07806f225c033ea42c64e86c45446cfe71'
-        'ocr-ctc.zip|https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3|zip|ocr-ctc.ckpt|mit48pxctc_ocr.ckpt|data/models|8b0837a24da5fde96c23ca47bb7abd590cd5b185c307e348c6e0b7238178ed89'
         'postag.zip|https://github.com/lancopku/pkuseg-python/releases/download/v0.0.16|zip|features.pkl|features.pkl|data/models/pkuseg/postag|17d734c186a0f6e76d15f4990e766a00eed5f72bea099575df23677435ee749d'
         'postag.zip|https://github.com/lancopku/pkuseg-python/releases/download/v0.0.16|zip|weights.npz|weights.npz|data/models/pkuseg/postag|2bbd53b366be82a1becedb4d29f76296b36ad7560b6a8c85d54054900336d59a'
         'spacy_ontonotes.zip|https://github.com/explosion/spacy-pkuseg/releases/download/v0.0.26|zip|features.msgpack|features.msgpack|data/models/pkuseg/spacy_ontonotes|fd4322482a7018b9bce9216173ae9d2848efe6d310b468bbb4383fb55c874a18'
         'spacy_ontonotes.zip|https://github.com/explosion/spacy-pkuseg/releases/download/v0.0.26|zip|weights.npz|weights.npz|data/models/pkuseg/spacy_ontonotes|5ada075eb25a854f71d6e6fa4e7d55e7be0ae049255b1f8f19d05c13b1b68c9e'
-        'libopencv_world.4.4.0.dylib.zip|https://github.com/dmMaze/BallonsTranslator/files/12571658|zip|libopencv_world.4.4.0.dylib|libopencv_world.4.4.0.dylib|data/libs|58bc785e410389a473a2a130c3134f5721a25bc5456072cb8efd405bf132487e'
-        'libpatchmatch_inpaint.dylib.zip|https://github.com/dmMaze/BallonsTranslator/files/12571660|zip|libpatchmatch_inpaint.dylib|libpatchmatch_inpaint.dylib|data/libs|3d318885b3f440af0d837c3716a055e31b98b8eb7e50d1b6142d3cdc46c04e75'
         )
         
     # Iterate through file information

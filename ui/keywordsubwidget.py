@@ -6,7 +6,7 @@ from qtpy.QtGui import QStandardItem, QStandardItemModel
 from typing import List, Dict
 
 from utils.logger import logger as LOGGER
-from .misc import FontFormat
+from utils.fontformat import FontFormat
 from .stylewidgets import Widget, NoBorderPushBtn
 
 class KeywordSubWidget(Widget):

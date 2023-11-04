@@ -11,8 +11,9 @@ import numpy as np
 from typing import List
 from functools import lru_cache, cached_property
 
-from .misc import pixmap2ndarray, pt2px, LruIgnoreArg
-from . import constants as C
+from .misc import pixmap2ndarray, LruIgnoreArg
+from utils import shared as C
+from utils.fontformat import pt2px
 
 def print_transform(tr: QTransform):
     print(f'[[{tr.m11(), tr.m12(), tr.m13()}]\n [{tr.m21(), tr.m22(), tr.m23()}]\n [{tr.m31(), tr.m32(), tr.m33()}]]')

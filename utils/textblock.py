@@ -6,8 +6,8 @@ import copy
 import cv2
 import re
 
-from utils.imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
-from utils.structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
+from .imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
+from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}

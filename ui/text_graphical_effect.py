@@ -6,8 +6,9 @@ from qtpy.QtCore import Signal, Qt, QPoint
 from qtpy.QtGui import QColor, QShowEvent, QPixmap, QImage, QPainter, QFontMetricsF
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout, QScrollArea, QGroupBox, QPushButton, QLabel
 
-from . import constants as C
-from .misc import pixmap2ndarray, ndarray2pixmap, FontFormat, pt2px
+from utils import shared as C
+from .misc import pixmap2ndarray, ndarray2pixmap
+from utils.fontformat import FontFormat, pt2px
 from .stylewidgets import Widget, ColorPicker, PaintQSlider
 
 

@@ -6,9 +6,10 @@ from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGr
 from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
 from qtpy.QtGui import QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, QInputMethodEvent, QPainter, QPen, QColor, QTextCursor, QTextCharFormat, QTextDocument
 
-from modules.textdetector.textblock import TextBlock
+from utils.textblock import TextBlock
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
-from .misc import FontFormat, px2pt, pt2px, td_pattern, table_pattern, set_html_color
+from utils.fontformat import FontFormat, px2pt, pt2px
+from .misc import td_pattern, table_pattern, set_html_color
 from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
 from .text_graphical_effect import apply_shadow_effect
 

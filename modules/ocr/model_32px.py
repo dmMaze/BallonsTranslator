@@ -11,7 +11,7 @@ import einops
 import numpy as np
 from typing import List, Tuple, Optional
 
-from ..textdetector.textblock import TextBlock
+from utils.textblock import TextBlock
 
 class ResNet(nn.Module):
 

@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
 
     from launch import main, args
-    from ui.imgtrans_proj import ProjImgTrans
+    from ui.config_proj import ProjImgTrans
     from utils.io_utils import imread, imwrite, json_dump_nested_obj
 
     test_dir = 'test_dir/text_rendering'

@@ -3,7 +3,7 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QContextMenuEvent, QShowEvent, QHideEvent
 from typing import List, Union
 
-from .misc import FontFormat
+from utils.fontformat import FontFormat
 from .stylewidgets import Widget
 
 def mutate_dict_key(adict: dict, old_key: Union[str, int], new_key: str):

@@ -9,11 +9,12 @@ from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySeq
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
-from modules.textdetector.textblock import TextBlock
+from utils.textblock import TextBlock
 from modules.translators.trans_chatgpt import GPTTranslator
-from .misc import pt2px, parse_stylesheet
-from .config import ProgramConfig, pcfg
-from .imgtrans_proj import ProjImgTrans
+from .misc import parse_stylesheet
+from utils.config import ProgramConfig, pcfg
+from utils.fontformat import pt2px
+from .config_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
@@ -24,9 +25,9 @@ from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox
 from .preset_widget import PresetPanel
-from .constants import CONFIG_PATH
+from utils.shared import CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
-from . import constants as C
+from utils import shared as C
 from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
 from .drawing_commands import RunBlkTransCommand

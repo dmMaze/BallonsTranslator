@@ -6,10 +6,10 @@ from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup
 
 from .stylewidgets import Widget, PaintQSlider, TextChecker
-from .constants import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
+from utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import startSystemMove
-from .config import pcfg
-from . import constants as C
+from utils.config import pcfg
+from utils import shared as C
 if C.FLAG_QT6:
     from qtpy.QtGui import QAction
 else:

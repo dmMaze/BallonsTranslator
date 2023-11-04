@@ -22,9 +22,9 @@ from modules.textdetector import TextBlock
 
 from .stylewidgets import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
-from .config import pcfg
+from utils.config import pcfg
 cfg_module = pcfg.module
-from .imgtrans_proj import ProjImgTrans
+from .config_proj import ProjImgTrans
 
 
 class ModuleThread(QThread):

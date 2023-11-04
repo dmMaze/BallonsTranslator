@@ -16,8 +16,8 @@ from .configpanel import InpaintConfigPanel
 from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
 from .canvas import Canvas
 from .misc import ndarray2pixmap
-from .config import DrawPanelConfig, pcfg
-from .constants import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
+from utils.config import DrawPanelConfig, pcfg
+from utils.shared import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from .drawing_commands import InpaintUndoCommand, StrokeItemUndoCommand
 
 INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)

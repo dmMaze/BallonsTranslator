@@ -9,10 +9,11 @@ except:
 
 from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransTextEdit, SourceTextEdit
-from .misc import FontFormat, doc_replace, doc_replace_no_shift
+from utils.fontformat import FontFormat
+from .misc import doc_replace, doc_replace_no_shift
 from .texteditshapecontrol import TextBlkShapeControl
 from .page_search_widget import PageSearchWidget, Matched
-from .imgtrans_proj import ProjImgTrans
+from .config_proj import ProjImgTrans
 from .scene_textlayout import PUNSET_HALF
 
 

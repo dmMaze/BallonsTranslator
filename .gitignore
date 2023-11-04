@@ -12,6 +12,7 @@ ballontranslator/gallery-dl
 release
 libs
 icons
+.btrans_cache
 
 tmp.py
 dummy_scripts.py
@@ -21,6 +22,7 @@ tmp
 logs
 ballontrans_pylibs_win
 config/config.json
+localtmp*
 
 .vscode
 .VSCodeCounter

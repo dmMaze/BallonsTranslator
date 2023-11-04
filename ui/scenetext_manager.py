@@ -15,11 +15,11 @@ except:
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
-from .misc import FontFormat, pt2px
+from utils.fontformat import FontFormat, pt2px
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
 from .fontformatpanel import FontFormatPanel
-from .config import pcfg
-from . import constants as C
+from utils.config import pcfg
+from utils import shared as C
 from utils.imgproc_utils import extract_ballon_region, rotate_polygons, get_block_mask
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text

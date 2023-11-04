@@ -4,7 +4,7 @@ import numpy as np
 import logging
 from collections import OrderedDict
 
-from ..textdetector.textblock import TextBlock
+from utils.textblock import TextBlock
 
 from utils.registry import Registry
 OCR = Registry('OCR')
@@ -85,6 +85,15 @@ class OCRMIT32px(OCRBase):
     device = DEFAULT_DEVICE
     chunk_size = 16
 
+    download_file_list = [{
+        'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/ocr.zip',
+        'files': ['ocr.ckpt'],
+        'sha256_pre_calculated': ['d9f619a9dccce8ce88357d1b17d25f07806f225c033ea42c64e86c45446cfe71'],
+        'save_files': ['data/models/mit32px_ocr.ckpt'],
+        'archived_files': 'ocr.zip',
+        'archive_sha256_pre_calculated': '47405638b96fa2540a5ee841a4cd792f25062c09d9458a973362d40785f95d7a',
+    }]
+
     def setup_ocr(self):
         
         global OCR32PXMODEL
@@ -123,6 +132,14 @@ class MangaOCR(OCRBase):
         'device': DEVICE_SELECTOR()
     }
     device = DEFAULT_DEVICE
+
+    download_file_list = [{
+        'url': 'https://huggingface.co/kha-white/manga-ocr-base/resolve/main/',
+        'files': ['pytorch_model.bin', 'config.json', 'preprocessor_config.json', 'README.md', 'special_tokens_map.json', 'tokenizer_config.json', 'vocab.txt'],
+        'sha256_pre_calculated': ['c63e0bb5b3ff798c5991de18a8e0956c7ee6d1563aca6729029815eda6f5c2eb', None, None, None, None, None, None],
+        'save_dir': 'data/models/manga-ocr-base',
+        'concatenate_url_filename': 1,
+    }]
 
     def setup_ocr(self):
 
@@ -188,6 +205,15 @@ class OCRMIT48pxCTC(OCRBase):
     }
     device = DEFAULT_DEVICE
     chunk_size = 16
+
+    download_file_list = [{
+        'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/ocr-ctc.zip',
+        'files': ['ocr-ctc.ckpt', 'alphabet-all-v5.txt'],
+        'sha256_pre_calculated': ['8b0837a24da5fde96c23ca47bb7abd590cd5b185c307e348c6e0b7238178ed89', 'd4746307d2e912787cf7ccf017dd2b1fbc18563f9babad5c3b87f44253925624'],
+        'save_files': ['data/models/mit48pxctc_ocr.ckpt', 'data/alphabet-all-v5.txt'],
+        'archived_files': 'ocr-ctc.zip',
+        'archive_sha256_pre_calculated': 'fc61c52f7a811bc72c54f6be85df814c6b60f63585175db27cb94a08e0c30101',
+    }]
 
     def setup_ocr(self):
         

@@ -7,7 +7,7 @@ import keyboard
 
 from .stylewidgets import Widget, SeparatorWidget, ClickableLabel, IgnoreMouseLabel
 from .textitem import TextBlock
-from .config import pcfg
+from utils.config import pcfg
 import webbrowser
 import numpy as np
 

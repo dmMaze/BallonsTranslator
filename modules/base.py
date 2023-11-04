@@ -37,6 +37,9 @@ class BaseModule:
     _preprocess_hooks: OrderedDict = None
     _postprocess_hooks: OrderedDict = None
 
+    download_file_list: List = None
+    download_file_on_load = False
+
     def __init__(self, **params) -> None:
         if params:
             if self.params is None:

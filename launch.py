@@ -140,6 +140,26 @@ def main():
     prepare_environment()
 
     from utils.logger import setup_logging, logger as LOGGER
+    import utils.shared as shared
+    from utils import config as program_config
+    from utils.config import ProgramConfig
+
+    shared.load_cache()
+
+    try:
+        config = ProgramConfig.load(shared.CONFIG_PATH)
+    except Exception as e:
+        LOGGER.exception(e)
+        LOGGER.warning("Failed to load config file, using default config")
+        config = ProgramConfig()
+    program_config.pcfg = config
+
+
+    from modules.prepare_local_files import prepare_local_files_forall
+
+    
+    # shared.load_cache()
+    prepare_local_files_forall()
 
     if not args.qt_api in QT_APIS:
         os.environ['QT_API'] = 'pyqt6'
@@ -159,39 +179,27 @@ def main():
 
     LOGGER.info(f'QT_API: {API}, QT Version: {QT_VERSION}')
 
-    from ui import constants as C
-    from ui import config as program_config
-
-    C.DEBUG = args.debug
-    C.DEFAULT_DISPLAY_LANG = QLocale.system().name()
-    C.USE_PYSIDE6 = API == 'pyside6'
+    shared.DEBUG = args.debug
+    shared.DEFAULT_DISPLAY_LANG = QLocale.system().name()
+    shared.USE_PYSIDE6 = API == 'pyside6'
     if qtpy.API_NAME[-1] == '6':
-        C.FLAG_QT6 = True
+        shared.FLAG_QT6 = True
     else:
-        C.FLAG_QT6 = False
+        shared.FLAG_QT6 = False
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
-    os.chdir(C.PROGRAM_PATH)
+    os.chdir(shared.PROGRAM_PATH)
 
-    setup_logging(C.LOGGING_PATH)
+    setup_logging(shared.LOGGING_PATH)
 
     load_modules()
 
     app = QApplication(sys.argv)
-    from ui.config import ProgramConfig
-
-    try:
-        config = ProgramConfig.load(C.CONFIG_PATH)
-    except Exception as e:
-        LOGGER.exception(e)
-        LOGGER.warning("Failed to load config file, using default config")
-        config = ProgramConfig()
-    program_config.pcfg = config
 
     lang = config.display_lang
-    langp = osp.join(C.TRANSLATE_DIR, lang + '.qm')
+    langp = osp.join(shared.TRANSLATE_DIR, lang + '.qm')
     if osp.exists(langp):
         translator = QTranslator()
         translator.load(lang, osp.dirname(osp.abspath(__file__)) + "/translate")
@@ -201,9 +209,9 @@ def main():
     LOGGER.info(f'set display language to {lang}')
 
     ps = QGuiApplication.primaryScreen()
-    C.LDPI = ps.logicalDotsPerInch()
-    C.SCREEN_W = ps.geometry().width()
-    C.SCREEN_H = ps.geometry().height()
+    shared.LDPI = ps.logicalDotsPerInch()
+    shared.SCREEN_W = ps.geometry().width()
+    shared.SCREEN_H = ps.geometry().height()
 
     # Fonts
     # Load custom fonts if they exist
@@ -213,14 +221,14 @@ def main():
     yahei = QFont('Microsoft YaHei UI')
     if yahei.exactMatch() and not sys.platform == 'darwin':
         QGuiApplication.setFont(yahei)
-        C.DEFAULT_FONT_FAMILY = 'Microsoft YaHei UI'
-        C.APP_DEFAULT_FONT = 'Microsoft YaHei UI'
+        shared.DEFAULT_FONT_FAMILY = 'Microsoft YaHei UI'
+        shared.APP_DEFAULT_FONT = 'Microsoft YaHei UI'
     else:
         app_font = app.font().family()
-        C.DEFAULT_FONT_FAMILY = app_font
-        C.APP_DEFAULT_FONT = app_font
+        shared.DEFAULT_FONT_FAMILY = app_font
+        shared.APP_DEFAULT_FONT = app_font
 
-    C.APP_DEFAULT_FONT = app.font().defaultFamily()
+    shared.APP_DEFAULT_FONT = app.font().defaultFamily()
 
     from ui.mainwindow import MainWindow
 
@@ -229,11 +237,11 @@ def main():
     BT = ballontrans
     BT.restart_signal.connect(restart)
 
-    if C.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
+    if shared.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
         # https://github.com/dmMaze/BallonsTranslator/issues/220
         BT.comicTransSplitter.setHandleWidth(10)
 
-    ballontrans.setWindowIcon(QIcon(C.ICON_PATH))
+    ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
     ballontrans.show()
     ballontrans.resetStyleSheet()
     sys.exit(app.exec())

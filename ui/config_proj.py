@@ -1,4 +1,4 @@
-import os, json, shutil, re, docx, docx2txt, piexif, cv2, time
+import os, json, shutil, re, docx, docx2txt, piexif, cv2
 from docx.shared import Inches
 from docx import Document
 import piexif.helper
@@ -8,8 +8,8 @@ from typing import Tuple, Union, List, Dict
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
-from modules.textdetector.textblock import TextBlock
-from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException, TextBlkEncoder
+from utils.textblock import TextBlock
+from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException
 
 
 def write_jpg_metadata(imgpath: str, metadata="a metadata"):
@@ -22,6 +22,13 @@ def read_jpg_metadata(imgpath: str):
     user_comment = piexif.helper.UserComment.load(exif_dict["Exif"][piexif.ExifIFD.UserComment])
     bubdict = json.loads(user_comment)
     return bubdict
+
+
+class TextBlkEncoder(NumpyEncoder):
+    def default(self, obj):
+        if isinstance(obj, TextBlock):
+            return obj.to_dict()
+        return NumpyEncoder.default(self, obj)
 
 
 class ProjImgTrans:

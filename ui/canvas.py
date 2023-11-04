@@ -12,13 +12,13 @@ except:
     from qtpy.QtGui import QUndoStack, QUndoCommand
 
 from .misc import ndarray2pixmap
-from .imgtrans_proj import ProjImgTrans
+from .config_proj import ProjImgTrans
 from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
 from .stylewidgets import FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
-from . import constants as C
+from utils import shared as C
 
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1

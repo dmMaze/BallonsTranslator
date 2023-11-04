@@ -5,7 +5,7 @@ import time, requests, re, uuid, base64, hmac, functools, json
 from collections import OrderedDict
 
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
-from ..textdetector.textblock import TextBlock
+from utils.textblock import TextBlock
 from ..base import BaseModule, DEVICE_SELECTOR
 from utils.registry import Registry
 from utils.io_utils import text_is_empty

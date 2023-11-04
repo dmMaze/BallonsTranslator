@@ -4,8 +4,8 @@ from modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRA
     BaseTranslator, DEFAULT_DEVICE, GPUINTENSIVE_SET
 from utils.logger import logger as LOGGER
 from .stylewidgets import ConfigComboBox, NoBorderPushBtn, CustomComboBox
-from .constants import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
-from .config import pcfg
+from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
+from utils.config import pcfg
 
 from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit
 from qtpy.QtCore import Qt, Signal

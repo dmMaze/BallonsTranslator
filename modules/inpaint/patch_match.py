@@ -10,6 +10,7 @@
 import ctypes, os
 import sys
 from typing import Optional, Union
+from glob import glob
 
 import numpy as np
 from PIL import Image
@@ -45,7 +46,10 @@ class CMatT(ctypes.Structure):
 if sys.platform == "win32":
     patchmatchlib = 'data/libs/patchmatch_inpaint.dll'
 elif sys.platform == "darwin":
-    patchmatchlib = 'data/libs/libpatchmatch_inpaint.dylib'
+    patchmatchlib = 'data/libs/macos_libpatchmatch_inpaint.dylib'
+    opencv_world = glob('data/libs/macos_libopencv_world.*.dylib')
+    if opencv_world:
+        ctypes.CDLL(opencv_world[0])
 else:
     patchmatchlib = 'data/libs/libpatchmatch.so'
 

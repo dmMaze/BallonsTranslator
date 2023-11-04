@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 from typing import Dict, List
 from collections import OrderedDict
+import sys
 
 from utils.registry import Registry
 from utils.textblock_mask import extract_ballon_mask
@@ -130,6 +131,16 @@ class OpenCVInpainter(InpainterBase):
 @register_inpainter('patchmatch')
 class PatchmatchInpainter(InpainterBase):
 
+    if sys.platform == 'darwin':
+        download_file_list = [{
+                'url': 'https://github.com/dmMaze/PyPatchMatchInpaint/releases/download/v1.0/macos_arm64_patchmatch_libs.7z',
+                'sha256_pre_calculated': ['843704ab096d3afd8709abe2a2c525ce3a836bb0a629ed1ee9b8f5cee9938310', '849ca84759385d410c9587d69690e668822a3fc376ce2219e583e7e0be5b5e9a'],
+                'files': ['macos_libopencv_world.4.8.0.dylib', 'macos_libpatchmatch_inpaint.dylib'],
+                'save_dir': 'data/libs',
+                'archived_files': 'macos_patchmatch_libs.7z',
+                'archive_sha256_pre_calculated': '9f332c888be0f160dbe9f6d6887eb698a302e62f4c102a0f24359c540d5858ea'
+        }]
+
     def setup_inpainter(self):
         from . import patch_match
         self.inpaint_method = lambda img, mask, *args, **kwargs: patch_match.inpaint(img, mask, patch_size=3)
@@ -170,6 +181,12 @@ class AOTInpainter(InpainterBase):
     device = DEFAULT_DEVICE
     inpaint_size = 2048
     model: AOTGenerator = None
+
+    download_file_list = [{
+            'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting.ckpt',
+            'sha256_pre_calculated': '878d541c68648969bc1b042a6e997f3a58e49b6c07c5636ad55130736977149f',
+            'files': 'data/models/aot_inpainter.ckpt',
+    }]
 
     def setup_inpainter(self):
         global AOTMODEL
@@ -265,6 +282,12 @@ class LamaInpainterMPE(InpainterBase):
 
     device = DEFAULT_DEVICE
     inpaint_size = 2048
+
+    download_file_list = [{
+            'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting_lama_mpe.ckpt',
+            'sha256_pre_calculated': 'd625aa1b3e0d0408acfd6928aa84f005867aa8dbb9162480346a4e20660786cc',
+            'files': 'data/models/lama_mpe.ckpt',
+    }]
 
     def moveToDevice(self, device: str):
         self.model.to(device)
