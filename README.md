@@ -1,5 +1,5 @@
 # BallonTranslator
-简体中文 | [English](README_EN.md) | [Русский](README_RU.md) | [日本語](README_JA.md) | [Indonesia](README_ID.md)
+简体中文 | [English](doc/README_EN.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md)
 
 深度学习辅助漫画翻译工具, 支持一键机翻和简单的图像/文本编辑  
 
