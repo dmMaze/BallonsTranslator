@@ -353,7 +353,7 @@ class ConfigComboBox(CustomComboBox):
 
     def adjustSize(self) -> None:
         super().adjustSize()
-        width = self.minimumSizeHint().width() + 100
+        width = self.minimumSizeHint().width()
         if width < CONFIG_COMBOBOX_SHORT:
             width = CONFIG_COMBOBOX_SHORT
         elif width < CONFIG_COMBOBOX_MIDEAN:

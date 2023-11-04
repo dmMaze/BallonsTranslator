@@ -1,6 +1,6 @@
 # To install pytorch cuda (gpu) version, please look https://pytorch.org/
 
-PyQt6-Qt6==6.4.2    # framelesswindow is broken for qt>6.4.2 on windows, text rendering is wrong on macOS
+PyQt6-Qt6==6.4.2    # ffor qt>6.4.2 , framelesswindow is broken on windows, and text rendering is wrong on macOS
 PyQt6==6.4.2   #PyQt5>=5.15.9
 numpy
 urllib3==1.25.11 # https://github.com/psf/requests/issues/5740

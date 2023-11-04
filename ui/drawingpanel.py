@@ -63,7 +63,6 @@ class InpaintPanel(Widget):
     def __init__(self, inpainter_panel: InpaintConfigPanel, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.inpainter_panel = inpainter_panel
         self.thicknessSlider = PaintQSlider()
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
@@ -86,8 +85,13 @@ class InpaintPanel(Widget):
         shape_layout.addWidget(shape_label)
         shape_layout.addWidget(self.shapeCombobox)
 
+        self.inpaint_layout = inpaint_layout = QHBoxLayout()
+        inpaint_layout.addWidget(ToolNameLabel(100, self.tr('Inpainter')))
+        self.inpainter_panel = inpainter_panel
+
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(inpaint_layout)
         layout.addLayout(thickness_layout)
         layout.addLayout(shape_layout)
         layout.setSpacing(14)
@@ -98,14 +102,11 @@ class InpaintPanel(Widget):
             self.thicknessChanged.emit(self.thicknessSlider.value())
 
     def showEvent(self, e) -> None:
-        self.inpainter_panel.needInpaintChecker.setVisible(False)
-        self.vlayout.addWidget(self.inpainter_panel)
+        self.inpaint_layout.addWidget(self.inpainter_panel.module_combobox)
         super().showEvent(e)
 
-
     def hideEvent(self, e) -> None:
-        self.vlayout.removeWidget(self.inpainter_panel)
-        self.inpainter_panel.needInpaintChecker.setVisible(True)
+        self.inpaint_layout.removeWidget(self.inpainter_panel.module_combobox)
         return super().hideEvent(e)
 
     @property
@@ -190,9 +191,8 @@ class RectPanel(Widget):
     inpaint_btn_clicked = Signal()
     def __init__(self, inpainter_panel: InpaintConfigPanel, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.inpainter_panel = inpainter_panel
-        self.dilate_label = ToolNameLabel()
-        self.dilate_label.setText(self.tr('Dilate'))
+
+        self.dilate_label = ToolNameLabel(100, self.tr('Dilate'))
         self.dilate_slider = PaintQSlider()
         self.dilate_slider.setRange(0, 100)
         self.dilate_slider.valueChanged.connect(self.dilate_ksize_changed)
@@ -213,6 +213,10 @@ class RectPanel(Widget):
         self.btnlayout.addWidget(self.inpaint_btn)
         self.btnlayout.addWidget(self.delete_btn)
 
+        self.inpaint_layout = inpaint_layout = QHBoxLayout()
+        inpaint_layout.addWidget(ToolNameLabel(100, self.tr('Inpainter')))
+        self.inpainter_panel = inpainter_panel
+
         glayout = QGridLayout()
         glayout.addWidget(self.dilate_label, 0, 0)
         glayout.addWidget(self.dilate_slider, 0, 1)
@@ -221,19 +225,18 @@ class RectPanel(Widget):
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(inpaint_layout)
         layout.addLayout(glayout)
         layout.addLayout(self.btnlayout)
         layout.setSpacing(14)
         self.vlayout = layout
 
     def showEvent(self, e) -> None:
-        self.inpainter_panel.needInpaintChecker.setVisible(False)
-        self.vlayout.addWidget(self.inpainter_panel)
+        self.inpaint_layout.addWidget(self.inpainter_panel.module_combobox)
         super().showEvent(e)
 
     def hideEvent(self, e) -> None:
-        self.vlayout.removeWidget(self.inpainter_panel)
-        self.inpainter_panel.needInpaintChecker.setVisible(True)
+        self.inpaint_layout.removeWidget(self.inpainter_panel.module_combobox)
         return super().hideEvent(e)
 
     def get_maskseg_method(self):

@@ -1,6 +1,6 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
+from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QFrame, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
 from qtpy import API
@@ -42,7 +42,7 @@ class ConfigTextLabel(QLabel):
 
 class ConfigSubBlock(Widget):
     pressed = Signal(int, int)
-    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout=True) -> None:
+    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout=True, insert_stretch: bool = False, content_margins = (24, 6, 24, 6)) -> None:
         super().__init__()
         self.idx0: int = None
         self.idx1: int = None
@@ -56,12 +56,14 @@ class ConfigSubBlock(Widget):
             layout.addWidget(textlabel)
         if discription is not None:
             layout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT-2))
+        if insert_stretch:
+            layout.insertStretch(-1)
         if isinstance(widget, QWidget):
             layout.addWidget(widget)
         else:
             layout.addLayout(widget)
         self.widget = widget
-        self.setContentsMargins(24, 6, 24, 6)
+        self.setContentsMargins(*content_margins)
 
     def setIdx(self, idx0: int, idx1: int) -> None:
         self.idx0 = idx0
@@ -70,6 +72,22 @@ class ConfigSubBlock(Widget):
     def enterEvent(self, e: QEvent) -> None:
         self.pressed.emit(self.idx0, self.idx1)
         return super().enterEvent(e)
+    
+
+def combobox_with_label(sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True, parent: QWidget = None, insert_stretch: bool = False) -> Tuple[ConfigComboBox, QWidget]:
+    combox = ConfigComboBox(fix_size=fix_size, scrollWidget=parent)
+    combox.addItems(sel)
+    if target_block is None:
+        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout, insert_stretch=insert_stretch)
+        sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
+        sublock.layout().setSpacing(20)
+        return combox, sublock
+    else:
+        layout = target_block.layout()
+        layout.addSpacing(20)
+        layout.addWidget(ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal))
+        layout.addWidget(combox)
+        return combox, target_block
 
 
 class ConfigBlock(Widget):
@@ -111,20 +129,12 @@ class ConfigBlock(Widget):
         self.subblock_list.append(sublock)
 
     def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True) -> Tuple[ConfigComboBox, QWidget]:
+        combox, sublock = combobox_with_label(sel, name, discription, vertical_layout, target_block, fix_size, parent=self)
         combox = ConfigComboBox(fix_size=fix_size, scrollWidget=self)
         combox.addItems(sel)
         if target_block is None:
-            sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout)
-            sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
-            sublock.layout().setSpacing(20)
             self.addSublock(sublock)
-            return combox, sublock
-        else:
-            layout = target_block.layout()
-            layout.addSpacing(20)
-            layout.addWidget(ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal))
-            layout.addWidget(combox)
-            return combox, target_block
+        return combox, target_block
 
     def addBlockWidget(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout: bool = False) -> ConfigSubBlock:
         sublock = ConfigSubBlock(widget, name, discription, vertical_layout)
@@ -328,21 +338,37 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_lettering)
         dec_program_str = self.tr('decide by program')
         use_global_str = self.tr('use global setting')
-        
-        self.let_fntsize_combox, letblk_0 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font size'))
-        self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
-        self.let_fntstroke_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke size'), target_block=letblk_0)
-        self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
-        
-        self.let_fntcolor_combox, letblk_1 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('font color'))
-        self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
-        self.let_fnt_scolor_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('stroke color'), target_block=letblk_1)
-        self.let_fnt_scolor_combox.currentIndexChanged.connect(self.on_font_scolor_flag_changed)
 
-        self.let_effect_combox, letblk_2 = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('effect'))
+        global_fntfmt_widget = QWidget()
+        global_fntfmt_layout = QGridLayout(global_fntfmt_widget)
+        global_fntfmt_layout.setSpacing(0)
+        global_fntfmt_widget.setContentsMargins(0, 0, 0, 0)
+
+        b = generalConfigPanel.addBlockWidget(global_fntfmt_widget)
+        b.layout().setContentsMargins(0, 0, 0, 0)
+        b.setContentsMargins(0, 0, 0, 0)
+        self.let_fntsize_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Size'), parent=self, insert_stretch=True)
+        global_fntfmt_layout.addWidget(sublock, 0, 0)
+
+        self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
+        self.let_fntstroke_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Stroke Size'), parent=self, insert_stretch=True)
+        self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
+        global_fntfmt_layout.addWidget(sublock, 0, 1)
+        
+        self.let_fntcolor_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Color'), parent=self, insert_stretch=True)
+        self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
+        global_fntfmt_layout.addWidget(sublock, 1, 0)
+        self.let_fnt_scolor_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Stroke Color'), parent=self, insert_stretch=True)
+        self.let_fnt_scolor_combox.currentIndexChanged.connect(self.on_font_scolor_flag_changed)
+        global_fntfmt_layout.addWidget(sublock, 1, 1)
+
+        self.let_effect_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Effect'), parent=self, insert_stretch=True)
         self.let_effect_combox.currentIndexChanged.connect(self.on_effect_flag_changed)
-        self.let_alignment_combox, _ = generalConfigPanel.addCombobox([dec_program_str, use_global_str], self.tr('alignment'), target_block=letblk_2)
+        global_fntfmt_layout.addWidget(sublock, 2, 0)
+        self.let_alignment_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Alignment'), parent=self, insert_stretch=True)
         self.let_alignment_combox.currentIndexChanged.connect(self.on_alignment_flag_changed)
+        global_fntfmt_layout.addWidget(sublock, 2, 1)
+        global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
 
         self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to \"decide by program.\"'))
@@ -353,7 +379,7 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_saladict)
 
         sublock = ConfigSubBlock(ConfigTextLabel(self.tr("<a href=\"https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md\">Installation guide</a>"), CONFIG_FONTSIZE_CONTENT - 2), vertical_layout=False)
-        sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        sublock.layout().insertStretch(-1)
         generalConfigPanel.addSublock(sublock)
 
         self.selectext_minimenu_checker = generalConfigPanel.addCheckBox(self.tr('Show mini menu when selecting text.'))
@@ -362,8 +388,8 @@ class ConfigPanel(Widget):
         self.saladict_shortcut.keySequenceChanged.connect(self.on_saladict_shortcut_changed)
         self.saladict_shortcut.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
 
-        sublock = ConfigSubBlock(self.saladict_shortcut, self.tr("shortcut"), vertical_layout=False)
-        sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        sublock = ConfigSubBlock(self.saladict_shortcut, self.tr("Shortcut"), vertical_layout=False)
+        sublock.layout().insertStretch(-1)
         generalConfigPanel.addSublock(sublock)
         self.searchurl_combobox, _ = generalConfigPanel.addCombobox(["https://www.google.com/search?q=", "https://www.bing.com/search?q=", "https://duckduckgo.com/?q=", "https://yandex.com/search/?text=", "http://www.baidu.com/s?wd=", "https://search.yahoo.com/search;?p=", "https://www.urbandictionary.com/define.php?term="], self.tr("Search Engines"), fix_size=False)
         self.searchurl_combobox.setEditable(True)
@@ -447,12 +473,7 @@ class ConfigPanel(Widget):
         self.configTable.setCurrentItem(idx0, idx1)
         self.configTable.tableitem_pressed.emit(idx0, idx1)
 
-    def showEvent(self, e) -> None:
-        self.inpaint_sub_block.layout().addWidget(self.inpaint_config_panel)
-        return super().showEvent(e)
-
     def hideEvent(self, e) -> None:
-        self.inpaint_sub_block.layout().removeWidget(self.inpaint_config_panel)
         self.save_config.emit()
         return super().hideEvent(e)
         

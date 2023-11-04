@@ -207,6 +207,7 @@ class ModuleConfigParseWidget(QWidget):
         p_layout.addWidget(ParamNameLabel(module_name))
         p_layout.addWidget(self.module_combobox)
         p_layout.setSpacing(15)
+        self.p_layout = p_layout
 
         layout = QVBoxLayout(self)
         self.param_widget_map = {}
@@ -284,7 +285,6 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
 
     def __init__(self, module_name, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(module_name, GET_VALID_TRANSLATORS, scrollWidget=scrollWidget, *args, **kwargs)
-        self.translator_combobox = self.module_combobox
         self.translator_changed = self.module_changed
     
         self.source_combobox = ConfigComboBox(scrollWidget=scrollWidget)
@@ -307,36 +307,42 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
     def finishSetTranslator(self, translator: BaseTranslator):
         self.source_combobox.blockSignals(True)
         self.target_combobox.blockSignals(True)
-        self.translator_combobox.blockSignals(True)
+        self.module_combobox.blockSignals(True)
 
         self.source_combobox.clear()
         self.target_combobox.clear()
 
         self.source_combobox.addItems(translator.supported_src_list)
         self.target_combobox.addItems(translator.supported_tgt_list)
-        self.translator_combobox.setCurrentText(translator.name)
+        self.module_combobox.setCurrentText(translator.name)
         self.source_combobox.setCurrentText(translator.lang_source)
         self.target_combobox.setCurrentText(translator.lang_target)
         self.updateModuleParamWidget()
         self.source_combobox.blockSignals(False)
         self.target_combobox.blockSignals(False)
-        self.translator_combobox.blockSignals(False)
+        self.module_combobox.blockSignals(False)
 
 
 class InpaintConfigPanel(ModuleConfigParseWidget):
     def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(module_name, GET_VALID_INPAINTERS, scrollWidget = scrollWidget, *args, **kwargs)
         self.inpainter_changed = self.module_changed
-        self.inpainter_combobox = self.module_combobox
         self.setInpainter = self.setModule
         self.needInpaintChecker = ParamCheckerBox(self.tr('Let the program decide whether it is necessary to use the selected inpaint method.'))
         self.vlayout.addWidget(self.needInpaintChecker)
+
+    def showEvent(self, e) -> None:
+        self.p_layout.addWidget(self.module_combobox)
+        super().showEvent(e)
+
+    def hideEvent(self, e) -> None:
+        self.p_layout.removeWidget(self.module_combobox)
+        return super().hideEvent(e)
 
 class TextDetectConfigPanel(ModuleConfigParseWidget):
     def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(module_name, GET_VALID_TEXTDETECTORS, scrollWidget = scrollWidget, *args, **kwargs)
         self.detector_changed = self.module_changed
-        self.detector_combobox = self.module_combobox
         self.setDetector = self.setModule
 
 
@@ -347,7 +353,6 @@ class OCRConfigPanel(ModuleConfigParseWidget):
     def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(module_name, GET_VALID_OCR, scrollWidget = scrollWidget, *args, **kwargs)
         self.ocr_changed = self.module_changed
-        self.ocr_combobox = self.module_combobox
         self.setOCR = self.setModule
 
         self.replaceOCRkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for OCR results"), self)

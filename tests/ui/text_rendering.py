@@ -13,13 +13,11 @@ if __name__ == '__main__':
 
     os.chdir(APP_ROOT)
 
-
-
     from launch import main, args
     from ui.config_proj import ProjImgTrans
     from utils.io_utils import imread, imwrite, json_dump_nested_obj
 
-    test_dir = 'test_dir/text_rendering'
+    test_dir = 'tests/test_dir/text_rendering'
     if not osp.exists(test_dir):
         os.makedirs(test_dir)
 
