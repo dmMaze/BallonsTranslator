@@ -18,7 +18,7 @@
 ### 2023-01-27
 [v1.3.26](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.26) 发布
 1. 选中文本迷你菜单支持*聚合词典专业划词翻译*[沙拉查词](https://saladict.crimx.com): [安装说明](doc/saladict_chs.md)
-<img src = "doc/src/saladict_doc.jpg">
+<img src = "./src/saladict_doc.jpg">
 
 2. 支持替换OCR和机翻结果中的关键字, 见编辑菜单或设置面板 [#78](https://github.com/dmMaze/BallonsTranslator/issues/78)
 3. 支持拖拽导入文件夹 [#77](https://github.com/dmMaze/BallonsTranslator/issues/77)
@@ -39,7 +39,7 @@
 4. OCR/翻译/修复选中文字区域, 填字样式会继承选中的文字框自己的
    单行文本建议选用ctc_48px, 多行日文选mangocr, 目前对多行其它语言不太行, 需要重新训练检测模型  
    注意如果用**ctc_48px**要保证框在竖排模式下且尽可能贴合单行文本
-<img src="doc/src/ocrselected.gif" div align=center>
+<img src="./src/ocrselected.gif" div align=center>
 
 ### 2022-11-29
 [v1.3.15](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.15)发布
@@ -88,7 +88,7 @@ v1.3.13起支持深色模式: 视图->深色模式
 5. 文本块支持多选和**批量调整格式** (ctrl+鼠标左键或者按下右键拉框框选)
 6. 支持日译英, 英译中的**自动排版**, 基于提取出的背景气泡, 目标语言为中文时会自动断句(基于pkuseg). 勾选设置面板->常规->嵌字->自动排版后将对一键机翻生效(默认启用). 
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="./src/multisel_autolayout.gif" div align=center>
 <p align=center>
 批量格式调整, 英译中自动断句分行
 </p>

@@ -1,9 +1,9 @@
 # BallonTranslator
-[简体中文](README.md) | [English](README_EN.md) | [Русский](README_RU.md) | [日本語](README_JA.md) | Indonesia
+[简体中文](../README.md) | [English](README_EN.md) | [Русский](README_RU.md) | [日本語](README_JA.md) | Indonesia
 
 Sebuah aplikasi penerjemahan komik/manga yang dibantu oleh deep learning.
 
-<img src="doc/src/ui0.jpg" div align=center>
+<img src="./src/ui0.jpg" div align=center>
 
 <p align=center>
 pratinjau
@@ -56,7 +56,7 @@ Untuk menggunakan Sugoi translator (hanya bahasa Jepang-Inggris), unduh [offline
 
 # Penggunaan
 **Disarankan untuk menjalankan program di terminal jika program ini crash dan tidak meninggalkan informasi, lihat gif berikut ini**
-<img src="doc/src/run.gif">  
+<img src="./src/run.gif">  
 
 - Pilih penerjemah yang diinginkan dan atur sumber dan target bahasa. 
  - Buka folder yang berisi gambar manga/manhua/webtoon yang ingin diterjemahkan.
@@ -68,13 +68,13 @@ Format font seperti ukuran font dan warna ditentukan oleh program secara otomati
 ## Image editing
 
 ### inpaint tool
-<img src="doc/src/imgedit_inpaint.gif">
+<img src="./src/imgedit_inpaint.gif">
 <p align = "center">
 Mode pengeditan gambar, alat inpainting
 </p>
 
 ### rect tool
-<img src="doc/src/rect_tool.gif">
+<img src="./src/rect_tool.gif">
 <p align = "center">
 Alat rect
 </p>
@@ -83,17 +83,17 @@ Untuk 'menghapus' hasil inpainting yang tidak diinginkan, gunakan alat inpaintin
 Hasilnya tergantung pada seberapa akurat algoritme ("metode 1" dan "metode 2" dalam gif) mengekstrak mask dari teks. Ini berjalan lebih buruk pada teks & latar belakang yang kompleks.
 
 ## Pengeditan teks
-<img src="doc/src/textedit.gif">
+<img src="./src/textedit.gif">
 <p align = "center">
 Mode Pengeditan teks
 </p>
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="./src/multisel_autolayout.gif" div align=center>
 <p align=center>
 pemformatan kumpulan tata letak teks secara otomatis
 </p>
 
-<img src="doc/src/ocrselected.gif" div align=center>
+<img src="./src/ocrselected.gif" div align=center>
 <p align=center>
 pengenalan kata & menerjemahkan area yang dipilih
 </p>
@@ -110,7 +110,7 @@ pengenalan kata & menerjemahkan area yang dipilih
 * ```Ctrl++```/```Ctrl+-``` untuk mengubah ukuran gambar
 * ```Ctrl+G```/```Ctrl+F``` untuk mencari secara global/dalam halaman saat ini.
 
-<img src="doc/src/configpanel.png">  
+<img src="./src/configpanel.png">  
 
 
 # Modul otomasi

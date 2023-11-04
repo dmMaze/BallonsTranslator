@@ -1,9 +1,9 @@
 # BallonTranslator
-[简体中文](README.md) | English | [Русский](README_RU.md) | [日本語](README_JA.md) | [Indonesia](README_ID.md)
+[简体中文](../README.md) | English | [Русский](README_RU.md) | [日本語](README_JA.md) | [Indonesia](README_ID.md)
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.
 
-<img src="doc/src/ui0.jpg" div align=center>
+<img src="./src/ui0.jpg" div align=center>
 
 <p align=center>
 preview
@@ -159,7 +159,7 @@ To use Sugoi translator(Japanese-English only), download [offline model](https:/
 # Usage
 
 **It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.**
-<img src="doc/src/run.gif">  
+<img src="./src/run.gif">  
 - The first time you run the application, please select the translator and set the source and target languages by clicking the settings icon.
 - Open a folder containing images of a comic (manga/manhua/manhwa) that need translation by clicking the folder icon.
 - Click the `Run` button and wait for the process to complete.
@@ -169,13 +169,13 @@ The font formats such as font size and color are determined by the program autom
 ## Image Editing
 
 ### Inpaint Tool
-<img src="doc/src/imgedit_inpaint.gif">
+<img src="./src/imgedit_inpaint.gif">
 <p align = "center">
 Image Editing Mode, Inpainting Tool
 </p>
 
 ### rect tool
-<img src="doc/src/rect_tool.gif">
+<img src="./src/rect_tool.gif">
 <p align = "center">
 Rect Tool
 </p>
@@ -184,17 +184,17 @@ To 'erase' unwanted inpainted results, use the inpainting tool or rect tool with
 The result depends on how accurately the algorithm ("method 1" and "method 2" in the gif) extracts the text mask. It could perform worse on complex text & background.  
 
 ## Text editing
-<img src="doc/src/textedit.gif">
+<img src="./src/textedit.gif">
 <p align = "center">
 Text Editing Mode
 </p>
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="./src/multisel_autolayout.gif" div align=center>
 <p align=center>
 Batch Text Formatting & Auto Layout
 </p>
 
-<img src="doc/src/ocrselected.gif" div align=center>
+<img src="./src/ocrselected.gif" div align=center>
 <p align=center>
 OCR & Translate Selected Area
 </p>
@@ -212,7 +212,7 @@ OCR & Translate Selected Area
 * ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
 * ```0-9``` to adjust opacity of lettering layer
   
-<img src="doc/src/configpanel.png">  
+<img src="./src/configpanel.png">  
 
 
 # Automation modules

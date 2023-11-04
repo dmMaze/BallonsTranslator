@@ -18,7 +18,7 @@ Src download implementation based on gallery-dl (#131) thanks to [ROKOLYT](https
 ### 2023-01-27
 [v1.3.26](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.26) released
 1. Add support for [saladict](https://saladict.crimx.com) (*All-in-one professional pop-up dictionary and page translator*) in the mini menu on text selection. [Installation guide](doc/saladict.md) 
-<img src = "doc/src/saladict_doc.jpg">
+<img src = "./src/saladict_doc.jpg">
 
 2. Support keyword substitution for OCR & machine translation results [#78](https://github.com/dmMaze/BallonsTranslator/issues/78): Edit -> ```Keyword substitution for machine translation```
 3. Support import folder with drag&drop [#77](https://github.com/dmMaze/BallonsTranslator/issues/77)
@@ -40,7 +40,7 @@ Src download implementation based on gallery-dl (#131) thanks to [ROKOLYT](https
    lettering style will inherit from corresponding selected block.
    ctc_48px is more recommended for single line text, mangocr for multi-line Japanese, need to retrain detection model make ctc48_px generalize to multi-lines  
    Note that if you use **ctc_48px** make sure that the box is in vertical mode and fits as close to the single line of text as possible
-<img src="doc/src/ocrselected.gif" div align=center>
+<img src="./src/ocrselected.gif" div align=center>
 
 ### 2022-11-29
 [v1.3.15](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.15) released
@@ -90,7 +90,7 @@ Support Dark Mode since v1.3.13: View->Dark Mode
 5. Support multiple textblocks selection & formatting. 
 6. Improved manga->English, English->Chinese typesetting (**Auto-layout** in Config panel->Lettering, enabled by default), it can also be applied to selected text blocks use the option in the right-click menu.
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="./src/multisel_autolayout.gif" div align=center>
 <p align=center>
 batch text formatting & auto layout
 </p>

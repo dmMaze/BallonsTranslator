@@ -1,9 +1,9 @@
 # BallonTranslator
-[简体中文](README.md)| [English](README_EN.md) | [Русский](README_RU.md) | 日本語 | [Indonesia](README_ID.md)
+[简体中文](../README.md)| [English](README_EN.md) | [Русский](README_RU.md) | 日本語 | [Indonesia](README_ID.md)
 
 ディープラーニングを活用したマンガ翻訳支援ツール。
 
-<img src="doc/src/ui0.jpg" div align=center>
+<img src="./src/ui0.jpg" div align=center>
 
 <p align=center>
 プレビュー
@@ -53,7 +53,7 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 ## 完全自動翻訳
 **万が一、プログラムがクラッシュして情報が残らなかった場合に備えて、以下のgifを参考に、ターミナルで実行することをお勧めします。**また、初回実行時に希望するトランスレータを選択し、ソース言語とターゲット言語を設定してください。翻訳が必要な画像が入ったフォルダを開き、
 「実行」ボタンをクリックして処理が完了するのを待ちます。
-<img src="doc/src/run.gif">
+<img src="./src/run.gif">
 
 このとき、フォントサイズや色などのフォントフォーマットはプログラムによって自動的に決定されますが、panel->Letteringで、対応するオプションを"decide by program"から"use global setting"に変更すれば、これらのフォーマットを事前に決定できます（グローバル設定とは、シーン内の
 テキストブロックを編集していないときに右フォントフォーマットパネルで表示されるフォーマットのことです）。
@@ -61,13 +61,13 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 ## 画像編集
 
 ### 修復ツール
-<img src="doc/src/imgedit_inpaint.gif">
+<img src="./src/imgedit_inpaint.gif">
 <p align = "center">
 画像編集モード、修復ツール
 </p>
 
 ### 長方形ツール
-<img src="doc/src/rect_tool.gif">
+<img src="./src/rect_tool.gif">
 <p align = "center">
 長方形ツール
 </p>
@@ -76,12 +76,12 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 結果はアルゴリズム(gifの"方法1"と"方法2")がどれだけ正確にテキストマスクを抽出するかに依存します。複雑なテキストと背景の場合、パフォーマンスが低下する可能性があります。
 
 ## テキスト編集
-<img src="doc/src/textedit.gif">
+<img src="./src/textedit.gif">
 <p align = "center">
 テキスト編集モード
 </p>
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="./src/multisel_autolayout.gif" div align=center>
 <p align=center>
 テキストの一括書式設定と自動レイアウト
 </p>
@@ -96,7 +96,7 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 * 設定パネルで自動モジュールのパラメータを設定します。
 * 画像のサイズを変更するには、Ctrl + +/。
 
-<img src="doc/src/configpanel.png">
+<img src="./src/configpanel.png">
 
 
 # Automation modules

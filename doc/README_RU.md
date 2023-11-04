@@ -1,10 +1,10 @@
 # BallonTranslator
 
-[简体中文](README.md) | [English](README_EN.md) | Русский | [日本語](README_JA.md) | [Indonesia](README_ID.md)
+[简体中文](../README.md) | [English](README_EN.md) | Русский | [日本語](README_JA.md) | [Indonesia](README_ID.md)
 
 Еще один компьютерный инструмент для перевода комиксов/манги на основе глубокого обучения.
 
-<img src="doc/src/ui0.jpg" div align=center>
+<img src="./src/ui0.jpg" div align=center>
 
 <p align=center>
 Пример интерфейса
@@ -73,7 +73,7 @@ python launch.py
 **Рекомендуется запускать программу в терминале на случай, если она аварийно завершила работу и не оставила никакой информации, см. следующий gif**.
 
 Пожалуйста, выберите нужный переводчик и установите исходный и целевой языки при первом запуске приложения. Откройте папку с изображениями, которые необходимо перевести, нажмите кнопку "Run" и дождитесь завершения процесса.
-<img src="doc/src/run.gif">
+<img src="./src/run.gif">
 
 Форматы шрифтов, такие как размер шрифта, цвет, определяются программой автоматически в этом процессе, вы можете предопределить эти форматы, изменив соответствующие опции с "определять программой" на "использовать глобальные настройки" в панели конфигурации-> Работа с текстом. (глобальные настройки - это те форматы, которые отображаются на правой панели формата шрифта, когда вы не редактируете какой-либо текстовый блок в сцене).
 
@@ -81,14 +81,14 @@ python launch.py
 
 ### Инструмент закраски
 
-<img src="doc/src/imgedit_inpaint.gif">
+<img src="./src/imgedit_inpaint.gif">
 <p align = "center">
 Режим редактирования изображений, инструмент закраски
 </p>
 
 ### Инструмент "прямоугольник"
 
-<img src="doc/src/rect_tool.gif">
+<img src="./src/rect_tool.gif">
 <p align = "center">
 Инструмент "прямоугольник"
 </p>
@@ -98,12 +98,12 @@ python launch.py
 
 ## Редактирование текста
 
-<img src="doc/src/textedit.gif">
+<img src="./src/textedit.gif">
 <p align = "center">
 Режим редактирования текста
 </p>
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="./src/multisel_autolayout.gif" div align=center>
 <p align=center>
 Пакетное форматирование текста и авторазметка
 </p>
@@ -120,7 +120,7 @@ python launch.py
 * Ctrl+ +/- или колесо прокрутки для масштабирования холста
 * Ctrl+A для выделения всех текстовых блоков в интерфейсе
 
-<img src="doc/src/configpanel.png">
+<img src="./src/configpanel.png">
 
 # Модули автоматизации
 
