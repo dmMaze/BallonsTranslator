@@ -47,7 +47,7 @@ If you're not on Windows or may want to run the latest development.
 # Clone this repo
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
-# install requirements_macOS.txt on macOS
+# install dependencies
 $ pip install -r requirements.txt
 ```
 

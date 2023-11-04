@@ -38,7 +38,7 @@ Windows用户可从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw
 # 克隆仓库
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
-# 安装依赖, macOS安装requirements_macOS.txt
+# 安装依赖
 $ pip install -r requirements.txt
 ```
 
