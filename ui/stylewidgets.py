@@ -231,6 +231,8 @@ def slider_subcontrol_rect(r: QRect, widget: QWidget):
 
 class PaintQSlider(QSlider):
 
+    # its pretty buggy, got to replace it someday
+
     mouse_released = Signal()
 
     def __init__(self, draw_content = None, orientation=Qt.Orientation.Horizontal, *args, **kwargs):
@@ -295,7 +297,7 @@ class PaintQSlider(QSlider):
 
             painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
             font = painter.font()
-            font.setPointSizeF(10)
+            font.setPointSizeF(8)
             fm = QFontMetrics(font)
             painter.setFont(font)
 
