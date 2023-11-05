@@ -144,6 +144,9 @@ def main():
     from utils import config as program_config
     from utils.config import ProgramConfig
 
+    from qtpy.QtCore import QTranslator, QLocale, Qt
+    shared.DEFAULT_DISPLAY_LANG = QLocale.system().name()
+
     shared.load_cache()
 
     try:
@@ -172,15 +175,13 @@ def main():
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
     import qtpy
-    from qtpy.QtWidgets import QApplication, QStyleFactory
-    from qtpy.QtCore import QTranslator, QLocale, Qt
+    from qtpy.QtWidgets import QApplication
     from qtpy.QtGui import QIcon, QFontDatabase, QGuiApplication, QFont
     from qtpy import API, QT_VERSION
 
     LOGGER.info(f'QT_API: {API}, QT Version: {QT_VERSION}')
 
     shared.DEBUG = args.debug
-    shared.DEFAULT_DISPLAY_LANG = QLocale.system().name()
     shared.USE_PYSIDE6 = API == 'pyside6'
     if qtpy.API_NAME[-1] == '6':
         shared.FLAG_QT6 = True
