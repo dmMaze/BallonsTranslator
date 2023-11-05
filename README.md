@@ -61,7 +61,7 @@ python ballontranslator
 #### 通过远程脚本一键构建应用
 在终端中输入下面的命令自动完成所有构建步骤，由于从github和huggingface下载模型，需要比较好的网络条件
 ```
-curl -L https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/macos-build-script.sh | bash
+curl -L https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/macos-build-script.sh | bash
 ```
 
 ⚠️ 如果网络条件不佳，需要从网盘下载需要的文件，请按照下面的步骤操作
@@ -141,7 +141,7 @@ git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
 cd BallonsTranslator
 
 # 运行构建脚本，运行到pyinstaller环节会要求输入开机密码，输入密码后按下回车即可
-sh build-macos-app.sh
+sh scripts/build-macos-app.sh
 ```
 > 📌打包好的应用在`./data/BallonsTranslator/dist/BallonsTranslator.app`，将应用拖到macOS的应用程序文件夹即完成安装，开箱即用，不需要另外配置Python环境。
 

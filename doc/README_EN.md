@@ -147,7 +147,7 @@ git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
 cd BallonsTranslator
 
 # Run the build script, will ask for password at pyinstaller step, enter password and press enter
-sh build-macos-app.sh
+sh scripts/build-macos-app.sh
 ```
 > 📌The packaged app is at ./data/BallonsTranslator/dist/BallonsTranslator.app, drag the app to macOS application folder to install. Ready to use out of box without extra Python config.
 
