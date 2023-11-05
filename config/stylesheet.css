@@ -12,6 +12,10 @@ Widget {
     background-color: @widgetBackgroundColor;
 }
 
+ConfigTextLabel {
+    background-color : @emptyContentBackgroundColor;
+}
+
 CustomGV {
     background-color: @emptyContentBackgroundColor;
     border-color: @borderColor;
@@ -75,6 +79,7 @@ QComboBox {
 QLineEdit {
     border: 1px solid @borderColor;
     background-color: @transtexteditBackgroundColor;
+    height: 27px;
 }
 
 QPlainTextEdit {

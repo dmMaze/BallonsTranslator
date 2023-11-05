@@ -66,6 +66,7 @@ class InpaintPanel(Widget):
         self.thicknessSlider = PaintQSlider()
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
+        self.thicknessSlider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
         thickness_layout = QHBoxLayout()
         thickness_label = ToolNameLabel(100, self.tr('Thickness'))
@@ -122,6 +123,7 @@ class PenConfigPanel(Widget):
         self.thicknessSlider = PaintQSlider()
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
+        self.thicknessSlider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.alphaSlider = PaintQSlider()
         self.alphaSlider.setRange(0, 255)
         self.alphaSlider.setValue(255)

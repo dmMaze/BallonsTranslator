@@ -760,7 +760,7 @@ class MainWindow(FramelessWindow):
         self.canvas.render(painter)
         painter.end()
         imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
-        self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img)
+        self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality})
             
         self.canvas.setProjSaveState(False)
         self.canvas.update_saved_undostep()

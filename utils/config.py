@@ -95,7 +95,8 @@ class ProgramConfig(Config):
     restore_ocr_empty: bool = False
     mt_sublist: dict = field(default_factory=lambda: [])
     display_lang: str = field(default_factory=lambda: shared.DEFAULT_DISPLAY_LANG) # to always apply shared.DEFAULT_DISPLAY_LANG
-
+    imgsave_quality: int = 100
+    imgsave_ext: str = '.png'
 
     @staticmethod
     def load(cfg_path: str):

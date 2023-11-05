@@ -59,13 +59,22 @@ def imread(imgpath, read_type=cv2.IMREAD_COLOR):
     img = cv2.imdecode(np.fromfile(imgpath, dtype=np.uint8), read_type)
     return img
 
-def imwrite(img_path, img, ext='.png'):
+def imwrite(img_path, img, ext='.png', quality=100):
     suffix = Path(img_path).suffix
+    ext = ext.lower()
+    assert ext in IMG_EXT
     if suffix != '':
         img_path = img_path.replace(suffix, ext)
     else:
         img_path += ext
-    cv2.imencode(ext, img)[1].tofile(img_path)
+    
+    encode_param = None
+    if ext in {'.jpg', '.jpeg'}:
+        encode_param = [cv2.IMWRITE_JPEG_QUALITY, quality]
+    elif ext == '.webp':
+        encode_param = [cv2.IMWRITE_WEBP_QUALITY, quality]
+
+    cv2.imencode(ext, img, encode_param)[1].tofile(img_path)
 
 def show_img_by_dict(imgdicts):
     for keyname in imgdicts.keys():

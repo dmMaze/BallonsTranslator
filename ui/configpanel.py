@@ -1,8 +1,8 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QFrame, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
+from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
-from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette
+from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette, QIntValidator, QValidator, QFocusEvent
 from qtpy import API
 
 from utils import shared as C
@@ -20,6 +20,64 @@ from .stylewidgets import Widget, ConfigComboBox
 from utils.config import pcfg
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .dlconfig_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
+
+class CustomIntValidator(QIntValidator):
+
+    def __init__(self, bottom: int, top: int, ndigits: int = None, parent = None):
+        super().__init__(bottom=bottom, top=top, parent=parent)
+        self.ndigits = ndigits
+
+    def validate(self, s: str, pos: int) -> object:
+        if not s.isnumeric():
+            if s != '':
+                return (QValidator.State.Invalid, s, pos)
+            else:
+                return (QValidator.State.Intermediate, s, pos)
+            
+        s_ori = s
+        d = int(s)
+        s = str(d)
+        if len(s) != len(s_ori):
+            pos -= len(s_ori) - len(s)
+        if len(s) > self.ndigits:
+            ndel = len(s) - self.ndigits
+            s = s[ndel:]
+            pos -= ndel
+        else:
+            if d > self.top():
+                if s[-1] == '0':
+                    d = self.top()
+                else:
+                    d = d % self.top()
+            d = max(d, self.bottom())
+            s = str(d)
+        return (QValidator.State.Acceptable, s, pos)
+    
+class PercentageLineEdit(QLineEdit):
+
+    finish_edited = Signal(str)
+
+    def __init__(self, default_value: str = '100', parent=None) -> None:
+        super().__init__(default_value, parent=parent)
+        validator = CustomIntValidator(0, 100, 3)
+        self.setValidator(validator)
+        self.textEdited.connect(self.on_text_edited)
+        self._edited = False
+
+    def on_text_edited(self):
+        self._edited = True
+
+    def focusOutEvent(self, e: QFocusEvent) -> None:
+        if self._edited:
+            text = self.text()
+            if not text.isnumeric():
+                text = '100'
+                self.setText(text)
+            self.finish_edited.emit(text)
+
+        return super().focusOutEvent(e)
+
+
 
 class ConfigTextLabel(QLabel):
     def __init__(self, text: str, fontsize: int, font_weight: int = None, *args, **kwargs) -> None:
@@ -53,6 +111,7 @@ class ConfigSubBlock(Widget):
         self.name = name
         if name is not None:
             textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
+            self.name_label = textlabel
             layout.addWidget(textlabel)
         if discription is not None:
             layout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT-2))
@@ -130,11 +189,9 @@ class ConfigBlock(Widget):
 
     def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True) -> Tuple[ConfigComboBox, QWidget]:
         combox, sublock = combobox_with_label(sel, name, discription, vertical_layout, target_block, fix_size, parent=self)
-        combox = ConfigComboBox(fix_size=fix_size, scrollWidget=self)
-        combox.addItems(sel)
         if target_block is None:
             self.addSublock(sublock)
-        return combox, target_block
+        return combox, sublock
 
     def addBlockWidget(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout: bool = False) -> ConfigSubBlock:
         sublock = ConfigSubBlock(widget, name, discription, vertical_layout)
@@ -165,14 +222,15 @@ class ConfigContent(QScrollArea):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config_block_list: List[ConfigBlock] = []
-        self.scrollContent = QGroupBox()
+        self.scrollContent = Widget()
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.setWidget(self.scrollContent)
         vlayout = QVBoxLayout()
-        vlayout.setContentsMargins(32, 0, 0, 0)
+        vlayout.setContentsMargins(0, 0, 0, 0)
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scrollContent.setLayout(vlayout)
         self.setWidgetResizable(True)
+        self.setContentsMargins(0, 0, 0, 0)
         self.vlayout = vlayout
         self.active_label: ConfigTextLabel = None
 
@@ -301,7 +359,8 @@ class ConfigPanel(Widget):
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
         label_lettering = self.tr('Lettering')
-        label_saladict = self.tr("SalaDict")
+        label_save = self.tr('Save')
+        label_saladict = self.tr('SalaDict')
     
         dltableitem.appendRows([
             TableItem(label_text_det, CONFIG_FONTSIZE_TABLE),
@@ -312,7 +371,8 @@ class ConfigPanel(Widget):
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
             TableItem(label_lettering, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_saladict, CONFIG_FONTSIZE_TABLE)
+            TableItem(label_save, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_saladict, CONFIG_FONTSIZE_TABLE),
         ])
 
         dlConfigPanel.addTextLabel(label_text_det)
@@ -376,6 +436,17 @@ class ConfigPanel(Widget):
         self.let_uppercase_checker = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
 
+        generalConfigPanel.addTextLabel(label_save)
+        self.rst_imgformat_combobox, imsave_sublock = generalConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP'], self.tr('Result image format'))
+        self.rst_imgformat_combobox.currentIndexChanged.connect(self.on_rst_imgformat_changed)
+        self.rst_imgquality_edit = PercentageLineEdit('100')
+        self.rst_imgquality_edit.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        self.rst_imgquality_edit.finish_edited.connect(self.on_edit_quality_changed)
+        sublock = ConfigSubBlock(self.rst_imgquality_edit, self.tr('Quality'), vertical_layout=False)
+        sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
+        sublock.layout().insertStretch(-1)
+        imsave_sublock.layout().addWidget(sublock)
+
         generalConfigPanel.addTextLabel(label_saladict)
 
         sublock = ConfigSubBlock(ConfigTextLabel(self.tr("<a href=\"https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md\">Installation guide</a>"), CONFIG_FONTSIZE_CONTENT - 2), vertical_layout=False)
@@ -405,7 +476,7 @@ class ConfigPanel(Widget):
 
         hlayout.addWidget(splitter)
         hlayout.setSpacing(0)
-        hlayout.setContentsMargins(96, 0, 0, 0)
+        hlayout.setContentsMargins(0, 0, 0, 0)
 
         self.configTable.expandAll()
 
@@ -438,6 +509,12 @@ class ConfigPanel(Widget):
 
     def on_uppercase_changed(self):
         pcfg.let_uppercase_flag = self.let_uppercase_checker.isChecked()
+
+    def on_rst_imgformat_changed(self):
+        pcfg.imgsave_ext = '.' + self.rst_imgformat_combobox.currentText().lower()
+
+    def on_edit_quality_changed(self, value: str):
+        pcfg.imgsave_quality = int(value)
 
     def on_selectext_minimenu_changed(self):
         pcfg.textselect_mini_menu = self.selectext_minimenu_checker.isChecked()
@@ -495,5 +572,7 @@ class ConfigPanel(Widget):
         self.saladict_shortcut.setKeySequence(pcfg.saladict_shortcut)
         self.searchurl_combobox.setCurrentText(pcfg.search_url)
         self.ocr_config_panel.restoreEmptyOCRChecker.setChecked(pcfg.restore_ocr_empty)
+        self.rst_imgformat_combobox.setCurrentText(pcfg.imgsave_ext.replace('.', '').upper())
+        self.rst_imgquality_edit.setText(str(pcfg.imgsave_quality))
 
         self.blockSignals(False)

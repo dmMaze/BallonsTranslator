@@ -9,6 +9,7 @@ from typing import Tuple, Union, List, Dict
 from utils.logger import logger as LOGGER
 from utils.io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
 from utils.textblock import TextBlock
+from utils.config import pcfg
 from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException
 
 
@@ -262,7 +263,13 @@ class ProjImgTrans:
         return inpainted
 
     def get_result_path(self, imgname: str) -> str:
-        return osp.join(self.result_dir(), osp.splitext(imgname)[0]+'.png')
+        ext = '.png'
+        if pcfg is not None:
+            if pcfg.imgsave_ext not in {'.jpg', '.png', '.webp'}:
+                LOGGER.warning('invalid image saving ext in config.json')
+            else:
+                ext = pcfg.imgsave_ext
+        return osp.join(self.result_dir(), osp.splitext(imgname)[0]+ext)
         
     def backup(self):
         raise NotImplementedError

@@ -32,15 +32,16 @@ def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
     if hasattr(byte_str, 'asstring'):
         byte_str = qimg.bits().asstring(h * w * 4)
     else:
+    #     byte_str = byte_str.tobytes()
         byte_str = byte_str.tobytes()
     # qimg.bits().
-    img = np.fromstring(byte_str, dtype=np.uint8).reshape((w,h,4))
+    img = np.frombuffer(byte_str, dtype=np.uint8).reshape((w,h,4))
     
     if keep_alpha:
         img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA)
         return img
     else:
-        return np.copy(img[:,:,:3])
+        return np.ascontiguousarray(img[:,:,:3])
 
 def ndarray2pixmap(img, return_qimg=False):
     if len(img.shape) == 2:
