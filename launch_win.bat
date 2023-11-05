@@ -1,12 +1,13 @@
 @REM dependencies\libraries\py310\python.exe F:\repos\BallonsTranslator\ballontranslator
 @REM @echo %PATH%
 
+cd %~dp0
 
 @echo off
 
 
 @REM if not defined PYTHON (set PATH=pylibs;pylibs\Scripts;%%PATH%%
-set PATH=ballontrans_pylibs_win;ballontrans_pylibs_win\Scripts;%PATH%
+set PATH=ballontrans_pylibs_win;ballontrans_pylibs_win\Scripts;PortableGit\cmd;%PATH%
 set PYTHON=python.exe
 
 set ERROR_REPORTING=FALSE
