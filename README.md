@@ -30,8 +30,8 @@
 
 ## Windows
 如果用windows而且不想自己手动配置环境, 而且能正常访问互联网:  
-从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载BallonsTranslator_dev_src_with_gitpython.7z, 解压并运行launch.bat启动程序。   
-运行scripts/local_gitpull.bat获取更新。
+从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载BallonsTranslator_dev_src_with_gitpython.7z, 解压并运行launch.bat启动程序。如果无法自动下载库和模型，手动下载data和ballontrans_pylibs_win.7z并解压到程序目录下。  
+运行scripts/local_gitpull.bat获取更新。  
 
 ## 运行源码
 
@@ -50,6 +50,8 @@ $ python3 launch.py
 如果要使用Sugoi翻译器(仅日译英), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data/models.  
 
 ## 构建macOS应用（本方法兼容intel和apple silicon芯片）
+<i>如果构建不成功也可以直接跑源码</i>
+
 ![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
 
 #### 通过远程脚本一键构建应用
