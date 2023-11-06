@@ -292,6 +292,7 @@ class Canvas(QGraphicsScene):
         self.clipboard_blks: List[TextBlock] = []
 
         self.drop_folder: str = None
+        self.block_selection_signal = False
         
         im_rect = QRectF(0, 0, C.SCREEN_W, C.SCREEN_H)
         self.baseLayer.setRect(im_rect)
@@ -422,7 +423,7 @@ class Canvas(QGraphicsScene):
             blk_item = self.txtblkShapeControl.blk_item
             if blk_item is not None and blk_item.isEditing():
                 blk_item.endEdit()
-        if self.hasFocus():
+        if self.hasFocus() and not self.block_selection_signal:
             self.incanvas_selection_changed.emit()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
@@ -793,11 +794,13 @@ class Canvas(QGraphicsScene):
             self.proj_savestate_changed.emit(un_saved)
 
     def removeItem(self, item: QGraphicsItem) -> None:
+        self.block_selection_signal = True
         super().removeItem(item)
         if isinstance(item, StrokeImgItem):
             item.setParentItem(None)
             self.stroke_img_item = None
             self.erase_img_key = None
+        self.block_selection_signal = False
 
     def get_active_undostack(self) -> QUndoStack:
         if self.textEditMode():

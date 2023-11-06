@@ -40,10 +40,10 @@ class CreateItemCommand(QUndoCommand):
             self.op_count += 1
             self.blk_item.setSelected(True)
             return
-        self.ctrl.recoverTextblkItem(self.blk_item, self.pairw)
+        self.ctrl.recoverTextblkItemList([self.blk_item], [self.pairw])
 
     def undo(self):
-        self.ctrl.deleteTextblkItem(self.blk_item)
+        self.ctrl.deleteTextblkItemList([self.blk_item], [self.pairw])
 
 
 class EmptyCommand(QUndoCommand):
@@ -208,11 +208,16 @@ class PasteBlkItemsCommand(QUndoCommand):
         super().__init__(parent)
         self.op_counter = 0
         self.blk_list = blk_list
+        self.ctrl:SceneTextManager = ctrl
         blk_list.sort(key=lambda blk: blk.idx)
+
+        self.ctrl.canvas.block_selection_signal = True
         for blkitem in blk_list:
             blkitem.setSelected(True)
+        self.ctrl.on_incanvas_selection_changed()
+        self.ctrl.canvas.block_selection_signal = False
         self.pwidget_list = pwidget_list
-        self.ctrl:SceneTextManager = ctrl
+        
 
     def redo(self):
         if self.op_counter == 0:
@@ -426,31 +431,23 @@ class SceneTextManager(QObject):
         textblk_item.pasted.connect(self.onBlkitemPaste)
         return textblk_item
 
-    def deleteTextblkItem(self, blkitem: TextBlkItem):
-        self.canvas.removeItem(blkitem)
-        self.textblk_item_list.remove(blkitem)
-        pwidget = self.pairwidget_list.pop(blkitem.idx)
-        self.textEditList.removeWidget(pwidget)
-        self.updateTextBlkItemIdx()
-        self.txtblkShapeControl.setBlkItem(None)
-
     def deleteTextblkItemList(self, blkitem_list: List[TextBlkItem], p_widget_list: List[TransPairWidget]):
+        selection_changed = False
         for blkitem, p_widget in zip(blkitem_list, p_widget_list):
-            self.canvas.removeItem(blkitem)
+            if blkitem.isSelected():
+                selection_changed = True
+            self.canvas.removeItem(blkitem) # removeItem itself will block incanvas_selection_changed
             self.textblk_item_list.remove(blkitem)
             self.pairwidget_list.remove(p_widget)
             self.textEditList.removeWidget(p_widget)
         self.updateTextBlkItemIdx()
         self.txtblkShapeControl.setBlkItem(None)
-
-    def recoverTextblkItem(self, blkitem: TextBlkItem, p_widget: TransPairWidget):
-        self.textblk_item_list.insert(blkitem.idx, blkitem)
-        blkitem.setParentItem(self.canvas.textLayer)
-        self.pairwidget_list.insert(p_widget.idx, p_widget)
-        self.textEditList.insertPairWidget(p_widget, p_widget.idx)
-        self.updateTextBlkItemIdx()
+        if selection_changed:
+            # it must be called after updateTextBlkItemIdx if blk.idx changed
+            self.on_incanvas_selection_changed()
 
     def recoverTextblkItemList(self, blkitem_list: List[TextBlkItem], p_widget_list: List[TransPairWidget]):
+        self.canvas.block_selection_signal = True
         for blkitem, p_widget in zip(blkitem_list, p_widget_list):
             self.textblk_item_list.insert(blkitem.idx, blkitem)
             blkitem.setParentItem(self.canvas.textLayer)
@@ -459,6 +456,8 @@ class SceneTextManager(QObject):
             if self.txtblkShapeControl.blk_item is not None and blkitem.isSelected():
                 blkitem.setSelected(False)
         self.updateTextBlkItemIdx()
+        self.on_incanvas_selection_changed()
+        self.canvas.block_selection_signal = False
         
     def onTextBlkItemSizeChanged(self, idx: int):
         blk_item = self.textblk_item_list[idx]
@@ -553,13 +552,6 @@ class SceneTextManager(QObject):
         if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
             selected_blks.append(self.txtblkShapeControl.blk_item)
         if len(selected_blks) > 0:
-            # img, mask = self.imgtrans_proj.img_array, self.imgtrans_proj.mask_array
-            # for blk in selected_blks:
-            #     x, y, w, h = blk.absBoundingRect()
-            #     x2, y2 = x+w, y+h
-            #     imname = str(blk.idx).zfill(2) + '.png'
-            #     cv2.imwrite(imname, img[y: y2, x: x2])
-            #     cv2.imwrite('mask_' + imname, mask[y: y2, x: x2])
             self.canvas.push_undo_command(DeleteBlkItemsCommand(selected_blks, mode, self))
 
     def onCopyBlkItems(self, pos: QPointF):
@@ -634,8 +626,6 @@ class SceneTextManager(QObject):
 
     def on_incanvas_selection_changed(self):
         if self.canvas.textEditMode():
-            self.textEditList.clearDrag()
-            self.textEditList.clearAllSelected(emit_signal=False)
             textitems = self.canvas.selected_text_items()
             self.textEditList.set_selected_list([t.idx for t in textitems])
 

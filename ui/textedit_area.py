@@ -587,9 +587,19 @@ class TextEditListScrollArea(QScrollArea):
                 pwc.e_trans.focus_in.emit(pwc.idx)
 
     def set_selected_list(self, selection_indices: List):
-        self.clearAllSelected(emit_signal=False)
         self.clearDrag()
-        for idx in selection_indices:
+
+        old_sel_set, new_sel_set = set([pw.idx for pw in self.checked_list]), set(selection_indices)
+        to_remove = old_sel_set.difference(new_sel_set)
+        to_add = new_sel_set.difference(old_sel_set)
+        self.sel_anchor_widget = None
+
+        for idx in to_remove:
+            pw = self.pairwidget_list[idx]
+            pw._set_checked_state(False)
+            self.checked_list.remove(pw)
+
+        for idx in to_add:
             pw = self.pairwidget_list[idx]
             pw._set_checked_state(True)
             self.checked_list.append(pw)
