@@ -1,5 +1,5 @@
 # BallonTranslator
-简体中文 | [English](doc/README_EN.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md)
+简体中文 | [English](README_EN.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md)
 
 深度学习辅助漫画翻译工具, 支持一键机翻和简单的图像/文本编辑  
 
@@ -28,34 +28,29 @@
 
 # 使用说明
 
-### 发布版
+## Windows
+如果用windows而且不想自己手动配置环境, 而且能正常访问互联网:  
+从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载BallonsTranslator_dev_src_with_gitpython.7z, 解压并运行launch.bat启动程序。   
+运行scripts/local_gitpull.bat获取更新。
 
-Windows用户可从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)(注意: 需要从github release 下载最新版Ballonstranslator-1.3.xx, 解压并覆盖到**Ballontranslator-1.3.0-core**或者较旧的安装目录以更新程序.)
+## 运行源码
 
-### 运行源码
+安装python < 3.12和git
 
 ```bash
 # 克隆仓库
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
-# 安装依赖
-$ pip install -r requirements.txt
+# 启动程序
+$ python3 launch.py
 ```
 
-如果有N卡可以安装torch-cuda启用GPU加速: 
-
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu116
-```
-
-从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载**data**文件夹并移动到 ```BallonsTranslator/ballontranslator```目录, 最后运行
-```bash
-python ballontranslator
-```
+第一次运行会自动安装torch等依赖项并下载所需模型和文件, 如果模型下载失败, 需要手动从下面网盘下载data文件夹(或者报错里提到缺失的文件)并保存到源码目录下的对应位置
+[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
 
 如果要使用Sugoi翻译器(仅日译英), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data/models.  
 
-### 构建macOS应用（本方法兼容intel和apple silicon芯片）
+## 构建macOS应用（本方法兼容intel和apple silicon芯片）
 ![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
 
 #### 通过远程脚本一键构建应用
@@ -66,25 +61,12 @@ curl -L https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/m
 
 ⚠️ 如果网络条件不佳，需要从网盘下载需要的文件，请按照下面的步骤操作
 #### 1、准备工作
--   从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA")下载`libs`和`models`。
-
-> 📌截止2023年9月11日Google Drive资源尚未更新到最新，因此不要从Google Drive下载`libs`和`models`。
-<img width="1268" alt="截屏2023-09-08 13 44 55_7g32SMgxIf" src="https://github.com/dmMaze/BallonsTranslator/assets/134026642/40fbb9b8-a788-4a6e-8e69-0248abaee21a">
-
--  下载`libopencv_world.4.4.0.dylib`和`libpatchmatch_inpaint.dylib`。
-
-> 📌下面的压缩包中的`dylib`均为`fat`文件，同时兼容intel芯片和apple芯片的Mac设备
-
-[libopencv_world.4.4.0.dylib.zip](https://github.com/dmMaze/BallonsTranslator/files/12571658/libopencv_world.4.4.0.dylib.zip)
-
-[libpatchmatch_inpaint.dylib.zip](https://github.com/dmMaze/BallonsTranslator/files/12571660/libpatchmatch_inpaint.dylib.zip)
+-   从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`libs`和`models`。
 
 -  将下载的资源全部放入名为`data`文件夹，最后的目录树结构应该如下所示：
 
 ```
 data
-├── libopencv_world.4.4.0.dylib
-├── libpatchmatch_inpaint.dylib
 ├── libs
 │   └── patchmatch_inpaint.dll
 └── models

@@ -1,9 +1,9 @@
 # BallonTranslator
-[简体中文](../README.md) | English | [Русский](README_RU.md) | [日本語](README_JA.md) | [Indonesia](README_ID.md)
+[简体中文](README.md) | English | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md)
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.
 
-<img src="./src/ui0.jpg" div align=center>
+<img src="doc/src/ui0.jpg" div align=center>
 
 <p align=center>
 preview
@@ -27,70 +27,40 @@ preview
 
 # Installation
 
-
-## Executable Binaries
-
-**Windows users** can download Ballonstranslator-x.x.x-core.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) (note: you also need to download latest Ballonstranslator-1.3.xx from GitHub release and extract it to overwrite **Ballontranslator-1.3.0-core** or older installation to get the app updated.)
-
-
-## Auto installer
-
-Everything is simple here, go to the repository, download the file and follow the instructions.
-
-[Link](https://github.com/bropines/Ballon-translator-portable)
+## On Windows
+If you don't want to install Python and Git by yourself and have access to the Internet:  
+Download BallonsTranslator_dev_src_with_gitpython.7z from[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip it and run launch_win.bat.   
+Run scripts/local_gitpull.bat to get the latest update.
 
 ## Run the source code
 
-If you're not on Windows or may want to run the latest development.
+Install Python < 3.12 and Git.
 
 ```bash
 # Clone this repo
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
-# install dependencies
-$ pip install -r requirements.txt
+# Launch the app
+$ python3 launch.py
 ```
 
-Notes: 
-- To update run `git pull`
-- `git clone -b dev` for dev branch, or git `checkout dev`
+Note the first time you launch it will install the required libraries and download models automatically. If the downloads fail, you will need to download the **data** folder (or missing files mentioned in the terminal) from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and save it to the corresponding path in source code folder.
 
-Install pytorch-cuda to enable GPU acceleration if you have a NVIDIA GPU.
+## Build macOS application (compatible with both intel and apple silicon chips)
+<i>Note macOS can also run the source code if it didn't work.</i>  
 
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu116
-```
-
-Download the **data** folder from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and move it into BallonsTranslator/ballontranslator, finally run
-```bash
-python ballontranslator
-```
-For Linux or MacOS users, see [this script](ballontranslator/scripts/download_models.sh) and run to download ALL models
-
-### Build macOS application (compatible with both intel and apple silicon chips)
 ![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
 
 #### 1. Preparation
--   Download libs and models from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA")
+-   Download libs and models from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA") or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
 
-> 📌As of September 11, 2023, Google Drive resources have not been updated to the latest version, so do not download libs and models from Google Drive.
-> 
+
 <img width="1268" alt="截屏2023-09-08 13 44 55_7g32SMgxIf" src="https://github.com/dmMaze/BallonsTranslator/assets/134026642/40fbb9b8-a788-4a6e-8e69-0248abaee21a">
-
--  Download libopencv_world.4.4.0.dylib and libpatchmatch_inpaint.dylib.
-
-> 📌The dylib files in the compressed package below are fat files, compatible with both intel and apple silicon chips for Mac devices.
-
-[libopencv_world.4.4.0.dylib.zip](https://github.com/dmMaze/BallonsTranslator/files/12571658/libopencv_world.4.4.0.dylib.zip)
-
-[libpatchmatch_inpaint.dylib.zip](https://github.com/dmMaze/BallonsTranslator/files/12571660/libpatchmatch_inpaint.dylib.zip)
 
 -  Put all the downloaded resources into a folder called data, the final directory tree structure should look like:
 
 ```
 data
-├── libopencv_world.4.4.0.dylib
-├── libpatchmatch_inpaint.dylib
 ├── libs
 │   └── patchmatch_inpaint.dll
 └── models
@@ -159,7 +129,7 @@ To use Sugoi translator(Japanese-English only), download [offline model](https:/
 # Usage
 
 **It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.**
-<img src="./src/run.gif">  
+<img src="doc/src/run.gif">  
 - The first time you run the application, please select the translator and set the source and target languages by clicking the settings icon.
 - Open a folder containing images of a comic (manga/manhua/manhwa) that need translation by clicking the folder icon.
 - Click the `Run` button and wait for the process to complete.
@@ -169,13 +139,13 @@ The font formats such as font size and color are determined by the program autom
 ## Image Editing
 
 ### Inpaint Tool
-<img src="./src/imgedit_inpaint.gif">
+<img src="doc/src/imgedit_inpaint.gif">
 <p align = "center">
 Image Editing Mode, Inpainting Tool
 </p>
 
 ### rect tool
-<img src="./src/rect_tool.gif">
+<img src="doc/src/rect_tool.gif">
 <p align = "center">
 Rect Tool
 </p>
@@ -184,17 +154,17 @@ To 'erase' unwanted inpainted results, use the inpainting tool or rect tool with
 The result depends on how accurately the algorithm ("method 1" and "method 2" in the gif) extracts the text mask. It could perform worse on complex text & background.  
 
 ## Text editing
-<img src="./src/textedit.gif">
+<img src="doc/src/textedit.gif">
 <p align = "center">
 Text Editing Mode
 </p>
 
-<img src="./src/multisel_autolayout.gif" div align=center>
+<img src="doc/src/multisel_autolayout.gif" div align=center>
 <p align=center>
 Batch Text Formatting & Auto Layout
 </p>
 
-<img src="./src/ocrselected.gif" div align=center>
+<img src="doc/src/ocrselected.gif" div align=center>
 <p align=center>
 OCR & Translate Selected Area
 </p>
@@ -212,7 +182,7 @@ OCR & Translate Selected Area
 * ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
 * ```0-9``` to adjust opacity of lettering layer
   
-<img src="./src/configpanel.png">  
+<img src="doc/src/configpanel.png">  
 
 
 # Automation modules
