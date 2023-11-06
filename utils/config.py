@@ -73,6 +73,7 @@ class ProgramConfig(Config):
     let_fnt_scolor_flag: int = 0
     let_fnteffect_flag: int = 1
     let_alignment_flag: int = 0
+    let_writing_mode_flag: int = 0
     let_autolayout_flag: bool = True
     let_autolayout_adaptive_fntsz: bool = True
     let_uppercase_flag: bool = True

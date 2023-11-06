@@ -640,18 +640,28 @@ class SceneTextManager(QObject):
             self.textEditList.set_selected_list([t.idx for t in textitems])
 
     def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
+        
+        '''
+        auto text layout, vertical writing is not supported yet.
+        '''
+        
         old_br = blkitem.absBoundingRect()
         img = self.imgtrans_proj.img_array
         if img is None:
+            return
+
+        src_is_cjk = is_cjk(pcfg.module.translate_source)
+        tgt_is_cjk = is_cjk(pcfg.module.translate_target)
+
+        # disable for vertical writing
+        if (src_is_cjk and tgt_is_cjk and blkitem.blk.src_is_vertical) or \
+            (pcfg.let_writing_mode_flag == 1 and self.formatpanel.global_format.vertical):
             return
 
         blk_font = blkitem.font()
         fmt = blkitem.get_fontformat()
         blk_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, fmt.letter_spacing * 100)
         text_size_func = lambda text: get_text_size(QFontMetrics(blk_font), text)
-        
-        src_is_cjk = is_cjk(pcfg.module.translate_source)
-        tgt_is_cjk = is_cjk(pcfg.module.translate_target)
 
         restore_charfmts = False
         if text is None:

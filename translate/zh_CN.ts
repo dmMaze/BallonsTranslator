@@ -135,67 +135,67 @@
 <context>
     <name>ConfigPanel</name>
     <message>
-        <location filename="../ui/configpanel.py" line="356"/>
+        <location filename="../ui/configpanel.py" line="359"/>
         <source>Text Detection</source>
         <translation>文本检测</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="383"/>
+        <location filename="../ui/configpanel.py" line="386"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="358"/>
+        <location filename="../ui/configpanel.py" line="361"/>
         <source>Inpaint</source>
         <translation>图像修复</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="359"/>
+        <location filename="../ui/configpanel.py" line="362"/>
         <source>Translator</source>
         <translation>翻译器</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="379"/>
+        <location filename="../ui/configpanel.py" line="382"/>
         <source>Detector</source>
         <translation>检测器</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="387"/>
+        <location filename="../ui/configpanel.py" line="390"/>
         <source>Inpainter</source>
         <translation>修复工具</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="353"/>
+        <location filename="../ui/configpanel.py" line="356"/>
         <source>DL Module</source>
         <translation>自动化模组</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="354"/>
+        <location filename="../ui/configpanel.py" line="357"/>
         <source>General</source>
         <translation>常规</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="360"/>
+        <location filename="../ui/configpanel.py" line="363"/>
         <source>Startup</source>
         <translation>启动</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="395"/>
+        <location filename="../ui/configpanel.py" line="398"/>
         <source>Reopen last project on startup</source>
         <translation>启动时打开上次项目</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="361"/>
+        <location filename="../ui/configpanel.py" line="364"/>
         <source>Lettering</source>
         <translation>嵌字</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="399"/>
+        <location filename="../ui/configpanel.py" line="402"/>
         <source>decide by program</source>
         <translation>由程序决定</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="400"/>
+        <location filename="../ui/configpanel.py" line="403"/>
         <source>use global setting</source>
         <translation>使用全局设置</translation>
     </message>
@@ -220,17 +220,17 @@
         <translation type="obsolete">对齐方式</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="433"/>
+        <location filename="../ui/configpanel.py" line="440"/>
         <source>Auto layout</source>
-        <translation>自动排版</translation>
+        <translation>横排自动排版</translation>
     </message>
     <message>
         <location filename="../ui/configpanel.py" line="433"/>
         <source>Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to &quot;decide by program.&quot;</source>
-        <translation>自动断句并分行.</translation>
+        <translation type="obsolete">自动断句并分行.</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="436"/>
+        <location filename="../ui/configpanel.py" line="446"/>
         <source>To uppercase</source>
         <translation>小写转大写</translation>
     </message>
@@ -240,17 +240,17 @@
         <translation type="obsolete">特效</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="363"/>
+        <location filename="../ui/configpanel.py" line="366"/>
         <source>SalaDict</source>
         <translation>沙拉查词</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="452"/>
+        <location filename="../ui/configpanel.py" line="462"/>
         <source>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md&quot;&gt;Installation guide&lt;/a&gt;</source>
         <translation>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict_chs.md&quot;&gt;安装说明&lt;/a&gt;</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="456"/>
+        <location filename="../ui/configpanel.py" line="466"/>
         <source>Show mini menu when selecting text.</source>
         <translation>选择文本时显示迷你菜单</translation>
     </message>
@@ -260,7 +260,7 @@
         <translation type="obsolete">快捷键</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="465"/>
+        <location filename="../ui/configpanel.py" line="475"/>
         <source>Search Engines</source>
         <translation>搜索引擎</translation>
     </message>
@@ -280,54 +280,69 @@
         <translation type="obsolete">轮廓颜色</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="362"/>
+        <location filename="../ui/configpanel.py" line="365"/>
         <source>Save</source>
         <translation>保存</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="410"/>
+        <location filename="../ui/configpanel.py" line="413"/>
         <source>Font Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="414"/>
+        <location filename="../ui/configpanel.py" line="417"/>
         <source>Stroke Size</source>
-        <translation></translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="418"/>
-        <source>Font Color</source>
-        <translation></translation>
+        <translation>轮廓大小</translation>
     </message>
     <message>
         <location filename="../ui/configpanel.py" line="421"/>
-        <source>Stroke Color</source>
-        <translation></translation>
+        <source>Font Color</source>
+        <translation>字体颜色</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="425"/>
+        <location filename="../ui/configpanel.py" line="424"/>
+        <source>Stroke Color</source>
+        <translation>轮廓颜色</translation>
+    </message>
+    <message>
+        <location filename="../ui/configpanel.py" line="428"/>
         <source>Effect</source>
         <translation>特效</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="428"/>
+        <location filename="../ui/configpanel.py" line="431"/>
         <source>Alignment</source>
-        <translation></translation>
+        <translation>对齐方式</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="440"/>
+        <location filename="../ui/configpanel.py" line="450"/>
         <source>Result image format</source>
         <translation>结果图格式</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="445"/>
+        <location filename="../ui/configpanel.py" line="455"/>
         <source>Quality</source>
         <translation>质量</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="462"/>
+        <location filename="../ui/configpanel.py" line="472"/>
         <source>Shortcut</source>
         <translation>快捷键</translation>
+    </message>
+    <message>
+        <location filename="../ui/configpanel.py" line="440"/>
+        <source>Split translation into multi-lines according to the extracted balloon region.</source>
+        <translation>自动断句并分行</translation>
+    </message>
+    <message>
+        <location filename="../ui/configpanel.py" line="442"/>
+        <source>Adjust font size adaptively if it is set to &quot;decide by program.&quot;</source>
+        <translation>自动排版时调整字体大小</translation>
+    </message>
+    <message>
+        <location filename="../ui/configpanel.py" line="435"/>
+        <source>Writing-mode</source>
+        <translation>书写方向</translation>
     </message>
 </context>
 <context>
@@ -725,22 +740,22 @@
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../ui/mainwindow.py" line="937"/>
+        <location filename="../ui/mainwindow.py" line="940"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../ui/mainwindow.py" line="937"/>
+        <location filename="../ui/mainwindow.py" line="940"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../ui/mainwindow.py" line="974"/>
+        <location filename="../ui/mainwindow.py" line="977"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
     </message>
     <message>
-        <location filename="../ui/mainwindow.py" line="1054"/>
+        <location filename="../ui/mainwindow.py" line="1057"/>
         <source>Export to </source>
         <translation>导出至 </translation>
     </message>

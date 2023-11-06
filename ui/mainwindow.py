@@ -886,6 +886,7 @@ class MainWindow(FramelessWindow):
         override_fnt_scolor = pcfg.let_fnt_scolor_flag == 1
         override_alignment = pcfg.let_alignment_flag == 1
         override_effect = pcfg.let_fnteffect_flag == 1
+        override_writing_mode = pcfg.let_writing_mode_flag == 1
         gf = self.textPanel.formatpanel.global_format
         
         for blk in blk_list:
@@ -906,6 +907,8 @@ class MainWindow(FramelessWindow):
                 blk.shadow_radius = gf.shadow_radius
                 blk.shadow_strength = gf.shadow_strength
                 blk.shadow_offset = gf.shadow_offset
+            if override_writing_mode:
+                blk.vertical = gf.vertical
             
             blk.line_spacing = gf.line_spacing
             blk.letter_spacing = gf.letter_spacing
