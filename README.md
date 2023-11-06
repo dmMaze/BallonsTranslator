@@ -45,8 +45,7 @@ $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslat
 $ python3 launch.py
 ```
 
-第一次运行会自动安装torch等依赖项并下载所需模型和文件, 如果模型下载失败, 需要手动从下面网盘下载data文件夹(或者报错里提到缺失的文件)并保存到源码目录下的对应位置
-[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
+第一次运行会自动安装torch等依赖项并下载所需模型和文件, 如果模型下载失败, 需要手动从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载data文件夹(或者报错里提到缺失的文件), 并保存到源码目录下的对应位置. 
 
 如果要使用Sugoi翻译器(仅日译英), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data/models.  
 
