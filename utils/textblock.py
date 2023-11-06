@@ -299,8 +299,8 @@ class TextBlock:
     def alignment(self):
         if self._alignment >= 0:
             return self._alignment
-        elif self.vertical:
-            return 0
+        elif self.src_is_vertical:
+            return 1
         lines = self.lines_array()
         if len(lines) == 1:
             return 1

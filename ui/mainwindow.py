@@ -696,7 +696,6 @@ class MainWindow(FramelessWindow):
         if self.leftBar.imgTransChecker.isChecked()\
             and self.imgtrans_proj.directory is not None:
             
-            # self.saveCurrentPage(update_scene_text=True, restore_interface=True)
             self.conditional_manual_save()
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False):
@@ -714,6 +713,7 @@ class MainWindow(FramelessWindow):
         if trans_idx != 1:
             self.bottomBar.texteditChecker.click()
 
+        
         restore_original_transparency = None
         if self.bottomBar.originalSlider.value() != 0:
             restore_original_transparency = self.bottomBar.originalSlider.value()
@@ -753,12 +753,7 @@ class MainWindow(FramelessWindow):
                     inpainted = self.imgtrans_proj.inpainted_array
                 self.imsave_thread.saveImg(inpainted_path, inpainted)
 
-        img = QImage(self.canvas.imgLayer.pixmap().size(), QImage.Format.Format_ARGB32)
-        painter = QPainter(img)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.canvas.clearSelection()
-        self.canvas.render(painter)
-        painter.end()
+        img = self.canvas.render_result_img()
         imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
         self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality})
             

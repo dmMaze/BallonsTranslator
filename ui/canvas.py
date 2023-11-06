@@ -4,7 +4,7 @@ import os
 
 from qtpy.QtWidgets import QSlider, QMenu, QGraphicsScene, QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
-from qtpy.QtGui import QKeySequence, QPixmap, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
+from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
@@ -19,6 +19,7 @@ from .stylewidgets import FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
 from utils import shared as C
+from utils.config import pcfg
 
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
@@ -251,27 +252,22 @@ class Canvas(QGraphicsScene):
         pen = QPen()
         pen.setColor(Qt.GlobalColor.transparent)
         self.baseLayer.setPen(pen)
-        
-        self.imgLayer = QGraphicsPixmapItem()
-        self.imgLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+
         self.inpaintLayer = QGraphicsPixmapItem()
         self.inpaintLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-        self.maskLayer = QGraphicsPixmapItem()
         self.drawingLayer = DrawingLayer()
         self.drawingLayer.setTransformationMode(Qt.TransformationMode.FastTransformation)
         self.textLayer = QGraphicsPixmapItem()
 
-        self.imgLayer.setAcceptDrops(True)
         self.inpaintLayer.setAcceptDrops(True)
-        self.maskLayer.setAcceptDrops(True)
         self.drawingLayer.setAcceptDrops(True)
         self.textLayer.setAcceptDrops(True)
         self.baseLayer.setAcceptDrops(True)
         
+        self.base_pixmap: QPixmap = None
+
         self.addItem(self.baseLayer)
         self.inpaintLayer.setParentItem(self.baseLayer)
-        self.imgLayer.setParentItem(self.baseLayer)
-        self.maskLayer.setParentItem(self.baseLayer)
         self.drawingLayer.setParentItem(self.baseLayer)
         self.textLayer.setParentItem(self.baseLayer)
         self.txtblkShapeControl.setParentItem(self.baseLayer)
@@ -300,6 +296,11 @@ class Canvas(QGraphicsScene):
         self.textlayer_trans_slider: QSlider = None
         self.originallayer_trans_slider: QSlider = None
         self.masklayer_trans_slider: QSlider = None
+
+    def img_window_size(self):
+        if self.imgtrans_proj.inpainted_valid:
+            return self.inpaintLayer.pixmap().size()
+        return self.baseLayer.rect().size().toSize()
 
     def dragEnterEvent(self, e: QGraphicsSceneDragDropEvent):
         
@@ -337,41 +338,62 @@ class Canvas(QGraphicsScene):
     def scaleBy(self, value: float):
         self.scaleImage(value)
 
-    def setImageLayer(self):
+    def render_result_img(self):
+
+        self.clearSelection()
+        if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
+            if self.txtblkShapeControl.blk_item.is_editting():
+                self.txtblkShapeControl.blk_item.endEdit()
+        
+        ipainted_layer_pixmap = ndarray2pixmap(self.imgtrans_proj.inpainted_array)
+        old_ilayer_pixmap = self.inpaintLayer.pixmap()
+        self.inpaintLayer.setPixmap(ipainted_layer_pixmap)
+
+        result = QImage(self.img_window_size(), QImage.Format.Format_ARGB32)
+        painter = QPainter(result)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.render(painter)
+        painter.end()
+        
+        self.inpaintLayer.setPixmap(old_ilayer_pixmap)
+        
+        return result
+
+    def updateLayers(self):
+        
         if not self.imgtrans_proj.img_valid:
             return
-        pixmap = ndarray2pixmap(self.imgtrans_proj.img_array)
-        self.imgLayer.setPixmap(pixmap)
         
-        im_rect = self.imgLayer.pixmap().rect()
-        self.baseLayer.setRect(QRectF(im_rect))
-        if im_rect != self.sceneRect():
-            self.setSceneRect(0, 0, im_rect.width(), im_rect.height())
-        self.scaleImage(1)
-        self.imgLayer.setOpacity(self.original_transparency)
+        inpainted_as_base = self.imgtrans_proj.inpainted_valid
+        
+        if inpainted_as_base:
+            self.base_pixmap = ndarray2pixmap(self.imgtrans_proj.inpainted_array)
 
-    def setMaskLayer(self):
-        if not self.imgtrans_proj.mask_valid:
-            return
-        pixmap = ndarray2pixmap(self.imgtrans_proj.mask_array)
-        self.maskLayer.setPixmap(pixmap)
-        self.maskLayer.setOpacity(self.mask_transparency)
+        pixmap = self.base_pixmap.copy()
+        painter = QPainter(pixmap)
+        origin = QPoint(0, 0)
+
+        if self.imgtrans_proj.img_valid and self.original_transparency > 0:
+            painter.setOpacity(self.original_transparency)
+            if inpainted_as_base:
+                painter.drawPixmap(origin, ndarray2pixmap(self.imgtrans_proj.img_array))
+            else:
+                painter.drawPixmap(origin, pixmap)
+
+        if self.imgtrans_proj.mask_valid and self.mask_transparency > 0 and not self.textEditMode():
+            painter.setOpacity(self.mask_transparency)
+            painter.drawPixmap(origin, ndarray2pixmap(self.imgtrans_proj.mask_array))
+
+        painter.end()
+        self.inpaintLayer.setPixmap(pixmap)
 
     def setMaskTransparency(self, transparency: float):
-        self.maskLayer.setOpacity(transparency)
         self.mask_transparency = transparency
-        if transparency == 0:
-            self.maskLayer.setVisible(False)
-        else:
-            self.maskLayer.setVisible(True)
+        self.updateLayers()
 
     def setOriginalTransparency(self, transparency: float):
-        self.imgLayer.setOpacity(transparency)
         self.original_transparency = transparency
-        if transparency == 0:
-            self.imgLayer.hide()
-        else:
-            self.imgLayer.show()
+        self.updateLayers()
 
     def setTextLayerTransparency(self, transparency: float):
         self.textLayer.setOpacity(transparency)
@@ -386,7 +408,7 @@ class Canvas(QGraphicsScene):
         s_f = self.scale_factor * factor
         s_f = np.clip(s_f, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX)
 
-        sbr = self.imgLayer.sceneBoundingRect()
+        sbr = self.baseLayer.sceneBoundingRect()
         self.old_size = sbr.size()
         scale_changed = self.scale_factor != s_f
         self.scale_factor = s_f
@@ -397,7 +419,7 @@ class Canvas(QGraphicsScene):
             self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
             self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
             self.scalefactor_changed.emit()
-        self.setSceneRect(0, 0, self.imgLayer.sceneBoundingRect().width(), self.imgLayer.sceneBoundingRect().height())
+        self.setSceneRect(0, 0, self.baseLayer.sceneBoundingRect().width(), self.baseLayer.sceneBoundingRect().height())
 
     def onViewResized(self):
         gv_w, gv_h = self.gv.geometry().width(), self.gv.geometry().height()
@@ -462,7 +484,7 @@ class Canvas(QGraphicsScene):
         if self.stroke_img_item is not None:
             self.stroke_img_item.startNewPoint(pos)
         else:
-            self.stroke_img_item = StrokeImgItem(pen, pos, self.imgLayer.pixmap().size(), shape=self.painting_shape)
+            self.stroke_img_item = StrokeImgItem(pen, pos, self.img_window_size(), shape=self.painting_shape)
             if not erasing:
                 self.stroke_img_item.setParentItem(self.baseLayer)
             else:
@@ -506,7 +528,7 @@ class Canvas(QGraphicsScene):
         
         elif self.stroke_img_item is not None:
             if self.stroke_img_item.is_painting:
-                pos = self.imgLayer.mapFromScene(event.scenePos())
+                pos = self.inpaintLayer.mapFromScene(event.scenePos())
                 if self.erase_img_key is None:
                     # painting
                     self.stroke_img_item.lineTo(pos)
@@ -580,13 +602,13 @@ class Canvas(QGraphicsScene):
                     self.scale_tool_mode = True
                     self.begin_scale_tool.emit(event.scenePos())
                 elif self.painting:
-                    self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.painting_pen)
+                    self.addStrokeImageItem(self.inpaintLayer.mapFromScene(event.scenePos()), self.painting_pen)
 
             elif btn == Qt.MouseButton.RightButton:
                 # user is drawing using eraser
                 if self.painting:
                     erasing = self.image_edit_mode == ImageEditMode.PenTool
-                    self.addStrokeImageItem(self.imgLayer.mapFromScene(event.scenePos()), self.erasing_pen, erasing)
+                    self.addStrokeImageItem(self.inpaintLayer.mapFromScene(event.scenePos()), self.erasing_pen, erasing)
                 else:   # rubber band selection
                     self.rubber_band_origin = event.scenePos()
                     self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, self.rubber_band_origin).normalized())
@@ -633,19 +655,21 @@ class Canvas(QGraphicsScene):
 
         self.clearSelection()
         self.setProjSaveState(False)
-        self.setImageLayer()
-        self.setInpaintLayer()
-        self.setMaskLayer()
+        self.updateLayers()
+
+        if self.base_pixmap is not None:
+            pixmap = self.base_pixmap.copy()
+            pixmap.fill(Qt.GlobalColor.transparent)
+            self.textLayer.setPixmap(pixmap)
+
+            im_rect = pixmap.rect()
+            self.baseLayer.setRect(QRectF(im_rect))
+            if im_rect != self.sceneRect():
+                self.setSceneRect(0, 0, im_rect.width(), im_rect.height())
+            self.scaleImage(1)
+
         self.setDrawingLayer()
 
-    def setInpaintLayer(self):
-        if not self.imgtrans_proj.inpainted_valid:
-            return
-        pixmap = ndarray2pixmap(self.imgtrans_proj.inpainted_array)
-        self.inpaintLayer.setPixmap(pixmap)
-
-        pixmap.fill(Qt.GlobalColor.transparent)
-        self.textLayer.setPixmap(pixmap)
 
     def setDrawingLayer(self, img: Union[QPixmap, np.ndarray] = None):
         
@@ -654,7 +678,7 @@ class Canvas(QGraphicsScene):
         if not self.imgtrans_proj.img_valid:
             return
         if img is None:
-            drawing_map = self.imgLayer.pixmap().copy()
+            drawing_map = self.inpaintLayer.pixmap().copy()
             drawing_map.fill(Qt.GlobalColor.transparent)
         elif not isinstance(img, QPixmap):
             drawing_map = ndarray2pixmap(img)
@@ -666,9 +690,7 @@ class Canvas(QGraphicsScene):
         if painting:
             self.editing_textblkitem = None
             self.textblock_mode = False
-            self.maskLayer.setVisible(True)
         else:
-            self.maskLayer.setVisible(False)
             # self.gv.setCursor(self.default_cursor)
             self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             self.image_edit_mode = ImageEditMode.NONE

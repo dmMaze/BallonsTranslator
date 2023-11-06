@@ -60,8 +60,7 @@ class InpaintUndoCommand(QUndoCommand):
         mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
         img_view[:] = self.redo_img
         mask_view[:] = self.redo_mask
-        self.canvas.setInpaintLayer()
-        self.canvas.setMaskLayer()
+        self.canvas.updateLayers()
 
     def undo(self) -> None:
         inpaint_rect = self.inpaint_rect
@@ -71,8 +70,7 @@ class InpaintUndoCommand(QUndoCommand):
         mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
         img_view[:] = self.undo_img
         mask_view[:] = self.undo_mask
-        self.canvas.setInpaintLayer()
-        self.canvas.setMaskLayer()
+        self.canvas.updateLayers()
 
 
 
@@ -135,8 +133,7 @@ class RunBlkTransCommand(QUndoCommand):
                 mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
                 img_view[:] = redo_img
                 mask_view[:] = redo_mask
-            self.canvas.setInpaintLayer()
-            self.canvas.setMaskLayer()
+            self.canvas.updateLayers()
 
         if self.op_counter < 0:
             self.op_counter += 1
@@ -160,8 +157,7 @@ class RunBlkTransCommand(QUndoCommand):
                 mask_view = mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
                 img_view[:] = undo_img
                 mask_view[:] = undo_mask
-            self.canvas.setInpaintLayer()
-            self.canvas.setMaskLayer()
+            self.canvas.updateLayers()
 
         for blkitem, transpairw in zip(self.blkitems, self.transpairw_list):
             if self.mode != 0:

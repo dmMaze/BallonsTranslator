@@ -154,8 +154,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
                 x1, y1, x2, y2 = inpaint_rect
                 img_array[y1: y2, x1: x2][mskpnt] = redo_img[mskpnt]
                 mask_array[y1: y2, x1: x2][mskpnt] = 0
-            self.canvas.setInpaintLayer()
-            self.canvas.setMaskLayer()
+            self.canvas.updateLayers()
 
         if self.op_counter == 0:
             self.op_counter += 1
@@ -191,8 +190,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
                 x1, y1, x2, y2 = inpaint_rect
                 img_array[y1: y2, x1: x2][mskpnt] = undo_img[mskpnt]
                 mask_array[y1: y2, x1: x2][mskpnt] = 255
-            self.canvas.setInpaintLayer()
-            self.canvas.setMaskLayer()
+            self.canvas.updateLayers()
 
         self.ctrl.recoverTextblkItemList(self.blk_list, self.pwidget_list)
         if self.sw_changed:
@@ -383,7 +381,9 @@ class SceneTextManager(QObject):
             blk_item = TextBlkItem(blk, len(self.textblk_item_list), show_rect=self.canvas.textblock_mode)
             if translation:
                 blk.translation = translation
-                self.layout_textblk(blk_item, text=translation)
+                rst = self.layout_textblk(blk_item, text=translation)
+                if rst is None:
+                    blk_item.setPlainText(translation)
         self.addTextBlkItem(blk_item)
 
         pair_widget = TransPairWidget(blk, len(self.pairwidget_list), pcfg.fold_textarea)
@@ -644,8 +644,7 @@ class SceneTextManager(QObject):
         tgt_is_cjk = is_cjk(pcfg.module.translate_target)
 
         # disable for vertical writing
-        if (src_is_cjk and tgt_is_cjk and blkitem.blk.src_is_vertical) or \
-            (pcfg.let_writing_mode_flag == 1 and self.formatpanel.global_format.vertical):
+        if blkitem.blk.vertical:
             return
 
         blk_font = blkitem.font()
@@ -688,7 +687,7 @@ class SceneTextManager(QObject):
  
         adaptive_fntsize = False
         if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0 and pcfg.let_autolayout_flag and pcfg.let_autolayout_adaptive_fntsz:
-            if not tgt_is_cjk:
+            if blkitem.blk.src_is_vertical and blkitem.blk.vertical != blkitem.blk.src_is_vertical:
                 adaptive_fntsize = True
             
         resize_ratio = 1
@@ -702,12 +701,8 @@ class SceneTextManager(QObject):
             # resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list), blkitem.blk.font_size / line_height), downscale_constraint, 1.0) 
             resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list)), downscale_constraint, 1.0)
 
-        if text.startswith('SAKUY'):
-            cv2.imwrite('sakuy.png', mask)
-            pass
-
         max_central_width = np.inf
-        if tgt_is_cjk:
+        if tgt_is_cjk and not src_is_cjk:
             if ballon_area / text_area > 2:
                 if blkitem.blk.text:
                     _, _, brw, brh = blkitem.blk.bounding_rect()
@@ -737,7 +732,7 @@ class SceneTextManager(QObject):
         if max_central_width != np.inf:
             max_central_width = max(int(max_central_width * text_w), 0.75 * region_rect[2])
 
-        padding = pt2px(blk_font.pointSizeF()) + 10   # dummpy padding variable
+        padding = pt2px(blk_font.pointSizeF()) + 20   # dummpy padding variable
         if fmt.alignment == 1:
             if len(blkitem.blk) > 0:
                 centroid = blkitem.blk.center().astype(np.int64).tolist()
@@ -765,9 +760,9 @@ class SceneTextManager(QObject):
             post_resize_ratio = np.clip(max(region_rect[2] / w, downscale_constraint), 0, 1)
             resize_ratio *= post_resize_ratio
 
-        if tgt_is_cjk:
-            resize_ratio = 1
-            post_resize_ratio = 1 / resize_ratio
+        # if tgt_is_cjk:
+        #     resize_ratio = 1
+        #     post_resize_ratio = 1 / resize_ratio
 
         if post_resize_ratio != 1:
             cx, cy = xywh[0] + xywh[2] / 2, xywh[1] + xywh[3] / 2
@@ -803,6 +798,7 @@ class SceneTextManager(QObject):
         if restore_charfmts:
             self.restore_charfmts(blkitem, text, new_text, char_fmts)
         blkitem.shrinkSize()
+        return True
     
     def restore_charfmts(self, blkitem: TextBlkItem, text: str, new_text: str, char_fmts: List[QTextCharFormat]):
         cursor = blkitem.textCursor()

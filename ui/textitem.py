@@ -723,7 +723,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.blk.vertical = fmt.vertical
         self.blk.set_font_colors(fmt.frgb, fmt.srgb, accumulate=False)
 
-
     def set_cursor_cfmt(self, cursor: QTextCursor, cfmt, merge_char: bool = False):
         if merge_char:
             cursor.mergeCharFormat(cfmt)
