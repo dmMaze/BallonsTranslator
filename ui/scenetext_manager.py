@@ -15,7 +15,7 @@ except:
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
-from utils.fontformat import FontFormat, pt2px
+from utils.fontformat import FontFormat, pt2px, px2pt
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
 from .fontformatpanel import FontFormatPanel
 from utils.config import pcfg
@@ -687,7 +687,7 @@ class SceneTextManager(QObject):
         delimiter_len = text_size_func(delimiter)[0]
  
         adaptive_fntsize = False
-        if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0 and pcfg.module.enable_detect:
+        if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0 and pcfg.let_autolayout_flag and pcfg.let_autolayout_adaptive_fntsz:
             if not tgt_is_cjk:
                 adaptive_fntsize = True
             
@@ -698,7 +698,13 @@ class SceneTextManager(QObject):
             downscale_constraint = 0.6
             # downscale the font size if textarea exceeds the balloon_area / ballon_area_thresh
             # or the longest word exceeds the region_width
-            resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, max(wl_list) / region_rect[2], blkitem.blk.font_size / line_height), downscale_constraint, 1.0) 
+            # dont remember why i divide line_hight here
+            # resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list), blkitem.blk.font_size / line_height), downscale_constraint, 1.0) 
+            resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list)), downscale_constraint, 1.0)
+
+        if text.startswith('SAKUY'):
+            cv2.imwrite('sakuy.png', mask)
+            pass
 
         max_central_width = np.inf
         if tgt_is_cjk:
@@ -731,7 +737,7 @@ class SceneTextManager(QObject):
         if max_central_width != np.inf:
             max_central_width = max(int(max_central_width * text_w), 0.75 * region_rect[2])
 
-        padding = pt2px(blk_font.pointSizeF()) + 20   # dummpy padding variable
+        padding = pt2px(blk_font.pointSizeF()) + 10   # dummpy padding variable
         if fmt.alignment == 1:
             if len(blkitem.blk) > 0:
                 centroid = blkitem.blk.center().astype(np.int64).tolist()

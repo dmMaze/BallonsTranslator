@@ -198,7 +198,7 @@ class ConfigBlock(Widget):
         self.addSublock(sublock)
         return sublock
 
-    def addCheckBox(self, name: str, discription: str = None) -> QCheckBox:
+    def addCheckBox(self, name: str, discription: str = None, sublock: ConfigSubBlock = None) -> QCheckBox:
         checkbox = QCheckBox()
         if discription is not None:
             font = checkbox.font()
@@ -208,11 +208,14 @@ class ConfigBlock(Widget):
             vertical_layout = True
         else:
             vertical_layout = False
-        sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout)
-        if vertical_layout is False:
-            sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
-        self.addSublock(sublock)
-        return checkbox
+        if sublock is None:
+            sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout)
+            if vertical_layout is False:
+                sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+            self.addSublock(sublock)
+        else:
+            sublock.layout().addWidget(checkbox)
+        return checkbox, sublock
 
     def getSubBlockbyIdx(self, idx: int) -> ConfigSubBlock:
         return self.subblock_list[idx]
@@ -392,7 +395,7 @@ class ConfigPanel(Widget):
         self.trans_sub_block = dlConfigPanel.addBlockWidget(self.trans_config_panel)
 
         generalConfigPanel.addTextLabel(label_startup)
-        self.open_on_startup_checker = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
+        self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
         generalConfigPanel.addTextLabel(label_lettering)
@@ -430,10 +433,13 @@ class ConfigPanel(Widget):
         global_fntfmt_layout.addWidget(sublock, 2, 1)
         global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
 
-        self.let_autolayout_checker = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
-                discription=self.tr('Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to \"decide by program.\"'))
+        self.let_autolayout_checker, sublock = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
+                discription=self.tr('Split translation into multi-lines according to the extracted balloon region.'))
+        self.let_autolayout_adaptive_fntsize_checker, _ = generalConfigPanel.addCheckBox(None, self.tr('Adjust font size adaptively if it is set to \"decide by program.\"'), sublock=sublock)
+        self.let_autolayout_adaptive_fntsize_checker.stateChanged.connect(self.on_adaptive_fntsize_changed)
+
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
-        self.let_uppercase_checker = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
+        self.let_uppercase_checker, _ = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
 
         generalConfigPanel.addTextLabel(label_save)
@@ -453,7 +459,7 @@ class ConfigPanel(Widget):
         sublock.layout().insertStretch(-1)
         generalConfigPanel.addSublock(sublock)
 
-        self.selectext_minimenu_checker = generalConfigPanel.addCheckBox(self.tr('Show mini menu when selecting text.'))
+        self.selectext_minimenu_checker, _ = generalConfigPanel.addCheckBox(self.tr('Show mini menu when selecting text.'))
         self.selectext_minimenu_checker.stateChanged.connect(self.on_selectext_minimenu_changed)
         self.saladict_shortcut = QKeySequenceEdit("ALT+W", self)
         self.saladict_shortcut.keySequenceChanged.connect(self.on_saladict_shortcut_changed)
@@ -506,6 +512,9 @@ class ConfigPanel(Widget):
 
     def on_autolayout_changed(self):
         pcfg.let_autolayout_flag = self.let_autolayout_checker.isChecked()
+
+    def on_adaptive_fntsize_changed(self):
+        pcfg.let_autolayout_adaptive_fntsz = self.let_autolayout_adaptive_fntsize_checker.isChecked()
 
     def on_uppercase_changed(self):
         pcfg.let_uppercase_flag = self.let_uppercase_checker.isChecked()
@@ -567,6 +576,7 @@ class ConfigPanel(Widget):
         self.let_fnt_scolor_combox.setCurrentIndex(pcfg.let_fnt_scolor_flag)
         self.let_alignment_combox.setCurrentIndex(pcfg.let_alignment_flag)
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
+        self.let_autolayout_adaptive_fntsize_checker.setChecked(pcfg.let_autolayout_adaptive_fntsz)
         self.selectext_minimenu_checker.setChecked(pcfg.textselect_mini_menu)
         self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
         self.saladict_shortcut.setKeySequence(pcfg.saladict_shortcut)

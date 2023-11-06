@@ -74,6 +74,7 @@ class ProgramConfig(Config):
     let_fnteffect_flag: int = 1
     let_alignment_flag: int = 0
     let_autolayout_flag: bool = True
+    let_autolayout_adaptive_fntsz: bool = True
     let_uppercase_flag: bool = True
     font_presets: dict = field(default_factory=lambda: dict())
     fsearch_case: bool = False

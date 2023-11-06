@@ -57,7 +57,7 @@ class TextBlock:
     shadow_color: Tuple = (0, 0, 0)
     shadow_offset: List = field(default_factory = lambda : [0., 0.])
     src_is_vertical: bool = None
-    _detected_font_size: int = -1
+    _detected_font_size: float = -1
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
