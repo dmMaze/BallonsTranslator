@@ -745,7 +745,7 @@ class MainWindow(FramelessWindow):
                 self.imsave_thread.saveImg(mask_path, mask_array)
                 inpainted_path = self.imgtrans_proj.get_inpainted_path()
                 if self.canvas.drawingLayer.drawed():
-                    inpainted = self.canvas.inpaintLayer.pixmap()
+                    inpainted = self.canvas.base_pixmap.copy()
                     painter = QPainter(inpainted)
                     painter.drawPixmap(0, 0, self.canvas.drawingLayer.get_drawed_pixmap())
                     painter.end()
