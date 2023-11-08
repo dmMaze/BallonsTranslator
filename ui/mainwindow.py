@@ -1010,6 +1010,7 @@ class MainWindow(FramelessWindow):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
         if not self.canvas.textEditMode() and self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
+        self.canvas.updateLayers()
 
     def show_fontstyle_presets(self):
         fmt = self.textPanel.formatpanel.active_format
