@@ -30,12 +30,12 @@
 
 ## Windows
 如果用windows而且不想自己手动配置环境, 而且能正常访问互联网:  
-从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载BallonsTranslator_dev_src_with_gitpython.7z, 解压并运行launch.bat启动程序。如果无法自动下载库和模型，手动下载data和ballontrans_pylibs_win.7z并解压到程序目录下。  
-运行scripts/local_gitpull.bat获取更新。  
+从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载BallonsTranslator_dev_src_with_gitpython.7z, 解压并运行launch.bat启动程序。如果无法自动下载库和模型，手动下载data和ballontrans_pylibs_win.7z并解压到程序目录下.  
+运行scripts/local_gitpull.bat获取更新.  
 
 ## 运行源码
 
-安装python < 3.12和git
+安装[Python](https://www.python.org/downloads/release/python-31011) **< 3.12** (别用微软应用商店版) 和[Git](https://git-scm.com/downloads)
 
 ```bash
 # 克隆仓库
@@ -62,7 +62,7 @@ curl -L https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/m
 
 ⚠️ 如果网络条件不佳，需要从网盘下载需要的文件，请按照下面的步骤操作
 #### 1、准备工作
--   从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`libs`和`models`。
+-   从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`libs`和`models`.
 
 -  将下载的资源全部放入名为`data`文件夹，最后的目录树结构应该如下所示：
 
@@ -126,7 +126,7 @@ cd BallonsTranslator
 # 运行构建脚本，运行到pyinstaller环节会要求输入开机密码，输入密码后按下回车即可
 sh scripts/build-macos-app.sh
 ```
-> 📌打包好的应用在`./data/BallonsTranslator/dist/BallonsTranslator.app`，将应用拖到macOS的应用程序文件夹即完成安装，开箱即用，不需要另外配置Python环境。
+> 📌打包好的应用在`./data/BallonsTranslator/dist/BallonsTranslator.app`，将应用拖到macOS的应用程序文件夹即完成安装，开箱即用，不需要另外配置Python环境.  
 
 ## 一键翻译
 **建议在命令行终端下运行程序**, 首次运行请先配置好源语言/目标语言, 打开一个带图片的文件夹, 点击Run等待翻译完成  

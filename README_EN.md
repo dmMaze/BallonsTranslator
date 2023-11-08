@@ -34,7 +34,7 @@ Run scripts/local_gitpull.bat to get the latest update.
 
 ## Run the source code
 
-Install Python < 3.12 and Git.
+Install [Python](https://www.python.org/downloads/release/python-31011) **< 3.12** (dont use the one installed from microsoft store) and [Git](https://git-scm.com/downloads).
 
 ```bash
 # Clone this repo
