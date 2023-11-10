@@ -357,7 +357,7 @@ class LamaInpainterMPE(InpainterBase):
         img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
         
         precision = TORCH_DTYPE_MAP[self.precision]
-        if self.device in {'cuda', 'mps'}:
+        if self.device in {'cuda'}:
             try:
                 with torch.autocast(device_type=self.device, dtype=precision):
                     img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
@@ -424,7 +424,7 @@ class LamaLarge(LamaInpainterMPE):
                 'fp32',
                 'bf16'
             ], 
-            'select': 'bf16'
+            'select': 'bf16' if DEFAULT_DEVICE == 'cuda' else 'fp32'
         }, 
     }
 
