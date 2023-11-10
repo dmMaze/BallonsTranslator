@@ -9,7 +9,7 @@ from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclas
 class ModuleConfig(Config):
     textdetector: str = 'ctd'
     ocr: str = "mit48px_ctc"
-    inpainter: str = 'lama_mpe'
+    inpainter: str = 'lama_large_512px'
     translator: str = "google"
     enable_detect: bool = True
     enable_ocr: bool = True

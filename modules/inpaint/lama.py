@@ -251,9 +251,15 @@ class MPE(nn.Module):
 
 
 class LamaFourier:
-    def __init__(self, build_discriminator=True, use_mpe=False) -> None:
+    def __init__(self, build_discriminator=True, use_mpe=False, large_arch: bool = False) -> None:
         # super().__init__()
+
+        n_blocks = 9
+        if large_arch:
+            n_blocks = 18
+        
         self.generator = FFCResNetGenerator(4, 3, add_out_act='sigmoid', 
+                            n_blocks = n_blocks,
                             init_conv_kwargs={
                             'ratio_gin': 0,
                             'ratio_gout': 0,
@@ -266,8 +272,9 @@ class LamaFourier:
                             'ratio_gin': 0.75,
                             'ratio_gout': 0.75,
                             'enable_lfu': False
-                        }
+                        }, 
                     )
+        
         self.discriminator = NLayerDiscriminator() if build_discriminator else None
         self.inpaint_only = False
         if use_mpe:
@@ -413,8 +420,8 @@ class LamaFourier:
 
         return rel_pos, abs_pos, direct
 
-def load_lama_mpe(model_path, device, use_mpe=True) -> LamaFourier:
-    model = LamaFourier(build_discriminator=False, use_mpe=use_mpe)
+def load_lama_mpe(model_path, device, use_mpe=True, large_arch: bool = False) -> LamaFourier:
+    model = LamaFourier(build_discriminator=False, use_mpe=use_mpe, large_arch=large_arch)
     sd = torch.load(model_path, map_location = 'cpu')
     model.generator.load_state_dict(sd['gen_state_dict'])
     if use_mpe:

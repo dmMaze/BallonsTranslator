@@ -8,7 +8,7 @@ from utils.registry import Registry
 from utils.textblock_mask import extract_ballon_mask
 from utils.imgproc_utils import enlarge_window
 
-from ..base import BaseModule, DEFAULT_DEVICE, gc_collect, DEVICE_SELECTOR, GPUINTENSIVE_SET
+from ..base import BaseModule, DEFAULT_DEVICE, gc_collect, DEVICE_SELECTOR, GPUINTENSIVE_SET, TORCH_DTYPE_MAP
 from ..textdetector import TextBlock
 
 INPAINTERS = Registry('inpainters')
@@ -52,7 +52,11 @@ class InpainterBase(BaseModule):
                                             if running into it frequently, consider lowering the inpaint_size')
                         self.moveToDevice('cpu')
                         inpainted = self._inpaint(img, mask, textblock_list)
-                        self.moveToDevice('cuda')
+                        precision = None
+                        if hasattr(self, 'precision'):
+                            precision = self.precision
+                        self.moveToDevice('cuda', precision)
+
                         return inpainted
             else:
                 raise e
@@ -108,7 +112,7 @@ class InpainterBase(BaseModule):
     def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
         raise NotImplementedError
     
-    def moveToDevice(self, device: str):
+    def moveToDevice(self, device: str, precision: str = None):
         raise not NotImplementedError
 
 
@@ -207,7 +211,7 @@ class AOTInpainter(InpainterBase):
             self.model.to(self.device)
         self.inpaint_size = int(self.params['inpaint_size']['select'])
 
-    def moveToDevice(self, device: str):
+    def moveToDevice(self, device: str, precision: str = None):
         self.model.to(device)
         self.device = device
 
@@ -288,6 +292,7 @@ class LamaInpainterMPE(InpainterBase):
         }, 
         'device': DEVICE_SELECTOR()
     }
+    precision = 'fp32'
 
     device = DEFAULT_DEVICE
     inpaint_size = 2048
@@ -297,10 +302,6 @@ class LamaInpainterMPE(InpainterBase):
             'sha256_pre_calculated': 'd625aa1b3e0d0408acfd6928aa84f005867aa8dbb9162480346a4e20660786cc',
             'files': 'data/models/lama_mpe.ckpt',
     }]
-
-    def moveToDevice(self, device: str):
-        self.model.to(device)
-        self.device = device
 
     def setup_inpainter(self):
         global LAMA_MPE
@@ -354,9 +355,20 @@ class LamaInpainterMPE(InpainterBase):
 
         im_h, im_w = img.shape[:2]
         img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
-        img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
         
-        img_inpainted = (img_inpainted_torch.cpu().squeeze_(0).permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+        precision = TORCH_DTYPE_MAP[self.precision]
+        if self.device in {'cuda', 'mps'}:
+            try:
+                with torch.autocast(device_type=self.device, dtype=precision):
+                    img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+            except Exception as e:
+                self.logger.error(e)
+                self.logger.error(f'{precision} inference is not supported for this device, use fp32 instead.')
+                img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+        else:
+            img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+
+        img_inpainted = (img_inpainted_torch.to(device='cpu', dtype=torch.float32).squeeze_(0).permute(1, 2, 0).numpy() * 255).astype(np.uint8)
         if pad_bottom > 0:
             img_inpainted = img_inpainted[:-pad_bottom]
         if pad_right > 0:
@@ -378,6 +390,66 @@ class LamaInpainterMPE(InpainterBase):
 
         elif param_key == 'inpaint_size':
             self.inpaint_size = int(self.params['inpaint_size']['select'])
+
+        elif param_key == 'precision':
+            precision = self.params['precision']['select']
+            self.precision = precision
+
+    def moveToDevice(self, device: str, precision: str = None):
+        self.model.to(device)
+        self.device = device
+        if precision is not None:
+            self.precision = precision
+
+LAMA_LARGE: LamaFourier = None
+@register_inpainter('lama_large_512px')
+class LamaLarge(LamaInpainterMPE):
+
+    params = {
+        'inpaint_size': {
+            'type': 'selector',
+            'options': [
+                512,
+                768,
+                1024,
+                1536, 
+                2048
+            ], 
+            'select': 1536,
+        }, 
+        'device': DEVICE_SELECTOR(),
+        'precision': {
+            'type': 'selector',
+            'options': [
+                'fp16', 
+                'fp32',
+                'bf16'
+            ], 
+            'select': 'bf16'
+        }, 
+    }
+
+    download_file_list = [{
+            'url': 'https://huggingface.co/dreMaz/AnimeMangaInpainting/resolve/main/lama_large_512px.ckpt',
+            'sha256_pre_calculated': '11d30fbb3000fb2eceae318b75d9ced9229d99ae990a7f8b3ac35c8d31f2c935',
+            'files': 'data/models/lama_large_512px.ckpt',
+    }]
+
+    device = DEFAULT_DEVICE
+    inpaint_size = 1024
+
+    def setup_inpainter(self):
+        global LAMA_LARGE
+
+        device = self.params['device']['select']
+        self.inpaint_size = int(self.params['inpaint_size']['select'])
+        precision = self.params['precision']['select']
+
+        if LAMA_LARGE is None:
+            self.model = LAMA_LARGE = load_lama_mpe(r'data/models/lama_large_512px.ckpt', device='cpu', use_mpe=False, large_arch=True)
+        else:
+            self.model = LAMA_LARGE
+        self.moveToDevice(device, precision=precision)
 
 
 # LAMA_ORI: LamaFourier = None
