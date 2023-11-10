@@ -421,7 +421,6 @@ class LamaLarge(LamaInpainterMPE):
         'precision': {
             'type': 'selector',
             'options': [
-                'fp16', 
                 'fp32',
                 'bf16'
             ], 
