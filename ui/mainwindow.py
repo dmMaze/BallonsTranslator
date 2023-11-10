@@ -883,36 +883,42 @@ class MainWindow(FramelessWindow):
         override_effect = pcfg.let_fnteffect_flag == 1
         override_writing_mode = pcfg.let_writing_mode_flag == 1
         gf = self.textPanel.formatpanel.global_format
-        
-        for blk in blk_list:
-            if override_fnt_size:
-                blk.font_size = pt2px(gf.size)
-            if override_fnt_stroke:
-                blk.default_stroke_width = gf.stroke_width
-                blk.stroke_decide_by_colordiff = False
-            if override_fnt_color:
-                blk.set_font_colors(frgb=gf.frgb, accumulate=False)
-            if override_fnt_scolor:
-                blk.set_font_colors(srgb=gf.srgb, accumulate=False)
-            if override_alignment:
-                blk._alignment = gf.alignment
-            if override_effect:
-                blk.opacity = gf.opacity
-                blk.shadow_color = gf.shadow_color
-                blk.shadow_radius = gf.shadow_radius
-                blk.shadow_strength = gf.shadow_strength
-                blk.shadow_offset = gf.shadow_offset
-            if override_writing_mode:
-                blk.vertical = gf.vertical
-            
-            blk.line_spacing = gf.line_spacing
-            blk.letter_spacing = gf.letter_spacing
-            sw = blk.stroke_width
-            if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect:
-                blk.font_size = int(blk.font_size / (1 + sw))
 
-        self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
-            (pcfg.module.enable_detect or pcfg.module.enable_translate)
+        inpaint_only = pcfg.module.enable_inpaint
+        inpaint_only = inpaint_only and not (pcfg.module.enable_detect or pcfg.module.enable_ocr or pcfg.module.enable_translate)
+        
+        if not inpaint_only:
+            for blk in blk_list:
+                if override_fnt_size:
+                    blk.font_size = pt2px(gf.size)
+                elif blk._detected_font_size > 0 and not pcfg.module.enable_detect:
+                    blk.font_size = blk._detected_font_size
+                if override_fnt_stroke:
+                    blk.default_stroke_width = gf.stroke_width
+                    blk.stroke_decide_by_colordiff = False
+                if override_fnt_color:
+                    blk.set_font_colors(frgb=gf.frgb, accumulate=False)
+                if override_fnt_scolor:
+                    blk.set_font_colors(srgb=gf.srgb, accumulate=False)
+                if override_alignment:
+                    blk._alignment = gf.alignment
+                if override_effect:
+                    blk.opacity = gf.opacity
+                    blk.shadow_color = gf.shadow_color
+                    blk.shadow_radius = gf.shadow_radius
+                    blk.shadow_strength = gf.shadow_strength
+                    blk.shadow_offset = gf.shadow_offset
+                if override_writing_mode:
+                    blk.vertical = gf.vertical
+                
+                blk.line_spacing = gf.line_spacing
+                blk.letter_spacing = gf.letter_spacing
+                sw = blk.stroke_width
+                if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect:
+                    blk.font_size = int(blk.font_size / (1 + sw))
+
+            self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
+                (pcfg.module.enable_detect or pcfg.module.enable_translate)
         
         if page_index != self.pageList.currentIndex().row():
             self.pageList.setCurrentRow(page_index)

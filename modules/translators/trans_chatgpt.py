@@ -28,6 +28,7 @@ class GPTTranslator(BaseTranslator):
             ],
             'select': 'gpt35-turbo'
         },
+        'override model': '',
         'prompt template': {
             'type': 'editor',
             'content': 'Please help me to translate the following text from a manga to {to_lang} (if it\'s already in {to_lang} or looks like gibberish you have to output it as it is instead):\n',
@@ -64,6 +65,7 @@ class GPTTranslator(BaseTranslator):
         'top p': 1,
         # 'return prompt': False,
         'retry attempts': 5,
+        'retry timeout': 15,
         '3rd party api url': ''
     }
 
@@ -109,6 +111,10 @@ class GPTTranslator(BaseTranslator):
     @property
     def retry_attempts(self) -> int:
         return int(self.params['retry attempts'])
+    
+    @property
+    def retry_timeout(self) -> int:
+        return int(self.params['retry timeout'])
     
     @property
     def chat_system_template(self) -> str:
@@ -208,7 +214,6 @@ class GPTTranslator(BaseTranslator):
         # return_prompt = self.params['return prompt']
         chat_sample = self.chat_sample
         for prompt, num_src in self._assemble_prompts(queries, from_lang, to_lang):
-            ratelimit_attempt = 0
             retry_attempt = 0
             while True:
                 try:
@@ -218,28 +223,28 @@ class GPTTranslator(BaseTranslator):
                         raise InvalidNumTranslations
                     break
                 except openai.error.RateLimitError: # Server returned ratelimit response
-                    ratelimit_attempt += 1
-                    if ratelimit_attempt >= 3:
+                    retry_attempt += 1
+                    if retry_attempt >= self.retry_attempts:
                         new_translations = [''] * num_src
                         break
-                    self.logger.warn(f'Restarting request due to ratelimiting by openai servers. Attempt: {ratelimit_attempt}')
-                    time.sleep(2)
+                    self.logger.warn(f'Restarting request due to ratelimiting by openai servers. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
+                    time.sleep(self.retry_timeout)
                 except openai.error.APIError: # Server returned 500 error (probably server load)
                     retry_attempt += 1
                     if retry_attempt >= self.retry_attempts:
                         self.logger.error('OpenAI encountered a server error, possibly due to high server load. Use a different translator or try again later.')
                         new_translations = [''] * num_src
                         break
-                    self.logger.warn(f'Restarting request due to a server error. Attempt: {retry_attempt}')
-                    time.sleep(1)
+                    self.logger.warn(f'Restarting request due to a server error. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
+                    time.sleep(self.retry_timeout)
                 except openai.error.ServiceUnavailableError:
                     retry_attempt += 1
                     if retry_attempt >= self.retry_attempts:
                         self.logger.error('OpenAI encountered a server error, possibly due to high server load. Use a different translator or try again later.')
                         new_translations = [''] * num_src
                         break
-                    self.logger.warn(f'Restarting request due to a server error. Attempt: {retry_attempt}')
-                    time.sleep(2)
+                    self.logger.warn(f'Restarting request due to a server error. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
+                    time.sleep(self.retry_timeout)
                 except InvalidNumTranslations:
                     retry_attempt += 1
                     message = f'number of translations does not match to source:\nprompt:\n    {prompt}\ntranslations:\n  {new_translations}\nopenai response:\n  {response}'
@@ -248,7 +253,7 @@ class GPTTranslator(BaseTranslator):
                         new_translations = [''] * num_src
                         break
                     self.logger.warn(message + '\n' + f'Restarting request. Attempt: {retry_attempt}')
-
+                    # time.sleep(self.retry_timeout)
             # if return_prompt:
             #     new_translations = new_translations[:-1]
 
@@ -311,12 +316,16 @@ class GPTTranslator(BaseTranslator):
         openai.api_key = self.params['api key']
         openai.api_base = self.api_url
         
-        model = self.model
-        if model == 'gpt3':
-            return self._request_translation_gpt3(prompt)
-        elif model == 'gpt35-turbo':
-            return self._request_translation_with_chat_sample(prompt, 'gpt-3.5-turbo-0613', chat_sample)
-        elif model == 'gpt4':
-            return self._request_translation_with_chat_sample(prompt, 'gpt-4-0613', chat_sample)
+        override_model = self.params['override model'].strip()
+        if override_model != '':
+            model: str = override_model
         else:
-            raise Exception(f'Invalid GPT model: {model}')
+            model:str = self.model
+            if model == 'gpt3':
+                return self._request_translation_gpt3(prompt)
+            elif model == 'gpt35-turbo':
+                model = 'gpt-3.5-turbo'
+            elif model == 'gpt4':
+                model = 'gpt-4'
+
+        return self._request_translation_with_chat_sample(prompt, model, chat_sample)

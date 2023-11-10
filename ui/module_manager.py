@@ -504,6 +504,15 @@ def merge_config_module_params(config_params: Dict, module_keys: List, get_modul
                             and cfg_param[mk]['options'] != mparam['options']:
                             LOGGER.info(f'Update {mk} options')
                             cfg_param[mk]['options'] = mparam['options']
+            
+            cfg_key_list = list(cfg_param.keys())
+            module_key_list = list(module_params.keys())
+            if cfg_key_list != module_key_list:
+                LOGGER.info(f'Reorder param dict in config')
+                new_params = {key: cfg_param[key] for key in module_key_list}
+                cfg_param.clear()
+                cfg_param.update(new_params)
+
     return config_params
 
 class ModuleManager(QObject):
