@@ -19,10 +19,13 @@ def ocr(byte, width, height, lang='en'):
 async def coroutine(awaitable):
     return await awaitable 
 
-class WindowsOCR:
-    lang = get_supported_language_packs()[0].language_tag
-    
-    def __call__(self, img: np.ndarray) -> str:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
-        w, h = img.shape[1], img.shape[0]
-        return asyncio.run(coroutine(ocr(img.tobytes(), w, h, self.lang))).text
+winocr_available_recognizer_languages = get_supported_language_packs()
+
+if len(winocr_available_recognizer_languages) > 0:
+    class WindowsOCR:
+        lang = winocr_available_recognizer_languages[0].language_tag
+        
+        def __call__(self, img: np.ndarray) -> str:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
+            w, h = img.shape[1], img.shape[0]
+            return asyncio.run(coroutine(ocr(img.tobytes(), w, h, self.lang))).text

@@ -10,7 +10,7 @@ from utils.registry import Registry
 OCR = Registry('OCR')
 register_OCR = OCR.register_module
 
-from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR
+from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR, LOGGER
 
 class OCRBase(BaseModule):
 
@@ -247,110 +247,122 @@ import platform
 if platform.mac_ver()[0] >= '10.15':
     from .macos_ocr import get_supported_languages
     APPLEVISIONFRAMEWORK = None
-    @register_OCR('macos_ocr')
-    class OCRApple(OCRBase):
-        params = {
-            'language': {
-                'type':'selector',
-                'options': list(get_supported_languages()[0]),
-                'select': 'en-US',
-            },
-            # While this does appear 
-            # it doesn't update the languages available
-            # different recog level, different available langs
-            # 'recognition_level': {
-            #     'type': 'selector',
-            #     'options': [
-            #         'accurate',
-            #         'fast',
-            #     ],
-            #     'select': 'accurate',
-            # },
-            'confidence_level': '0.1',
-        }
-        language = 'en-US'
-        recognition = 'accurate'
-        confidence = '0.1'
 
-        def setup_ocr(self):
-            global APPLEVISIONFRAMEWORK
-            from .macos_ocr import AppleOCR
-            if APPLEVISIONFRAMEWORK is None:
-                self.model = APPLEVISIONFRAMEWORK = AppleOCR(lang=[self.language])
-            else:
-                self.model = APPLEVISIONFRAMEWORK
+    macos_ocr_supported_languages = get_supported_languages()
 
-        def ocr_img(self, img: np.ndarray) -> str:
-            return self.model(img)
+    if len(macos_ocr_supported_languages) > 0:
+        @register_OCR('macos_ocr')
+        class OCRApple(OCRBase):
+            params = {
+                'language': {
+                    'type':'selector',
+                    'options': list(get_supported_languages()[0]),
+                    'select': 'en-US',
+                },
+                # While this does appear 
+                # it doesn't update the languages available
+                # different recog level, different available langs
+                # 'recognition_level': {
+                #     'type': 'selector',
+                #     'options': [
+                #         'accurate',
+                #         'fast',
+                #     ],
+                #     'select': 'accurate',
+                # },
+                'confidence_level': '0.1',
+            }
+            language = 'en-US'
+            recognition = 'accurate'
+            confidence = '0.1'
 
-        def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
-            im_h, im_w = img.shape[:2]
-            for blk in blk_list:
-                x1, y1, x2, y2 = blk.xyxy
-                if y2 < im_h and x2 < im_w and \
-                    x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
-                    blk.text = self.model(img[y1:y2, x1:x2])
+            def setup_ocr(self):
+                global APPLEVISIONFRAMEWORK
+                from .macos_ocr import AppleOCR
+                if APPLEVISIONFRAMEWORK is None:
+                    self.model = APPLEVISIONFRAMEWORK = AppleOCR(lang=[self.language])
                 else:
-                    logging.warning('invalid textbbox to target img')
-                    blk.text = ['']
+                    self.model = APPLEVISIONFRAMEWORK
 
-        def updateParam(self, param_key: str, param_content):
-            super().updateParam(param_key, param_content)
-            self.language = self.params['language']['select']
-            self.model.lang = [self.language]
+            def ocr_img(self, img: np.ndarray) -> str:
+                return self.model(img)
 
-            # self.recognition = self.params['recognition_level']['select']
-            # self.model.recog_level = self.recognition
-            # self.params['language']['options'] = list(get_supported_languages(self.recognition)[0])
+            def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+                im_h, im_w = img.shape[:2]
+                for blk in blk_list:
+                    x1, y1, x2, y2 = blk.xyxy
+                    if y2 < im_h and x2 < im_w and \
+                        x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
+                        blk.text = self.model(img[y1:y2, x1:x2])
+                    else:
+                        logging.warning('invalid textbbox to target img')
+                        blk.text = ['']
 
-            self.confidence = self.params['confidence_level']
-            self.model.min_confidence = self.confidence
+            def updateParam(self, param_key: str, param_content):
+                super().updateParam(param_key, param_content)
+                self.language = self.params['language']['select']
+                self.model.lang = [self.language]
+
+                # self.recognition = self.params['recognition_level']['select']
+                # self.model.recog_level = self.recognition
+                # self.params['language']['options'] = list(get_supported_languages(self.recognition)[0])
+
+                self.confidence = self.params['confidence_level']
+                self.model.min_confidence = self.confidence
+    else:
+        LOGGER.warning(f'No supported language packs found for MacOS, MacOS OCR will be unavailable.')
+                
 
 if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
-    from .windows_ocr import get_supported_language_packs
+    from .windows_ocr import winocr_available_recognizer_languages
 
-    languages_display_name = [lang.display_name for lang in get_supported_language_packs()]
-    languages_tag = [lang.language_tag for lang in get_supported_language_packs()]
-    WINDOWSOCRENGINE = None
-    @register_OCR('windows_ocr')
-    class OCRWindows(OCRBase):
-        params = {
-            'language': {
-                'type':'selector',
-                'options': languages_display_name,
-                'select': languages_display_name[0],
+    if len(winocr_available_recognizer_languages) > 0:
+
+        languages_display_name = [lang.display_name for lang in winocr_available_recognizer_languages]
+        languages_tag = [lang.language_tag for lang in winocr_available_recognizer_languages]
+        WINDOWSOCRENGINE = None
+        @register_OCR('windows_ocr')
+        class OCRWindows(OCRBase):
+            params = {
+                'language': {
+                    'type':'selector',
+                    'options': languages_display_name,
+                    'select': languages_display_name[0],
+                }
             }
-        }
-        language = languages_display_name[0]
+            language = languages_display_name[0]
 
-        def setup_ocr(self):
-            global WINDOWSOCRENGINE
-            from .windows_ocr import WindowsOCR
-            if WINDOWSOCRENGINE is None:
-                self.engine = WINDOWSOCRENGINE = WindowsOCR()
-            else:
-                self.engine = WINDOWSOCRENGINE
-            self.engine.lang = self.get_engine_lang()
-
-        def get_engine_lang(self) -> str:
-            language = self.params['language']['select'] 
-            tag_name = languages_tag[languages_display_name.index(language)]
-            return tag_name
-
-        def ocr_img(self, img: np.ndarray) -> str:
-            self.engine(img)
-
-        def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
-            im_h, im_w = img.shape[:2]
-            for blk in blk_list:
-                x1, y1, x2, y2 = blk.xyxy
-                if y2 < im_h and x2 < im_w and \
-                    x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
-                    blk.text = self.engine(img[y1:y2, x1:x2])
+            def setup_ocr(self):
+                global WINDOWSOCRENGINE
+                from .windows_ocr import WindowsOCR
+                if WINDOWSOCRENGINE is None:
+                    self.engine = WINDOWSOCRENGINE = WindowsOCR()
                 else:
-                    logging.warning('invalid textbbox to target img')
-                    blk.text = ['']
-        
-        def updateParam(self, param_key: str, param_content):
-            super().updateParam(param_key, param_content)
-            self.engine.lang = self.get_engine_lang()
+                    self.engine = WINDOWSOCRENGINE
+                self.engine.lang = self.get_engine_lang()
+
+            def get_engine_lang(self) -> str:
+                language = self.params['language']['select'] 
+                tag_name = languages_tag[languages_display_name.index(language)]
+                return tag_name
+
+            def ocr_img(self, img: np.ndarray) -> str:
+                self.engine(img)
+
+            def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
+                im_h, im_w = img.shape[:2]
+                for blk in blk_list:
+                    x1, y1, x2, y2 = blk.xyxy
+                    if y2 < im_h and x2 < im_w and \
+                        x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
+                        blk.text = self.engine(img[y1:y2, x1:x2])
+                    else:
+                        logging.warning('invalid textbbox to target img')
+                        blk.text = ['']
+            
+            def updateParam(self, param_key: str, param_content):
+                super().updateParam(param_key, param_content)
+                self.engine.lang = self.get_engine_lang()
+
+    else:
+        LOGGER.warning(f'No supported language packs found for windows, Windows OCR will be unavailable.')
