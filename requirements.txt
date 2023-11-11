@@ -32,7 +32,6 @@ requests
 Pillow
 beautifulsoup4
 colorama
-gallery-dl
 openai
 pyyaml
 natsort

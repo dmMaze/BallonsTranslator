@@ -78,7 +78,7 @@ def run_pip(args, desc=None):
         return
 
     index_url_line = f' --index-url {index_url}' if index_url != '' else ''
-    return run(f'"{python}" -m pip {args} --prefer-binary{index_url_line}', desc=f"Installing {desc}", errdesc=f"Couldn't install {desc}", live=True)
+    return run(f'"{python}" -m pip {args} --prefer-binary{index_url_line} --disable-pip-version-check', desc=f"Installing {desc}", errdesc=f"Couldn't install {desc}", live=True)
 
 
 def commit_hash():
@@ -149,19 +149,20 @@ def main():
 
     shared.load_cache()
 
-    try:
-        config = ProgramConfig.load(shared.CONFIG_PATH)
-    except Exception as e:
-        LOGGER.exception(e)
-        LOGGER.warning("Failed to load config file, using default config")
+    if osp.exists(shared.CONFIG_PATH):
+        try:
+            config = ProgramConfig.load(shared.CONFIG_PATH)
+        except Exception as e:
+            LOGGER.exception(e)
+            LOGGER.warning("Failed to load config file, using default config")
+            config = ProgramConfig()
+    else:
+        LOGGER.info(f'{shared.CONFIG_PATH} does not exist, new config file will be created.')
         config = ProgramConfig()
     program_config.pcfg = config
 
-
     from modules.prepare_local_files import prepare_local_files_forall
 
-    
-    # shared.load_cache()
     prepare_local_files_forall()
 
     if not args.qt_api in QT_APIS:
@@ -205,7 +206,7 @@ def main():
         translator = QTranslator()
         translator.load(lang, osp.dirname(osp.abspath(__file__)) + "/translate")
         app.installTranslator(translator)
-    elif lang != 'English':
+    elif lang not in ('en_US', 'English'):
         LOGGER.warning(f'target display language file {langp} doesnt exist.')
     LOGGER.info(f'set display language to {lang}')
 
@@ -261,13 +262,14 @@ def prepare_environment():
                 run_pip(f"install {req}", req)
                 req_updated = True
 
-    torch_command = os.environ.get('TORCH_COMMAND', "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118")
+    torch_command = os.environ.get('TORCH_COMMAND', "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
     if args.reinstall_torch or not is_installed("torch") or not is_installed("torchvision"):
         run(f'"{python}" -m {torch_command}', "Installing torch and torchvision", "Couldn't install torch", live=True)
         req_updated = True
     try:
         pkg_resources.require(open(args.requirements,mode='r', encoding='utf8'))
-    except Exception:
+    except Exception as e:
+        print(e)
         run_pip(f"install -r {args.requirements}", "requirements")
         req_updated = True
 
