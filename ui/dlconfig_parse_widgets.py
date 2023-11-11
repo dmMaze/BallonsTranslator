@@ -7,22 +7,27 @@ from .stylewidgets import ConfigComboBox, NoBorderPushBtn, CustomComboBox
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from utils.config import pcfg
 
-from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit
+from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit, QGridLayout
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QFontMetricsF, QDoubleValidator
 
 
 class ParamNameLabel(QLabel):
-    def __init__(self, param_name: str, *args, **kwargs) -> None:
+    def __init__(self, param_name: str, alignment = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        if alignment is None:
+            self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        else:
+            self.setAlignment(alignment)
+
         font = self.font()
         font.setPointSizeF(CONFIG_FONTSIZE_CONTENT-2)
         self.setFont(font)
         labelwidth = 120
         fm = QFontMetricsF(font)
-        fmw = fm.boundingRect(param_name).width()
-        labelwidth = int(max(fmw, labelwidth))
+        fmrect = fm.boundingRect(param_name)
+        labelwidth = int(max(fmrect.width() + fmrect.height() / 3, labelwidth))
         self.setFixedWidth(labelwidth)
         self.setText(param_name)
 
@@ -121,12 +126,12 @@ class ParamWidget(QWidget):
     paramwidget_edited = Signal(str, dict)
     def __init__(self, params, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        param_layout = QVBoxLayout(self)
-        param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        
+        self.param_layout = param_layout = QGridLayout(self)
+        param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         param_layout.setContentsMargins(0, 0, 0, 0)
-        param_layout.setSpacing(14)
-        for param_key in params:
+        param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        for ii, param_key in enumerate(params):
             if param_key == 'description':
                 continue
 
@@ -179,13 +184,8 @@ class ParamWidget(QWidget):
                     param_widget.setText(val)
                     param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
 
-            layout = QHBoxLayout()
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(10)
-            layout.addWidget(param_label)
-            layout.addWidget(param_widget)
-            layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            param_layout.addLayout(layout)
+            param_layout.addWidget(param_label, ii, 0)
+            param_layout.addWidget(param_widget, ii, 1)
 
     def on_paramwidget_edited(self, param_key, param_content):
             content_dict = {'content': param_content}
@@ -195,7 +195,7 @@ class ParamWidget(QWidget):
 class ModuleConfigParseWidget(QWidget):
     module_changed = Signal(str)
     paramwidget_edited = Signal(str, dict)
-    def __init__(self, module_name: str, get_valid_module_keys: Callable, scrollWidget: QWidget, *args, **kwargs) -> None:
+    def __init__(self, module_name: str, get_valid_module_keys: Callable, scrollWidget: QWidget, add_from: int = 1, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.get_valid_module_keys = get_valid_module_keys
         self.module_combobox = ConfigComboBox(scrollWidget=scrollWidget)
@@ -204,9 +204,10 @@ class ModuleConfigParseWidget(QWidget):
 
         p_layout = QHBoxLayout()
         p_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        p_layout.addWidget(ParamNameLabel(module_name))
+        self.module_label = ParamNameLabel(module_name)
+        p_layout.addWidget(self.module_label)
         p_layout.addWidget(self.module_combobox)
-        p_layout.setSpacing(15)
+        p_layout.setSpacing(0)
         self.p_layout = p_layout
 
         layout = QVBoxLayout(self)
@@ -296,9 +297,9 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         st_layout = QHBoxLayout()
         st_layout.setSpacing(15)
         st_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        st_layout.addWidget(ParamNameLabel(self.tr('Source ')))
+        st_layout.addWidget(ParamNameLabel(self.tr('Source')))
         st_layout.addWidget(self.source_combobox)
-        st_layout.addWidget(ParamNameLabel(self.tr('Target ')))
+        st_layout.addWidget(ParamNameLabel(self.tr('Target')))
         st_layout.addWidget(self.target_combobox)
         
         self.vlayout.insertLayout(1, st_layout) 

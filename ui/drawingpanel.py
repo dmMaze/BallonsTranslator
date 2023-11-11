@@ -96,7 +96,6 @@ class InpaintPanel(Widget):
         layout.addLayout(thickness_layout)
         layout.addLayout(shape_layout)
         layout.setSpacing(14)
-        self.vlayout = layout
 
     def on_thickness_changed(self):
         if self.thicknessSlider.hasFocus():
@@ -231,7 +230,6 @@ class RectPanel(Widget):
         layout.addLayout(glayout)
         layout.addLayout(self.btnlayout)
         layout.setSpacing(14)
-        self.vlayout = layout
 
     def showEvent(self, e) -> None:
         self.inpaint_layout.addWidget(self.inpainter_panel.module_combobox)
