@@ -2,7 +2,7 @@
 
 import re
 import openai
-import openai.error
+
 import time
 from typing import List, Dict, Union
 import yaml
@@ -222,29 +222,6 @@ class GPTTranslator(BaseTranslator):
                     if len(new_translations) != num_src:
                         raise InvalidNumTranslations
                     break
-                except openai.error.RateLimitError: # Server returned ratelimit response
-                    retry_attempt += 1
-                    if retry_attempt >= self.retry_attempts:
-                        new_translations = [''] * num_src
-                        break
-                    self.logger.warn(f'Restarting request due to ratelimiting by openai servers. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
-                    time.sleep(self.retry_timeout)
-                except openai.error.APIError: # Server returned 500 error (probably server load)
-                    retry_attempt += 1
-                    if retry_attempt >= self.retry_attempts:
-                        self.logger.error('OpenAI encountered a server error, possibly due to high server load. Use a different translator or try again later.')
-                        new_translations = [''] * num_src
-                        break
-                    self.logger.warn(f'Restarting request due to a server error. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
-                    time.sleep(self.retry_timeout)
-                except openai.error.ServiceUnavailableError:
-                    retry_attempt += 1
-                    if retry_attempt >= self.retry_attempts:
-                        self.logger.error('OpenAI encountered a server error, possibly due to high server load. Use a different translator or try again later.')
-                        new_translations = [''] * num_src
-                        break
-                    self.logger.warn(f'Restarting request due to a server error. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
-                    time.sleep(self.retry_timeout)
                 except InvalidNumTranslations:
                     retry_attempt += 1
                     message = f'number of translations does not match to source:\nprompt:\n    {prompt}\ntranslations:\n  {new_translations}\nopenai response:\n  {response}'
@@ -253,6 +230,14 @@ class GPTTranslator(BaseTranslator):
                         new_translations = [''] * num_src
                         break
                     self.logger.warn(message + '\n' + f'Restarting request. Attempt: {retry_attempt}')
+
+                except Exception as e:
+                    retry_attempt += 1
+                    if retry_attempt >= self.retry_attempts:
+                        new_translations = [''] * num_src
+                        break
+                    self.logger.warn(f'Translation failed due to {e}. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
+                    time.sleep(self.retry_timeout)
                     # time.sleep(self.retry_timeout)
             # if return_prompt:
             #     new_translations = new_translations[:-1]
