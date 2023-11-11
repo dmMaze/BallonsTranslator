@@ -19,7 +19,6 @@ from .stylewidgets import FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
 from utils import shared as C
-from utils.config import pcfg
 
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
@@ -452,8 +451,6 @@ class Canvas(QGraphicsScene):
         key = event.key()
         if self.editing_textblkitem is not None:
             return super().keyPressEvent(event)
-        elif key == QKEY.Key_Alt:
-            self.alt_pressed = True
         elif key in ARROWKEY2DIRECTION:
             sel_blkitems = self.selected_text_items()
             if len(sel_blkitems) > 0:
@@ -474,11 +471,6 @@ class Canvas(QGraphicsScene):
                 value = 100
             self.textlayer_trans_slider.setValue(value)
             self.originallayer_trans_slider.setValue(100 - value)
-
-    def keyReleaseEvent(self, event: QKeyEvent) -> None:
-        if event.key() == QKEY.Key_Alt:
-            self.alt_pressed = False
-        return super().keyReleaseEvent(event)
 
     def addStrokeImageItem(self, pos: QPointF, pen: QPen, erasing: bool = False):
         if self.stroke_img_item is not None:

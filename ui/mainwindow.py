@@ -4,7 +4,7 @@ from typing import List
 
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
-from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QImage, QPainter, QClipboard
+from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
@@ -1120,3 +1120,20 @@ class MainWindow(FramelessWindow):
         text_list = text_list[:n_paragraph]
 
         self.canvas.push_undo_command(PasteSrcItemsCommand(src_widget_list, text_list))
+
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        key = event.key()
+        if hasattr(self, 'canvas'):
+            if key == Qt.Key.Key_Alt:
+                self.canvas.alt_pressed = True
+        return super().keyPressEvent(event)
+    
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if hasattr(self, 'canvas'):
+            if event.key() == Qt.Key.Key_Alt:
+                self.canvas.alt_pressed = False
+                if self.canvas.scale_tool_mode:
+                    self.canvas.scale_tool_mode = False
+                    self.canvas.end_scale_tool.emit()
+        return super().keyReleaseEvent(event)
