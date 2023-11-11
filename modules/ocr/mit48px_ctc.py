@@ -472,12 +472,10 @@ class OCR48pxCTC:
                 if prob < 0.3 :
                     continue
                 textblk.text.append(''.join(cur_texts))
-                textblk.fg_b += int(total_fr())
-                textblk.fg_g += int(total_fg())
-                textblk.fg_r += int(total_fb())
-                textblk.bg_b += int(total_br())
-                textblk.bg_g += int(total_bg())
-                textblk.bg_r += int(total_bb())
+                textblk.update_font_colors(
+                    [int(total_fb()), int(total_fg()), int(total_fr())],
+                    [int(total_bb()), int(total_bg()), int(total_br())]
+                )
             chunck_idx += N
 
         

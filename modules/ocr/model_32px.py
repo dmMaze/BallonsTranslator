@@ -611,16 +611,13 @@ class OCR32pxModel:
                     if ch == '<SP>' :
                         ch = ' '
                     seq.append(ch)
-                txt = ''.join(seq)
-                # textblk = textblk[indices[i]]
-                textblk.text.append(txt)
+                    
+                textblk.text.append(''.join(seq))
                 # manga-image-translator ocr extract bgr instead of rgb
-                textblk.fg_r += fb
-                textblk.fg_g += fg
-                textblk.fg_b += fr
-                textblk.bg_r += bb
-                textblk.bg_g += bg
-                textblk.bg_b += br
+                textblk.update_font_colors(
+                    [fb, fg, fr],
+                    [bb, bg, br]
+                )
             chunck_idx += N
 
     @torch.no_grad()

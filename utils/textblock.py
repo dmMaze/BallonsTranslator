@@ -32,12 +32,6 @@ class TextBlock:
     sort_weight: float = -1
     text: List = field(default_factory = lambda : [])
     translation: str = ""
-    fg_r: int = 0
-    fg_g: int = 0
-    fg_b: int = 0
-    bg_r: int = 0
-    bg_g: int = 0
-    bg_b: int = 0
     line_spacing: float = 1.
     letter_spacing: float = 1.
     font_family: str = ""
@@ -47,7 +41,6 @@ class TextBlock:
     _alignment: int = -1
     rich_text: str = ""
     _bounding_rect: List = None
-    accumulate_color: bool = True
     default_stroke_width: float = 0.2
     stroke_decide_by_colordiff: bool = True
     font_weight: int = 50
@@ -62,6 +55,11 @@ class TextBlock:
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
 
+    fg_colors: np.ndarray = field(default_factory = lambda : np.array([0., 0., 0.], dtype=np.float32))
+    bg_colors: np.ndarray = field(default_factory = lambda : np.array([0., 0., 0.], dtype=np.float32))
+
+    deprecated_attributes: dict = field(default_factory = lambda: dict())
+
     def __post_init__(self):
         if self.xyxy is not None:
             self.xyxy = [int(num) for num in self.xyxy]
@@ -71,6 +69,17 @@ class TextBlock:
             self.vec = np.array(self.vec, np.float32)
         if self.src_is_vertical is None:
             self.src_is_vertical = self.vertical
+
+        da = self.deprecated_attributes
+        if len(da) > 0:
+            if 'accumulate_color' in da:
+                self.fg_colors = np.array([da['fg_r'], da['fg_g'], da['fg_b']], dtype=np.float32)
+                self.bg_colors = np.array([da['bg_r'], da['bg_g'], da['bg_b']], dtype=np.float32)
+                nlines = len(self)
+                if da['accumulate_color'] and len(self) > 0:
+                    self.fg_colors /= nlines
+                    self.bg_colors /= nlines
+        del self.deprecated_attributes
 
     @property
     def detected_font_size(self):
@@ -248,48 +257,32 @@ class TextBlock:
 
         return text.strip()
 
-    def set_font_colors(self, frgb=None, srgb=None, accumulate=True):
-        
-        num_lines = max(1, len(self.lines))
-        if self.accumulate_color != accumulate:
-            if self.accumulate_color:
-                mul = 1 / num_lines
-            else:
-                mul = num_lines
-            if frgb is None:
-                self.fg_r, self.fg_g, self.fg_b = int(self.fg_r * mul), int(self.fg_g * mul), int(self.fg_b * mul)
-            if srgb is None:
-                self.bg_r, self.bg_g, self.bg_b = int(self.bg_r * mul), int(self.bg_g * mul), int(self.bg_b * mul)
-        
-        self.accumulate_color = accumulate
-        num_lines = len(self.lines) if accumulate and len(self.lines) > 0 else 1
+    def set_font_colors(self, fg_colors, bg_colors):
+        if fg_colors is not None:
+            self.fg_colors = np.array(fg_colors, dtype=np.float32)
+        if bg_colors is not None:
+            self.bg_colors = np.array(bg_colors, dtype=np.float32)
 
-        # set font color
-        if frgb is not None:
-            frgb = np.array(frgb) * num_lines
-            self.fg_r, self.fg_g, self.fg_b = frgb
-
-        # set stroke color  
-        if srgb is not None:
-            srgb = np.array(srgb) * num_lines
-            self.bg_r, self.bg_g, self.bg_b = srgb
+    def update_font_colors(self, fg_colors: np.ndarray, bg_colors: np.ndarray):
+        nlines = len(self)
+        if nlines > 0:
+            if not isinstance(fg_colors, np.ndarray):
+                fg_colors = np.array(fg_colors, dtype=np.float32)
+            if not isinstance(bg_colors, np.ndarray):
+                bg_colors = np.array(bg_colors, dtype=np.float32)
+            self.fg_colors += fg_colors / nlines
+            self.bg_colors += bg_colors / nlines
 
     def get_font_colors(self, bgr=False):
-        num_lines = len(self.lines)
-        frgb = np.array([self.fg_r, self.fg_g, self.fg_b])
-        brgb = np.array([self.bg_r, self.bg_g, self.bg_b])
-        if self.accumulate_color:
-            if num_lines > 0:
-                frgb = (frgb / num_lines).astype(np.int32)
-                brgb = (brgb / num_lines).astype(np.int32)
-                if bgr:
-                    return frgb[::-1], brgb[::-1]
-                else:
-                    return frgb, brgb
-            else:
-                return [0, 0, 0], [0, 0, 0]
-        else:
-            return frgb, brgb
+
+        frgb = np.array(self.fg_colors).astype(np.int32)
+        brgb = np.array(self.bg_colors).astype(np.int32)
+
+        if bgr:
+            frgb = frgb[::-1]
+            brgb = brgb[::-1]
+
+        return frgb, brgb
 
     def xywh(self):
         x, y, w, h = self.xyxy

@@ -16,10 +16,14 @@ def nested_dataclass(*args, **dataclass_kwargs):
           
         def __init__(self, *args, **kwargs):
               
+            store_deprecated = 'deprecated_attributes' in self.__annotations__
+            deprecated = {}
             for name in list(kwargs.keys()):
                 if name not in self.__annotations__:
                     # print(f'warning: type object \'{self.__class__.__name__}\' has no attribute {name}, might be loading from an older config')
-                    kwargs.pop(name)
+                    val = kwargs.pop(name)
+                    if store_deprecated:
+                        deprecated[name] = val
                     continue
                 value = kwargs[name]
                 # getting field type
@@ -28,7 +32,10 @@ def nested_dataclass(*args, **dataclass_kwargs):
                 if is_dataclass(ft) and isinstance(value, dict):
                     obj = ft(**value)
                     kwargs[name]= obj
-                    
+
+            if len(deprecated) > 0:
+                kwargs['deprecated_attributes'] = deprecated        
+            
             o_init(self, *args, **kwargs)
         check_class.__init__=__init__
           

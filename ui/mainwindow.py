@@ -897,9 +897,9 @@ class MainWindow(FramelessWindow):
                     blk.default_stroke_width = gf.stroke_width
                     blk.stroke_decide_by_colordiff = False
                 if override_fnt_color:
-                    blk.set_font_colors(frgb=gf.frgb, accumulate=False)
+                    blk.set_font_colors(fg_colors=gf.frgb)
                 if override_fnt_scolor:
-                    blk.set_font_colors(srgb=gf.srgb, accumulate=False)
+                    blk.set_font_colors(bg_colors=gf.srgb)
                 if override_alignment:
                     blk._alignment = gf.alignment
                 if override_effect:
@@ -1005,7 +1005,7 @@ class MainWindow(FramelessWindow):
                         textblk.stroke_decide_by_colordiff = True
                         textblk.default_stroke_width = 0.2
                         textblk.text = []
-                        textblk.set_font_colors((0, 0, 0), (0, 0, 0), True)
+                        textblk.set_font_colors((0, 0, 0), (0, 0, 0))
                     if pcfg.module.enable_translate or all_disabled or pcfg.module.enable_ocr:
                         textblk.rich_text = ''
                         # textblk.font_size = textblk.detected_font_size ???
