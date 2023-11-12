@@ -62,21 +62,12 @@ from .model_32px import OCR32pxModel
 OCR32PXMODEL: OCR32pxModel = None
 OCR32PXMODEL_PATH = r'data/models/mit32px_ocr.ckpt'
 
-def load_32px_model(model_path, device, chunk_size=16) -> OCR32pxModel:
-    model = OCR32pxModel(model_path, device, max_chunk_size=chunk_size)
-    return model
-
 @register_OCR('mit32px')
 class OCRMIT32px(OCRBase):
     params = {
         'chunk_size': {
             'type': 'selector',
-            'options': [
-                8,
-                16,
-                24,
-                32
-            ],
+            'options': [8, 16, 24, 32],
             'select': 16
         },
         'device': DEVICE_SELECTOR(),
@@ -101,7 +92,7 @@ class OCRMIT32px(OCRBase):
         self.chunk_size = int(self.params['chunk_size']['select'])
         if OCR32PXMODEL is None:
             self.model = OCR32PXMODEL = \
-                load_32px_model(OCR32PXMODEL_PATH, self.device, self.chunk_size)
+                OCR32pxModel(OCR32PXMODEL_PATH, self.device, self.chunk_size)
         else:
             self.model = OCR32PXMODEL
             self.model.to(self.device)
@@ -180,24 +171,15 @@ class MangaOCR(OCRBase):
 
 
 from .mit48px_ctc import OCR48pxCTC
-OCR48PXMODEL: OCR48pxCTC = None
-OCR48PXMODEL_PATH = r'data/models/mit48pxctc_ocr.ckpt'
-
-def load_48px_model(model_path, device, chunk_size=16) -> OCR48pxCTC:
-    model = OCR48pxCTC(model_path, device, max_chunk_size=chunk_size)
-    return model
+OCR48PXCTCMODEL: OCR48pxCTC = None
+OCR48PXCTCMODEL_PATH = r'data/models/mit48pxctc_ocr.ckpt'
 
 @register_OCR('mit48px_ctc')
 class OCRMIT48pxCTC(OCRBase):
     params = {
         'chunk_size': {
             'type': 'selector',
-            'options': [
-                8,
-                16,
-                24,
-                32
-            ],
+            'options': [8,16,24,32],
             'select': 16
         },
         'device': DEVICE_SELECTOR(),
@@ -217,14 +199,14 @@ class OCRMIT48pxCTC(OCRBase):
 
     def setup_ocr(self):
         
-        global OCR48PXMODEL
+        global OCR48PXCTCMODEL
         self.device = self.params['device']['select']
         self.chunk_size = int(self.params['chunk_size']['select'])
-        if OCR48PXMODEL is None:
-            self.model = OCR48PXMODEL = \
-                load_48px_model(OCR48PXMODEL_PATH, self.device, self.chunk_size)
+        if OCR48PXCTCMODEL is None:
+            self.model = OCR48PXCTCMODEL = \
+                OCR48pxCTC(OCR48PXCTCMODEL_PATH, self.device, self.chunk_size)
         else:
-            self.model = OCR48PXMODEL
+            self.model = OCR48PXCTCMODEL
             self.model.to(self.device)
             self.model.max_chunk_size = self.chunk_size
 
@@ -242,6 +224,49 @@ class OCRMIT48pxCTC(OCRBase):
             self.model.to(device)
         self.chunk_size = chunk_size
         self.model.max_chunk_size = chunk_size
+
+
+
+from .mit48px import Model48pxOCR
+OCR48PXMODEL: Model48pxOCR = None
+OCR48PXMODEL_PATH = r'data/models/ocr_ar_48px.ckpt'
+
+@register_OCR('mit48px')
+class OCRMIT48px(OCRBase):
+    params = {
+        'device': DEVICE_SELECTOR(),
+        'description': 'mit48px'
+    }
+    device = DEFAULT_DEVICE
+
+    download_file_list = [{
+        'url': 'https://huggingface.co/zyddnys/manga-image-translator/resolve/main/',
+        'files': [OCR48PXMODEL_PATH, 'data/alphabet-all-v7.txt'],
+        'sha256_pre_calculated': ['29daa46d080818bb4ab239a518a88338cbccff8f901bef8c9db191a7cb97671d', None],
+        'concatenate_url_filename': 2,
+    }]
+
+    def setup_ocr(self):
+        
+        global OCR48PXMODEL
+        self.device = self.params['device']['select']
+        if OCR48PXMODEL is None:
+            self.model = OCR48PXMODEL = \
+                Model48pxOCR(OCR48PXMODEL_PATH, self.device)
+        else:
+            self.model = OCR48PXMODEL
+            self.model.to(self.device)
+
+    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        return self.model(img, blk_list)
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        device = self.params['device']['select']
+        if self.device != device:
+            self.model.to(device)
+
+
     
 import platform
 if platform.mac_ver()[0] >= '10.15':
