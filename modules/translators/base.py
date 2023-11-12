@@ -179,8 +179,23 @@ class BaseTranslator(BaseModule):
         return [text.lstrip().rstrip() for text in text_list]
 
     def translate_textblk_lst(self, textblk_lst: List[TextBlock]):
-        text_list = [blk.get_text() for blk in textblk_lst]
-        translations = self.translate(text_list)
+        '''
+        only textblks with non-empty source text would be passed to translator
+        '''
+        non_empty_ids = []
+        text_list = []
+        translations = []
+        for ii, blk in enumerate(textblk_lst):
+            text = blk.get_text()
+            if text.strip() != '':
+                non_empty_ids.append(ii)
+                text_list.append(text)
+            translations.append(text)
+
+        if len(text_list) > 0:
+            _translations = self.translate(text_list)
+            for ii, idx in enumerate(non_empty_ids):
+                translations[idx] = _translations[ii]
 
         for callback_name, callback in self._postprocess_hooks.items():
             callback(translations = translations, textblocks = textblk_lst, translator = self)
