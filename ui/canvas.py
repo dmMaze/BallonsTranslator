@@ -213,6 +213,7 @@ class Canvas(QGraphicsScene):
         self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.gv.canvas = self
         self.gv.setAcceptDrops(True)
+        self.gv.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.gv.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.context_menu_requested.connect(self.on_create_contextmenu)
@@ -471,6 +472,7 @@ class Canvas(QGraphicsScene):
                 value = 100
             self.textlayer_trans_slider.setValue(value)
             self.originallayer_trans_slider.setValue(100 - value)
+            self.updateLayers()
 
     def addStrokeImageItem(self, pos: QPointF, pen: QPen, erasing: bool = False):
         if self.stroke_img_item is not None:
