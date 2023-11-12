@@ -46,3 +46,13 @@ pip
 
 fonts/*
 !fonts/put fonts here.txt
+
+#venv and autoinstaller folders
+aria2c
+python
+git
+update_git.bat
+launch_win_venv.bat
+install_venv.bat
+install-BT.cmd
+download_models.bat
