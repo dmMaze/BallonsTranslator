@@ -257,6 +257,7 @@ def try_download_files(url: str,
             if gdrive_file_id is not None:
                 download_file_from_google_drive(gdrive_file_id, savep)
             if download_method == 'torch_hub':
+                LOGGER.info(f'downloading {savep} from {download_url} ...')
                 torchhub_download_url_to_file(download_url, savep)
             else:
                 download_url_with_progressbar(download_url, savep)
@@ -283,7 +284,7 @@ def download_and_check_files(url: str,
                         archived_files: List = None, 
                         archive_sha256_pre_calculated: Union[str, List] = None,
                         save_dir: str = None,
-                        download_method: str = '',
+                        download_method: str = 'torch_hub',
                         gdrive_file_id: str = None):
         
     def _wrap_up_checkinputs(files: Union[str, List], save_files: Union[str, List] = None, sha256_pre_calculated: Union[str, List] = None, save_dir: str = None):
