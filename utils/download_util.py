@@ -256,7 +256,7 @@ def try_download_files(url: str,
 
             if gdrive_file_id is not None:
                 download_file_from_google_drive(gdrive_file_id, savep)
-            if download_method == 'torch_hub':
+            elif download_method == 'torch_hub':
                 LOGGER.info(f'downloading {savep} from {download_url} ...')
                 torchhub_download_url_to_file(download_url, savep)
             else:
