@@ -257,7 +257,7 @@ class TextBlock:
 
         return text.strip()
 
-    def set_font_colors(self, fg_colors, bg_colors):
+    def set_font_colors(self, fg_colors = None, bg_colors = None):
         if fg_colors is not None:
             self.fg_colors = np.array(fg_colors, dtype=np.float32)
         if bg_colors is not None:
