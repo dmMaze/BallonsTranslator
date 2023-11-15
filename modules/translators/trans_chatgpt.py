@@ -1,14 +1,16 @@
 # stealt & modified from https://github.com/zyddnys/manga-image-translator/blob/main/manga_translator/translators/chatgpt.py
 
 import re
-import openai
-
 import time
 from typing import List, Dict, Union
 import yaml
+
+import openai
+
 from .base import BaseTranslator, register_translator
 
 OPENAI_ORIGINAL_API_BASE = 'https://api.openai.com/v1'
+OPENAPI_V1_API = int(openai.__version__.split('.')[0]) >= 1
 
 class InvalidNumTranslations(Exception):
     pass
@@ -252,7 +254,13 @@ class GPTTranslator(BaseTranslator):
         return translations
 
     def _request_translation_gpt3(self, prompt: str) -> str:
-        response = openai.Completion.create(
+
+        if OPENAPI_V1_API:
+            openai_completions_create = openai.completions.create
+        else:
+            openai_completions_create = openai.Completion.create
+
+        response = openai_completions_create(
             model='text-davinci-003',
             prompt=prompt,
             max_tokens=self.max_tokens // 2, # Assuming that half of the tokens are used for the query
@@ -273,7 +281,11 @@ class GPTTranslator(BaseTranslator):
             messages.insert(1, {'role': 'user', 'content': chat_sample[0]})
             messages.insert(2, {'role': 'assistant', 'content': chat_sample[1]})
 
-        response = openai.ChatCompletion.create(
+        if OPENAPI_V1_API:
+            openai_chatcompletions_create = openai.chat.completions.create
+        else:
+            openai_chatcompletions_create = openai.ChatCompletion.create
+        response = openai_chatcompletions_create(
             model=model,
             messages=messages,
             max_tokens=self.max_tokens // 2,
@@ -299,7 +311,10 @@ class GPTTranslator(BaseTranslator):
 
     def _request_translation(self, prompt, chat_sample: List):
         openai.api_key = self.params['api key']
-        openai.api_base = self.api_url
+        if OPENAPI_V1_API:
+            openai.base_url = self.api_url
+        else:
+            openai.api_base = self.api_url
         
         override_model = self.params['override model'].strip()
         if override_model != '':
