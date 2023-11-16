@@ -32,6 +32,7 @@ LANGMAP_GLOBAL = {
     'Italiano': '',
     'Polski': '',
     'Português': '',
+    'Brazilian Portuguese': '',
     'limba română': '',
     'русский язык': '',
     'Español': '',
