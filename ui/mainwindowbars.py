@@ -227,7 +227,7 @@ class LeftBar(Widget):
             self.recent_proj_list.insert(0, proj)
             topAction = newTop
 
-        MAXIUM_RECENT_PROJ_NUM = 5
+        MAXIUM_RECENT_PROJ_NUM = 14
         actionlist = self.recentMenu.actions()
         num_to_remove = len(actionlist) - MAXIUM_RECENT_PROJ_NUM
         if num_to_remove > 0:

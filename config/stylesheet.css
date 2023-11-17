@@ -293,11 +293,11 @@ QMenu {
 
 QMenu::item {
     height: 28px;
-    width: 342px;
+    min-width: 128px;
     margin: 0px;
     background-color: @emptyContentBackgroundColor;
-    padding-left: 32px;
-    padding-right: 32px;
+    padding-left: 20px;
+    padding-right: 20px;
 }
 
 QMenu::separator {
