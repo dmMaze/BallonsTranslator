@@ -1,6 +1,7 @@
 import os.path as osp
 import os, re, traceback, sys
 from typing import List
+from pathlib import Path
 
 from qtpy.QtWidgets import QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QProcess
@@ -1061,7 +1062,7 @@ class MainWindow(FramelessWindow):
         current_img_path = self.imgtrans_proj.current_img_path()
         process = QProcess(self)
         if sys.platform == 'win32':
-            process.start('explorer', '/select,'+current_img_path)
+            process.start('explorer', ['/select,'+str(Path(current_img_path))])
         elif sys.platform == 'darwin':
             process.start('open', ['-R', current_img_path])
 
