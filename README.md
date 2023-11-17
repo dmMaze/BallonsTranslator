@@ -58,25 +58,22 @@ $ python3 launch.py
 # 第1步：打开终端并确保当前终端窗口的Python大版本号是3.11，可以用下面的命令确认版本号
 python3 -V
 
-# 第2步：安装opencv，推荐通过homebrew安装
-brew install opencv
-
-# 第3步：克隆仓库并进入仓库工作目录
+# 第2步：克隆仓库并进入仓库工作目录
 git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
 cd BallonsTranslator
 
-# 第4步：创建和启用 Python 3.11 虚拟环境
+# 第3步：创建和启用 Python 3.11 虚拟环境
 python3 -m venv venv
 source venv/bin/activate
 
-# 第5步：安装依赖
+# 第4步：安装依赖
 pip3 install -r requirements.txt
 
-# 第6步：源码运行程序，会自动下载data文件，每个文件在20-400MB左右，合计大约1.67GB，需要比较稳定的网络，如果下载报错，请重复运行下面的命令直至不再下载报错并启动程序
+# 第5步：源码运行程序，会自动下载data文件，每个文件在20-400MB左右，合计大约1.67GB，需要比较稳定的网络，如果下载报错，请重复运行下面的命令直至不再下载报错并启动程序
 # 如果多次下载失败，也可以从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`libs`和`models`并放入data文件夹
 python3 launch.py
 
-# 第7步：运行下面的远程脚本开始构建macOS应用程序（仅限 Apple Silicon 芯片的 Mac 设备），中途sudo命令需要输入开机密码授予权限
+# 第6步：运行下面的远程脚本开始构建macOS应用程序（仅限 Apple Silicon 芯片的 Mac 设备），中途sudo命令需要输入开机密码授予权限
 cd ..
 curl -L https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/macos-build-script.sh | bash
 ```
