@@ -145,7 +145,7 @@ def main():
     from utils.config import ProgramConfig
 
     from qtpy.QtCore import QTranslator, QLocale, Qt
-    shared.DEFAULT_DISPLAY_LANG = QLocale.system().name()
+    shared.DEFAULT_DISPLAY_LANG = QLocale.system().name().replace('en_CN', 'zh_CN')
 
     shared.load_cache()
 
