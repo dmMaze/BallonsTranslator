@@ -44,22 +44,6 @@ else
     fi
 fi
 
-# OpenCV installation check
-echo "STEP 3: Check installation of OpenCV."
-echo "INFO: Install OpenCV Python package in virtual environment."
-pip3 install opencv-python
-echo "INFO: Checking OpenCV installation..."
-python3 -c "import cv2" 2>/dev/null
-if [ $? -eq 0 ]; then
-    opencv_version=$(python3 -c "import cv2; print(cv2.__version__)")
-    echo "INFO: ✅ OpenCV is installed. Version: $opencv_version"
-else
-    echo "ERROR: ❌ OpenCV is not installed."
-    echo "ERROR: Please install OpenCV before running this script."
-    echo "INFO: Recommand install via Homebrew with command 'brew install opencv'."
-    exit 1
-fi
-
 # Check data file hash
 echo "STEP 4: Check data file hash."
 
