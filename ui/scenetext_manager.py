@@ -999,10 +999,13 @@ class SceneTextManager(QObject):
             blk_item.update()
 
     def set_blkitems_selection(self, selected: bool, blk_items: List[TextBlkItem] = None):
+        self.canvas.block_selection_signal = True
         if blk_items is None:
             blk_items = self.textblk_item_list
         for blk_item in blk_items:
             blk_item.setSelected(selected)
+        self.canvas.block_selection_signal = False
+        self.on_incanvas_selection_changed()
 
     def on_ensure_textitem_svisible(self):
         edit: Union[TransTextEdit, SourceTextEdit] = self.sender()
