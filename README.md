@@ -49,83 +49,35 @@ $ python3 launch.py
 
 如果要使用Sugoi翻译器(仅日译英), 下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), 将 "sugoi_translator" 移入BallonsTranslator/ballontranslator/data/models.  
 
-## 构建macOS应用（本方法兼容intel和apple silicon芯片）
+## 构建macOS应用（适用apple silicon芯片）
 <i>如果构建不成功也可以直接跑源码</i>
 
 ![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
 
-#### 通过远程脚本一键构建应用
-在终端中输入下面的命令自动完成所有构建步骤，由于从github和huggingface下载模型，需要比较好的网络条件
 ```
+# 第1步：打开终端并确保当前终端窗口的Python大版本号是3.11，可以用下面的命令确认版本号
+python3 -V
+
+# 第2步：克隆仓库并进入仓库工作目录
+git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
+cd BallonsTranslator
+
+# 第3步：创建和启用 Python 3.11 虚拟环境
+python3 -m venv venv
+source venv/bin/activate
+
+# 第4步：安装依赖
+pip3 install -r requirements.txt
+
+# 第5步：源码运行程序，会自动下载data文件，每个文件在20-400MB左右，合计大约1.67GB，需要比较稳定的网络，如果下载报错，请重复运行下面的命令直至不再下载报错并启动程序
+# 如果多次下载失败，也可以从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`libs`和`models`并放入data文件夹
+python3 launch.py
+
+# 第6步：运行下面的远程脚本开始构建macOS应用程序（仅限 Apple Silicon 芯片的 Mac 设备），中途sudo命令需要输入开机密码授予权限
+cd ..
 curl -L https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/macos-build-script.sh | bash
 ```
 
-⚠️ 如果网络条件不佳，需要从网盘下载需要的文件，请按照下面的步骤操作
-#### 1、准备工作
--   从[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)下载`libs`和`models`.
-
--  将下载的资源全部放入名为`data`文件夹，最后的目录树结构应该如下所示：
-
-```
-data
-├── libs
-│   └── patchmatch_inpaint.dll
-└── models
-    ├── aot_inpainter.ckpt
-    ├── comictextdetector.pt
-    ├── comictextdetector.pt.onnx
-    ├── lama_mpe.ckpt
-    ├── manga-ocr-base
-    │   ├── README.md
-    │   ├── config.json
-    │   ├── preprocessor_config.json
-    │   ├── pytorch_model.bin
-    │   ├── special_tokens_map.json
-    │   ├── tokenizer_config.json
-    │   └── vocab.txt
-    ├── mit32px_ocr.ckpt
-    ├── mit48pxctc_ocr.ckpt
-    └── pkuseg
-        ├── postag
-        │   ├── features.pkl
-        │   └── weights.npz
-        ├── postag.zip
-        └── spacy_ontonotes
-            ├── features.msgpack
-            └── weights.npz
-
-7 directories, 23 files
-```
-
--  安装pyenv命令行工具，这是用于管理Python版本的工具
-```
-# 通过Homebrew途径安装
-brew install pyenv
-
-# 通过官方自动脚本途径安装
-curl https://pyenv.run | bash
-
-# 安装完后需要设置shell环境
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
-echo 'eval "$(pyenv init -)"' >> ~/.zshrc
-```
-
-
-#### 2、构建应用
-```
-# 进入`data`工作目录
-cd data
-
-# 克隆仓库`dev`分支
-git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
-
-# 进入`BallonsTranslator`工作目录
-cd BallonsTranslator
-
-# 运行构建脚本，运行到pyinstaller环节会要求输入开机密码，输入密码后按下回车即可
-sh scripts/build-macos-app.sh
-```
 > 📌打包好的应用在`./data/BallonsTranslator/dist/BallonsTranslator.app`，将应用拖到macOS的应用程序文件夹即完成安装，开箱即用，不需要另外配置Python环境.  
 
 ## 一键翻译
