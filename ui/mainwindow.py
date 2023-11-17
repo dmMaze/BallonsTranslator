@@ -1,10 +1,10 @@
 import os.path as osp
-import os, re, traceback
+import os, re, traceback, sys
 from typing import List
 
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
-from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
-from qtpy.QtGui import QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard
+from qtpy.QtWidgets import QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
+from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QProcess
+from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
@@ -35,11 +35,24 @@ from .keywordsubwidget import KeywordSubWidget
 
 from . import shared_widget as SW
 
-class PageListView(QListWidget):    
+class PageListView(QListWidget):
+
+    reveal_file = Signal()
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setMaximumWidth(512)
         self.setIconSize(QSize(C.PAGELIST_THUMBNAIL_SIZE, C.PAGELIST_THUMBNAIL_SIZE))
+
+    def contextMenuEvent(self, e: QContextMenuEvent):
+        menu = QMenu()
+        reveal_act = menu.addAction(self.tr('Reveal in File Explorer'))
+        rst = menu.exec_(e.globalPos())
+
+        if rst == reveal_act:
+            self.reveal_file.emit()
+
+        return super().contextMenuEvent(e)
 
 
 class MainWindow(FramelessWindow):
@@ -111,6 +124,7 @@ class MainWindow(FramelessWindow):
         self.leftBar.import_doc.connect(self.on_import_doc)
 
         self.pageList = PageListView()
+        self.pageList.reveal_file.connect(self.on_reveal_file)
         self.pageList.setHidden(True)
         self.pageList.currentItemChanged.connect(self.pageListCurrentItemChanged)
 
@@ -1042,6 +1056,14 @@ class MainWindow(FramelessWindow):
 
     def on_import_doc(self):
         self.import_doc_thread.importDoc(self.imgtrans_proj)
+
+    def on_reveal_file(self):
+        current_img_path = self.imgtrans_proj.current_img_path()
+        process = QProcess(self)
+        if sys.platform == 'win32':
+            process.start('explorer', '/select,'+current_img_path)
+        elif sys.platform == 'darwin':
+            process.start('open', ['-R', current_img_path])
 
     def on_set_gsearch_widget(self):
         setup = self.leftBar.globalSearchChecker.isChecked()
