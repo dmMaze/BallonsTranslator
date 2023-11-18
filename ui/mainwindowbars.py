@@ -248,8 +248,18 @@ class LeftBar(Widget):
             self.recentMenu.removeAction(self.sender())
         
     def onOpenFolder(self) -> None:
+        
+        d = None
+        if len(self.recent_proj_list) > 0:
+            for projp in self.recent_proj_list:
+                if not osp.isdir(projp):
+                    projp = osp.dirname(projp)
+                if osp.exists(projp):
+                    d = projp
+                    break
+        
         dialog = QFileDialog()
-        folder_path = str(dialog.getExistingDirectory(self, self.tr("Select Directory")))
+        folder_path = str(dialog.getExistingDirectory(self, self.tr("Select Directory"), d))
         if osp.exists(folder_path):
             self.updateRecentProjList(folder_path)
             self.open_dir.emit(folder_path)
