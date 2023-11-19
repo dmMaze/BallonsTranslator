@@ -343,7 +343,7 @@ class DrawingPanel(Widget):
         self.maskTransperancySlider = PaintQSlider()
         self.maskTransperancySlider.valueChanged.connect(self.canvas.setMaskTransparencyBySlider)
         masklayout = QHBoxLayout()
-        masklayout.addWidget(ToolNameLabel(220, self.tr('Mask Transparency')))
+        masklayout.addWidget(ToolNameLabel(130, self.tr('Mask Opacity')))
         masklayout.addWidget(self.maskTransperancySlider)
 
         layout = QVBoxLayout(self)

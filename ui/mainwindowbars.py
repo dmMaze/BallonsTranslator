@@ -557,11 +557,11 @@ class BottomBar(Widget):
         self.textblockChecker.setObjectName('TextblockChecker')
         self.textblockChecker.clicked.connect(self.onTextblockCheckerClicked)
         
-        self.originalSlider = PaintQSlider(self.tr("Original image transparency"), Qt.Orientation.Horizontal, self, minimumWidth=90)
+        self.originalSlider = PaintQSlider(self.tr("Original image opacity"), Qt.Orientation.Horizontal, self)
         self.originalSlider.setFixedWidth(150)
         self.originalSlider.setRange(0, 100)
 
-        self.textlayerSlider = PaintQSlider(self.tr("Lettering layer transparency"), Qt.Orientation.Horizontal, self, minimumWidth=90)
+        self.textlayerSlider = PaintQSlider(self.tr("Lettering layer opacity"), Qt.Orientation.Horizontal, self)
         self.textlayerSlider.setFixedWidth(150)
         self.textlayerSlider.setValue(100)
         self.textlayerSlider.setRange(0, 100)

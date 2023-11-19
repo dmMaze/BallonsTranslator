@@ -295,7 +295,6 @@ class Canvas(QGraphicsScene):
 
         self.textlayer_trans_slider: QSlider = None
         self.originallayer_trans_slider: QSlider = None
-        self.masklayer_trans_slider: QSlider = None
 
     def img_window_size(self):
         if self.imgtrans_proj.inpainted_valid:

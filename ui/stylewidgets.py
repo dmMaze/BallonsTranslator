@@ -1,10 +1,18 @@
 from qtpy.QtWidgets import QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStyle, QSlider, QProxyStyle, QStyle, QStyleOptionSlider, QColorDialog, QPushButton
-from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, Signal
+from qtpy.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPointF, QRect, QRectF, Signal, QPoint, Property
 from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPainter, QFontMetrics, QColor
 from typing import List, Union, Tuple
 
 from utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
 from utils import shared as C
+from utils.config import pcfg
+
+
+def isDarkTheme():
+    return pcfg.darkmode
+
+def themeColor():
+    return QColor(30, 147, 229, 127)
 
 
 class Widget(QWidget):
@@ -190,26 +198,6 @@ class ColorPicker(QLabel):
         color = self.color
         return (color.red(), color.green(), color.blue(), color.alpha())
 
-
-class SliderProxyStyle(QProxyStyle):
-
-    def subControlRect(self, cc, opt, sc, widget):
-        r = super().subControlRect(cc, opt, sc, widget)
-        if widget.orientation() == Qt.Orientation.Horizontal:
-            y = widget.height() // 4
-            h = y * 2
-            r = QRect(r.x(), y, r.width(), h)
-        else:
-            x = widget.width() // 4
-            w = x * 2
-            r = QRect(x, r.y(), w, r.height())
-
-        # seems a bit dumb, otherwise the handle is buggy
-        if r.height() < r.width():
-            r.setHeight(r.width())
-        else:
-            r.setWidth(r.height())
-        return r
     
 def slider_subcontrol_rect(r: QRect, widget: QWidget):
     if widget.orientation() == Qt.Orientation.Horizontal:
@@ -229,19 +217,219 @@ def slider_subcontrol_rect(r: QRect, widget: QWidget):
     return r
 
 
-class PaintQSlider(QSlider):
+class SliderHandle(QWidget):
+    """ Slider handle """
 
-    # its pretty buggy, got to replace it someday
+    pressed = Signal()
+    released = Signal()
+
+    def __init__(self, parent: QSlider):
+        super().__init__(parent=parent)
+        self.setFixedSize(22, 22)
+        self._radius = 5
+        self.radiusAni = QPropertyAnimation(self, b'radius', self)
+        self.radiusAni.setDuration(100)
+
+    @Property(int)
+    def radius(self):
+        return self._radius
+
+    @radius.setter
+    def radius(self, r):
+        self._radius = r
+        self.update()
+
+    def enterEvent(self, e):
+        self._startAni(6)
+
+    def leaveEvent(self, e):
+        self._startAni(5)
+
+    def mousePressEvent(self, e):
+        self._startAni(4)
+        self.pressed.emit()
+
+    def mouseReleaseEvent(self, e):
+        self._startAni(6)
+        self.released.emit()
+
+    def _startAni(self, radius):
+        self.radiusAni.stop()
+        self.radiusAni.setStartValue(self.radius)
+        self.radiusAni.setEndValue(radius)
+        self.radiusAni.start()
+
+    def paintEvent(self, e):
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        # draw outer circle
+        isDark = isDarkTheme()
+        painter.setPen(QColor(0, 0, 0, 90 if isDark else 25))
+        painter.setBrush(QColor(69, 69, 69) if isDark else QColor(225, 228, 235))
+        painter.drawEllipse(self.rect().adjusted(1, 1, -1, -1))
+
+        # draw innert circle
+        painter.setBrush(themeColor())
+        painter.drawEllipse(QPoint(11, 11), self.radius, self.radius)
+
+
+class Slider(QSlider):
+    """ A slider can be clicked
+
+    modified from https://github.com/zhiyiYo/PyQt-Fluent-Widgets
+
+    Constructors
+    ------------
+    * Slider(`parent`: QWidget = None)
+    * Slider(`orient`: Qt.Orientation, `parent`: QWidget = None)
+    """
+
+    clicked = Signal(int)
+
+    def __init__(self, orientation: Qt.Orientation, parent: QWidget = None):
+        super().__init__(orientation, parent=parent)
+        self._postInit()
+
+    def _postInit(self):
+        self.handle = SliderHandle(self)
+        self._pressedPos = QPoint()
+        self.setOrientation(self.orientation())
+
+        self.handle.pressed.connect(self.sliderPressed)
+        self.handle.released.connect(self.sliderReleased)
+        self.valueChanged.connect(self._adjustHandlePos)
+
+    def setOrientation(self, orientation: Qt.Orientation) -> None:
+        super().setOrientation(orientation)
+        if orientation == Qt.Orientation.Horizontal:
+            self.setMinimumHeight(22)
+        else:
+            self.setMinimumWidth(22)
+
+    def mousePressEvent(self, e: QMouseEvent):
+        self._pressedPos = e.pos()
+        self.setValue(self._posToValue(e.pos()))
+        self.clicked.emit(self.value())
+
+    def mouseMoveEvent(self, e: QMouseEvent):
+        self.setValue(self._posToValue(e.pos()))
+        self._pressedPos = e.pos()
+        self.sliderMoved.emit(self.value())
+
+    @property
+    def grooveLength(self):
+        l = self.width() if self.orientation() == Qt.Orientation.Horizontal else self.height()
+        return l - self.handle.width()
+
+    def _adjustHandlePos(self):
+        total = max(self.maximum() - self.minimum(), 1)
+        delta = int((self.value() - self.minimum()) / total * self.grooveLength)
+
+        if self.orientation() == Qt.Orientation.Vertical:
+            self.handle.move(0, delta)
+        else:
+            self.handle.move(delta, 0)
+
+    def _posToValue(self, pos: QPoint):
+        pd = self.handle.width() / 2
+        gs = max(self.grooveLength, 1)
+        v = pos.x() if self.orientation() == Qt.Orientation.Horizontal else pos.y()
+        return int((v - pd) / gs * (self.maximum() - self.minimum()) + self.minimum())
+
+    def paintEvent(self, e):
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(255, 255, 255, 115) if isDarkTheme() else QColor(0, 0, 0, 100))
+
+        if self.orientation() == Qt.Orientation.Horizontal:
+            self._drawHorizonGroove(painter)
+        else:
+            self._drawVerticalGroove(painter)
+
+        if hasattr(self, 'draw_content'):
+            # its a bad idea to display text like this, but I leave it as it is for now
+            
+            option = QStyleOptionSlider()
+            self.initStyleOption(option)
+
+            if not option.state & QStyle.State_MouseOver:
+                return
+
+            rect = self.style().subControlRect(
+                QStyle.CC_Slider, option, QStyle.SC_SliderHandle, self)
+            rect = slider_subcontrol_rect(rect, self)
+            
+            value = self.value()
+            
+            painter.setPen(Qt.NoPen)
+
+            r = rect.height() // 2
+            vr = int((value - self.minimum()) / (self.maximum() - self.minimum()) * r)
+            rect = QRect(rect.x() - vr, rect.y(), rect.width(), rect.width())
+                
+            painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
+            font = painter.font()
+            font.setPointSizeF(8)
+            fm = QFontMetrics(font)
+            painter.setFont(font)
+
+            is_hor = self.orientation() == Qt.Orientation.Horizontal
+            if is_hor: 
+                x, y = rect.x(), rect.y()
+                dx, dy = x, y
+                if value < (self.maximum() + self.minimum()) / 2:
+                    dx += rect.width() * 2
+                else:
+                    dx -= rect.width() * 2
+            else:
+                dx = dy = 0
+
+            dy = self.height() - fm.height() + fm.descent()
+            painter.drawText(
+                dx, dy + self.height() - fm.height(), str(value), 
+            )
+
+            if self.draw_content is not None:
+                painter.drawText(0, dy, self.draw_content, )
+                
+
+    def _drawHorizonGroove(self, painter: QPainter):
+        w, r = self.width(), self.handle.width() / 2
+        painter.drawRoundedRect(QRectF(r, r-2, w-r*2, 4), 2, 2)
+
+        if self.maximum() - self.minimum() == 0:
+            return
+
+        painter.setBrush(themeColor())
+        aw = (self.value() - self.minimum()) / (self.maximum() - self.minimum()) * (w - r*2)
+        painter.drawRoundedRect(QRectF(r, r-2, aw, 4), 2, 2)
+
+    def _drawVerticalGroove(self, painter: QPainter):
+        h, r = self.height(), self.handle.width() / 2
+        painter.drawRoundedRect(QRectF(r-2, r, 4, h-2*r), 2, 2)
+
+        if self.maximum() - self.minimum() == 0:
+            return
+
+        painter.setBrush(themeColor())
+        ah = (self.value() - self.minimum()) / (self.maximum() - self.minimum()) * (h - r*2)
+        painter.drawRoundedRect(QRectF(r-2, r, 4, ah), 2, 2)
+
+    def resizeEvent(self, e):
+        self._adjustHandlePos()
+
+
+class PaintQSlider(Slider):
 
     mouse_released = Signal()
 
     def __init__(self, draw_content = None, orientation=Qt.Orientation.Horizontal, *args, **kwargs):
-        super(PaintQSlider, self).__init__(orientation, *args, **kwargs)
+        super().__init__(orientation, *args, **kwargs)
         self.draw_content = draw_content
         self.pressed: bool = False
-        # self.setStyle(SliderProxyStyle(None))
-        if orientation == Qt.Orientation.Horizontal:
-            self.setFixedHeight(HORSLIDER_FIXHEIGHT)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -254,79 +442,6 @@ class PaintQSlider(QSlider):
             self.mouse_released.emit()
         return super().mouseReleaseEvent(event)
 
-    def paintEvent(self, _):
-        option = QStyleOptionSlider()
-        self.initStyleOption(option)
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # 中间圆圈的位置
-        rect = self.style().subControlRect(
-            QStyle.CC_Slider, option, QStyle.SC_SliderHandle, self)
-        rect = slider_subcontrol_rect(rect, self)
-        
-        value = self.value()
-        
-        # 画中间白色线条
-        painter.setPen(QColor(85,85,96))
-        painter.setBrush(QColor(85,85,96))
-        if self.orientation() == Qt.Orientation.Horizontal:
-            y = self.height() / 2
-            painter.drawLine(QPointF(4, y), QPointF(self.width() - 8, y))
-        else:
-            x = self.width() / 2
-            painter.drawLine(QPointF(x, 0), QPointF(x, self.height()))
-        # 画圆
-        painter.setPen(Qt.NoPen)
-
-        r = rect.height() // 2
-        vr = int((value - self.minimum()) / (self.maximum() - self.minimum()) * r)
-        rect = QRect(rect.x() - vr, rect.y(), rect.width(), rect.width())
-
-        if option.state & QStyle.State_MouseOver:  # 双重圆
-            
-            r = rect.height() / 2
-            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,100))
-            painter.drawRoundedRect(rect, r, r)
-            # 实心小圆(上下左右偏移4)
-            rect_inner = rect.adjusted(4, 4, -4, -4)
-            r = rect_inner.height() // 2
-            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,255))
-            painter.drawRoundedRect(rect_inner, r, r)
-
-            painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
-            font = painter.font()
-            font.setPointSizeF(8)
-            fm = QFontMetrics(font)
-            painter.setFont(font)
-
-            is_hor = self.orientation() == Qt.Orientation.Horizontal
-            if is_hor:  # 在上方绘制文字
-                x, y = rect.x(), rect.y()
-                dx, dy = x, y
-                if value < (self.maximum() + self.minimum()) / 2:
-                    dx += rect.width()
-                else:
-                    dx -= rect.width()
-            else:  # 在左侧绘制文字
-                x, y = rect.x() - rect.width(), rect.y()
-
-
-            painter.drawText(
-                dx, self.height() - fm.height(), str(value), 
-            )
-
-            if self.draw_content is not None:
-                painter.drawText(
-                    0, dy, self.draw_content, 
-                )
-
-        else:  # 实心圆
-            rect = rect.adjusted(4, 4, -4, -4)
-            r = rect.height() // 2
-            painter.setBrush(QColor(*C.SLIDERHANDLE_COLOR,200))
-            painter.drawRoundedRect(rect, r, r)
 
 class CustomComboBox(QComboBox):
     # https://stackoverflow.com/questions/3241830/qt-how-to-disable-mouse-scrolling-of-qcombobox
