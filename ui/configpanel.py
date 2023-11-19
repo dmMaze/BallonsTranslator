@@ -92,10 +92,7 @@ class ConfigTextLabel(QLabel):
         self.setOpenExternalLinks(True)
 
     def setActiveBackground(self):
-        self.setAutoFillBackground(True)
-        pal = self.palette()
-        pal.setColor(QPalette.ColorRole.Window, QColor(30, 147, 229, 51))
-        self.setPalette(pal)
+        self.setStyleSheet("background-color:rgba(30, 147, 229, 51);")
 
 
 class ConfigSubBlock(Widget):
@@ -257,7 +254,7 @@ class ConfigContent(QScrollArea):
 
     def deactiveLabel(self):
         if self.active_label is not None:
-            self.active_label.setAutoFillBackground(False)
+            self.active_label.setStyleSheet("")
             self.active_label = None
 
 

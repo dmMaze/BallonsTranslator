@@ -36,7 +36,7 @@ class FadeLabel(QLabel):
             startValue=1.0,
             endValue=0.,
         )
-        self.fadeAnimation.setEasingCurve(QEasingCurve.InQuint)
+        self.fadeAnimation.setEasingCurve(QEasingCurve.Type.InQuint)
         self.fadeAnimation.finished.connect(self.hide)
         self.setHidden(True)
         self.gv = None

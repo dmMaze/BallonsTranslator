@@ -42,7 +42,6 @@ class PageListView(QListWidget):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setMaximumWidth(512)
         self.setIconSize(QSize(C.PAGELIST_THUMBNAIL_SIZE, C.PAGELIST_THUMBNAIL_SIZE))
 
     def contextMenuEvent(self, e: QContextMenuEvent):
