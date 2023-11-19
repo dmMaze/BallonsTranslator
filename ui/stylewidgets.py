@@ -363,12 +363,7 @@ class Slider(QSlider):
             rect = slider_subcontrol_rect(rect, self)
             
             value = self.value()
-            
-            painter.setPen(Qt.NoPen)
-
-            r = rect.height() // 2
-            vr = int((value - self.minimum()) / (self.maximum() - self.minimum()) * r)
-            rect = QRect(rect.x() - vr, rect.y(), rect.width(), rect.width())
+            value_str = str(value)
                 
             painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
             font = painter.font()
@@ -378,18 +373,14 @@ class Slider(QSlider):
 
             is_hor = self.orientation() == Qt.Orientation.Horizontal
             if is_hor: 
-                x, y = rect.x(), rect.y()
-                dx, dy = x, y
-                if value < (self.maximum() + self.minimum()) / 2:
-                    dx += rect.width() * 2
-                else:
-                    dx -= rect.width() * 2
+                value_w = fm.boundingRect(value_str).width()
+                dx = self.width() - value_w
             else:
                 dx = dy = 0
 
             dy = self.height() - fm.height() + fm.descent()
             painter.drawText(
-                dx, dy + self.height() - fm.height(), str(value), 
+                dx, dy, value_str, 
             )
 
             if self.draw_content is not None:
