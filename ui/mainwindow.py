@@ -211,7 +211,6 @@ class MainWindow(FramelessWindow):
         self.rightComicTransStackPanel.currentChanged.connect(self.on_transpanel_changed)
 
         self.comicTransSplitter = QSplitter(Qt.Orientation.Horizontal)
-        # self.comicTransSplitter.addWidget(self.pageList)
         self.comicTransSplitter.addWidget(self.leftStackWidget)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
@@ -233,7 +232,9 @@ class MainWindow(FramelessWindow):
         mainVBoxLayout.setSpacing(0)
 
         self.mainvlayout = mainVBoxLayout
+        self.comicTransSplitter.setStretchFactor(0, 1)
         self.comicTransSplitter.setStretchFactor(1, 10)
+        self.comicTransSplitter.setStretchFactor(2, 1)
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
         self.resetStyleSheet()
 

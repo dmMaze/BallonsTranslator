@@ -3,9 +3,9 @@ import sys
 
 from qtpy.QtWidgets import QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QMouseEvent, QTextCursor
+from qtpy.QtGui import QMouseEvent, QTextCursor, QPixmap, QIcon
 
-from .stylewidgets import Widget, ColorPicker, ClickableLabel, CheckableLabel, TextChecker
+from .stylewidgets import Widget, ColorPicker, ClickableLabel, CheckableLabel, TextChecker, FlowLayout
 from utils.fontformat import FontFormat
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanel
@@ -15,9 +15,10 @@ from . import funcmaps as FM
 
 
 class IncrementalBtn(QPushButton):
-    pass
-
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFixedSize(13, 13)
+        
 class QFontChecker(QCheckBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -145,6 +146,7 @@ class FontSizeBox(QFrame):
         hlayout.addLayout(vlayout)
         hlayout.addWidget(self.fcombobox)
         hlayout.setSpacing(3)
+        hlayout.setContentsMargins(0, 0, 0, 0)
 
     def getFontSize(self) -> float:
         return self.fcombobox.value()
@@ -233,6 +235,60 @@ class FontFamilyComboBox(QFontComboBox):
             return
         self.param_changed.emit('family', self.currentText())
 
+CHEVRON_SIZE = 20
+def chevron_down():
+    return QIcon(r'icons/chevron-down.svg').pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
+
+def chevron_right():
+    return QIcon(r'icons/chevron-right.svg').pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
+
+class ExpandLabel(Widget):
+
+    clicked = Signal()
+
+    def __init__(self, text=None, parent=None, expanded=False, *args, **kwargs):
+        super().__init__(parent=parent, *args, **kwargs)
+        self.label = QLabel(self)
+        self.label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        font = self.label.font()
+        font.setPointSize(14)
+        self.label.setFont(font)
+        self.arrowlabel = QLabel(self)
+        self.arrowlabel.setFixedSize(CHEVRON_SIZE, CHEVRON_SIZE)
+        self.arrowlabel.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+        if text is not None:
+            self.setText(text)
+        layout = QHBoxLayout(self)
+        layout.addWidget(self.arrowlabel)
+        layout.addWidget(self.label)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(1)
+        layout.addStretch(-1)
+    
+        self.expanded = False
+        self.setExpand(expanded)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+    def setExpand(self, expand: bool):
+        self.expanded = expand
+        if expand:
+            self.arrowlabel.setPixmap(chevron_down())
+        else:
+            self.arrowlabel.setPixmap(chevron_right())
+
+    def setText(self, text: str):
+        self.label.setText(text)
+
+    def text(self):
+        return self.label.text()
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.setExpand(not self.expanded)
+            self.clicked.emit()
+        return super().mousePressEvent(e)
+
 
 class FontFormatPanel(Widget):
     
@@ -247,19 +303,20 @@ class FontFormatPanel(Widget):
         self.app = app
 
         self.vlayout = QVBoxLayout(self)
-        self.vlayout.setAlignment(Qt.AlignTop)
+        self.vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.familybox = FontFamilyComboBox(emit_if_focused=True, parent=self)
         self.familybox.setContentsMargins(0, 0, 0, 0)
         self.familybox.setObjectName("FontFamilyBox")
         self.familybox.setToolTip(self.tr("Font Family"))
         self.familybox.param_changed.connect(self.on_param_changed)
+        self.familybox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self.fontsizebox = FontSizeBox(self)
         self.fontsizebox.setToolTip(self.tr("Font Size"))
         self.fontsizebox.setObjectName("FontSizeBox")
         self.fontsizebox.fcombobox.setToolTip(self.tr("Change font size"))
         self.fontsizebox.param_changed.connect(self.on_param_changed)
-
+        
         self.lineSpacingLabel = SizeControlLabel(self, direction=1)
         self.lineSpacingLabel.setObjectName("lineSpacingLabel")
         self.lineSpacingLabel.size_ctrl_changed.connect(self.onLineSpacingCtrlChanged)
@@ -329,7 +386,7 @@ class FontFormatPanel(Widget):
         lettersp_hlayout.setSpacing(C.WIDGET_SPACING_CLOSE)
         
         self.global_fontfmt_str = self.tr("Global Font Format")
-        self.fontfmtLabel = ClickableLabel(self.global_fontfmt_str, self)
+        self.fontfmtLabel = ExpandLabel(self.global_fontfmt_str, self)
         font = self.fontfmtLabel.font()
         font.setPointSizeF(C.CONFIG_FONTSIZE_CONTENT * 0.75)
         self.fontfmtLabel.setFont(font)
@@ -345,16 +402,17 @@ class FontFormatPanel(Widget):
 
         FONTFORMAT_SPACING = 6
 
-        hl0 = QHBoxLayout()
-        hl0.addStretch(1)
-        hl0.addWidget(self.fontfmtLabel)
-        hl0.addStretch(1)
+        vl0 = QVBoxLayout()
+        vl0.addWidget(self.fontfmtLabel)
+        vl0.setSpacing(0)
+        vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
         hl1.addWidget(self.familybox)
         hl1.addWidget(self.fontsizebox)
         hl1.addWidget(self.lineSpacingLabel)
         hl1.addWidget(self.lineSpacingBox)
         hl1.setSpacing(4)
+        hl1.setContentsMargins(0, 12, 0, 0)
         hl2 = QHBoxLayout()
         hl2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl2.addWidget(self.colorPicker)
@@ -368,7 +426,7 @@ class FontFormatPanel(Widget):
         hl3.addLayout(stroke_hlayout)
         hl3.addLayout(lettersp_hlayout)
         hl3.addWidget(self.effectBtn)
-        hl3.setContentsMargins(3, 3, 3, 3)
+        hl3.setContentsMargins(3, 0, 3, 0)
         hl3.setSpacing(13)
         hl4 = QHBoxLayout()
         hl4.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -378,15 +436,16 @@ class FontFormatPanel(Widget):
         hl4.setStretch(0, 1)
         hl4.setStretch(1, 1)
         hl4.setStretch(2, 1)
+        hl4.setContentsMargins(0, 12, 0, 0)
         hl4.setSpacing(0)
 
-        self.vlayout.addLayout(hl0)
+        self.vlayout.addLayout(vl0)
         self.vlayout.addLayout(hl1)
         self.vlayout.addLayout(hl2)
         self.vlayout.addLayout(hl3)
         self.vlayout.addLayout(hl4)
-        self.vlayout.setContentsMargins(7, 7, 7, 0)
-        self.setFixedWidth(C.TEXTEDIT_FIXWIDTH)
+        self.vlayout.setContentsMargins(7, 0, 7, 0)
+        self.vlayout.setSpacing(0)
 
         self.focusOnColorDialog = False
         self.active_format = self.global_format

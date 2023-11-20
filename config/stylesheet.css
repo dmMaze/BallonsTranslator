@@ -681,11 +681,6 @@ QScrollBar::add-line {
 }
 
 
-.IncrementalBtn {
-    border-radius: 0px;
-    height: 13px;
-    width: 13px;
-}
 .IncrementalBtn#FsizeIncrementUp {
     border-image: url(icons/incre_up.svg) 0 0 0 0 stretch stretch;
 }
@@ -726,8 +721,14 @@ QLabel#angleLabel {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-.CheckableLabel::hover {
+.ExpandLabel::hover {
     background-color: rgba(30, 147, 229, 20%);
+}
+
+.ExpandLabel {
+    border-bottom: 1px;
+    border-color: @borderColor;
+    border-style: solid;
 }
 
 DrawToolCheckBox::indicator {
