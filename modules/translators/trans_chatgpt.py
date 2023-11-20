@@ -9,7 +9,6 @@ import openai
 
 from .base import BaseTranslator, register_translator
 
-OPENAI_ORIGINAL_API_BASE = 'https://api.openai.com/v1'
 OPENAPI_V1_API = int(openai.__version__.split('.')[0]) >= 1
 
 class InvalidNumTranslations(Exception):
@@ -306,15 +305,18 @@ class GPTTranslator(BaseTranslator):
     def api_url(self):
         url = self.params['3rd party api url'].strip()
         if not url:
-            url = OPENAI_ORIGINAL_API_BASE
+            return None
         return url
 
     def _request_translation(self, prompt, chat_sample: List):
         openai.api_key = self.params['api key']
+        base_url = self.api_url
         if OPENAPI_V1_API:
-            openai.base_url = self.api_url
+            openai.base_url = base_url
         else:
-            openai.api_base = self.api_url
+            if base_url is None:
+                base_url = 'https://api.openai.com/v1'
+            openai.api_base = base_url
         
         override_model = self.params['override model'].strip()
         if override_model != '':
