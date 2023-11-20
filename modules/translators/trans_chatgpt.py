@@ -266,8 +266,13 @@ class GPTTranslator(BaseTranslator):
             temperature=self.temperature,
             top_p=self.top_p,
         )
-        self.token_count += response.usage['total_tokens']
-        self.token_count_last = response.usage['total_tokens']
+
+        if OPENAPI_V1_API:
+            self.token_count += response.usage.total_tokens
+            self.token_count_last = response.usage.total_tokens
+        else:
+            self.token_count += response.usage['total_tokens']
+            self.token_count_last = response.usage['total_tokens']
         return response.choices[0].text
     
     def _request_translation_with_chat_sample(self, prompt: str, model: str, chat_sample: List) -> str:
@@ -292,11 +297,18 @@ class GPTTranslator(BaseTranslator):
             top_p=self.top_p,
         )
 
-        self.token_count += response.usage['total_tokens']
-        self.token_count_last = response.usage['total_tokens']
+        if OPENAPI_V1_API:
+            self.token_count += response.usage.total_tokens
+            self.token_count_last = response.usage.total_tokens
+        else:
+            self.token_count += response.usage['total_tokens']
+            self.token_count_last = response.usage['total_tokens']
         for choice in response.choices:
-            if 'text' in choice:
-                return choice.text
+            if OPENAPI_V1_API:
+                return choice.message.content
+            else:
+                if 'text' in choice:
+                    return choice.text
 
         # If no response with text is found, return the first response's content (which may be empty)
         return response.choices[0].message.content
