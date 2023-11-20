@@ -15,7 +15,7 @@ from .misc import ndarray2pixmap
 from .config_proj import ProjImgTrans
 from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
-from .stylewidgets import FadeLabel
+from .stylewidgets import FadeLabel, ScrollBar
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
 from utils import shared as C
@@ -79,6 +79,16 @@ class CustomGV(QGraphicsView):
     hide_canvas = Signal()
     ctrl_released = Signal()
     canvas: QGraphicsScene = None
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        ScrollBar(Qt.Orientation.Horizontal, self, fadeout=True)
+        ScrollBar(Qt.Orientation.Vertical, self, fadeout=True)
+
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        # self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
     def wheelEvent(self, event : QWheelEvent) -> None:
         # qgraphicsview always scroll content according to wheelevent
@@ -203,8 +213,6 @@ class Canvas(QGraphicsScene):
         self.editing_textblkitem: TextBlkItem = None
 
         self.gv = CustomGV(self)
-        self.gv.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.gv.scale_down_signal.connect(self.scaleDown)
         self.gv.scale_up_signal.connect(self.scaleUp)
         self.gv.scale_with_value.connect(self.scaleBy)

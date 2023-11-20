@@ -646,36 +646,36 @@ QScrollBar::handle:vertical:hover,QScrollBar::handle:horizontal:hover {
 
 /*纵向滚动条下部分块*/
 QScrollBar::add-page:vertical {
-    width: 10px;
+    width: 0px;
     background: transparent;
 }
 /*横向滚动条后面部分块*/
 QScrollBar::add-page:horizontal {
-    height: 10px;
+    height: 0px;
     background: transparent;
 }
 /*纵向滚动条上面部分块*/
 QScrollBar::sub-page:vertical {
-    width: 10px;
+    width: 0px;
     background: transparent;
 }
 /*横向滚动条左部分块*/
 QScrollBar::sub-page:horizontal {
-    height: 10px;
+    height: 0px;
     background: transparent;
 }
 
 QScrollBar::sub-line {
-    height: 12px;
-    width: 10px;
+    height: 0px;
+    width: 0px;
     background: transparent;
     subcontrol-position: top;
 }
 
 /*纵向滚动条顶部三角形位置*/
 QScrollBar::add-line {
-    height: 10px;
-    width: 1px;
+    height: 0px;
+    width: 0px;
     background: transparent;
     subcontrol-position: top;
 }

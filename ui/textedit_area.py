@@ -1,15 +1,15 @@
 from typing import List, Union
 
-from qtpy.QtWidgets import QMenu, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout
+from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint
 from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence
 import keyboard
-
-from .stylewidgets import Widget, SeparatorWidget, ClickableLabel, IgnoreMouseLabel
-from .textitem import TextBlock
-from utils.config import pcfg
 import webbrowser
 import numpy as np
+
+from .stylewidgets import Widget, SeparatorWidget, ClickableLabel, IgnoreMouseLabel, ScrollBar
+from .textitem import TextBlock
+from utils.config import pcfg
 
 
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
@@ -401,8 +401,13 @@ class TextEditListScrollArea(QScrollArea):
         super().__init__(*args, **kwargs)
         self.scrollContent = Widget()
         self.setWidget(self.scrollContent)
+
+        # ScrollBar(Qt.Orientation.Horizontal, self)
+        ScrollBar(Qt.Orientation.Vertical, self)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         vlayout = QVBoxLayout()
-        vlayout.setContentsMargins(0, 0, 0, 0)
+        vlayout.setContentsMargins(0, 0, 3, 0)
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.setSpacing(0)
         vlayout.addStretch(1)
