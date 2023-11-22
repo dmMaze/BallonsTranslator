@@ -737,6 +737,7 @@ class Canvas(QGraphicsScene):
             ocr_act = menu.addAction(self.tr("OCR"))
             ocr_translate_act = menu.addAction(self.tr("OCR and translate"))
             ocr_translate_inpaint_act = menu.addAction(self.tr("OCR, translate and inpaint"))
+            inpaint_act = menu.addAction(self.tr("inpaint"))
 
             rst = menu.exec(pos)
             
@@ -766,6 +767,8 @@ class Canvas(QGraphicsScene):
                 self.run_blktrans.emit(1)
             elif rst == ocr_translate_inpaint_act:
                 self.run_blktrans.emit(2)
+            elif rst == inpaint_act:
+                self.run_blktrans.emit(3)
 
     @property
     def have_selected_blkitem(self):

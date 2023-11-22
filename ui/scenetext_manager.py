@@ -48,7 +48,7 @@ class CreateItemCommand(QUndoCommand):
 
 class EmptyCommand(QUndoCommand):
     def __init__(self, parent=None):
-        pass
+        super().__init__(parent=parent)
 
 
 class DeleteBlkItemsCommand(QUndoCommand):
