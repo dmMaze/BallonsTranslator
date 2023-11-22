@@ -11,6 +11,7 @@ from utils.logger import logger as LOGGER
 from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from utils.textblock import TextBlock
+from utils import shared
 from modules.translators.trans_chatgpt import GPTTranslator
 from .misc import parse_stylesheet
 from utils.config import ProgramConfig, pcfg
@@ -25,15 +26,12 @@ from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox
-from .preset_widget import PresetPanel
-from utils.shared import CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
-from utils import shared as C
 from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
-
+from . import common as C
 from . import shared_widget as SW
 
 class PageListView(QListWidget):
@@ -42,7 +40,7 @@ class PageListView(QListWidget):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setIconSize(QSize(C.PAGELIST_THUMBNAIL_SIZE, C.PAGELIST_THUMBNAIL_SIZE))
+        self.setIconSize(QSize(shared.PAGELIST_THUMBNAIL_SIZE, shared.PAGELIST_THUMBNAIL_SIZE))
 
     def contextMenuEvent(self, e: QContextMenuEvent):
         menu = QMenu()
@@ -174,19 +172,9 @@ class MainWindow(FramelessWindow):
         self.textPanel = TextPanel(self.app)
         self.textPanel.formatpanel.effect_panel.setParent(self)
         self.textPanel.formatpanel.effect_panel.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.CustomizeWindowHint)
-        self.textPanel.formatpanel.fontfmtLabel.clicked.connect(self.show_fontstyle_presets)
         self.textPanel.formatpanel.foldTextBtn.checkStateChanged.connect(self.fold_textarea)
         self.textPanel.formatpanel.sourceBtn.checkStateChanged.connect(self.show_source_text)
         self.textPanel.formatpanel.transBtn.checkStateChanged.connect(self.show_trans_text)
-
-        
-        self.presetPanel = PresetPanel(self)
-        self.presetPanel.setParent(self)
-        self.presetPanel.setWindowFlags(Qt.WindowType.Window)
-        self.presetPanel.global_fmt_str = self.textPanel.formatpanel.global_fontfmt_str
-        self.presetPanel.hide()
-        self.presetPanel.hide_signal.connect(self.save_config)
-        self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
 
         self.ocrSubWidget = KeywordSubWidget(self.tr("Keyword substitution for OCR"))
         self.ocrSubWidget.setParent(self)
@@ -295,7 +283,7 @@ class MainWindow(FramelessWindow):
         elif pcfg.imgtrans_paintmode:
             self.bottomBar.paintChecker.click()
 
-        self.presetPanel.initPresets(pcfg.font_presets)
+        self.textPanel.formatpanel.textstyle_panel.style_area.initStyles(pcfg.text_styles)
 
         self.canvas.search_widget.whole_word_toggle.setChecked(pcfg.fsearch_whole_word)
         self.canvas.search_widget.case_sensitive_toggle.setChecked(pcfg.fsearch_case)
@@ -380,7 +368,7 @@ class MainWindow(FramelessWindow):
     def updatePageList(self):
         if self.pageList.count() != 0:
             self.pageList.clear()
-        if len(self.imgtrans_proj.pages) >= C.PAGELIST_THUMBNAIL_MAXNUM:
+        if len(self.imgtrans_proj.pages) >= shared.PAGELIST_THUMBNAIL_MAXNUM:
             item_func = lambda imgname: QListWidgetItem(imgname)
         else:
             item_func = lambda imgname:\
@@ -414,7 +402,7 @@ class MainWindow(FramelessWindow):
     def changeEvent(self, event: QEvent):
         if event.type() == QEvent.Type.WindowStateChange:
             if self.windowState() & Qt.WindowState.WindowMaximized:
-                if not C.ON_MACOS:
+                if not shared.ON_MACOS:
                     self.titleBar.maxBtn.setChecked(True)
         elif event.type() == QEvent.Type.ActivationChange:
             self.canvas.on_activation_changed()
@@ -432,12 +420,8 @@ class MainWindow(FramelessWindow):
             self.restart_signal.emit()
 
     def save_config(self):
-        pcfg.imgtrans_paintmode = self.bottomBar.paintChecker.isChecked()
-        pcfg.imgtrans_textedit = self.bottomBar.texteditChecker.isChecked()
-        pcfg.mask_transparency = self.canvas.mask_transparency
-        pcfg.original_transparency = self.canvas.original_transparency
         pcfg.drawpanel = self.drawingPanel.get_config()
-        with open(CONFIG_PATH, 'w', encoding='utf8') as f:
+        with open(shared.CONFIG_PATH, 'w', encoding='utf8') as f:
             f.write(json_dump_nested_obj(pcfg))
 
     def onHideCanvas(self):
@@ -1033,10 +1017,7 @@ class MainWindow(FramelessWindow):
         self.canvas.updateLayers()
 
     def show_fontstyle_presets(self):
-        fmt = self.textPanel.formatpanel.active_format
-        fmt_name = self.textPanel.formatpanel.fontfmtLabel.text()
-        self.presetPanel.updateCurrentFontFormat(fmt, fmt_name)
-        self.presetPanel.show()
+        self.textPanel.formatpanel.textstyle_panel.expand()
 
     def fold_textarea(self, fold: bool):
         pcfg.fold_textarea = fold

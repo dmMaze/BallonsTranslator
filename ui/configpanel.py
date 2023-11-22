@@ -90,6 +90,7 @@ class ConfigTextLabel(QLabel):
         self.setFont(font)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.setOpenExternalLinks(True)
+        # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
     def setActiveBackground(self):
         self.setStyleSheet("background-color:rgba(30, 147, 229, 51);")

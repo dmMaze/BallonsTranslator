@@ -1,4 +1,4 @@
-from qtpy.QtWidgets import QLayout, QLayoutItem, QWidgetItem, QApplication, QAbstractScrollArea, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStyle, QSlider, QHBoxLayout, QStyle, QStyleOptionSlider, QColorDialog, QPushButton
+from qtpy.QtWidgets import QBoxLayout, QLayout, QWidgetItem, QLayoutItem, QWidgetItem, QApplication, QAbstractScrollArea, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStyle, QSlider, QHBoxLayout, QStyle, QStyleOptionSlider, QColorDialog, QPushButton
 from qtpy.QtCore import QParallelAnimationGroup, QEvent, Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize, QRect, QRectF, Signal, QPoint, Property, QAbstractAnimation
 from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPainter, QFontMetrics, QColor
 from typing import List, Union, Tuple
@@ -993,6 +993,17 @@ class FlowLayout(QLayout):
         self.needAni = needAni
         self.isTight = isTight
 
+        self.height = 0
+        # self.insertWidget()
+
+
+    def insertWidget(self, idx: int, w: QWidget):
+        self.addChildWidget(w)
+        self.insertItem(idx, QWidgetItem(w))
+
+    def insertItem(self, idx:int, item):
+        self._items.insert(idx, item)
+
     def addItem(self, item):
         self._items.append(item)
 
@@ -1151,4 +1162,5 @@ class FlowLayout(QLayout):
             self._aniGroup.stop()
             self._aniGroup.start()
 
-        return y + rowHeight + margin.bottom() - rect.y()
+        self.height = y + rowHeight + margin.bottom() - rect.y()
+        return self.height

@@ -14,12 +14,13 @@ except:
 
 from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
 from .canvas import Canvas
+from . import common as C
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
 from utils.fontformat import FontFormat, pt2px, px2pt
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
 from .fontformatpanel import FontFormatPanel
 from utils.config import pcfg
-from utils import shared as C
+from utils import shared
 from utils.imgproc_utils import extract_ballon_region, rotate_polygons, get_block_mask
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
@@ -320,6 +321,7 @@ class SceneTextManager(QObject):
         self.textEditList.rearrange_blks.connect(self.on_rearrange_blks)
         self.formatpanel = textpanel.formatpanel
         self.formatpanel.effect_panel.apply.connect(self.on_apply_effect)
+        self.formatpanel.textstyle_panel.style_area.apply_fontfmt.connect(self.onFormatTextblks)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
         self.textblk_item_list: List[TextBlkItem] = []
@@ -491,7 +493,7 @@ class SceneTextManager(QObject):
         if edit is not None:
             pw = self.pairwidget_list[edit.idx]
             h = pw.height()
-            if C.USE_PYSIDE6:
+            if shared.USE_PYSIDE6:
                 self.textEditList.ensureWidgetVisible(pw, ymargin=h)
             else:
                 self.textEditList.ensureWidgetVisible(pw, yMargin=h)
@@ -603,8 +605,10 @@ class SceneTextManager(QObject):
             self.canvas.clearSelection()
             self.canvas.push_undo_command(PasteBlkItemsCommand(blkitem_list, pair_widget_list, self))
 
-    def onFormatTextblks(self):
-        self.apply_fontformat(self.formatpanel.global_format)
+    def onFormatTextblks(self, fmt: FontFormat = None):
+        if fmt is None:
+            fmt = self.formatpanel.global_format
+        self.apply_fontformat(fmt)
 
     def onAutoLayoutTextblks(self):
         selected_blks = self.canvas.selected_text_items()
@@ -957,10 +961,10 @@ class SceneTextManager(QObject):
         self.canvas.push_undo_command(RearrangeBlksCommand(mv_map, self))
 
     def on_apply_effect(self):
-        format = self.formatpanel.active_format
+        ffmt = C.active_format
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
-            self.canvas.push_undo_command(ApplyEffectCommand(selected_blks, format))
+            self.canvas.push_undo_command(ApplyEffectCommand(selected_blks, ffmt))
 
     def updateTextBlkItemIdx(self):
         for ii, blk_item in enumerate(self.textblk_item_list):

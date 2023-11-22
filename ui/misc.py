@@ -218,3 +218,13 @@ def reverse_icon_color(dark2light: bool = False):
             svg_content = pattern.sub(lambda m:rep_dict[m.group()], svg_content)
         with open(svgpath, "w", encoding="utf-8") as f:
             f.write(svg_content)
+
+def mutate_dict_key(adict: dict, old_key: Union[str, int], new_key: str):
+    # https://stackoverflow.com/questions/12150872/change-key-in-ordereddict-without-losing-order
+    key_list = list(adict.keys())
+    if isinstance(old_key, int):
+        old_key = key_list[old_key]
+    
+    for key in key_list:
+        value = adict.pop(key)
+        adict[new_key if old_key == key else key] = value

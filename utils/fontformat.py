@@ -31,6 +31,7 @@ class FontFormat(Config):
     shadow_strength: float = 1.
     shadow_color: Tuple = (0, 0, 0)
     shadow_offset: List = field(default_factory=lambda: [0., 0.])
+    _style_name: str = ''
 
     def from_textblock(self, text_block: TextBlock):
         self.family = text_block.font_family
@@ -50,3 +51,12 @@ class FontFormat(Config):
         self.shadow_strength = text_block.shadow_strength
         self.shadow_color = text_block.shadow_color
         self.shadow_offset = text_block.shadow_offset
+
+    def merge(self, target: Config):
+        tgt_keys = target.annotations_set()
+        updated_keys = set()
+        for key in tgt_keys:
+            if key != '_style_name' and self[key] != target[key]:
+                self.update(key, target[key])
+                updated_keys.add(key)
+        return updated_keys

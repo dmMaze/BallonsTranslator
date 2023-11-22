@@ -579,13 +579,17 @@ class BottomBar(Widget):
 
 
     def onPaintCheckerPressed(self):
-        if self.paintChecker.isChecked():
+        checked = self.paintChecker.isChecked()
+        if checked:
             self.texteditChecker.setChecked(False)
+        pcfg.imgtrans_paintmode = checked
         self.paintmode_checkchanged.emit()
 
     def onTextEditCheckerPressed(self):
-        if self.texteditChecker.isChecked():
+        checked = self.texteditChecker.isChecked()
+        if checked:
             self.paintChecker.setChecked(False)
+        pcfg.imgtrans_textedit = checked
         self.textedit_checkchanged.emit()
 
     def onTextblockCheckerClicked(self):

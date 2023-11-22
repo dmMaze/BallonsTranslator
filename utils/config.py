@@ -60,7 +60,7 @@ class ProgramConfig(Config):
     module: ModuleConfig = field(default_factory=lambda: ModuleConfig())
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
-    recent_proj_list: List = field(default_factory=lambda: [])
+    recent_proj_list: List = field(default_factory=lambda: list())
     imgtrans_paintmode: bool = False
     imgtrans_textedit: bool = True
     imgtrans_textblock: bool = True
@@ -77,7 +77,8 @@ class ProgramConfig(Config):
     let_autolayout_flag: bool = True
     let_autolayout_adaptive_fntsz: bool = True
     let_uppercase_flag: bool = True
-    font_presets: dict = field(default_factory=lambda: dict())
+    text_styles: List = field(default_factory=lambda: list())
+    expand_tstyle_panel: bool = True
     fsearch_case: bool = False
     fsearch_whole_word: bool = False
     fsearch_regex: bool = False
@@ -93,9 +94,9 @@ class ProgramConfig(Config):
     show_trans_text: bool = True
     saladict_shortcut: str = "Alt+S"
     search_url: str = "https://www.google.com/search?q="
-    ocr_sublist: dict = field(default_factory=lambda: [])
+    ocr_sublist: List = field(default_factory=lambda: list())
     restore_ocr_empty: bool = False
-    mt_sublist: dict = field(default_factory=lambda: [])
+    mt_sublist: List = field(default_factory=lambda: list())
     display_lang: str = field(default_factory=lambda: shared.DEFAULT_DISPLAY_LANG) # to always apply shared.DEFAULT_DISPLAY_LANG
     imgsave_quality: int = 100
     imgsave_ext: str = '.png'
@@ -134,6 +135,13 @@ class ProgramConfig(Config):
             if module_cfg['translator'] in repl_pairs:
                 module_cfg['translator'] = repl_pairs[module_cfg['translator']]
             
+        if 'text_styles' in config_dict:
+            tstyles = []
+            for s in config_dict['text_styles']:
+                if isinstance(s, dict):
+                    s = FontFormat(**s)
+                tstyles.append(s)
+            config_dict['text_styles'] = tstyles
 
         return ProgramConfig(**config_dict)
     
