@@ -348,7 +348,9 @@ class TitleBar(Widget):
         drawBoardAction.setShortcut(QKeySequence('P'))
         texteditAction = QAction(self.tr('Text Editor'), self)
         texteditAction.setShortcut(QKeySequence('T'))
-        fontStylePresetAction = QAction(self.tr('Text Style Presets'), self)
+        textStylesPanel = QAction(self.tr('Text Styles Panel'), self)
+        importTextStyles = QAction(self.tr('Import Text Styles'), self)
+        exportTextStyles = QAction(self.tr('Export Text Styles'), self)
         self.darkModeAction = darkModeAction = QAction(self.tr('Dark Mode'), self)
         darkModeAction.setCheckable(True)
 
@@ -356,14 +358,18 @@ class TitleBar(Widget):
         viewMenu.addMenu(self.displayLanguageMenu)
         viewMenu.addActions([drawBoardAction, texteditAction])
         viewMenu.addSeparator()
-        viewMenu.addAction(fontStylePresetAction)
+        viewMenu.addAction(textStylesPanel)
+        viewMenu.addAction(importTextStyles)
+        viewMenu.addAction(exportTextStyles)
         viewMenu.addSeparator()
         viewMenu.addAction(darkModeAction)
         self.viewToolBtn.setMenu(viewMenu)
         self.viewToolBtn.setPopupMode(QToolButton.InstantPopup)
         self.textedit_trigger = texteditAction.triggered
         self.drawboard_trigger = drawBoardAction.triggered
-        self.fontstyle_trigger = fontStylePresetAction.triggered
+        self.expandtstylepanel_trigger = textStylesPanel.triggered
+        self.importtstyle_trigger = importTextStyles.triggered
+        self.exporttstyle_trigger = exportTextStyles.triggered
         self.darkmode_trigger = darkModeAction.triggered
 
         self.goToolBtn = TitleBarToolBtn(self)

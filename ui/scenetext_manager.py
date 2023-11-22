@@ -2,7 +2,6 @@
 from typing import List, Union, Tuple
 import numpy as np
 import copy
-import cv2
 
 from qtpy.QtWidgets import QApplication, QWidget
 from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QPoint
@@ -12,14 +11,14 @@ try:
 except:
     from qtpy.QtGui import QUndoCommand
 
-from .textitem import TextBlkItem, TextBlock, xywh2xyxypoly
+from .textitem import TextBlkItem, TextBlock
 from .canvas import Canvas
-from . import common as C
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
-from utils.fontformat import FontFormat, pt2px, px2pt
+from utils.fontformat import FontFormat, pt2px
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
 from .fontformatpanel import FontFormatPanel
 from utils.config import pcfg
+from utils import config as C
 from utils import shared
 from utils.imgproc_utils import extract_ballon_region, rotate_polygons, get_block_mask
 from utils.text_processing import seg_text, is_cjk

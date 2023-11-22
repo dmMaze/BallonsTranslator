@@ -965,6 +965,11 @@ class ScrollBar(QWidget):
         QApplication.sendEvent(self.parent().viewport(), e)
 
 
+class WidgetItem(QWidgetItem):
+
+    def sizeHint(self) -> QSize:
+        return self.widget().sizeHint()
+
 
 class FlowLayout(QLayout):
     """ Flow layout """
@@ -994,12 +999,10 @@ class FlowLayout(QLayout):
         self.isTight = isTight
 
         self.height = 0
-        # self.insertWidget()
-
 
     def insertWidget(self, idx: int, w: QWidget):
         self.addChildWidget(w)
-        self.insertItem(idx, QWidgetItem(w))
+        self.insertItem(idx, WidgetItem(w))
 
     def insertItem(self, idx:int, item):
         self._items.insert(idx, item)

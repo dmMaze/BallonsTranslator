@@ -2,18 +2,18 @@ import copy
 import sys
 from typing import List
 
-from qtpy.QtWidgets import QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QScrollArea, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
+from qtpy.QtWidgets import QMenu, QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QScrollArea, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt, QRectF
-from qtpy.QtGui import QMouseEvent, QTextCursor, QFontMetrics, QIcon, QColor, QPixmap, QPainter
+from qtpy.QtGui import QMouseEvent, QTextCursor, QFontMetrics, QIcon, QColor, QPixmap, QPainter, QContextMenuEvent
 
 from utils.fontformat import FontFormat
 from utils import shared
-from utils.config import pcfg
+from utils.config import pcfg, save_text_styles, text_styles
+from utils import config as C
 from .stylewidgets import Widget, ColorPicker, ClickableLabel, CheckableLabel, TextChecker, FlowLayout, ScrollBar
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanel
 from .combobox import SizeComboBox
-from . import common as C
 from . import funcmaps as FM
 
 
@@ -379,7 +379,7 @@ class TextStyleLabel(Widget):
             return
         updated_keys = self.fontfmt.merge(fontfmt)
         if len(updated_keys) > 0:
-            C.save_config()
+            save_text_styles()
         
         preview_keys = {'family', 'frgb', 'srgb', 'stroke_width'}
         for k in updated_keys:
@@ -480,7 +480,7 @@ class TextStyleLabel(Widget):
         new_name = self.stylelabel.text()
         if self.fontfmt._style_name != new_name:
             self.fontfmt._style_name = new_name
-            C.save_config()
+            save_text_styles()
 
         if self.active and self.active_stylename_edited is not None:
             self.active_stylename_edited.emit()
@@ -500,6 +500,8 @@ class TextStyleArea(QScrollArea):
     active_text_style_label_changed = Signal()
     apply_fontfmt = Signal(FontFormat)
     active_stylename_edited = Signal()
+    export_style = Signal()
+    import_style = Signal()
 
     def __init__(self, parent: Widget = None):
         super().__init__(parent)
@@ -540,6 +542,7 @@ class TextStyleArea(QScrollArea):
     def on_newbtn_clicked(self, clicked):
         textstylelabel = self.new_textstyle_label()
         textstylelabel.startEdit(select_all=True)
+        self.resizeToContent()
 
     def on_clearbtn_clicked(self, clicked):
         msg = QMessageBox()
@@ -567,8 +570,8 @@ class TextStyleArea(QScrollArea):
         textstylelabel.delete_btn_clicked.connect(self.on_deletebtn_clicked)
         textstylelabel.apply_fontfmt.connect(self.apply_fontfmt)
         self.flayout.insertWidget(self.count(), textstylelabel)
-        pcfg.text_styles.append(textstylelabel.fontfmt)
-        C.save_config()
+        text_styles.append(textstylelabel.fontfmt)
+        save_text_styles()
         return textstylelabel
 
     def resizeToContent(self):
@@ -642,8 +645,8 @@ class TextStyleArea(QScrollArea):
             return
         self._clear_styles()
         self.updateNewBtnVisibility()
-        pcfg.text_styles.clear()
-        C.save_config()
+        text_styles.clear()
+        save_text_styles()
 
     def removeStyleLabel(self, w: TextStyleLabel):
         for i, item in enumerate(self.flayout._items):
@@ -655,24 +658,43 @@ class TextStyleArea(QScrollArea):
                 self.flayout.takeAt(i)
                 self.flayout.update()
                 self.updateNewBtnVisibility()
-                pcfg.text_styles.pop(i)
-                C.save_config()
+                text_styles.pop(i)
+                save_text_styles()
                 w.deleteLater()
+                self.resizeToContent()
                 break
         
     def initStyles(self, styles: List[FontFormat]):
         assert self.isEmpty()
         for style in styles:
             self._add_style_label(style)
-        self.updateNewBtnVisibility()
+        if not self.isEmpty():
+            self.new_btn.hide()
+            self.clear_btn.hide()
+            self.resizeToContent()
 
-    def setStyles(self, styles: List[FontFormat]):
+    def setStyles(self, styles: List[FontFormat], save_styles = False):
         self._clear_styles()
         for style in styles:
             self._add_style_label(style)
-            pcfg.text_styles.append(style)
+        
         self.updateNewBtnVisibility()
-        C.save_config()
+        self.resizeToContent()
+        if save_styles:
+            save_text_styles()
+
+    def contextMenuEvent(self, e: QContextMenuEvent):
+        menu = QMenu()
+        import_act = menu.addAction(self.tr('Import Text Styles'))
+        export_act = menu.addAction(self.tr('Export Text Styles'))
+        rst = menu.exec_(e.globalPos())
+
+        if rst == import_act:
+            self.import_style.emit()
+        elif rst == export_act:
+            self.export_style.emit()
+
+        return super().contextMenuEvent(e)
 
 
 class ExpandLabel(Widget):
@@ -740,6 +762,8 @@ class TextStylePanel(Widget):
     def expand(self):
         if not self.title_label.expanded:
             self.title_label.setExpand(True)
+        if self.style_area.isHidden():
+            self.style_area.show()
 
     def on_title_label_clicked(self):
         if self.title_label.expanded:

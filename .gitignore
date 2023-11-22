@@ -7,8 +7,7 @@ data/testpacks/eng_dontupload
 data/testpacks/testpacks
 data/*.png
 data/testpacks
-ballontranslator/ui/pagesources/gallery-dl
-ballontranslator/gallery-dl
+config/textstyles
 release
 libs
 icons

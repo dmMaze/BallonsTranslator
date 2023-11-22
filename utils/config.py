@@ -1,8 +1,11 @@
-import json
+import json, os, traceback
+import os.path as osp
 
 from . import shared
 from .fontformat import FontFormat
 from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
+from .logger import logger as LOGGER
+from .io_utils import json_dump_nested_obj
 
 
 @nested_dataclass
@@ -77,7 +80,7 @@ class ProgramConfig(Config):
     let_autolayout_flag: bool = True
     let_autolayout_adaptive_fntsz: bool = True
     let_uppercase_flag: bool = True
-    text_styles: List = field(default_factory=lambda: list())
+    text_styles_path: str = osp.join(shared.DEFAULT_TEXTSTYLE_DIR, 'default.json')
     expand_tstyle_panel: bool = True
     fsearch_case: bool = False
     fsearch_whole_word: bool = False
@@ -134,16 +137,95 @@ class ProgramConfig(Config):
                     trans_params[i] = trans_params.pop(k)
             if module_cfg['translator'] in repl_pairs:
                 module_cfg['translator'] = repl_pairs[module_cfg['translator']]
-            
-        if 'text_styles' in config_dict:
-            tstyles = []
-            for s in config_dict['text_styles']:
-                if isinstance(s, dict):
-                    s = FontFormat(**s)
-                tstyles.append(s)
-            config_dict['text_styles'] = tstyles
 
         return ProgramConfig(**config_dict)
     
 
 pcfg: ProgramConfig = None
+text_styles: List[FontFormat] = []
+active_format: FontFormat = None
+
+def load_textstyle_from(p: str, raise_exception = False):
+
+    if not osp.exists(p):
+        LOGGER.warning(f'Text style {p} does not exist.')
+        return
+
+    try:
+        with open(p, 'r', encoding='utf8') as f:
+            style_list = json.loads(f.read())
+            styles_loaded = []
+            for style in style_list:
+                try:
+                    styles_loaded.append(FontFormat(**style))
+                except Exception as e:
+                    LOGGER.warning(f'Skip invalid text style: {style}')
+    except Exception as e:
+        LOGGER.error(f'Failed to load text style from {p}: {e}')
+        if raise_exception:
+            raise e
+        return
+
+    global text_styles, pcfg
+    if len(text_styles) > 0:
+        text_styles.clear()
+    text_styles.extend(styles_loaded)
+    pcfg.text_styles_path = p
+    LOGGER.info(f'Text style loaded from {p}')
+
+def load_config():
+
+    if osp.exists(shared.CONFIG_PATH):
+        try:
+            config = ProgramConfig.load(shared.CONFIG_PATH)
+        except Exception as e:
+            LOGGER.exception(e)
+            LOGGER.warning("Failed to load config file, using default config")
+            config = ProgramConfig()
+    else:
+        LOGGER.info(f'{shared.CONFIG_PATH} does not exist, new config file will be created.')
+        config = ProgramConfig()
+    
+    global pcfg
+    pcfg = config
+
+    p = pcfg.text_styles_path
+    if not osp.exists(pcfg.text_styles_path):
+        dp = osp.join(shared.DEFAULT_TEXTSTYLE_DIR, 'default.json')
+        if p != dp and osp.exists(dp):
+            p = dp
+            LOGGER.warning(f'Text style {p} does not exist, use the default from {dp}.')
+        else:
+            with open(dp, 'w', encoding='utf8') as f:
+                f.write(json.dumps([],  ensure_ascii=False))
+            LOGGER.info(f'New text style file created at {dp}.')
+    load_textstyle_from(p)
+
+def save_config():
+    global pcfg
+    try:
+        with open(shared.CONFIG_PATH, 'w', encoding='utf8') as f:
+            f.write(json_dump_nested_obj(pcfg))
+        LOGGER.info('Config saved')
+        return True
+    except Exception as e:
+        LOGGER.error(f'Failed save config to {shared.CONFIG_PATH}: {e}')
+        LOGGER.error(traceback.format_exc())
+        return False
+
+def save_text_styles(raise_exception = False):
+    global pcfg, text_styles
+    try:
+        style_dir = osp.dirname(pcfg.text_styles_path)
+        if not osp.exists(style_dir):
+            os.makedirs(style_dir)
+        with open(pcfg.text_styles_path, 'w', encoding='utf8') as f:
+            f.write(json_dump_nested_obj(text_styles))
+        LOGGER.info('Text style saved')
+        return True
+    except Exception as e:
+        LOGGER.error(f'Failed save text style to {pcfg.text_styles_path}: {e}')
+        LOGGER.error(traceback.format_exc())
+        if raise_exception:
+            raise e
+        return False
