@@ -181,6 +181,7 @@ OCR & Translate Selected Area
 * ```Ctrl++```/```Ctrl+-``` (Also ```Ctrl+Shift+=```) to resize image.
 * ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
 * ```0-9``` to adjust opacity of lettering layer
+* For text editing: bold - ```Ctrl+B```, underline - ```Ctrl+U```, Italics - ```Ctrl+I``` 
   
 <img src="doc/src/configpanel.png">  
 
