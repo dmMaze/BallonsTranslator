@@ -311,6 +311,7 @@ class TextStyleLabel(Widget):
             self.fontfmt = fontfmt
             style_name = fontfmt._style_name
 
+        # following subwidgets must have parents, otherwise they kinda of pop up when creating it
         self.active_stylename_edited = active_stylename_edited
         self.stylelabel = StyleLabel(style_name, parent=self)
         self.stylelabel.edit_finished.connect(self.on_style_name_edited)
@@ -539,12 +540,12 @@ class TextStyleArea(QScrollArea):
         ScrollBar(Qt.Orientation.Horizontal, self)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-    def on_newbtn_clicked(self, clicked):
+    def on_newbtn_clicked(self, clicked = None):
         textstylelabel = self.new_textstyle_label()
         textstylelabel.startEdit(select_all=True)
         self.resizeToContent()
 
-    def on_clearbtn_clicked(self, clicked):
+    def on_clearbtn_clicked(self, clicked = None):
         msg = QMessageBox()
         msg.setText(self.tr('Remove all styles?'))
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -685,11 +686,20 @@ class TextStyleArea(QScrollArea):
 
     def contextMenuEvent(self, e: QContextMenuEvent):
         menu = QMenu()
+
+        new_act = menu.addAction(self.tr('New Text Style'))
+        removeall_act = menu.addAction(self.tr('Remove all'))
+        menu.addSeparator()
         import_act = menu.addAction(self.tr('Import Text Styles'))
         export_act = menu.addAction(self.tr('Export Text Styles'))
+        
         rst = menu.exec_(e.globalPos())
 
-        if rst == import_act:
+        if rst == new_act:
+            self.on_newbtn_clicked()
+        elif rst == removeall_act:
+            self.on_clearbtn_clicked()
+        elif rst == import_act:
             self.import_style.emit()
         elif rst == export_act:
             self.export_style.emit()
