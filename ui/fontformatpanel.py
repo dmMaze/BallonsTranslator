@@ -312,7 +312,7 @@ class TextStyleLabel(Widget):
             style_name = fontfmt._style_name
 
         self.active_stylename_edited = active_stylename_edited
-        self.stylelabel = StyleLabel(style_name)
+        self.stylelabel = StyleLabel(style_name, parent=self)
         self.stylelabel.edit_finished.connect(self.on_style_name_edited)
         self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
 
@@ -320,21 +320,21 @@ class TextStyleLabel(Widget):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         BTN_SIZE = 14
-        self.colorw = colorw = QLabel()
+        self.colorw = colorw = QLabel(parent=self)
         self.colorw.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.colorw.setStyleSheet("border-radius: 7px; border: none; background-color: rgba(0, 0, 0, 0);")
         d = int(BTN_SIZE * 2)
         self.colorw.setFixedSize(d, d)
         
-        self.apply_btn = ArrowLeftButton()
+        self.apply_btn = ArrowLeftButton(parent=self)
         self.apply_btn.setFixedSize(d, BTN_SIZE)
         self.apply_btn.setToolTip(self.tr('Apply Text Style'))
         self.apply_btn.clicked.connect(self.on_applybtn_clicked)
-        self.update_btn = ArrowRightButton()
+        self.update_btn = ArrowRightButton(parent=self)
         self.update_btn.setFixedSize(d, BTN_SIZE)
         self.update_btn.clicked.connect(self.on_updatebtn_clicked)
         self.update_btn.setToolTip(self.tr('Update from active style'))
-        applyw = Widget()
+        applyw = Widget(parent=self)
         applyw.setStyleSheet("border-radius: 7px; border: none")
         applylayout = QVBoxLayout(applyw)
         applylayout.setSpacing(0)
@@ -347,7 +347,7 @@ class TextStyleLabel(Widget):
         self.leftstack.addWidget(colorw)
         self.leftstack.addWidget(applyw)
 
-        self.delete_btn = DeleteStyleButton()
+        self.delete_btn = DeleteStyleButton(parent=self)
         dsize = BTN_SIZE // 3 * 2
         self.delete_btn.setFixedSize(dsize, dsize)
         self.delete_btn.setToolTip(self.tr("Delete Style"))
@@ -706,7 +706,10 @@ class ExpandLabel(Widget):
         self.textlabel = QLabel(self)
         self.textlabel.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         font = self.textlabel.font()
-        font.setPointSize(13)
+        if shared.ON_MACOS:
+            font.setPointSize(13)
+        else:
+            font.setPointSizeF(10)
         self.textlabel.setFont(font)
         self.arrowlabel = QLabel(self)
         self.arrowlabel.setFixedSize(CHEVRON_SIZE, CHEVRON_SIZE)
