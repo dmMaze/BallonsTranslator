@@ -30,6 +30,7 @@ class ParamNameLabel(QLabel):
         labelwidth = int(max(fmrect.width() + fmrect.height() / 3, labelwidth))
         self.setFixedWidth(labelwidth)
         self.setText(param_name)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
 class ParamLineEditor(QLineEdit):
     

@@ -19,6 +19,7 @@ from .stylewidgets import FadeLabel, ScrollBar
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
 from utils import shared as C
+from utils.config import pcfg
 
 CANVAS_SCALE_MAX = 3.0
 CANVAS_SCALE_MIN = 0.1
@@ -204,8 +205,6 @@ class Canvas(QGraphicsScene):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scale_factor = 1.
-        self.mask_transparency = 0
-        self.original_transparency = 0
         self.text_transparency = 0
         self.textblock_mode = False
         self.creating_textblock = False
@@ -380,26 +379,26 @@ class Canvas(QGraphicsScene):
         painter = QPainter(pixmap)
         origin = QPoint(0, 0)
 
-        if self.imgtrans_proj.img_valid and self.original_transparency > 0:
-            painter.setOpacity(self.original_transparency)
+        if self.imgtrans_proj.img_valid and pcfg.original_transparency > 0:
+            painter.setOpacity(pcfg.original_transparency)
             if inpainted_as_base:
                 painter.drawPixmap(origin, ndarray2pixmap(self.imgtrans_proj.img_array))
             else:
                 painter.drawPixmap(origin, pixmap)
 
-        if self.imgtrans_proj.mask_valid and self.mask_transparency > 0 and not self.textEditMode():
-            painter.setOpacity(self.mask_transparency)
+        if self.imgtrans_proj.mask_valid and pcfg.mask_transparency > 0 and not self.textEditMode():
+            painter.setOpacity(pcfg.mask_transparency)
             painter.drawPixmap(origin, ndarray2pixmap(self.imgtrans_proj.mask_array))
 
         painter.end()
         self.inpaintLayer.setPixmap(pixmap)
 
     def setMaskTransparency(self, transparency: float):
-        self.mask_transparency = transparency
+        pcfg.mask_transparency = transparency
         self.updateLayers()
 
     def setOriginalTransparency(self, transparency: float):
-        self.original_transparency = transparency
+        pcfg.original_transparency = transparency
         self.updateLayers()
 
     def setTextLayerTransparency(self, transparency: float):
@@ -738,6 +737,7 @@ class Canvas(QGraphicsScene):
             ocr_act = menu.addAction(self.tr("OCR"))
             ocr_translate_act = menu.addAction(self.tr("OCR and translate"))
             ocr_translate_inpaint_act = menu.addAction(self.tr("OCR, translate and inpaint"))
+            inpaint_act = menu.addAction(self.tr("inpaint"))
 
             rst = menu.exec(pos)
             
@@ -767,6 +767,8 @@ class Canvas(QGraphicsScene):
                 self.run_blktrans.emit(1)
             elif rst == ocr_translate_inpaint_act:
                 self.run_blktrans.emit(2)
+            elif rst == inpaint_act:
+                self.run_blktrans.emit(3)
 
     @property
     def have_selected_blkitem(self):

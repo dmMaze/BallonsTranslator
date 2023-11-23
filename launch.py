@@ -10,7 +10,7 @@ import importlib.util
 import pkg_resources
 import time
 
-T_LAUNCH = time.time()
+TIME_LAUNCH = time.time()
 
 python = sys.executable
 git = os.environ.get('GIT', "git")
@@ -142,24 +142,13 @@ def main():
     from utils.logger import setup_logging, logger as LOGGER
     import utils.shared as shared
     from utils import config as program_config
-    from utils.config import ProgramConfig
 
     from qtpy.QtCore import QTranslator, QLocale, Qt
     shared.DEFAULT_DISPLAY_LANG = QLocale.system().name().replace('en_CN', 'zh_CN')
 
     shared.load_cache()
-
-    if osp.exists(shared.CONFIG_PATH):
-        try:
-            config = ProgramConfig.load(shared.CONFIG_PATH)
-        except Exception as e:
-            LOGGER.exception(e)
-            LOGGER.warning("Failed to load config file, using default config")
-            config = ProgramConfig()
-    else:
-        LOGGER.info(f'{shared.CONFIG_PATH} does not exist, new config file will be created.')
-        config = ProgramConfig()
-    program_config.pcfg = config
+    program_config.load_config()
+    config = program_config.pcfg
 
     from modules.prepare_local_files import prepare_local_files_forall
 

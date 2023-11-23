@@ -1,6 +1,6 @@
 from typing import List, Union
 
-from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout
+from qtpy.QtWidgets import QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QSizePolicy
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint
 from qtpy.QtGui import QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence
 import keyboard
@@ -27,6 +27,7 @@ class SelectTextMiniMenu(Widget):
         self.search_internet_btn = ClickableLabel(parent=self)
         self.search_internet_btn.setObjectName("SearchInternet")
         self.search_internet_btn.setToolTip(self.tr("Search selected text on Internet"))
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.search_internet_btn.clicked.connect(self.on_search_internet)
         self.saladict_btn = ClickableLabel(parent=self)
         self.saladict_btn.setObjectName("SalaDict")
@@ -36,7 +37,7 @@ class SelectTextMiniMenu(Widget):
         layout.addWidget(self.saladict_btn)
         layout.addWidget(self.search_internet_btn)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(layout)
+        layout.setSpacing(0)
 
         self.selected_text = ''
 
@@ -406,12 +407,11 @@ class TextEditListScrollArea(QScrollArea):
         ScrollBar(Qt.Orientation.Vertical, self)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        vlayout = QVBoxLayout()
+        vlayout = QVBoxLayout(self.scrollContent)
         vlayout.setContentsMargins(0, 0, 3, 0)
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.setSpacing(0)
         vlayout.addStretch(1)
-        self.scrollContent.setLayout(vlayout)
         self.setWidgetResizable(True)
         self.vlayout = vlayout
         self.checked_list: List[TransPairWidget] = []
@@ -424,6 +424,7 @@ class TextEditListScrollArea(QScrollArea):
         self.drag_to_pos: int = -1
         self.setAcceptDrops(True)
 
+        self.setSizePolicy(self.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Expanding)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
     def mouseReleaseEvent(self, e: QMouseEvent):

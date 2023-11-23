@@ -3,17 +3,17 @@ import os, re, traceback, sys
 from typing import List
 from pathlib import Path
 
-from qtpy.QtWidgets import QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
+from qtpy.QtWidgets import QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QProcess
 from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard
 
 from utils.logger import logger as LOGGER
-from utils.io_utils import json_dump_nested_obj
 from utils.text_processing import is_cjk, full_len, half_len
 from utils.textblock import TextBlock
+from utils import shared
 from modules.translators.trans_chatgpt import GPTTranslator
 from .misc import parse_stylesheet
-from utils.config import ProgramConfig, pcfg
+from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from
 from utils.fontformat import pt2px
 from .config_proj import ProjImgTrans
 from .canvas import Canvas
@@ -25,15 +25,11 @@ from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox
-from .preset_widget import PresetPanel
-from utils.shared import CONFIG_PATH
 from .global_search_widget import GlobalSearchWidget
-from utils import shared as C
 from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
-
 from . import shared_widget as SW
 
 class PageListView(QListWidget):
@@ -42,7 +38,7 @@ class PageListView(QListWidget):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setIconSize(QSize(C.PAGELIST_THUMBNAIL_SIZE, C.PAGELIST_THUMBNAIL_SIZE))
+        self.setIconSize(QSize(shared.PAGELIST_THUMBNAIL_SIZE, shared.PAGELIST_THUMBNAIL_SIZE))
 
     def contextMenuEvent(self, e: QContextMenuEvent):
         menu = QMenu()
@@ -174,19 +170,11 @@ class MainWindow(FramelessWindow):
         self.textPanel = TextPanel(self.app)
         self.textPanel.formatpanel.effect_panel.setParent(self)
         self.textPanel.formatpanel.effect_panel.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.CustomizeWindowHint)
-        self.textPanel.formatpanel.fontfmtLabel.clicked.connect(self.show_fontstyle_presets)
         self.textPanel.formatpanel.foldTextBtn.checkStateChanged.connect(self.fold_textarea)
         self.textPanel.formatpanel.sourceBtn.checkStateChanged.connect(self.show_source_text)
         self.textPanel.formatpanel.transBtn.checkStateChanged.connect(self.show_trans_text)
-
-        
-        self.presetPanel = PresetPanel(self)
-        self.presetPanel.setParent(self)
-        self.presetPanel.setWindowFlags(Qt.WindowType.Window)
-        self.presetPanel.global_fmt_str = self.textPanel.formatpanel.global_fontfmt_str
-        self.presetPanel.hide()
-        self.presetPanel.hide_signal.connect(self.save_config)
-        self.presetPanel.load_preset.connect(self.textPanel.formatpanel.on_load_preset)
+        self.textPanel.formatpanel.textstyle_panel.style_area.export_style.connect(self.export_tstyles)
+        self.textPanel.formatpanel.textstyle_panel.style_area.import_style.connect(self.import_tstyles)
 
         self.ocrSubWidget = KeywordSubWidget(self.tr("Keyword substitution for OCR"))
         self.ocrSubWidget.setParent(self)
@@ -211,7 +199,6 @@ class MainWindow(FramelessWindow):
         self.rightComicTransStackPanel.currentChanged.connect(self.on_transpanel_changed)
 
         self.comicTransSplitter = QSplitter(Qt.Orientation.Horizontal)
-        # self.comicTransSplitter.addWidget(self.pageList)
         self.comicTransSplitter.addWidget(self.leftStackWidget)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
@@ -233,7 +220,9 @@ class MainWindow(FramelessWindow):
         mainVBoxLayout.setSpacing(0)
 
         self.mainvlayout = mainVBoxLayout
+        self.comicTransSplitter.setStretchFactor(0, 1)
         self.comicTransSplitter.setStretchFactor(1, 10)
+        self.comicTransSplitter.setStretchFactor(2, 1)
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
         self.resetStyleSheet()
 
@@ -294,7 +283,7 @@ class MainWindow(FramelessWindow):
         elif pcfg.imgtrans_paintmode:
             self.bottomBar.paintChecker.click()
 
-        self.presetPanel.initPresets(pcfg.font_presets)
+        self.textPanel.formatpanel.textstyle_panel.style_area.initStyles(text_styles)
 
         self.canvas.search_widget.whole_word_toggle.setChecked(pcfg.fsearch_whole_word)
         self.canvas.search_widget.case_sensitive_toggle.setChecked(pcfg.fsearch_case)
@@ -379,7 +368,7 @@ class MainWindow(FramelessWindow):
     def updatePageList(self):
         if self.pageList.count() != 0:
             self.pageList.clear()
-        if len(self.imgtrans_proj.pages) >= C.PAGELIST_THUMBNAIL_MAXNUM:
+        if len(self.imgtrans_proj.pages) >= shared.PAGELIST_THUMBNAIL_MAXNUM:
             item_func = lambda imgname: QListWidgetItem(imgname)
         else:
             item_func = lambda imgname:\
@@ -413,7 +402,7 @@ class MainWindow(FramelessWindow):
     def changeEvent(self, event: QEvent):
         if event.type() == QEvent.Type.WindowStateChange:
             if self.windowState() & Qt.WindowState.WindowMaximized:
-                if not C.ON_MACOS:
+                if not shared.ON_MACOS:
                     self.titleBar.maxBtn.setChecked(True)
         elif event.type() == QEvent.Type.ActivationChange:
             self.canvas.on_activation_changed()
@@ -431,13 +420,8 @@ class MainWindow(FramelessWindow):
             self.restart_signal.emit()
 
     def save_config(self):
-        pcfg.imgtrans_paintmode = self.bottomBar.paintChecker.isChecked()
-        pcfg.imgtrans_textedit = self.bottomBar.texteditChecker.isChecked()
-        pcfg.mask_transparency = self.canvas.mask_transparency
-        pcfg.original_transparency = self.canvas.original_transparency
         pcfg.drawpanel = self.drawingPanel.get_config()
-        with open(CONFIG_PATH, 'w', encoding='utf8') as f:
-            f.write(json_dump_nested_obj(pcfg))
+        save_config()
 
     def onHideCanvas(self):
         self.canvas.alt_pressed = False
@@ -482,7 +466,9 @@ class MainWindow(FramelessWindow):
         self.titleBar.replaceOCRkeyword_trigger.connect(self.show_OCR_keyword_window)
         self.titleBar.run_trigger.connect(self.leftBar.runImgtransBtn.click)
         self.titleBar.translate_page_trigger.connect(self.bottomBar.transTranspageBtn.click)
-        self.titleBar.fontstyle_trigger.connect(self.show_fontstyle_presets)
+        self.titleBar.expandtstylepanel_trigger.connect(self.expand_tstyle_panel)
+        self.titleBar.importtstyle_trigger.connect(self.import_tstyles)
+        self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
 
         shortcutTextblock = QShortcut(QKeySequence("W"), self)
@@ -1031,11 +1017,44 @@ class MainWindow(FramelessWindow):
             self.canvas.search_widget.hide()
         self.canvas.updateLayers()
 
-    def show_fontstyle_presets(self):
-        fmt = self.textPanel.formatpanel.active_format
-        fmt_name = self.textPanel.formatpanel.fontfmtLabel.text()
-        self.presetPanel.updateCurrentFontFormat(fmt, fmt_name)
-        self.presetPanel.show()
+    def expand_tstyle_panel(self):
+        self.textPanel.formatpanel.textstyle_panel.expand()
+
+    def import_tstyles(self):
+        ddir = osp.dirname(pcfg.text_styles_path)
+        p = QFileDialog.getOpenFileName(self, self.tr("Import Text Styles"), ddir, None, "(.json)")
+        if not isinstance(p, str):
+            p = p[0]
+        if p == '':
+            return
+        try:
+            load_textstyle_from(p, raise_exception=True)
+            save_config()
+            self.textPanel.formatpanel.textstyle_panel.style_area.setStyles(text_styles)
+        except Exception as e:
+            self.module_manager.handleRunTimeException(self.tr(f'Failed to load from {p}'), str(e))
+
+    def export_tstyles(self):
+        ddir = osp.dirname(pcfg.text_styles_path)
+        savep = QFileDialog.getSaveFileName(self, self.tr("Save Text Styles"), ddir, None, "(.json)")
+        if not isinstance(savep, str):
+            savep = savep[0]
+        if savep == '':
+            return
+        suffix = Path(savep).suffix
+        if suffix != '.json':
+            if suffix == '':
+                savep = savep + '.json'
+            else:
+                savep = savep.replace(suffix, '.json')
+        oldp = pcfg.text_styles_path
+        try:
+            pcfg.text_styles_path = savep
+            save_text_styles(raise_exception=True)
+            save_config()
+        except Exception as e:
+            self.module_manager.handleRunTimeException(self.tr(f'Failed save to {savep}'), str(e))
+            pcfg.text_styles_path = oldp
 
     def fold_textarea(self, fold: bool):
         pcfg.fold_textarea = fold

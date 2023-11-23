@@ -1,5 +1,6 @@
 from typing import Tuple, List, ClassVar, Union, Any, Dict
 from dataclasses import dataclass, field, is_dataclass
+import copy
 
 # decorator to wrap original __init__
 # https://www.geeksforgeeks.org/creating-nested-dataclass-objects-in-python/
@@ -64,3 +65,11 @@ class Config:
     @classmethod
     def params(cls):
         return cls.__annotations__
+    
+    def merge(self, target):
+        tgt_keys = target.annotations_set()
+        for key in tgt_keys:
+            self.update(key, target[key])
+
+    def copy(self):
+        return copy.deepcopy(self)

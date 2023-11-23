@@ -12,6 +12,7 @@ Widget {
     background-color: @widgetBackgroundColor;
 }
 
+
 ConfigTextLabel {
     background-color : @emptyContentBackgroundColor;
 }
@@ -681,11 +682,6 @@ QScrollBar::add-line {
 }
 
 
-.IncrementalBtn {
-    border-radius: 0px;
-    height: 13px;
-    width: 13px;
-}
 .IncrementalBtn#FsizeIncrementUp {
     border-image: url(icons/incre_up.svg) 0 0 0 0 stretch stretch;
 }
@@ -726,8 +722,14 @@ QLabel#angleLabel {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-.CheckableLabel::hover {
+.ExpandLabel::hover {
     background-color: rgba(30, 147, 229, 20%);
+}
+
+.ExpandLabel {
+    border-bottom: 1px;
+    border-color: @borderColor;
+    border-style: solid;
 }
 
 DrawToolCheckBox::indicator {
@@ -890,14 +892,14 @@ ClickableLabel#ReplaceAllBtn {
 
 ClickableLabel#SalaDict {
     image: url(icons/saladict.png);
-    min-width: 24px;
-    min-height: 24px;
+    max-width: 24px;
+    height: 24px;
 }
 
 ClickableLabel#SearchInternet {
     image: url(icons/search.svg);
-    min-width: 24px;
-    min-height: 24px;
+    max-width: 24px;
+    height: 24px;
 }
 
 TitleBarToolBtn {
@@ -929,3 +931,69 @@ QProgressBar::chunk {
 }
 
 
+TextAreaStyleButton {
+    width: 15px;
+    height: 15px;
+    border-radius: 10px;
+    padding: 5px;
+    background-color: @widgetBackgroundColor;
+    
+}
+
+TextAreaStyleButton#NewTextStyleButton {
+    image: url(icons/add.svg);
+}
+
+TextAreaStyleButton#ClearTextStyleButton {
+    image: url(icons/titlebar_close.svg);
+}
+
+TextAreaStyleButton#ClearTextStyleButton::hover {
+    background-color: #FF605C;
+}
+
+TextAreaStyleButton::hover {
+    background-color: #cad7ed;
+}
+
+Widget#TextStyleAreaContent {
+    background-color : @emptyContentBackgroundColor;
+    border-radius: 7px;
+    border: none;
+    border-width: 0px;
+}
+
+TextStyleArea {
+    background-color : @emptyContentBackgroundColor;
+    border-radius: 7px;
+    border: none;
+    border-width: 0px;
+}
+
+TextStyleLabel {
+    border-radius: 7px;
+}
+
+ArrowLeftButton {
+    image: url(icons/arrow-left.svg);
+    border: none;
+    background-color: rgba(0, 0, 0, 0);
+    border-radius: 7px;
+}
+
+ArrowRightButton {
+    image: url(icons/arrow-right.svg);
+    border: none;
+    background-color: rgba(0, 0, 0, 0);
+    border-radius: 7px;
+}
+
+DeleteStyleButton {
+    border: none;
+    background-color: rgba(0, 0, 0, 0);
+    border-radius: 7px;
+}
+
+DeleteStyleButton::hover {
+    background-color: #FF605C;
+}

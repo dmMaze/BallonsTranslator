@@ -73,23 +73,33 @@ class InpaintUndoCommand(QUndoCommand):
         self.canvas.updateLayers()
 
 
+class EmptyCommand(QUndoCommand):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+    
 
 class RunBlkTransCommand(QUndoCommand):
     def __init__(self, canvas: Canvas, blkitems: List[TextBlkItem], transpairw_list: List[TransPairWidget],  mode: int):
         super().__init__()
 
+        self.empty_command = None
+        if mode > 1:
+            self.empty_command = EmptyCommand()
+            canvas.draw_undo_stack.push(self.empty_command)
+
         self.op_counter = -1
         self.blkitems = blkitems
         self.transpairw_list = transpairw_list
 
-        for blkitem, transpairw in zip(self.blkitems, self.transpairw_list):
-            if mode != 0:
-                trs = blkitem.blk.translation
-                transpairw.e_trans.setPlainTextAndKeepUndoStack(trs)
-                blkitem.setPlainTextAndKeepUndoStack(trs)
-            blkitem.blk.rich_text = ''
-            if mode >= 0:
-                transpairw.e_source.setPlainTextAndKeepUndoStack(blkitem.blk.get_text())
+        if mode < 3:
+            for blkitem, transpairw in zip(self.blkitems, self.transpairw_list):
+                if mode != 0:
+                    trs = blkitem.blk.translation
+                    transpairw.e_trans.setPlainTextAndKeepUndoStack(trs)
+                    blkitem.setPlainTextAndKeepUndoStack(trs)
+                blkitem.blk.rich_text = ''
+                if mode >= 0:
+                    transpairw.e_source.setPlainTextAndKeepUndoStack(blkitem.blk.get_text())
 
         self.canvas = canvas
         self.mode = mode
@@ -123,6 +133,10 @@ class RunBlkTransCommand(QUndoCommand):
                     self.num_inpainted += 1
 
     def redo(self) -> None:
+
+        if self.empty_command is not None:
+            self.empty_command.redo()
+
         if self.mode > 1 and self.num_inpainted > 0:
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
@@ -139,14 +153,19 @@ class RunBlkTransCommand(QUndoCommand):
             self.op_counter += 1
             return
 
-        for blkitem, transpairw in zip(self.blkitems, self.transpairw_list):
-            if self.mode != 0:
-                transpairw.e_trans.redo()
-                blkitem.redo()
-            if self.mode >= 0:
-                transpairw.e_source.redo()
+        if self.mode < 3:
+            for blkitem, transpairw in zip(self.blkitems, self.transpairw_list):
+                if self.mode != 0:
+                    transpairw.e_trans.redo()
+                    blkitem.redo()
+                if self.mode >= 0:
+                    transpairw.e_source.redo()
 
     def undo(self) -> None:
+
+        if self.empty_command is not None:
+            self.empty_command.undo()
+
         if self.mode > 1 and self.num_inpainted > 0:
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
@@ -159,9 +178,10 @@ class RunBlkTransCommand(QUndoCommand):
                 mask_view[:] = undo_mask
             self.canvas.updateLayers()
 
-        for blkitem, transpairw in zip(self.blkitems, self.transpairw_list):
-            if self.mode != 0:
-                transpairw.e_trans.undo()
-                blkitem.undo()
-            if self.mode >= 0:
-                transpairw.e_source.undo()
+        if self.mode < 3:
+            for blkitem, transpairw in zip(self.blkitems, self.transpairw_list):
+                if self.mode != 0:
+                    transpairw.e_trans.undo()
+                    blkitem.undo()
+                if self.mode >= 0:
+                    transpairw.e_source.undo()
