@@ -20,7 +20,7 @@
   支持掩膜编辑和修复画笔
   
 * 文本编辑  
-  - 支持所见即所得地富文本编辑和一些基础排版格式调整、字体样式预设
+  - 支持所见即所得地富文本编辑和一些基础排版格式调整、[字体样式预设](https://github.com/dmMaze/BallonsTranslator/pull/311)
   - 支持全文/源文/译文查找替换
   - 支持导入导出word文档
 
@@ -149,13 +149,13 @@ Sugoi翻译器作者: [mingshiba](https://www.patreon.com/mingshiba).
 暂时仅支持日文(方块字都差不多)和英文检测, 训练代码和说明见https://github.com/dmMaze/comic-text-detector
 
 ### OCR
- * mit_32px模型来自manga-image-translator, 支持日英汉识别和颜色提取
- * mit48px_ctc模型来自manga-image-translator, 支持日英汉韩语识别和颜色提取
+ * 所有mit模型来自manga-image-translator, 支持日英汉识别和颜色提取
  * [manga_ocr](https://github.com/kha-white/manga-ocr)来自[kha-white](https://github.com/kha-white), 支持日语识别, 注意选用该模型程序不会提取颜色
 
 ### 图像修复
   * AOT修复模型来自manga-image-translator
   * patchmatch是非深度学习算法, 也是PS修复画笔背后的算法, 实现来自[PyPatchMatch](https://github.com/vacancy/PyPatchMatch), 本程序用的是我的[修改版](https://github.com/dmMaze/PyPatchMatchInpaint)
+  * lama*是微调过的[lama](https://github.com/advimman/lama)
   
 
 ### 翻译器
@@ -168,7 +168,7 @@ Sugoi翻译器作者: [mingshiba](https://www.patreon.com/mingshiba).
  如需添加新的翻译器请参考[加别的翻译器](doc/加别的翻译器.md), 本程序添加新翻译器只需要继承基类实现两个接口即可不需要理会代码其他部分, 欢迎大佬提pr
 
 ## 杂
-* 如果电脑带N卡, 程序默认对所有模型启用GPU加速, 默认配置下显存占用在6G左右. 4G显存调小修复器inpaint_size即可.  
+* 电脑带N卡或Apple silicon默认启用GPU加速
 * 感谢[bropines](https://github.com/bropines)提供俄语翻译
 * 第三方输入法可能会造成右侧编辑框显示bug, 见[#76](https://github.com/dmMaze/BallonsTranslator/issues/76), 暂时不打算修
 * 选中文本迷你菜单支持*聚合词典专业划词翻译*[沙拉查词](https://saladict.crimx.com): [安装说明](doc/saladict_chs.md)

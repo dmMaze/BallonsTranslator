@@ -21,7 +21,7 @@ preview
   - Adapted to images with extreme aspect ratio such as webtoons
   
 * Text editing  
-  - Support rich text formatting and text style presets, translated texts can be edited interactively.
+  - Support rich text formatting and [text style presets](https://github.com/dmMaze/BallonsTranslator/pull/311), translated texts can be edited interactively.
   - Support search & replace
   - Support export/import to/from word documents
 
@@ -197,13 +197,12 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
 Support English and Japanese text detection, training code and more details can be found at [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
 
 ## OCR
- * mit_32px text recognition model is from manga-image-translator, support English and Japanese recognition and text color extraction.
- * mit_48px text recognition model is from manga-image-translator, support English, Japanese and Korean recognition and text color extraction.
+ * All mit* models are from manga-image-translator, support English, Japanese and Korean recognition and text color extraction.
  * [manga_ocr](https://github.com/kha-white/manga-ocr) is from [kha-white](https://github.com/kha-white), text recognition for Japanese, with the main focus being Japanese manga.
 
 ## Inpainting
   * AOT is from [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
-  * [LaMa: Resolution-robust Large Mask Inpainting with Fourier Convolutions](https://github.com/advimman/lama)
+  * All lama* are finetuned using [LaMa](https://github.com/advimman/lama)
   * PatchMatch is an algorithm from [PyPatchMatch](https://github.com/vacancy/PyPatchMatch), this program uses a [modified version](https://github.com/dmMaze/PyPatchMatchInpaint) by me. 
   
 
@@ -218,7 +217,7 @@ Available translators: Google, DeepL, ChatGPT, Sugoi, Caiyun, Baidu. Papago, and
 
 
 ## FAQ & Misc
-* If your computer has an Nvidia GPU, the program will enable cuda acceleration for all models by default, which requires around 6G GPU memory, you can turn down the inpaint_size in the config panel to avoid OOM. 
+* If your computer has an Nvidia GPU or Apple silicon, the program will enable hardware acceleration. 
 * Add support for [saladict](https://saladict.crimx.com) (*All-in-one professional pop-up dictionary and page translator*) in the mini menu on text selection. [Installation guide](doc/saladict.md)
 * Accelarate performance if you have a [NVIDIA's CUDA](https://pytorch.org/docs/stable/notes/cuda.html) or [AMD's ROCm](https://pytorch.org/docs/stable/notes/hip.html) device as most modules uses [PyTorch](https://pytorch.org/get-started/locally/).
 * Fonts are from your system's fonts.
