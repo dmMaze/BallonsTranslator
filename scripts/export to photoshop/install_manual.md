@@ -2,19 +2,17 @@
 
 ## Installation
 
-There are 2 ways to install.
+There are 2.5 ways to install.
 
 1. Simply open the jsx file via `File -> Scripts -> Open... ` and select the script manually. The downside is that doing this every time is stupid and not convenient.
-2. Place the jsx file in `Disk:\Program Files\Adobe\Adobe Photoshop [Version]]\Presets\Scripts`. The script will be displayed in the `File -> Scripts` interface
+2. Place the jsx file in `Disk:\Program Files\Adobe\Adobe Photoshop [Version]]\Presets\Scripts`. The script will be displayed in the </br>`File -> Scripts` interface
 3. Auto installer (coming soon). Since the script will be updated, I’ll add a small script a little later that will put everything inside Photoshop itself. In theory, I’ll even make it as a separate plugin, if I don’t break my computer from not understanding the Adobe documentation
 
 ## Usage
 
-1. Run the script (more details in the picture)
- - ![1700864913586](image/install_manual/1700864913586.png)
+1. Run the script (more details in the picture)</br> ![1700864913586](image/install_manual/1700864913586.png)
 2. Select your project's JSON file.
-3. From the proposed list, select your image (which is open in PS) (more details in the picture)
-- ![1700865117911](image/install_manual/1700865117911.png)
+3. From the proposed list, select your image (which is open in PS) (more details in the picture)</br> ![1700865117911](image/install_manual/1700865117911.png)
 4. In the window that opens, import options, select the desired settings. An explanation of the settings will be below.
 5. Done, he will think a little and arrange all the blocks almost like in BT
 
@@ -36,3 +34,6 @@ I will warn you that I am just learning JS and my skills are not omnipotent, plu
 - [ ] Text effects such as Italic, Bold and Underline are not imported.
 - [ ] Due to the lack of “All caps” functions in BT and, in principle, most of the character settings, they are not available in import. Maybe I’ll add a checkbox or normal buttons that do this at the stage of preparing for import.
 - [ ] Speed. Since in fact I am feeding bare JSON, the script needs time to read and extract data. Maybe we can speed this up...
+
+## Credits
+- Adobe Photoshop documentation (how I hate her, you would know) - https://github.com/Adobe-CEP/CEP-Resources/tree/master/Documentation/Product%20specific%20Documentation/Photoshop%20Scripting
