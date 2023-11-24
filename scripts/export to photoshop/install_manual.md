@@ -10,9 +10,11 @@ There are 2 ways to install.
 
 ## Usage
 
-1. Run the script (more details in the picture) ![1700864913586](image/install_manual/1700864913586.png)
+1. Run the script (more details in the picture)
+ - ![1700864913586](image/install_manual/1700864913586.png)
 2. Select your project's JSON file.
-3. From the proposed list, select your image (which is open in PS) (more details in the picture)![1700865117911](image/install_manual/1700865117911.png)
+3. From the proposed list, select your image (which is open in PS) (more details in the picture)
+- ![1700865117911](image/install_manual/1700865117911.png)
 4. In the window that opens, import options, select the desired settings. An explanation of the settings will be below.
 5. Done, he will think a little and arrange all the blocks almost like in BT
 
