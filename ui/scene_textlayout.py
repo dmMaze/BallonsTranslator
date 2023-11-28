@@ -113,14 +113,14 @@ class CharFontFormat:
 
     @cached_property
     def br(self) -> QRectF:
-        return get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())[1]
+        # return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[1]
         _, br1 = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
         _, br2 = get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())
         return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
 
     @cached_property
     def tbr(self) -> QRectF:
-        return get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())[0]
+        # return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[0]
         br1, _ = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
         br2, _ = get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())
         return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
