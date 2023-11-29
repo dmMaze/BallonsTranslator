@@ -223,3 +223,4 @@ Available translators: Google, DeepL, ChatGPT, Sugoi, Caiyun, Baidu. Papago, and
 * Accelarate performance if you have a [NVIDIA's CUDA](https://pytorch.org/docs/stable/notes/cuda.html) or [AMD's ROCm](https://pytorch.org/docs/stable/notes/hip.html) device as most modules uses [PyTorch](https://pytorch.org/get-started/locally/).
 * Fonts are from your system's fonts.
 * Thanks to [bropines](https://github.com/bropines) for the Russian localization.
+* Added Export to photoshop JSX script by [bropines](https://github.com/bropines). </br> To read the instructions, improve the code and just poke around to see how it works, you can go to `scripts/export to photoshop` -> `install_manual.md`.
