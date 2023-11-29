@@ -363,6 +363,38 @@ def sort_textblk_list(blk_list: List[TextBlock], im_w: int, im_h: int) -> List[T
     blk_list.sort(key=lambda blk: blk.sort_weight)
     return blk_list
 
+def sort_regions(regions: List[TextBlock], right_to_left=None) -> List[TextBlock]:
+    # from manga image translator
+    # Sort regions from right to left, top to bottom
+    
+    nr = len(regions)
+    if right_to_left is None and nr > 0:
+        nv = 0
+        for r in regions:
+            if r.vertical:
+                nv += 1
+        right_to_left = nv / nr > 0
+    
+    sorted_regions = []
+    for region in sorted(regions, key=lambda region: region.center()[1]):
+        for i, sorted_region in enumerate(sorted_regions):
+            if region.center()[1] > sorted_region.xyxy[3]:
+                continue
+            if region.center()[1] < sorted_region.xyxy[1]:
+                sorted_regions.insert(i + 1, region)
+                break
+
+            # y center of region inside sorted_region so sort by x instead
+            if right_to_left and region.center()[0] > sorted_region.center()[0]:
+                sorted_regions.insert(i, region)
+                break
+            if not right_to_left and region.center()[0] < sorted_region.center()[0]:
+                sorted_regions.insert(i, region)
+                break
+        else:
+            sorted_regions.append(region)
+    return sorted_regions
+
 def examine_textblk(blk: TextBlock, im_w: int, im_h: int, sort: bool = False) -> None:
     lines = blk.lines_array()
     middle_pnts = (lines[:, [1, 2, 3, 0]] + lines) / 2
@@ -553,7 +585,30 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
     final_blk_list += merge_textlines(scattered_lines['hor'])
     final_blk_list += merge_textlines(scattered_lines['ver'])
     if sort_blklist:
-        final_blk_list = sort_textblk_list(final_blk_list, im_w, im_h)
+        # final_blk_list = sort_textblk_list(final_blk_list, im_w, im_h)
+        final_blk_list = sort_regions(final_blk_list, )
+
+    if len(final_blk_list) > 1:
+        _final_blks = [final_blk_list[0]]
+        for blk in final_blk_list[1:]:
+            ax1, ay1, ax2, ay2 = blk.xyxy
+            keep_blk = True
+            aarea = (ax2 - ax1) * (ay2 - ay1) + 1e-6
+            for eb in _final_blks:
+                bx1, by1, bx2, by2 = eb.xyxy
+                x1 = max(ax1, bx1)
+                y1 = max(ay1, by1)
+                x2 = min(ax2, bx2)
+                y2 = min(ay2, by2)
+                if y2 < y1 or x2 < x1:
+                    continue
+                inter_area = (y2 - y1) * (x2 - x1)
+                if inter_area / aarea > 0.9:
+                    keep_blk = False
+                    break
+            if keep_blk:
+                _final_blks.append(blk)
+        final_blk_list = _final_blks
 
     for blk in final_blk_list:
         if blk.language != 'ja' and not blk.vertical:
