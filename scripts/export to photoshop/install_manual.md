@@ -10,11 +10,11 @@ There are 2 ways to install.
 
 ## Usage
 
-1. Run the script (more details in the picture)
---
+1. Run the script (more details in the picture)</br>
+![1700864913586](https://github.com/bropines/BallonsTranslator/assets/57861007/94bbc2de-24da-41f8-8f4c-94982d57e987)
 2. Select your project's JSON file.
 3. From the proposed list, select your image (which is open in PS) (more details in the picture)
---
+![1700865117911](https://github.com/bropines/BallonsTranslator/assets/57861007/d9123072-72f0-48cf-84bf-b19a234bdf8b)
 4. In the window that opens, import options, select the desired settings. An explanation of the settings will be below.
 5. Done, he will think a little and arrange all the blocks almost like in BT
 
@@ -26,7 +26,8 @@ There are 2 ways to install.
 
 **Use block text** - use block closed and block open (yes, I'm a little stupid with names xD). How are they different?
 Just look at the GIF:
---
+![1700865117922](https://github.com/bropines/BallonsTranslator/assets/57861007/8a2d639a-181d-4292-80ec-8a37bf778006)
+
 
 ## Bugs
 
@@ -36,3 +37,5 @@ I will warn you that I am just learning JS and my skills are not omnipotent, plu
 - [ ] Text effects such as Italic, Bold and Underline are not imported.
 - [ ] Due to the lack of “All caps” functions in BT and, in principle, most of the character settings, they are not available in import. Maybe I’ll add a checkbox or normal buttons that do this at the stage of preparing for import.
 - [ ] Speed. Since in fact I am feeding bare JSON, the script needs time to read and extract data. Maybe we can speed this up...
+
+#### Made by the crooked hands of @bropines 
