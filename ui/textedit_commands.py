@@ -452,9 +452,9 @@ class GlobalRepalceAllCommand(QUndoCommand):
             blk.translation = trans_dict['replace']
             blk.rich_text = trans_dict['replace_html']
 
-        for src_dict in self.src_list:
-            blk: TextBlock = self.proj.pages[trans_dict['pagename']][trans_dict['idx']]
-            blk.text = trans_dict['replace']
+        for src_dict in self.bsrc_list:
+            blk: TextBlock = self.proj.pages[src_dict['pagename']][src_dict['idx']]
+            blk.text = src_dict['replace']
 
     def undo(self):
         for trans_dict in self.trans_list:
@@ -473,8 +473,8 @@ class GlobalRepalceAllCommand(QUndoCommand):
             blk.rich_text = trans_dict['ori_html']
 
         for src_dict in self.src_list:
-            blk: TextBlock = self.proj.pages[trans_dict['pagename']][trans_dict['idx']]
-            blk.text = trans_dict['ori']
+            blk: TextBlock = self.proj.pages[src_dict['pagename']][src_dict['idx']]
+            blk.text = src_dict['ori']
 
 
 class MultiPasteCommand(QUndoCommand):
