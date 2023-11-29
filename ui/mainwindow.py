@@ -2,9 +2,10 @@ import os.path as osp
 import os, re, traceback, sys
 from typing import List
 from pathlib import Path
+import subprocess
 
 from qtpy.QtWidgets import QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
-from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QProcess
+from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
 from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard
 
 from utils.logger import logger as LOGGER
@@ -1078,11 +1079,13 @@ class MainWindow(FramelessWindow):
 
     def on_reveal_file(self):
         current_img_path = self.imgtrans_proj.current_img_path()
-        process = QProcess(self)
         if sys.platform == 'win32':
-            process.start('explorer', ['/select,'+str(Path(current_img_path))])
+            # qprocess seems to fuck up with "\""
+            p = "\""+str(Path(current_img_path))+"\""
+            subprocess.Popen("explorer.exe /select,"+p, shell=True)
         elif sys.platform == 'darwin':
-            process.start('open', ['-R', current_img_path])
+            p = "\""+current_img_path+"\""
+            subprocess.Popen("open -R "+p, shell=True)
 
     def on_set_gsearch_widget(self):
         setup = self.leftBar.globalSearchChecker.isChecked()
