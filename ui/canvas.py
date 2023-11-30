@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Union, Tuple
+from typing import List, Union
 import os
 
 from qtpy.QtWidgets import QSlider, QMenu, QGraphicsScene, QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
@@ -355,10 +355,12 @@ class Canvas(QGraphicsScene):
         old_ilayer_pixmap = self.inpaintLayer.pixmap()
         self.inpaintLayer.setPixmap(ipainted_layer_pixmap)
 
-        result = QImage(self.img_window_size(), QImage.Format.Format_ARGB32)
+        canvas_sz = ipainted_layer_pixmap.size()
+        result = QImage(canvas_sz, QImage.Format.Format_ARGB32)
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.render(painter)
+        rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
+        self.render(painter, rect, rect)    # produce blurred result if target/source rect not specified #320
         painter.end()
         
         self.inpaintLayer.setPixmap(old_ilayer_pixmap)
