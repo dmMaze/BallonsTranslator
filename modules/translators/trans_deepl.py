@@ -39,17 +39,11 @@ class DeeplTranslator(BaseTranslator):
 
     @property
     def context(self) -> str:
-        try:
-            return self.params['context']['content']
-        except KeyError:
-            return ''
+        return self.params['context']['content']
 
     @property
     def formality(self) -> str:
-        try:
-            return self.params['formality']['select']
-        except KeyError:
-            return 'default'
+        return self.params['formality']['select']
 
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'zh'
@@ -93,7 +87,7 @@ class DeeplTranslator(BaseTranslator):
             source = "EN"
 
         # Languages that support formality setting in DeepL
-        languages_supporting_formality = ['de', 'fr', 'it', 'es', 'nl', 'pl', 'pt', 'pt-br', 'ru', 'ja']
+        languages_supporting_formality = {'de', 'fr', 'it', 'es', 'nl', 'pl', 'pt', 'pt-br', 'ru', 'ja'}
 
         # Check if the target language supports formality
         if target in languages_supporting_formality:
