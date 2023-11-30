@@ -344,7 +344,16 @@ class Canvas(QGraphicsScene):
     def scaleBy(self, value: float):
         self.scaleImage(value)
 
+    def _set_scene_scale(self, scale: float):
+        self.scale_factor = scale
+        self.baseLayer.setScale(scale)
+        self.setSceneRect(0, 0, self.baseLayer.sceneBoundingRect().width(), self.baseLayer.sceneBoundingRect().height())
+
     def render_result_img(self):
+
+        scale_before = self.scale_factor
+        if scale_before != 1:
+            self._set_scene_scale(1)
 
         self.clearSelection()
         if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
@@ -359,14 +368,18 @@ class Canvas(QGraphicsScene):
         result = QImage(canvas_sz, QImage.Format.Format_ARGB32)
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
         rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
-        self.render(painter, rect, rect)    # produce blurred result if target/source rect not specified #320
+        self.render(painter, rect, rect)   #  produce blurred result if target/source rect not specified #320
         painter.end()
         
         self.inpaintLayer.setPixmap(old_ilayer_pixmap)
-        
-        return result
 
+        if scale_before != 1:
+            self._set_scene_scale(scale_before)
+
+        return result
+    
     def updateLayers(self):
         
         if not self.imgtrans_proj.img_valid:
@@ -416,8 +429,6 @@ class Canvas(QGraphicsScene):
         s_f = self.scale_factor * factor
         s_f = np.clip(s_f, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX)
 
-        sbr = self.baseLayer.sceneBoundingRect()
-        self.old_size = sbr.size()
         scale_changed = self.scale_factor != s_f
         self.scale_factor = s_f
         self.baseLayer.setScale(self.scale_factor)
