@@ -17,7 +17,7 @@ pyclipper
 einops
 termcolor
 bs4
-deepl
+deepl>=1.16.0
 qtpy
 spacy-pkuseg
 sentencepiece
