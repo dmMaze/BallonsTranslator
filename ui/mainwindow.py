@@ -709,21 +709,6 @@ class MainWindow(FramelessWindow):
         if self.rightComicTransStackPanel.isHidden():
             self.bottomBar.texteditChecker.click()
 
-        trans_idx = self.rightComicTransStackPanel.currentIndex()
-        if trans_idx != 1:
-            self.bottomBar.texteditChecker.click()
-
-        
-        restore_original_transparency = None
-        if self.bottomBar.originalSlider.value() != 0:
-            restore_original_transparency = self.bottomBar.originalSlider.value()
-            self.bottomBar.originalSlider.setValue(0)
-
-        restore_textlayer_transparency = None
-        if self.bottomBar.textlayerSlider.value() != 100:
-            restore_textlayer_transparency = self.bottomBar.textlayerSlider.value()
-            self.bottomBar.textlayerSlider.setValue(100)
-
         restore_textblock_mode = False
         if pcfg.imgtrans_textblock:
             restore_textblock_mode = True
@@ -761,12 +746,6 @@ class MainWindow(FramelessWindow):
         self.canvas.update_saved_undostep()
 
         if restore_interface:
-            if restore_original_transparency is not None:
-                self.bottomBar.originalSlider.setValue(restore_original_transparency)
-            if restore_textlayer_transparency is not None:
-                self.bottomBar.textlayerSlider.setValue(restore_textlayer_transparency)
-            if trans_idx != 1:
-                self.bottomBar.paintChecker.click()
             if restore_textblock_mode:
                 self.bottomBar.textblockChecker.click()
             if hide_tsc:

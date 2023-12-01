@@ -351,6 +351,13 @@ class Canvas(QGraphicsScene):
 
     def render_result_img(self):
 
+        self.inpaintLayer.hide()
+        tlayer_opacity_before = self.textLayer.opacity()
+        tlayer_visible = self.textLayer.isVisible()
+        if tlayer_opacity_before != 1:
+            self.textLayer.setOpacity(1)
+        if not tlayer_visible:
+            self.textLayer.show()
         scale_before = self.scale_factor
         if scale_before != 1:
             self._set_scene_scale(1)
@@ -359,13 +366,9 @@ class Canvas(QGraphicsScene):
         if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
             if self.txtblkShapeControl.blk_item.is_editting():
                 self.txtblkShapeControl.blk_item.endEdit()
-        
-        ipainted_layer_pixmap = ndarray2pixmap(self.imgtrans_proj.inpainted_array)
-        old_ilayer_pixmap = self.inpaintLayer.pixmap()
-        self.inpaintLayer.setPixmap(ipainted_layer_pixmap)
 
-        canvas_sz = ipainted_layer_pixmap.size()
-        result = QImage(canvas_sz, QImage.Format.Format_ARGB32)
+        result = ndarray2pixmap(self.imgtrans_proj.inpainted_array, return_qimg=True)
+        canvas_sz = self.img_window_size()
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -373,10 +376,13 @@ class Canvas(QGraphicsScene):
         self.render(painter, rect, rect)   #  produce blurred result if target/source rect not specified #320
         painter.end()
         
-        self.inpaintLayer.setPixmap(old_ilayer_pixmap)
-
+        if tlayer_opacity_before != 1:
+            self.textLayer.setOpacity(tlayer_opacity_before)
+        if not tlayer_visible:
+            self.textLayer.hide()
         if scale_before != 1:
             self._set_scene_scale(scale_before)
+        self.inpaintLayer.show()
 
         return result
     

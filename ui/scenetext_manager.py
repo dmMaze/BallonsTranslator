@@ -336,13 +336,11 @@ class SceneTextManager(QObject):
         self.editing_flag = edit
         if edit:
             self.textpanel.show()
-            for blk_item in self.textblk_item_list:
-                blk_item.show()
+            self.canvas.textLayer.show()
         else:
             self.txtblkShapeControl.setBlkItem(None)
             self.textpanel.hide()
-            for blk_item in self.textblk_item_list:
-                blk_item.hide()
+            self.canvas.textLayer.hide()
 
     def adjustSceneTextRect(self):
         self.txtblkShapeControl.updateBoundingRect()
