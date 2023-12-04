@@ -326,14 +326,12 @@ class SceneTextManager(QObject):
         self.textblk_item_list: List[TextBlkItem] = []
         self.pairwidget_list: List[TransPairWidget] = self.textEditList.pairwidget_list
 
-        self.editing_flag = False
         self.auto_textlayout_flag = False
         self.hovering_transwidget : TransTextEdit = None
 
         self.prev_blkitem: TextBlkItem = None
 
     def setTextEditMode(self, edit: bool = False):
-        self.editing_flag = edit
         if edit:
             self.textpanel.show()
             self.canvas.textLayer.show()
@@ -363,8 +361,6 @@ class SceneTextManager(QObject):
             if textblock.font_family is None or textblock.font_family.strip() == '':
                 textblock.font_family = self.formatpanel.familybox.currentText()
             blk_item = self.addTextBlock(textblock)
-            if not self.editing_flag:
-                blk_item.hide()
         if self.auto_textlayout_flag:
             self.updateTextBlkList()
 
