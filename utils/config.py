@@ -11,7 +11,7 @@ from .io_utils import json_dump_nested_obj
 @nested_dataclass
 class ModuleConfig(Config):
     textdetector: str = 'ctd'
-    ocr: str = "mit48px_ctc"
+    ocr: str = "mit48px"
     inpainter: str = 'lama_large_512px'
     translator: str = "google"
     enable_detect: bool = True
