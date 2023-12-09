@@ -2,9 +2,9 @@ import copy
 import sys
 from typing import List
 
-from qtpy.QtWidgets import QMenu, QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QScrollArea, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
+from qtpy.QtWidgets import QComboBox, QMenu, QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QScrollArea, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt, QRectF
-from qtpy.QtGui import QMouseEvent, QTextCursor, QFontMetrics, QIcon, QColor, QPixmap, QPainter, QContextMenuEvent
+from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, QFontMetrics, QIcon, QColor, QPixmap, QPainter, QContextMenuEvent, QKeyEvent
 
 from utils.fontformat import FontFormat
 from utils import shared
@@ -13,8 +13,96 @@ from utils import config as C
 from .stylewidgets import Widget, ColorPicker, ClickableLabel, CheckableLabel, TextChecker, FlowLayout, ScrollBar
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanel
-from .combobox import SizeComboBox
 from . import funcmaps as FM
+
+
+class LineEdit(QLineEdit):
+
+    return_pressed_wochange = Signal()
+
+    def __init__(self, content: str = None, parent = None):
+        super().__init__(content, parent)
+        self.textChanged.connect(self.on_text_changed)
+        self._text_changed = False
+        self.editingFinished.connect(self.on_editing_finished)
+        self.returnPressed.connect(self.on_return_pressed)
+
+    def on_text_changed(self):
+        self._text_changed = True
+
+    def on_editing_finished(self):
+        self._text_changed = False
+
+    def on_return_pressed(self):
+        if not self._text_changed:
+            self.return_pressed_wochange.emit()
+
+
+class SizeComboBox(QComboBox):
+    
+    param_changed = Signal(str, float)
+    def __init__(self, val_range: List = None, param_name: str = '', *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        lineedit = LineEdit(parent=self)
+        lineedit.return_pressed_wochange.connect(self.apply_size)
+        self.setLineEdit(lineedit)
+        self.text_changed_by_user = False
+        self.param_name = param_name
+        self.editTextChanged.connect(self.on_text_changed)
+        self.currentIndexChanged.connect(self.on_current_index_changed)
+        self.setEditable(True)
+        self.min_val = val_range[0]
+        self.max_val = val_range[1]
+        validator = QDoubleValidator()
+        if val_range is not None:
+            validator.setTop(val_range[1])
+            validator.setBottom(val_range[0])
+        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+
+        self.setValidator(validator)
+
+        self.lineEdit().setValidator(validator)
+        self._value = 0
+
+    def apply_size(self):
+        self.param_changed.emit(self.param_name, self.value())
+
+    def keyPressEvent(self, e: QKeyEvent) -> None:
+        key = e.key()
+        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
+            self.check_change()
+        super().keyPressEvent(e)
+
+    def focusInEvent(self, e: QFocusEvent) -> None:
+        super().focusInEvent(e)
+        self.text_changed_by_user = False
+
+    def on_text_changed(self):
+        if self.hasFocus():
+            self.text_changed_by_user = True
+            self.check_change()
+
+    def on_current_index_changed(self):
+        if self.hasFocus():
+            self.check_change()
+
+    def value(self) -> float:
+        txt = self.currentText()
+        try:
+            val = float(txt)
+            self._value = val
+            return val
+        except:
+            return self._value
+
+    def setValue(self, value: float):
+        value = min(self.max_val, max(self.min_val, value))
+        self.setCurrentText(str(round(value, 2)))
+
+    def check_change(self):
+        if self.text_changed_by_user:
+            self.text_changed_by_user = False
+            self.param_changed.emit(self.param_name, self.value())
 
 
 class IncrementalBtn(QPushButton):
@@ -231,12 +319,20 @@ class FontFamilyComboBox(QFontComboBox):
     def __init__(self, emit_if_focused=True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.currentFontChanged.connect(self.on_fontfamily_changed)
+        lineedit = LineEdit(parent=self)
+        lineedit.return_pressed_wochange.connect(self.apply_fontfamily)
+        self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
+        
+    def apply_fontfamily(self):
+        if self.currentFont().exactMatch():
+            self.param_changed.emit('family', self.currentText())
 
     def on_fontfamily_changed(self):
         if self.emit_if_focused and not self.hasFocus():
             return
-        self.param_changed.emit('family', self.currentText())
+        if self.currentFont().exactMatch():
+            self.param_changed.emit('family', self.currentText())
 
 CHEVRON_SIZE = 20
 def chevron_down():
