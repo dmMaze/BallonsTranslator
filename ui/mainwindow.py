@@ -3,6 +3,7 @@ import os, re, traceback, sys
 from typing import List
 from pathlib import Path
 import subprocess
+from functools import partial
 
 from qtpy.QtWidgets import QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
@@ -497,6 +498,12 @@ class MainWindow(FramelessWindow):
 
         shortcutDelete = QShortcut(QKeySequence.StandardKey.Delete, self)
         shortcutDelete.activated.connect(self.shortcutDelete)
+
+        drawpanel_shortcuts = {'hand': 'H', 'rect': 'R', 'inpaint': 'J', 'pen': 'B'}
+        for tool_name, shortcut_key in drawpanel_shortcuts.items():
+            shortcut = QShortcut(QKeySequence(shortcut_key), self)
+            shortcut.activated.connect(partial(self.drawingPanel.shortcutSetCurrentToolByName, tool_name))
+            self.drawingPanel.setShortcutTip(tool_name, shortcut_key)
 
     def shortcutNext(self):
         if self.centralStackWidget.currentIndex() == 0:

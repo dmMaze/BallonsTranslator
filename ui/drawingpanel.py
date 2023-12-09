@@ -18,6 +18,7 @@ from .canvas import Canvas
 from .misc import ndarray2pixmap
 from utils.config import DrawPanelConfig, pcfg
 from utils.shared import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
+from utils.logger import logger as LOGGER
 from .drawing_commands import InpaintUndoCommand, StrokeItemUndoCommand
 
 INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)
@@ -304,7 +305,7 @@ class DrawingPanel(Widget):
 
         self.rectTool = DrawToolCheckBox()
         self.rectTool.setObjectName("DrawRectTool")
-        self.rectTool.checked.connect(self.on_use_rect_tool)
+        self.rectTool.checked.connect(self.on_use_recttool)
         self.rectTool.stateChanged.connect(self.on_rectchecker_changed)
         self.rectPanel = RectPanel(inpainter_panel)
         self.rectPanel.inpaint_btn_clicked.connect(self.on_rect_inpaintbtn_clicked)
@@ -353,6 +354,28 @@ class DrawingPanel(Widget):
         layout.addWidget(SeparatorWidget())
         layout.addLayout(masklayout)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+    def setCurrentToolByName(self, tool_name: str):
+        try:
+            set_method = f'on_use_{tool_name}tool'
+            set_method = getattr(self, set_method)
+            set_method()
+            if self.currentTool is not None:
+                self.currentTool.setChecked(True)
+        except:
+            LOGGER.error(f'{set_method} not found in drawing panel')
+
+    def shortcutSetCurrentToolByName(self, tool_name: str):
+        if self.isVisible():
+            self.setCurrentToolByName(tool_name)
+
+    def setShortcutTip(self, tool_name: str, shortcut: str):
+        try:
+            tool = f'{tool_name}Tool'
+            tool: QStackedWidget = getattr(self, tool)
+            tool.setToolTip(f'{shortcut}')
+        except:
+            LOGGER.error(f'{tool} not found in drawing panel')
 
     def initDLModule(self, module_manager: ModuleManager):
         self.module_manager = module_manager
@@ -420,7 +443,7 @@ class DrawingPanel(Widget):
             self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.setPenCursor()
 
-    def on_use_rect_tool(self) -> None:
+    def on_use_recttool(self) -> None:
         if self.currentTool is not None and self.currentTool != self.rectTool:
             self.currentTool.setChecked(False)
         self.currentTool = self.rectTool
