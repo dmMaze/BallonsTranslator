@@ -1,9 +1,7 @@
 import time
 from typing import Union, List, Dict, Callable
 import traceback
-import os.path as osp
 
-import cv2
 import numpy as np
 from qtpy.QtCore import QThread, Signal, QObject, QLocale
 from qtpy.QtWidgets import QMessageBox
@@ -13,6 +11,7 @@ from utils.registry import Registry
 from utils.imgproc_utils import enlarge_window, get_block_mask
 from utils.io_utils import imread, text_is_empty
 from modules.translators import MissingTranslatorParams
+from modules.base import BaseModule, soft_empty_cache
 from modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     GET_VALID_TRANSLATORS, GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_OCR, \
     BaseTranslator, InpainterBase, TextDetectorBase, OCRBase
@@ -53,6 +52,10 @@ class ModuleThread(QThread):
                 self.module = module(**params)
             else:
                 self.module = module()
+            if not pcfg.module.load_model_on_demand:
+                self.module.load_model()
+            if old_module is not None:
+                del old_module
         except Exception as e:
             self.module = old_module
             msg = self.tr('Failed to set ') + module_name
@@ -596,10 +599,20 @@ class ModuleManager(QObject):
         ocr_panel.ocr_changed.connect(self.setOCR)
         OCRBase.register_postprocess_hooks(ocr_postprocess)
 
+        config_panel.unload_models.connect(self.unload_all_models)
+
         self.setTextDetector()
         self.setOCR()
         self.setTranslator()
         self.setInpainter()
+
+    def unload_all_models(self):
+        model_deleted = False
+        for module in {'textdetector', 'inpainter', 'ocr', 'translator'}:
+            module: BaseModule = getattr(self, module)
+            model_deleted = model_deleted or module.unload_model()
+        if model_deleted:
+            soft_empty_cache()
 
     @property
     def translator(self) -> BaseTranslator:

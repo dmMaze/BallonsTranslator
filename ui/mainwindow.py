@@ -832,6 +832,8 @@ class MainWindow(FramelessWindow):
 
     def on_imgtrans_pipeline_finished(self):
         self.postprocess_mt_toggle = True
+        if pcfg.module.empty_runcache:
+            self.module_manager.unload_all_models()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
         src_is_cjk = is_cjk(pcfg.module.translate_source)

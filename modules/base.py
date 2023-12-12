@@ -40,6 +40,8 @@ class BaseModule:
     download_file_list: List = None
     download_file_on_load = False
 
+    _load_model_keys: set = None
+
     def __init__(self, **params) -> None:
         if params:
             if self.params is None:
@@ -88,6 +90,40 @@ class BaseModule:
         if self.params is not None and 'device' in self.params:
             return True
         return False
+    
+    def unload_model(self, empty_cache=False):
+        model_deleted = False
+        if self._load_model_keys is not None:
+            for k in self._load_model_keys:
+                model = getattr(self, k)
+                if model is not None:
+                    del model
+                    setattr(self, k, None)
+                    model_deleted = True
+    
+        if empty_cache and model_deleted:
+            soft_empty_cache()
+
+        return model_deleted
+
+    def load_model(self):
+        # TODO: check and download files
+        self._load_model()
+        return
+
+    def _load_model(self):
+        return
+
+    def all_model_loaded(self):
+        if self._load_model_keys is None:
+            return True
+        for k in self._load_model_keys:
+            if not hasattr(self, k) or getattr(self, k) is None:
+                return False
+        return True
+    
+    def __del__(self):
+        self.unload_model()
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import torch
@@ -97,8 +133,15 @@ if hasattr(torch, 'cuda') and torch.cuda.is_available():
     DEFAULT_DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 elif hasattr(torch, 'backends') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
     DEFAULT_DEVICE = 'mps'
+BF16_SUPPORTED = DEFAULT_DEVICE == 'cuda' and torch.cuda.is_bf16_supported()
 
-def gc_collect():
+def is_nvidia():
+    if DEFAULT_DEVICE == 'cuda':
+        if torch.version.cuda:
+            return True
+    return False
+
+def soft_empty_cache():
     gc.collect()
     if DEFAULT_DEVICE == 'cuda':
         torch.cuda.empty_cache()
@@ -123,3 +166,4 @@ TORCH_DTYPE_MAP = {
     'fp16': torch.float16,
     'bf16': torch.bfloat16,
 }
+    

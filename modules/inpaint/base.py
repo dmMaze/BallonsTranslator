@@ -8,7 +8,7 @@ from utils.registry import Registry
 from utils.textblock_mask import extract_ballon_mask
 from utils.imgproc_utils import enlarge_window
 
-from ..base import BaseModule, DEFAULT_DEVICE, gc_collect, DEVICE_SELECTOR, GPUINTENSIVE_SET, TORCH_DTYPE_MAP
+from ..base import BaseModule, DEFAULT_DEVICE, soft_empty_cache, DEVICE_SELECTOR, GPUINTENSIVE_SET, TORCH_DTYPE_MAP, BF16_SUPPORTED
 from ..textdetector import TextBlock
 
 INPAINTERS = Registry('inpainters')
@@ -30,10 +30,6 @@ class InpainterBase(BaseModule):
             if INPAINTERS.module_dict[key] == self.__class__:
                 self.name = key
                 break
-        self.setup_inpainter()
-
-    def setup_inpainter(self):
-        raise NotImplementedError
     
     def memory_safe_inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
         '''
@@ -43,7 +39,7 @@ class InpainterBase(BaseModule):
             return self._inpaint(img, mask, textblock_list)
         except Exception as e:
             if DEFAULT_DEVICE == 'cuda' and isinstance(e, torch.cuda.OutOfMemoryError):
-                gc_collect()
+                soft_empty_cache()
                 try:
                     return self._inpaint(img, mask, textblock_list)
                 except Exception as ee:
@@ -62,6 +58,10 @@ class InpainterBase(BaseModule):
                 raise e
 
     def inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None, check_need_inpaint: bool = False) -> np.ndarray:
+        
+        if not self.all_model_loaded():
+            self.load_model()
+        
         if not self.inpaint_by_block or textblock_list is None:
             if check_need_inpaint:
                 ballon_msk, non_text_msk = extract_ballon_mask(img, mask)
@@ -119,8 +119,10 @@ class InpainterBase(BaseModule):
 @register_inpainter('opencv-tela')
 class OpenCVInpainter(InpainterBase):
 
-    def setup_inpainter(self):
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
         self.inpaint_method = lambda img, mask, *args, **kwargs: cv2.inpaint(img, mask, 3, cv2.INPAINT_NS)
+        
     
     def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
         return self.inpaint_method(img, mask)
@@ -154,7 +156,8 @@ class PatchmatchInpainter(InpainterBase):
                 'archive_sha256_pre_calculated': 'c991ff61f7cb3efaf8e75d957e62d56ba646083bc25535f913ac65775c16ca65'
         }]
 
-    def setup_inpainter(self):
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
         from . import patch_match
         self.inpaint_method = lambda img, mask, *args, **kwargs: patch_match.inpaint(img, mask, patch_size=3)
     
@@ -171,8 +174,6 @@ class PatchmatchInpainter(InpainterBase):
 import torch
 from utils.imgproc_utils import resize_keepasp
 from .aot import AOTGenerator, load_aot_model
-AOTMODEL: AOTGenerator = None
-AOTMODEL_PATH = 'data/models/aot_inpainter.ckpt'
 
 
 @register_inpainter('aot')
@@ -194,6 +195,7 @@ class AOTInpainter(InpainterBase):
     device = DEFAULT_DEVICE
     inpaint_size = 2048
     model: AOTGenerator = None
+    _load_model_keys = {'model'}
 
     download_file_list = [{
             'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting.ckpt',
@@ -201,15 +203,15 @@ class AOTInpainter(InpainterBase):
             'files': 'data/models/aot_inpainter.ckpt',
     }]
 
-    def setup_inpainter(self):
-        global AOTMODEL
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
         self.device = self.params['device']['select']
-        if AOTMODEL is None:
-            self.model = AOTMODEL = load_aot_model(AOTMODEL_PATH, self.device)
-        else:
-            self.model = AOTMODEL
-            self.model.to(self.device)
         self.inpaint_size = int(self.params['inpaint_size']['select'])
+        self.model: AOTGenerator = None
+        
+    def _load_model(self):
+        AOTMODEL_PATH = 'data/models/aot_inpainter.ckpt'
+        self.model = load_aot_model(AOTMODEL_PATH, self.device)
 
     def moveToDevice(self, device: str, precision: str = None):
         self.model.to(device)
@@ -274,10 +276,13 @@ class AOTInpainter(InpainterBase):
         elif param_key == 'inpaint_size':
             self.inpaint_size = int(self.params['inpaint_size']['select'])
 
+    def unload_model(self):
+        del self.model
+        super().unload_model(True)
+
 
 from .lama import LamaFourier, load_lama_mpe
 
-LAMA_MPE: LamaFourier = None
 @register_inpainter('lama_mpe')
 class LamaInpainterMPE(InpainterBase):
 
@@ -292,27 +297,23 @@ class LamaInpainterMPE(InpainterBase):
         }, 
         'device': DEVICE_SELECTOR()
     }
-    precision = 'fp32'
-
-    device = DEFAULT_DEVICE
-    inpaint_size = 2048
 
     download_file_list = [{
             'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting_lama_mpe.ckpt',
             'sha256_pre_calculated': 'd625aa1b3e0d0408acfd6928aa84f005867aa8dbb9162480346a4e20660786cc',
             'files': 'data/models/lama_mpe.ckpt',
     }]
+    _load_model_keys = {'model'}
 
-    def setup_inpainter(self):
-        global LAMA_MPE
-
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
         self.device = self.params['device']['select']
-        if LAMA_MPE is None:
-            self.model = LAMA_MPE = load_lama_mpe(r'data/models/lama_mpe.ckpt', self.device)
-        else:
-            self.model = LAMA_MPE
-            self.model.to(self.device)
         self.inpaint_size = int(self.params['inpaint_size']['select'])
+        self.precision = 'fp32'
+        self.model: LamaFourier = None
+
+    def _load_model(self):
+        self.model = load_lama_mpe(r'data/models/lama_mpe.ckpt', self.device)
 
     def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
@@ -401,7 +402,6 @@ class LamaInpainterMPE(InpainterBase):
         if precision is not None:
             self.precision = precision
 
-LAMA_LARGE: LamaFourier = None
 @register_inpainter('lama_large_512px')
 class LamaLarge(LamaInpainterMPE):
 
@@ -424,7 +424,7 @@ class LamaLarge(LamaInpainterMPE):
                 'fp32',
                 'bf16'
             ], 
-            'select': 'bf16' if DEFAULT_DEVICE == 'cuda' else 'fp32'
+            'select': 'bf16' if BF16_SUPPORTED == 'cuda' else 'fp32'
         }, 
     }
 
@@ -434,20 +434,15 @@ class LamaLarge(LamaInpainterMPE):
             'files': 'data/models/lama_large_512px.ckpt',
     }]
 
-    device = DEFAULT_DEVICE
-    inpaint_size = 1024
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
+        self.precision = self.params['precision']['select']
 
-    def setup_inpainter(self):
-        global LAMA_LARGE
-
+    def _load_model(self):
         device = self.params['device']['select']
-        self.inpaint_size = int(self.params['inpaint_size']['select'])
         precision = self.params['precision']['select']
 
-        if LAMA_LARGE is None:
-            self.model = LAMA_LARGE = load_lama_mpe(r'data/models/lama_large_512px.ckpt', device='cpu', use_mpe=False, large_arch=True)
-        else:
-            self.model = LAMA_LARGE
+        self.model = load_lama_mpe(r'data/models/lama_large_512px.ckpt', device='cpu', use_mpe=False, large_arch=True)
         self.moveToDevice(device, precision=precision)
 
 

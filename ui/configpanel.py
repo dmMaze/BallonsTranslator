@@ -1,6 +1,6 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
+from qtpy.QtWidgets import QPushButton, QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette, QIntValidator, QValidator, QFocusEvent
 from qtpy import API
@@ -145,6 +145,25 @@ def combobox_with_label(sel: List[str], name: str, discription: str = None, vert
         layout.addWidget(ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal))
         layout.addWidget(combox)
         return combox, target_block
+    
+def checkbox_with_label(name: str, discription: str = None, target_block: QWidget = None):
+    checkbox = QCheckBox()
+    if discription is not None:
+        font = checkbox.font()
+        font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
+        checkbox.setFont(font)
+        checkbox.setText(discription)
+        vertical_layout = True
+    else:
+        vertical_layout = False
+
+    if target_block is None:
+        sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout)
+        if vertical_layout is False:
+            sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        target_block = sublock
+    return checkbox, target_block
+    
 
 
 class ConfigBlock(Widget):
@@ -196,23 +215,10 @@ class ConfigBlock(Widget):
         self.addSublock(sublock)
         return sublock
 
-    def addCheckBox(self, name: str, discription: str = None, sublock: ConfigSubBlock = None) -> QCheckBox:
-        checkbox = QCheckBox()
-        if discription is not None:
-            font = checkbox.font()
-            font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
-            checkbox.setFont(font)
-            checkbox.setText(discription)
-            vertical_layout = True
-        else:
-            vertical_layout = False
-        if sublock is None:
-            sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout)
-            if vertical_layout is False:
-                sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+    def addCheckBox(self, name: str, discription: str = None, target_block: ConfigSubBlock = None) -> QCheckBox:
+        checkbox, sublock = checkbox_with_label(name, discription, target_block)
+        if target_block is None:
             self.addSublock(sublock)
-        else:
-            sublock.layout().addWidget(checkbox)
         return checkbox, sublock
 
     def getSubBlockbyIdx(self, idx: int) -> ConfigSubBlock:
@@ -344,6 +350,7 @@ class ConfigTable(QTreeView):
 class ConfigPanel(Widget):
 
     save_config = Signal()
+    unload_models = Signal()
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -375,6 +382,18 @@ class ConfigPanel(Widget):
             TableItem(label_save, CONFIG_FONTSIZE_TABLE),
             TableItem(label_saladict, CONFIG_FONTSIZE_TABLE),
         ])
+        
+        self.load_model_checker, msublock = checkbox_with_label(self.tr('Load models on demand'), discription=self.tr('Load models on demand to save memory.'))
+        self.load_model_checker.stateChanged.connect(self.on_load_model_changed)
+        dlConfigPanel.vlayout.addWidget(msublock)
+        self.empty_runcache_checker, msublock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
+        dlConfigPanel.vlayout.addWidget(msublock)
+        self.empty_runcache_checker.stateChanged.connect(self.on_runcache_changed)
+        self.unload_model_btn = QPushButton(parent=self)
+        self.unload_model_btn.setFixedWidth(500)
+        self.unload_model_btn.setText(self.tr('Unload All Models'))
+        self.unload_model_btn.clicked.connect(self.unload_models)
+        msublock.layout().addWidget(self.unload_model_btn)
 
         dlConfigPanel.addTextLabel(label_text_det)
         self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'), scrollWidget=self)
@@ -437,7 +456,7 @@ class ConfigPanel(Widget):
 
         self.let_autolayout_checker, sublock = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region.'))
-        self.let_autolayout_adaptive_fntsize_checker, _ = generalConfigPanel.addCheckBox(None, self.tr('Adjust font size adaptively if it is set to \"decide by program.\"'), sublock=sublock)
+        self.let_autolayout_adaptive_fntsize_checker, _ = generalConfigPanel.addCheckBox(None, self.tr('Adjust font size adaptively if it is set to \"decide by program.\"'), target_block=sublock)
         self.let_autolayout_adaptive_fntsize_checker.stateChanged.connect(self.on_adaptive_fntsize_changed)
 
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
@@ -488,8 +507,14 @@ class ConfigPanel(Widget):
 
         self.configTable.expandAll()
 
+    def on_load_model_changed(self):
+        pcfg.module.load_model_on_demand = self.load_model_checker.isChecked()
+
+    def on_runcache_changed(self):
+        pcfg.module.empty_runcache = self.empty_runcache_checker.isChecked()
+
     def addConfigBlock(self, header: str) -> Tuple[ConfigBlock, TableItem]:
-        cb = ConfigBlock(header)
+        cb = ConfigBlock(header, parent=self)
         cb.sublock_pressed.connect(self.onSublockPressed)
         self.configContent.addConfigBlock(cb)
         cb.setIndex(len(self.configContent.config_block_list)-1)
@@ -589,5 +614,7 @@ class ConfigPanel(Widget):
         self.ocr_config_panel.restoreEmptyOCRChecker.setChecked(pcfg.restore_ocr_empty)
         self.rst_imgformat_combobox.setCurrentText(pcfg.imgsave_ext.replace('.', '').upper())
         self.rst_imgquality_edit.setText(str(pcfg.imgsave_quality))
+        self.load_model_checker.setChecked(pcfg.module.load_model_on_demand)
+        self.empty_runcache_checker.setChecked(pcfg.module.empty_runcache)
 
         self.blockSignals(False)

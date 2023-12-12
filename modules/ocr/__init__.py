@@ -24,12 +24,12 @@ class OCRBase(BaseModule):
             if OCR.module_dict[key] == self.__class__:
                 self.name = key
                 break
-        self.setup_ocr()
-
-    def setup_ocr(self):
-        raise NotImplementedError
 
     def run_ocr(self, img: np.ndarray, blk_list: List[TextBlock] = None) -> Union[List[TextBlock], str]:
+
+        if not self.all_model_loaded():
+            self.load_model()
+
         if blk_list is None:
             text = self.ocr_img(img)
             return text
@@ -38,7 +38,7 @@ class OCRBase(BaseModule):
 
         for blk in blk_list:
             blk.text = []
-        self.ocr_blk_list(img, blk_list)
+        self._ocr_blk_list(img, blk_list)
         for callback_name, callback in self._postprocess_hooks.items():
             callback(textblocks=blk_list, img=img, ocr_module=self)
         # for blk in blk_list:
@@ -51,7 +51,7 @@ class OCRBase(BaseModule):
         #             blk.text = callback(blk.text, blk=blk)
         return blk_list
 
-    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
         raise NotImplementedError
 
     def ocr_img(self, img: np.ndarray) -> str:
@@ -59,9 +59,6 @@ class OCRBase(BaseModule):
 
 
 from .model_32px import OCR32pxModel
-OCR32PXMODEL: OCR32pxModel = None
-OCR32PXMODEL_PATH = r'data/models/mit32px_ocr.ckpt'
-
 @register_OCR('mit32px')
 class OCRMIT32px(OCRBase):
     params = {
@@ -84,24 +81,21 @@ class OCRMIT32px(OCRBase):
         'archived_files': 'ocr.zip',
         'archive_sha256_pre_calculated': '47405638b96fa2540a5ee841a4cd792f25062c09d9458a973362d40785f95d7a',
     }]
+    _load_model_keys = {'model'}
 
-    def setup_ocr(self):
-        
-        global OCR32PXMODEL
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
         self.device = self.params['device']['select']
         self.chunk_size = int(self.params['chunk_size']['select'])
-        if OCR32PXMODEL is None:
-            self.model = OCR32PXMODEL = \
-                OCR32pxModel(OCR32PXMODEL_PATH, self.device, self.chunk_size)
-        else:
-            self.model = OCR32PXMODEL
-            self.model.to(self.device)
-            self.model.max_chunk_size = self.chunk_size
+        self.model: OCR32pxModel = None
+
+    def _load_model(self):
+        self.model = OCR32pxModel(r'data/models/mit32px_ocr.ckpt', self.device, self.chunk_size)
 
     def ocr_img(self, img: np.ndarray) -> str:
         return self.model.ocr_img(img)
 
-    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
         return self.model(img, blk_list)
 
     def updateParam(self, param_key: str, param_content):
@@ -115,8 +109,6 @@ class OCRMIT32px(OCRBase):
 
 
 
-
-MANGA_OCR_MODEL = None
 @register_OCR('manga_ocr')
 class MangaOCR(OCRBase):
     params = {
@@ -131,26 +123,21 @@ class MangaOCR(OCRBase):
         'save_dir': 'data/models/manga-ocr-base',
         'concatenate_url_filename': 1,
     }]
+    _load_model_keys = {'model'}
 
-    def setup_ocr(self):
-
-        from .manga_ocr import MangaOcr
-        def load_manga_ocr(device='cpu') -> MangaOcr:
-            manga_ocr = MangaOcr(device=device)
-            return manga_ocr
-        
-        global MANGA_OCR_MODEL
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
         self.device = self.params['device']['select']
-        if MANGA_OCR_MODEL is None:
-            self.model = MANGA_OCR_MODEL = load_manga_ocr(self.device)
-        else:
-            self.model = MANGA_OCR_MODEL
-            self.model.to(self.device)
+        self.model: MangaOCR = None
+
+    def _load_model(self):
+        from .manga_ocr import MangaOcr
+        self.model = MangaOcr(device=self.device)
 
     def ocr_img(self, img: np.ndarray) -> str:
         return self.model(img)
 
-    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
         im_h, im_w = img.shape[:2]
         for blk in blk_list:
             x1, y1, x2, y2 = blk.xyxy
@@ -169,11 +156,7 @@ class MangaOCR(OCRBase):
 
 
 
-
 from .mit48px_ctc import OCR48pxCTC
-OCR48PXCTCMODEL: OCR48pxCTC = None
-OCR48PXCTCMODEL_PATH = r'data/models/mit48pxctc_ocr.ckpt'
-
 @register_OCR('mit48px_ctc')
 class OCRMIT48pxCTC(OCRBase):
     params = {
@@ -196,24 +179,21 @@ class OCRMIT48pxCTC(OCRBase):
         'archived_files': 'ocr-ctc.zip',
         'archive_sha256_pre_calculated': 'fc61c52f7a811bc72c54f6be85df814c6b60f63585175db27cb94a08e0c30101',
     }]
+    _load_model_keys = {'model'}
 
-    def setup_ocr(self):
-        
-        global OCR48PXCTCMODEL
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
         self.device = self.params['device']['select']
         self.chunk_size = int(self.params['chunk_size']['select'])
-        if OCR48PXCTCMODEL is None:
-            self.model = OCR48PXCTCMODEL = \
-                OCR48pxCTC(OCR48PXCTCMODEL_PATH, self.device, self.chunk_size)
-        else:
-            self.model = OCR48PXCTCMODEL
-            self.model.to(self.device)
-            self.model.max_chunk_size = self.chunk_size
+        self.model: OCR48pxCTC = None
+
+    def _load_model(self):
+        self.model = OCR48pxCTC(r'data/models/mit48pxctc_ocr.ckpt', self.device, self.chunk_size)
 
     def ocr_img(self, img: np.ndarray) -> str:
         return self.model.ocr_img(img)
 
-    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
         return self.model(img, blk_list)
 
     def updateParam(self, param_key: str, param_content):
@@ -228,9 +208,7 @@ class OCRMIT48pxCTC(OCRBase):
 
 
 from .mit48px import Model48pxOCR
-OCR48PXMODEL: Model48pxOCR = None
 OCR48PXMODEL_PATH = r'data/models/ocr_ar_48px.ckpt'
-
 @register_OCR('mit48px')
 class OCRMIT48px(OCRBase):
     params = {
@@ -245,19 +223,17 @@ class OCRMIT48px(OCRBase):
         'sha256_pre_calculated': ['29daa46d080818bb4ab239a518a88338cbccff8f901bef8c9db191a7cb97671d', None],
         'concatenate_url_filename': 2,
     }]
+    _load_model_keys = {'model'}
 
-    def setup_ocr(self):
-        
-        global OCR48PXMODEL
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
         self.device = self.params['device']['select']
-        if OCR48PXMODEL is None:
-            self.model = OCR48PXMODEL = \
-                Model48pxOCR(OCR48PXMODEL_PATH, self.device)
-        else:
-            self.model = OCR48PXMODEL
-            self.model.to(self.device)
+        self.model: Model48pxOCR = None
 
-    def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+    def _load_model(self):
+        self.model = Model48pxOCR(OCR48PXMODEL_PATH, self.device)
+
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
         return self.model(img, blk_list)
 
     def updateParam(self, param_key: str, param_content):
@@ -312,7 +288,7 @@ if platform.mac_ver()[0] >= '10.15':
             def ocr_img(self, img: np.ndarray) -> str:
                 return self.model(img)
 
-            def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+            def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
                 im_h, im_w = img.shape[:2]
                 for blk in blk_list:
                     x1, y1, x2, y2 = blk.xyxy
@@ -374,7 +350,7 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
             def ocr_img(self, img: np.ndarray) -> str:
                 self.engine(img)
 
-            def ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
+            def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
                 im_h, im_w = img.shape[:2]
                 for blk in blk_list:
                     x1, y1, x2, y2 = blk.xyxy
