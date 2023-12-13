@@ -247,7 +247,6 @@ class OCRMIT48px(OCRBase):
 import platform
 if platform.mac_ver()[0] >= '10.15':
     from .macos_ocr import get_supported_languages
-    APPLEVISIONFRAMEWORK = None
 
     macos_ocr_supported_languages = get_supported_languages()
 
@@ -277,13 +276,10 @@ if platform.mac_ver()[0] >= '10.15':
             recognition = 'accurate'
             confidence = '0.1'
 
-            def setup_ocr(self):
-                global APPLEVISIONFRAMEWORK
+            def __init__(self, **params) -> None:
+                super().__init__(**params)
                 from .macos_ocr import AppleOCR
-                if APPLEVISIONFRAMEWORK is None:
-                    self.model = APPLEVISIONFRAMEWORK = AppleOCR(lang=[self.language])
-                else:
-                    self.model = APPLEVISIONFRAMEWORK
+                self.model = AppleOCR(lang=[self.language])
 
             def ocr_img(self, img: np.ndarray) -> str:
                 return self.model(img)
@@ -321,7 +317,6 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
 
         languages_display_name = [lang.display_name for lang in winocr_available_recognizer_languages]
         languages_tag = [lang.language_tag for lang in winocr_available_recognizer_languages]
-        WINDOWSOCRENGINE = None
         @register_OCR('windows_ocr')
         class OCRWindows(OCRBase):
             params = {
@@ -333,13 +328,10 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
             }
             language = languages_display_name[0]
 
-            def setup_ocr(self):
-                global WINDOWSOCRENGINE
+            def __init__(self, **params) -> None:
+                super().__init__(**params)
                 from .windows_ocr import WindowsOCR
-                if WINDOWSOCRENGINE is None:
-                    self.engine = WINDOWSOCRENGINE = WindowsOCR()
-                else:
-                    self.engine = WINDOWSOCRENGINE
+                self.engine = WindowsOCR()
                 self.engine.lang = self.get_engine_lang()
 
             def get_engine_lang(self) -> str:
