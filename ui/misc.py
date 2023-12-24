@@ -29,12 +29,14 @@ def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
         qimg = pixmap
 
     byte_str = qimg.bits()
+    if byte_str is None:
+        return None
+
     if hasattr(byte_str, 'asstring'):
         byte_str = qimg.bits().asstring(h * w * 4)
     else:
-    #     byte_str = byte_str.tobytes()
         byte_str = byte_str.tobytes()
-    # qimg.bits().
+
     img = np.frombuffer(byte_str, dtype=np.uint8).reshape((w,h,4))
     
     if keep_alpha:

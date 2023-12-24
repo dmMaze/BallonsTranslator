@@ -97,6 +97,8 @@ def ffmt_change_stroke_width(param_name: str, value: float, act_ffmt: FontFormat
 
 @font_formating()
 def ffmt_change_size(param_name: str, value: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
+    if value <= 0:
+        return
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem in blkitems:
         blkitem.setFontSize(value, **set_kwargs)

@@ -64,7 +64,11 @@ def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, ita
     p = QPainter(pixmap)
     line.draw(p, QPointF(-line.x(), -line.y()))
     p.end()
-    mask = pixmap2ndarray(pixmap, keep_alpha=True)[..., -1]
+    mask = pixmap2ndarray(pixmap, keep_alpha=True)
+    if mask is None:
+        print(f'invalid text line!')
+        return [0, 0, 1, 1]
+    mask = mask[..., -1]
     
     ar = cv2.boundingRect(cv2.findNonZero(mask))
     # if stroke_width != 0:
