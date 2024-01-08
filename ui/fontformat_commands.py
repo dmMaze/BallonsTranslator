@@ -90,6 +90,8 @@ def ffmt_change_weight(param_name: str, values: str, act_ffmt: FontFormat, is_gl
         blkitem.setFontWeight(value, **set_kwargs)
 
 def ffmt_change_bold(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, **kwargs):
+    if not isinstance(values, List):
+        values = [values] * len(blkitems)
     values = [QFont.Bold if value else QFont.Normal for value in values]
     ffmt_change_weight('weight', values, act_ffmt, is_global, blkitems, **kwargs)
 

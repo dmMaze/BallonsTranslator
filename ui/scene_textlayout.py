@@ -285,6 +285,13 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     def minSize(self):
         return (self.shrink_height, self.shrink_width)
     
+    def get_char_fontfmt(self, block_number: int, char_idx: int) -> CharFontFormat:
+        charidx2frag_map = self._map_charidx2frag[block_number]
+        if char_idx not in charidx2frag_map:    # caused by inputmethod
+            char_idx = len(charidx2frag_map) - 1
+        frag_idx = charidx2frag_map[char_idx]
+        return self.block_charfmt_lst[block_number][frag_idx]
+    
 
 class VerticalTextDocumentLayout(SceneTextLayout):
 
@@ -582,10 +589,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk = blk.next()
         return blk.position() + off
 
-    def get_char_fontfmt(self, block_number: int, char_idx: int) -> CharFontFormat:
-        frag_idx = self._map_charidx2frag[block_number][char_idx]
-        return self.block_charfmt_lst[block_number][frag_idx]
-
     def layoutBlock(self, block: QTextBlock):
         doc = self.document()
         ls = self.letter_spacing
@@ -797,44 +800,61 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         tl = block.layout()
         
         option = doc.defaultTextOption()
-        option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        option.setWrapMode(QTextOption.WrapMode.WrapAnywhere)
         tl.setTextOption(option)
         font = block.charFormat().font()
-        tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
-        fm = QFontMetrics(font)
+        
+        # fm = QFontMetrics(font)
         doc_margin = self.document().documentMargin()
 
         idea_height = self.block_ideal_height[block.blockNumber()]
         if idea_height == 0:
+            tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
             idea_height = tbr.height()
         if block == doc.firstBlock():
             self.x_offset_lst = []
             self.y_offset_lst = []
             # y_offset = -tbr.top() - fm.ascent() + doc_margin
-            y_offset = min(br.top() - tbr.top(), -tbr.top() - fm.ascent()) + doc_margin
+            # y_offset = min(br.top() - tbr.top(), -tbr.top() - fm.ascent()) + doc_margin
+            y_offset = doc_margin
         else:
             y_offset = self.y_offset_lst[-1]
 
         line_idx = 0
         tl.beginLayout()
         shrink_width = 0
+        char_idx = 0
+        blk_no = block.blockNumber()
         while True:
             line = tl.createLine()
             if not line.isValid():
                 break
             # line.setLeadingIncluded(False)
             line.setLineWidth(self.available_width)
-            # print(line.naturalTextRect().height(), idea_height, tbr.height(), line.ascent(), line.descent())
-            if C.ON_MACOS and idea_height - line.ascent() > line.ascent() - line.descent():
-                line.setPosition(QPointF(doc_margin, y_offset + idea_height - line.descent()))
-            else:
-                line.setPosition(QPointF(doc_margin, y_offset))
+            nchar = line.textLength()
+
+            dy = 0
+            if nchar > 0:
+                tgt_cfmt = None
+                tgt_size = -1
+                for ii in range(nchar):
+                    cfmt = self.get_char_fontfmt(blk_no, char_idx + ii)
+                    sz = cfmt.font.pointSizeF()
+                    if sz > tgt_size:
+                        tgt_size = sz
+                        tgt_cfmt = cfmt
+                font = tgt_cfmt.font
+                tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
+                dy = -tbr.top() - line.ascent()
+                
+            line.setPosition(QPointF(doc_margin, y_offset + dy))
             tw = line.naturalTextWidth()
             shrink_width = max(tw, shrink_width)
-            self.shrink_height = max(idea_height + y_offset + line.descent(), self.shrink_height)    #????
             self.shrink_height = max(idea_height + y_offset, self.shrink_height)    #????
             y_offset += idea_height * self.line_spacing
             line_idx += 1
+            char_idx += nchar
+
         tl.endLayout()
         self.y_offset_lst.append(y_offset)
         self.shrink_width = max(shrink_width, self.shrink_width)
