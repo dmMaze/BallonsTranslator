@@ -884,6 +884,8 @@ class MainWindow(FramelessWindow):
                 if override_fnt_stroke:
                     blk.default_stroke_width = gf.stroke_width
                     blk.stroke_decide_by_colordiff = False
+                else:
+                    blk.stroke_decide_by_colordiff = True
                 if override_fnt_color:
                     blk.set_font_colors(fg_colors=gf.frgb)
                 if override_fnt_scolor:

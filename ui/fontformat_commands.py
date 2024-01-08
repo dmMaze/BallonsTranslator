@@ -129,6 +129,7 @@ def ffmt_change_srgb(param_name: str, values: tuple, act_ffmt: FontFormat, is_gl
 def ffmt_change_stroke_width(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
+        blkitem.blk.stroke_decide_by_colordiff = False
         blkitem.setStrokeWidth(value, **set_kwargs)
 
 @font_formating()
