@@ -38,6 +38,7 @@ LANGMAP_GLOBAL = {
     'Español': '',
     'Türk dili': '',
     'украї́нська мо́ва': '',  
+    'Thai': '',
 }
 
 SYSTEM_LANG = ''
