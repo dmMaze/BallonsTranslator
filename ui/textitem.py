@@ -989,3 +989,10 @@ class TextBlkItem(QGraphicsTextItem):
                 ml += extra_w
             self.setRect(QRectF(ml, mt, mw, mh))
             self.blk._bounding_rect = self.absBoundingRect()
+
+    def getFontFormatAttr(self, param_name: str):
+        '''
+        TODO: directly share these values with blk 
+        '''
+        fmt = self.get_fontformat()
+        return fmt[param_name]
