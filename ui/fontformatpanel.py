@@ -6,6 +6,7 @@ from qtpy.QtWidgets import QComboBox, QMenu, QMessageBox, QStackedLayout, QGraph
 from qtpy.QtCore import Signal, Qt, QRectF
 from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, QFontMetrics, QIcon, QColor, QPixmap, QPainter, QContextMenuEvent, QKeyEvent
 
+
 from utils.fontformat import FontFormat
 from utils import shared
 from utils.config import pcfg, save_text_styles, text_styles
@@ -32,6 +33,10 @@ class LineEdit(QLineEdit):
 
     def on_editing_finished(self):
         self._text_changed = False
+
+    def focusOutEvent(self, e: QFocusEvent) -> None:
+        self._text_changed = False
+        return super().focusOutEvent(e)
 
     def on_return_pressed(self):
         if not self._text_changed:
@@ -319,20 +324,29 @@ class FontFamilyComboBox(QFontComboBox):
     def __init__(self, emit_if_focused=True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.currentFontChanged.connect(self.on_fontfamily_changed)
-        lineedit = LineEdit(parent=self)
+        self.lineedit = lineedit = LineEdit(parent=self)
         lineedit.return_pressed_wochange.connect(self.apply_fontfamily)
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
+        self._current_font = self.currentFont().family().lower()
         
     def apply_fontfamily(self):
-        if self.currentFont().exactMatch():
-            self.param_changed.emit('family', self.currentText())
+        ffamily = self.currentFont().family().lower()
+        if ffamily in shared.FONT_FAMILIES:
+            self.param_changed.emit('family', ffamily)
+            self._current_font = ffamily
 
     def on_fontfamily_changed(self):
-        if self.emit_if_focused and not self.hasFocus():
-            return
-        if self.currentFont().exactMatch():
-            self.param_changed.emit('family', self.currentText())
+        if not self.hasFocus():
+            self._current_font = self.currentFont().family().lower()
+            self.lineedit._text_changed = False
+            if self.emit_if_focused and not self.hasFocus():
+                return
+
+        ffamily = self.currentFont().family().lower()
+        if self._current_font != ffamily:
+            self.apply_fontfamily()
+            
 
 CHEVRON_SIZE = 20
 def chevron_down():

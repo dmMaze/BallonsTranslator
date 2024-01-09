@@ -18,24 +18,21 @@ local_default_set_kwargs = dict(set_selected=True, restore_cursor=True)
 
 class TextStyleUndoCommand(QUndoCommand):
 
-    def __init__(self, style_func: Callable, redo_params: Dict, undo_params: Dict):
+    def __init__(self, style_func: Callable, params: Dict, redo_values: List, undo_values: List):
         super().__init__()
         self.style_func = style_func
-        self.redo_params = redo_params
-        self.undo_params = undo_params
+        self.params = params
+        self.redo_values = redo_values
+        self.undo_values = undo_values
 
     def redo(self) -> None:
-        self.style_func(**self.redo_params)
+        self.style_func(values=self.redo_values, **self.params)
 
     def undo(self) -> None:
-        self.style_func(**self.undo_params)
+        self.style_func(values=self.undo_values, **self.params)
 
 
 def font_formating(push_undostack: bool = False):
-
-    """
-    let's hope it will make it easier to implement redo/undo behavior for these formatting op
-    """
 
     def func_wrapper(formatting_func):
 
@@ -49,12 +46,10 @@ def font_formating(push_undostack: bool = False):
                 blkitems = blkitems if isinstance(blkitems, List) else [blkitems]
             if len(blkitems) > 0:
                 if push_undostack:
-                    redo_params = copy.deepcopy(kwargs)
-                    redo_params.update({'param_name': param_name, 'values': values, 'act_ffmt': act_ffmt, 'is_global': is_global, 'blkitems': blkitems})
-                    undo_params = copy.deepcopy(kwargs)
+                    params = copy.deepcopy(kwargs)
+                    params.update({'param_name': param_name, 'act_ffmt': act_ffmt, 'is_global': is_global, 'blkitems': blkitems})
                     undo_values = [blkitem.getFontFormatAttr(param_name) for blkitem in blkitems]
-                    undo_params.update({'param_name': param_name, 'values': undo_values, 'act_ffmt': act_ffmt, 'is_global': is_global, 'blkitems': blkitems})
-                    cmd = TextStyleUndoCommand(formatting_func, redo_params, undo_params)
+                    cmd = TextStyleUndoCommand(formatting_func, params, values, undo_values)
                     SW.canvas.push_undo_command(cmd)
                 else:
                     formatting_func(param_name, values, act_ffmt, is_global, blkitems, *args, **kwargs)

@@ -195,14 +195,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         super().__init__()
         self.gv = parent
         self.ctrlblock_group = [
-            ControlBlockItem(self, 0),
-            ControlBlockItem(self, 1),
-            ControlBlockItem(self, 2),
-            ControlBlockItem(self, 3),
-            ControlBlockItem(self, 4),
-            ControlBlockItem(self, 5),
-            ControlBlockItem(self, 6),
-            ControlBlockItem(self, 7),
+            ControlBlockItem(self, idx) for idx in range(8)
         ]
         
         self.previewPixmap = QGraphicsPixmapItem(self)

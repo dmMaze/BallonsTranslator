@@ -209,6 +209,8 @@ def main():
     for font in os.listdir(PATH_FONTS):
         if font.endswith(('.ttf','.otf')):
             QFontDatabase.addApplicationFont((PATH_FONTS/font).as_posix())
+    
+    shared.FONT_FAMILIES = set(f.lower() for f in QFontDatabase.families())
     yahei = QFont('Microsoft YaHei UI')
     if yahei.exactMatch() and not sys.platform == 'darwin':
         QGuiApplication.setFont(yahei)
