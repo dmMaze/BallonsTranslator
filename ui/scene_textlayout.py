@@ -800,7 +800,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         tl = block.layout()
         
         option = doc.defaultTextOption()
-        option.setWrapMode(QTextOption.WrapMode.WrapAnywhere)
+        # maybe an option for it
+        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         tl.setTextOption(option)
         font = block.charFormat().font()
         
