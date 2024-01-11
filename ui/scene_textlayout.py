@@ -287,6 +287,8 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     
     def get_char_fontfmt(self, block_number: int, char_idx: int) -> CharFontFormat:
         charidx2frag_map = self._map_charidx2frag[block_number]
+        if len(charidx2frag_map) == 0:
+            return None
         if char_idx not in charidx2frag_map:    # caused by inputmethod
             char_idx = len(charidx2frag_map) - 1
         frag_idx = charidx2frag_map[char_idx]
@@ -840,13 +842,16 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 tgt_size = -1
                 for ii in range(nchar):
                     cfmt = self.get_char_fontfmt(blk_no, char_idx + ii)
+                    if cfmt is None:
+                        break
                     sz = cfmt.font.pointSizeF()
                     if sz > tgt_size:
                         tgt_size = sz
                         tgt_cfmt = cfmt
-                font = tgt_cfmt.font
-                tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
-                dy = -tbr.top() - line.ascent()
+                if tgt_cfmt is not None:
+                    font = tgt_cfmt.font
+                    tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
+                    dy = -tbr.top() - line.ascent()
                 
             line.setPosition(QPointF(doc_margin, y_offset + dy))
             tw = line.naturalTextWidth()
