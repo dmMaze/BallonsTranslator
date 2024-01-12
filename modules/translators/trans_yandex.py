@@ -28,10 +28,27 @@ class YandexTranslator(BaseTranslator):
         self.lang_map['Español'] = 'es'
         self.lang_map['Türk dili'] = 'tr'
 
+        self.api_url_v2 = "https://translate.yandex.net/api/v1.5/tr.json/translate"
         self.api_url = 'https://translate.api.cloud.yandex.net/translate/v2/translate'
 
-    def _translate(self, src_list: List[str]) -> List[str]:
+    def _translate_with_v2(self, src_list: List[str]) -> List[str]:
+        tr_list = []
+        for text in src_list:
+            params = {
+                'key': self.params['api_key'],
+                'text': text,
+                'lang': self.lang_map[self.lang_target],
+                'format': 'plain',
+            }
+            response = requests.get(self.api_url_v2, params=params)
+            if response.status_code == 200:
+                translated_text = response.json().get('text', [''])[0]
+                tr_list.append(translated_text)
+            else:
+                tr_list.append('')
+        return tr_list
 
+    def _translate_with_standard(self, src_list: List[str]) -> List[str]:
         body = {
             "targetLanguageCode": self.lang_map[self.lang_target],
             "texts": src_list,
@@ -43,12 +60,16 @@ class YandexTranslator(BaseTranslator):
             "Authorization": "Api-Key {0}".format(self.params['api_key'])
         }
 
-        translations = requests.post(self.api_url, json=body, headers=headers).json()['translations']
-
-        tr_list = []
-        for tr in translations:
-            if 'text' in tr:
-                tr_list.append(tr['text'])
-            else:
-                tr_list.append('')
+        response = requests.post(self.api_url, json=body, headers=headers)
+        if response.status_code == 200:
+            translations = response.json().get('translations', [])
+            tr_list = [tr.get('text', '') for tr in translations]
+        else:
+            tr_list = [''] * len(src_list)
         return tr_list
+
+    def _translate(self, src_list: List[str]) -> List[str]:
+        if self.params['api_key'].startswith("trnsl."):
+            return self._translate_with_v2(src_list)
+        else:
+            return self._translate_with_standard(src_list)
