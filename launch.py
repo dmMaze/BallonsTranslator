@@ -207,8 +207,10 @@ def main():
     # Fonts
     # Load custom fonts if they exist
     for font in os.listdir(PATH_FONTS):
-        if font.endswith(('.ttf','.otf')):
-            QFontDatabase.addApplicationFont((PATH_FONTS/font).as_posix())
+        if font.lower().endswith(('ttf','otf','ttc','pfb')):
+            fnt_idx = QFontDatabase.addApplicationFont((PATH_FONTS/font).as_posix())
+            if fnt_idx >= 0:
+                shared.CUSTOM_FONTS.append(QFontDatabase.applicationFontFamilies(fnt_idx)[0])
     
     shared.FONT_FAMILIES = set(f.lower() for f in QFontDatabase.families())
     yahei = QFont('Microsoft YaHei UI')

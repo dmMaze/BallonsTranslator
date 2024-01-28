@@ -92,6 +92,7 @@ CACHE_UPDATED = False
 check_local_file_hash = True
 
 FONT_FAMILIES: set = None
+CUSTOM_FONTS = []
 
 def load_cache():
     global cache_data
