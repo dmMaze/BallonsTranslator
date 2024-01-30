@@ -32,18 +32,22 @@ class TextStyleUndoCommand(QUndoCommand):
         self.style_func(values=self.undo_values, **self.params)
 
 
+def wrap_fntformat_input(values: str, blkitems: List[TextBlkItem], is_global: bool):
+    if is_global:
+        blkitems = SW.canvas.selected_text_items()
+    else:
+        blkitems = blkitems if isinstance(blkitems, List) else [blkitems]
+    if not isinstance(values, List):
+        values = [values] * len(blkitems)
+    return blkitems, values
+
 def font_formating(push_undostack: bool = False):
 
     def func_wrapper(formatting_func):
 
         def wrapper(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, set_focus: bool = False, *args, **kwargs):
-            if not isinstance(values, List):
-                values = [values]
+            blkitems, values = wrap_fntformat_input(values, blkitems, is_global)
             act_ffmt[param_name] = values[0]
-            if is_global:
-                blkitems = SW.canvas.selected_text_items()
-            else:
-                blkitems = blkitems if isinstance(blkitems, List) else [blkitems]
             if len(blkitems) > 0:
                 if push_undostack:
                     params = copy.deepcopy(kwargs)
@@ -85,10 +89,7 @@ def ffmt_change_weight(param_name: str, values: str, act_ffmt: FontFormat, is_gl
         blkitem.setFontWeight(value, **set_kwargs)
 
 def ffmt_change_bold(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, **kwargs):
-    if not isinstance(blkitems, List):
-        blkitems = [blkitems]
-    if not isinstance(values, List):
-        values = [values] * len(blkitems)
+    blkitems, values = wrap_fntformat_input(values, blkitems, is_global)
     values = [QFont.Bold if value else QFont.Normal for value in values]
     ffmt_change_weight('weight', values, act_ffmt, is_global, blkitems, **kwargs)
 
