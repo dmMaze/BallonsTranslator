@@ -16,8 +16,8 @@ class FontFormat(Config):
     family: str = field(default_factory=lambda: shared.DEFAULT_FONT_FAMILY) # to always apply shared.DEFAULT_FONT_FAMILY
     size: float = 24
     stroke_width: float = 0
-    frgb: Tuple = (0, 0, 0)
-    srgb: Tuple = (0, 0, 0)
+    frgb: List = field(default_factory=lambda: [0, 0, 0])
+    srgb: List = field(default_factory=lambda: [0, 0, 0])
     bold: bool = False
     underline: bool = False
     italic: bool = False
@@ -29,7 +29,7 @@ class FontFormat(Config):
     opacity: float = 1.
     shadow_radius: float = 0.
     shadow_strength: float = 1.
-    shadow_color: Tuple = (0, 0, 0)
+    shadow_color: List = field(default_factory=lambda: [0, 0, 0])
     shadow_offset: List = field(default_factory=lambda: [0., 0.])
     _style_name: str = ''
 

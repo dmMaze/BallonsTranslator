@@ -56,7 +56,6 @@ class TextBlkItem(QGraphicsTextItem):
         
         self.background_pixmap: QPixmap = None
         self.stroke_color = QColor(0, 0, 0)
-        self.bound_checking = False # not used
         self.oldPos = QPointF()
         self.oldRect = QRectF()
         self.repaint_on_changed = True
@@ -69,7 +68,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.input_method_from = -1
         self.input_method_text = ''
         self.block_all_input = False
-        self.block_moving = False
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
@@ -514,7 +512,6 @@ class TextBlkItem(QGraphicsTextItem):
         super().paint(painter, option, widget)
 
     def startEdit(self, pos: QPointF = None) -> None:
-        self.block_moving = True
         self.pre_editing = False
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
@@ -525,7 +522,6 @@ class TextBlkItem(QGraphicsTextItem):
             cursor = self.textCursor()
             cursor.setPosition(hit)
             self.setTextCursor(cursor)
-        self.block_moving = False
 
     def endEdit(self) -> None:
         self.end_edit.emit(self.idx)
@@ -539,15 +535,14 @@ class TextBlkItem(QGraphicsTextItem):
     def isEditing(self) -> bool:
         return self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
     
-    def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:    
-        super().mouseDoubleClickEvent(event)
-        self.startEdit(pos=event.pos())
+    def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if not self.isEditing():
+            self.startEdit(pos=event.pos())
+        else:
+            super().mouseDoubleClickEvent(event)
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.block_moving:
-            return
-        if not self.bound_checking or \
-            self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
+        if self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
             super().mouseMoveEvent(event)
         else:
             b_rect = self.boundingRect()
@@ -570,7 +565,7 @@ class TextBlkItem(QGraphicsTextItem):
             pos.setX(np.clip(pos.x(), -b_rect.x(), scene_rect.width()-b_rect.width()))
             pos.setY(np.clip(pos.y(), -b_rect.y(), scene_rect.height()-b_rect.height()))
             self.setPos(pos)
-        self.moving.emit(self)
+            self.moving.emit(self)
 
     # QT 5.15.x causing segmentation fault 
     def contextMenuEvent(self, event):
