@@ -542,29 +542,8 @@ class TextBlkItem(QGraphicsTextItem):
             super().mouseDoubleClickEvent(event)
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
-            super().mouseMoveEvent(event)
-        else:
-            b_rect = self.boundingRect()
-            scale = self.scale()
-            b_rect = QRectF(b_rect.x()*scale, b_rect.y()*scale, b_rect.width()*scale, b_rect.height()*scale)
-            pos = event.pos() - event.lastPos()
-            pos = QPointF(pos.x()*scale, pos.y()*scale)
-            if self.blk.angle != 0: # angled need text some recalculations
-                x, y = pos.x(), pos.y()
-                rad = -self.blk.angle * math.pi / 180
-                s, c = math.sin(rad), math.cos(rad)
-                pos.setX(x * c + y * s)
-                pos.setY(-x * s + y * c)
-                w, h = b_rect.width(), b_rect.height()
-                b_poly = np.array([[0, 0, w, 0, w, h, 0, h]])
-                b_poly = rotate_polygons([0, 0], b_poly, -self.blk.angle)[0]
-                b_rect.setRect(b_poly[::2].min(), b_poly[1::2].min(), b_poly[::2].max(), b_poly[1::2].max())
-            pos += self.pos()
-            scene_rect = self.scene().sceneRect()
-            pos.setX(np.clip(pos.x(), -b_rect.x(), scene_rect.width()-b_rect.width()))
-            pos.setY(np.clip(pos.y(), -b_rect.y(), scene_rect.height()-b_rect.height()))
-            self.setPos(pos)
+        super().mouseMoveEvent(event)  
+        if self.textInteractionFlags() != Qt.TextInteractionFlag.TextEditorInteraction:
             self.moving.emit(self)
 
     # QT 5.15.x causing segmentation fault 
