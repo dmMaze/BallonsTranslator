@@ -47,8 +47,8 @@ def font_formating(push_undostack: bool = False):
 
         def wrapper(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, set_focus: bool = False, *args, **kwargs):
             blkitems, values = wrap_fntformat_input(values, blkitems, is_global)
-            act_ffmt[param_name] = values[0]
             if len(blkitems) > 0:
+                act_ffmt[param_name] = values[0]
                 if push_undostack:
                     params = copy.deepcopy(kwargs)
                     params.update({'param_name': param_name, 'act_ffmt': act_ffmt, 'is_global': is_global, 'blkitems': blkitems})
