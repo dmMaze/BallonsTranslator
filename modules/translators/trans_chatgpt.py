@@ -222,7 +222,11 @@ class GPTTranslator(BaseTranslator):
                     response = self._request_translation(prompt, chat_sample)
                     new_translations = re.split(r'<\|\d+\|>', response)[-num_src:]
                     if len(new_translations) != num_src:
-                        raise InvalidNumTranslations
+                        _tr2 = response.split('\n') # https://github.com/dmMaze/BallonsTranslator/issues/379
+                        if len(_tr2) == num_src:
+                            new_translations = _tr2
+                        else:
+                            raise InvalidNumTranslations
                     break
                 except InvalidNumTranslations:
                     retry_attempt += 1
