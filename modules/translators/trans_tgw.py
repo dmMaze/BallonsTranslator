@@ -35,9 +35,7 @@ class TGWTranslator(BaseTranslator):
     
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'zh'
-        self.lang_map['繁體中文'] = 'cht'
         self.lang_map['日本語'] = 'jp'
-        self.lang_map['English'] = 'en'  
     
     def langmap(self):
         return {"zh": "zh-CN"}
