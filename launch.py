@@ -212,7 +212,7 @@ def main():
             if fnt_idx >= 0:
                 shared.CUSTOM_FONTS.append(QFontDatabase.applicationFontFamilies(fnt_idx)[0])
     
-    shared.FONT_FAMILIES = set(f.lower() for f in QFontDatabase.families())
+    shared.FONT_FAMILIES = set(f for f in QFontDatabase.families())
     yahei = QFont('Microsoft YaHei UI')
     if yahei.exactMatch() and not sys.platform == 'darwin':
         QGuiApplication.setFont(yahei)

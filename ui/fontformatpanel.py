@@ -328,22 +328,22 @@ class FontFamilyComboBox(QFontComboBox):
         lineedit.return_pressed_wochange.connect(self.apply_fontfamily)
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
-        self._current_font = self.currentFont().family().lower()
+        self._current_font = self.currentFont().family()
         
     def apply_fontfamily(self):
-        ffamily = self.currentFont().family().lower()
+        ffamily = self.currentFont().family()
         if ffamily in shared.FONT_FAMILIES:
             self.param_changed.emit('family', ffamily)
             self._current_font = ffamily
 
     def on_fontfamily_changed(self):
         if not self.hasFocus():
-            self._current_font = self.currentFont().family().lower()
+            self._current_font = self.currentFont().family()
             self.lineedit._text_changed = False
             if self.emit_if_focused and not self.hasFocus():
                 return
 
-        ffamily = self.currentFont().family().lower()
+        ffamily = self.currentFont().family()
         if self._current_font != ffamily:
             self.apply_fontfamily()
             

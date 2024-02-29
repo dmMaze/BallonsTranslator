@@ -109,6 +109,7 @@ color_pattern = re.compile(r'color:(.*?);', re.DOTALL)
 td_pattern = re.compile(r'<td(.*?)>(.*?)</td>', re.DOTALL)
 table_pattern = re.compile(r'(.*?)<table', re.DOTALL)
 fontsize_pattern = re.compile(r'font-size:(.*?)pt;', re.DOTALL)
+ffamily_pattern = re.compile(r'font-family:\'(.*?)\'', re.DOTALL)
 
 
 def span_repl_func(matched, color):
@@ -127,6 +128,9 @@ def set_html_color(html, rgb):
         return color_pattern.sub(f'color:{hex_color};', html)
     else:
         return span_pattern.sub(lambda matched: span_repl_func(matched, hex_color), html)
+    
+def set_html_family(html, family):
+    return ffamily_pattern.sub(f'font-family:\'{family}\'', html)
 
 def html_max_fontsize(html:  str) -> float:
     size_list = fontsize_pattern.findall(html)
