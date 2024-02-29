@@ -128,13 +128,14 @@ OCR并翻译选中文本框
 * A/D或pageUp/Down翻页, 如果当前页面未保存会自动保存
 * "T"切换到文本编辑模式下(底部最右"T"图标), W激活文本块创建模式后在画布右键拉文本框
 * "P"切换到画板模式, 右下角滑条改原图透明度
-* 底部左侧"OCR"和"A"按钮控制启用/禁用OCR翻译功能, 禁用后再Run程序就只做文本检测和抹字  
+* 标题栏->运行 可以启用/禁用任意自动化模块, 全部禁用后Run会根据全局字体样式和嵌字设置重新渲染文本  
 * 设置面板配置各自动化模块参数
 * Ctrl++/-或滚轮缩放画布
 * Ctrl+A可选中界面中所有文本块
 * Ctrl+F查找当前页, Ctrl+G全局查找
 * 0-9调整嵌字/原图透明度
 * 文本编辑下```Ctrl+B```加粗, ```Ctrl+U```下划线, ```Ctrl+I```斜体
+* 字体样式面板-"特效"修改透明度添加阴影
 
 <img src="doc/src/configpanel.png">  
 
@@ -165,6 +166,7 @@ Sugoi翻译器作者: [mingshiba](https://www.patreon.com/mingshiba).
  * 彩云, 需要申请[token](https://dashboard.caiyunapp.com/)
  * papago  
  * DeepL 和 Sugoi(及它的CT2 Translation转换)翻译器, 感谢[Snowad14](https://github.com/Snowad14)  
+ * 支持[Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame)
 
  如需添加新的翻译器请参考[加别的翻译器](doc/加别的翻译器.md), 本程序添加新翻译器只需要继承基类实现两个接口即可不需要理会代码其他部分, 欢迎大佬提pr
 
