@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Callable
 
 import cv2
 import numpy as np
@@ -70,9 +70,10 @@ def text_effect_preview_pipe(target: QPixmap, font_size: float, fontfmt: FontFor
 class TextEffectPanel(Widget):
     apply = Signal()
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, update_text_style_label: Callable, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+        self.update_text_style_label = update_text_style_label
         self.fontfmt: FontFormat = None
         self.fontfmt = FontFormat()
         self.active_fontfmt = FontFormat()
@@ -182,6 +183,7 @@ class TextEffectPanel(Widget):
         self.active_fontfmt.shadow_radius = self.fontfmt.shadow_radius
         self.active_fontfmt.shadow_strength = self.fontfmt.shadow_strength
         self.active_fontfmt.shadow_offset = self.fontfmt.shadow_offset
+        self.update_text_style_label()
         self.apply.emit()
 
     def on_cancel_clicked(self):

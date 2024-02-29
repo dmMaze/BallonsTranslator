@@ -1006,7 +1006,7 @@ class FontFormatPanel(Widget):
 
         self.effectBtn = ClickableLabel(self.tr("Effect"), self)
         self.effectBtn.clicked.connect(self.on_effectbtn_clicked)
-        self.effect_panel = TextEffectPanel()
+        self.effect_panel = TextEffectPanel(update_text_style_label=self.update_text_style_label)
         self.effect_panel.hide()
 
         self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
@@ -1073,11 +1073,15 @@ class FontFormatPanel(Widget):
         func = FM.handle_ffmt_change.get(param_name)
         if self.global_mode():
             func(param_name, value, self.global_format, is_global=True)
+            self.update_text_style_label()
+        else:
+            func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True)
+
+    def update_text_style_label(self):
+        if self.global_mode():
             active_text_style_label = self.active_text_style_label()
             if active_text_style_label is not None:
                 active_text_style_label.update_style(self.global_format)
-        else:
-            func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True)
 
     def changingColor(self):
         self.focusOnColorDialog = True
