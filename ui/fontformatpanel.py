@@ -337,15 +337,15 @@ class FontFamilyComboBox(QFontComboBox):
             self._current_font = ffamily
 
     def on_fontfamily_changed(self):
-        if not self.hasFocus():
-            self._current_font = self.currentFont().family()
-            self.lineedit._text_changed = False
-            if self.emit_if_focused and not self.hasFocus():
-                return
+        # if not self.hasFocus():
+        # #     self._current_font = self.currentFont().family()
+        # #     self.lineedit._text_changed = False
+        #     if self.emit_if_focused and not self.hasFocus():
+        #         return
 
-        ffamily = self.currentFont().family()
-        if self._current_font != ffamily:
-            self.apply_fontfamily()
+        # ffamily = self.currentFont().family()
+        # if self._current_font != ffamily:
+        self.apply_fontfamily()
             
 
 CHEVRON_SIZE = 20
@@ -1113,6 +1113,7 @@ class FontFormatPanel(Widget):
             
     def set_active_format(self, font_format: FontFormat):
         C.active_format = font_format
+        self.familybox.blockSignals(True)
         self.fontsizebox.fcombobox.setCurrentText(str(int(font_format.size)))
         self.familybox.setCurrentText(font_format.family)
         self.colorPicker.setPickerColor(font_format.frgb)
@@ -1125,6 +1126,7 @@ class FontFormatPanel(Widget):
         self.formatBtnGroup.underlineBtn.setChecked(font_format.underline)
         self.formatBtnGroup.italicBtn.setChecked(font_format.italic)
         self.alignBtnGroup.setAlignment(font_format.alignment)
+        self.familybox.blockSignals(False)
 
     def set_globalfmt_title(self):
         active_text_style_label = self.active_text_style_label()
@@ -1176,4 +1178,3 @@ class FontFormatPanel(Widget):
         self.effect_panel.fontfmt = copy.deepcopy(C.active_format)
         self.effect_panel.updatePanels()
         self.effect_panel.show()
-        

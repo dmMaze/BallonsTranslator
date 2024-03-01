@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from qtpy.QtCore import Signal, Qt, QPoint
 from qtpy.QtGui import QColor, QShowEvent, QPixmap, QImage, QPainter, QFontMetricsF
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout, QScrollArea, QGroupBox, QPushButton, QLabel
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout, QScrollArea, QGroupBox, QPushButton, QLabel, QDialog
 
 from utils import shared as C
 from .misc import pixmap2ndarray, ndarray2pixmap
@@ -67,11 +67,13 @@ def text_effect_preview_pipe(target: QPixmap, font_size: float, fontfmt: FontFor
     return target
 
 
-class TextEffectPanel(Widget):
+class TextEffectPanel(QDialog):
     apply = Signal()
 
     def __init__(self, update_text_style_label: Callable, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+
+        self.setModal(True)
 
         self.update_text_style_label = update_text_style_label
         self.fontfmt: FontFormat = None
