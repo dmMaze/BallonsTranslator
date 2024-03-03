@@ -47,6 +47,12 @@ class SakuraTranslator(BaseTranslator):
     @property
     def api_base_raw(self) -> str:
         return self.params['api baseurl']
+    
+    @property
+    def api_base(self) -> str:
+        if "/v1" not in self.api_base_raw:
+            return self.api_base_raw + "/v1"
+        return self.api_base_raw
 
     _CHAT_SYSTEM_TEMPLATE = (
         '你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。'
@@ -55,11 +61,6 @@ class SakuraTranslator(BaseTranslator):
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'Simplified Chinese'
         self.lang_map['日本語'] = 'Japanese'
-        if "/v1" not in self.api_base_raw:
-            self.api_base = self.api_base_raw + "/v1"
-        if not OPENAPI_V1_API:
-            openai.api_base = self.api_base_raw
-            openai.api_key = "sk-114514"
         self.temperature = 0.3
         self.top_p = 0.3
         self.frequency_penalty = 0.0
@@ -147,6 +148,11 @@ class SakuraTranslator(BaseTranslator):
         return new_texts
 
     def _translate(self, src_list):
+
+        if not OPENAPI_V1_API:
+            openai.api_base = self.api_base_raw
+            openai.api_key = "sk-114514"
+
         queries = src_list
         translations = []
         self.logger.debug(
@@ -234,7 +240,7 @@ class SakuraTranslator(BaseTranslator):
                     if server_error_attempt >= self.retry_attempts:
                         self.logger.error(
                             'Sakura server error. Returning original text.')
-                        return prompt
+                        return '\n'.join(prompt)
                     self.logger.warn(
                         f'Restarting request due to a server error. Attempt: {server_error_attempt}')
                     time.sleep(1)
