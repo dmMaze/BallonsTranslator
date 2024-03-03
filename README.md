@@ -14,7 +14,7 @@
   - 译文回填参考对原文排版的估计，包括颜色，轮廓，角度，朝向，对齐方式等
   - 最后效果取决于文本检测，识别，抹字，机翻四个模块的整体表现  
   - 支持日漫和美漫
-  - 英译中，日译英排版已优化，文本布局以提取到的背景泡为参考，中文基于pkuseg进行断句，日译中竖排待改善
+  - 英译中，日译英排版已优化，文本布局以提取到的背景泡为参考，中文基于 pkuseg 进行断句，日译中竖排待改善
   
 * 图像编辑  
   支持掩膜编辑和修复画笔
@@ -29,7 +29,7 @@
 # 使用说明
 
 ## Windows
-如果用windows而且不想自己手动配置环境，而且能正常访问互联网:  
+如果用 Windows 而且不想自己手动配置环境，而且能正常访问互联网:  
 从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 BallonsTranslator_dev_src_with_gitpython.7z，解压并运行 launch_win.bat 启动程序。如果无法自动下载库和模型，手动下载 data 和 ballontrans_pylibs_win.7z 并解压到程序目录下。  
 运行 scripts/local_gitpull.bat 获取更新。 
 
@@ -47,7 +47,7 @@ $ python3 launch.py
 
 第一次运行会自动安装 torch 等依赖项并下载所需模型和文件，如果模型下载失败，需要手动从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 data 文件夹(或者报错里提到缺失的文件)，并保存到源码目录下的对应位置。
 
-如果要使用Sugoi翻译器(仅日译英)，下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm)，将 ```sugoi_translator``` 移入BallonsTranslator/ballontranslator/data/models。 
+如果要使用Sugoi翻译器(仅日译英)，下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm)，将 ```sugoi_translator``` 移入 BallonsTranslator/ballontranslator/data/models。 
 
 ## 构建 macOS 应用（适用 apple silicon 芯片）
 <i>如果构建不成功也可以直接跑源码</i>
@@ -102,7 +102,7 @@ curl -L https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/m
 </p>
 
 按下鼠标左键拖动矩形框抹除框内文字，按下右键拉框清除框内修复结果。  
-抹除结果取决于算法(gif中的"方法1"和"方法2")对文字区域估算的准确程度，一般拉的框最好稍大于需要抹除的文本块。两种方法都比较玄学，能够应付绝大多数简单文字简单背景，部分复杂背景简单文字/简单背景复杂文字，少数复杂背景复杂文字，可以多拉几次试试。  
+抹除结果取决于算法(gif 中的"方法1"和"方法2")对文字区域估算的准确程度，一般拉的框最好稍大于需要抹除的文本块。两种方法都比较玄学，能够应付绝大多数简单文字简单背景，部分复杂背景简单文字/简单背景复杂文字，少数复杂背景复杂文字，可以多拉几次试试。  
 勾选"自动"拉完框立即修复，否则需要按下"修复"或者空格键才进行修复，或 ```Ctrl+D``` 删除矩形选框。 
 
 ## 文本编辑
@@ -162,7 +162,7 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 
 ### 翻译器
 
- * 谷歌翻译器已经关闭中国服务，大陆再用需要设置全局代理，并在设置面板把url换成*.com
+ * 谷歌翻译器已经关闭中国服务，大陆再用需要设置全局代理，并在设置面板把 url 换成*.com
  * 彩云，需要申请 [token](https://dashboard.caiyunapp.com/)
  * papago  
  * DeepL 和 Sugoi (及它的 CT2 Translation 转换)翻译器，感谢 [Snowad14](https://github.com/Snowad14)  
