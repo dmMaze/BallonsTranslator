@@ -176,12 +176,13 @@ OCR & Translate Selected Area
 * ```W``` to activate text block creating mode, then drag the mouse on the canvas with the right button clicked to add a new text block. (see the text editing gif)
 * ```P``` to image-editting mode.  
 * In the image editing mode, use the slider on the right bottom to control the original image transparency.
-* The "OCR" and "A" button in the bottom toolbar controls whether to enable OCR and translation, if you disable them, the program will only do the text detection and removal.  
+* Disable or enable any automatic modules via titlebar->run, run with all modules disabled will re-letter and re-render all text according to corresponding settings.  
 * Set parameters of automatic modules in the config panel.  
 * ```Ctrl++```/```Ctrl+-``` (Also ```Ctrl+Shift+=```) to resize image.
 * ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
 * ```0-9``` to adjust opacity of lettering layer
 * For text editing: bold - ```Ctrl+B```, underline - ```Ctrl+U```, Italics - ```Ctrl+I``` 
+* Set text shadow and transparency in the text style panel -> Effect.  
   
 <img src="doc/src/configpanel.png">  
 
@@ -213,6 +214,7 @@ Available translators: Google, DeepL, ChatGPT, Sugoi, Caiyun, Baidu. Papago, and
  * [Caiyun](https://dashboard.caiyunapp.com/), [ChatGPT](https://platform.openai.com/playground), [Yandex](https://yandex.com/dev/translate/), [Baidu](http://developers.baidu.com/), and [DeepL](https://www.deepl.com/docs-api/api-access) translators needs to require a token or api key.
  * DeepL & Sugoi translator (and it's CT2 Translation conversion) thanks to [Snowad14](https://github.com/Snowad14).
  * Sugoi translates Japanese to English completely offline.
+ * [Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame)
 
  To add a new translator, please reference [how_to_add_new_translator](doc/how_to_add_new_translator.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
 

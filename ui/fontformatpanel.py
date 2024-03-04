@@ -328,24 +328,24 @@ class FontFamilyComboBox(QFontComboBox):
         lineedit.return_pressed_wochange.connect(self.apply_fontfamily)
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
-        self._current_font = self.currentFont().family().lower()
+        self._current_font = self.currentFont().family()
         
     def apply_fontfamily(self):
-        ffamily = self.currentFont().family().lower()
+        ffamily = self.currentFont().family()
         if ffamily in shared.FONT_FAMILIES:
             self.param_changed.emit('family', ffamily)
             self._current_font = ffamily
 
     def on_fontfamily_changed(self):
-        if not self.hasFocus():
-            self._current_font = self.currentFont().family().lower()
-            self.lineedit._text_changed = False
-            if self.emit_if_focused and not self.hasFocus():
-                return
+        # if not self.hasFocus():
+        # #     self._current_font = self.currentFont().family()
+        # #     self.lineedit._text_changed = False
+        #     if self.emit_if_focused and not self.hasFocus():
+        #         return
 
-        ffamily = self.currentFont().family().lower()
-        if self._current_font != ffamily:
-            self.apply_fontfamily()
+        # ffamily = self.currentFont().family()
+        # if self._current_font != ffamily:
+        self.apply_fontfamily()
             
 
 CHEVRON_SIZE = 20
@@ -1006,7 +1006,7 @@ class FontFormatPanel(Widget):
 
         self.effectBtn = ClickableLabel(self.tr("Effect"), self)
         self.effectBtn.clicked.connect(self.on_effectbtn_clicked)
-        self.effect_panel = TextEffectPanel()
+        self.effect_panel = TextEffectPanel(update_text_style_label=self.update_text_style_label)
         self.effect_panel.hide()
 
         self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
@@ -1073,11 +1073,15 @@ class FontFormatPanel(Widget):
         func = FM.handle_ffmt_change.get(param_name)
         if self.global_mode():
             func(param_name, value, self.global_format, is_global=True)
+            self.update_text_style_label()
+        else:
+            func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True)
+
+    def update_text_style_label(self):
+        if self.global_mode():
             active_text_style_label = self.active_text_style_label()
             if active_text_style_label is not None:
                 active_text_style_label.update_style(self.global_format)
-        else:
-            func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True)
 
     def changingColor(self):
         self.focusOnColorDialog = True
@@ -1109,6 +1113,7 @@ class FontFormatPanel(Widget):
             
     def set_active_format(self, font_format: FontFormat):
         C.active_format = font_format
+        self.familybox.blockSignals(True)
         self.fontsizebox.fcombobox.setCurrentText(str(int(font_format.size)))
         self.familybox.setCurrentText(font_format.family)
         self.colorPicker.setPickerColor(font_format.frgb)
@@ -1121,6 +1126,7 @@ class FontFormatPanel(Widget):
         self.formatBtnGroup.underlineBtn.setChecked(font_format.underline)
         self.formatBtnGroup.italicBtn.setChecked(font_format.italic)
         self.alignBtnGroup.setAlignment(font_format.alignment)
+        self.familybox.blockSignals(False)
 
     def set_globalfmt_title(self):
         active_text_style_label = self.active_text_style_label()
@@ -1172,4 +1178,3 @@ class FontFormatPanel(Widget):
         self.effect_panel.fontfmt = copy.deepcopy(C.active_format)
         self.effect_panel.updatePanels()
         self.effect_panel.show()
-        

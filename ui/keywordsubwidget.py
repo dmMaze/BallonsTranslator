@@ -1,6 +1,6 @@
 import re, traceback
 
-from qtpy.QtWidgets import QHeaderView, QTableView, QWidget, QVBoxLayout
+from qtpy.QtWidgets import QHeaderView, QTableView, QWidget, QVBoxLayout, QDialog
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QStandardItem, QStandardItemModel
 from typing import List, Dict
@@ -9,7 +9,7 @@ from utils.logger import logger as LOGGER
 from utils.fontformat import FontFormat
 from .stylewidgets import Widget, NoBorderPushBtn
 
-class KeywordSubWidget(Widget):
+class KeywordSubWidget(QDialog):
 
     hide_signal = Signal()
     load_preset = Signal(FontFormat)
@@ -17,6 +17,7 @@ class KeywordSubWidget(Widget):
     def __init__(self, title: str, parent: QWidget = None, *args, **kwargs) -> None:
         super().__init__(parent=parent, *args, **kwargs)
         self.setWindowTitle(title)
+        self.setModal(True)
         self.sublist: List[Dict] = []
 
         self.submodel = QStandardItemModel()

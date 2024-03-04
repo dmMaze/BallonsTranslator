@@ -14,7 +14,7 @@ from utils.text_processing import is_cjk, full_len, half_len
 from utils.textblock import TextBlock
 from utils import shared
 from modules.translators.trans_chatgpt import GPTTranslator
-from .misc import parse_stylesheet
+from .misc import parse_stylesheet, set_html_family
 from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from
 from utils.fontformat import pt2px
 from .config_proj import ProjImgTrans
@@ -870,6 +870,7 @@ class MainWindow(FramelessWindow):
         override_alignment = pcfg.let_alignment_flag == 1
         override_effect = pcfg.let_fnteffect_flag == 1
         override_writing_mode = pcfg.let_writing_mode_flag == 1
+        override_font_family = pcfg.let_family_flag == 1
         gf = self.textPanel.formatpanel.global_format
 
         inpaint_only = pcfg.module.enable_inpaint
@@ -900,6 +901,10 @@ class MainWindow(FramelessWindow):
                     blk.shadow_offset = gf.shadow_offset
                 if override_writing_mode:
                     blk.vertical = gf.vertical
+                if override_font_family:
+                    blk.font_family = gf.family
+                    if blk.rich_text:
+                        blk.rich_text = set_html_family(blk.rich_text, gf.family)
                 
                 blk.line_spacing = gf.line_spacing
                 blk.letter_spacing = gf.letter_spacing

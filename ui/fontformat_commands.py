@@ -32,19 +32,25 @@ class TextStyleUndoCommand(QUndoCommand):
         self.style_func(values=self.undo_values, **self.params)
 
 
+def wrap_fntformat_input(values: str, blkitems: List[TextBlkItem], is_global: bool):
+    if is_global:
+        blkitems = SW.canvas.selected_text_items()
+    else:
+        blkitems = blkitems if isinstance(blkitems, List) else [blkitems]
+    if not isinstance(values, List):
+        values = [values] * len(blkitems)
+    return blkitems, values
+
 def font_formating(push_undostack: bool = False):
 
     def func_wrapper(formatting_func):
 
         def wrapper(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, set_focus: bool = False, *args, **kwargs):
-            if not isinstance(values, List):
-                values = [values]
-            act_ffmt[param_name] = values[0]
             if is_global:
-                blkitems = SW.canvas.selected_text_items()
-            else:
-                blkitems = blkitems if isinstance(blkitems, List) else [blkitems]
+                act_ffmt[param_name] = values
+            blkitems, values = wrap_fntformat_input(values, blkitems, is_global)
             if len(blkitems) > 0:
+                act_ffmt[param_name] = values[0]
                 if push_undostack:
                     params = copy.deepcopy(kwargs)
                     params.update({'param_name': param_name, 'act_ffmt': act_ffmt, 'is_global': is_global, 'blkitems': blkitems})
@@ -84,13 +90,13 @@ def ffmt_change_weight(param_name: str, values: str, act_ffmt: FontFormat, is_gl
     for blkitem, value in zip(blkitems, values):
         blkitem.setFontWeight(value, **set_kwargs)
 
+@font_formating()
 def ffmt_change_bold(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, **kwargs):
-    if not isinstance(blkitems, List):
-        blkitems = [blkitems]
-    if not isinstance(values, List):
-        values = [values] * len(blkitems)
+    set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     values = [QFont.Bold if value else QFont.Normal for value in values]
-    ffmt_change_weight('weight', values, act_ffmt, is_global, blkitems, **kwargs)
+    # ffmt_change_weight('weight', values, act_ffmt, is_global, blkitems, **kwargs)
+    for blkitem, value in zip(blkitems, values):
+        blkitem.setFontWeight(value, **set_kwargs)
 
 @font_formating(push_undostack=True)
 def ffmt_change_letter_spacing(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):

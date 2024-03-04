@@ -351,7 +351,7 @@ def square_pad_resize(img: np.ndarray, tgt_size: int):
     down_scale_ratio = tgt_size / img.shape[0]
     assert down_scale_ratio <= 1
     if down_scale_ratio < 1:
-        img = cv2.resize(img, (tgt_size, tgt_size), interpolation=cv2.INTER_LINEAR)
+        img = cv2.resize(img, (tgt_size, tgt_size), interpolation=cv2.INTER_AREA)
 
     return img, down_scale_ratio, pad_h, pad_w
 

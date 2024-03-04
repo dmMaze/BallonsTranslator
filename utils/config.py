@@ -79,6 +79,7 @@ class ProgramConfig(Config):
     let_fnteffect_flag: int = 1
     let_alignment_flag: int = 0
     let_writing_mode_flag: int = 0
+    let_family_flag: int = 0
     let_autolayout_flag: bool = True
     let_autolayout_adaptive_fntsz: bool = True
     let_uppercase_flag: bool = True
@@ -173,7 +174,6 @@ def load_textstyle_from(p: str, raise_exception = False):
         text_styles.clear()
     text_styles.extend(styles_loaded)
     pcfg.text_styles_path = p
-    LOGGER.info(f'Text style loaded from {p}')
 
 def load_config():
 

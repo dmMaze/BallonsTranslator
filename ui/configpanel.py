@@ -452,6 +452,10 @@ class ConfigPanel(Widget):
         self.let_writing_mode_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Writing-mode'), parent=self, insert_stretch=True)
         self.let_writing_mode_combox.currentIndexChanged.connect(self.on_writing_mode_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 3, 0)
+        self.let_family_combox, sublock = combobox_with_label([self.tr('Keep existing'), self.tr('Always use global setting')], self.tr('Font Family'), parent=self, insert_stretch=True)
+        self.let_family_combox.currentIndexChanged.connect(self.on_family_flag_changed)
+        global_fntfmt_layout.addWidget(sublock, 3, 1)
+
         global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
 
         self.let_autolayout_checker, sublock = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
@@ -575,6 +579,9 @@ class ConfigPanel(Widget):
 
     def on_writing_mode_flag_changed(self):
         pcfg.let_writing_mode_flag = self.let_writing_mode_combox.currentIndex()
+
+    def on_family_flag_changed(self):
+        pcfg.let_family_flag = self.let_family_combox.currentIndex()
 
     def on_effect_flag_changed(self):
         pcfg.let_fnteffect_flag = self.let_effect_combox.currentIndex()

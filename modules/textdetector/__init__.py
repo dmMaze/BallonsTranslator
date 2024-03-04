@@ -54,8 +54,8 @@ class ComicTextDetector(TextDetectorBase):
     params = {
         'detect_size': {
             'type': 'selector',
-            'options': [1024, 1152, 1280], 
-            'select': 1280
+            'options': [896, 1024, 1152, 1280], 
+            'select': 1024
         }, 
         'det_rearrange_max_batches': {
             'type': 'selector',
@@ -68,7 +68,7 @@ class ComicTextDetector(TextDetectorBase):
     _load_model_keys = {'model'}
 
     device = DEFAULT_DEVICE
-    detect_size = 1280
+    detect_size = 1024
     def __init__(self, **params) -> None:
         super().__init__(**params)
 
