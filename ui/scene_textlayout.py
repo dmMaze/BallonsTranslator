@@ -653,10 +653,20 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             tbr_h = space_w = let_sp_offset = 0
             char_idx += num_lspaces
+
+            # https://github.com/dmMaze/BallonsTranslator/issues/388#issuecomment-1975146419
+            no_let_sp = set()
+            for it in re.finditer('——', blk_text):
+                no_let_sp.add(it.start())
+
             if char_idx < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 space_w = cfmt.space_width
-                let_sp_offset = cfmt.tbr.height() * (ls - 1)
+                if char_idx in no_let_sp:
+                    let_sp_offset = 0
+                else:
+                    let_sp_offset = cfmt.tbr.height() * (ls - 1)
+
                 tbr_h = cfmt.tbr.height() + let_sp_offset
                 char = blk_text[char_idx]
                 if char in PUNSET_VERNEEDROTATE:
