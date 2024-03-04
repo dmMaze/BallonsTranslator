@@ -16,7 +16,7 @@ python = sys.executable
 git = os.environ.get('GIT', "git")
 skip_install = False
 index_url = os.environ.get('INDEX_URL', "")
-QT_APIS = ['pyqt5', 'pyqt6', 'pyside6']
+QT_APIS = ['pyqt6', 'pyside6']
 stored_commit_hash = None
 
 REQ_WIN = [
@@ -124,6 +124,11 @@ def main():
     if args.debug:
         os.environ['BALLOONTRANS_DEBUG'] = '1' 
 
+    if not args.qt_api in QT_APIS:
+        os.environ['QT_API'] = 'pyqt6'
+    else:
+        os.environ['QT_API'] = args.qt_api
+
     from utils import appinfo
 
     commit = commit_hash()
@@ -151,13 +156,7 @@ def main():
     config = program_config.pcfg
 
     from modules.prepare_local_files import prepare_local_files_forall
-
     prepare_local_files_forall()
-
-    if not args.qt_api in QT_APIS:
-        os.environ['QT_API'] = 'pyqt6'
-    else:
-        os.environ['QT_API'] = args.qt_api
 
     if sys.platform == 'win32':
         import ctypes
