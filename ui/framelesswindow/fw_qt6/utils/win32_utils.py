@@ -8,9 +8,12 @@ import win32api
 import win32con
 import win32gui
 import win32print
+from win32comext.shell import shellcon
 from qtpy.QtCore import QOperatingSystemVersion
 from qtpy.QtGui import QGuiApplication
-from win32comext.shell import shellcon
+from qtpy import API
+USE_PYSIDE6 = API == 'pyside6'
+
 
 
 def isMaximized(hWnd):
@@ -171,25 +174,48 @@ def isGreaterEqualVersion(version):
     """
     return QOperatingSystemVersion.current() >= version
 
-
-def isGreaterEqualWin8_1():
-    """ determine if the windows version ≥ Win8.1 """
-    return isGreaterEqualVersion(QOperatingSystemVersion.Windows8_1)
-
-
-def isGreaterEqualWin10():
-    """ determine if the windows version ≥ Win10 """
-    return isGreaterEqualVersion(QOperatingSystemVersion.Windows10)
+if USE_PYSIDE6:
+    from PySide6.QtCore import QVersionNumber
+    def isGreaterEqualWin8_1():
+        """ determine if the windows version ≥ Win8.1 """
+        cv = QOperatingSystemVersion.current()
+        cv = QVersionNumber(cv.majorVersion(), cv.minorVersion(), cv.microVersion())
+        return cv >= QVersionNumber(8, 1, 0)
 
 
-def isGreaterEqualWin11():
-    """ determine if the windows version ≥ Win10 """
-    return isGreaterEqualVersion(QOperatingSystemVersion.Windows10) and sys.getwindowsversion().build >= 22000
+    def isGreaterEqualWin10():
+        """ determine if the windows version ≥ Win10 """
+        return "Windows-10" in platform()
 
 
-def isWin7():
-    """ determine if the windows version is Win7 """
-    return "Windows-7" in platform()
+    def isGreaterEqualWin11():
+        """ determine if the windows version ≥ Win10 """
+        return isGreaterEqualWin10() and sys.getwindowsversion().build >= 22000
+
+
+    def isWin7():
+        """ determine if the windows version is Win7 """
+        return "Windows-7" in platform()
+
+else:
+    def isGreaterEqualWin8_1():
+        """ determine if the windows version ≥ Win8.1 """
+        return isGreaterEqualVersion(QOperatingSystemVersion.Windows8_1)
+
+
+    def isGreaterEqualWin10():
+        """ determine if the windows version ≥ Win10 """
+        return isGreaterEqualVersion(QOperatingSystemVersion.Windows10)
+
+
+    def isGreaterEqualWin11():
+        """ determine if the windows version ≥ Win10 """
+        return isGreaterEqualVersion(QOperatingSystemVersion.Windows10) and sys.getwindowsversion().build >= 22000
+
+
+    def isWin7():
+        """ determine if the windows version is Win7 """
+        return "Windows-7" in platform()
 
 
 class APPBARDATA(Structure):
