@@ -871,9 +871,10 @@ class SceneTextManager(QObject):
     def onTransWidgetHoverEnter(self, idx: int):
         if self.is_editting():
             return
-        blk_item = self.textblk_item_list[idx]
-        self.canvas.gv.ensureVisible(blk_item)
-        self.txtblkShapeControl.setBlkItem(blk_item)
+        if idx < len(self.textblk_item_list):
+            blk_item = self.textblk_item_list[idx]
+            self.canvas.gv.ensureVisible(blk_item)
+            self.txtblkShapeControl.setBlkItem(blk_item)
 
     def on_textedit_redo(self):
         self.canvas.redo_textedit()
