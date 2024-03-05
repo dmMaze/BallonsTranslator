@@ -928,7 +928,9 @@ class MainWindow(FramelessWindow):
 
         if page_index + 1 == self.imgtrans_proj.num_pages:
             self.st_manager.auto_textlayout_flag = False
-            self.imgtrans_proj.save()
+
+        # save proj file on page trans finished
+        self.imgtrans_proj.save()
 
         self.saveCurrentPage(False, False)
 

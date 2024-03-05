@@ -246,6 +246,10 @@ class SakuraTranslator(BaseTranslator):
                     time.sleep(1)
                 except openai.APIConnectionError:
                     server_error_attempt += 1
+                    if server_error_attempt >= self.retry_attempts:
+                        self.logger.error(
+                            'Sakura server error. Returning original text.')
+                        return '\n'.join(prompt)
                     self.logger.warn(
                         f'Restarting request due to a server connection error.Current API baseurl is "{self.api_base}" Attempt: {server_error_attempt}')
                     time.sleep(1)
@@ -270,6 +274,10 @@ class SakuraTranslator(BaseTranslator):
                     time.sleep(1)
                 except openai.error.APIConnectionError:
                     server_error_attempt += 1
+                    if server_error_attempt >= self.retry_attempts:
+                        self.logger.error(
+                            'Sakura server error. Returning original text.')
+                        return '\n'.join(prompt)
                     self.logger.warn(
                         f'Restarting request due to a server connection error.Current API baseurl is "{self.api_base}" Attempt: {server_error_attempt}')
                     time.sleep(1)

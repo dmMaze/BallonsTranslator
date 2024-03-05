@@ -94,6 +94,8 @@ check_local_file_hash = True
 FONT_FAMILIES: set = None
 CUSTOM_FONTS = []
 
+showed_exception = set()
+
 def load_cache():
     global cache_data
     if cache_data is None:
