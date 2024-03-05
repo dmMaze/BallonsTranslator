@@ -534,7 +534,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     fm = QFontMetrics(block.charFormat().font())
                 else:
                     num_rspaces, num_lspaces, char_yoffset_lst, line_pos = self.line_spaces_lst[blk_no][line.lineNumber()]
-                    y = char_yoffset_lst[cpos - line_pos]
+                    yidx = cpos - line_pos
+                    if yidx >= 0 < len(char_yoffset_lst):
+                        y = char_yoffset_lst[yidx]
 
                 painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
                 painter.fillRect(QRectF(x, y, fm.height(), 2), painter.pen().brush())
@@ -638,11 +640,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             if not line.isValid():
                 break
 
-            if self.force_single_char:
-                line.setLineWidth(block_width)
-                line.setNumColumns(1)
-            else:
-                line.setLineWidth(block_width)
+            line.setLineWidth(block_width)
+            line.setNumColumns(1)
             
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
@@ -653,29 +652,23 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             tbr_h = space_w = let_sp_offset = 0
             char_idx += num_lspaces
-
-            # https://github.com/dmMaze/BallonsTranslator/issues/388#issuecomment-1975146419
-            no_let_sp = set()
-            for it in re.finditer('——', blk_text):
-                no_let_sp.add(it.start())
+            single_char_h = None
 
             if char_idx < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 space_w = cfmt.space_width
-                if char_idx in no_let_sp:
-                    let_sp_offset = 0
-                else:
-                    let_sp_offset = cfmt.tbr.height() * (ls - 1)
+                let_sp_offset = cfmt.tbr.height() * (ls - 1)
 
                 tbr_h = cfmt.tbr.height() + let_sp_offset
                 char = blk_text[char_idx]
                 if char in PUNSET_VERNEEDROTATE:
                     tbr, br = cfmt.punc_rect(char)
-                    tbr_h = tbr.width()
+                    single_char_h = tbr.width()
+                    tbr_h = tbr.width() * text_len
                     if char.isalpha():
                         cw2 = cfmt.punc_rect(char+char)[1].width()
                         tbr_h = br.width() - (br.width() * 2 - cw2)
-                    if char in {'…', '⋯'}:
+                    if char in {'…', '⋯', '—'}:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                         next_char_idx = char_idx + 1
                         if next_char_idx < blk_text_len and blk_text[next_char_idx] == char:
@@ -727,7 +720,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 shrink_height = max(shrink_height, line_bottom)
 
             line.setPosition(QPointF(x_offset, line_y_offset))
-            blk_char_yoffset.append([line_y_offset, line_bottom])
+            if text_len > 1 and single_char_h is not None:
+                for ii in range(text_len - 1):
+                    blk_char_yoffset.append([line_y_offset + ii * single_char_h, line_y_offset + (ii + 1) * single_char_h])
+                blk_char_yoffset.append([blk_char_yoffset[-1][1], line_bottom])
+            else:
+                blk_char_yoffset.append([line_y_offset, line_bottom])
+
             line_y_offset = max(line_bottom, doc_margin)
             char_idx += text_len - num_lspaces
         tl.endLayout()
