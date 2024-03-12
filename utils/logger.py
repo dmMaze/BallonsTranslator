@@ -37,7 +37,7 @@ class ColoredFormatter(logging.Formatter):
                 )
 
             record.levelname2 = colored("{:<7}".format(record.levelname))
-            record.message2 = colored(record.msg)
+            record.message2 = colored(record.getMessage())
 
             asctime2 = datetime.datetime.fromtimestamp(record.created)
             record.asctime2 = termcolor.colored(asctime2, color="green")
