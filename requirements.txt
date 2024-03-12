@@ -10,6 +10,7 @@ jaconv
 torch
 torchvision
 transformers
+mecab-python3; sys_platform == 'darwin'
 fugashi
 unidic_lite
 tqdm
@@ -49,3 +50,4 @@ pyobjc-framework-cocoa; sys_platform == 'darwin'
 pyobjc-framework-coreml; sys_platform == 'darwin'
 pyobjc-framework-quartz; sys_platform == 'darwin'
 pyobjc-framework-vision; sys_platform == 'darwin'
+tensorboard; sys_platform == 'darwin'
