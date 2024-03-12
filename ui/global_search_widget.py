@@ -25,7 +25,7 @@ class HTMLDelegate( QStyledItemDelegate ):
         self.doc = QTextDocument()
         self.doc.setUndoRedoEnabled(False)
 
-    def paint(self, painter, option, index):
+    def paint(self, painter, option, index):                                                                                                                                                                               
         
         options = QStyleOptionViewItem(option)
         self.initStyleOption(options, index)

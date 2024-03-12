@@ -71,10 +71,15 @@ class ComicTextDetector(TextDetectorBase):
     detect_size = 1024
     def __init__(self, **params) -> None:
         super().__init__(**params)
-
-        self.device = self.params['device']['select']
-        self.detect_size = int(self.params['detect_size']['select'])
         self.model: CTDModel = None
+
+    @property
+    def device(self):
+        return self.params['device']['select']
+    
+    @property
+    def detect_size(self):
+        return int(self.params['detect_size']['select'])
 
     def _load_model(self):
         if self.device != 'cpu':
@@ -88,9 +93,12 @@ class ComicTextDetector(TextDetectorBase):
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        device = self.params['device']['select']
-        detect_size = int(self.params['detect_size']['select'])
-        if device != self.device:
-            self.setup_detector()
-        elif detect_size != self.detect_size:
-            self.model.detect_size = detect_size
+        device = self.device
+        if self.model is not None:
+            if self.model.device != device:
+                self.model.device = device
+                if device != 'cpu':
+                    self.model.load_model(CTD_TORCH_PATH)
+                else:
+                    self.model.load_model(CTD_ONNX_PATH)
+            self.model.detect_size = self.detect_size
