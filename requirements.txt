@@ -10,6 +10,7 @@ jaconv
 torch
 torchvision
 transformers
+mecab-python3 # Dependency of fugashi, instead of the original mecab package, which is incompatible with arm64 macOS
 fugashi
 unidic_lite
 tqdm
