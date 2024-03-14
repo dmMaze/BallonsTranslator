@@ -90,7 +90,7 @@ class ApplyFontformatCommand(QUndoCommand):
         for item in items:
             self.old_html_lst.append(item.toHtml())
             self.old_fmt_lst.append(item.get_fontformat())
-            self.old_rect_lst.append(item.absBoundingRect())
+            self.old_rect_lst.append(item.absBoundingRect(qrect=True))
 
     def redo(self):
         for item, edit in zip(self.items, self.trans_widget_lst):
@@ -130,9 +130,13 @@ class ReshapeItemCommand(QUndoCommand):
         super(ReshapeItemCommand, self).__init__()
         self.item = item
         self.oldRect = item.oldRect
-        self.newRect = item.absBoundingRect()
+        self.newRect = item.absBoundingRect(qrect=True)
+        self.idx = -1
 
     def redo(self):
+        if self.idx < 0:
+            self.idx += 1
+            return
         self.item.setRect(self.newRect)
 
     def undo(self):

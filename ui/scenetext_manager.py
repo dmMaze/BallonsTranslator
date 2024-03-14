@@ -610,7 +610,7 @@ class SceneTextManager(QObject):
         if len(selected_blks) > 0:
             for blkitem in selected_blks:
                 old_html_lst.append(blkitem.toHtml())
-                old_rect_lst.append(blkitem.absBoundingRect())
+                old_rect_lst.append(blkitem.absBoundingRect(qrect=True))
                 trans_widget_lst.append(self.pairwidget_list[blkitem.idx].e_trans)
                 self.layout_textblk(blkitem)
 

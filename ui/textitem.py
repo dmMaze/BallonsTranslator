@@ -263,7 +263,7 @@ class TextBlkItem(QGraphicsTextItem):
         return QRectF(self.pos(), self.boundingRect().size())
 
     def startReshape(self):
-        self.oldRect = self.absBoundingRect()
+        self.oldRect = self.absBoundingRect(qrect=True)
         self.reshaping = True
 
     def endReshape(self):
@@ -312,7 +312,7 @@ class TextBlkItem(QGraphicsTextItem):
         _p = self.padding()
         if _p >= p:
             return
-        abr = self.absBoundingRect()
+        abr = self.absBoundingRect(qrect=True)
         self.layout.relayout_on_changed = False
         self.layout.updateDocumentMargin(p)
         self.layout.relayout_on_changed = True
@@ -335,7 +335,7 @@ class TextBlkItem(QGraphicsTextItem):
             w = min(max_w, x1) - x
         if qrect:
             return QRectF(x, y, w, h)
-        return [math.ceil(x), math.ceil(y), math.ceil(w), math.ceil(h)]
+        return [int(round(x)), int(round(y)), math.ceil(w), math.ceil(h)]
 
     def shape(self) -> QPainterPath:
         path = QPainterPath()
