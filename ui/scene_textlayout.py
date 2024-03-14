@@ -621,11 +621,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
         layout_first_block = block == doc.firstBlock()
         if layout_first_block:
-            x_offset = self.max_width - doc_margin - block_width
+            x_offset = self.max_width - doc_margin
             self.x_offset_lst = [self.max_width - doc_margin]
             self.y_offset_lst = []
         else:
-            x_offset = self.x_offset_lst[-1] - block_width * self.line_spacing
+            x_offset = self.x_offset_lst[-1]
 
         char_idx = 0
         tl = block.layout()
@@ -635,6 +635,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         tl.setTextOption(option)
         
         shrink_height = 0
+        width_list = []
+        line_not_set = []
+        ypos_list = []
+        is_first_line = block_no == 0
         while True:
             line = tl.createLine()
             if not line.isValid():
@@ -645,6 +649,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
+            end_char = char_idx + text_len >= blk_text_len
+            
+            if char_idx + text_len > blk_text_len:
+                ypos = ypos_list[-1] if len(ypos_list) > 0 else 0
+                blk_line_spaces.append([0, 0, [ypos], char_idx])
+                line.setPosition(QPointF(x_offset - block_width, ypos))
+                continue
+
             num_rspaces, num_lspaces = 0, 0
             text = blk_text[char_idx: char_idx + text_len].replace('\n', '')
             num_rspaces = text_len - len(text.rstrip())
@@ -698,12 +710,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk_line_spaces.append([num_rspaces, num_lspaces, char_yoffset_lst, char_idx - num_lspaces])
             
             char_bottom = char_yoffset_lst[-1] + tbr_h
-            if char_bottom - max(let_sp_offset, 0) > available_height:
+            out_of_vspace = char_bottom - max(let_sp_offset, 0) > available_height
+            if out_of_vspace:
                 # switch to next line
                 if char_idx == 0 and layout_first_block:
                     self.min_height = doc_margin + tbr_h
-                else:
-                    x_offset = x_offset - block_width * self.line_spacing
+                    
                 line_y_offset = doc_margin
                 
                 char_yoffset_lst[-1] = line_y_offset
@@ -713,13 +725,55 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 line_bottom = char_yoffset_lst[-1]
                 shrink_height = available_height
             else:
+                cfmt = self.get_char_fontfmt(block_no, char_idx)
+                if cfmt is not None:
+                    width_list.append(cfmt.tbr.width())
+                else:
+                    width_list.append(-1)
+
                 char_yoffset_lst.append(char_bottom)
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
                 line_bottom = char_yoffset_lst[-1]
                 shrink_height = max(shrink_height, line_bottom)
+            
+            ypos_list.append(line_y_offset)
+            line_not_set.append(line)
+            if out_of_vspace or end_char:
+                if is_first_line:
+                    line_spacing = 1.
+                else:
+                    line_spacing = self.line_spacing
+                if len(width_list) == 0:
+                    width_list = [block_width]
+                end_line, end_ypos, end_w = line, line_y_offset, width_list[-1]
+                idea_line_width = -1
+                if out_of_vspace and end_char and len(width_list) > 1:
+                    idea_line_width = max(width_list[:-1])
+                else:
+                    idea_line_width = max(width_list)
+                if idea_line_width == -1:
+                    idea_line_width = block_width
 
-            line.setPosition(QPointF(x_offset, line_y_offset))
+                x_offset = x_offset - idea_line_width * line_spacing
+                
+                for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
+                    line.setPosition(QPointF(x_offset, ypos))
+                if out_of_vspace:
+                    if end_char:
+                        if not len(line_not_set) == 1:
+                            x_offset = x_offset - end_w * line_spacing
+                        end_line.setPosition(QPointF(x_offset, end_ypos))
+                    else:
+                        line_not_set = [end_line]
+                        ypos_list = [end_ypos]
+                        width_list = [end_w]
+                else:
+                    end_line.setPosition(QPointF(x_offset, end_ypos))
+
+                if out_of_vspace:
+                    is_first_line = False
+
             if text_len > 1 and single_char_h is not None:
                 for ii in range(text_len - 1):
                     blk_char_yoffset.append([line_y_offset + ii * single_char_h, line_y_offset + (ii + 1) * single_char_h])
@@ -826,10 +880,10 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         # fm = QFontMetrics(font)
         doc_margin = self.document().documentMargin()
 
-        idea_height = self.block_ideal_height[block.blockNumber()]
-        if idea_height == 0:
+        block_height = self.block_ideal_height[block.blockNumber()]
+        if block_height == 0:
             tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
-            idea_height = tbr.height()
+            block_height = tbr.height()
         if block == doc.firstBlock():
             self.x_offset_lst = []
             self.y_offset_lst = []
@@ -853,6 +907,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             nchar = line.textLength()
 
             dy = 0
+            idea_height = -1
             if nchar > 0:
                 tgt_cfmt = None
                 tgt_size = -1
@@ -868,6 +923,10 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                     font = tgt_cfmt.font
                     tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
                     dy = -tbr.top() - line.ascent()
+                    idea_height = tbr.height()
+
+            if idea_height == -1:
+                idea_height = block_height
                 
             line.setPosition(QPointF(doc_margin, y_offset + dy))
             tw = line.naturalTextWidth()
