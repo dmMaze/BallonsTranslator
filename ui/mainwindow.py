@@ -664,6 +664,8 @@ class MainWindow(FramelessWindow):
     def shortcutEscape(self):
         if self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
+        elif self.canvas.editing_textblkitem is not None and self.canvas.editing_textblkitem.isEditing():
+            self.canvas.editing_textblkitem.endEdit()
 
     def setPaintMode(self):
         if self.bottomBar.paintChecker.isChecked():
