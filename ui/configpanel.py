@@ -458,6 +458,12 @@ class ConfigPanel(Widget):
 
         global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
 
+        # self.let_show_only_custom_fonts = QCheckBox(parent=self)
+        self.let_show_only_custom_fonts, sublock = checkbox_with_label(self.tr("Font selection"), discription=self.tr("Show only custom fonts"))
+        global_fntfmt_layout.addWidget(sublock, 4, 0)
+        self.let_show_only_custom_fonts.stateChanged.connect(self.on_show_only_custom_fonts)
+        
+
         self.let_autolayout_checker, sublock = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region.'))
         self.let_autolayout_adaptive_fntsize_checker, _ = generalConfigPanel.addCheckBox(None, self.tr('Adjust font size adaptively if it is set to \"decide by program.\"'), target_block=sublock)
@@ -586,6 +592,9 @@ class ConfigPanel(Widget):
     def on_effect_flag_changed(self):
         pcfg.let_fnteffect_flag = self.let_effect_combox.currentIndex()
 
+    def on_show_only_custom_fonts(self):
+        pcfg.let_show_only_custom_fonts_flag = self.let_show_only_custom_fonts.isChecked()
+        
     def focusOnTranslator(self):
         idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
         self.configTable.setCurrentItem(idx0, idx1)
