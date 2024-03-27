@@ -184,7 +184,14 @@ OCR & Translate Selected Area
 * For text editing: bold - ```Ctrl+B```, underline - ```Ctrl+U```, Italics - ```Ctrl+I``` 
 * Set text shadow and transparency in the text style panel -> Effect.  
   
-<img src="doc/src/configpanel.png">  
+<img src="doc/src/configpanel.png">
+
+## Headless mode (Run without GUI)
+``` python
+python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
+```
+Note the configuration (source language, target language, inpaint model, etc) will load from config/config.json.  
+If the rendered font size is not right, specify logical DPI manually via ```--ldpi ```, typical values are 96 and 72.
 
 
 # Automation modules

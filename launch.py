@@ -35,6 +35,7 @@ parser.add_argument("--debug", action='store_true')
 parser.add_argument("--requirements", default='requirements.txt')
 parser.add_argument("--headless", action='store_true', help='run without GUI')
 parser.add_argument("--exec_dirs", default='', help='translation queue (project directories) separated by comma')
+parser.add_argument("--ldpi", default=None, type=float, help='logical dots perinch')
 args, _ = parser.parse_known_args()
 
 
@@ -124,7 +125,7 @@ def restart():
 def main():
 
     if args.debug:
-        os.environ['BALLOONTRANS_DEBUG'] = '1' 
+        os.environ['BALLOONTRANS_DEBUG'] = '1'
     os.environ['BT_HEADLESS'] = '1' if args.headless else '0'
 
     if not args.qt_api in QT_APIS:
@@ -224,6 +225,8 @@ def main():
         shared.APP_DEFAULT_FONT = app_font
 
     shared.APP_DEFAULT_FONT = app.font().defaultFamily()
+    if args.ldpi:
+        shared.LDPI = args.ldpi
 
     from ui.mainwindow import MainWindow
 

@@ -139,6 +139,13 @@ OCR并翻译选中文本框
 
 <img src="doc/src/configpanel.png">  
 
+## 命令行模式 (无GUI)
+``` python
+python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
+```
+所有设置 (如检测模型, 原语言目标语言等) 会从 config/config.json 导入。  
+如果渲染字体大小不对, 通过 ```--ldpi ``` 指定 Logical DPI 大小, 通常为 96 和 72。
+
 # 自动化模块
 本项目重度依赖 [manga-image-translator](https://github.com/zyddnys/manga-image-translator)，在线服务器和模型训练需要费用，有条件请考虑支持一下
 - Ko-fi: <https://ko-fi.com/voilelabs>
