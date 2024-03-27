@@ -230,6 +230,9 @@ def main():
 
     from ui.mainwindow import MainWindow
 
+    if args.headless:
+        config.module.load_model_on_demand = True
+        config.module.empty_runcache = True
     ballontrans = MainWindow(app, config, open_dir=args.proj_dir, **vars(args))
     global BT
     BT = ballontrans

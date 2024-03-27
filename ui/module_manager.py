@@ -659,13 +659,13 @@ class ModuleManager(QObject):
 
     def terminateRunningThread(self):
         if self.textdetect_thread.isRunning():
-            self.textdetect_thread.terminate()
+            self.textdetect_thread.quit()
         if self.ocr_thread.isRunning():
-            self.ocr_thread.terminate()
+            self.ocr_thread.quit()
         if self.inpaint_thread.isRunning():
-            self.inpaint_thread.terminate()
+            self.inpaint_thread.quit()
         if self.translate_thread.isRunning():
-            self.translate_thread.terminate()
+            self.translate_thread.quit()
 
     def runImgtransPipeline(self):
         if self.imgtrans_proj.is_empty:
