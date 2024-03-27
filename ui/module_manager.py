@@ -20,7 +20,7 @@ from modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
 import modules
 modules.translators.SYSTEM_LANG = QLocale.system().name()
 from modules.textdetector import TextBlock
-
+from utils import shared
 from .stylewidgets import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
 from utils.config import pcfg
@@ -276,6 +276,11 @@ class ImgtransThread(QThread):
     finish_blktrans_stage = Signal(str, int)
     finish_blktrans = Signal(int, list)
 
+    detect_counter = 0
+    ocr_counter = 0
+    translate_counter = 0
+    inpaint_counter = 0
+
     def __init__(self, 
                  textdetect_thread: TextDetectThread,
                  ocr_thread: OCRThread,
@@ -309,6 +314,7 @@ class ImgtransThread(QThread):
 
     def runImgtransPipeline(self, imgtrans_proj: ProjImgTrans):
         self.imgtrans_proj = imgtrans_proj
+        self.num_pages = len(self.imgtrans_proj.pages)
         self.job = self._imgtrans_pipeline
         self.start()
 
@@ -674,7 +680,7 @@ class ModuleManager(QObject):
                 self.page_trans_finished.emit(ii)
             self.imgtrans_pipeline_finished.emit()
             return
-
+        
         self.progress_msgbox.detect_bar.setVisible(cfg_module.enable_detect)
         self.progress_msgbox.ocr_bar.setVisible(cfg_module.enable_ocr)
         self.progress_msgbox.translate_bar.setVisible(cfg_module.enable_translate)
@@ -712,6 +718,8 @@ class ModuleManager(QObject):
 
     def on_update_detect_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
+        if 'detect' in shared.pbar:
+            shared.pbar['detect'].update(progress)
         progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateDetectProgress(progress)
         if ri != self.last_finished_index:
@@ -722,6 +730,8 @@ class ModuleManager(QObject):
 
     def on_update_ocr_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
+        if 'ocr' in shared.pbar:
+            shared.pbar['ocr'].update(progress)
         progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateOCRProgress(progress)
         if ri != self.last_finished_index:
@@ -732,6 +742,8 @@ class ModuleManager(QObject):
 
     def on_update_translate_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
+        if 'translate' in shared.pbar:
+            shared.pbar['translate'].update(progress)
         progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateTranslateProgress(progress)
         if ri != self.last_finished_index:
@@ -742,6 +754,8 @@ class ModuleManager(QObject):
 
     def on_update_inpaint_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
+        if 'inpaint' in shared.pbar:
+            shared.pbar['inpaint'].update(progress)
         progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateInpaintProgress(progress)
         if ri != self.last_finished_index:
@@ -750,11 +764,29 @@ class ModuleManager(QObject):
         if progress == 100:
             self.finishImgtransPipeline()
 
-    def finishImgtransPipeline(self):
+    def progress(self):
+        progress = {}
+        num_pages = self.imgtrans_thread.num_pages
+        if cfg_module.enable_detect:
+            progress['detect'] = self.imgtrans_thread.detect_counter / num_pages
+        if cfg_module.enable_ocr:
+            progress['ocr'] = self.imgtrans_thread.ocr_counter / num_pages
+        if cfg_module.enable_inpaint:
+            progress['inpaint'] = self.imgtrans_thread.inpaint_counter / num_pages
+        if cfg_module.enable_translate:
+            progress['translate'] = self.imgtrans_thread.translate_counter / num_pages
+        return progress
+
+    def proj_finished(self):
         if self.imgtrans_thread.detect_finished() \
             and self.imgtrans_thread.ocr_finished() \
                 and self.imgtrans_thread.translate_finished() \
                     and self.imgtrans_thread.inpaint_finished():
+            return True
+        return False
+
+    def finishImgtransPipeline(self):
+        if self.proj_finished():
             self.progress_msgbox.hide()
             self.imgtrans_pipeline_finished.emit()
 

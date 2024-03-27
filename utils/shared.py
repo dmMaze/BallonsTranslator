@@ -93,6 +93,7 @@ check_local_file_hash = True
 
 FONT_FAMILIES: set = None
 CUSTOM_FONTS = []
+pbar = {}
 
 showed_exception = set()
 

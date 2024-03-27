@@ -33,6 +33,8 @@ parser.add_argument("--proj-dir", default='', type=str, help='Open project direc
 parser.add_argument("--qt-api", default='', choices=QT_APIS, help='Set qt api')
 parser.add_argument("--debug", action='store_true')
 parser.add_argument("--requirements", default='requirements.txt')
+parser.add_argument("--headless", action='store_true', help='run without GUI')
+parser.add_argument("--exec_dirs", default='', help='translation queue (project directories) separated by comma')
 args, _ = parser.parse_known_args()
 
 
@@ -123,6 +125,7 @@ def main():
 
     if args.debug:
         os.environ['BALLOONTRANS_DEBUG'] = '1' 
+    os.environ['BT_HEADLESS'] = '1' if args.headless else '0'
 
     if not args.qt_api in QT_APIS:
         os.environ['QT_API'] = 'pyqt6'
@@ -186,7 +189,10 @@ def main():
 
     load_modules()
 
-    app = QApplication(sys.argv)
+    app_args = sys.argv
+    if args.headless:
+        app_args = sys.argv + ['-platform', 'offscreen']
+    app = QApplication(app_args)
 
     lang = config.display_lang
     langp = osp.join(shared.TRANSLATE_DIR, lang + '.qm')
@@ -197,11 +203,6 @@ def main():
     elif lang not in ('en_US', 'English'):
         LOGGER.warning(f'target display language file {langp} doesnt exist.')
     LOGGER.info(f'set display language to {lang}')
-
-    ps = QGuiApplication.primaryScreen()
-    shared.LDPI = ps.logicalDotsPerInch()
-    shared.SCREEN_W = ps.geometry().width()
-    shared.SCREEN_H = ps.geometry().height()
 
     # Fonts
     # Load custom fonts if they exist
@@ -226,18 +227,23 @@ def main():
 
     from ui.mainwindow import MainWindow
 
-    ballontrans = MainWindow(app, config, open_dir=args.proj_dir)
+    ballontrans = MainWindow(app, config, open_dir=args.proj_dir, **vars(args))
     global BT
     BT = ballontrans
     BT.restart_signal.connect(restart)
 
-    if shared.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
-        # https://github.com/dmMaze/BallonsTranslator/issues/220
-        BT.comicTransSplitter.setHandleWidth(10)
+    if not args.headless:
+        ps = QGuiApplication.primaryScreen()
+        shared.LDPI = ps.logicalDotsPerInch()
+        shared.SCREEN_W = ps.geometry().width()
+        shared.SCREEN_H = ps.geometry().height()
+        if shared.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
+            # https://github.com/dmMaze/BallonsTranslator/issues/220
+            BT.comicTransSplitter.setHandleWidth(10)
 
-    ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
-    ballontrans.show()
-    ballontrans.resetStyleSheet()
+        ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
+        ballontrans.show()
+        ballontrans.resetStyleSheet()
     sys.exit(app.exec())
 
 def prepare_environment():

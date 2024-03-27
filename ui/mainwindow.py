@@ -1,9 +1,10 @@
 import os.path as osp
 import os, re, traceback, sys
-from typing import List
+from typing import List, Union
 from pathlib import Path
 import subprocess
 from functools import partial
+import time
 
 from qtpy.QtWidgets import QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
@@ -26,7 +27,7 @@ from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
-from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox
+from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox, Widget
 from .global_search_widget import GlobalSearchWidget
 from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
@@ -52,8 +53,9 @@ class PageListView(QListWidget):
 
         return super().contextMenuEvent(e)
 
-
-class MainWindow(FramelessWindow):
+RUN_HEADLESS = os.environ['BT_HEADLESS'] == '1'
+mainwindow_cls = Widget if RUN_HEADLESS else FramelessWindow
+class MainWindow(mainwindow_cls):
 
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
     save_on_page_changed = True
@@ -65,9 +67,9 @@ class MainWindow(FramelessWindow):
 
     restart_signal = Signal()
     
-    def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', *args, **kwargs) -> None:
+    def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         
-        super().__init__(*args, **kwargs)
+        super().__init__()
 
         self.app = app
         self.setupThread()
@@ -85,6 +87,9 @@ class MainWindow(FramelessWindow):
                 proj_dir = self.leftBar.recent_proj_list[0]
                 if osp.exists(proj_dir):
                     self.OpenProj(proj_dir)
+
+        if RUN_HEADLESS:
+            self.run_batch(**exec_args)
 
     def setStyleSheet(self, styleSheet: str) -> None:
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
@@ -834,8 +839,10 @@ class MainWindow(FramelessWindow):
 
     def on_imgtrans_pipeline_finished(self):
         self.postprocess_mt_toggle = True
-        if pcfg.module.empty_runcache:
+        if pcfg.module.empty_runcache and not RUN_HEADLESS:
             self.module_manager.unload_all_models()
+        if RUN_HEADLESS:
+            self.run_next_dir()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
         src_is_cjk = is_cjk(pcfg.module.translate_source)
@@ -984,6 +991,9 @@ class MainWindow(FramelessWindow):
         if lang != pcfg.display_lang:
             pcfg.display_lang = lang
             self.set_display_lang(lang)
+
+    def run_imgtrans(self):
+        self.on_run_imgtrans()
 
     def on_run_imgtrans(self):
 
@@ -1179,3 +1189,38 @@ class MainWindow(FramelessWindow):
                     self.canvas.scale_tool_mode = False
                     self.canvas.end_scale_tool.emit()
         return super().keyReleaseEvent(event)
+    
+    def run_batch(self, exec_dirs: Union[List, str], **kwargs):
+        if not isinstance(exec_dirs, List):
+            exec_dirs = exec_dirs.split(',')
+        valid_dirs = []
+        for d in exec_dirs:
+            if osp.exists(d):
+                valid_dirs.append(d)
+            else:
+                LOGGER.warning(f'target directory {d} does not exist.')
+        self.exec_dirs = exec_dirs
+        self.run_next_dir()
+
+    def run_next_dir(self):
+        if len(self.exec_dirs) == 0:
+            LOGGER.info(f'finished translating all dirs, quit app...')
+            self.app.quit()
+            return
+        d = self.exec_dirs.pop(0)
+        from tqdm import tqdm
+        
+        LOGGER.info(f'translating {d} ...')
+        self.openDir(d)
+        shared.pbar = {}
+        npages = len(self.imgtrans_proj.pages)
+        if npages > 0:
+            if pcfg.module.enable_detect:
+                shared.pbar['detect'] = tqdm(range(npages), desc="Text Detection")
+            if pcfg.module.enable_ocr:
+                shared.pbar['ocr'] = tqdm(range(npages), desc="OCR")
+            if pcfg.module.enable_translate:
+                shared.pbar['translate'] = tqdm(range(npages), desc="Translation")
+            if pcfg.module.enable_inpaint:
+                shared.pbar['inpaint'] = tqdm(range(npages), desc="Inpaint")
+        self.run_imgtrans()
