@@ -414,10 +414,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         else:
                             non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         xoff = -non_bracket_br[0]
-                        if TEXTLAYOUT_QTVERSION and not C.ON_MACOS:
-                            yoff =  -non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
-                        else:
-                            yoff = -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
+                        yoff = -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
 
                 elif vertical_force_aligncentel(char):
                     act_rect = cfmt.punc_actual_rect(line, char, cache=False)
