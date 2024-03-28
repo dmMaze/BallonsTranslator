@@ -50,9 +50,16 @@ class SakuraTranslator(BaseTranslator):
     
     @property
     def api_base(self) -> str:
-        if "/v1" not in self.api_base_raw:
-            return self.api_base_raw + "/v1"
-        return self.api_base_raw
+        if self.api_base_raw[-4:] == "/v1/":
+            api_url = api_url[:-1]
+        elif self.api_base_raw[-3:] == "/v1":
+            api_url = self.api_base_raw
+        elif self.api_base_raw[-1] == '/':
+            api_url = self.api_base_raw + "v1"
+        else:
+            api_url = self.api_base_raw + "/v1"
+        return api_url
+
 
     _CHAT_SYSTEM_TEMPLATE = (
         '你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。'
@@ -128,7 +135,7 @@ class SakuraTranslator(BaseTranslator):
             response) if isinstance(response, str) else response
 
         # 日志记录，而不是直接打印
-        self.logger.info(
+        self.logger.debug(
             f"原始文本行数: {len(queries)}, 翻译文本行数: {len(translated_texts)}")
 
         # 检查行数是否匹配
@@ -148,10 +155,6 @@ class SakuraTranslator(BaseTranslator):
         return new_texts
 
     def _translate(self, src_list):
-
-        if not OPENAPI_V1_API:
-            openai.api_base = self.api_base_raw
-            openai.api_key = "sk-114514"
 
         queries = src_list
         translations = []
@@ -259,6 +262,7 @@ class SakuraTranslator(BaseTranslator):
                     time.sleep(30)
             return response
         else:
+            self.logger.warning("You are utilizing an outdated version of the OpenAI Python API.")
             while True:
                 try:
                     response = self._request_translation(prompt)
@@ -268,7 +272,7 @@ class SakuraTranslator(BaseTranslator):
                     if server_error_attempt >= self.retry_attempts:
                         self.logger.error(
                             'Sakura server error. Returning original text.')
-                        return prompt
+                        return '\n'.join(prompt)
                     self.logger.warn(
                         f'Restarting request due to a server error. Attempt: {server_error_attempt}')
                     time.sleep(1)
@@ -302,8 +306,7 @@ class SakuraTranslator(BaseTranslator):
                 api_key="sk-114514",
                 base_url=self.api_base
             )
-            openai_completions_create = client.chat.completions.create
-            response = openai_completions_create(
+            response = client.chat.completions.create(
                 model="sukinishiro",
                 messages=[
                     {
@@ -323,8 +326,9 @@ class SakuraTranslator(BaseTranslator):
                 extra_query=extra_query,
             )
         else:
-            openai_completions_create = openai.Completion.create
-            response = openai_completions_create(
+            openai.api_base = self.api_base
+            openai.api_key = "sk-114514"
+            response = openai.ChatCompletion.create(
                 model="sukinishiro",
                 messages=[
                     {
