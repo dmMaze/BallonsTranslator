@@ -1198,7 +1198,7 @@ class MainWindow(mainwindow_cls):
                 valid_dirs.append(d)
             else:
                 LOGGER.warning(f'target directory {d} does not exist.')
-        self.exec_dirs = exec_dirs
+        self.exec_dirs = valid_dirs
         self.run_next_dir()
 
     def run_next_dir(self):

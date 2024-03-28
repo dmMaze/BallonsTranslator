@@ -719,7 +719,7 @@ class ModuleManager(QObject):
     def on_update_detect_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
         if 'detect' in shared.pbar:
-            shared.pbar['detect'].update(progress)
+            shared.pbar['detect'].update(1)
         progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateDetectProgress(progress)
         if ri != self.last_finished_index:
@@ -731,7 +731,7 @@ class ModuleManager(QObject):
     def on_update_ocr_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
         if 'ocr' in shared.pbar:
-            shared.pbar['ocr'].update(progress)
+            shared.pbar['ocr'].update(1)
         progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateOCRProgress(progress)
         if ri != self.last_finished_index:
@@ -743,7 +743,7 @@ class ModuleManager(QObject):
     def on_update_translate_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
         if 'translate' in shared.pbar:
-            shared.pbar['translate'].update(progress)
+            shared.pbar['translate'].update(1)
         progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateTranslateProgress(progress)
         if ri != self.last_finished_index:
@@ -755,7 +755,7 @@ class ModuleManager(QObject):
     def on_update_inpaint_progress(self, progress: int):
         ri = self.imgtrans_thread.recent_finished_index(progress)
         if 'inpaint' in shared.pbar:
-            shared.pbar['inpaint'].update(progress)
+            shared.pbar['inpaint'].update(1)
         progress = int(progress / self.imgtrans_thread.num_pages * 100)
         self.progress_msgbox.updateInpaintProgress(progress)
         if ri != self.last_finished_index:
