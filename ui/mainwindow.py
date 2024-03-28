@@ -53,8 +53,7 @@ class PageListView(QListWidget):
 
         return super().contextMenuEvent(e)
 
-RUN_HEADLESS = os.environ['BT_HEADLESS'] == '1'
-mainwindow_cls = Widget if RUN_HEADLESS else FramelessWindow
+mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
 class MainWindow(mainwindow_cls):
 
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
@@ -88,7 +87,7 @@ class MainWindow(mainwindow_cls):
                 if osp.exists(proj_dir):
                     self.OpenProj(proj_dir)
 
-        if RUN_HEADLESS:
+        if shared.HEADLESS:
             self.run_batch(**exec_args)
 
     def setStyleSheet(self, styleSheet: str) -> None:
@@ -839,9 +838,9 @@ class MainWindow(mainwindow_cls):
 
     def on_imgtrans_pipeline_finished(self):
         self.postprocess_mt_toggle = True
-        if pcfg.module.empty_runcache and not RUN_HEADLESS:
+        if pcfg.module.empty_runcache and not shared.HEADLESS:
             self.module_manager.unload_all_models()
-        if RUN_HEADLESS:
+        if shared.HEADLESS:
             self.run_next_dir()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:

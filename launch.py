@@ -126,7 +126,6 @@ def main():
 
     if args.debug:
         os.environ['BALLOONTRANS_DEBUG'] = '1'
-    os.environ['BT_HEADLESS'] = '1' if args.headless else '0'
 
     if not args.qt_api in QT_APIS:
         os.environ['QT_API'] = 'pyqt6'
@@ -154,10 +153,14 @@ def main():
 
     from qtpy.QtCore import QTranslator, QLocale, Qt
     shared.DEFAULT_DISPLAY_LANG = QLocale.system().name().replace('en_CN', 'zh_CN')
-
+    shared.HEADLESS = args.headless
     shared.load_cache()
     program_config.load_config()
     config = program_config.pcfg
+
+    if args.headless:
+        config.module.load_model_on_demand = True
+        config.module.empty_runcache = False
 
     from modules.prepare_local_files import prepare_local_files_forall
     prepare_local_files_forall()
@@ -230,9 +233,6 @@ def main():
 
     from ui.mainwindow import MainWindow
 
-    if args.headless:
-        config.module.load_model_on_demand = True
-        config.module.empty_runcache = True
     ballontrans = MainWindow(app, config, open_dir=args.proj_dir, **vars(args))
     global BT
     BT = ballontrans
