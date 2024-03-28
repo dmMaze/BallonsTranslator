@@ -23,8 +23,8 @@ PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 
 # https://www.w3.org/TR/2022/DNOTE-clreq-20220801/#tables_of_chinese_punctuation_marks
 # https://www.w3.org/TR/2022/DNOTE-clreq-20220801/#glyphs_sizes_and_positions_in_character_faces_of_punctuation_marks
-PUNSET_PAUSEORSTOP = {'。', '．', '，', '、', '：', '；', '！', '？'}     # dont need to rotate, 
-PUNSET_ALIGNTOP = {'。', '．', '，', '、'}
+PUNSET_PAUSEORSTOP = {'。', '．', '，', '、', '·', '：', '；', '！', '？'}     # dont need to rotate, 
+PUNSET_ALIGNCENTER = {'。', '．', '，', '、', '·'}
 PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
 PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗', '〕', '］', '｝'}
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
@@ -124,14 +124,14 @@ class CharFontFormat:
         # return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[1]
         _, br1 = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
         _, br2 = get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())
-        return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
+        return QRectF(br2.left(), br2.top(), max(br1.right(), br2.right()) - min(br1.left(), br2.left()), br2.height())
 
     @cached_property
     def tbr(self) -> QRectF:
         # return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[0]
         br1, _ = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
         br2, _ = get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())
-        return QRectF(br2.left(), br2.top(), br1.right() - br2.left(), br2.height())
+        return QRectF(br2.left(), br2.top(), max(br1.right(), br2.right()) - min(br1.left(), br2.left()), br2.height())
 
     @cached_property
     def space_width(self) -> int:
@@ -431,6 +431,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         xoff -= natral_shifted
                         yoff += natral_shifted
 
+                    if char in PUNSET_ALIGNCENTER:
+                        tbr, br = cfmt.punc_rect(char)
+                        yoff += (tbr.height() + cfmt.font_metrics.descent() - act_rect[3]) / 2
+                        # yoff = 0
+
                 else:
                     empty_spacing = num_lspaces * cfmt.space_width
                     if TEXTLAYOUT_QTVERSION:
@@ -684,7 +689,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             tbr_h -= let_sp_offset
                     tbr_h += let_sp_offset
                 elif vertical_force_aligncentel(char):
-                    if char not in PUNSET_ALIGNTOP:
+                    if char not in PUNSET_ALIGNCENTER:
                         tbr_h = cfmt.punc_actual_rect(line, char, cache=True)[3]
                     else:
                         tbr, br = cfmt.punc_rect(char)
