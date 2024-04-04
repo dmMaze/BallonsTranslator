@@ -303,6 +303,7 @@ class TransGoogle(BaseTranslator):
         self.lang_map['Türk dili'] = 'tr'
         self.lang_map['Indonesia'] = 'id'
         self.lang_map['Thai'] = 'th'
+        self.lang_map['Arabic'] = 'ar'
 
         self.googletrans = GoogleTranslator()
         

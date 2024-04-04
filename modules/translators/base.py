@@ -39,6 +39,7 @@ LANGMAP_GLOBAL = {
     'Türk dili': '',
     'украї́нська мо́ва': '',  
     'Thai': '',
+    'Arabic': 'ar',
 }
 
 SYSTEM_LANG = ''
