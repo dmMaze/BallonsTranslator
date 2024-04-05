@@ -50,15 +50,11 @@ class SakuraTranslator(BaseTranslator):
     
     @property
     def api_base(self) -> str:
-        if self.api_base_raw[-4:] == "/v1/":
-            api_url = api_url[:-1]
-        elif self.api_base_raw[-3:] == "/v1":
-            api_url = self.api_base_raw
-        elif self.api_base_raw[-1] == '/':
-            api_url = self.api_base_raw + "v1"
-        else:
-            api_url = self.api_base_raw + "/v1"
-        return api_url
+        url = self.api_base_raw
+        if url.endswith('/'):
+            url = url[:-1]
+        if not url.endswith('/v1'):
+            url += '/v1'
 
 
     _CHAT_SYSTEM_TEMPLATE = (
