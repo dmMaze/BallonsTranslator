@@ -3,7 +3,7 @@ from .base import *
 import random
 import hashlib
 
-@register_translator('Tgw')
+@register_translator('text-generation-webui')
 class TGWTranslator(BaseTranslator):
     concate_text = False
     cht_require_convert = True
