@@ -74,6 +74,7 @@ class DeeplTranslator(BaseTranslator):
         self.lang_map['Indonesia'] = 'id'
         self.lang_map['украї́нська мо́ва'] = 'uk'
         self.lang_map['한국어'] = 'ko'
+        self.lang_map['Arabic'] = 'ar'
 
     def _translate(self, src_list: List[str]) -> List[str]:
         api_key = self.params['api_key']
