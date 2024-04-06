@@ -55,6 +55,7 @@ class SakuraTranslator(BaseTranslator):
             url = url[:-1]
         if not url.endswith('/v1'):
             url += '/v1'
+        return url
 
 
     _CHAT_SYSTEM_TEMPLATE = (
