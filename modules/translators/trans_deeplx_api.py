@@ -29,6 +29,7 @@ class DeepLTranslatorv2(BaseTranslator):
         self.lang_map['русский язык'] = 'ru'
         self.lang_map['Español'] = 'es'
         self.lang_map['Türk dili'] = 'tr'
+        self.lang_map['Arabic'] = 'ar'
         # Add other languages here
 
     def _translate(self, src_list: List[str]) -> List[str]:
