@@ -261,7 +261,10 @@ class ProjImgTrans:
         p = osp.join(self.inpainted_dir(), osp.splitext(imgname)[0]+'.png')
         if not osp.exists(p):
             if self._fuzzy_inpainted_list is None:
-                self._fuzzy_inpainted_list = find_all_imgs(self.inpainted_dir(), sort=True)
+                if osp.exists(self.inpainted_dir()):
+                    self._fuzzy_inpainted_list = find_all_imgs(self.inpainted_dir(), sort=True)
+                else:
+                    self._fuzzy_inpainted_list = []
             pidx = self.pagename2idx(imgname)
             if pidx < len(self._fuzzy_inpainted_list):
                 return osp.join(self.inpainted_dir(), self._fuzzy_inpainted_list[pidx])
