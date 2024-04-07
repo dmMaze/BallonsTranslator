@@ -270,7 +270,8 @@ class AOTInpainter(InpainterBase):
 
         if param_key == 'device':
             param_device = self.params['device']['select']
-            self.model.to(param_device)
+            if self.model is not None:
+                self.model.to(param_device)
             self.device = param_device
 
         elif param_key == 'inpaint_size':
@@ -386,7 +387,8 @@ class LamaInpainterMPE(InpainterBase):
 
         if param_key == 'device':
             param_device = self.params['device']['select']
-            self.model.to(param_device)
+            if self.model is not None:
+                self.model.to(param_device)
             self.device = param_device
 
         elif param_key == 'inpaint_size':
