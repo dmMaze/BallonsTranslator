@@ -5,6 +5,7 @@ import piexif.helper
 import numpy as np
 import os.path as osp
 from typing import Tuple, Union, List, Dict
+from PIL import Image
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
@@ -40,6 +41,8 @@ class ProjImgTrans:
         self.pages: Dict[List[TextBlock]] = {}
         self._pagename2idx = {}
         self._idx2pagename = {}
+
+        self._fuzzy_inpainted_list = None
 
         self.not_found_pages: Dict[List[TextBlock]] = {}
         self.new_pages: List[str] = []
@@ -84,6 +87,7 @@ class ProjImgTrans:
             os.makedirs(self.inpainted_dir())
         if not osp.exists(self.mask_dir()):
             os.makedirs(self.mask_dir())
+
         return new_proj
 
     def mask_dir(self):
@@ -148,14 +152,15 @@ class ProjImgTrans:
             self.current_img = imgname
             img_path = self.current_img_path()
             mask_path = self.mask_path()
-            inpainted_path = self.inpainted_path()
             self.img_array = imread(img_path)
             im_h, im_w = self.img_array.shape[:2]
             if osp.exists(mask_path):
                 self.mask_array = imread(mask_path, cv2.IMREAD_GRAYSCALE)
             else:
                 self.mask_array = np.zeros((im_h, im_w), dtype=np.uint8)
-            self.inpainted_array = imread(inpainted_path) if osp.exists(inpainted_path) else np.copy(self.img_array)
+            self.inpainted_array = self.load_inpainted_by_imgname(imgname)
+            if self.inpainted_array is None:
+                self.inpainted_array = np.copy(self.img_array)
         else:
             self.current_img = None
             self.img_array = None
@@ -253,13 +258,29 @@ class ProjImgTrans:
     def get_inpainted_path(self, imgname: str = None) -> str:
         if imgname is None:
             imgname = self.current_img
-        return osp.join(self.inpainted_dir(), osp.splitext(imgname)[0]+'.png')
+        p = osp.join(self.inpainted_dir(), osp.splitext(imgname)[0]+'.png')
+        if not osp.exists(p):
+            if self._fuzzy_inpainted_list is None:
+                self._fuzzy_inpainted_list = find_all_imgs(self.inpainted_dir(), sort=True)
+            pidx = self.pagename2idx(imgname)
+            if pidx < len(self._fuzzy_inpainted_list):
+                return osp.join(self.inpainted_dir(), self._fuzzy_inpainted_list[pidx])
+        return p
     
-    def load_inpainted_by_imgname(self, imgname: str) -> np.ndarray:
+    def load_inpainted_by_imgname(self, imgname: str, scale_to_src: bool = True) -> np.ndarray:
         inpainted = None
         mp = self.get_inpainted_path(imgname)
-        if osp.exists(mp):
+        if mp is not None and osp.exists(mp):
             inpainted = imread(mp)
+            if imgname == self.current_img and self.img_array is not None:
+                h, w = self.img_array.shape[:2]
+            else:
+                i = Image.open(osp.join(self.directory, imgname))
+                h, w = i.height, i.width
+            ih, iw = inpainted.shape[:2]
+            if ih != h or iw != w:
+                inpainted = Image.fromarray(inpainted).resize((w, h), resample=Image.Resampling.LANCZOS)
+                inpainted = np.array(inpainted)
         return inpainted
 
     def get_result_path(self, imgname: str) -> str:
