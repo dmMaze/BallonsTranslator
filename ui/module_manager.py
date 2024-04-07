@@ -1,11 +1,9 @@
 import time
 from typing import Union, List, Dict, Callable
-import traceback
 from enum import Enum
 
 import numpy as np
 from qtpy.QtCore import QThread, Signal, QObject, QLocale
-from qtpy.QtWidgets import QMessageBox
 
 from utils.logger import logger as LOGGER
 from utils.registry import Registry
@@ -21,6 +19,7 @@ import modules
 modules.translators.SYSTEM_LANG = QLocale.system().name()
 from modules.textdetector import TextBlock
 from utils import shared
+from utils.error_handling import create_error_dialog
 from .stylewidgets import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
 from utils.config import pcfg
@@ -28,16 +27,10 @@ cfg_module = pcfg.module
 from .config_proj import ProjImgTrans
 
 
-class RuntimeException(Enum):
-    TranslationFailed: str = 'TranslationFailed'
-    TranslatorSetupFailed: str = 'TranslatorSetupFailed'
-    Null: str = ''
-
-
 class ModuleThread(QThread):
 
-    exception_occurred = Signal(str, str, str)
     finish_set_module = Signal()
+    _failed_set_module_msg = 'Failed to set module.'
 
     def __init__(self, module_key: str, MODULE_REGISTER: Registry, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -66,9 +59,8 @@ class ModuleThread(QThread):
                 del old_module
         except Exception as e:
             self.module = old_module
-            msg = self.tr('Failed to set ') + module_name
-            
-            self.exception_occurred.emit(msg, str(e), traceback.format_exc())
+            create_error_dialog(e, self._failed_set_module_msg)
+
         self.finish_set_module.emit()
 
     def pipeline_finished(self):
@@ -95,6 +87,8 @@ class InpaintThread(ModuleThread):
 
     finish_inpaint = Signal(dict)
     inpainting = False    
+    inpaint_failed = Signal()
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__('inpainter', INPAINTERS, *args, **kwargs)
 
@@ -124,8 +118,9 @@ class InpaintThread(ModuleThread):
             }
             self.finish_inpaint.emit(inpaint_dict)
         except Exception as e:
-            self.exception_occurred.emit(self.tr('Inpainting Failed.'), str(e), traceback.format_exc())
+            create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
             self.inpainting = False
+            self.inpaint_failed.emit()
         self.inpainting = False
 
 class TextDetectThread(ModuleThread):
@@ -159,9 +154,9 @@ class OCRThread(ModuleThread):
 
 
 class TranslateThread(ModuleThread):
+
     finish_translate_page = Signal(str)
     progress_changed = Signal(int)
-    exception_occurred = Signal(str, str, str, RuntimeException)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__('translator', TRANSLATORS, *args, **kwargs)
@@ -190,7 +185,8 @@ class TranslateThread(ModuleThread):
                 old_translator = TRANSLATORS.module_dict['google']('简体中文', 'English', raise_unsupported_lang=False)
             self.translator = old_translator
             msg = self.tr('Failed to set translator ') + translator
-            self.exception_occurred.emit(msg, repr(e), traceback.format_exc(), RuntimeException.TranslatorSetupFailed)
+            create_error_dialog(e, msg, 'FailedSetTranslator')
+
         self.module = self.translator
         self.finish_set_module.emit()
 
@@ -201,20 +197,12 @@ class TranslateThread(ModuleThread):
             self.job = lambda : self._set_translator(translator)
             self.start()
 
-    def _translate_page(self, page_dict, page_key: str, raise_exception=False, emit_finished=True):
+    def _translate_page(self, page_dict, page_key: str, emit_finished=True):
         page = page_dict[page_key]
         try:
             self.translator.translate_textblk_lst(page)
-        except MissingTranslatorParams as e:
-            if raise_exception:
-                raise e
-            else:
-                self.exception_occurred.emit(e + self.tr(' is required for '), '', traceback.format_exc(), RuntimeException.TranslationFailed)
         except Exception as e:
-            if raise_exception:
-                raise e
-            else:
-                self.exception_occurred.emit(self.tr('Translation Failed.'), repr(e), traceback.format_exc(), RuntimeException.TranslationFailed)
+            create_error_dialog(e, self.tr('Translation Failed.'), 'TranslationFailed')
         if emit_finished:
             self.finish_translate_page.emit(page_key)
 
@@ -241,7 +229,7 @@ class TranslateThread(ModuleThread):
             page_key = self.pipeline_pagekey_queue.pop(0)
             self.blockSignals(True)
             try:
-                self._translate_page(self.imgtrans_proj.pages, page_key, raise_exception=True, emit_finished=False)
+                self._translate_page(self.imgtrans_proj.pages, page_key, emit_finished=False)
             except Exception as e:
                 
                 # TODO: allowing retry/skip/terminate
@@ -251,7 +239,7 @@ class TranslateThread(ModuleThread):
                     msg = msg + '\n' + str(e) + self.tr(' is required for ' + self.translator.name)
                     
                 self.blockSignals(False)
-                self.exception_occurred.emit(msg, repr(e), traceback.format_exc(), RuntimeException.TranslationFailed)
+                create_error_dialog(e, msg, 'TranslationFailed')
                 # self.imgtrans_proj = None
                 # self.finished_counter = 0
                 # self.pipeline_pagekey_queue = []
@@ -271,7 +259,6 @@ class ImgtransThread(QThread):
     update_ocr_progress = Signal(int)
     update_translate_progress = Signal(int)
     update_inpaint_progress = Signal(int)
-    exception_occurred = Signal(str, str)
 
     finish_blktrans_stage = Signal(str, int)
     finish_blktrans = Signal(int, list)
@@ -550,22 +537,18 @@ class ModuleManager(QObject):
     def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox, ocr_postprocess: Callable = None, translate_postprocess: Callable = None):
         self.textdetect_thread = TextDetectThread()
         self.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
-        self.textdetect_thread.exception_occurred.connect(self.handleRunTimeException)
 
         self.ocr_thread = OCRThread()
         self.ocr_thread.finish_set_module.connect(self.on_finish_setocr)
-        self.ocr_thread.exception_occurred.connect(self.handleRunTimeException)
 
         self.translate_thread = TranslateThread()
         self.translate_thread.progress_changed.connect(self.on_update_translate_progress)
         self.translate_thread.finish_set_module.connect(self.on_finish_settranslator)
-        self.translate_thread.finish_translate_page.connect(self.on_finish_translate_page)
-        self.translate_thread.exception_occurred.connect(self.handleRunTimeException)        
+        self.translate_thread.finish_translate_page.connect(self.on_finish_translate_page)  
 
         self.inpaint_thread = InpaintThread()
         self.inpaint_thread.finish_set_module.connect(self.on_finish_setinpainter)
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
-        self.inpaint_thread.exception_occurred.connect(self.handleRunTimeException)        
 
         self.progress_msgbox = imgtrans_progress_msgbox
 
@@ -574,7 +557,6 @@ class ModuleManager(QObject):
         self.imgtrans_thread.update_ocr_progress.connect(self.on_update_ocr_progress)
         self.imgtrans_thread.update_translate_progress.connect(self.on_update_translate_progress)
         self.imgtrans_thread.update_inpaint_progress.connect(self.on_update_inpaint_progress)
-        self.imgtrans_thread.exception_occurred.connect(self.handleRunTimeException)
         self.imgtrans_thread.finish_blktrans_stage.connect(self.on_finish_blktrans_stage)
         self.imgtrans_thread.finish_blktrans.connect(self.on_finish_blktrans)
 
@@ -864,12 +846,6 @@ class ModuleManager(QObject):
         self.run_canvas_inpaint = True
         self.inpaint(**inpaint_dict)
 
-    def on_settranslator_failed(self, translator: str, msg: str):
-        self.handleRunTimeException(f'Failed to set translator {translator}', msg)
-
-    def on_setinpainter_failed(self, inpainter: str, msg: str):
-        self.handleRunTimeException(f'Failed to set inpainter {inpainter}', msg)
-
     def on_translatorsource_changed(self):
         text = self.translator_panel.source_combobox.currentText()
         if self.translator is not None:
@@ -909,26 +885,6 @@ class ModuleManager(QObject):
                                param_key: str, param_content: dict):
             param_content = param_content['content']
             module.updateParam(param_key, param_content)
-        
-    def handleRunTimeException(self, msg: str, detail: str = None, verbose: str = '', exception_type=None):
-
-        def _show_err():
-            err = QMessageBox()
-            err.setText(msg)
-            err.setDetailedText(verbose)
-            err.exec()
-
-        if detail is not None:
-            msg += ': ' + detail
-        LOGGER.error(msg + '\n' + verbose)
-
-        if exception_type is None or exception_type == '' or exception_type == RuntimeException.Null:
-            _show_err()
-        else:
-            if exception_type not in shared.showed_exception:
-                shared.showed_exception.add(exception_type)
-                _show_err()
-                shared.showed_exception.remove(exception_type)
 
     def handle_page_changed(self):
         if not self.imgtrans_thread.isRunning():

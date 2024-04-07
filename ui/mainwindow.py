@@ -4,7 +4,6 @@ from typing import List, Union
 from pathlib import Path
 import subprocess
 from functools import partial
-import time
 
 from qtpy.QtWidgets import QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
@@ -14,6 +13,7 @@ from utils.logger import logger as LOGGER
 from utils.text_processing import is_cjk, full_len, half_len
 from utils.textblock import TextBlock
 from utils import shared
+from utils.error_handling import create_error_dialog
 from modules.translators.trans_chatgpt import GPTTranslator
 from .misc import parse_stylesheet, set_html_family
 from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from
@@ -65,10 +65,13 @@ class MainWindow(mainwindow_cls):
     translator = None
 
     restart_signal = Signal()
+    create_errdialog = Signal(str, str, str)
     
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
-        
         super().__init__()
+
+        shared.create_errdialog_in_mainthread = self.create_errdialog.emit
+        self.create_errdialog.connect(self.on_create_errdialog)
 
         self.app = app
         self.setupThread()
@@ -346,9 +349,7 @@ class MainWindow(mainwindow_cls):
             self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
-            LOGGER.exception(e)
-            LOGGER.warning("Failed to load project from " + directory)
-            self.module_manager.handleRunTimeException(self.tr('Failed to load project ') + directory, '')
+            create_error_dialog(e, self.tr('Failed to load project ') + directory)
             return
         
     def dropOpenDir(self, directory: str):
@@ -367,9 +368,7 @@ class MainWindow(mainwindow_cls):
             self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
-            LOGGER.exception(e)
-            LOGGER.warning("Failed to load project from " + json_path)
-            self.module_manager.handleRunTimeException(self.tr('Failed to load project ') + json_path, '')
+            create_error_dialog(e, self.tr('Failed to load project from') + json_path)
         
     def updatePageList(self):
         if self.pageList.count() != 0:
@@ -1041,7 +1040,7 @@ class MainWindow(mainwindow_cls):
             save_config()
             self.textPanel.formatpanel.textstyle_panel.style_area.setStyles(text_styles)
         except Exception as e:
-            self.module_manager.handleRunTimeException(self.tr(f'Failed to load from {p}'), str(e))
+            create_error_dialog(e, self.tr(f'Failed to load from {p}'))
 
     def export_tstyles(self):
         ddir = osp.dirname(pcfg.text_styles_path)
@@ -1062,7 +1061,7 @@ class MainWindow(mainwindow_cls):
             save_text_styles(raise_exception=True)
             save_config()
         except Exception as e:
-            self.module_manager.handleRunTimeException(self.tr(f'Failed save to {savep}'), str(e))
+            create_error_dialog(e, self.tr(f'Failed save to {savep}'))
             pcfg.text_styles_path = oldp
 
     def fold_textarea(self, fold: bool):
@@ -1223,3 +1222,19 @@ class MainWindow(mainwindow_cls):
             if pcfg.module.enable_inpaint:
                 shared.pbar['inpaint'] = tqdm(range(npages), desc="Inpaint")
         self.run_imgtrans()
+
+    def on_create_errdialog(self, error_msg: str, detail_traceback: str = '', exception_type: str = ''):
+        try:
+            if exception_type != '':
+                shared.showed_exception.add(exception_type)
+            err = QMessageBox()
+            err.setText(error_msg)
+            err.setDetailedText(detail_traceback)
+            err.exec()
+            if exception_type != '':
+                shared.showed_exception.remove(exception_type)
+        except:
+            if exception_type in shared.showed_exception:
+                shared.showed_exception.remove(exception_type)
+            LOGGER.error('Failed to create error dialog')
+            LOGGER.error(traceback.format_exc())

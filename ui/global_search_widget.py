@@ -177,7 +177,8 @@ class SearchResultTree(QTreeView):
 class GlobalReplaceThead(ThreadBase):
 
     finished = Signal()
-
+    _thread_error_msg = 'Failed to perform replacement'
+    _thread_exception_type = 'GlobalReplaceThead'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -275,8 +276,7 @@ class GlobalReplaceThead(ThreadBase):
     def on_finished(self):
         self.progress_bar.hide()
 
-    def handleRunTimeException(self, msg: str, detail: str = None, verbose: str = ''):
-        super().handleRunTimeException(msg, detail, verbose)
+    def on_exec_failed(self):
         self.progress_bar.hide()
 
 

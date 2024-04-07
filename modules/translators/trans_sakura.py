@@ -1,18 +1,17 @@
 # stealt & modified from https://github.com/zyddnys/manga-image-translator/blob/main/manga_translator/translators/chatgpt.py
 
 from http import client
-from pydoc import cli
 import re
 import time
 from token import OP
 from typing import List, Dict, Union
-import yaml
-import asyncio
+import traceback
 import time
 
 import openai
 
 from .base import BaseTranslator, register_translator
+from utils.error_handling import create_error_dialog
 
 OPENAPI_V1_API = int(openai.__version__.split('.')[0]) >= 1
 
@@ -235,20 +234,18 @@ class SakuraTranslator(BaseTranslator):
                 try:
                     response = self._request_translation(prompt)
                     break
-                except openai.APIError:
+                except openai.APIError as e:
                     server_error_attempt += 1
                     if server_error_attempt >= self.retry_attempts:
-                        self.logger.error(
-                            'Sakura server error. Returning original text.')
+                        create_error_dialog(e, 'Sakura translation failed. Return original text.', exception_type='SakuraTranslator')
                         return '\n'.join(prompt)
                     self.logger.warn(
                         f'Restarting request due to a server error. Attempt: {server_error_attempt}')
                     time.sleep(1)
-                except openai.APIConnectionError:
+                except openai.APIConnectionError as e:
                     server_error_attempt += 1
                     if server_error_attempt >= self.retry_attempts:
-                        self.logger.error(
-                            'Sakura server error. Returning original text.')
+                        create_error_dialog(e, 'Sakura translation failed. Return original text.', exception_type='SakuraTranslator')
                         return '\n'.join(prompt)
                     self.logger.warn(
                         f'Restarting request due to a server connection error.Current API baseurl is "{self.api_base}" Attempt: {server_error_attempt}')
@@ -264,20 +261,18 @@ class SakuraTranslator(BaseTranslator):
                 try:
                     response = self._request_translation(prompt)
                     break
-                except openai.error.APIError:
+                except openai.error.APIError as e:
                     server_error_attempt += 1
                     if server_error_attempt >= self.retry_attempts:
-                        self.logger.error(
-                            'Sakura server error. Returning original text.')
+                        create_error_dialog(e, 'Sakura translation failed. Return original text.', exception_type='SakuraTranslator')
                         return '\n'.join(prompt)
                     self.logger.warn(
                         f'Restarting request due to a server error. Attempt: {server_error_attempt}')
                     time.sleep(1)
-                except openai.error.APIConnectionError:
+                except openai.error.APIConnectionError as e:
                     server_error_attempt += 1
                     if server_error_attempt >= self.retry_attempts:
-                        self.logger.error(
-                            'Sakura server error. Returning original text.')
+                        create_error_dialog(e, 'Sakura translation failed. Return original text.', exception_type='SakuraTranslator')
                         return '\n'.join(prompt)
                     self.logger.warn(
                         f'Restarting request due to a server connection error.Current API baseurl is "{self.api_base}" Attempt: {server_error_attempt}')

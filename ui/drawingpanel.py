@@ -380,7 +380,7 @@ class DrawingPanel(Widget):
     def initDLModule(self, module_manager: ModuleManager):
         self.module_manager = module_manager
         module_manager.canvas_inpaint_finished.connect(self.on_inpaint_finished)
-        module_manager.inpaint_thread.exception_occurred.connect(self.on_inpaint_failed)
+        module_manager.inpaint_thread.inpaint_failed.connect(self.on_inpaint_failed)
 
     def setInpaintToolWidth(self, width):
         self.inpaint_pen.setWidthF(width)
