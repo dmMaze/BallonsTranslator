@@ -286,7 +286,7 @@ class SakuraTranslator(BaseTranslator):
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
 
-        if param_key == 'dict path':
+        if param_key == 'dict path' or param_key == 'version':
             self.set_dict_path(self.params['dict path'])
 
     def set_dict_path(self, path: str):
