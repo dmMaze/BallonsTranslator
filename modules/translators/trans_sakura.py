@@ -262,25 +262,13 @@ class SakuraTranslator(BaseTranslator):
             url += '/v1'
         return url
 
-    @api_base.setter
-    def api_base(self, url: str):
-        self.params['api baseurl'] = url
-
     @property
     def sakura_version(self) -> str:
         return self.params['version']['select']
 
-    @sakura_version.setter
-    def sakura_version(self, version: str):
-        self.params['version']['select'] = version
-
     @property
     def dict_path(self) -> str:
         return self.params['dict path']
-
-    @dict_path.setter
-    def dict_path(self, path: str):
-        self.params['dict path'] = path
 
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'Simplified Chinese'
@@ -291,28 +279,20 @@ class SakuraTranslator(BaseTranslator):
         self._current_style = "precise"
         self._emoji_pattern = re.compile(r'[\U00010000-\U0010ffff]')
         self._heart_pattern = re.compile(r'❤')
-        self.sakura_dict = SakuraDict(self.dict_path, self.logger, self.sakura_version)
+        self.sakura_dict = SakuraDict(
+            self.dict_path, self.logger, self.sakura_version)
         self.logger.info(f'当前选择的Sakura版本: {self.sakura_version}')
-    
+
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        if param_key == 'api baseurl':
-            self.api_base = param_content
-            self.logger.debug(f'更新API地址为: {param_content}')
-        if param_key == 'version':
-            self.set_sakura_version(self.params['version']['select'])
+
         if param_key == 'dict path':
             self.set_dict_path(self.params['dict path'])
-
-    def set_sakura_version(self, version: str):
-        self.sakura_version = version
-        self.logger.debug(f'更新Sakura版本为: {version}')
 
     def set_dict_path(self, path: str):
         self.params['dict path'] = path
         self.sakura_dict = SakuraDict(path, self.logger, self.sakura_version)
         self.logger.debug(f'更新Sakura字典路径为: {path}')
-
 
     @staticmethod
     def enlarge_small_kana(text, ignore=''):
@@ -569,7 +549,8 @@ class SakuraTranslator(BaseTranslator):
                     timeout_attempt += 1
                     if timeout_attempt >= self._TIMEOUT_RETRY_ATTEMPTS:
                         raise Exception('Sakura超时。')
-                    self.logger.warning(f'Sakura因超时而进行重试。尝试次数： {timeout_attempt}')
+                    self.logger.warning(
+                        f'Sakura因超时而进行重试。尝试次数： {timeout_attempt}')
             else:
                 try:
                     response = self._request_translation(prompt)
@@ -607,7 +588,8 @@ class SakuraTranslator(BaseTranslator):
                     timeout_attempt += 1
                     if timeout_attempt >= self._TIMEOUT_RETRY_ATTEMPTS:
                         raise Exception('Sakura超时。')
-                    self.logger.warning(f'Sakura因超时而进行重试。尝试次数： {timeout_attempt}')
+                    self.logger.warning(
+                        f'Sakura因超时而进行重试。尝试次数： {timeout_attempt}')
 
         return response
 
