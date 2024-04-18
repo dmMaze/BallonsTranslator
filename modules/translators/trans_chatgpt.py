@@ -91,6 +91,9 @@ class GPTTranslator(BaseTranslator):
         self.lang_map['украї́нська мо́ва'] = 'Ukrainian'
         self.lang_map['Thai'] = 'Thai'
         self.lang_map['Arabic'] = 'Arabic'
+        self.lang_map['Malayalam'] = 'Malayalam'
+        self.lang_map['Tamil'] = 'Tamil'
+        self.lang_map['Hindi'] = 'Hindi'
 
         self.token_count = 0
         self.token_count_last = 0

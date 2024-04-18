@@ -40,6 +40,9 @@ LANGMAP_GLOBAL = {
     'украї́нська мо́ва': '',  
     'Thai': '',
     'Arabic': '',
+    'Hindi': '',
+    'Malayalam': '',
+    'Tamil': '',
 }
 
 SYSTEM_LANG = ''
