@@ -332,6 +332,9 @@ class GPTTranslator(BaseTranslator):
         return url
 
     def _request_translation(self, prompt, chat_sample: List):
+
+        self.logger.debug(f'chatgpt prompt: \n {prompt}' )
+
         openai.api_key = self.params['api key']
         base_url = self.api_url
         if OPENAPI_V1_API:
