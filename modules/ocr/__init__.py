@@ -242,6 +242,37 @@ class OCRMIT48px(OCRBase):
         if self.device != device:
             self.model.to(device)
 
+from .stariver_ocr import StariverOCR
+@register_OCR('stariver_ocr')
+class OCRStariver(OCRBase):
+    params = {
+        'token': 'Replace with your token',
+        'description': '星河云(团子翻译器) OCR API'
+    }
+
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
+        self.client = StariverOCR(self.params['token'])
+
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        im_h, im_w = img.shape[:2]
+        for blk in blk_list:
+            x1, y1, x2, y2 = blk.xyxy
+            if y2 < im_h and x2 < im_w and \
+                    x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2:
+                blk.text = self.client.ocr(img[y1:y2, x1:x2])
+            else:
+                logging.warning('invalid textbbox to target img')
+                blk.text = ['']
+
+    def ocr_img(self, img: np.ndarray) -> str:
+        if not self.params['token'] or self.params['token'] == 'Replace with your token':
+            raise ValueError('token 没有设置。')
+        return self.client.ocr(img)
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        self.client.token = self.params['token']
 
     
 import platform
