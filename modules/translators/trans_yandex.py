@@ -28,6 +28,9 @@ class YandexTranslator(BaseTranslator):
         self.lang_map['Español'] = 'es'
         self.lang_map['Türk dili'] = 'tr'
         self.lang_map['Arabic'] = 'ar'
+        self.lang_map['Malayalam'] = 'ml'
+        self.lang_map['Tamil'] = 'ta'
+        self.lang_map['Hindi'] = 'hi'
 
         self.api_url_v2 = "https://translate.yandex.net/api/v1.5/tr.json/translate"
         self.api_url = 'https://translate.api.cloud.yandex.net/translate/v2/translate'

@@ -40,6 +40,9 @@ LANGMAP_GLOBAL = {
     'украї́нська мо́ва': '',  
     'Thai': '',
     'Arabic': '',
+    'Hindi': '',
+    'Malayalam': '',
+    'Tamil': '',
 }
 
 SYSTEM_LANG = ''
@@ -194,6 +197,9 @@ class BaseTranslator(BaseModule):
                 non_empty_ids.append(ii)
                 text_list.append(text)
             translations.append(text)
+
+        non_empty_txtlst_str = ',\n'.join(text_list)
+        LOGGER.debug(f'non empty src text list: \n[{non_empty_txtlst_str}]')
 
         if len(text_list) > 0:
             _translations = self.translate(text_list)

@@ -30,7 +30,9 @@ class YandexTranslatorFree(BaseTranslator):
         self.lang_map['Español'] = 'es'
         self.lang_map['Türk dili'] = 'tr'
         self.lang_map['Arabic'] = 'ar'
-
+        self.lang_map['Malayalam'] = 'ml'
+        self.lang_map['Tamil'] = 'ta'
+        self.lang_map['Hindi'] = 'hi'
     
     def _translate(self, src_list: List[str]) -> List[str]:
         tr_list = []
