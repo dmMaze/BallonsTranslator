@@ -125,6 +125,7 @@ class StariverDetector(TextDetectorBase):
     
     def __init__(self, **params) -> None:
         self.url = 'https://dl.ap-sh.starivercs.cn/v2/manga_trans/advanced/manga_ocr'
+        self.name = 'StariverDetector'
 
     def detect(self, img: np.ndarray) -> Tuple[np.ndarray, List[TextBlock]]:
         if not self.token or self.token == 'Replace with your token':
