@@ -3,7 +3,8 @@
 PyQt6-Qt6>=6.6.2
 PyQt6>=6.6.1
 numpy
-urllib3==1.25.11 # https://github.com/psf/requests/issues/5740
+urllib3==1.25.11; sys_platform == 'win32' # https://github.com/psf/requests/issues/5740
+urllib3; sys_platform == 'darwin' # fix urllib3.package.six.move module not found error
 jaconv
 torch
 torchvision
