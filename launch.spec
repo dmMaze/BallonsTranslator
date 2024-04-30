@@ -8,7 +8,7 @@ import subprocess
 commit_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('utf-8').strip()  
 
 # 构造带提交哈希值的版本号
-version = "1.3.35.dev." + commit_hash
+version = "1.4.0.dev." + commit_hash
 
 block_cipher = None
 
@@ -20,6 +20,7 @@ a = Analysis([
         ],
     binaries=[],
     datas=[
+        ('.btrans_cache', './.btrans_cache'),
         ('config', './config'),
         ('data', './data'),
         ('doc', './doc'),
@@ -30,8 +31,10 @@ a = Analysis([
         ('translate', './translate'),
         ('ui', './ui'),
         ('utils', './utils'),
-        ('venv/lib/python3.11/site-packages/spacy_pkuseg', './spacy_pkuseg'),
-        ('venv/lib/python3.11/site-packages/torchvision', './torchvision'),
+        ('venv/lib/python3.12/site-packages/spacy_pkuseg', './spacy_pkuseg'),
+        ('venv/lib/python3.12/site-packages/torchvision', './torchvision'),
+        ('venv/lib/python3.12/site-packages/translators', './translators'),
+        ('venv/lib/python3.12/site-packages/cryptography', './cryptography'),
         ],
     hiddenimports=[
         'PyQt6',
@@ -62,6 +65,8 @@ a = Analysis([
         'httpx',
         'langdetect',
         'srsly',
+        'execjs',
+        'pathos',
         ],
     hookspath=[],
     hooksconfig={},
