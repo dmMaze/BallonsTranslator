@@ -75,7 +75,7 @@ pip3 install -r requirements.txt
 # 下载完毕后运行下面的命令，如果正常运行且未报错，则继续进入打包应用程序的步骤
 python3 launch.py
 
-# 第6步：下载https://github.com/dmMaze/PyPatchMatchInpaint/releases/download/v1.0/macos_arm64_patchmatch_libs.7z到项目根目录下的'.btrans_cache'隐藏文件夹
+# 第6步：下载macos_arm64_patchmatch_libs.7z到项目根目录下的'.btrans_cache'隐藏文件夹
 # 该步骤是为了防止打包好的应用程序首次启动时重新下载macos_arm64_patchmatch_libs.7z导致启动失败（大概率）
 mkdir ./.btrans_cache2
 curl -L https://github.com/dmMaze/PyPatchMatchInpaint/releases/download/v1.0/macos_arm64_patchmatch_libs.7z -o ./.btrans_cache/macos_arm64_patchmatch_libs.7z
