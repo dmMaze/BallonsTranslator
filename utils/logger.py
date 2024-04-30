@@ -83,7 +83,7 @@ def setup_logging(logfile_dir: str, max_num_logs=14):
 
     logfilename = datetime.datetime.now().strftime('_%Y_%m_%d-%H_%M_%S.log')
     logfilep = osp.join(logfile_dir, logfilename)
-    fh = logging.FileHandler(logfilep, mode='w')
+    fh = logging.FileHandler(logfilep, mode='w', encoding='utf-8')
     fh.setLevel(logging.DEBUG)
     logger.addHandler(fh)
 
