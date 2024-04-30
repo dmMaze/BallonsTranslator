@@ -89,7 +89,7 @@ pip3 install pyinstaller
 sudo find ./ -name '.DS_Store' -delete
 # 开始打包.app应用程序
 sudo pyinstaller launch.spec
-
+```
 > 📌打包好的应用在`./data/BallonsTranslator/dist/BallonsTranslator.app`，将应用拖到 macOS 的应用程序文件夹即完成安装，开箱即用，不需要另外配置 Python 环境。 
 
 ## 一键翻译
