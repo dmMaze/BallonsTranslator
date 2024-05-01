@@ -247,14 +247,66 @@ from .stariver_ocr import StariverOCR
 class OCRStariver(OCRBase):
     params = {
         'token': 'Replace with your token',
+        "refine":{
+            'type': 'selector',
+            'options': [True, False],
+            'select': True
+        },
+        "filtrate":{
+            'type': 'selector',
+            'options': [True, False],
+            'select': True
+        },
+        "disable_skip_area":{
+            'type': 'selector',
+            'options': [True, False],
+            'select': True
+        },
+        "detect_scale": "3",
+        "merge_threshold": "2",
         'description': '星河云(团子翻译器) OCR API'
     }
 
+    @property
+    def token(self):
+        return self.params['token']
+    
+    @property
+    def expand_ratio(self):
+        return float(self.params['expand_ratio'])
+    
+    @property
+    def refine(self):
+        if self.params['refine']['select'] == 'True':
+            return True
+        elif self.params['refine']['select'] == 'False':
+            return False    
+    @property
+    def filtrate(self):
+        if self.params['filtrate']['select'] == 'True':
+            return True
+        elif self.params['filtrate']['select'] == 'False':
+            return False
+    @property
+    def disable_skip_area(self):
+        if self.params['disable_skip_area']['select'] == 'True':
+            return True
+        elif self.params['disable_skip_area']['select'] == 'False':
+            return False
+    @property
+    def detect_scale(self):
+        return int(self.params['detect_scale'])
+    
+    @property
+    def merge_threshold(self):
+        return float(self.params['merge_threshold'])
+
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.client = StariverOCR(self.params['token'])
+        self.client = StariverOCR(self.token, refine=self.refine, filtrate=self.filtrate, disable_skip_area=self.disable_skip_area, detect_scale=self.detect_scale, merge_threshold=self.merge_threshold)
 
     def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        self.logger.debug(f'ocr_blk_list: {blk_list}')
         im_h, im_w = img.shape[:2]
         for blk in blk_list:
             x1, y1, x2, y2 = blk.xyxy
@@ -266,6 +318,7 @@ class OCRStariver(OCRBase):
                 blk.text = ['']
 
     def ocr_img(self, img: np.ndarray) -> str:
+        self.logger.debug(f'ocr_img: {img.shape}')
         if not self.params['token'] or self.params['token'] == 'Replace with your token':
             raise ValueError('token 没有设置。')
         return self.client.ocr(img)
