@@ -3,105 +3,54 @@ import requests
 import json
 import base64
 import numpy as np
-from utils.textblock import TextBlock
+
 
 class StariverOCR:
-    
-    def __init__(self, token, detect_scale=3, merge_threshold=0.5, refine=True, filtrate=True, disable_skip_area=True):
+
+    def __init__(self, token, detect_scale=3, merge_threshold=0.5, refine=True, filtrate=True, disable_skip_area=True, force_expand=False):
         self.token = token
         self.url = 'https://dl.ap-sh.starivercs.cn/v2/manga_trans/advanced/manga_ocr'
-        self.detect_scale = detect_scale
-        self.merge_threshold = merge_threshold
-        self.refine = refine
-        self.filtrate = filtrate
-        self.disable_skip_area = disable_skip_area
-        self.low_accuracy_mode = False
-
-
-    def ocr(self, img: np.ndarray):
-        img = cv2.imencode('.png', img)[1]
-        img_base64 = base64.b64encode(img).decode('utf-8')
-        data = {
+        self.debug = False
+        self.params = {
             "token": self.token,
             "mask": False,
-            "refine": self.refine,
-            "filtrate": self.filtrate,
-            "disable_skip_area": self.disable_skip_area,
-            "detect_scale": self.detect_scale,
-            "merge_threshold": self.merge_threshold,
-            "low_accuracy_mode": self.low_accuracy_mode,
-            "image": img_base64
+            "refine": refine,
+            "filtrate": filtrate,
+            "disable_skip_area": disable_skip_area,
+            "detect_scale": detect_scale,
+            "merge_threshold": merge_threshold,
+            "low_accuracy_mode": True,
+            "force_expand": force_expand
         }
-        response = requests.post(self.url, data=json.dumps(data))
-        if response.status_code!= 200:
-            self.logger.error(f'请求失败，状态码：{response.status_code}')
+
+    def ocr(self, img: np.ndarray) -> str:
+        if not self.params['token'] or self.params['token'] == 'Replace with your token':
+            raise ValueError('token 没有设置。')
+
+        img_base64 = base64.b64encode(
+            cv2.imencode('.jpg', img)[1]).decode('utf-8')
+        self.params["image"] = img_base64
+
+        response = requests.post(self.url, data=json.dumps(self.params))
+
+        if response.status_code != 200:
+            print(f'请求失败，状态码：{response.status_code}')
             if response.json().get('Code', -1) != 0:
-                self.logger.error(f'错误信息：{response.json().get("Message", "")}')
+                print(f'错误信息：{response.json().get("Message", "")}')
                 with open('stariver_ocr_error.txt', 'w', encoding='utf-8') as f:
                     f.write(response.text)
             raise ValueError('请求失败。')
 
-        text_blocks = response.json()['Data']['text_block']
-        texts = [text for block in text_blocks for text in block['texts']]
-        return texts
-    
-    # def ocr_verbose(self, img: np.ndarray):
-    #     """
-    #     测试用，返回mask和TextBlock列表
-    #     """
-    #     img_encoded = cv2.imencode('.jpg', img)[1]
-    #     img_base64 = base64.b64encode(img_encoded).decode('utf-8')
-        
-    #     payload = {
-    #         "token": self.token,
-    #         "mask": True,
-    #         "refine": self.refine,
-    #         "filtrate": self.filtrate,
-    #         "disable_skip_area": self.disable_skip_area,
-    #         "detect_scale": self.detect_scale,
-    #         "merge_threshold": self.merge_threshold,
-    #         "low_accuracy_mode": self.low_accuracy_mode,
-    #         "image": img_base64
-    #     }
+        response_data = response.json()['Data']
 
-    #     response = requests.post(self.url, json=payload)
-    #     response_data = response.json()['Data']
+        if self.debug:
+            id = response.json().get('RequestID', '')
+            file_name = f"stariver_ocr_response_{id}.json"
+            print(f"请求成功，响应数据已保存至{file_name}")
+            with open(file_name, 'w', encoding='utf-8') as f:
+                json.dump(response_data, f, ensure_ascii=False, indent=4)
 
-    #     blk_list = []
-    #     for block in response_data.get('text_block', []):
-    #         xyxy = [int(min(coord[0] for coord in block['block_coordinate'].values())),
-    #                 int(min(coord[1] for coord in block['block_coordinate'].values())),
-    #                 int(max(coord[0] for coord in block['block_coordinate'].values())),
-    #                 int(max(coord[1] for coord in block['block_coordinate'].values()))]
-    #         lines = [np.array([[coord[pos][0], coord[pos][1]] for pos in ['upper_left', 'upper_right', 'lower_right', 'lower_left']], dtype=np.float32) for coord in block['coordinate']]
-    #         texts = block.get('texts', '')
-    #         blk = TextBlock(
-    #             xyxy=xyxy,
-    #             lines=lines,
-    #             language=block.get('language', 'unknown'),
-    #             vertical=block.get('is_vertical', False),
-    #             font_size=block.get('text_size', 0),
-    #             distance=np.array([0, 0], dtype=np.float32),
-    #             angle=0,
-    #             vec=np.array([0, 0], dtype=np.float32),
-    #             norm=0,
-    #             merged=False,
-    #             text=texts,
-    #             fg_colors=np.array(block.get('foreground_color', [0, 0, 0]), dtype=np.float32),
-    #             bg_colors=np.array(block.get('background_color', [0, 0, 0]), dtype=np.float32)
-    #         )
-    #         # print(blk.to_dict())
-    #         blk_list.append(blk)
-        
-    #     mask = self._decode_base64_mask(response_data['mask'])
-    #     return mask, blk_list
-
-    # @staticmethod
-    # def _decode_base64_mask(base64_str: str) -> np.ndarray:
-    #     img_data = base64.b64decode(base64_str)
-    #     img_array = np.frombuffer(img_data, dtype=np.uint8)
-    #     mask = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-    #     if mask is None:
-    #         print("Error decoding the mask.")
-    #         return None
-    #     return mask
+        texts_list = ["".join(block.get('texts', '')).strip()
+                      for block in response_data.get('text_block', [])]
+        texts_str = "".join(texts_list)
+        return texts_str

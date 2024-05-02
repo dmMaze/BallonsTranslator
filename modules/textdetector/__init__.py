@@ -135,6 +135,11 @@ class StariverDetector(TextDetectorBase):
             'options': [True, False],
             'select': False
         },
+        "force_expand":{
+            'type': 'selector',
+            'options': [True, False],
+            'select': False
+        },
         'description': '星河云(团子翻译器) OCR 文字检测器'
     }
 
@@ -181,11 +186,18 @@ class StariverDetector(TextDetectorBase):
             return True
         elif self.params['low_accuracy_mode']['select'] == 'False':
             return False
+        
+    @property
+    def force_expand(self):
+        if self.params['force_expand']['select'] == 'True':
+            return True
+        elif self.params['force_expand']['select'] == 'False':
+            return False
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
         self.url = 'https://dl.ap-sh.starivercs.cn/v2/manga_trans/advanced/manga_ocr'
-        self.debug = True
+        self.debug = False
         # self.name = 'StariverDetector'
 
     def detect(self, img: np.ndarray) -> Tuple[np.ndarray, List[TextBlock]]:
@@ -204,6 +216,7 @@ class StariverDetector(TextDetectorBase):
             "detect_scale": self.detect_scale,
             "merge_threshold": self.merge_threshold,
             "low_accuracy_mode": self.low_accuracy_mode,
+            "force_expand": self.force_expand,
             "image": img_base64
         }
         if self.debug:
@@ -236,7 +249,7 @@ class StariverDetector(TextDetectorBase):
                 language=block.get('language', 'unknown'),
                 vertical=block.get('is_vertical', False),
                 font_size=block.get('text_size', 0),
-                
+
                 text=texts,
                 fg_colors=np.array(block.get('foreground_color', [
                                    0, 0, 0]), dtype=np.float32),
@@ -265,6 +278,10 @@ class StariverDetector(TextDetectorBase):
         :param expand_ratio: 扩展比例，默认值为0.01
         :return: 扩展后的mask
         """
+
+        if expand_ratio == 0:
+            return mask
+        
         # 确保mask是二值图像（只含0和255）
         mask = (mask > 0).astype(np.uint8) * 255
 
