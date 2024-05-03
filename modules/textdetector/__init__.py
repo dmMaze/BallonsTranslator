@@ -1,5 +1,6 @@
 import base64
 from re import T
+from tkinter import font
 import requests
 import numpy as np
 import cv2
@@ -140,6 +141,9 @@ class StariverDetector(TextDetectorBase):
             'options': [True, False],
             'select': False
         },
+        "font_size_offset": "0",
+        "font_size_min(set to -1 to disable)": "-1",
+        "font_size_max(set to -1 to disable)": "-1",
         'description': '星河云(团子翻译器) OCR 文字检测器'
     }
 
@@ -193,6 +197,18 @@ class StariverDetector(TextDetectorBase):
             return True
         elif self.params['force_expand']['select'] == 'False':
             return False
+        
+    @property
+    def font_size_offset(self):
+        return int(self.params['font_size_offset'])
+
+    @property
+    def font_size_min(self):
+        return int(self.params['font_size_min(set to -1 to disable)'])
+
+    @property
+    def font_size_max(self):
+        return int(self.params['font_size_max(set to -1 to disable)'])
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
@@ -242,13 +258,20 @@ class StariverDetector(TextDetectorBase):
                     int(max(coord[1] for coord in block['block_coordinate'].values()))]
             lines = [np.array([[coord[pos][0], coord[pos][1]] for pos in ['upper_left', 'upper_right',
                               'lower_right', 'lower_left']], dtype=np.float32) for coord in block['coordinate']]
-            texts = block.get('texts', '')
+            texts = [text.replace('<skip>', '') for text in block.get('texts', [])]
+
+            original_font_size = block.get('text_size', 0)
+            font_size_recalculated = min(max(original_font_size + self.font_size_offset, self.font_size_min), self.font_size_max)
+
+            if self.debug:
+                self.logger.debug(f'原始字体大小：{original_font_size}，修正后字体大小：{font_size_recalculated}')
+
             blk = TextBlock(
                 xyxy=xyxy,
                 lines=lines,
                 language=block.get('language', 'unknown'),
                 vertical=block.get('is_vertical', False),
-                font_size=block.get('text_size', 0),
+                font_size=font_size_recalculated,
 
                 text=texts,
                 fg_colors=np.array(block.get('foreground_color', [

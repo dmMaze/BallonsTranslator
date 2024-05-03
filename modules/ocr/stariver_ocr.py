@@ -52,5 +52,5 @@ class StariverOCR:
 
         texts_list = ["".join(block.get('texts', '')).strip()
                       for block in response_data.get('text_block', [])]
-        texts_str = "".join(texts_list)
+        texts_str = "".join(texts_list).replace('<skip>', '')
         return texts_str
