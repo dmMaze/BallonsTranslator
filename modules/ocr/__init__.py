@@ -37,7 +37,9 @@ class OCRBase(BaseModule):
             blk_list = [blk_list]
 
         for blk in blk_list:
-            blk.text = []
+            if self.name != 'none_ocr':
+                blk.text = []
+                
         self._ocr_blk_list(img, blk_list)
         for callback_name, callback in self._postprocess_hooks.items():
             callback(textblocks=blk_list, img=img, ocr_module=self)
@@ -242,7 +244,115 @@ class OCRMIT48px(OCRBase):
         if self.device != device:
             self.model.to(device)
 
+from .stariver_ocr import StariverOCR
+@register_OCR('stariver_ocr')
+class OCRStariver(OCRBase):
+    params = {
+        'token': 'Replace with your token',
+        "refine":{
+            'type': 'selector',
+            'options': [True, False],
+            'select': True
+        },
+        "filtrate":{
+            'type': 'selector',
+            'options': [True, False],
+            'select': True
+        },
+        "disable_skip_area":{
+            'type': 'selector',
+            'options': [True, False],
+            'select': True
+        },
+        "detect_scale": "3",
+        "merge_threshold": "2",
+        "force_expand":{
+            'type': 'selector',
+            'options': [True, False],
+            'select': False
+        },
+        'description': '星河云(团子翻译器) OCR API'
+    }
 
+    @property
+    def token(self):
+        return self.params['token']
+    
+    @property
+    def expand_ratio(self):
+        return float(self.params['expand_ratio'])
+    
+    @property
+    def refine(self):
+        if self.params['refine']['select'] == 'True':
+            return True
+        elif self.params['refine']['select'] == 'False':
+            return False    
+    @property
+    def filtrate(self):
+        if self.params['filtrate']['select'] == 'True':
+            return True
+        elif self.params['filtrate']['select'] == 'False':
+            return False
+    @property
+    def disable_skip_area(self):
+        if self.params['disable_skip_area']['select'] == 'True':
+            return True
+        elif self.params['disable_skip_area']['select'] == 'False':
+            return False
+    @property
+    def detect_scale(self):
+        return int(self.params['detect_scale'])
+    
+    @property
+    def merge_threshold(self):
+        return float(self.params['merge_threshold'])
+    
+    @property
+    def force_expand(self):
+        if self.params['force_expand']['select'] == 'True':
+            return True
+        elif self.params['force_expand']['select'] == 'False':
+            return False
+
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
+        self.client = StariverOCR(self.token, refine=self.refine, filtrate=self.filtrate, disable_skip_area=self.disable_skip_area, detect_scale=self.detect_scale, merge_threshold=self.merge_threshold, force_expand=self.force_expand)
+
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        im_h, im_w = img.shape[:2]
+        for blk in blk_list:
+            x1, y1, x2, y2 = blk.xyxy
+            if y2 < im_h and x2 < im_w and \
+                    x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2:
+                blk.text = self.client.ocr(img[y1:y2, x1:x2])
+            else:
+                logging.warning('invalid textbbox to target img')
+                blk.text = ['']
+
+    def ocr_img(self, img: np.ndarray) -> str:
+        self.logger.debug(f'ocr_img: {img.shape}')
+        return self.client.ocr(img)
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        self.client.token = self.params['token']
+
+@register_OCR('none_ocr')
+class OCRNone(OCRBase):
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
+
+    params = {
+        'NOTICE': 'Not a OCR, just return original text.',
+        'description': 'Not a OCR, just return original text.'
+    }
+
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        pass
+
+    def ocr_img(self, img: np.ndarray) -> str:
+        return ''
     
 import platform
 if platform.mac_ver()[0] >= '10.15':
