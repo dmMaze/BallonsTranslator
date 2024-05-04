@@ -203,11 +203,16 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
 [Sugoi translator](https://sugoitranslator.com/) is created by [mingshiba](https://www.patreon.com/mingshiba).
   
 ## Text detection
-Support English and Japanese text detection, training code and more details can be found at [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
+ * Support English and Japanese text detection, training code and more details can be found at [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
+* Support using text detection from [Stariver Cloud (Tuanzi Comics OCR)](https://cloud.stariver.org.cn/), requires obtaining and filling in the token
+   * For parameter settings and how to obtain the token, refer to [Tuanzi OCR Instructions (Chinese only)](doc/团子OCR说明.md)
 
 ## OCR
  * All mit* models are from manga-image-translator, support English, Japanese and Korean recognition and text color extraction.
  * [manga_ocr](https://github.com/kha-white/manga-ocr) is from [kha-white](https://github.com/kha-white), text recognition for Japanese, with the main focus being Japanese manga.
+* Support using OCR from [Stariver Cloud (Tuanzi Comics OCR)](https://cloud.stariver.org.cn/), requires obtaining and filling in the token
+   * For parameter settings and how to obtain the token, refer to [Tuanzi OCR Instructions (Chinese only)](doc/团子OCR说明.md)
+   * When setting the text detection to Tuanzi Detector, it is recommended to set OCR to none_ocr, directly read the text, saving time and number of requests.
 
 ## Inpainting
   * AOT is from [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
