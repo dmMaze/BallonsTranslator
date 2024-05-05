@@ -1,6 +1,4 @@
 import base64
-from re import T
-from tkinter import font
 import requests
 import numpy as np
 import cv2
@@ -216,6 +214,14 @@ class StariverDetector(TextDetectorBase):
         self.debug = False
         # self.name = 'StariverDetector'
 
+    def adjust_font_size(self, original_font_size):
+        new_font_size = original_font_size + self.font_size_offset
+        if self.font_size_min != -1:
+            new_font_size = max(new_font_size, self.font_size_min)
+        if self.font_size_max != -1:
+            new_font_size = min(new_font_size, self.font_size_max)
+        return new_font_size
+
     def detect(self, img: np.ndarray) -> Tuple[np.ndarray, List[TextBlock]]:
         if not self.token or self.token == 'Replace with your token':
             self.logger.error(f'token 没有设置。当前token：{self.token}')
@@ -261,7 +267,8 @@ class StariverDetector(TextDetectorBase):
             texts = [text.replace('<skip>', '') for text in block.get('texts', [])]
 
             original_font_size = block.get('text_size', 0)
-            font_size_recalculated = min(max(original_font_size + self.font_size_offset, self.font_size_min), self.font_size_max)
+
+            font_size_recalculated = self.adjust_font_size(original_font_size)
 
             if self.debug:
                 self.logger.debug(f'原始字体大小：{original_font_size}，修正后字体大小：{font_size_recalculated}')
