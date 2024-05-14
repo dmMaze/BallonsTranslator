@@ -4,6 +4,7 @@ import re
 import time
 from typing import List, Dict, Union
 import yaml
+import traceback
 
 import openai
 
@@ -23,11 +24,13 @@ class GPTTranslator(BaseTranslator):
         'model': {
             'type': 'selector',
             'options': [
+                'gpt-4o',
+                'gpt-4-turbo',
                 'gpt3',
                 'gpt35-turbo',
                 'gpt4',
             ],
-            'select': 'gpt35-turbo'
+            'select': 'gpt-4o'
         },
         'override model': '',
         'prompt template': {
@@ -249,6 +252,7 @@ class GPTTranslator(BaseTranslator):
                         new_translations = [''] * num_src
                         break
                     self.logger.warn(f'Translation failed due to {e}. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
+                    self.logger.error(f'Request traceback: ', traceback.format_exc())
                     time.sleep(self.retry_timeout)
                     # time.sleep(self.retry_timeout)
             # if return_prompt:
@@ -335,7 +339,7 @@ class GPTTranslator(BaseTranslator):
 
         self.logger.debug(f'chatgpt prompt: \n {prompt}' )
 
-        openai.api_key = self.params['api key']
+        openai.api_key = self.params['api key'].strip()
         base_url = self.api_url
         if OPENAPI_V1_API:
             openai.base_url = base_url
