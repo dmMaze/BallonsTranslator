@@ -11,6 +11,7 @@ from utils.logger import logger as LOGGER
 from utils.io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
 from utils.textblock import TextBlock
 from utils.config import pcfg
+from utils import shared
 from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException
 
 
@@ -259,7 +260,7 @@ class ProjImgTrans:
         if imgname is None:
             imgname = self.current_img
         p = osp.join(self.inpainted_dir(), osp.splitext(imgname)[0]+'.png')
-        if not osp.exists(p):
+        if not osp.exists(p) and shared.FUZZY_MATCH_IMAGE_NAME:
             if self._fuzzy_inpainted_list is None:
                 if osp.exists(self.inpainted_dir()):
                     self._fuzzy_inpainted_list = find_all_imgs(self.inpainted_dir(), sort=True)

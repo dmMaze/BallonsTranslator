@@ -85,6 +85,8 @@ ON_WINDOWS = sys.platform == 'win32'
 HEADLESS = False
 DEBUG = False
 
+FUZZY_MATCH_IMAGE_NAME = False
+
 cache_data: Dict = None
 cache_dir: str = osp.join(PROGRAM_PATH, '.btrans_cache')
 cache_path: str = osp.join(PROGRAM_PATH, '.btrans_cache/cache.json')
