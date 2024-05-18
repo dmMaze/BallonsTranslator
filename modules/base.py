@@ -71,19 +71,16 @@ class BaseModule:
             self.params[param_key] = param_content
         else:
             param_dict = self.params[param_key]
-            if param_dict['type'] == 'selector':
-                param_dict['select'] = param_content
-            elif param_dict['type'] == 'editor':
-                param_dict['content'] = param_content
+            param_dict['value'] = param_content
 
     def is_cpu_intensive(self)->bool:
         if self.params is not None and 'device' in self.params:
-            return self.params['device']['select'] == 'cpu'
+            return self.params['device']['value'] == 'cpu'
         return False
 
     def is_gpu_intensive(self) -> bool:
         if self.params is not None and 'device' in self.params:
-            return self.params['device']['select'] in GPUINTENSIVE_SET
+            return self.params['device']['value'] in GPUINTENSIVE_SET
         return False
 
     def is_computational_intensive(self) -> bool:
@@ -157,7 +154,7 @@ DEVICE_SELECTOR = lambda : deepcopy(
             'cuda',
             'mps'
         ],
-        'select': DEFAULT_DEVICE
+        'value': DEFAULT_DEVICE
     }
 )
 

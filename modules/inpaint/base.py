@@ -186,7 +186,7 @@ class AOTInpainter(InpainterBase):
                 1024, 
                 2048
             ], 
-            'select': 2048
+            'value': 2048
         }, 
         'device': DEVICE_SELECTOR(),
         'description': 'manga-image-translator inpainter'
@@ -205,8 +205,8 @@ class AOTInpainter(InpainterBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.device = self.params['device']['select']
-        self.inpaint_size = int(self.params['inpaint_size']['select'])
+        self.device = self.params['device']['value']
+        self.inpaint_size = int(self.params['inpaint_size']['value'])
         self.model: AOTGenerator = None
         
     def _load_model(self):
@@ -269,13 +269,13 @@ class AOTInpainter(InpainterBase):
         super().updateParam(param_key, param_content)
 
         if param_key == 'device':
-            param_device = self.params['device']['select']
+            param_device = self.params['device']['value']
             if self.model is not None:
                 self.model.to(param_device)
             self.device = param_device
 
         elif param_key == 'inpaint_size':
-            self.inpaint_size = int(self.params['inpaint_size']['select'])
+            self.inpaint_size = int(self.params['inpaint_size']['value'])
 
     def unload_model(self):
         del self.model
@@ -294,7 +294,7 @@ class LamaInpainterMPE(InpainterBase):
                 1024, 
                 2048
             ], 
-            'select': 2048
+            'value': 2048
         }, 
         'device': DEVICE_SELECTOR()
     }
@@ -308,8 +308,8 @@ class LamaInpainterMPE(InpainterBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.device = self.params['device']['select']
-        self.inpaint_size = int(self.params['inpaint_size']['select'])
+        self.device = self.params['device']['value']
+        self.inpaint_size = int(self.params['inpaint_size']['value'])
         self.precision = 'fp32'
         self.model: LamaFourier = None
 
@@ -386,16 +386,16 @@ class LamaInpainterMPE(InpainterBase):
         super().updateParam(param_key, param_content)
 
         if param_key == 'device':
-            param_device = self.params['device']['select']
+            param_device = self.params['device']['value']
             if self.model is not None:
                 self.model.to(param_device)
             self.device = param_device
 
         elif param_key == 'inpaint_size':
-            self.inpaint_size = int(self.params['inpaint_size']['select'])
+            self.inpaint_size = int(self.params['inpaint_size']['value'])
 
         elif param_key == 'precision':
-            precision = self.params['precision']['select']
+            precision = self.params['precision']['value']
             self.precision = precision
 
     def moveToDevice(self, device: str, precision: str = None):
@@ -417,7 +417,7 @@ class LamaLarge(LamaInpainterMPE):
                 1536, 
                 2048
             ], 
-            'select': 1536,
+            'value': 1536,
         }, 
         'device': DEVICE_SELECTOR(),
         'precision': {
@@ -426,7 +426,7 @@ class LamaLarge(LamaInpainterMPE):
                 'fp32',
                 'bf16'
             ], 
-            'select': 'bf16' if BF16_SUPPORTED == 'cuda' else 'fp32'
+            'value': 'bf16' if BF16_SUPPORTED == 'cuda' else 'fp32'
         }, 
     }
 
@@ -438,11 +438,11 @@ class LamaLarge(LamaInpainterMPE):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.precision = self.params['precision']['select']
+        self.precision = self.params['precision']['value']
 
     def _load_model(self):
-        device = self.params['device']['select']
-        precision = self.params['precision']['select']
+        device = self.params['device']['value']
+        precision = self.params['precision']['value']
 
         self.model = load_lama_mpe(r'data/models/lama_large_512px.ckpt', device='cpu', use_mpe=False, large_arch=True)
         self.moveToDevice(device, precision=precision)
@@ -459,7 +459,7 @@ class LamaLarge(LamaInpainterMPE):
 #                 1024, 
 #                 2048
 #             ], 
-#             'select': 2048
+#             'value': 2048
 #         }, 
 #         'device': {
 #             'type': 'selector',
@@ -467,7 +467,7 @@ class LamaLarge(LamaInpainterMPE):
 #                 'cpu',
 #                 'cuda'
 #             ],
-#             'select': DEFAULT_DEVICE
+#             'value': DEFAULT_DEVICE
 #         }
 #     }
 
@@ -477,14 +477,14 @@ class LamaLarge(LamaInpainterMPE):
 #     def setup_inpainter(self):
 #         global LAMA_ORI
 
-#         self.device = self.params['device']['select']
+#         self.device = self.params['device']['value']
 #         if LAMA_ORI is None:
 #             self.model = LAMA_ORI = load_lama_mpe(r'data/models/lama_org.ckpt', self.device, False)
 #         else:
 #             self.model = LAMA_ORI
 #             self.model.to(self.device)
 #         self.inpaint_by_block = True if self.device == 'cuda' else False
-#         self.inpaint_size = int(self.params['inpaint_size']['select'])
+#         self.inpaint_size = int(self.params['inpaint_size']['value'])
 
 #     def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
@@ -545,7 +545,7 @@ class LamaLarge(LamaInpainterMPE):
 #         super().updateParam(param_key, param_content)
 
 #         if param_key == 'device':
-#             param_device = self.params['device']['select']
+#             param_device = self.params['device']['value']
 #             self.model.to(param_device)
 #             self.device = param_device
 #             if param_device == 'cuda':
@@ -554,4 +554,4 @@ class LamaLarge(LamaInpainterMPE):
 #                 self.inpaint_by_block = True
 
 #         elif param_key == 'inpaint_size':
-#             self.inpaint_size = int(self.params['inpaint_size']['select'])
+#             self.inpaint_size = int(self.params['inpaint_size']['value'])

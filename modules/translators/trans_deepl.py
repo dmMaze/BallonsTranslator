@@ -19,31 +19,31 @@ class DeeplTranslator(BaseTranslator):
                 'prefer_more',
                 'prefer_less'
             ],
-            'select': 'default'
+            'value': 'default'
         },
         'context': {
             'type': 'editor',
-            'content': ''  
+            'value': ''  
         },
         'preserve_formatting': {
             'type': 'selector',
             'options': ['enabled', 'disabled'],
-            'select': 'disabled' 
+            'value': 'disabled' 
         }
     }
 
 
     @property
     def preserve_formatting(self) -> bool:
-        return self.params['preserve_formatting']['select'] == 'enabled'
+        return self.params['preserve_formatting']['value'] == 'enabled'
 
     @property
     def context(self) -> str:
-        return self.params['context']['content']
+        return self.params['context']['value']
 
     @property
     def formality(self) -> str:
-        return self.params['formality']['select']
+        return self.params['formality']['value']
 
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'zh'

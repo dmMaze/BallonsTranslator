@@ -218,7 +218,7 @@ class SakuraTranslator(BaseTranslator):
                 '0.9',
                 '0.10'
             ],
-            'select': '0.9'
+            'value': '0.9'
         },
         'retry attempts': 3,
         'timeout': 999,
@@ -264,7 +264,7 @@ class SakuraTranslator(BaseTranslator):
 
     @property
     def sakura_version(self) -> str:
-        return self.params['version']['select']
+        return self.params['version']['value']
 
     @property
     def dict_path(self) -> str:

@@ -30,21 +30,21 @@ class GPTTranslator(BaseTranslator):
                 'gpt35-turbo',
                 'gpt4',
             ],
-            'select': 'gpt-4o'
+            'value': 'gpt-4o'
         },
         'override model': '',
         'prompt template': {
             'type': 'editor',
-            'content': 'Please help me to translate the following text from a manga to {to_lang} (if it\'s already in {to_lang} or looks like gibberish you have to output it as it is instead):\n',
+            'value': 'Please help me to translate the following text from a manga to {to_lang} (if it\'s already in {to_lang} or looks like gibberish you have to output it as it is instead):\n',
         },
         'chat system template': {
             'type': 'editor',
-            'content': 'You are a professional translation engine, please translate the text into a colloquial, elegant and fluent content, without referencing machine translations. You must only translate the text content, never interpret it. If there\'s any issue in the text, output the text as is.\nTranslate to {to_lang}.',
+            'value': 'You are a professional translation engine, please translate the text into a colloquial, elegant and fluent content, without referencing machine translations. You must only translate the text content, never interpret it. If there\'s any issue in the text, output the text as is.\nTranslate to {to_lang}.',
         },
         
         'chat sample': {
             'type': 'editor',
-            'content': 
+            'value': 
 '''日本語-简体中文:
     source:
         - 二人のちゅーを 目撃した ぼっちちゃん
@@ -103,7 +103,7 @@ class GPTTranslator(BaseTranslator):
     
     @property
     def model(self) -> str:
-        return self.params['model']['select']
+        return self.params['model']['value']
 
     @property
     def temperature(self) -> float:
@@ -128,7 +128,7 @@ class GPTTranslator(BaseTranslator):
     @property
     def chat_system_template(self) -> str:
         to_lang = self.lang_map[self.lang_target]
-        return self.params['chat system template']['content'].format(to_lang=to_lang)
+        return self.params['chat system template']['value'].format(to_lang=to_lang)
     
     @property
     def chat_sample(self):
@@ -136,9 +136,9 @@ class GPTTranslator(BaseTranslator):
         if self.model == 'gpt3':
             return None
 
-        samples = self.params['chat sample']['content']
+        samples = self.params['chat sample']['value']
         try: 
-            samples = yaml.load(self.params['chat sample']['content'], Loader=yaml.FullLoader)
+            samples = yaml.load(self.params['chat sample']['value'], Loader=yaml.FullLoader)
         except:
             self.logger.error(f'failed to load parse sample: {samples}')
             samples = {}
@@ -168,7 +168,7 @@ class GPTTranslator(BaseTranslator):
         if max_tokens is None:
             max_tokens = self.max_tokens
         # return_prompt = self.params['return prompt']
-        prompt_template = self.params['prompt template']['content'].format(to_lang=to_lang).rstrip()
+        prompt_template = self.params['prompt template']['value'].format(to_lang=to_lang).rstrip()
         prompt += prompt_template
 
         i_offset = 0

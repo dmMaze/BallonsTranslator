@@ -51,7 +51,7 @@ class GeneralTranslator(BaseTranslator):
         'translator provider': {
             'type': 'selector',
             'options': ts.translators_pool,
-            'select': 'bing'  
+            'value': 'bing'  
         },
         'sleep_seconds': 0  
     }
@@ -64,7 +64,7 @@ class GeneralTranslator(BaseTranslator):
                 continue
 
             try:
-                translator = self.params['translator']['select']
+                translator = self.params['translator']['value']
                 source_language = self.lang_map.get(self.lang_source, 'auto')
                 target_language = self.lang_map.get(self.lang_target, 'en')
 

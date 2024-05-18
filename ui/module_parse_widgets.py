@@ -132,6 +132,9 @@ class ParamWidget(QWidget):
         param_layout.setContentsMargins(0, 0, 0, 0)
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
+        if 'description' in params:
+            self.setToolTip(params['description'])
+
         for ii, param_key in enumerate(params):
             if param_key == 'description':
                 continue
@@ -156,6 +159,7 @@ class ParamWidget(QWidget):
 
             elif isinstance(params[param_key], dict):
                 param_dict = params[param_key]
+                value = params[param_key]['value']
                 if param_dict['type'] == 'selector':
                     if 'url' in param_key:
                         size = CONFIG_COMBOBOX_MIDEAN
@@ -167,23 +171,24 @@ class ParamWidget(QWidget):
                     # if cuda is not available, disable combobox 'cuda' item
                     # https://stackoverflow.com/questions/38915001/disable-specific-items-in-qcombobox
                     if param_key == 'device' and DEFAULT_DEVICE == 'cpu':
-                        param_dict['select'] = 'cpu'
+                        param_dict['value'] = 'cpu'
                         for ii, device in enumerate(param_dict['options']):
                             if device in GPUINTENSIVE_SET:
                                 model = param_widget.model()
                                 item = model.item(ii, 0)
                                 item.setEnabled(False)
-                    if 'select' in param_dict:
-                        param_widget.setCurrentText(str(param_dict['select']))
-                    else:
-                        param_widget.setCurrentIndex(0)
-                        param_dict['select'] = param_widget.currentText()
+                    param_widget.setCurrentText(str(value))
                     param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
                 elif param_dict['type'] == 'editor':
                     param_widget = ParamEditor(param_key)
-                    val = params[param_key]['content']
-                    param_widget.setText(val)
+                    param_widget.setText(value)
                     param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+                elif param_dict['type'] == 'checkbox':
+                    param_widget = ParamCheckBox(param_key)
+                    param_widget.setChecked(value)
+                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+                if 'description' in param_dict:
+                    param_widget.setToolTip(param_dict['description'])
 
             param_layout.addWidget(param_label, ii, 0)
             param_layout.addWidget(param_widget, ii, 1)

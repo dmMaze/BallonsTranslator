@@ -20,7 +20,7 @@ class DummyTranslator(BaseTranslator):
         'device': {
             'type': 'selector',
             'options': ['cpu', 'cuda'],
-            'select': 'cpu'
+            'value': 'cpu'
         }
     }
 
@@ -54,7 +54,7 @@ class DummyTranslator(BaseTranslator):
         super().updateParam(param_key, param_content)
         if param_key == 'device':
             # get current state from params
-            # self.model.to(self.params['device']['select'])
+            # self.model.to(self.params['device']['value'])
             pass
 
     @property
@@ -91,7 +91,7 @@ The value of the parameter can also be a dictionary, in which case it must be de
         'device': {
             'type': 'selector',
             'options': ['cpu', 'cuda'],
-            'select': 'cpu'
+            'value': 'cpu'
         }
     }
 ```  

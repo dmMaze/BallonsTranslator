@@ -15,7 +15,7 @@ class SugoiTranslator(BaseTranslator):
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'
         
-        self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.params['device']['select'])
+        self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.params['device']['value'])
         self.tokenizator = spm.SentencePieceProcessor(model_file=SUGOIMODEL_TOKENIZATOR_PATH)
 
     def _translate(self, src_list: List[str]) -> List[str]:
@@ -32,7 +32,7 @@ class SugoiTranslator(BaseTranslator):
         if param_key == 'device':
             if hasattr(self, 'translator'):
                 delattr(self, 'translator')
-            self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.params['device']['select'])
+            self.translator = ctranslate2.Translator(SUGOIMODEL_TRANSLATOR_DIRPATH, device=self.params['device']['value'])
 
     @property
     def supported_tgt_list(self) -> List[str]:

@@ -57,12 +57,12 @@ class ComicTextDetector(TextDetectorBase):
         'detect_size': {
             'type': 'selector',
             'options': [896, 1024, 1152, 1280], 
-            'select': 1024
+            'value': 1024
         }, 
         'det_rearrange_max_batches': {
             'type': 'selector',
             'options': [1, 2, 4, 6, 8, 12, 16, 24, 32], 
-            'select': 4
+            'value': 4
         },
         'device': DEVICE_SELECTOR(),
         'description': 'ComicTextDetector'
@@ -77,11 +77,11 @@ class ComicTextDetector(TextDetectorBase):
 
     @property
     def device(self):
-        return self.params['device']['select']
+        return self.params['device']['value']
     
     @property
     def detect_size(self):
-        return int(self.params['detect_size']['select'])
+        return int(self.params['detect_size']['value'])
 
     def _load_model(self):
         if self.device != 'cpu':
@@ -113,31 +113,26 @@ class StariverDetector(TextDetectorBase):
         'token': "Replace with your token",
         'expand_ratio': "0.01",
         "refine": {
-            'type': 'selector',
-            'options': [True, False],
-            'select': True
+            'type': 'checkbox',
+            'value': True
         },
         "filtrate": {
-            'type': 'selector',
-            'options': [True, False],
-            'select': True
+            'type': 'checkbox',
+            'value': True
         },
         "disable_skip_area": {
-            'type': 'selector',
-            'options': [True, False],
-            'select': True
+            'type': 'checkbox',
+            'value': True
         },
         "detect_scale": "3",
         "merge_threshold": "2.0",
         "low_accuracy_mode": {
-            'type': 'selector',
-            'options': [True, False],
-            'select': False
+            'type': 'checkbox',
+            'value': False
         },
         "force_expand":{
-            'type': 'selector',
-            'options': [True, False],
-            'select': False
+            'type': 'checkbox',
+            'value': False
         },
         "font_size_offset": "0",
         "font_size_min(set to -1 to disable)": "-1",
@@ -155,23 +150,23 @@ class StariverDetector(TextDetectorBase):
 
     @property
     def refine(self):
-        if self.params['refine']['select'] == 'True':
+        if self.params['refine']['value'] == 'True':
             return True
-        elif self.params['refine']['select'] == 'False':
+        elif self.params['refine']['value'] == 'False':
             return False
 
     @property
     def filtrate(self):
-        if self.params['filtrate']['select'] == 'True':
+        if self.params['filtrate']['value'] == 'True':
             return True
-        elif self.params['filtrate']['select'] == 'False':
+        elif self.params['filtrate']['value'] == 'False':
             return False
 
     @property
     def disable_skip_area(self):
-        if self.params['disable_skip_area']['select'] == 'True':
+        if self.params['disable_skip_area']['value'] == 'True':
             return True
-        elif self.params['disable_skip_area']['select'] == 'False':
+        elif self.params['disable_skip_area']['value'] == 'False':
             return False
 
     @property
@@ -184,16 +179,16 @@ class StariverDetector(TextDetectorBase):
 
     @property
     def low_accuracy_mode(self):
-        if self.params['low_accuracy_mode']['select'] == 'True':
+        if self.params['low_accuracy_mode']['value'] == 'True':
             return True
-        elif self.params['low_accuracy_mode']['select'] == 'False':
+        elif self.params['low_accuracy_mode']['value'] == 'False':
             return False
         
     @property
     def force_expand(self):
-        if self.params['force_expand']['select'] == 'True':
+        if self.params['force_expand']['value'] == 'True':
             return True
-        elif self.params['force_expand']['select'] == 'False':
+        elif self.params['force_expand']['value'] == 'False':
             return False
         
     @property

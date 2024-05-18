@@ -67,7 +67,7 @@ class OCRMIT32px(OCRBase):
         'chunk_size': {
             'type': 'selector',
             'options': [8, 16, 24, 32],
-            'select': 16
+            'value': 16
         },
         'device': DEVICE_SELECTOR(),
         'description': 'OCRMIT32px'
@@ -87,8 +87,8 @@ class OCRMIT32px(OCRBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.device = self.params['device']['select']
-        self.chunk_size = int(self.params['chunk_size']['select'])
+        self.device = self.params['device']['value']
+        self.chunk_size = int(self.params['chunk_size']['value'])
         self.model: OCR32pxModel = None
 
     def _load_model(self):
@@ -102,8 +102,8 @@ class OCRMIT32px(OCRBase):
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        device = self.params['device']['select']
-        chunk_size = int(self.params['chunk_size']['select'])
+        device = self.params['device']['value']
+        chunk_size = int(self.params['chunk_size']['value'])
         if self.device != device:
             self.model.to(device)
         self.chunk_size = chunk_size
@@ -129,7 +129,7 @@ class MangaOCR(OCRBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.device = self.params['device']['select']
+        self.device = self.params['device']['value']
         self.model: MangaOCR = None
 
     def _load_model(self):
@@ -152,7 +152,7 @@ class MangaOCR(OCRBase):
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        device = self.params['device']['select']
+        device = self.params['device']['value']
         if self.device != device:
             self.model.to(device)
 
@@ -165,7 +165,7 @@ class OCRMIT48pxCTC(OCRBase):
         'chunk_size': {
             'type': 'selector',
             'options': [8,16,24,32],
-            'select': 16
+            'value': 16
         },
         'device': DEVICE_SELECTOR(),
         'description': 'mit48px_ctc'
@@ -185,8 +185,8 @@ class OCRMIT48pxCTC(OCRBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.device = self.params['device']['select']
-        self.chunk_size = int(self.params['chunk_size']['select'])
+        self.device = self.params['device']['value']
+        self.chunk_size = int(self.params['chunk_size']['value'])
         self.model: OCR48pxCTC = None
 
     def _load_model(self):
@@ -200,8 +200,8 @@ class OCRMIT48pxCTC(OCRBase):
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        device = self.params['device']['select']
-        chunk_size = int(self.params['chunk_size']['select'])
+        device = self.params['device']['value']
+        chunk_size = int(self.params['chunk_size']['value'])
         if self.device != device:
             self.model.to(device)
         self.chunk_size = chunk_size
@@ -229,7 +229,7 @@ class OCRMIT48px(OCRBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.device = self.params['device']['select']
+        self.device = self.params['device']['value']
         self.model: Model48pxOCR = None
 
     def _load_model(self):
@@ -240,7 +240,7 @@ class OCRMIT48px(OCRBase):
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        device = self.params['device']['select']
+        device = self.params['device']['value']
         if self.device != device:
             self.model.to(device)
 
@@ -250,26 +250,23 @@ class OCRStariver(OCRBase):
     params = {
         'token': 'Replace with your token',
         "refine":{
-            'type': 'selector',
-            'options': [True, False],
-            'select': True
+            'type': 'checkbox',
+            'value': True
         },
         "filtrate":{
-            'type': 'selector',
-            'options': [True, False],
-            'select': True
+            'type': 'checkbox',
+            'value': True
         },
         "disable_skip_area":{
-            'type': 'selector',
-            'options': [True, False],
-            'select': True
+            'type': 'checkbox',
+            'value': True
         },
         "detect_scale": "3",
         "merge_threshold": "2",
         "force_expand":{
-            'type': 'selector',
-            'options': [True, False],
-            'select': False
+            'type': 'checkbox',
+            'value': False,
+            'description': '是否强制扩展图片像素，会导致识别速度下降'
         },
         'description': '星河云(团子翻译器) OCR API'
     }
@@ -284,21 +281,21 @@ class OCRStariver(OCRBase):
     
     @property
     def refine(self):
-        if self.params['refine']['select'] == 'True':
+        if self.params['refine']['value'] == 'True':
             return True
-        elif self.params['refine']['select'] == 'False':
+        elif self.params['refine']['value'] == 'False':
             return False    
     @property
     def filtrate(self):
-        if self.params['filtrate']['select'] == 'True':
+        if self.params['filtrate']['value'] == 'True':
             return True
-        elif self.params['filtrate']['select'] == 'False':
+        elif self.params['filtrate']['value'] == 'False':
             return False
     @property
     def disable_skip_area(self):
-        if self.params['disable_skip_area']['select'] == 'True':
+        if self.params['disable_skip_area']['value'] == 'True':
             return True
-        elif self.params['disable_skip_area']['select'] == 'False':
+        elif self.params['disable_skip_area']['value'] == 'False':
             return False
     @property
     def detect_scale(self):
@@ -310,9 +307,9 @@ class OCRStariver(OCRBase):
     
     @property
     def force_expand(self):
-        if self.params['force_expand']['select'] == 'True':
+        if self.params['force_expand']['value'] == 'True':
             return True
-        elif self.params['force_expand']['select'] == 'False':
+        elif self.params['force_expand']['value'] == 'False':
             return False
 
     def __init__(self, **params) -> None:
@@ -367,7 +364,7 @@ if platform.mac_ver()[0] >= '10.15':
                 'language': {
                     'type':'selector',
                     'options': list(get_supported_languages()[0]),
-                    'select': 'en-US',
+                    'value': 'en-US',
                 },
                 # While this does appear 
                 # it doesn't update the languages available
@@ -378,7 +375,7 @@ if platform.mac_ver()[0] >= '10.15':
                 #         'accurate',
                 #         'fast',
                 #     ],
-                #     'select': 'accurate',
+                #     'value': 'accurate',
                 # },
                 'confidence_level': '0.1',
             }
@@ -407,10 +404,10 @@ if platform.mac_ver()[0] >= '10.15':
 
             def updateParam(self, param_key: str, param_content):
                 super().updateParam(param_key, param_content)
-                self.language = self.params['language']['select']
+                self.language = self.params['language']['value']
                 self.model.lang = [self.language]
 
-                # self.recognition = self.params['recognition_level']['select']
+                # self.recognition = self.params['recognition_level']['value']
                 # self.model.recog_level = self.recognition
                 # self.params['language']['options'] = list(get_supported_languages(self.recognition)[0])
 
@@ -433,7 +430,7 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
                 'language': {
                     'type':'selector',
                     'options': languages_display_name,
-                    'select': languages_display_name[0],
+                    'value': languages_display_name[0],
                 }
             }
             language = languages_display_name[0]
@@ -445,7 +442,7 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
                 self.engine.lang = self.get_engine_lang()
 
             def get_engine_lang(self) -> str:
-                language = self.params['language']['select'] 
+                language = self.params['language']['value'] 
                 tag_name = languages_tag[languages_display_name.index(language)]
                 return tag_name
 

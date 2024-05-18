@@ -15,7 +15,7 @@ class DummyTranslator(BaseTranslator):
         'device': {
             'type': 'selector',
             'options': ['cpu', 'cuda'],
-            'select': 'cpu'
+            'value': 'cpu'
         }
     }
 
@@ -46,7 +46,7 @@ class DummyTranslator(BaseTranslator):
         '''
         super().updateParam(param_key, param_content)
         if param_key == 'device':
-            # self.model.to(self.params['device']['select'])
+            # self.model.to(self.params['device']['value'])
             pass
 ```
 
@@ -68,7 +68,7 @@ class DummyTranslator(BaseTranslator):
         'device': {
             'type': 'selector',
             'options': ['cpu', 'cuda'],
-            'select': 'cpu'
+            'value': 'cpu'
         }
     }
 ```  

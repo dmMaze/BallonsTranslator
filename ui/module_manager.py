@@ -499,11 +499,24 @@ def merge_config_module_params(config_params: Dict, module_keys: List, get_modul
                     cfg_param[mk] = module_params[mk]
                 else:
                     mparam = module_params[mk]
+                    cparam = cfg_param[mk]
                     if isinstance(mparam, dict):
                         if 'type' in mparam and mparam['type'] == 'selector' \
                             and cfg_param[mk]['options'] != mparam['options']:
                             LOGGER.info(f'Update {mk} options')
                             cfg_param[mk]['options'] = mparam['options']
+                        if 'type' in mparam and mparam['type'] != cparam['type']:
+                            cparam['type'] = mparam['type']
+                        for k in mparam:
+                            if k not in cparam:
+                                cparam[k] = mparam[k]
+                        deprecated_val_keys = {'select', 'content'}
+                        for k in list(cparam.keys()):
+                            if k in deprecated_val_keys:
+                                cparam['value'] = cparam.pop(k)
+                                continue
+                            if k not in mparam:
+                                cparam.pop(k)
             
             cfg_key_list = list(cfg_param.keys())
             module_key_list = list(module_params.keys())
