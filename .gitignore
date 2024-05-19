@@ -1,4 +1,5 @@
 __pycache__
+local_*
 inpainted
 mask
 result

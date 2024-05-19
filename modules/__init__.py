@@ -1,7 +1,7 @@
-from .ocr import OCR, OCRBase, OCRMIT32px, OCRMIT48pxCTC, MangaOCR
-from .textdetector import TEXTDETECTORS, TextDetectorBase, ComicTextDetector
+from .ocr import OCR, OCRBase
+from .textdetector import TEXTDETECTORS, TextDetectorBase
 from .translators import TRANSLATORS, BaseTranslator
-from .inpaint import INPAINTERS, InpainterBase, PatchmatchInpainter, AOTInpainter, LamaInpainterMPE
+from .inpaint import INPAINTERS, InpainterBase
 from .base import DEFAULT_DEVICE, GPUINTENSIVE_SET
 
 GET_VALID_TEXTDETECTORS = lambda : list(TEXTDETECTORS.module_dict.keys())

@@ -98,19 +98,25 @@ def commit_hash():
     return stored_commit_hash
 
 
-TRANSLATOR_DIR = 'modules/translators'
-TRANSLATOR_PATTERN = re.compile(r'trans_(.*?).py') 
-def load_translators(translators = None):
-    if translators is None:
-        translators = os.listdir(TRANSLATOR_DIR)
-
-    for translator in translators:
-        if TRANSLATOR_PATTERN.match(translator) is not None:
-            importlib.import_module('modules.translators.' + translator.replace('.py', ''))
-
-
 def load_modules():
-    load_translators()
+
+    def _load_module(module_dir: str, module_pattern: str):
+        modules = os.listdir(module_dir)
+        pattern = re.compile(module_pattern)
+        module_path = module_dir.replace('/', '.')
+        if not module_path.endswith('.'):
+            module_path += '.'
+        for module_name in modules:
+            if pattern.match(module_name) is not None:
+                importlib.import_module(module_path + module_name.replace('.py', ''))
+
+    for kwargs in [
+        {'module_dir': 'modules/translators', 'module_pattern': r'trans_(.*?).py'},
+        {'module_dir': 'modules/textdetector', 'module_pattern': r'detector_(.*?).py'},
+        {'module_dir': 'modules/inpaint', 'module_pattern': r'inpaint_(.*?).py'},
+        {'module_dir': 'modules/ocr', 'module_pattern': r'ocr_(.*?).py'},
+    ]:
+        _load_module(**kwargs)
 
 BT = None
 APP = None

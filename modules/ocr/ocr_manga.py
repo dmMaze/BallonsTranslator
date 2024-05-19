@@ -4,6 +4,9 @@ import jaconv
 from transformers import AutoFeatureExtractor, AutoTokenizer, VisionEncoderDecoderModel
 import numpy as np
 import torch
+from typing import List
+
+from .base import OCRBase, register_OCR, DEFAULT_DEVICE, DEVICE_SELECTOR, TextBlock
 
 MANGA_OCR_PATH = r'data/models/manga-ocr-base'
 class MangaOcr:
@@ -36,6 +39,53 @@ def post_process(text):
     text = jaconv.h2z(text, ascii=True, digit=True)
 
     return text
+
+
+@register_OCR('manga_ocr')
+class MangaOCR(OCRBase):
+    params = {
+        'device': DEVICE_SELECTOR()
+    }
+    device = DEFAULT_DEVICE
+
+    download_file_list = [{
+        'url': 'https://huggingface.co/kha-white/manga-ocr-base/resolve/main/',
+        'files': ['pytorch_model.bin', 'config.json', 'preprocessor_config.json', 'README.md', 'special_tokens_map.json', 'tokenizer_config.json', 'vocab.txt'],
+        'sha256_pre_calculated': ['c63e0bb5b3ff798c5991de18a8e0956c7ee6d1563aca6729029815eda6f5c2eb', None, None, None, None, None, None],
+        'save_dir': 'data/models/manga-ocr-base',
+        'concatenate_url_filename': 1,
+    }]
+    _load_model_keys = {'model'}
+
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
+        self.device = self.params['device']['value']
+        self.model: MangaOCR = None
+
+    def _load_model(self):
+        self.model = MangaOcr(device=self.device)
+
+    def ocr_img(self, img: np.ndarray) -> str:
+        return self.model(img)
+
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        im_h, im_w = img.shape[:2]
+        for blk in blk_list:
+            x1, y1, x2, y2 = blk.xyxy
+            if y2 < im_h and x2 < im_w and \
+                x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
+                blk.text = self.model(img[y1:y2, x1:x2])
+            else:
+                self.logger.warning('invalid textbbox to target img')
+                blk.text = ['']
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        device = self.params['device']['value']
+        if self.device != device:
+            self.model.to(device)
+
+
 
 
 if __name__ == '__main__':
