@@ -513,7 +513,10 @@ def merge_config_module_params(config_params: Dict, module_keys: List, get_modul
                         deprecated_val_keys = {'select', 'content'}
                         for k in list(cparam.keys()):
                             if k in deprecated_val_keys:
-                                cparam['value'] = cparam.pop(k)
+                                val = cparam.pop(k)
+                                if cparam['type'] == 'checkbox' and isinstance(val, str):
+                                    val = val.lower().strip() == 'true'
+                                cparam['value'] = val
                                 continue
                             if k not in mparam:
                                 cparam.pop(k)

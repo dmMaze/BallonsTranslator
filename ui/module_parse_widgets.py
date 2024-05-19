@@ -183,6 +183,9 @@ class ParamWidget(QWidget):
                     param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
                 elif param_dict['type'] == 'checkbox':
                     param_widget = ParamCheckBox(param_key)
+                    if isinstance(value, str):
+                        value = value.lower().strip() == 'true'
+                        params[param_key]['value'] = value
                     param_widget.setChecked(value)
                     param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
                 if 'description' in param_dict:
