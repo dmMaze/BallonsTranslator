@@ -168,16 +168,17 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
   
 ### 文本检测
  * 暂时仅支持日文(方块字都差不多)和英文检测，训练代码和说明见https://github.com/dmMaze/comic-text-detector
- * 支持使用 [星河云（团子漫画OCR）](https://cloud.stariver.org.cn/)的字体检测，需要获取并填写token
-   * 参数设置、token获取方式详见 [团子OCR说明](doc/团子OCR说明.md)
+ * 支持使用 [星河云（团子漫画OCR）](https://cloud.stariver.org.cn/)的字体检测，需要填写用户名和密码，每次启动时会自动登录。
+   * 详细说明见 [团子OCR说明](doc/团子OCR说明.md)
 
 
 ### OCR
  * 所有 mit 模型来自 manga-image-translator，支持日英汉识别和颜色提取
  * [manga_ocr](https://github.com/kha-white/manga-ocr) 来自 [kha-white](https://github.com/kha-white)，支持日语识别，注意选用该模型程序不会提取颜色
- * 支持使用 [星河云（团子漫画OCR）](https://cloud.stariver.org.cn/)的OCR，需要获取并填写token
-   * 参数设置、token获取方式详见 [团子OCR说明](doc/团子OCR说明.md)
+ * 支持使用 [星河云（团子漫画OCR）](https://cloud.stariver.org.cn/)的OCR，需要填写用户名和密码，每次启动时会自动登录。
+   * 目前的实现方案是逐个textblock进行OCR，速度较慢，准确度没有明显提升，不推荐使用。如果有需要，请使用团子Detector。
    * 推荐文本检测设置为团子Detector时，将OCR设为none_ocr，直接读取文本，节省时间和请求次数。
+   * 详细说明见 [团子OCR说明](doc/团子OCR说明.md)
 
 
 ### 图像修复
