@@ -281,22 +281,16 @@ class OCRStariver(OCRBase):
     
     @property
     def refine(self):
-        if self.params['refine']['value'] == 'True':
-            return True
-        elif self.params['refine']['value'] == 'False':
-            return False    
+        return  self.params['refine']['value']
+     
     @property
     def filtrate(self):
-        if self.params['filtrate']['value'] == 'True':
-            return True
-        elif self.params['filtrate']['value'] == 'False':
-            return False
+        self.params['filtrate']['value']
+        
     @property
     def disable_skip_area(self):
-        if self.params['disable_skip_area']['value'] == 'True':
-            return True
-        elif self.params['disable_skip_area']['value'] == 'False':
-            return False
+        return self.params['disable_skip_area']['value']
+
     @property
     def detect_scale(self):
         return int(self.params['detect_scale'])
@@ -307,10 +301,7 @@ class OCRStariver(OCRBase):
     
     @property
     def force_expand(self):
-        if self.params['force_expand']['value'] == 'True':
-            return True
-        elif self.params['force_expand']['value'] == 'False':
-            return False
+        return self.params['force_expand']['value']
 
     def __init__(self, **params) -> None:
         super().__init__(**params)

@@ -150,24 +150,15 @@ class StariverDetector(TextDetectorBase):
 
     @property
     def refine(self):
-        if self.params['refine']['value'] == 'True':
-            return True
-        elif self.params['refine']['value'] == 'False':
-            return False
+        return self.params['refine']['value']
 
     @property
     def filtrate(self):
-        if self.params['filtrate']['value'] == 'True':
-            return True
-        elif self.params['filtrate']['value'] == 'False':
-            return False
+        return self.params['filtrate']['value']
 
     @property
     def disable_skip_area(self):
-        if self.params['disable_skip_area']['value'] == 'True':
-            return True
-        elif self.params['disable_skip_area']['value'] == 'False':
-            return False
+        return self.params['disable_skip_area']['value']
 
     @property
     def detect_scale(self):
@@ -179,17 +170,11 @@ class StariverDetector(TextDetectorBase):
 
     @property
     def low_accuracy_mode(self):
-        if self.params['low_accuracy_mode']['value'] == 'True':
-            return True
-        elif self.params['low_accuracy_mode']['value'] == 'False':
-            return False
+        return self.params['low_accuracy_mode']['value']
         
     @property
     def force_expand(self):
-        if self.params['force_expand']['value'] == 'True':
-            return True
-        elif self.params['force_expand']['value'] == 'False':
-            return False
+        return self.params['force_expand']['value']
         
     @property
     def font_size_offset(self):
