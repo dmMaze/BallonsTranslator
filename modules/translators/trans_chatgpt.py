@@ -244,14 +244,14 @@ class GPTTranslator(BaseTranslator):
                         self.logger.error(message)
                         new_translations = [''] * num_src
                         break
-                    self.logger.warn(message + '\n' + f'Restarting request. Attempt: {retry_attempt}')
+                    self.logger.warning(message + '\n' + f'Restarting request. Attempt: {retry_attempt}')
 
                 except Exception as e:
                     retry_attempt += 1
                     if retry_attempt >= self.retry_attempts:
                         new_translations = [''] * num_src
                         break
-                    self.logger.warn(f'Translation failed due to {e}. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
+                    self.logger.warning(f'Translation failed due to {e}. Attempt: {retry_attempt}, sleep for {self.retry_timeout} secs...')
                     self.logger.error(f'Request traceback: ', traceback.format_exc())
                     time.sleep(self.retry_timeout)
                     # time.sleep(self.retry_timeout)

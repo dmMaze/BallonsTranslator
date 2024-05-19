@@ -535,14 +535,14 @@ class SakuraTranslator(BaseTranslator):
                 except openai.APIError as e:
                     server_error_attempt += 1
                     if server_error_attempt >= self.retry_attempts:
-                        self.logger.warning(
-                            e, 'Sakura翻译失败。返回原始文本。')
+                        self.logger.warning(e)
+                        self.logger.warning('Sakura翻译失败。返回原始文本。')
                         return '\n'.join(prompt)
-                    self.logger.warn(
+                    self.logger.warning(
                         f'Sakura因服务器错误而进行重试。 当前API baseurl为"{self.api_base}"，尝试次数： {server_error_attempt}, 错误信息： {e}')
                     time.sleep(1)
                 except FileNotFoundError:
-                    self.logger.warn(
+                    self.logger.warning(
                         'Sakura因文件不存在而进行重试。')
                     time.sleep(30)
                 except TimeoutError:
@@ -568,7 +568,7 @@ class SakuraTranslator(BaseTranslator):
                         self.logger.warning(
                             e, 'Sakura翻译失败。返回原始文本。')
                         return '\n'.join(prompt)
-                    self.logger.warn(
+                    self.logger.warning(
                         f'Sakura因服务器错误而进行重试。 当前API baseurl为"{self.api_base}"，尝试次数： {server_error_attempt}, 错误信息： {e}')
                     time.sleep(1)
                 except openai.error.APIConnectionError as e:
@@ -577,11 +577,11 @@ class SakuraTranslator(BaseTranslator):
                         self.logger.warning(
                             e, 'Sakura翻译失败。返回原始文本。')
                         return '\n'.join(prompt)
-                    self.logger.warn(
+                    self.logger.warning(
                         f'Sakura因服务器连接错误而进行重试。 当前API baseurl为"{self.api_base}"，尝试次数： {server_error_attempt}, 错误信息： {e}')
                     time.sleep(1)
                 except FileNotFoundError:
-                    self.logger.warn(
+                    self.logger.warning(
                         'Sakura因文件不存在而进行重试。')
                     time.sleep(30)
                 except TimeoutError:
