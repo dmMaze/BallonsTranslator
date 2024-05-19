@@ -24,11 +24,6 @@ class ParamNameLabel(QLabel):
         font = self.font()
         font.setPointSizeF(CONFIG_FONTSIZE_CONTENT-2)
         self.setFont(font)
-        labelwidth = 120
-        fm = QFontMetricsF(font)
-        fmrect = fm.boundingRect(param_name)
-        labelwidth = int(max(fmrect.width() + fmrect.height() / 3, labelwidth))
-        self.setFixedWidth(labelwidth)
         self.setText(param_name)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
@@ -127,10 +122,13 @@ class ParamWidget(QWidget):
     paramwidget_edited = Signal(str, dict)
     def __init__(self, params, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.param_layout = param_layout = QGridLayout(self)
+        layout = QHBoxLayout(self)
+        self.param_layout = param_layout = QGridLayout()
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         param_layout.setContentsMargins(0, 0, 0, 0)
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        layout.addLayout(param_layout)
+        layout.addStretch(-1)
 
         if 'description' in params:
             self.setToolTip(params['description'])
@@ -213,7 +211,7 @@ class ModuleConfigParseWidget(QWidget):
         self.module_label = ParamNameLabel(module_name)
         p_layout.addWidget(self.module_label)
         p_layout.addWidget(self.module_combobox)
-        p_layout.setSpacing(0)
+        p_layout.addStretch(-1)
         self.p_layout = p_layout
 
         layout = QVBoxLayout(self)
@@ -339,7 +337,7 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         self.vlayout.addWidget(self.needInpaintChecker)
 
     def showEvent(self, e) -> None:
-        self.p_layout.addWidget(self.module_combobox)
+        self.p_layout.insertWidget(1, self.module_combobox)
         super().showEvent(e)
 
     def hideEvent(self, e) -> None:
