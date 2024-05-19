@@ -258,6 +258,8 @@ class RectPanel(Widget):
         return self.autoChecker.isChecked()
 
     def post_process_mask(self, mask: np.ndarray) -> np.ndarray:
+        if mask is None:
+            return None
         ksize = self.dilate_slider.value()
         if ksize == 0:
             return mask

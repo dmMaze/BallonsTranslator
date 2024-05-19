@@ -357,10 +357,14 @@ class ImgtransThread(QThread):
             need_save_mask = False
             blk_removed: List[TextBlock] = []
             if cfg_module.enable_detect:
-                mask, blk_list = self.textdetector.detect(img)
-                if self.mask_postprocess is not None:
-                    mask = self.mask_postprocess(mask)
-                need_save_mask = True
+                try:
+                    mask, blk_list = self.textdetector.detect(img)
+                    if self.mask_postprocess is not None:
+                        mask = self.mask_postprocess(mask)
+                    need_save_mask = True
+                except Exception as e:
+                    create_error_dialog(e, self.tr('Text Detection Failed.'), 'TextDetectFailed')
+                    blk_list = []
                 self.detect_counter += 1
                 self.update_detect_progress.emit(self.detect_counter)
                 self.imgtrans_proj.pages[imgname] = blk_list
@@ -369,7 +373,10 @@ class ImgtransThread(QThread):
                 blk_list = self.imgtrans_proj.pages[imgname] if imgname in self.imgtrans_proj.pages else []
 
             if cfg_module.enable_ocr:
-                self.ocr.run_ocr(img, blk_list)
+                try:
+                    self.ocr.run_ocr(img, blk_list)
+                except Exception as e:
+                    create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
                 self.ocr_counter += 1
 
                 if pcfg.restore_ocr_empty:
@@ -426,8 +433,11 @@ class ImgtransThread(QThread):
                     mask = self.imgtrans_proj.load_mask_by_imgname(imgname)
                     
                 if mask is not None:
-                    inpainted = self.inpainter.inpaint(img, mask, blk_list)
-                    self.imgtrans_proj.save_inpainted(imgname, inpainted)
+                    try:
+                        inpainted = self.inpainter.inpaint(img, mask, blk_list)
+                        self.imgtrans_proj.save_inpainted(imgname, inpainted)
+                    except Exception as e:
+                        create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
                     
                 self.inpaint_counter += 1
                 self.update_inpaint_progress.emit(self.inpaint_counter)
@@ -824,6 +834,7 @@ class ModuleManager(QObject):
     def on_finish_setdetector(self):
         if self.textdetector is not None:
             cfg_module.textdetector = self.textdetector.name
+            self.textdetect_panel.setDetector(self.textdetector.name)
             LOGGER.info('Text detector set to {}'.format(self.textdetector.name))
 
     def on_finish_setocr(self):
