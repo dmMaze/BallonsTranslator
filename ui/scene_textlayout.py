@@ -499,7 +499,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 
                 if char in PUNSET_VERNEEDROTATE:
                     line_x, line_y = line.x(), line.y()
-
                     y_x = line_y - line_x
                     y_p_x = line_y + line_x
                     transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
@@ -682,7 +681,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     if char.isalpha():
                         cw2 = cfmt.punc_rect(char+char)[1].width()
                         tbr_h = br.width() - (br.width() * 2 - cw2)
-                    if char in {'…', '⋯', '—'}:
+                    if char in {'…', '⋯', '—', '～'}:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                         next_char_idx = char_idx + 1
                         if next_char_idx < blk_text_len and blk_text[next_char_idx] == char:
