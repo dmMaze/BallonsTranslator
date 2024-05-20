@@ -85,24 +85,14 @@ class OCRStariver(OCRBase):
     
     def __init__(self, **params) -> None:
         super().__init__(**params)
+        self.url = 'https://dl.ap-sh.starivercs.cn/v2/manga_trans/advanced/manga_ocr'
+        self.debug = False
         self.token = ''
-        self.url = "https://dl.ap-sh.starivercs.cn/v2/manga_trans/advanced/manga_ocr"
-        self.token_obtained = False  # 添加一个标志位来判断token是否已经获取过
-        
-        # 在初始化时尝试获取token
-        if not self.token_obtained:
-            self.update_token_if_needed()
-            self.token_obtained = True  # 将标志位设置为True，表示已获取token
+        self.token_obtained = False
+        # 初始化时设置用户名和密码为空
+        self.register_username = None
+        self.register_password = None
 
-    def update_token_if_needed(self):
-        if "填入你的用户名" not in self.User and "填入你的密码。请注意，密码会明文保存，请勿在公共电脑上使用" not in self.Password:
-            if not self.token_obtained or self.force_refresh_token:  # 检查标志位，只有在第一次运行时获取token
-                if len(self.Password) > 7 and len(self.User) >= 1:
-                    self.token = self.get_token()
-                    if self.token != '':
-                        self.token_obtained = True  # 获取成功后，将标志位设置为True
-        else:
-            self.logger.warning('stariver ocr 用户名或密码为空，无法更新token。')
 
     def get_token(self):
         response = requests.post('https://capiv1.ap-sh.starivercs.cn/OCR/Admin/Login', json={
@@ -118,6 +108,7 @@ class OCRStariver(OCRBase):
         return token
 
     def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        self.update_token_if_needed() # 在向服务器发送请求前尝试更新 Token
         im_h, im_w = img.shape[:2]
         for blk in blk_list:
             x1, y1, x2, y2 = blk.xyxy
@@ -129,6 +120,7 @@ class OCRStariver(OCRBase):
                 blk.text = ['']
 
     def ocr_img(self, img: np.ndarray) -> str:
+        self.update_token_if_needed() # 在向服务器发送请求前尝试更新 Token
         self.logger.debug(f'ocr_img: {img.shape}')
         return self.ocr(img)
 
@@ -174,10 +166,24 @@ class OCRStariver(OCRBase):
         texts_str = "".join(texts_list).replace('<skip>', '')
         return texts_str
 
+    def update_token_if_needed(self):
+        if (self.User != self.register_username or 
+            self.Password != self.register_password):
+            if self.token_obtained == False:
+                if "填入你的用户名" not in self.User and "填入你的密码。请注意，密码会明文保存，请勿在公共电脑上使用" not in self.Password:
+                    if len(self.Password) > 7 and len(self.User) >= 1:
+                        new_token = self.get_token()
+                        if new_token:  # 确保新获取到有效token再更新信息
+                            self.token = new_token
+                            self.register_username = self.User
+                            self.register_password = self.Password
+                            self.token_obtained = True
+                            self.logger.info("Token updated due to credential change.")
+
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        if param_key == 'User' or param_key == 'Password':
-            if not self.token_obtained or self.force_refresh_token:  # 检查标志位，只有在第一次运行时获取token
-                self.update_token_if_needed()
-            if param_key == 'force_refresh_token':
-                self.token_obtained = False  # 强制刷新token时，将标志位设置为False
+        if param_key == 'force_refresh_token':
+            self.token_obtained = False  # 强制刷新token时，将标志位设置为False
+            self.token = ''  # 强制刷新token时，将token置空
+            self.register_username = None  # 强制刷新token时，将用户名置空
+            self.register_password = None  # 强制刷新token时，将密码置空
