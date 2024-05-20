@@ -11,8 +11,12 @@ from .base import register_OCR, OCRBase, TextBlock
 @register_OCR('stariver_ocr')
 class OCRStariver(OCRBase):
     params = {
-        'url': 'https://dl.ap-sh.starivercs.cn/v2/manga_trans/advanced/manga_ocr',
-        'token': 'Replace with your token',
+        'User': "填入你的用户名",
+        'Password': "填入你的密码。请注意，密码会明文保存，请勿在公共电脑上使用",
+        'force_refresh_token': {
+            'type': 'checkbox',
+            'value': False
+        },
         "refine":{
             'type': 'checkbox',
             'value': True
@@ -40,8 +44,16 @@ class OCRStariver(OCRBase):
     }
 
     @property
-    def token(self):
-        return self.params['token']
+    def User(self):
+        return self.params['User']
+    
+    @property
+    def Password(self):
+        return self.params['Password']
+    
+    @property
+    def force_refresh_token(self):
+        return self.params['force_refresh_token']['value']
     
     @property
     def expand_ratio(self):
@@ -70,8 +82,33 @@ class OCRStariver(OCRBase):
     @property
     def force_expand(self):
         return self.params['force_expand']['value']
+    
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
+        self.url = 'https://dl.ap-sh.starivercs.cn/v2/manga_trans/advanced/manga_ocr'
+        self.debug = False
+        self.token = ''
+        self.token_obtained = False
+        # 初始化时设置用户名和密码为空
+        self.register_username = None
+        self.register_password = None
+
+
+    def get_token(self):
+        response = requests.post('https://capiv1.ap-sh.starivercs.cn/OCR/Admin/Login', json={
+            "User": self.User,
+            "Password": self.Password
+        }).json()
+        if response.get('Status', -1) != "Success":
+            self.logger.error(f'stariver ocr 登录失败，错误信息：{response.get("ErrorMsg", "")}')
+        token = response.get('Token', '')
+        if token != '':
+            self.logger.info(f'登录成功，token前10位：{token[:10]}')
+
+        return token
 
     def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+        self.update_token_if_needed() # 在向服务器发送请求前尝试更新 Token
         im_h, im_w = img.shape[:2]
         for blk in blk_list:
             x1, y1, x2, y2 = blk.xyxy
@@ -83,16 +120,14 @@ class OCRStariver(OCRBase):
                 blk.text = ['']
 
     def ocr_img(self, img: np.ndarray) -> str:
+        self.update_token_if_needed() # 在向服务器发送请求前尝试更新 Token
         self.logger.debug(f'ocr_img: {img.shape}')
         return self.ocr(img)
 
     def ocr(self, img: np.ndarray) -> str:
-
-        if not self.params['token'] or self.params['token'] == 'Replace with your token':
-            raise ValueError('token 没有设置。')
         
         payload = {
-            "token": self.params['token'],
+            "token": self.token,
             "mask": False,
             "refine": self.refine,
             "filtrate": self.filtrate,
@@ -110,19 +145,19 @@ class OCRStariver(OCRBase):
         response = requests.post(self.url, data=json.dumps(payload))
 
         if response.status_code != 200:
-            print(f'请求失败，状态码：{response.status_code}')
+            print(f'stariver ocr 请求失败，状态码：{response.status_code}')
             if response.json().get('Code', -1) != 0:
-                print(f'错误信息：{response.json().get("Message", "")}')
+                print(f'stariver ocr 错误信息：{response.json().get("Message", "")}')
                 with open('stariver_ocr_error.txt', 'w', encoding='utf-8') as f:
                     f.write(response.text)
-            raise ValueError('请求失败。')
+            raise ValueError('stariver ocr 请求失败。')
 
         response_data = response.json()['Data']
 
         if self.debug:
             id = response.json().get('RequestID', '')
             file_name = f"stariver_ocr_response_{id}.json"
-            print(f"请求成功，响应数据已保存至{file_name}")
+            print(f"stariver ocr 请求成功，响应数据已保存至{file_name}")
             with open(file_name, 'w', encoding='utf-8') as f:
                 json.dump(response_data, f, ensure_ascii=False, indent=4)
 
@@ -130,3 +165,25 @@ class OCRStariver(OCRBase):
                       for block in response_data.get('text_block', [])]
         texts_str = "".join(texts_list).replace('<skip>', '')
         return texts_str
+
+    def update_token_if_needed(self):
+        if (self.User != self.register_username or 
+            self.Password != self.register_password):
+            if self.token_obtained == False:
+                if "填入你的用户名" not in self.User and "填入你的密码。请注意，密码会明文保存，请勿在公共电脑上使用" not in self.Password:
+                    if len(self.Password) > 7 and len(self.User) >= 1:
+                        new_token = self.get_token()
+                        if new_token:  # 确保新获取到有效token再更新信息
+                            self.token = new_token
+                            self.register_username = self.User
+                            self.register_password = self.Password
+                            self.token_obtained = True
+                            self.logger.info("Token updated due to credential change.")
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        if param_key == 'force_refresh_token':
+            self.token_obtained = False  # 强制刷新token时，将标志位设置为False
+            self.token = ''  # 强制刷新token时，将token置空
+            self.register_username = None  # 强制刷新token时，将用户名置空
+            self.register_password = None  # 强制刷新token时，将密码置空

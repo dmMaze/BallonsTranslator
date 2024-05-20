@@ -204,15 +204,16 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
   
 ## Text detection
  * Support English and Japanese text detection, training code and more details can be found at [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
-* Support using text detection from [Stariver Cloud (Tuanzi Comics OCR)](https://cloud.stariver.org.cn/), requires obtaining and filling in the token
-   * For parameter settings and how to obtain the token, refer to [Tuanzi OCR Instructions (Chinese only)](doc/团子OCR说明.md)
+* Support using text detection from [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). Username and password need to be filled in, and automatic login will be performed each time the program is launched.
 
+   * For detailed instructions, see [Tuanzi OCR Instructions (Chinese only)](doc/Tuanzi_OCR_Instructions.md)
 ## OCR
  * All mit* models are from manga-image-translator, support English, Japanese and Korean recognition and text color extraction.
  * [manga_ocr](https://github.com/kha-white/manga-ocr) is from [kha-white](https://github.com/kha-white), text recognition for Japanese, with the main focus being Japanese manga.
-* Support using OCR from [Stariver Cloud (Tuanzi Comics OCR)](https://cloud.stariver.org.cn/), requires obtaining and filling in the token
-   * For parameter settings and how to obtain the token, refer to [Tuanzi OCR Instructions (Chinese only)](doc/团子OCR说明.md)
-   * When setting the text detection to Tuanzi Detector, it is recommended to set OCR to none_ocr, directly read the text, saving time and number of requests.
+ * Support using OCR from [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). Username and password need to be filled in, and automatic login will be performed each time the program is launched.
+   * The current implementation uses OCR on each textblock individually, resulting in slower speed and no significant improvement in accuracy. It is not recommended. If needed, please use the Tuanzi Detector instead.
+   * When using the Tuanzi Detector for text detection, it is recommended to set OCR to none_ocr to directly read the text, saving time and reducing the number of requests.
+   * For detailed instructions, see [Tuanzi OCR Instructions (Chinese only)](doc/Tuanzi_OCR_Instructions.md)
 
 ## Inpainting
   * AOT is from [manga-image-translator](https://github.com/zyddnys/manga-image-translator).

@@ -4,36 +4,11 @@
 
 </p>
 
-## Token 获取方法
+## 团子OCR说明
 
-### 方法1：从cookies中获取token
+### 登录
+第一次登录时可能会提示密码出错等问题，可以在确认正确输入后勾选并取消勾选`force_refresh_token`选项，以重新登陆。保存后即可正常使用。
 
-在浏览器中登录并访问[星河云OCR](https://cloud.stariver.org.cn/)，在浏览器的开发者工具中查看`cookie`，其中包含`token`字段，复制其值。
-<p align = "center">
-<img src="https://github.com/PiDanShouRouZhouXD/BallonsTranslator/assets/38401147/ae2cbcec-b426-4396-a484-62aa09f22cf6" width="50%" height="50%">
-
-</p>
-
-### 方法2：通过API获取token
-
-通过API获取token的方法如下：
-
-```
-POST https://capiv1.ap-sh.starivercs.cn/OCR/Admin/Login
-
-
-Request Body:
-{
-    "User": "your_username",
-    "Password": "your_password"
-}
-
-Response Body:
-{
-    …
-    "Token": "your_token"
-    …
-}
-```
-
-其中，`User`和`Password`为登录团子OCR的用户名和密码，`Token`为登录成功后返回的token。
+### 文本检测
+文本检测功能也会提取出文字，而且是整体识别提取。所以当有使用团子的需求时，推荐不要单独使用OCR功能，而是使用团子的文本检测与none_ocr。
+团子有自带的拟声词过滤等功能，详细参数设置请参考上方的`官方提供的请求参数参考`
