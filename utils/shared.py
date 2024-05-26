@@ -102,6 +102,8 @@ showed_exception = set()
 # it will be set to ui.mainwindow.create_errdialog.emit after UI initialized
 create_errdialog_in_mainthread = lambda *args, **kwargs: None
 
+create_infodialog_in_mainthread = lambda *args, **kwargs: None
+
 def load_cache():
     global cache_data
     if cache_data is None:

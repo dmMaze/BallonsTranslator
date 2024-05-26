@@ -66,12 +66,15 @@ class MainWindow(mainwindow_cls):
 
     restart_signal = Signal()
     create_errdialog = Signal(str, str, str)
+    create_infodialog = Signal(str, str)
     
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
 
         shared.create_errdialog_in_mainthread = self.create_errdialog.emit
         self.create_errdialog.connect(self.on_create_errdialog)
+        shared.create_infodialog_in_mainthread = self.create_infodialog.emit
+        self.create_infodialog.connect(self.on_create_infodialog)
 
         self.app = app
         self.setupThread()
@@ -1238,3 +1241,8 @@ class MainWindow(mainwindow_cls):
                 shared.showed_exception.remove(exception_type)
             LOGGER.error('Failed to create error dialog')
             LOGGER.error(traceback.format_exc())
+
+    def on_create_infodialog(self, msg: str, btn_name: str):
+        dialog = QMessageBox()
+        dialog.setText(msg)
+        dialog.exec()

@@ -6,6 +6,7 @@ import base64
 from typing import List
 
 from .base import register_OCR, OCRBase, TextBlock
+from utils.error_handling import create_error_dialog, create_info_dialog
 
 
 @register_OCR('stariver_ocr')
@@ -13,10 +14,6 @@ class OCRStariver(OCRBase):
     params = {
         'User': "填入你的用户名",
         'Password': "填入你的密码。请注意，密码会明文保存，请勿在公共电脑上使用",
-        'force_refresh_token': {
-            'type': 'checkbox',
-            'value': False
-        },
         "refine":{
             'type': 'checkbox',
             'value': True
@@ -40,6 +37,12 @@ class OCRStariver(OCRBase):
             'type': 'checkbox',
             'value': False,
         },
+        'update_token_btn': {
+            'type': 'pushbtn',
+            'value': '',
+            'description': '删除旧 Token 并重新申请',
+            'display_name': '更新 Token'
+        },
         'description': '星河云(团子翻译器) OCR API'
     }
 
@@ -50,10 +53,6 @@ class OCRStariver(OCRBase):
     @property
     def Password(self):
         return self.params['Password']
-    
-    @property
-    def force_refresh_token(self):
-        return self.params['force_refresh_token']['value']
     
     @property
     def expand_ratio(self):
@@ -100,7 +99,8 @@ class OCRStariver(OCRBase):
             "Password": self.Password
         }).json()
         if response.get('Status', -1) != "Success":
-            self.logger.error(f'stariver ocr 登录失败，错误信息：{response.get("ErrorMsg", "")}')
+            error_msg = f'stariver ocr 登录失败，错误信息：{response.get("ErrorMsg", "")}'
+            raise   Exception(error_msg)
         token = response.get('Token', '')
         if token != '':
             self.logger.info(f'登录成功，token前10位：{token[:10]}')
@@ -167,6 +167,7 @@ class OCRStariver(OCRBase):
         return texts_str
 
     def update_token_if_needed(self):
+        token_updated = False
         if (self.User != self.register_username or 
             self.Password != self.register_password):
             if self.token_obtained == False:
@@ -179,11 +180,19 @@ class OCRStariver(OCRBase):
                             self.register_password = self.Password
                             self.token_obtained = True
                             self.logger.info("Token updated due to credential change.")
+                            token_updated = True
+        return token_updated
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        if param_key == 'force_refresh_token':
+
+        if param_key == 'update_token_btn':
             self.token_obtained = False  # 强制刷新token时，将标志位设置为False
             self.token = ''  # 强制刷新token时，将token置空
             self.register_username = None  # 强制刷新token时，将用户名置空
             self.register_password = None  # 强制刷新token时，将密码置空
+            try:
+                if self.update_token_if_needed():
+                    create_info_dialog('Token 更新成功')
+            except Exception as e:
+                create_error_dialog(e, 'Token 更新失败', 'TokenUpdateFailed')

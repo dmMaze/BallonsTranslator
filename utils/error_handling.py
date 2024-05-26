@@ -30,3 +30,12 @@ def create_error_dialog(exception: Exception, error_msg: str = None, exception_t
 
         if not shared.HEADLESS:
             shared.create_errdialog_in_mainthread(error_msg, detail_traceback, exception_type)
+
+
+def create_info_dialog(info_msg, btn_name: str = 'OK'):
+    '''
+        Popup a info dialog in main thread
+    '''
+    LOGGER.info(info_msg)
+    if not shared.HEADLESS:
+        shared.create_infodialog_in_mainthread(info_msg, btn_name)

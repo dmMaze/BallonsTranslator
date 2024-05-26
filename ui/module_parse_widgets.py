@@ -7,7 +7,7 @@ from .stylewidgets import ConfigComboBox, NoBorderPushBtn, CustomComboBox
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from utils.config import pcfg
 
-from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit, QGridLayout
+from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit, QGridLayout, QPushButton
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QFontMetricsF, QDoubleValidator
 
@@ -117,6 +117,25 @@ class ParamCheckBox(QCheckBox):
         self.paramwidget_edited.emit(self.param_key, self.isChecked())
 
 
+def get_param_display_name(param_key: str, param_dict: dict = None):
+    if param_dict is not None and isinstance(param_dict, dict):
+        if 'display_name' in param_dict:
+            return param_dict['display_name']
+    return param_key
+
+
+class ParamPushButton(QPushButton):
+    paramwidget_edited = Signal(str, str)
+    def __init__(self, param_key: str, param_dict: dict = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.param_key = param_key
+        self.setText(get_param_display_name(param_key, param_dict))
+        self.clicked.connect(self.on_clicked)
+
+    def on_clicked(self):
+        self.paramwidget_edited.emit(self.param_key, '')
+
+
 class ParamWidget(QWidget):
 
     paramwidget_edited = Signal(str, dict)
@@ -136,8 +155,9 @@ class ParamWidget(QWidget):
         for ii, param_key in enumerate(params):
             if param_key == 'description':
                 continue
+            display_param_name = param_key
 
-            param_label = ParamNameLabel(param_key)
+            require_label = True
             is_str = isinstance(params[param_key], str)
             is_digital = isinstance(params[param_key], float) or isinstance(params[param_key], int)
 
@@ -157,6 +177,7 @@ class ParamWidget(QWidget):
 
             elif isinstance(params[param_key], dict):
                 param_dict = params[param_key]
+                display_param_name = get_param_display_name(param_key, param_dict)
                 value = params[param_key]['value']
                 if param_dict['type'] == 'selector':
                     if 'url' in param_key:
@@ -188,11 +209,19 @@ class ParamWidget(QWidget):
                         params[param_key]['value'] = value
                     param_widget.setChecked(value)
                     param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+                elif param_dict['type'] == 'pushbtn':
+                    param_widget = ParamPushButton(param_key, param_dict)
+                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+                    require_label = False
                 if 'description' in param_dict:
                     param_widget.setToolTip(param_dict['description'])
 
-            param_layout.addWidget(param_label, ii, 0)
-            param_layout.addWidget(param_widget, ii, 1)
+            widget_idx = 0
+            if require_label:
+                param_label = ParamNameLabel(display_param_name)
+                param_layout.addWidget(param_label, ii, 0)
+                widget_idx = 1
+            param_layout.addWidget(param_widget, ii, widget_idx)
 
     def on_paramwidget_edited(self, param_key, param_content):
             content_dict = {'content': param_content}
