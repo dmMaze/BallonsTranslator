@@ -13,7 +13,7 @@ from utils.logger import logger as LOGGER
 from utils.text_processing import is_cjk, full_len, half_len
 from utils.textblock import TextBlock
 from utils import shared
-from utils.error_handling import create_error_dialog
+from utils import create_error_dialog
 from modules.translators.trans_chatgpt import GPTTranslator
 from .misc import parse_stylesheet, set_html_family
 from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from
@@ -34,6 +34,7 @@ from .framelesswindow import FramelessWindow
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
 from . import shared_widget as SW
+from .message import MessageBox
 
 class PageListView(QListWidget):
 
@@ -66,7 +67,7 @@ class MainWindow(mainwindow_cls):
 
     restart_signal = Signal()
     create_errdialog = Signal(str, str, str)
-    create_infodialog = Signal(str, str)
+    create_infodialog = Signal(dict)
     
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
@@ -1242,7 +1243,8 @@ class MainWindow(mainwindow_cls):
             LOGGER.error('Failed to create error dialog')
             LOGGER.error(traceback.format_exc())
 
-    def on_create_infodialog(self, msg: str, btn_name: str):
-        dialog = QMessageBox()
-        dialog.setText(msg)
-        dialog.exec()
+    def on_create_infodialog(self, info_dict: dict):
+
+        QMessageBox.StandardButton.NoButton
+        dialog = MessageBox(**info_dict)
+        dialog.show()   # exec_ will block main thread

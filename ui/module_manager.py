@@ -1,15 +1,15 @@
 import time
 from typing import Union, List, Dict, Callable
-from enum import Enum
+from functools import partial
+import traceback
 
 import numpy as np
-from qtpy.QtCore import QThread, Signal, QObject, QLocale
+from qtpy.QtCore import QThread, Signal, QObject, QLocale, QTimer
 
 from utils.logger import logger as LOGGER
 from utils.registry import Registry
 from utils.imgproc_utils import enlarge_window, get_block_mask
 from utils.io_utils import imread, text_is_empty
-from utils import shared
 from modules.translators import MissingTranslatorParams
 from modules.base import BaseModule, soft_empty_cache
 from modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
@@ -19,7 +19,7 @@ import modules
 modules.translators.SYSTEM_LANG = QLocale.system().name()
 from modules.textdetector import TextBlock
 from utils import shared
-from utils.error_handling import create_error_dialog
+from utils import create_error_dialog, create_info_dialog, connect_once
 from .stylewidgets import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
 from utils.config import pcfg
@@ -489,6 +489,7 @@ class ImgtransThread(QThread):
 
         return ref_counter - 1
 
+
 def merge_config_module_params(config_params: Dict, module_keys: List, get_module: Callable) -> Dict:
     for module_key in module_keys:
         module_params = get_module(module_key).params
@@ -541,6 +542,7 @@ def merge_config_module_params(config_params: Dict, module_keys: List, get_modul
 
     return config_params
 
+
 class ModuleManager(QObject):
     imgtrans_proj: ProjImgTrans = None
 
@@ -548,17 +550,23 @@ class ModuleManager(QObject):
     update_inpainter_status = Signal(str)
     finish_translate_page = Signal(str)
     canvas_inpaint_finished = Signal(dict)
+    inpaint_th_finished = Signal()
 
     imgtrans_pipeline_finished = Signal()
     blktrans_pipeline_finished = Signal(int, list)
     page_trans_finished = Signal(int)
 
     run_canvas_inpaint = False
+    is_waiting_th = False
+    block_set_inpainter = False
+
     def __init__(self, 
                  imgtrans_proj: ProjImgTrans,
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.imgtrans_proj = imgtrans_proj
+        self.check_inpaint_fin_timer = QTimer(self)
+        self.check_inpaint_fin_timer.timeout.connect(self.check_inpaint_th_finished)
 
     def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox, ocr_postprocess: Callable = None, translate_postprocess: Callable = None):
         self.textdetect_thread = TextDetectThread()
@@ -674,6 +682,13 @@ class ModuleManager(QObject):
             self.inpaint_thread.quit()
         if self.translate_thread.isRunning():
             self.translate_thread.quit()
+
+    def check_inpaint_th_finished(self):
+        if self.inpaint_thread.isRunning():
+            return
+        self.block_set_inpainter = False
+        self.check_inpaint_fin_timer.stop()
+        self.inpaint_th_finished.emit()
 
     def runImgtransPipeline(self):
         if self.imgtrans_proj.is_empty:
@@ -808,11 +823,19 @@ class ModuleManager(QObject):
         self.translate_thread.setTranslator(translator)
 
     def setInpainter(self, inpainter: str = None):
+        
+        if self.block_set_inpainter:
+            return
+        
         if inpainter is None:
             inpainter =cfg_module.inpainter
+        
         if self.inpaint_thread.isRunning():
-            LOGGER.warning('Terminating a running inpaint thread.')
-            self.inpaint_thread.terminate()
+            self.block_set_inpainter = True
+            create_info_dialog(self.tr('Set Inpainter...'), modal=True, signal_slot_map_list=[{'signal': self.inpaint_th_finished, 'slot': 'done'}])
+            self.check_inpaint_fin_timer.start(300)
+            return
+
         self.inpaint_thread.setInpainter(inpainter)
 
     def setTextDetector(self, textdetector: str = None):

@@ -446,9 +446,13 @@ class CustomComboBox(QComboBox):
         super().__init__(*args, **kwargs)  
         self.scrollWidget=scrollWidget
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.scroll_sel = True
+
+    def setScrollSelectionEnabled(self, enable: bool):
+        self.scroll_sel = enable
 
     def wheelEvent(self, *args, **kwargs):
-        if self.scrollWidget is None or self.hasFocus():
+        if self.scroll_sel and (self.scrollWidget is None or self.hasFocus()):
             return super().wheelEvent(*args, **kwargs)
         else:
             return self.scrollWidget.wheelEvent(*args, **kwargs)

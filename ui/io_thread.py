@@ -8,7 +8,7 @@ from qtpy.QtWidgets import QDialog, QMessageBox, QFileDialog
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import imread, imwrite
-from utils.error_handling import create_error_dialog
+from utils import create_error_dialog
 from .config_proj import ProjImgTrans
 from .stylewidgets import ProgressMessageBox
 

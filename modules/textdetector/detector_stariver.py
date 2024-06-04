@@ -5,7 +5,7 @@ import requests
 import base64
 
 from .base import register_textdetectors, TextDetectorBase, TextBlock
-from utils.error_handling import create_error_dialog, create_info_dialog
+from utils import create_error_dialog, create_info_dialog
 
 
 @register_textdetectors('stariver_ocr')

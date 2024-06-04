@@ -96,6 +96,14 @@ check_local_file_hash = True
 FONT_FAMILIES: set = None
 CUSTOM_FONTS = []
 pbar = {}
+runtime_widget_set = set()
+
+def add_to_runtime_widget_set(widget):
+    runtime_widget_set.add(widget)
+
+def remove_from_runtime_widget_set(widget):
+    if widget in runtime_widget_set:
+        runtime_widget_set.remove(widget)
 
 showed_exception = set()
 
