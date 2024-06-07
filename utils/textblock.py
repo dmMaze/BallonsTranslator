@@ -17,6 +17,36 @@ LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
 CJKPATTERN = re.compile(r'[\uac00-\ud7a3\u3040-\u30ff\u4e00-\u9FFF]')
 
 
+def sort_pnts(pts: np.ndarray):
+    '''
+    Direction must be provided for sorting.
+    The largest pairwise vector of input points is used to determine the direction.
+    It is reliable enough for text lines but not for blocks.
+    '''
+
+    if isinstance(pts, List):
+        pts = np.array(pts)
+    assert isinstance(pts, np.ndarray) and pts.shape == (4, 2)
+    diag_vec = pts[:, None] - pts[None]
+    diag_vec_norm = np.linalg.norm(diag_vec, axis=2)
+    diag_pnt_ids = np.unravel_index(np.argmax(diag_vec_norm), diag_vec_norm.shape)
+    
+    diag_vec = diag_vec[diag_pnt_ids[0], diag_pnt_ids[1]]
+    diag_vec = np.abs(diag_vec)
+    is_vertical = diag_vec[0] <= diag_vec[1]
+
+    if is_vertical:
+        pts = pts[np.argsort(pts[:, 1])]
+        pts = pts[[*np.argsort(pts[:2, 0]), *np.argsort(pts[2:, 0])[::-1] + 2]]
+        return pts, is_vertical
+    else:
+        pts = pts[np.argsort(pts[:, 0])]
+        pts_sorted = np.zeros_like(pts)
+        pts_sorted[[0, 3]] = sorted(pts[[0, 1]], key=lambda x: x[1])
+        pts_sorted[[1, 2]] = sorted(pts[[2, 3]], key=lambda x: x[1])
+        return pts_sorted, is_vertical
+
+
 @nested_dataclass
 class TextBlock:
     xyxy: List = field(default_factory = lambda: [0, 0, 0, 0])
@@ -527,6 +557,7 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
     bbox_score_thresh = 0.4
     mask_score_thresh = 0.1
     for ii, line in enumerate(lines):
+        line, is_vertical = sort_pnts(line)
         bx1, bx2 = line[:, 0].min(), line[:, 0].max()
         by1, by2 = line[:, 1].min(), line[:, 1].max()
         bbox_score, bbox_idx = -1, -1
