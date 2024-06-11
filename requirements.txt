@@ -1,7 +1,7 @@
 # To install pytorch cuda (gpu) version, please look https://pytorch.org/
 
-PyQt6-Qt6>=6.6.2
-PyQt6>=6.6.1
+PyQt6-Qt6>=6.6.2,<6.7.0
+PyQt6>=6.6.1,<6.7.0
 numpy
 urllib3==1.25.11; sys_platform == 'win32' # https://github.com/psf/requests/issues/5740
 urllib3; sys_platform == 'darwin' # fix urllib3.package.six.move module not found error
