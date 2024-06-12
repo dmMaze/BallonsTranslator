@@ -338,47 +338,52 @@ class SakuraTranslator(BaseTranslator):
 
         return _translate(text, ignore, SMALL_KANA2BIG_KANA)
 
-    def detect_and_caculate_repeats(self, s: str, threshold: int = 20, remove_all=True) -> Union[bool, str, int, str, int]:
+    def detect_and_calculate_repeats(self, s: str, threshold: int = 20, remove_all=True) -> Union[bool, str, int, str, int]:
         """
         检测文本中是否存在重复模式,并计算重复次数。
         返回值: (是否重复, 去除重复后的文本, 重复次数, 重复模式, 实际阈值)
         """
 
+        # 初始化标记重复模式的变量
         repeated = False
-        counts = []
+        longest_pattern = ''  # 存储最长的重复模式
+        longest_count = 0     # 存储最长模式的重复次数
+        counts = []           # 存储所有找到的重复次数
+
+        # 遍历所有可能的模式长度，从1到字符串长度的一半
         for pattern_length in range(1, len(s) // 2 + 1):
-            i = 0
-            while i < len(s) - pattern_length:
-                pattern = s[i:i + pattern_length]
-                count = 1
-                j = i + pattern_length
-                while j <= len(s) - pattern_length:
-                    if s[j:j + pattern_length] == pattern:
-                        count += 1
-                        j += pattern_length
-                    else:
-                        break
-                counts.append(count)
-                if count >= threshold:
-                    self.logger.warning(f"检测到重复模式: {pattern}，重复次数: {count}")
-                    repeated = True
+            # 构建正则表达式模式，匹配指定长度的重复模式
+            pattern = re.compile(r'(.{%d})\1+' % pattern_length)
+
+            # 查找所有匹配的重复模式
+            for match in re.finditer(pattern, s):
+                current_pattern = match.group(1)  # 当前找到的重复模式
+                current_count = len(match.group(0)) // pattern_length  # 计算重复次数
+                counts.append(current_count)  # 将当前模式的重复次数添加到 counts 列表
+
+                # 如果当前模式的重复次数达到或超过阈值
+                if current_count >= threshold:
+                    self.logger.warning(f"检测到重复模式: {current_pattern}，重复次数: {current_count}")
+                    repeated = True  # 标记检测到重复模式
+
+                    # 如果当前模式的重复次数大于最长的重复次数
+                    if current_count > longest_count:
+                        longest_count = current_count  # 更新最长的重复次数
+                        longest_pattern = current_pattern  # 更新最长的重复模式
+
+                    # 如果需要移除所有重复模式
                     if remove_all:
-                        s = s[:i + pattern_length] + s[j:]
-                    break
-                i += 1
+                        s = s[:match.start()] + s[match.end():]  # 从字符串中移除重复模式
+                    break  # 跳出当前循环，检查下一个模式长度
+
             if repeated:
-                break
+                break  # 如果已经检测到重复模式，跳出外层循环
 
-        # 计算重复次数的众数
-        if counts:
-            mode_count = max(set(counts), key=counts.count)
-        else:
-            mode_count = 0
+        # 计算实际阈值，取默认阈值和所有找到的重复次数的最大众数中的最大值
+        actual_threshold = max(threshold, max(counts, default=0))
 
-        # 根据默认阈值和众数计算实际阈值
-        actual_threshold = max(threshold, mode_count)
-
-        return repeated, s, count, pattern, actual_threshold
+        # 返回检测结果，包括是否重复、去除重复后的文本、重复次数、重复模式和实际阈值
+        return repeated, s, longest_count, longest_pattern, actual_threshold
 
     def _format_prompt_log(self, prompt: str) -> str:
         gpt_dict_raw_text = self.sakura_dict.get_dict_str()
@@ -435,16 +440,16 @@ class SakuraTranslator(BaseTranslator):
             return None
 
         # 检查请求内容是否含有超过默认阈值的重复内容
-        if self.detect_and_caculate_repeats(''.join(queries), self._REPEAT_DETECT_THRESHOLD)[0]:
+        if self.detect_and_calculate_repeats(''.join(queries), self._REPEAT_DETECT_THRESHOLD)[0]:
             self.logger.warning(
                 f'请求内容本身含有超过默认阈值{self._REPEAT_DETECT_THRESHOLD}的重复内容。')
 
         # 根据译文众数和默认阈值计算实际阈值
-        actual_threshold = max(max(self.detect_and_caculate_repeats(
+        actual_threshold = max(max(self.detect_and_calculate_repeats(
             query)[4] for query in queries), self._REPEAT_DETECT_THRESHOLD)
 
-        if self.detect_and_caculate_repeats(response, actual_threshold)[0]:
-            response = _retry_translation(queries, lambda r: self.detect_and_caculate_repeats(
+        if self.detect_and_calculate_repeats(response, actual_threshold)[0]:
+            response = _retry_translation(queries, lambda r: self.detect_and_calculate_repeats(
                 r, actual_threshold)[0], f'检测到大量重复内容（当前阈值：{actual_threshold}），疑似模型退化，重新翻译。')
             if response is None:
                 self.logger.warning(
@@ -468,7 +473,7 @@ class SakuraTranslator(BaseTranslator):
         translations = []
         for query in queries:
             response = self._handle_translation_request(query)
-            if self.detect_and_caculate_repeats(response)[0]:
+            if self.detect_and_calculate_repeats(response)[0]:
                 self.logger.warning(f"单行翻译结果存在重复内容: {response}，返回原文。")
                 translations.append(query)
             else:
