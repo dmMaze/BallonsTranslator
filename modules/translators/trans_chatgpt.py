@@ -70,7 +70,9 @@ class GPTTranslator(BaseTranslator):
         # 'return prompt': False,
         'retry attempts': 5,
         'retry timeout': 15,
-        '3rd party api url': ''
+        '3rd party api url': '',
+        'frequency penalty': 0.0,
+        'presence penalty': 0.0,
     }
 
     def _setup_translator(self):
@@ -280,6 +282,8 @@ class GPTTranslator(BaseTranslator):
             max_tokens=self.max_tokens // 2, # Assuming that half of the tokens are used for the query
             temperature=self.temperature,
             top_p=self.top_p,
+            frequency_penalty=float(self.params['frequency penalty']),
+            presence_penalty=float(self.params['presence penalty'])
         )
 
         if OPENAPI_V1_API:
