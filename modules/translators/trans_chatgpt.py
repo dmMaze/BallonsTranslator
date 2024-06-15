@@ -109,23 +109,23 @@ class GPTTranslator(BaseTranslator):
 
     @property
     def temperature(self) -> float:
-        return float(self.params['temperature'])
+        return self.params['temperature']
     
     @property
     def max_tokens(self) -> int:
-        return int(self.params['max tokens'])
+        return self.params['max tokens']
     
     @property
     def top_p(self) -> int:
-        return int(self.params['top p'])
+        return self.params['top p']
     
     @property
     def retry_attempts(self) -> int:
-        return int(self.params['retry attempts'])
+        return self.params['retry attempts']
     
     @property
     def retry_timeout(self) -> int:
-        return int(self.params['retry timeout'])
+        return self.params['retry timeout']
     
     @property
     def chat_system_template(self) -> str:

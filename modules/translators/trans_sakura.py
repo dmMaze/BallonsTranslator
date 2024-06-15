@@ -239,15 +239,15 @@ class SakuraTranslator(BaseTranslator):
 
     @property
     def max_tokens(self) -> int:
-        return int(self.params['max tokens'])
+        return self.params['max tokens']
 
     @property
     def timeout(self) -> int:
-        return int(self.params['timeout'])
+        return self.params['timeout']
 
     @property
     def retry_attempts(self) -> int:
-        return int(self.params['retry attempts'])
+        return self.params['retry attempts']
 
     @property
     def api_base_raw(self) -> str:

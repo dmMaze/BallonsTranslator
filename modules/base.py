@@ -65,13 +65,34 @@ class BaseModule:
         assert cls._preprocess_hooks is not None
         register_hooks(cls._preprocess_hooks, callbacks)
 
-    def updateParam(self, param_key: str, param_content):
-        self_param_content = self.params[param_key]
-        if isinstance(self_param_content, (str, float, int)):
-            self.params[param_key] = param_content
+    def get_param_value(self, param_key: str):
+        assert self.params is not None and param_key in self.params
+        p = self.params[param_key]
+        if isinstance(p, dict):
+            return p['value']
+        return p
+    
+    def set_param_value(self, param_key: str, param_value, convert_dtype=True):
+        assert self.params is not None and param_key in self.params
+        p = self.params[param_key]
+        if isinstance(p, dict):
+            if convert_dtype:
+                try:
+                    param_value = type(p['value'])(param_value)
+                except ValueError:
+                    dtype = type(p['value'])
+                    self.logger.warning(f'Invalid param value {param_value} for defined dtype: {dtype}')
+            p['value'] = param_value
         else:
-            param_dict = self.params[param_key]
-            param_dict['value'] = param_content
+            if convert_dtype:
+                try:
+                    param_value = type(p)(param_value)
+                except ValueError:
+                    self.logger.warning(f'Invalid param value {param_value} for defined dtype: {type(p)}')
+            self.params[param_key] = param_value
+
+    def updateParam(self, param_key: str, param_content):
+        self.set_param_value(param_key, param_content)
 
     def is_cpu_intensive(self)->bool:
         if self.params is not None and 'device' in self.params:

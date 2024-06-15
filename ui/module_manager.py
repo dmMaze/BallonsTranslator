@@ -123,6 +123,7 @@ class InpaintThread(ModuleThread):
             self.inpaint_failed.emit()
         self.inpainting = False
 
+
 class TextDetectThread(ModuleThread):
     
     finish_detect_page = Signal(str)
@@ -531,6 +532,22 @@ def merge_config_module_params(config_params: Dict, module_keys: List, get_modul
                                 continue
                             if k not in mparam:
                                 cparam.pop(k)
+                        if type(cparam['value']) != type(mparam['value']):
+                            try:
+                                cparam['value'] = type(mparam['value'])(cparam['value'])
+                            except:
+                                dtype = type(mparam['value'])
+                                mv = mparam['value']
+                                cv = cparam['value']
+                                LOGGER.warning(f'Invalid param value {cv} for defined dtype: {dtype}, it will be set to default value: {mv}')
+                                cparam['value'] = mv
+                    else:
+                        if type(cparam) != type(mparam):
+                            try:
+                                cfg_param[mk] = type(mparam)(cparam)
+                            except ValueError:
+                                LOGGER.warning(f'Invalid param value {cparam} for defined dtype: {type(mparam)}, it will be set to default value: {mparam}')
+                                cfg_param[mk] = mparam
             
             cfg_key_list = list(cfg_param.keys())
             module_key_list = list(module_params.keys())
