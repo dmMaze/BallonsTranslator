@@ -216,7 +216,8 @@ class SakuraTranslator(BaseTranslator):
             'type': 'selector',
             'options': [
                 '0.9',
-                '0.10'
+                '0.10',
+                'galtransl-v1'
             ],
             'value': '0.9'
         },
@@ -235,6 +236,10 @@ class SakuraTranslator(BaseTranslator):
     )
     _CHAT_SYSTEM_TEMPLATE_010 = (
         '你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，注意不要擅自添加原文中没有的代词，也不要擅自增加或减少换行。'
+    )
+
+    _CHAT_SYSTEM_TEMPLATE_GALTRANSL_V1 = (
+        '你是一个视觉小说翻译模型，可以通顺地使用给定的术语表以指定的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，注意不要混淆使役态和被动态的主语和宾语，不要擅自添加原文中没有的代词，也不要擅自增加或减少换行。'
     )
 
     @property
@@ -279,8 +284,9 @@ class SakuraTranslator(BaseTranslator):
         self._current_style = "precise"
         self._emoji_pattern = re.compile(r'[\U00010000-\U0010ffff]')
         self._heart_pattern = re.compile(r'❤')
+        sakura_version = self.sakura_version if self.sakura_version!= 'galtransl-v1' else '0.10'
         self.sakura_dict = SakuraDict(
-            self.dict_path, self.logger, self.sakura_version)
+            self.dict_path, self.logger, sakura_version)
         self.logger.info(f'当前选择的Sakura版本: {self.sakura_version}')
 
     def updateParam(self, param_key: str, param_content):
@@ -403,7 +409,21 @@ class SakuraTranslator(BaseTranslator):
             "将下面的日文文本根据上述术语表的对应关系和注释翻译成中文：",
             prompt,
         ])
-        return prompt_009 if self.sakura_version == '0.9' else prompt_010
+        prompt_galtransl_v1 = '\n'.join([
+            'System:',
+            self._CHAT_SYSTEM_TEMPLATE_GALTRANSL_V1,
+            'User:',
+            "根据以下术语表：",
+            gpt_dict_raw_text,
+            "将下面的日文文本根据上述术语表的对应关系和注释翻译成中文：",
+            prompt,
+        ])
+        if self.sakura_version == '0.9':
+            return prompt_009
+        elif self.sakura_version == '0.10':
+            return prompt_010
+        else:
+            return prompt_galtransl_v1
 
     def _split_text(self, text: str) -> List[str]:
         """
@@ -619,13 +639,26 @@ class SakuraTranslator(BaseTranslator):
                     "content": f"将下面的日文文本翻译成中文：{raw_text}"
                 }
             ]
-        else:
+        elif self.sakura_version == "0.10":
             gpt_dict_raw_text = self.sakura_dict.get_dict_str()
             self.logger.debug(f"Sakura Dict: {gpt_dict_raw_text}")
             messages = [
                 {
                     "role": "system",
                     "content": f"{self._CHAT_SYSTEM_TEMPLATE_010}"
+                },
+                {
+                    "role": "user",
+                    "content": f"根据以下术语表：\n{gpt_dict_raw_text}\n将下面的日文文本根据上述术语表的对应关系和注释翻译成中文：{raw_text}"
+                }
+            ]
+        else:
+            gpt_dict_raw_text = self.sakura_dict.get_dict_str()
+            self.logger.debug(f"Sakura Dict: {gpt_dict_raw_text}")
+            messages = [
+                {
+                    "role": "system",
+                    "content": f"{self._CHAT_SYSTEM_TEMPLATE_GALTRANSL_V1}"
                 },
                 {
                     "role": "user",
