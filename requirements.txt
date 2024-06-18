@@ -13,7 +13,8 @@ mecab-python3; sys_platform == 'darwin'
 fugashi
 unidic_lite
 tqdm
-opencv-python
+opencv-python; sys_platform == 'win32'
+opencv-python==4.10.0.82; sys_platform == 'darwin'
 shapely
 pyclipper
 einops
