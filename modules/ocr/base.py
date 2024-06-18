@@ -14,6 +14,7 @@ class OCRBase(BaseModule):
 
     _postprocess_hooks = OrderedDict()
     _preprocess_hooks = OrderedDict()
+    _line_only: bool = False
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
@@ -41,17 +42,10 @@ class OCRBase(BaseModule):
         self._ocr_blk_list(img, blk_list)
         for callback_name, callback in self._postprocess_hooks.items():
             callback(textblocks=blk_list, img=img, ocr_module=self)
-        # for blk in blk_list:
-        #     if isinstance(blk.text, List):
-        #         for ii, t in enumerate(blk.text):
-        #             for callback in self.postprocess_hooks:
-        #                 blk.text[ii] = callback(t, blk=blk)
-        #     else:
-        #         for callback in self.postprocess_hooks:
-        #             blk.text = callback(blk.text, blk=blk)
+
         return blk_list
 
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs) -> None:
         raise NotImplementedError
 
     def ocr_img(self, img: np.ndarray) -> str:

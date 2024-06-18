@@ -119,12 +119,11 @@ class Model48pxOCR:
         },
     }
 
-    def __init__(self, model_path: str, device='cpu', max_chunk_size=16, *args, **kwargs):
+    def __init__(self, model_path: str, device='cpu', *args, **kwargs):
 
         super().__init__(*args, **kwargs)
 
         self.device = device
-        self.max_chunk_size = max_chunk_size
 
         with open('data/alphabet-all-v7.txt', 'r', encoding = 'utf-8') as fp:
             dictionary = [s[:-1] for s in fp.readlines()]
@@ -139,32 +138,31 @@ class Model48pxOCR:
         self.model.to(device)
         self.device = device
     
-    def __call__(self, img: np.ndarray, textblk_lst: List[TextBlock], verbose: bool = False, ignore_bubble: int = 0) -> List[TextBlock]:
+    def __call__(self, img: np.ndarray, textblk_lst: List[TextBlock], chunk_size = 16, regions: List = None, textblk_lst_indices: List = None) -> None:
         if isinstance(textblk_lst, TextBlock):
             textblk_lst = [textblk_lst]
         
         text_height = 48
-        max_chunk_size = 16
 
-        region_imgs = []
-        textblk_lst_indices = []
-        region_idx = 0
-        for blk_idx, textblk in enumerate(textblk_lst):
-            for ii in range(len(textblk)):
-                textblk_lst_indices.append(blk_idx)
-                region_imgs.append(textblk.get_transformed_region(img, ii, 48, maxwidth=8100))
-                region_idx += 1
+        if regions is None or textblk_lst_indices is None:
+            regions = []
+            textblk_lst_indices = []
+            for blk_idx, textblk in enumerate(textblk_lst):
+                for ii in range(len(textblk)):
+                    textblk_lst_indices.append(blk_idx)
+                    region = textblk.get_transformed_region(img, ii, 48, maxwidth=8100)
+                    regions.append(region)
 
-        perm = range(len(region_imgs))
+        perm = range(len(regions))
         chunck_idx = 0
-        for indices in chunks(perm, max_chunk_size):
+        for indices in chunks(perm, chunk_size):
             N = len(indices)
-            widths = [region_imgs[i].shape[1] for i in indices]
+            widths = [regions[i].shape[1] for i in indices]
             max_width = 4 * (max(widths) + 7) // 4
             region = np.zeros((N, text_height, max_width, 3), dtype = np.uint8)
             for i, idx in enumerate(indices):
-                W = region_imgs[idx].shape[1]
-                region[i, :, : W, :]=region_imgs[idx]
+                W = regions[idx].shape[1]
+                region[i, :, : W, :]=regions[idx]
 
             image_tensor = (torch.from_numpy(region).float() - 127.5) / 127.5
             image_tensor = einops.rearrange(image_tensor, 'N H W C -> N C H W')
