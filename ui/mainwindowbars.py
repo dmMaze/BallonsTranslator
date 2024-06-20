@@ -85,17 +85,27 @@ class InpainterStatusButton(StatusButton):
 
 class StateChecker(QCheckBox):
     checked = Signal(str)
-    def __init__(self, checker_type: str, *args, **kwargs) -> None:
+    unchecked = Signal(str)
+    def __init__(self, checker_type: str, uncheckable: bool = False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.checker_type = checker_type
+        self.uncheckable = uncheckable
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             if not self.isChecked():
                 self.setChecked(True)
+            elif self.uncheckable:
+                self.setChecked(False)
+                
     def setChecked(self, check: bool) -> None:
+        check_state = self.isChecked()
         super().setChecked(check)
-        if check:
-            self.checked.emit(self.checker_type)
+        if check_state != check:
+            if check:
+                self.checked.emit(self.checker_type)
+            else:
+                self.unchecked.emit(self.checker_type)
 
 class LeftBar(Widget):
     recent_proj_list = []
@@ -124,9 +134,10 @@ class LeftBar(Widget):
         self.imgTransChecker.setObjectName('ImgTransChecker')
         self.imgTransChecker.checked.connect(self.stateCheckerChanged)
         
-        self.configChecker = StateChecker('config')
+        self.configChecker = StateChecker('config', uncheckable=True)
         self.configChecker.setObjectName('ConfigChecker')
         self.configChecker.checked.connect(self.stateCheckerChanged)
+        self.configChecker.unchecked.connect(self.stateCheckerChanged)
 
         actionOpenFolder = QAction(self.tr("Open Folder ..."), self)
         actionOpenFolder.triggered.connect(self.onOpenFolder)
@@ -275,8 +286,12 @@ class LeftBar(Widget):
             self.configChecker.setChecked(False)
             self.imgTransChecked.emit()
         elif checker_type == 'config':
-            self.imgTransChecker.setChecked(False)
-            self.configChecked.emit()
+            if self.configChecker.isChecked():
+                self.imgTransChecker.setChecked(False)
+                self.configChecked.emit()
+            else:
+                self.imgTransChecker.setChecked(True)
+                
 
     def needleftStackWidget(self) -> bool:
         return self.showPageListLabel.isChecked() or self.globalSearchChecker.isChecked()
