@@ -18,13 +18,6 @@ class TextDetectorBase(BaseModule):
     _postprocess_hooks = OrderedDict()
     _preprocess_hooks = OrderedDict()
 
-    download_file_list = [{
-        'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/',
-        'files': ['data/models/comictextdetector.pt', 'data/models/comictextdetector.pt.onnx'],
-        'sha256_pre_calculated': ['1f90fa60aeeb1eb82e2ac1167a66bf139a8a61b8780acd351ead55268540cccb', '1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f'],
-        'concatenate_url_filename': 2,
-    }]
-
     def __init__(self, **params) -> None:
         super().__init__(**params)
         self.name = ''

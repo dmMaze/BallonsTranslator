@@ -81,7 +81,7 @@ class OCRMIT48px(MITModels):
 
     params = deepcopy(mit_params)
     download_file_list = [{
-        'url': 'https://huggingface.co/zyddnys/manga-image-translator/resolve/main/',
+        'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/',
         'files': [OCR48PXMODEL_PATH, 'data/alphabet-all-v7.txt'],
         'sha256_pre_calculated': ['29daa46d080818bb4ab239a518a88338cbccff8f901bef8c9db191a7cb97671d', None],
         'concatenate_url_filename': 2,

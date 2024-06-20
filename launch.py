@@ -168,9 +168,6 @@ def main():
         config.module.load_model_on_demand = True
         config.module.empty_runcache = False
 
-    from modules.prepare_local_files import prepare_local_files_forall
-    prepare_local_files_forall()
-
     if sys.platform == 'win32':
         import ctypes
         myappid = u'BalloonsTranslator' # arbitrary string
@@ -198,6 +195,8 @@ def main():
     setup_logging(shared.LOGGING_PATH)
 
     load_modules()
+    from modules.prepare_local_files import prepare_local_files_forall
+    prepare_local_files_forall()
 
     app_args = sys.argv
     if args.headless:
