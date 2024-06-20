@@ -396,6 +396,8 @@ class OCR48pxCTC:
         with open('data/alphabet-all-v5.txt', 'r', encoding = 'utf-8') as fp :
             dictionary = [s[:-1] for s in fp.readlines()]
         self.device = device
+        self.text_height = 48
+        self.maxwidth = 8100
 
         model = OCR(dictionary, 768)
         sd = torch.load(model_path, map_location = 'cpu')
@@ -413,18 +415,7 @@ class OCR48pxCTC:
         self.device = device
 
     @torch.no_grad()
-    def __call__(self, img: np.ndarray, textblk_lst: List[TextBlock], chunk_size = 16, regions: List = None, textblk_lst_indices: List = None) -> None:
-        if isinstance(textblk_lst, TextBlock):
-            textblk_lst = [textblk_lst]
-        
-        if regions is None or textblk_lst_indices is None:
-            regions = []
-            textblk_lst_indices = []
-            for blk_idx, textblk in enumerate(textblk_lst):
-                for ii in range(len(textblk)):
-                    textblk_lst_indices.append(blk_idx)
-                    region = textblk.get_transformed_region(img, ii, 48, maxwidth=8100)
-                    regions.append(region)
+    def __call__(self, textblk_lst: List[TextBlock], regions: List[np.ndarray], textblk_lst_indices: List, chunk_size = 16) -> None:
 
         perm = range(len(regions))
         chunck_idx = 0
@@ -433,7 +424,7 @@ class OCR48pxCTC:
             widths = [regions[i].shape[1] for i in indices]
             # max_width = 4 * (max(widths) + 7) // 4
             max_width = (4 * (max(widths) + 7) // 4) + 128
-            region = np.zeros((N, 48, max_width, 3), dtype = np.uint8)
+            region = np.zeros((N, self.text_height, max_width, 3), dtype = np.uint8)
             for i, idx in enumerate(indices) :
                 W = regions[idx].shape[1]
                 region[i, :, : W, :] = regions[idx]

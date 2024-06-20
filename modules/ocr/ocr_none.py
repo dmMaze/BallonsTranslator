@@ -12,7 +12,7 @@ class OCRNone(OCRBase):
         'description': 'Not a OCR, just return original text.'
     }
 
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs):
         pass
 
     def ocr_img(self, img: np.ndarray) -> str:

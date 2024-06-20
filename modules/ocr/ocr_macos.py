@@ -125,7 +125,7 @@ if platform.system() == 'Darwin' and platform.mac_ver()[0] >= '10.15':
             def ocr_img(self, img: np.ndarray) -> str:
                 return self.model(img)
 
-            def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+            def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs):
                 im_h, im_w = img.shape[:2]
                 for blk in blk_list:
                     x1, y1, x2, y2 = blk.xyxy

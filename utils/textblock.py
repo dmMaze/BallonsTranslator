@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 import numpy as np
 from shapely.geometry import Polygon
 import math
@@ -8,6 +8,7 @@ import re
 
 from .imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
 from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
+from .split_text_region import split_textblock as split_text_region
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
@@ -236,13 +237,20 @@ class TextBlock:
 
     def get_transformed_region(self, img: np.ndarray, idx: int, textheight: int, maxwidth: int = None) -> np.ndarray :
         direction = 'v' if self.src_is_vertical else 'h'
-        src_pts = np.array(self.lines[idx], dtype=np.float64)
 
+        src_pts = np.array(self.lines[idx], dtype=np.float64)
         middle_pnt = (src_pts[[1, 2, 3, 0]] + src_pts) / 2
         vec_v = middle_pnt[2] - middle_pnt[0]   # vertical vectors of textlines
         vec_h = middle_pnt[1] - middle_pnt[3]   # horizontal vectors of textlines
         norm_v = np.linalg.norm(vec_v)
         norm_h = np.linalg.norm(vec_h)
+
+        if textheight is None:
+            if direction == 'h' :
+                textheight = int(norm_v)
+            else:
+                textheight = int(norm_h)
+        
         if norm_v <= 0 or norm_h <= 0:
             print('invalid textpolygon to target img')
             return np.zeros((textheight, textheight, 3), dtype=np.uint8)
@@ -677,3 +685,33 @@ def visualize_textblocks(canvas, blk_list:  List[TextBlock]):
         cv2.putText(canvas, str(ii), (bx1, by1 + lw + 2), 0, lw / 3, (255,127,127), max(lw-1, 1), cv2.LINE_AA)
     return canvas
 
+def collect_textblock_regions(img: np.ndarray, textblk_lst: List[TextBlock], text_height=48, maxwidth=8100, split_textblk = False, seg_func: Callable = None):
+    regions = []
+    textblk_lst_indices = []
+    for blk_idx, textblk in enumerate(textblk_lst):
+        for ii in range(len(textblk)):
+            if split_textblk and len(textblk) == 1:
+                assert seg_func is not None
+                region = textblk.get_transformed_region(img, ii, None, maxwidth=None)
+                mask  = seg_func(region)[0]
+                split_lines = split_text_region(mask)[0]
+                for jj, line in enumerate(split_lines):
+                    bottom = line[3]
+                    if len(split_lines) == 1:
+                        bottom = region.shape[0]
+                    r = region[line[1]: bottom]
+                    h, w = r.shape[:2]
+                    tgt_h, tgt_w = text_height, min(maxwidth, int(text_height / h * w))
+                    if tgt_h != h or tgt_w != w:
+                        r = cv2.resize(r, (tgt_w, tgt_h), interpolation=cv2.INTER_LINEAR)
+                    regions.append(r)
+                    textblk_lst_indices.append(blk_idx)
+                #     cv2.imwrite(f'local_region{jj}.jpg', r)
+                # cv2.imwrite('local_mask.jpg', mask)
+                # cv2.imwrite('local_region.jpg',region)
+            else:
+                textblk_lst_indices.append(blk_idx)
+                region = textblk.get_transformed_region(img, ii, text_height, maxwidth=maxwidth)
+                regions.append(region)
+
+    return regions, textblk_lst_indices

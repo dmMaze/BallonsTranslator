@@ -62,7 +62,7 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
             def ocr_img(self, img: np.ndarray) -> str:
                 self.engine(img)
 
-            def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]) -> None:
+            def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs) -> None:
                 im_h, im_w = img.shape[:2]
                 for blk in blk_list:
                     x1, y1, x2, y2 = blk.xyxy

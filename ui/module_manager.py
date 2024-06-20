@@ -312,8 +312,12 @@ class ImgtransThread(QThread):
 
     def _blktrans_pipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int]):
         if mode >= 0 and mode < 3:
-            self.ocr_thread.module.run_ocr(tgt_img, blk_list)
+            try:
+                self.ocr_thread.module.run_ocr(tgt_img, blk_list, split_textblk=True, seg_func=self.get_maskseg_method())
+            except Exception as e:
+                create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
             self.finish_blktrans.emit(mode, blk_ids)
+
         if mode != 0 and mode < 3:
             self.translate_thread.module.translate_textblk_lst(blk_list)
             self.finish_blktrans.emit(mode, blk_ids)

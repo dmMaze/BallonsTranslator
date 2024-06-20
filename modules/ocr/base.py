@@ -24,7 +24,7 @@ class OCRBase(BaseModule):
                 self.name = key
                 break
 
-    def run_ocr(self, img: np.ndarray, blk_list: List[TextBlock] = None) -> Union[List[TextBlock], str]:
+    def run_ocr(self, img: np.ndarray, blk_list: List[TextBlock] = None, *args, **kwargs) -> Union[List[TextBlock], str]:
 
         if not self.all_model_loaded():
             self.load_model()
@@ -39,7 +39,7 @@ class OCRBase(BaseModule):
             if self.name != 'none_ocr':
                 blk.text = []
                 
-        self._ocr_blk_list(img, blk_list)
+        self._ocr_blk_list(img, blk_list, *args, **kwargs)
         for callback_name, callback in self._postprocess_hooks.items():
             callback(textblocks=blk_list, img=img, ocr_module=self)
 

@@ -107,7 +107,7 @@ class OCRStariver(OCRBase):
 
         return token
 
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs):
         self.update_token_if_needed() # 在向服务器发送请求前尝试更新 Token
         im_h, im_w = img.shape[:2]
         for blk in blk_list:

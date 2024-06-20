@@ -544,6 +544,7 @@ class OCR32pxModel:
     def __init__(self, model_path, device='cpu') -> None:
         self.device = device
         self.text_height = 32
+        self.maxwidth = 3064
 
         self.net = None
         with open('data/alphabet-all-v5.txt', 'r', encoding = 'utf-8') as fp :
@@ -561,18 +562,7 @@ class OCR32pxModel:
         self.device = device
 
     @torch.no_grad()
-    def __call__(self, img: np.ndarray, textblk_lst: List[TextBlock], chunk_size = 16, regions: List = None, textblk_lst_indices: List = None) -> None:
-        if isinstance(textblk_lst, TextBlock):
-            textblk_lst = [textblk_lst]
-
-        if regions is None or textblk_lst_indices is None:
-            regions = []
-            textblk_lst_indices = []
-            for blk_idx, textblk in enumerate(textblk_lst):
-                for ii in range(len(textblk)):
-                    textblk_lst_indices.append(blk_idx)
-                    region = textblk.get_transformed_region(img, ii, self.text_height, maxwidth=3064)
-                    regions.append(region)
+    def __call__(self, textblk_lst: List[TextBlock], regions: List[np.ndarray], textblk_lst_indices: List, chunk_size = 16) -> None:
 
         perm = range(len(regions))
         chunck_idx = 0

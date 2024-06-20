@@ -3,6 +3,7 @@ import numpy as np
 from copy import deepcopy
 
 from .base import DEVICE_SELECTOR, OCRBase, register_OCR, TextBlock
+from utils.textblock import collect_textblock_regions
 
 mit_params = {
     'chunk_size': {
@@ -27,8 +28,9 @@ class MITModels(OCRBase):
     def device(self) -> str:
         return self.params['device']['value']
 
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock]):
-        return self.model(img, blk_list, chunk_size=self.chunk_size)
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], split_textblk=False, seg_func=None, *args, **kwargs):
+        regions, textblk_lst_indices = collect_textblock_regions(img, blk_list, self.model.text_height, self.model.maxwidth, split_textblk, seg_func)
+        return self.model(blk_list, regions, textblk_lst_indices, chunk_size=self.chunk_size)
 
     def updateParam(self, param_key: str, param_content):
         if param_key == 'device' and self.device != param_content:
@@ -36,7 +38,7 @@ class MITModels(OCRBase):
         super().updateParam(param_key, param_content)
 
 
-from .model_32px import OCR32pxModel
+from .mit32px import OCR32pxModel
 @register_OCR('mit32px')
 class OCRMIT32px(MITModels):
 
