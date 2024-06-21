@@ -8,9 +8,9 @@ import re
 import subprocess
 import importlib.util
 import pkg_resources
-import time
 
-TIME_LAUNCH = time.time()
+BRANCH = 'dev'
+VERSION = '1.4.0'
 
 python = sys.executable
 git = os.environ.get('GIT', "git")
@@ -138,14 +138,12 @@ def main():
     else:
         os.environ['QT_API'] = args.qt_api
 
-    from utils import appinfo
-
     commit = commit_hash()
 
     print('py version: ', sys.version)
     print('py executable: ', sys.executable)
-    print(f'version: {appinfo.version}')
-    print(f'branch: {appinfo.branch}')
+    print(f'version: {VERSION}')
+    print(f'branch: {BRANCH}')
     print(f"Commit hash: {commit}")
 
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
