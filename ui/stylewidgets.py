@@ -1,7 +1,9 @@
-from qtpy.QtWidgets import QBoxLayout, QLayout, QWidgetItem, QLayoutItem, QWidgetItem, QApplication, QAbstractScrollArea, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStyle, QSlider, QHBoxLayout, QStyle, QStyleOptionSlider, QColorDialog, QPushButton
+from qtpy.QtWidgets import QLayout, QWidgetItem, QLayoutItem, QWidgetItem, QApplication, QAbstractScrollArea, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStyle, QSlider, QHBoxLayout, QStyle, QStyleOptionSlider, QColorDialog, QPushButton
 from qtpy.QtCore import QParallelAnimationGroup, QEvent, Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize, QRect, QRectF, Signal, QPoint, Property, QAbstractAnimation
 from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPainter, QFontMetrics, QColor
 from typing import List, Union, Tuple
+import time
+import datetime
 
 from utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
 from utils import shared as C
@@ -60,16 +62,30 @@ class SeparatorWidget(QFrame):
 
 
 class TaskProgressBar(Widget):
-    def __init__(self, description: str = '', *args, **kwargs) -> None:
+    def __init__(self, description: str = '', verbose=False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.progressbar = QProgressBar(self)
         self.progressbar.setTextVisible(False)
         self.textlabel = QLabel(self)
         self.description = description
-        self.text_len = 100
+        self.text_len = 89
         layout = QVBoxLayout(self)
-        layout.addWidget(self.textlabel)
+
+        self.verbose = verbose
+        # if not verbose:
+        
+        if verbose:
+            self.start_time = 0
+            self.verbose_label = QLabel(self)
+            hl = QHBoxLayout()
+            hl.addWidget(self.textlabel)
+            hl.addStretch(1)
+            hl.addWidget(self.verbose_label)
+            layout.addLayout(hl)
+        else:
+            layout.addWidget(self.textlabel)
+            
         layout.addWidget(self.progressbar)
         self.updateProgress(0)
 
@@ -80,9 +96,24 @@ class TaskProgressBar(Widget):
         if len(msg) > self.text_len - 3:
             msg = msg[:self.text_len - 3] + '...'
         elif len(msg) < self.text_len:
-            msg = msg + ' ' * (self.text_len - len(msg))
+            pads = self.text_len - len(msg)
+            msg = msg + ' ' * pads
         self.textlabel.setText(msg)
         self.progressbar.setValue(progress)
+
+        if self.verbose:
+            if progress == 0:
+                self.verbose_label.setText('')
+                self.start_time = time.time()
+            elif progress == 100:
+                self.verbose_label.setText('')
+            elif progress != 100:
+                cur_time = time.time()
+                left_progress = 100 - progress
+                eta = left_progress / progress * (cur_time - self.start_time + 1e-6)
+                eta = datetime.timedelta(seconds=int(round(eta)))
+                added_str = f'{progress}% ETA {eta}'
+                self.verbose_label.setText(added_str)
 
 
 class FrameLessMessageBox(QMessageBox):
@@ -125,10 +156,10 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(None, *args, **kwargs)
         
-        self.detect_bar = TaskProgressBar(self.tr('Detecting: '), self)
-        self.ocr_bar = TaskProgressBar(self.tr('OCR: '), self)
-        self.inpaint_bar = TaskProgressBar(self.tr('Inpainting: '), self)
-        self.translate_bar = TaskProgressBar(self.tr('Translating: '), self)
+        self.detect_bar = TaskProgressBar(self.tr('Detecting: '), True, self)
+        self.ocr_bar = TaskProgressBar(self.tr('OCR: '), True, self)
+        self.inpaint_bar = TaskProgressBar(self.tr('Inpainting: '), True, self)
+        self.translate_bar = TaskProgressBar(self.tr('Translating: '), True, self)
 
         layout = self.layout()
         layout.addWidget(self.detect_bar)
