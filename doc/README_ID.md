@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](../README.md) | [English](README_EN.md) | [Русский](README_RU.md) | [日本語](README_JA.md) | Indonesia
+[简体中文](../README.md) | [English](../README_EN.md) | [Русский](./README_RU.md) | [日本語](./README_JA.md) | Indonesia | [Tiếng Việt](./README_VI.md)
 
 Sebuah aplikasi penerjemahan komik/manga yang dibantu oleh deep learning.
 

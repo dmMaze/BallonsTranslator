@@ -1,6 +1,6 @@
 # BallonTranslator
 
-[简体中文](../README.md) | [English](README_EN.md) | Русский | [日本語](README_JA.md) | [Indonesia](README_ID.md)
+[简体中文](../README.md) | [English](../README_EN.md) | Русский | [日本語](./README_JA.md) | [Indonesia](./README_ID.md) | [Tiếng Việt](./README_VI.md)
 
 Еще один компьютерный инструмент для перевода комиксов/манги, основанный на глубоком обучении.
 
