@@ -415,6 +415,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         xoff = -non_bracket_br[0]
                         yoff = -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
+                        if TEXTLAYOUT_QTVERSION:
+                            yoff += cfmt.tbr.left()
 
                 elif vertical_force_aligncentel(char):
                     act_rect = cfmt.punc_actual_rect(line, char, cache=False)
