@@ -415,14 +415,16 @@ class TitleBar(Widget):
             sa.triggered.connect(self.stageEnableStateChanged)
 
         runAction = QAction(self.tr('Run'), self)
+        runWoUpdateTextStyle = QAction(self.tr('Run without update textstyle'), self)
         translatePageAction = QAction(self.tr('Translate page'), self)
         runMenu = QMenu(self.runToolBtn)
         runMenu.addActions(stageActions)
         runMenu.addSeparator()
-        runMenu.addActions([runAction, translatePageAction])
+        runMenu.addActions([runAction, runWoUpdateTextStyle, translatePageAction])
         self.runToolBtn.setMenu(runMenu)
         self.runToolBtn.setPopupMode(QToolButton.InstantPopup)
         self.run_trigger = runAction.triggered
+        self.run_woupdate_textstyle_trigger = runWoUpdateTextStyle.triggered
         self.translate_page_trigger = translatePageAction.triggered
 
         self.iconLabel = QLabel(self)
@@ -582,7 +584,7 @@ class BottomBar(Widget):
         self.originalSlider.setFixedWidth(150)
         self.originalSlider.setRange(0, 100)
 
-        self.textlayerSlider = PaintQSlider(self.tr("Lettering layer opacity"), Qt.Orientation.Horizontal, self)
+        self.textlayerSlider = PaintQSlider(self.tr("Text layer opacity"), Qt.Orientation.Horizontal, self)
         self.textlayerSlider.setFixedWidth(150)
         self.textlayerSlider.setValue(100)
         self.textlayerSlider.setRange(0, 100)

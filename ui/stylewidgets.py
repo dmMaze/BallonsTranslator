@@ -107,7 +107,7 @@ class TaskProgressBar(Widget):
                 self.start_time = time.time()
             elif progress == 100:
                 self.verbose_label.setText('')
-            elif progress != 100:
+            else:
                 cur_time = time.time()
                 left_progress = 100 - progress
                 eta = left_progress / progress * (cur_time - self.start_time + 1e-6)

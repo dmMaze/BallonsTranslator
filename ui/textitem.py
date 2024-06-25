@@ -240,7 +240,7 @@ class TextBlkItem(QGraphicsTextItem):
             set_char_fmt = True
 
         font_fmt = FontFormat()
-        font_fmt.from_textblock(blk)
+        font_fmt.update_from_textblock(blk)
         if set_format:
             self.set_fontformat(font_fmt, set_char_format=set_char_fmt, set_stroke_width=False, set_effect=False)
 

@@ -52,7 +52,8 @@ class CustomIntValidator(QIntValidator):
             d = max(d, self.bottom())
             s = str(d)
         return (QValidator.State.Acceptable, s, pos)
-    
+
+
 class PercentageLineEdit(QLineEdit):
 
     finish_edited = Signal(str)
@@ -78,7 +79,6 @@ class PercentageLineEdit(QLineEdit):
         return super().focusOutEvent(e)
 
 
-
 class ConfigTextLabel(QLabel):
     def __init__(self, text: str, fontsize: int, font_weight: int = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -90,7 +90,6 @@ class ConfigTextLabel(QLabel):
         self.setFont(font)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.setOpenExternalLinks(True)
-        # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
     def setActiveBackground(self):
         self.setStyleSheet("background-color:rgba(30, 147, 229, 51);")
@@ -366,7 +365,7 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
-        label_lettering = self.tr('Lettering')
+        label_lettering = self.tr('Typesetting')
         label_save = self.tr('Save')
         label_saladict = self.tr('SalaDict')
     

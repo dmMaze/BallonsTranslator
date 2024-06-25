@@ -33,7 +33,7 @@ class FontFormat(Config):
     shadow_offset: List = field(default_factory=lambda: [0., 0.])
     _style_name: str = ''
 
-    def from_textblock(self, text_block: TextBlock):
+    def update_from_textblock(self, text_block: TextBlock):
         self.family = text_block.font_family
         self.size = px2pt(text_block.font_size)
         self.stroke_width = text_block.stroke_width
@@ -51,6 +51,28 @@ class FontFormat(Config):
         self.shadow_strength = text_block.shadow_strength
         self.shadow_color = text_block.shadow_color
         self.shadow_offset = text_block.shadow_offset
+
+    def update_textblock_format(self, blk: TextBlock):
+        blk.default_stroke_width = self.stroke_width
+        blk.line_spacing = self.line_spacing
+        blk.letter_spacing = self.letter_spacing
+        blk.font_family = self.family
+        blk.font_size = pt2px(self.size)
+        blk.font_weight = self.weight
+        blk._alignment = self.alignment
+        blk.shadow_color = self.shadow_color
+        blk.shadow_radius = self.shadow_radius
+        blk.shadow_strength = self.shadow_strength
+        blk.shadow_offset = self.shadow_offset
+        blk.opacity = self.opacity
+        blk.vertical = self.vertical
+        blk.set_font_colors(self.frgb, self.srgb)
+
+    @staticmethod
+    def from_textblock(text_block: TextBlock):
+        ffmt = FontFormat()
+        ffmt.update_from_textblock(text_block)
+        return ffmt
 
     def merge(self, target: Config):
         tgt_keys = target.annotations_set()

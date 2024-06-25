@@ -16,7 +16,7 @@ from utils import shared
 from utils import create_error_dialog
 from modules.translators.trans_chatgpt import GPTTranslator
 from .misc import parse_stylesheet, set_html_family
-from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from
+from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from, FontFormat
 from utils.fontformat import pt2px
 from .config_proj import ProjImgTrans
 from .canvas import Canvas
@@ -78,12 +78,14 @@ class MainWindow(mainwindow_cls):
         self.create_infodialog.connect(self.on_create_infodialog)
 
         self.app = app
+        self.backup_blkstyles = []
+        self._run_imgtrans_wo_textstyle_update = False
+
         self.setupThread()
         self.setupUi()
         self.setupConfig()
         self.setupShortcuts()
         self.showMaximized()
-
         self.setAcceptDrops(True)
 
         if open_dir != '' and osp.exists(open_dir):
@@ -474,6 +476,7 @@ class MainWindow(mainwindow_cls):
         self.titleBar.replaceMTkeyword_trigger.connect(self.show_MT_keyword_window)
         self.titleBar.replaceOCRkeyword_trigger.connect(self.show_OCR_keyword_window)
         self.titleBar.run_trigger.connect(self.leftBar.runImgtransBtn.click)
+        self.titleBar.run_woupdate_textstyle_trigger.connect(self.run_imgtrans_wo_textstyle_update)
         self.titleBar.translate_page_trigger.connect(self.bottomBar.transTranspageBtn.click)
         self.titleBar.expandtstylepanel_trigger.connect(self.expand_tstyle_panel)
         self.titleBar.importtstyle_trigger.connect(self.import_tstyles)
@@ -840,6 +843,8 @@ class MainWindow(mainwindow_cls):
             self.st_manager.updateTranslation()
 
     def on_imgtrans_pipeline_finished(self):
+        self.backup_blkstyles.clear()
+        self._run_imgtrans_wo_textstyle_update = False
         self.postprocess_mt_toggle = True
         if pcfg.module.empty_runcache and not shared.HEADLESS:
             self.module_manager.unload_all_models()
@@ -870,6 +875,9 @@ class MainWindow(mainwindow_cls):
 
     def on_pagtrans_finished(self, page_index: int):
         blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
+        ffmt_list = None
+        if len(self.backup_blkstyles) == self.imgtrans_proj.num_pages and len(self.backup_blkstyles[page_index]) == len(blk_list):
+            ffmt_list: List[FontFormat] = self.backup_blkstyles[page_index]
 
         self.postprocess_translations(blk_list)
                 
@@ -888,40 +896,43 @@ class MainWindow(mainwindow_cls):
         inpaint_only = inpaint_only and not (pcfg.module.enable_detect or pcfg.module.enable_ocr or pcfg.module.enable_translate)
         
         if not inpaint_only:
-            for blk in blk_list:
-                if override_fnt_size:
-                    blk.font_size = pt2px(gf.size)
-                elif blk._detected_font_size > 0 and not pcfg.module.enable_detect:
-                    blk.font_size = blk._detected_font_size
-                if override_fnt_stroke:
-                    blk.default_stroke_width = gf.stroke_width
-                    blk.stroke_decide_by_colordiff = False
+            for ii, blk in enumerate(blk_list):
+                if self._run_imgtrans_wo_textstyle_update and ffmt_list is not None:
+                    ffmt_list[ii].update_textblock_format(blk)
                 else:
-                    blk.stroke_decide_by_colordiff = True
-                if override_fnt_color:
-                    blk.set_font_colors(fg_colors=gf.frgb)
-                if override_fnt_scolor:
-                    blk.set_font_colors(bg_colors=gf.srgb)
-                if override_alignment:
-                    blk._alignment = gf.alignment
-                if override_effect:
-                    blk.opacity = gf.opacity
-                    blk.shadow_color = gf.shadow_color
-                    blk.shadow_radius = gf.shadow_radius
-                    blk.shadow_strength = gf.shadow_strength
-                    blk.shadow_offset = gf.shadow_offset
-                if override_writing_mode:
-                    blk.vertical = gf.vertical
-                if override_font_family:
-                    blk.font_family = gf.family
-                    if blk.rich_text:
-                        blk.rich_text = set_html_family(blk.rich_text, gf.family)
-                
-                blk.line_spacing = gf.line_spacing
-                blk.letter_spacing = gf.letter_spacing
-                sw = blk.stroke_width
-                if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect:
-                    blk.font_size = int(blk.font_size / (1 + sw))
+                    if override_fnt_size:
+                        blk.font_size = pt2px(gf.size)
+                    elif blk._detected_font_size > 0 and not pcfg.module.enable_detect:
+                        blk.font_size = blk._detected_font_size
+                    if override_fnt_stroke:
+                        blk.default_stroke_width = gf.stroke_width
+                        blk.stroke_decide_by_colordiff = False
+                    else:
+                        blk.stroke_decide_by_colordiff = True
+                    if override_fnt_color:
+                        blk.set_font_colors(fg_colors=gf.frgb)
+                    if override_fnt_scolor:
+                        blk.set_font_colors(bg_colors=gf.srgb)
+                    if override_alignment:
+                        blk._alignment = gf.alignment
+                    if override_effect:
+                        blk.opacity = gf.opacity
+                        blk.shadow_color = gf.shadow_color
+                        blk.shadow_radius = gf.shadow_radius
+                        blk.shadow_strength = gf.shadow_strength
+                        blk.shadow_offset = gf.shadow_offset
+                    if override_writing_mode:
+                        blk.vertical = gf.vertical
+                    if override_font_family:
+                        blk.font_family = gf.family
+                        if blk.rich_text:
+                            blk.rich_text = set_html_family(blk.rich_text, gf.family)
+                    
+                    blk.line_spacing = gf.line_spacing
+                    blk.letter_spacing = gf.letter_spacing
+                    sw = blk.stroke_width
+                    if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect:
+                        blk.font_size = int(blk.font_size / (1 + sw))
 
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (pcfg.module.enable_detect or pcfg.module.enable_translate)
@@ -997,7 +1008,12 @@ class MainWindow(mainwindow_cls):
     def run_imgtrans(self):
         self.on_run_imgtrans()
 
+    def run_imgtrans_wo_textstyle_update(self):
+        self._run_imgtrans_wo_textstyle_update = True
+        self.on_run_imgtrans()
+
     def on_run_imgtrans(self):
+        self.backup_blkstyles.clear()
 
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
@@ -1011,7 +1027,12 @@ class MainWindow(mainwindow_cls):
             self.st_manager.updateTextBlkList()
             textblk: TextBlock = None
             for blklist in self.imgtrans_proj.pages.values():
+                ffmt_list = []
+                self.backup_blkstyles.append(ffmt_list)
                 for textblk in blklist:
+                    if not pcfg.module.enable_detect:
+                        ffmt = FontFormat.from_textblock(textblk)
+                        ffmt_list.append(ffmt)
                     if pcfg.module.enable_ocr:
                         textblk.stroke_decide_by_colordiff = True
                         textblk.default_stroke_width = 0.2

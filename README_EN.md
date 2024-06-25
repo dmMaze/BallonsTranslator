@@ -12,7 +12,7 @@ preview
 # Features
 * Fully automated translation  
   - Support automatic text-detection, recognition, removal, and translation. Overall performance is dependent upon these modules.
-  - Lettering is based on the formatting estimation of the original text.
+  - Typesetting is based on the formatting estimation of the original text.
   - Works decently with manga and comics.
   - Improved manga->English, English->Chinese typesetting (based on the extraction of balloon regions.).
   
@@ -134,7 +134,7 @@ To use Sugoi translator(Japanese-English only), download [offline model](https:/
 - Open a folder containing images of a comic (manga/manhua/manhwa) that need translation by clicking the folder icon.
 - Click the `Run` button and wait for the process to complete.
 
-The font formats such as font size and color are determined by the program automatically in this process, you can predetermine those formats by change corresponding options from "decide by program" to "use global setting" in the config panel->Lettering. (global settings are those formats shown by the right font format panel when you are not editing any textblock in the scene)
+The font formats such as font size and color are determined by the program automatically in this process, you can predetermine those formats by change corresponding options from "decide by program" to "use global setting" in the config panel->Typesetting. (global settings are those formats shown by the right font format panel when you are not editing any textblock in the scene)
 
 ## Image Editing
 
@@ -180,7 +180,7 @@ OCR & Translate Selected Area
 * Set parameters of automatic modules in the config panel.  
 * ```Ctrl++```/```Ctrl+-``` (Also ```Ctrl+Shift+=```) to resize image.
 * ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
-* ```0-9``` to adjust opacity of lettering layer
+* ```0-9``` to adjust opacity of text layer
 * For text editing: bold - ```Ctrl+B```, underline - ```Ctrl+U```, Italics - ```Ctrl+I``` 
 * Set text shadow and transparency in the text style panel -> Effect.  
   

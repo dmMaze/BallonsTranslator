@@ -12,7 +12,7 @@ Src download implementation based on gallery-dl (#131) thanks to [ROKOLYT](https
 ### 2023-02-23
 [v1.3.30](https://github.com/dmMaze/BallonsTranslator/releases/tag/v1.3.30) released
 1. Migrate to PyQt6 for better text rendering preview and [compatibility](https://github.com/Nuitka/Nuitka/issues/251) with nuitka
-2. Support set transparency of lettering layer (#88)
+2. Support set transparency of text layer (#88)
 3. Dump logs to data/logs
 
 ### 2023-01-27
@@ -85,10 +85,10 @@ Support Dark Mode since v1.3.13: View->Dark Mode
 
 1. Fix deepl translator, thanks to [@Snowad14](https://github.com/Snowad14)
 2. Fix font size & stroke bug which makes text unreadable
-3. Support **global font format** (determine the font format settings used by auto-translation mode): in config panel->Lettering, change the corresponding option from "decide by the program" to "use global setting" to enable. Note global settings are those formats shown by the right font format panel when you are not editing any textblock in the scene.
+3. Support **global font format** (determine the font format settings used by auto-translation mode): in config panel->Typesetting, change the corresponding option from "decide by the program" to "use global setting" to enable. Note global settings are those formats shown by the right font format panel when you are not editing any textblock in the scene.
 4. Add **new inpainting model**: lama-mpe and set it as default.
 5. Support multiple textblocks selection & formatting. 
-6. Improved manga->English, English->Chinese typesetting (**Auto-layout** in Config panel->Lettering, enabled by default), it can also be applied to selected text blocks use the option in the right-click menu.
+6. Improved manga->English, English->Chinese typesetting (**Auto-layout** in Config panel->Typesetting, enabled by default), it can also be applied to selected text blocks use the option in the right-click menu.
 
 <img src="./src/multisel_autolayout.gif" div align=center>
 <p align=center>
