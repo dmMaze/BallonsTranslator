@@ -396,8 +396,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     char = blk_text[char_idx]
                     if char.isalpha():
                         xoff = 0
-                        pun_top = cfmt.punc_rect('f')[0].top()
-                        yoff = -pun_top - line.ascent() - cfmt.br.width()
+                        pun_tbr, pun_br = cfmt.punc_rect('X')
+                        yoff = -line.ascent() - cfmt.tbr.width() + pun_tbr.height() + (cfmt.tbr.width() - pun_tbr.height()) / 2
+                        if TEXTLAYOUT_QTVERSION:
+                            yoff += cfmt.br.left() / 2
+
+
+                            
                     elif char in PUNSET_NONBRACKET:
                         pun_tbr, pun_br = cfmt.punc_rect(char)
                         xoff = pun_tbr.width() - pun_br.width()
