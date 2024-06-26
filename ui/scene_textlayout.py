@@ -404,8 +404,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         yoff =  -non_bracket_br[1] - non_bracket_br[3]
                         if TEXTLAYOUT_QTVERSION:
-                            # yoff = -non_bracket_br[1] - cfmt.tbr.width() / 2
-                            yoff = yoff - (cfmt.br.width() - non_bracket_br[3] - cfmt.tbr.left()) / 2
+                            yoff = yoff - (cfmt.tbr.width() - non_bracket_br[3]) / 2 + cfmt.br.left()
                         else:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                     else:   # () （）
@@ -414,9 +413,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         else:
                             non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         xoff = -non_bracket_br[0]
-                        yoff = -non_bracket_br[1] - non_bracket_br[3] - (cfmt.br.width() - non_bracket_br[3]) / 2
+                        yoff = -non_bracket_br[1] - non_bracket_br[3]
                         if TEXTLAYOUT_QTVERSION:
-                            yoff += cfmt.tbr.left()
+                            yoff = yoff - (cfmt.tbr.width() - non_bracket_br[3]) / 2 + cfmt.br.left()
+                        else:
+                            yoff = yoff - (cfmt.br.width() - non_bracket_br[3]) / 2
 
                 elif vertical_force_aligncentel(char):
                     act_rect = cfmt.punc_actual_rect(line, char, cache=False)
