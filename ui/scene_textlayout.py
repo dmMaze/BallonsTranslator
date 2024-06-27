@@ -2,7 +2,7 @@ import re
 import pkg_resources
 
 from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF, QSize
-from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetrics, QTextOption, QTextLine, QTextFormat
+from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetricsF, QTextOption, QTextLine, QTextFormat
 from qtpy import QT_VERSION
 TEXTLAYOUT_QTVERSION = pkg_resources.parse_version(QT_VERSION) > pkg_resources.parse_version('6.4.2')
 
@@ -42,10 +42,10 @@ def vertical_force_aligncentel(char: str) -> bool:
 
 
 @lru_cache(maxsize=512)
-def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetrics:
+def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:
     font = QFont(ffamily, int(size), weight, italic)
     font.setPointSizeF(size)
-    return QFontMetrics(font)
+    return QFontMetricsF(font)
 
 @lru_cache(maxsize=2048)
 def get_punc_rect(char: str, ffamily: str, size: float, weight: int, italic: bool) -> List[QRectF]:
@@ -112,26 +112,27 @@ def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, select
         o.format = selection.format
     line.draw(painter, QPointF(x, y), o)
 
+
 class CharFontFormat:
     def __init__(self, fcmt: QTextCharFormat) -> None:
         font = fcmt.font()
         self.font = font
         self.stroke_width = fcmt.textOutline().widthF() / 2
-        self.font_metrics = QFontMetrics(font)
+        self.font_metrics = QFontMetricsF(font)
 
     @cached_property
     def br(self) -> QRectF:
         # return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[1]
         _, br1 = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
         _, br2 = get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())
-        return QRectF(br2.left(), br2.top(), max(br1.right(), br2.right()) - min(br1.left(), br2.left()), br2.height())
+        return QRectF(min(br1.left(), br2.left()), br2.top(), max(br1.right(), br2.right()) - min(br1.left(), br2.left()), br2.height())
 
     @cached_property
     def tbr(self) -> QRectF:
         # return get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())[0]
         br1, _ = get_punc_rect('啊', self.family, self.size, self.weight, self.font.italic())
         br2, _ = get_punc_rect('木', self.family, self.size, self.weight, self.font.italic())
-        return QRectF(br2.left(), br2.top(), max(br1.right(), br2.right()) - min(br1.left(), br2.left()), br2.height())
+        return QRectF(min(br1.left(), br2.left()), br2.top(), max(br1.right(), br2.right()) - min(br1.left(), br2.left()), br2.height())
 
     @cached_property
     def space_width(self) -> int:
@@ -396,39 +397,27 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     char = blk_text[char_idx]
                     if char.isalpha():
                         xoff = 0
-                        pun_tbr, pun_br = cfmt.punc_rect('X')
-                        yoff = -line.ascent() - cfmt.tbr.width() + pun_tbr.height() + (cfmt.tbr.width() - pun_tbr.height()) / 2
-                        if TEXTLAYOUT_QTVERSION:
-                            yoff += cfmt.br.left() / 2
+                        yoff = -line.ascent() - (cfmt.tbr.width() - cfmt.font_metrics.capHeight()) / 2
 
-
-                            
-                    elif char in PUNSET_NONBRACKET:
-                        pun_tbr, pun_br = cfmt.punc_rect(char)
-                        xoff = pun_tbr.width() - pun_br.width()
-                        non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
-                        yoff =  -non_bracket_br[1] - non_bracket_br[3]
-                        if TEXTLAYOUT_QTVERSION:
-                            yoff = yoff - (cfmt.tbr.width() - non_bracket_br[3]) / 2 + cfmt.br.left()
-                        else:
-                            yoff = yoff - (cfmt.br.width() - non_bracket_br[3] + cfmt.tbr.left()) / 2
                     else:   # () （）
-                        if C.ON_MACOS:
-                            non_bracket_br = cfmt.punc_actual_rect(line, char, cache=False)
-                        else:
-                            non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
+                        non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         xoff = -non_bracket_br[0]
                         yoff = -non_bracket_br[1] - non_bracket_br[3]
                         if TEXTLAYOUT_QTVERSION:
-                            yoff = yoff - (cfmt.tbr.width() - non_bracket_br[3]) / 2 + cfmt.br.left()
+                            yoff = yoff - (cfmt.tbr.width() - non_bracket_br[3]) / 2
                         else:
                             yoff = yoff - (cfmt.br.width() - non_bracket_br[3]) / 2
 
-                elif vertical_force_aligncentel(char):
-                    act_rect = cfmt.punc_actual_rect(line, char, cache=False)
-                    yoff = -act_rect[1]
+                # elif vertical_force_aligncentel(char):
+                else:
+                    # other characters will simply be aligned center for this line
+                    act_rect = cfmt.punc_actual_rect(line, char, cache=True)
+                    if vertical_force_aligncentel(char):
+                        yoff = -act_rect[1]
+                    else:
+                        yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - line.ascent())
                     if TEXTLAYOUT_QTVERSION:
-                        xoff = -act_rect[0] + (cfmt.tbr.width() - act_rect[2]) / 2 - cfmt.tbr.left()
+                        xoff = -act_rect[0] + (cfmt.tbr.width() - act_rect[2]) / 2
                     else:
                         xoff = -act_rect[0] + (cfmt.tbr.width() - act_rect[2]) / 2 + cfmt.tbr.left()
                     # if char in PUNSET_ALIGNTOP:
@@ -442,17 +431,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     if char in PUNSET_ALIGNCENTER:
                         tbr, br = cfmt.punc_rect(char)
                         yoff += (tbr.height() + cfmt.font_metrics.descent() - act_rect[3]) / 2
-                        # yoff = 0
-
-                else:
-                    empty_spacing = num_lspaces * cfmt.space_width
-                    if TEXTLAYOUT_QTVERSION:
-                        xshift = max(line.naturalTextWidth() - cfmt.br.width(), 0)
-                    else:
-                        xshift = empty_spacing
-                        
-                    xoff = -xshift
-                    yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - line.ascent()) + empty_spacing
 
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
@@ -540,7 +518,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 pos = line.position()                
                 x, y = pos.x(), pos.y()
                 if line.textLength() == 0:
-                    fm = QFontMetrics(block.charFormat().font())
+                    fm = QFontMetricsF(block.charFormat().font())
                 else:
                     num_rspaces, num_lspaces, char_yoffset_lst, line_pos = self.line_spaces_lst[blk_no][line.lineNumber()]
                     yidx = cpos - line_pos
