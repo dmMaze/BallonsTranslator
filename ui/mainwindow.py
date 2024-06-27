@@ -1038,7 +1038,7 @@ class MainWindow(mainwindow_cls):
                         textblk.default_stroke_width = 0.2
                         textblk.text = []
                         textblk.set_font_colors((0, 0, 0), (0, 0, 0))
-                    if pcfg.module.enable_translate or all_disabled or pcfg.module.enable_ocr:
+                    if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
                         textblk.rich_text = ''
                         # textblk.font_size = textblk.detected_font_size ???
                     textblk.vertical = textblk.src_is_vertical
