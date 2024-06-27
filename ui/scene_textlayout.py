@@ -710,7 +710,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
                 line_bottom = char_yoffset_lst[-1]
-                shrink_height = available_height
             else:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 if cfmt is not None:
@@ -773,8 +772,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         tl.endLayout()
             
         self.layout_left = x_offset - self.draw_shifted
-        self.shrink_width = max(self.max_width - self.layout_left, self.shrink_width)
-        self.shrink_height = max(shrink_height, self.shrink_height)
+        self.shrink_width = max(self.max_width - self.layout_left - doc_margin + 0.01, self.shrink_width)
+        self.shrink_height = max(shrink_height + 0.01, self.shrink_height)
         self.x_offset_lst.append(x_offset)
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)

@@ -396,12 +396,12 @@ class TextBlkItem(QGraphicsTextItem):
         
         self.layout = layout
         self.setDocument(doc)
-        layout.size_enlarged.connect(self.on_document_enlarged)
-        layout.documentSizeChanged.connect(self.docSizeChanged)
         doc.setDocumentLayout(layout)
         doc.setDefaultFont(default_font)
         doc.contentsChanged.connect(self.on_content_changed)
         doc.contentsChange.connect(self.on_content_changing)
+        layout.size_enlarged.connect(self.on_document_enlarged)
+        layout.documentSizeChanged.connect(self.docSizeChanged)
         
         if valid_layout:
             layout.setMaxSize(rect.width(), rect.height())
@@ -465,23 +465,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def on_document_enlarged(self):
         rect = self.rect()
-        old_width = self._display_rect.width()
-        otr = self.sceneBoundingRect().topLeft()
-        self._display_rect.setWidth(rect.width())
-        self._display_rect.setHeight(rect.height())
-        new_width = self._display_rect.width()
-        self.setCenterTransform()
-        self.setPos(self.pos() + otr - self.sceneBoundingRect().topLeft())
-        if self.is_vertical and not self.reshaping:
-            pos = self.pos()
-            delta_x = (old_width - new_width) * self.scale()
-            if self.rotation() == 0:
-                pos.setX(pos.x() + delta_x)
-            else:
-                rad = np.deg2rad(self.rotation())
-                pos.setX(pos.x() + delta_x * np.cos(rad))
-                pos.setY(pos.y() + delta_x * np.sin(rad))
-            self.setPos(pos)
+        self.set_size(rect.width(), rect.height())
 
     def get_scale(self) -> float:
         tl = self.topLevelItem()
@@ -875,7 +859,7 @@ class TextBlkItem(QGraphicsTextItem):
         if repaint_background:
             self.update()
 
-    def setFontSize(self, value: float, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, **kwargs):
+    def setFontSize(self, value: float, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, clip_size: bool = False, **kwargs):
         cursor, after_kwargs = self._before_set_ffmt(set_selected=set_selected, restore_cursor=restore_cursor)
 
         if self.stroke_width != 0:
@@ -888,6 +872,8 @@ class TextBlkItem(QGraphicsTextItem):
         cfmt = QTextCharFormat()
         cfmt.setFontPointSize(value)
         self.set_cursor_cfmt(cursor, cfmt, True)
+        if clip_size:
+            self.squeezeBoundingRect(cond_on_alignment=True)
 
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 
@@ -934,34 +920,74 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.select(QTextCursor.SelectionType.Document)
         cursor.insertText(text)
 
-    def shrinkSize(self):
+    def squeezeBoundingRect(self, cond_on_alignment: bool = False, repaint=True):
         mh, mw = self.layout.minSize()
         if mh == 0 or mw == 0:
             return
         br = self.absBoundingRect(qrect=True)
-        align_tl = align_tr = align_c = False
         br_w, br_h = br.width(), br.height()
         if br_w > mw or br_h > mh:
             if self.is_vertical:
+                if cond_on_alignment:
+                    mh = br.height()
+            else:
+                if cond_on_alignment:
+                    mw = br.width()
+            P = self.padding() * 2
+            mw += P
+            mh += P
+            self.set_size(mw, mh, set_layout_maxsize=True, set_blk_size=True)
+            # self.prepareGeometryChange()
+            if self.under_ctrl:
+                self.doc_size_changed.emit(self.idx)
+            if repaint:
+                self.repaint_background()
+            
+    def set_size(self, w: float, h: float, set_layout_maxsize=False, set_blk_size=False):
+        '''
+        rotation invariant
+        '''
+        old_w = self._display_rect.width()
+        old_h = self._display_rect.height()
+        otr = self.sceneBoundingRect().topLeft()
+        self._display_rect.setWidth(w)
+        self._display_rect.setHeight(h)
+        if set_layout_maxsize:
+            self.layout.setMaxSize(w, h)
+        self.setCenterTransform()
+        pos = self.pos() + otr - self.sceneBoundingRect().topLeft()
+        dw, dh = w - old_w, h - old_h
+
+        align_tl = align_tr = align_c = False
+        if self.is_vertical:
+            align_tr = True
+        else:
+            alignment = self.alignment()
+            if alignment == Qt.AlignmentFlag.AlignLeft:
+                align_tl = True
+            elif alignment == Qt.AlignmentFlag.AlignRight:
                 align_tr = True
             else:
-                alignment = self.alignment()
-                if alignment == Qt.AlignmentFlag.AlignLeft:
-                    align_tl = True
-                elif alignment == Qt.AlignmentFlag.AlignRight:
-                    align_tr = True
-                else:
-                    align_c = True
-            ml, mt = br.left(), br.top()
-            extra_w, extra_h = br_w - mw, br_h - mh
-            extra_w = max(0, extra_w)
-            extra_h = max(0, extra_h)
-            if align_c:
-                ml += extra_w / 2
-                mt += extra_h / 2
-            elif align_tr:
-                ml += extra_w
-            self.setRect(QRectF(ml, mt, mw, mh))
+                align_c = True
+
+        if align_tr:
+            if self.rotation() == 0:
+                pos.setX(pos.x() - dw)
+            else:
+                rad = np.deg2rad(self.rotation())
+                pos.setX(pos.x() - dw * np.cos(rad))
+                pos.setY(pos.y() - dw * np.sin(rad))
+        elif align_c:
+            dh /= 2
+            if self.rotation() == 0:
+                pos.setY(pos.y() - dh)
+            else:
+                rad = np.deg2rad(self.rotation())
+                pos.setX(pos.x() - dh * np.sin(rad))
+                pos.setY(pos.y() - dh * np.cos(rad))
+                
+        self.setPos(pos)
+        if self.blk is not None and set_blk_size:
             self.blk._bounding_rect = self.absBoundingRect()
 
     def getFontFormatAttr(self, param_name: str):

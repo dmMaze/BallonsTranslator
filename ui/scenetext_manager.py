@@ -15,7 +15,7 @@ from .textitem import TextBlkItem, TextBlock
 from .canvas import Canvas
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
 from utils.fontformat import FontFormat, pt2px
-from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand
+from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
 from .fontformatpanel import FontFormatPanel
 from utils.config import pcfg
 from utils import config as C
@@ -310,6 +310,7 @@ class SceneTextManager(QObject):
         self.canvas.format_textblks.connect(self.onFormatTextblks)
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvas.reset_angle.connect(self.onResetAngle)
+        self.canvas.squeeze_blk.connect(self.onSqueezeBlk)
         self.canvas.incanvas_selection_changed.connect(self.on_incanvas_selection_changed)
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
@@ -621,6 +622,11 @@ class SceneTextManager(QObject):
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(ResetAngleCommand(selected_blks, self.txtblkShapeControl))
 
+    def onSqueezeBlk(self):
+        selected_blks = self.canvas.selected_text_items()
+        if len(selected_blks) > 0:
+            self.canvas.push_undo_command(SqueezeCommand(selected_blks, self.txtblkShapeControl))
+
     def on_incanvas_selection_changed(self):
         if self.canvas.textEditMode():
             textitems = self.canvas.selected_text_items()
@@ -794,7 +800,7 @@ class SceneTextManager(QObject):
             self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
         if restore_charfmts:
             self.restore_charfmts(blkitem, text, new_text, char_fmts)
-        blkitem.shrinkSize()
+        blkitem.squeezeBoundingRect()
         return True
     
     def restore_charfmts(self, blkitem: TextBlkItem, text: str, new_text: str, char_fmts: List[QTextCharFormat]):

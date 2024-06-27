@@ -1071,11 +1071,14 @@ class FontFormatPanel(Widget):
 
     def on_param_changed(self, param_name: str, value):
         func = FM.handle_ffmt_change.get(param_name)
+        func_kwargs = {}
+        if param_name == 'size':
+            func_kwargs['clip_size'] = True
         if self.global_mode():
-            func(param_name, value, self.global_format, is_global=True)
+            func(param_name, value, self.global_format, is_global=True, **func_kwargs)
             self.update_text_style_label()
         else:
-            func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True)
+            func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True, **func_kwargs)
 
     def update_text_style_label(self):
         if self.global_mode():

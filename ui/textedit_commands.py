@@ -214,6 +214,25 @@ class AutoLayoutCommand(QUndoCommand):
                 item.setLetterSpacing(item.letter_spacing, force=True)
 
 
+class SqueezeCommand(QUndoCommand):
+    def __init__(self, blkitem_lst: List[TextBlkItem], ctrl: TextBlkShapeControl):
+        super(SqueezeCommand, self).__init__()
+        self.blkitem_lst = blkitem_lst
+        self.old_rect_lst = []
+        self.ctrl = ctrl
+        for item in blkitem_lst:
+            self.old_rect_lst.append(item.absBoundingRect(qrect=True))
+    
+    def redo(self):
+        for blk in self.blkitem_lst:
+            blk.squeezeBoundingRect()
+
+    def undo(self):
+        for blk, rect in zip(self.blkitem_lst, self.old_rect_lst):
+            blk.setRect(rect, repaint=True)
+            if blk.under_ctrl:
+                self.ctrl.updateBoundingRect()
+
 class ResetAngleCommand(QUndoCommand):
     def __init__(self, blkitem_lst: List[TextBlkItem], ctrl: TextBlkShapeControl):
         super(ResetAngleCommand, self).__init__()
