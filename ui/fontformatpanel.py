@@ -425,7 +425,7 @@ class TextStyleLabel(Widget):
         self.active_stylename_edited = active_stylename_edited
         self.stylelabel = StyleLabel(style_name, parent=self)
         self.stylelabel.edit_finished.connect(self.on_style_name_edited)
-        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
         self.setToolTip(self.tr('Click to set as Global format. Double click to edit name.'))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -642,8 +642,7 @@ class TextStyleArea(QScrollArea):
         self.flayout.addWidget(self.new_btn)
         self.flayout.addWidget(self.clear_btn)
 
-        # self.scrollContent.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
-        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
         ScrollBar(Qt.Orientation.Vertical, self)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -880,7 +879,7 @@ class TextStylePanel(Widget):
             self.style_area.hide()
         
         self.title_label.clicked.connect(self.on_title_label_clicked)
-        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
     def expand(self):
         if not self.title_label.expanded:

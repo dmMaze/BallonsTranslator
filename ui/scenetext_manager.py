@@ -248,32 +248,56 @@ class RearrangeBlksCommand(QUndoCommand):
     def __init__(self, rmap: Tuple, ctrl, parent=None):
         super().__init__(parent)
         self.ctrl: SceneTextManager = ctrl
-        self.src_ids, self.tgt_ids = rmap
+        self.src_ids, self.tgt_ids = rmap[0], rmap[1]
+
         self.nr = len(self.src_ids)
+        self.src2tgt = {}
+        self.tgt2src = {}
+        for s, t in zip(self.src_ids, self.tgt_ids):
+            self.src2tgt[s] = t
+            self.tgt2src[t] = s
+        self.visible_ = None
+        self.redo_visible_idx = self.undo_visible_idx = None
+        if len(rmap) > 2:
+            self.redo_visible_idx, self.undo_visible_idx = rmap[2]
 
     def redo(self):
-        self.rearrage_blk_ids(self.src_ids, self.tgt_ids)
+        self.rearange_blk_ids(self.src_ids, self.tgt_ids, self.redo_visible_idx)
 
     def undo(self):
-        self.rearrage_blk_ids(self.tgt_ids, self.src_ids)
+        self.rearange_blk_ids(self.tgt_ids, self.src_ids, self.undo_visible_idx)
 
-    def rearrage_blk_ids(self, src_ids, tgt_ids):
+    def rearange_blk_ids(self, src_ids, tgt_ids, visible_idx = None):
+        src_ids = np.array(src_ids)
+        tgt_ids = np.array(tgt_ids)
+        src_order_ids = np.argsort(src_ids)[::-1]
+
+        src_ids = src_ids[src_order_ids]
+        tgt_ids = tgt_ids[src_order_ids]
+        
         blks: List[TextBlkItem] = []
         pws: List[TransPairWidget] = []
-        for ii, src_idx in enumerate(src_ids):
-            pos = src_idx - ii
+        for pos, pos_tgt in zip(src_ids, tgt_ids):
             pw = self.ctrl.pairwidget_list.pop(pos)
-            self.ctrl.textEditList.removeWidget(pw, remove_checked=False)
+            if visible_idx == pos_tgt:
+                pw.hide()
             blk = self.ctrl.textblk_item_list.pop(pos)
             pws.append(pw)
             blks.append(blk)
 
-        for ii, tgt_idx in enumerate(tgt_ids):
-            self.ctrl.textblk_item_list.insert(tgt_idx, blks[ii])
-            self.ctrl.pairwidget_list.insert(tgt_idx, pws[ii])
-            self.ctrl.textEditList.insertPairWidget(pws[ii], tgt_idx)
+        tgt_order_ids = np.argsort(tgt_ids)
+        for ii in tgt_order_ids:
+            pos = tgt_ids[ii]
+            self.ctrl.textblk_item_list.insert(pos, blks[ii])
+            
+            self.ctrl.textEditList.insertPairWidget(pws[ii], pos)
+            self.ctrl.pairwidget_list.insert(pos, pws[ii])
 
-        self.ctrl.updateTextBlkItemIdx()    # some optimization could be done here
+        self.ctrl.updateTextBlkItemIdx(set(tgt_ids))
+        if visible_idx is not None:
+            pw_ct = self.ctrl.pairwidget_list[visible_idx]
+            pw_ct.show()
+            self.ctrl.textEditList.ensureWidgetVisible(pw_ct, yMargin=pw.height())
 
 class TextPanel(Widget):
     def __init__(self, app: QApplication, *args, **kwargs) -> None:
@@ -404,6 +428,7 @@ class SceneTextManager(QObject):
         pair_widget.e_trans.show_select_menu.connect(self.on_show_select_menu)
         pair_widget.e_trans.focus_out.connect(self.on_pairw_focusout)
         pair_widget.drag_move.connect(self.textEditList.handle_drag_pos)
+        pair_widget.idx_edited.connect(self.textEditList.on_idx_edited)
 
         self.new_textblk.emit(blk_item.idx)
         return blk_item
@@ -941,6 +966,7 @@ class SceneTextManager(QObject):
     def on_transwidget_selection_changed(self):
         selitems = self.canvas.selected_text_items()
         selset = {pw.idx: pw for pw in self.textEditList.checked_list}
+        self.canvas.block_selection_signal = True
         for blkitem in selitems:
             if blkitem.idx not in selset:
                 blkitem.setSelected(False)
@@ -948,6 +974,7 @@ class SceneTextManager(QObject):
                 selset.pop(blkitem.idx)
         for idx in selset:
             self.textblk_item_list[idx].setSelected(True)
+        self.canvas.block_selection_signal = False
 
     def on_textedit_list_focusout(self):
         fw = self.app.focusWidget()
@@ -966,8 +993,10 @@ class SceneTextManager(QObject):
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(ApplyEffectCommand(selected_blks, ffmt))
 
-    def updateTextBlkItemIdx(self):
+    def updateTextBlkItemIdx(self, sel_ids: set = None):
         for ii, blk_item in enumerate(self.textblk_item_list):
+            if sel_ids is not None and ii not in sel_ids:
+                continue
             blk_item.idx = ii
             self.pairwidget_list[ii].updateIndex(ii)
         cl = self.textEditList.checked_list

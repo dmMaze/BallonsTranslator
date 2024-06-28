@@ -528,12 +528,7 @@ class ClickableLabel(QLabel):
         if e.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         return super().mousePressEvent(e)
-    
-class IgnoreMouseLabel(QLabel):
 
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        e.ignore()
-        return super().mousePressEvent(e)
     
 class CheckableLabel(QLabel):
 

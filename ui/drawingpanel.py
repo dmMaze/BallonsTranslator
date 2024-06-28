@@ -338,7 +338,7 @@ class DrawingPanel(Widget):
         self.setPenToolColor([0, 0, 0, 127])
 
         self.toolConfigStackwidget = QStackedWidget()
-        self.toolConfigStackwidget.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.toolConfigStackwidget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Minimum)
         self.toolConfigStackwidget.addWidget(self.inpaintConfigPanel)
         self.toolConfigStackwidget.addWidget(self.penConfigPanel)
         self.toolConfigStackwidget.addWidget(self.rectPanel)
