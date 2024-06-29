@@ -401,6 +401,7 @@ class TransPairWidget(Widget):
     check_state_changed = Signal(object, bool, bool)
     drag_move = Signal(int)
     idx_edited = Signal(int, int)
+    pw_drop = Signal()
 
     def __init__(self, textblock: TextBlock = None, idx: int = None, fold: bool = False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -454,6 +455,11 @@ class TransPairWidget(Widget):
 
         return super().dragMoveEvent(e)
 
+    def dropEvent(self, e: QDropEvent) -> None:
+        if isinstance(e.source(), TransPairWidget):
+            e.acceptProposedAction()
+            self.pw_drop.emit()
+
     def _set_checked_state(self, checked: bool):
         """
         this wont emit state_change signal and take care of the style
@@ -500,7 +506,7 @@ class TextEditListScrollArea(QScrollArea):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.scrollContent = Widget()
+        self.scrollContent = Widget(parent=self)
         self.setWidget(self.scrollContent)
 
         # ScrollBar(Qt.Orientation.Horizontal, self)
@@ -517,12 +523,12 @@ class TextEditListScrollArea(QScrollArea):
         self.checked_list: List[TransPairWidget] = []
         self.sel_anchor_widget: TransPairWidget = None
         self.drag: QDrag = None
+        self.dragStartPosition = None
 
         self.source_visible = True
         self.trans_visible = True
 
         self.drag_to_pos: int = -1
-        self.setAcceptDrops(True)
 
         self.setSizePolicy(self.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Expanding)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
@@ -533,8 +539,16 @@ class TextEditListScrollArea(QScrollArea):
             self.textpanel_contextmenu_requested.emit(pos, True)
         super().mouseReleaseEvent(e)
 
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.dragStartPosition = e.pos()
+        return super().mousePressEvent(e)
+
     def mouseMoveEvent(self, e: QMouseEvent) -> None:
-        if self.drag is None and self.sel_anchor_widget is not None:
+        if self.drag is None and self.sel_anchor_widget is not None and self.dragStartPosition is not None:
+            if (e.pos() - self.dragStartPosition).manhattanLength() < QApplication.startDragDistance():
+                return
+            self.dragStartPosition = None
             w = self.sel_anchor_widget
             drag = self.drag = QDrag(w)
             mime = QMimeData()
@@ -543,43 +557,11 @@ class TextEditListScrollArea(QScrollArea):
             w.render(pixmap)
             drag.setPixmap(pixmap)
             ac = drag.exec(Qt.DropAction.MoveAction)
+            self.drag = None
             if self.drag_to_pos != -1:
-                to_pos = self.drag_to_pos
+                self.set_drag_style(self.drag_to_pos, True)
                 self.drag_to_pos = -1
-                self.drag = None
-                self.set_drag_style(to_pos, True)
-                num_pw = len(self.pairwidget_list)
-                num_drags = len(self.checked_list)
-                if num_pw < 2 or num_drags == num_pw:
-                    return
-                
-                tgt_pos = to_pos
-                drags = []
-                for pw in self.checked_list:
-                    if pw.idx < tgt_pos:
-                        tgt_pos -= 1
-                    drags.append(pw.idx)
-                new_pos = np.arange(num_drags, dtype=np.int32) + tgt_pos
-                drags = np.array(drags).astype(np.int32)
-                new_maps = np.where(drags != new_pos)
-                if len(new_maps) == 0:
-                    return
-
-                drags_ori, drags_tgt = drags[new_maps], new_pos[new_maps]
-                result_list = list(range(len(self.pairwidget_list)))
-                to_insert = []
-                for ii, src_idx in enumerate(drags_ori):
-                    pos = src_idx - ii
-                    to_insert.append(result_list.pop(pos))
-                for ii, tgt_idx in enumerate(drags_tgt):
-                    result_list.insert(tgt_idx, to_insert[ii])
-                drags_ori, drags_tgt = [], []
-                for ii, idx in enumerate(result_list):
-                    if ii != idx:
-                        drags_ori.append(idx)
-                        drags_tgt.append(ii)
-
-                self.rearrange_blks.emit((drags_ori, drags_tgt))
+            pass
 
         return super().mouseMoveEvent(e)
     
@@ -605,18 +587,6 @@ class TextEditListScrollArea(QScrollArea):
             except RuntimeError:
                 pass
             self.drag = None
-
-    def dragMoveEvent(self, e: QDragMoveEvent) -> None:
-        e.accept()
-        return super().dragMoveEvent(e)
-    
-    def dragEnterEvent(self, e: QDragEnterEvent):
-        if isinstance(e.source(), TransPairWidget):
-            e.accept()
-
-    def dropEvent(self, e: QDropEvent) -> None:
-        e.accept()
-        return super().dropEvent(e)
     
     def handle_drag_pos(self, to_pos: int):
         if self.drag_to_pos != to_pos:
@@ -624,6 +594,46 @@ class TextEditListScrollArea(QScrollArea):
                 self.set_drag_style(self.drag_to_pos, True)
             self.drag_to_pos = to_pos
             self.set_drag_style(to_pos)
+
+    def on_pw_dropped(self):
+        if self.drag_to_pos != -1:
+            to_pos = self.drag_to_pos
+            self.drag_to_pos = -1
+            self.drag = None
+            self.set_drag_style(to_pos, True)
+            num_pw = len(self.pairwidget_list)
+            num_drags = len(self.checked_list)
+            if num_pw < 2 or num_drags == num_pw:
+                return
+            
+            tgt_pos = to_pos
+            drags = []
+            for pw in self.checked_list:
+                if pw.idx < tgt_pos:
+                    tgt_pos -= 1
+                drags.append(pw.idx)
+            new_pos = np.arange(num_drags, dtype=np.int32) + tgt_pos
+            drags = np.array(drags).astype(np.int32)
+            new_maps = np.where(drags != new_pos)
+            if len(new_maps) == 0:
+                return
+
+            drags_ori, drags_tgt = drags[new_maps], new_pos[new_maps]
+            result_list = list(range(len(self.pairwidget_list)))
+            to_insert = []
+            for ii, src_idx in enumerate(drags_ori):
+                pos = src_idx - ii
+                to_insert.append(result_list.pop(pos))
+            for ii, tgt_idx in enumerate(drags_tgt):
+                result_list.insert(tgt_idx, to_insert[ii])
+            drags_ori, drags_tgt = [], []
+            for ii, idx in enumerate(result_list):
+                if ii != idx:
+                    drags_ori.append(idx)
+                    drags_tgt.append(ii)
+
+            self.rearrange_blks.emit((drags_ori, drags_tgt))
+
 
     def on_idx_edited(self, src_idx: int, tgt_idx: int):
         src_idx_ori = tgt_idx
@@ -643,7 +653,6 @@ class TextEditListScrollArea(QScrollArea):
                 ids_ori.append(idx)
                 ids_tgt.append(idx+1)
         self.rearrange_blks.emit((ids_ori, ids_tgt, (tgt_idx, src_idx)))
-        # self.ensureVisible
 
     def addPairWidget(self, pairwidget: TransPairWidget):
         self.vlayout.insertWidget(pairwidget.idx, pairwidget)
