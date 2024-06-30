@@ -773,7 +773,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             
         self.layout_left = x_offset - self.draw_shifted
         self.shrink_width = max(self.max_width - self.layout_left - doc_margin + 0.01, self.shrink_width)
-        self.shrink_height = max(shrink_height + 0.01, self.shrink_height)
+        self.shrink_height = max(shrink_height + 0.01 - doc_margin, self.shrink_height)
         self.x_offset_lst.append(x_offset)
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)
