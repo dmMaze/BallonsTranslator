@@ -773,7 +773,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             
         self.layout_left = x_offset - self.draw_shifted
         self.shrink_width = max(self.max_width - self.layout_left - doc_margin + 0.01, self.shrink_width)
-        self.shrink_height = max(shrink_height + 0.01, self.shrink_height)
+        self.shrink_height = max(shrink_height + 0.01 - doc_margin, self.shrink_height)
         self.x_offset_lst.append(x_offset)
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)
@@ -805,7 +805,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             block = block.next()
         
         if len(self.y_offset_lst) > 0:
-            new_height = self.shrink_height - doc_margin
+            new_height = self.shrink_height
         else:
             new_height = doc_margin
         if new_height > self.available_height:
@@ -917,7 +917,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             line.setPosition(QPointF(doc_margin, y_offset + dy))
             tw = line.naturalTextWidth()
             shrink_width = max(tw, shrink_width)
-            self.shrink_height = max(idea_height + y_offset, self.shrink_height)    #????
+            self.shrink_height = max(idea_height + y_offset - doc_margin, self.shrink_height)    #????
             y_offset += idea_height * self.line_spacing
             line_idx += 1
             char_idx += nchar
