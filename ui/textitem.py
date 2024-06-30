@@ -300,9 +300,8 @@ class TextBlkItem(QGraphicsTextItem):
     def boundingRect(self) -> QRectF:
         br = super().boundingRect()
         if self._display_rect is not None:
-            size = self.documentSize()
-            br.setHeight(max(self._display_rect.height(), size.height()))
-            br.setWidth(max(self._display_rect.width(), size.width()))
+            br.setHeight(self._display_rect.height())
+            br.setWidth(self._display_rect.width())
         return br
 
     def padding(self) -> float:
@@ -464,8 +463,8 @@ class TextBlkItem(QGraphicsTextItem):
         self.old_undo_steps = self.document().availableUndoSteps()
 
     def on_document_enlarged(self):
-        rect = self.rect()
-        self.set_size(rect.width(), rect.height())
+        size = self.documentSize()
+        self.set_size(size.width(), size.height())
 
     def get_scale(self) -> float:
         tl = self.topLevelItem()
@@ -926,13 +925,16 @@ class TextBlkItem(QGraphicsTextItem):
             return
         br = self.absBoundingRect(qrect=True)
         br_w, br_h = br.width(), br.height()
+
+        if self.is_vertical:
+            if cond_on_alignment:
+                mh = br.height()
+        else:
+            if cond_on_alignment:
+                mw = br.width()
+
         if br_w > mw or br_h > mh:
-            if self.is_vertical:
-                if cond_on_alignment:
-                    mh = br.height()
-            else:
-                if cond_on_alignment:
-                    mw = br.width()
+
             P = self.padding() * 2
             mw += P
             mh += P
@@ -947,18 +949,20 @@ class TextBlkItem(QGraphicsTextItem):
         '''
         rotation invariant
         '''
-        old_w = self._display_rect.width()
-        old_h = self._display_rect.height()
-        otr = self.sceneBoundingRect().topLeft()
-        self._display_rect.setWidth(w)
-        self._display_rect.setHeight(h)
+
         if set_layout_maxsize:
             self.layout.setMaxSize(w, h)
-        self.setCenterTransform()
-        pos = self.pos() + otr - self.sceneBoundingRect().topLeft()
-        dw, dh = w - old_w, h - old_h
 
-        align_tl = align_tr = align_c = False
+        old_w = self._display_rect.width()
+        old_h = self._display_rect.height()
+
+        oc = self.sceneBoundingRect().center()
+        self._display_rect.setWidth(w)
+        self._display_rect.setHeight(h)
+        self.setCenterTransform()
+        pos_shift = oc - self.sceneBoundingRect().center()
+        
+        align_c = align_tl = align_tr = False
         if self.is_vertical:
             align_tr = True
         else:
@@ -970,23 +974,19 @@ class TextBlkItem(QGraphicsTextItem):
             else:
                 align_c = True
 
-        if align_tr:
-            if self.rotation() == 0:
-                pos.setX(pos.x() - dw)
-            else:
-                rad = np.deg2rad(self.rotation())
-                pos.setX(pos.x() - dw * np.cos(rad))
-                pos.setY(pos.y() - dw * np.sin(rad))
-        elif align_c:
-            dh /= 2
-            if self.rotation() == 0:
-                pos.setY(pos.y() - dh)
-            else:
-                rad = np.deg2rad(self.rotation())
-                pos.setX(pos.x() - dh * np.sin(rad))
-                pos.setY(pos.y() - dh * np.cos(rad))
-                
-        self.setPos(pos)
+        if align_c:
+            pass
+        else:
+            dw, dh = (w - old_w) / 2, (h - old_h) / 2
+            if align_tr:
+                dw = -dw
+            rad = -np.deg2rad(self.rotation())
+            c, s = np.cos(rad), np.sin(rad)
+            dx = c * dw + s * dh
+            dy = -s * dw + c * dh
+            pos_shift = pos_shift + QPointF(dx, dy)
+
+        self.setPos(self.pos() + pos_shift)
         if self.blk is not None and set_blk_size:
             self.blk._bounding_rect = self.absBoundingRect()
 

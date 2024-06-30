@@ -807,20 +807,10 @@ class SceneTextManager(QObject):
         if scale != 1 and not fmt.alignment == 0:
             xywh = (np.array(xywh, np.float64) * scale).astype(np.int32).tolist()
 
-        if fmt.alignment == 0 or fmt.alignment == 2:
-            x_shift = (scale - 1) * xywh[2] // 2 + xywh[0] * scale
-            y_shift = (scale - 1) * xywh[3] // 2 + xywh[1] * scale
-            xywh[0] = int(abs_centroid[0] * scale) + x_shift
-            xywh[1] = int(abs_centroid[1] * scale)  + y_shift
-        if fmt.alignment == 2:
-            ex_w, ex_h = xywh[2] - old_br[2], xywh[3] - old_br[3]
-            if ex_w > 0:
-                xywh[0] -= ex_w
-
         if restore_charfmts:
             char_fmts = blkitem.get_char_fmts()        
         
-        blkitem.setRect(xywh, repaint=False)
+        blkitem.set_size(xywh[2], xywh[3], set_layout_maxsize=True)
         blkitem.setPlainText(new_text)
         if len(self.pairwidget_list) > blkitem.idx:
             self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
