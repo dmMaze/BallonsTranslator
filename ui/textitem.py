@@ -933,13 +933,11 @@ class TextBlkItem(QGraphicsTextItem):
             if cond_on_alignment:
                 mw = br.width()
 
-        if br_w > mw or br_h > mh:
-
+        if np.abs(br_w - mw) > 0.001 or np.abs(br_h - mh) > 0.001:
             P = self.padding() * 2
-            mw += P
             mh += P
+            mw += P
             self.set_size(mw, mh, set_layout_maxsize=True, set_blk_size=True)
-            # self.prepareGeometryChange()
             if self.under_ctrl:
                 self.doc_size_changed.emit(self.idx)
             if repaint:
