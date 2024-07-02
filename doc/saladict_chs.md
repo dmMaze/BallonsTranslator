@@ -1,4 +1,4 @@
-[English](./saladict.md)
+[English](../saladict.md)
 
 需要浏览器支持为扩展设置全局快捷键（火狐尚未支持）
 
