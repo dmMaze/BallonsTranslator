@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](./README.md) | English | [Русский](./doc/README_RU.md) | [日本語](./doc/README_JA.md) | [Indonesia](./doc/README_ID.md) | [Tiếng Việt](./doc/README_VI.md)
+[简体中文](./README.md) | English |[pt-BR](./doc/README_PT-BR.md) | [Русский](./doc/README_RU.md) | [日本語](./doc/README_JA.md) | [Indonesia](./doc/README_ID.md) | [Tiếng Việt](./doc/README_VI.md)
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.
 
@@ -206,14 +206,14 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
  * Support English and Japanese text detection, training code and more details can be found at [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
 * Support using text detection from [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). Username and password need to be filled in, and automatic login will be performed each time the program is launched.
 
-   * For detailed instructions, see [Tuanzi OCR Instructions (Chinese only)](doc/Tuanzi_OCR_Instructions.md)
+   * For detailed instructions, see **Tuanzi OCR Instructions**: ([Chinese](doc/团子OCR说明.md) & [Brazilian Portuguese](doc/Manual_TuanziOCR_pt-BR.md) only)
 ## OCR
  * All mit* models are from manga-image-translator, support English, Japanese and Korean recognition and text color extraction.
  * [manga_ocr](https://github.com/kha-white/manga-ocr) is from [kha-white](https://github.com/kha-white), text recognition for Japanese, with the main focus being Japanese manga.
  * Support using OCR from [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). Username and password need to be filled in, and automatic login will be performed each time the program is launched.
    * The current implementation uses OCR on each textblock individually, resulting in slower speed and no significant improvement in accuracy. It is not recommended. If needed, please use the Tuanzi Detector instead.
    * When using the Tuanzi Detector for text detection, it is recommended to set OCR to none_ocr to directly read the text, saving time and reducing the number of requests.
-   * For detailed instructions, see [Tuanzi OCR Instructions (Chinese only)](doc/Tuanzi_OCR_Instructions.md)
+   * For detailed instructions, see **Tuanzi OCR Instructions**: ([Chinese](doc/团子OCR说明.md) & [Brazilian Portuguese](doc/Manual_TuanziOCR_pt-BR.md) only)
 
 ## Inpainting
   * AOT is from [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
