@@ -83,8 +83,8 @@ class CustomGV(QGraphicsView):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        ScrollBar(Qt.Orientation.Horizontal, self, fadeout=True)
-        ScrollBar(Qt.Orientation.Vertical, self, fadeout=True)
+        self.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, self, fadeout=True)
+        self.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, self, fadeout=True)
 
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
@@ -361,6 +361,8 @@ class Canvas(QGraphicsScene):
             self.textLayer.show()
         scale_before = self.scale_factor
         if scale_before != 1:
+            hb_pos = self.hscroll_bar.value()
+            vb_pos = self.vscroll_bar.value()
             self._set_scene_scale(1)
 
         self.clearSelection()
@@ -383,6 +385,10 @@ class Canvas(QGraphicsScene):
             self.textLayer.hide()
         if scale_before != 1:
             self._set_scene_scale(scale_before)
+            if self.hscroll_bar.value() != hb_pos:
+                self.hscroll_bar.setValue(hb_pos)
+            if self.vscroll_bar.value() != vb_pos:
+                self.vscroll_bar.setValue(vb_pos)
         self.inpaintLayer.show()
 
         return result
