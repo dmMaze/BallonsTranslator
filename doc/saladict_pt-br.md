@@ -1,4 +1,4 @@
-[English](./saladict.md) | [简体中文](./saladict_chs.md)
+[English](../saladict.md) | [简体中文](../saladict_chs.md)
 
 **Observação:** Funciona apenas com navegadores que permitem atalhos globais para extensões (atualmente, apenas o Firefox não oferece suporte a atalhos globais).
 

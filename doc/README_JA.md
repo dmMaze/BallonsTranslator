@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](./README.md) | [English](./README_EN) | [pt-BR](./doc/README_PT-BR.md) | [Русский](./doc/README_RU.md) | 日本語 | [Indonesia](./doc/README_ID.md) | [Tiếng Việt](./doc/README_VI.md)
+[简体中文](/README.md) | [English](/README_EN.md) | [pt-BR](../doc/README_PT-BR.md) | [Русский](../doc/README_RU.md) | 日本語 | [Indonesia](../doc/README_ID.md) | [Tiếng Việt](../doc/README_VI.md)
 
 ディープラーニングを活用したマンガ翻訳支援ツール。
 

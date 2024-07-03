@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](./README.md) | [English](./README_EN) | [pt-BR](./doc/README_PT-BR.md) | [Русский](./doc/README_RU.md) | [日本語](./doc/README_JA.md) | [Indonesia](./doc/README_ID.md) | Tiếng Việt
+[简体中文](/README.md) | [English](/README_EN.md) | [pt-BR](../doc/README_PT-BR.md) | [Русский](../doc/README_RU.md) | [日本語](../doc/README_JA.md) | [Indonesia](../doc/README_ID.md) | Tiếng Việt
 
 Lại thêm một công cụ, phần mềm dịch truyện siu xịn khác có áp dụng ML/AI.
 

@@ -1,10 +1,10 @@
 ## BallonTranslator
 
-[Chinês](./README.md) | [Inglês](./README_EN) | pt-BR | [Russo](./doc/README_RU.md) | [Japonês](./doc/README_JA.md) | [Indonésio](./doc/README_ID.md) | [Vietnamita](./doc/README_VI.md)
+[Chinês](/README.md) | [Inglês](/README_EN.md) | pt-BR | [Russo](../doc/README_RU.md) | [Japonês](../doc/README_JA.md) | [Indonésio](../doc/README_ID.md) | [Vietnamita](../doc/README_VI.md)
 
 BallonTranslator é mais uma ferramenta auxiliada por computador, alimentada por deep learning, para a tradução de quadrinhos/mangás.
 
-<img src="doc/src/ui0.jpg" div align=center>
+<img src="../doc/src/ui0.jpg" div align=center>
 
 <p align=center>
 **Pré-Visualização**
@@ -131,7 +131,7 @@ Para usar o Sugoi translator (apenas japonês-inglês), baixe o [modelo offline]
 # Utilização
 
 **É recomendado executar o programa em um terminal caso ocorra alguma falha e não sejam fornecidas informações, como mostrado no gif a seguir.**
-<img src="doc/src/run.gif">  
+<img src="../doc/src/run.gif">  
 
 - Na primeira execução, selecione o tradutor e defina os idiomas de origem e destino clicando no ícone de configurações.
 - Abra uma pasta contendo as imagens do quadrinho (mangá/manhua/manhwa) que precisa de tradução clicando no ícone de pasta.
@@ -142,13 +142,13 @@ Os formatos de fonte, como tamanho e cor, são determinados automaticamente pelo
 ## Edição de Imagem
 
 ### Ferramenta de Inpainting
-<img src="doc/src/imgedit_inpaint.gif">
+<img src="../doc/src/imgedit_inpaint.gif">
 <p align = "center">
 **Modo de edição de imagem, ferramenta de Inpainting**
 </p>
 
 ### Ferramenta Retângulo
-<img src="doc/src/rect_tool.gif">
+<img src="../doc/src/rect_tool.gif">
 <p align = "center">
 **Ferramenta Retângulo**
 </p>
@@ -156,17 +156,17 @@ Os formatos de fonte, como tamanho e cor, são determinados automaticamente pelo
 Para 'apagar' resultados indesejados de inpainting, use a ferramenta de inpainting ou a ferramenta retângulo com o **botão direito do mouse** pressionado. O resultado depende da precisão com que o algoritmo ("método 1" e "método 2" no gif) extrai a máscara de texto. O desempenho pode ser pior em textos e fundos complexos.
 
 ## Edição de Texto
-<img src="doc/src/textedit.gif">
+<img src="../doc/src/textedit.gif">
 <p align = "center">
 **Modo de edição de texto**
 </p>
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="../doc/src/multisel_autolayout.gif" div align=center>
 <p align=center>
 **Formatação de texto em lote e layout automático**
 </p>
 
-<img src="doc/src/ocrselected.gif" div align=center>
+<img src="../doc/src/ocrselected.gif" div align=center>
 <p align=center>
 **OCR e tradução de área selecionada**
 </p>
@@ -186,7 +186,7 @@ Para 'apagar' resultados indesejados de inpainting, use a ferramenta de inpainti
 * Para edição de texto: negrito - `Ctrl+B`, sublinhado - `Ctrl+U`, itálico - `Ctrl+I`.
 * Defina a sombra e a transparência do texto no painel de estilo de texto -> Efeito.
 
-<img src="doc/src/configpanel.png">
+<img src="../doc/src/configpanel.png">
 
 ## Modo Headless (Executar sem interface gráfica)
 
@@ -207,7 +207,7 @@ O [Sugoi translator](https://sugoitranslator.com/) foi criado por [mingshiba](ht
 ## Detecção de Texto
 * Suporta detecção de texto em inglês e japonês. O código de treinamento e mais detalhes podem ser encontrados em [comic-text-detector](https://github.com/dmMaze/comic-text-detector).
 * Suporta o uso de detecção de texto do [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). O nome de usuário e a senha precisam ser preenchidos, e o login automático será realizado a cada vez que o programa for iniciado.
-  * Para instruções detalhadas, consulte [Manual do TuanziOCR](./doc/Manual_TuanziOCR_pt-BR.md).
+  * Para instruções detalhadas, consulte [Manual do TuanziOCR](../doc/Manual_TuanziOCR_pt-BR.md).
 
 ## OCR
 * Todos os modelos mit* são do manga-image-translator e suportam reconhecimento de inglês, japonês e coreano, além da extração da cor do texto.
@@ -215,7 +215,7 @@ O [Sugoi translator](https://sugoitranslator.com/) foi criado por [mingshiba](ht
 * Suporta o uso de OCR do [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). O nome de usuário e a senha precisam ser preenchidos, e o login automático será realizado a cada vez que o programa for iniciado.
   * A implementação atual usa OCR em cada bloco de texto individualmente, resultando em velocidade mais lenta e sem melhoria significativa na precisão. Não é recomendado. Se necessário, use o Tuanzi Detector.
   * Ao usar o Tuanzi Detector para detecção de texto, recomenda-se definir o OCR como none_ocr para ler o texto diretamente, economizando tempo e reduzindo o número de solicitações.
-  * Para instruções detalhadas, consulte [Manual do TuanziOCR](./doc/Manual_TuanziOCR_pt-BR.md).
+  * Para instruções detalhadas, consulte [Manual do TuanziOCR](../doc/Manual_TuanziOCR_pt-BR.md).
 
 ## Inpainting
 * O AOT é do [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
@@ -230,11 +230,11 @@ Tradutores disponíveis: Google, DeepL, ChatGPT, Sugoi, Caiyun, Baidu, Papago e 
 * Sugoi traduz do japonês para o inglês completamente offline.
 * [Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame)
 
-Para adicionar um novo tradutor, consulte [Como_add_um_novo_tradutor](doc/Como_add_um_novo_tradutor.md). É simples como criar uma subclasse de uma classe base e implementar duas interfaces. Em seguida, você pode usá-lo no aplicativo. Contribuições para o projeto são bem-vindas.
+Para adicionar um novo tradutor, consulte [Como_add_um_novo_tradutor](../doc/Como_add_um_novo_tradutor.md). É simples como criar uma subclasse de uma classe base e implementar duas interfaces. Em seguida, você pode usá-lo no aplicativo. Contribuições para o projeto são bem-vindas.
 
 ## FAQ & Diversos
 * Se o seu computador tiver uma GPU Nvidia ou Apple Silicon, o programa habilitará a aceleração de hardware.
-* Adicione suporte para [saladict](https://saladict.crimx.com) (*Dicionário pop-up profissional e tradutor de páginas tudo-em-um*) no mini menu ao selecionar o texto. [Guia de instalação](doc/saladict_pt-br.md).
+* Adicione suporte para [saladict](https://saladict.crimx.com) (*Dicionário pop-up profissional e tradutor de páginas tudo-em-um*) no mini menu ao selecionar o texto. [Guia de instalação](../doc/saladict_pt-br.md).
 * Acelere o desempenho se você tiver um dispositivo [NVIDIA CUDA](https://pytorch.org/docs/stable/notes/cuda.html) ou [AMD ROCm](https://pytorch.org/docs/stable/notes/hip.html), pois a maioria dos módulos usa o [PyTorch](https://pytorch.org/get-started/locally/).
 * As fontes são do seu sistema.
 * Agradecimentos a [bropines](https://github.com/bropines) pela localização para o russo.
