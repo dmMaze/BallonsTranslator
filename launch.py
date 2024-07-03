@@ -8,6 +8,7 @@ import re
 import subprocess
 import importlib.util
 import pkg_resources
+from platform import platform
 
 BRANCH = 'dev'
 VERSION = '1.4.0'
@@ -16,7 +17,7 @@ python = sys.executable
 git = os.environ.get('GIT', "git")
 skip_install = False
 index_url = os.environ.get('INDEX_URL', "")
-QT_APIS = ['pyqt6', 'pyside6']
+QT_APIS = ['pyqt6', 'pyside6', 'pyqt5', 'pyside2']
 stored_commit_hash = None
 
 REQ_WIN = [
@@ -26,11 +27,16 @@ REQ_WIN = [
 PATH_ROOT=Path(__file__).parent  
 PATH_FONTS=PATH_ROOT/'fonts'
 
+IS_WIN7 = "Windows-7" in platform()
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--reinstall-torch", action='store_true', help="launch.py argument: install the appropriate version of torch even if you have some version already installed")
 parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
-parser.add_argument("--qt-api", default='', choices=QT_APIS, help='Set qt api')
+if IS_WIN7:
+    parser.add_argument("--qt-api", default='pyqt5', choices=QT_APIS, help='Set qt api')
+else:
+    parser.add_argument("--qt-api", default='pyqt6', choices=QT_APIS, help='Set qt api')
 parser.add_argument("--debug", action='store_true')
 parser.add_argument("--requirements", default='requirements.txt')
 parser.add_argument("--headless", action='store_true', help='run without GUI')
@@ -133,10 +139,7 @@ def main():
     if args.debug:
         os.environ['BALLOONTRANS_DEBUG'] = '1'
 
-    if not args.qt_api in QT_APIS:
-        os.environ['QT_API'] = 'pyqt6'
-    else:
-        os.environ['QT_API'] = args.qt_api
+    os.environ['QT_API'] = args.qt_api
 
     commit = commit_hash()
 
@@ -219,7 +222,12 @@ def main():
             if fnt_idx >= 0:
                 shared.CUSTOM_FONTS.append(QFontDatabase.applicationFontFamilies(fnt_idx)[0])
     
-    shared.FONT_FAMILIES = set(f for f in QFontDatabase.families())
+    if shared.FLAG_QT6:
+        shared.FONT_FAMILIES = set(f for f in QFontDatabase.families())
+    else:
+        fdb = QFontDatabase()
+        shared.FONT_FAMILIES = set(fdb.families())
+
     yahei = QFont('Microsoft YaHei UI')
     if yahei.exactMatch() and not sys.platform == 'darwin':
         QGuiApplication.setFont(yahei)
