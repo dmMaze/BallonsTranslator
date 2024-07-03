@@ -20,13 +20,14 @@ from . import funcmaps as FM
 class LineEdit(QLineEdit):
 
     return_pressed_wochange = Signal()
+    return_pressed = Signal()
 
     def __init__(self, content: str = None, parent = None):
         super().__init__(content, parent)
         self.textChanged.connect(self.on_text_changed)
         self._text_changed = False
         self.editingFinished.connect(self.on_editing_finished)
-        self.returnPressed.connect(self.on_return_pressed)
+        # self.returnPressed.connect(self.on_return_pressed)
 
     def on_text_changed(self):
         self._text_changed = True
@@ -38,9 +39,12 @@ class LineEdit(QLineEdit):
         self._text_changed = False
         return super().focusOutEvent(e)
 
-    def on_return_pressed(self):
-        if not self._text_changed:
-            self.return_pressed_wochange.emit()
+    def keyPressEvent(self, e: QKeyEvent) -> None:
+        super().keyPressEvent(e)
+        if e.key() == Qt.Key.Key_Return:
+            self.return_pressed.emit()
+            if not self._text_changed:
+                self.return_pressed_wochange.emit()
 
 
 class SizeComboBox(QComboBox):
@@ -325,10 +329,11 @@ class FontFamilyComboBox(QFontComboBox):
         super().__init__(*args, **kwargs)
         self.currentFontChanged.connect(self.on_fontfamily_changed)
         self.lineedit = lineedit = LineEdit(parent=self)
-        lineedit.return_pressed_wochange.connect(self.apply_fontfamily)
+        lineedit.return_pressed.connect(self.on_return_pressed)
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
         self._current_font = self.currentFont().family()
+        self.return_pressed = False
         
     def apply_fontfamily(self):
         ffamily = self.currentFont().family()
@@ -336,16 +341,15 @@ class FontFamilyComboBox(QFontComboBox):
             self.param_changed.emit('family', ffamily)
             self._current_font = ffamily
 
-    def on_fontfamily_changed(self):
-        # if not self.hasFocus():
-        # #     self._current_font = self.currentFont().family()
-        # #     self.lineedit._text_changed = False
-        #     if self.emit_if_focused and not self.hasFocus():
-        #         return
-
-        # ffamily = self.currentFont().family()
-        # if self._current_font != ffamily:
+    def on_return_pressed(self):
+        self.return_pressed = True
         self.apply_fontfamily()
+
+    def on_fontfamily_changed(self):
+        if self.return_pressed:
+            self.return_pressed = False
+        else:
+            self.apply_fontfamily()
             
 
 CHEVRON_SIZE = 20
