@@ -299,6 +299,7 @@ class RearrangeBlksCommand(QUndoCommand):
             pw_ct.show()
             self.ctrl.textEditList.ensureWidgetVisible(pw_ct, yMargin=pw.height())
 
+
 class TextPanel(Widget):
     def __init__(self, app: QApplication, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -926,25 +927,26 @@ class SceneTextManager(QObject):
     def on_push_textitem_undostack(self, num_steps: int, is_formatting: bool):
         blkitem: TextBlkItem = self.sender()
         e_trans = self.pairwidget_list[blkitem.idx].e_trans if not is_formatting else None
-        self.canvas.push_undo_command(TextItemEditCommand(blkitem, e_trans, num_steps))
+        self.canvas.push_undo_command(TextItemEditCommand(blkitem, e_trans, num_steps), update_pushed_step=False)
 
     def on_push_edit_stack(self, num_steps: int):
         edit: Union[TransTextEdit, SourceTextEdit] = self.sender()
         blkitem = self.textblk_item_list[edit.idx] if type(edit) == TransTextEdit else None
-        self.canvas.push_undo_command(TextEditCommand(edit, num_steps, blkitem))
+        self.canvas.push_undo_command(TextEditCommand(edit, num_steps, blkitem), update_pushed_step=False)
 
     def on_propagate_textitem_edit(self, pos: int, added_text: str, input_method_used: bool):
         blk_item: TextBlkItem = self.sender()
         edit = self.pairwidget_list[blk_item.idx].e_trans
         propagate_user_edit(blk_item, edit, pos, added_text, input_method_used)
+        self.canvas.push_text_command(command=None, update_pushed_step=True)
 
     def on_propagate_transwidget_edit(self, pos: int, added_text: str, input_method_used: bool):
         edit: TransTextEdit = self.sender()
         blk_item = self.textblk_item_list[edit.idx]
         if blk_item.isEditing():
             blk_item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        
         propagate_user_edit(edit, blk_item, pos, added_text, input_method_used)
+        self.canvas.push_text_command(command=None, update_pushed_step=True)
 
     def apply_fontformat(self, fontformat: FontFormat):
         selected_blks = self.canvas.selected_text_items()

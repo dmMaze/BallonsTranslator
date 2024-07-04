@@ -243,9 +243,7 @@ class Canvas(QGraphicsScene):
         self.rubber_band_origin = None
 
         self.draw_undo_stack = QUndoStack(self)
-        self.draw_undo_stack.indexChanged.connect(self.on_drawstack_changed)
         self.text_undo_stack = QUndoStack(self)
-        self.text_undo_stack.indexChanged.connect(self.on_textstack_changed)
         self.saved_drawundo_step = 0
         self.saved_textundo_step = 0
 
@@ -292,6 +290,8 @@ class Canvas(QGraphicsScene):
 
         self.saved_textundo_step = 0
         self.saved_drawundo_step = 0
+        self.num_pushed_textstep = 0
+        self.num_pushed_drawstep = 0
 
         self.clipboard_blks: List[TextBlock] = []
 
@@ -863,39 +863,76 @@ class Canvas(QGraphicsScene):
             return self.draw_undo_stack
         return None
 
-    def push_undo_command(self, command: QUndoCommand):
-        undo_stack = self.get_active_undostack()
-        if undo_stack is not None:
-            undo_stack.push(command)
+    def push_undo_command(self, command: QUndoCommand, update_pushed_step=True):
+        if self.textEditMode():
+            self.push_text_command(command, update_pushed_step)
+        elif self.drawMode():
+            self.push_draw_command(command, update_pushed_step)
+        else:
+            return
 
-    def on_drawstack_changed(self, index: int):
-        if index != self.saved_drawundo_step:
+    def push_draw_command(self, command: QUndoCommand, update_pushed_step=True):
+        if command is not None:
+            self.draw_undo_stack.push(command)
+        if update_pushed_step:
+            self.num_pushed_drawstep += 1
+            self.on_drawstack_changed()
+
+    def push_text_command(self, command: QUndoCommand, update_pushed_step=True):
+        if command is not None:
+            self.text_undo_stack.push(command)
+        if update_pushed_step:
+            self.num_pushed_textstep += 1
+            self.on_textstack_changed()
+
+    def on_drawstack_changed(self):
+        if self.num_pushed_drawstep != self.saved_drawundo_step:
             self.setProjSaveState(True)
-        elif self.text_undo_stack.index() == self.saved_textundo_step:
+        elif self.num_pushed_textstep == self.saved_textundo_step:
             self.setProjSaveState(False)
 
-    def on_textstack_changed(self, index: int):
-        if index != self.saved_textundo_step:
+    def on_textstack_changed(self):
+        if self.num_pushed_textstep != self.saved_textundo_step:
             self.setProjSaveState(True)
-        elif self.draw_undo_stack.index() == self.saved_drawundo_step:
+        elif self.num_pushed_drawstep == self.saved_drawundo_step:
             self.setProjSaveState(False)
         self.textstack_changed.emit()
 
     def redo_textedit(self):
+        self.num_pushed_textstep += 1
         self.text_undo_stack.redo()
 
     def undo_textedit(self):
+        self.num_pushed_textstep -= 1
         self.text_undo_stack.undo()
 
     def redo(self):
-        undo_stack = self.get_active_undostack()
+        if self.textEditMode():
+            undo_stack = self.text_undo_stack
+            self.num_pushed_textstep += 1
+            self.on_textstack_changed()
+        elif self.drawMode():
+            undo_stack = self.draw_undo_stack
+            self.num_pushed_drawstep += 1
+            self.on_drawstack_changed()
+        else:
+            return
         if undo_stack is not None:
             undo_stack.redo()
             if undo_stack == self.text_undo_stack:
                 self.txtblkShapeControl.updateBoundingRect()
 
     def undo(self):
-        undo_stack = self.get_active_undostack()
+        if self.textEditMode():
+            undo_stack = self.text_undo_stack
+            self.num_pushed_textstep -= 1
+            self.on_textstack_changed()
+        elif self.drawMode():
+            undo_stack = self.draw_undo_stack
+            self.num_pushed_drawstep -= 1
+            self.on_drawstack_changed()
+        else:
+            return
         if undo_stack is not None:
             undo_stack.undo()
             if undo_stack == self.text_undo_stack:
@@ -905,24 +942,28 @@ class Canvas(QGraphicsScene):
         if update_saved_step:
             self.saved_drawundo_step = 0
             self.saved_textundo_step = 0
+            self.num_pushed_textstep = 0
+            self.num_pushed_drawstep = 0
         self.draw_undo_stack.clear()
         self.text_undo_stack.clear()
 
     def clear_text_stack(self):
+        self.num_pushed_textstep = 0
         self.text_undo_stack.clear()
 
     def clear_draw_stack(self):
+        self.num_pushed_drawstep = 0
         self.draw_undo_stack.clear()
 
     def update_saved_undostep(self):
-        self.saved_drawundo_step = self.draw_undo_stack.index()
-        self.saved_textundo_step = self.text_undo_stack.index()
+        self.saved_drawundo_step = self.num_pushed_drawstep
+        self.saved_textundo_step = self.num_pushed_textstep
 
     def text_change_unsaved(self) -> bool:
-        return self.saved_textundo_step != self.text_undo_stack.index()
+        return self.saved_textundo_step != self.num_pushed_textstep
 
     def draw_change_unsaved(self) -> bool:
-        return self.saved_drawundo_step != self.draw_undo_stack.index()
+        return self.saved_drawundo_step != self.num_pushed_drawstep
 
     def prepareClose(self):
         self.blockSignals(True)

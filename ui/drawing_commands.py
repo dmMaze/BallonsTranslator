@@ -85,7 +85,7 @@ class RunBlkTransCommand(QUndoCommand):
         self.empty_command = None
         if mode > 1:
             self.empty_command = EmptyCommand()
-            canvas.draw_undo_stack.push(self.empty_command)
+            canvas.push_draw_command(self.empty_command)
 
         self.op_counter = -1
         self.blkitems = blkitems

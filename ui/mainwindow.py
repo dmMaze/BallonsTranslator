@@ -641,7 +641,6 @@ class MainWindow(mainwindow_cls):
         self.ocrSubWidget.show()
 
     def on_req_update_pagetext(self):
-        self.global_search_widget.searched_textstack_step = self.canvas.text_undo_stack.index()
         if self.canvas.text_change_unsaved():
             self.st_manager.updateTextBlkList()
 
@@ -714,13 +713,20 @@ class MainWindow(mainwindow_cls):
     def save_proj(self):
         if self.leftBar.imgTransChecker.isChecked()\
             and self.imgtrans_proj.directory is not None:
-            
             self.conditional_manual_save()
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False):
         
         if not self.imgtrans_proj.img_valid:
             return
+        
+        if restore_interface:
+            set_canvas_focus = self.canvas.hasFocus()
+            sel_textitem = self.canvas.selected_text_items()
+            n_sel_textitems = len(sel_textitem)
+            editing_textitem = None
+            if n_sel_textitems == 1 and sel_textitem[0].isEditing():
+                editing_textitem = sel_textitem[0]
         
         if update_scene_text:
             self.st_manager.updateTextBlkList()
@@ -769,6 +775,16 @@ class MainWindow(mainwindow_cls):
                 self.bottomBar.textblockChecker.click()
             if hide_tsc:
                 self.st_manager.txtblkShapeControl.show()
+            if set_canvas_focus:
+                self.canvas.setFocus()
+            if n_sel_textitems > 0:
+                self.canvas.block_selection_signal = True
+                for blk in sel_textitem:
+                    blk.setSelected(True)
+                self.st_manager.on_incanvas_selection_changed()
+                self.canvas.block_selection_signal = False
+            if editing_textitem is not None:
+                editing_textitem.startEdit()
         
     def translatorStatusBtnPressed(self):
         self.leftBar.configChecker.setChecked(True)
@@ -1139,7 +1155,7 @@ class MainWindow(mainwindow_cls):
 
     def on_global_replace_finished(self):
         rt = self.global_search_widget.replace_thread
-        self.canvas.text_undo_stack.push(
+        self.canvas.push_text_command(
             GlobalRepalceAllCommand(rt.sceneitem_list, rt.background_list, rt.target_text, self.imgtrans_proj)
         )
         rt.sceneitem_list = None
