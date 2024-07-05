@@ -65,9 +65,10 @@ MAX_NUM_LOG = 7
 
 TRANSLATE_DIR = osp.join(PROGRAM_PATH, 'translate')
 DISPLAY_LANGUAGE_MAP = {
-    'English': 'English',
-    '简体中文': 'zh_CN',
-    'Русский': 'ru_RU'
+    "English": "English",
+    "简体中文": "zh_CN",
+    "Русский": "ru_RU",
+    "Português (Brasil)": "pt_BR"
 }
 VALID_LANG_SET = set(list(DISPLAY_LANGUAGE_MAP.values()))
 
