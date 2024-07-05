@@ -1,3 +1,7 @@
+[简体中文](../doc/加别的翻译器.md) | English | [pt-BR](../doc/Como_add_um_novo_tradutor.md) | [Русский](../doc/add_translator_ru.md)
+
+---
+
 If you know how to to call the target translator api or translation model in python, implement a class in ballontranslator/dl/translators.__init__.py as follows to use it in the app.      
 
 The following example DummyTranslator is commented out of ballontranslator/dl/translator/__init__.py and can be uncommented to test in the program.
