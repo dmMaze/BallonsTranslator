@@ -1,3 +1,5 @@
+简体中文 | [pt_BR](../doc/Manual_TuanziOCR_pt-BR.md)
+
 ## 官方提供的请求参数参考：
 <p align = "center">
 <img src="https://github.com/PiDanShouRouZhouXD/BallonsTranslator/assets/38401147/3c3985e9-f36e-41fb-af94-d6a8088e5ccd" width="85%" height="85%">

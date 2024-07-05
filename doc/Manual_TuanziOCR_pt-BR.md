@@ -1,3 +1,5 @@
+[简体中文](../doc/团子OCR说明.md) | pt-BR
+
 ## Referência de Parâmetros de Solicitação (Oficial)
 
 <p align="center">

@@ -1,4 +1,4 @@
-[简体中文](../saladict_chs.md)
+[简体中文](../doc/saladict_chs.md) | English | [pt-BR](../doc/saladict_pt-br.md)
 
 Note it only work with browsers that offer global shortcuts for extensions(Currently only Firefox does no support global shortcuts)
 

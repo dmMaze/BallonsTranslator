@@ -1,3 +1,7 @@
+[简体中文](../doc/加别的翻译器.md) | [English](../doc/how_to_add_new_translator.md) | pt-BR | [Русский](../doc/add_translator_ru.md)
+
+---
+
 ## Como Adicionar um Novo Tradutor ao BallonsTranslator
 
 Se você sabe como utilizar a API do tradutor ou o modelo de tradução desejado em Python, siga os passos abaixo para integrá-lo ao BallonsTranslator.
