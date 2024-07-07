@@ -315,6 +315,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.need_ideal_width = True
         self.line_draw = line_draw_qt6 if C.FLAG_QT6 else line_draw_qt5
 
+        self.per_char_records = []
+
     @property
     def align_right(self):
         return False
@@ -323,6 +325,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.min_height = 0
         self.layout_left = 0
         self.line_spaces_lst = []
+        self.per_char_records = []
         self.draw_shifted = 0
         self.shrink_height = 0
         self.shrink_width = 0
@@ -376,6 +379,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
 
+            char_records = self.per_char_records[blk_no]
+
             for ii in range(layout.lineCount()):
                 xy_offsets = [0, 0]
                 _draw_offsets.append(xy_offsets)
@@ -391,22 +396,24 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 char = blk_text[char_idx]
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 
+                line_width = -1
+                if char_idx in char_records:
+                    line_width = char_records[char_idx]['line_width']
+                if line_width < 0:
+                    line_width = cfmt.tbr.width()
                 # natral_shifted = max(line.naturalTextWidth() - cfmt.br.width(), 0)
                 natral_shifted = 0
                 if char in PUNSET_VERNEEDROTATE:
                     char = blk_text[char_idx]
                     if char.isalpha():
                         xoff = 0
-                        yoff = -line.ascent() - (cfmt.tbr.width() - cfmt.font_metrics.capHeight()) / 2
+                        yoff = -line.ascent() - (line_width - cfmt.font_metrics.capHeight()) / 2
 
                     else:   # () （）
                         non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True)
                         xoff = -non_bracket_br[0]
                         yoff = -non_bracket_br[1] - non_bracket_br[3]
-                        if TEXTLAYOUT_QTVERSION:
-                            yoff = yoff - (cfmt.tbr.width() - non_bracket_br[3]) / 2
-                        else:
-                            yoff = yoff - (cfmt.br.width() - non_bracket_br[3]) / 2
+                        yoff = yoff - (line_width - non_bracket_br[3]) / 2
 
                 # elif vertical_force_aligncentel(char):
                 else:
@@ -416,10 +423,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         yoff = -act_rect[1]
                     else:
                         yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - line.ascent())
-                    if TEXTLAYOUT_QTVERSION:
-                        xoff = -act_rect[0] + (cfmt.tbr.width() - act_rect[2]) / 2
-                    else:
-                        xoff = -act_rect[0] + (cfmt.tbr.width() - act_rect[2]) / 2 + cfmt.tbr.left()
+                    xoff = -act_rect[0] + (line_width - act_rect[2]) / 2
                     # if char in PUNSET_ALIGNTOP:
                     #     yoff = yoff + (cfmt.tbr.height() - act_rect[3]) / 2
                     
@@ -547,6 +551,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         while blk.isValid():
             blk_no = blk.blockNumber()
             blk_char_yoffset = self.y_offset_lst[blk_no]
+            nyoffset = len(blk_char_yoffset)
             rect = blk.layout().boundingRect()
             rect_left = rect.left()
             rect_right = rect.right()
@@ -554,7 +559,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             if rect_left <= x and rect_right >= x:
                 layout = blk.layout()
                 for ii in range(layout.lineCount()):
-                    line_top, line_bottom = blk_char_yoffset[ii]
+                    line_top, line_bottom = blk_char_yoffset[min(nyoffset - 1, ii)]
                     line = layout.lineAt(ii)
                     line_xy = line.position()
                     if not line_xy.x() <= x:
@@ -626,6 +631,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         line_not_set = []
         ypos_list = []
         is_first_line = block_no == 0
+        char_records = {}
+        line_char_ids = []
+
         while True:
             line = tl.createLine()
             if not line.isValid():
@@ -655,6 +663,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             if char_idx < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
+                line_char_ids.append(char_idx)
                 space_w = cfmt.space_width
                 let_sp_offset = cfmt.tbr.height() * (ls - 1)
 
@@ -741,6 +750,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if idea_line_width == -1:
                     idea_line_width = block_width
 
+                if len(line_char_ids) == 0:
+                    line_char_ids = [char_idx]
+                end_char_id = line_char_ids[-1]
+                for cidx in line_char_ids:
+                    char_records[cidx] = {'line_width': idea_line_width}
+                line_char_ids = []
+
                 x_offset = x_offset - idea_line_width * line_spacing
                 
                 for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
@@ -750,10 +766,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         if not len(line_not_set) == 1:
                             x_offset = x_offset - end_w * line_spacing
                         end_line.setPosition(QPointF(x_offset, end_ypos))
+                        char_records[end_char_id] = {'line_width': end_w}
                     else:
                         line_not_set = [end_line]
                         ypos_list = [end_ypos]
                         width_list = [end_w]
+                        line_char_ids = [end_char_id]
                 else:
                     end_line.setPosition(QPointF(x_offset, end_ypos))
 
@@ -777,6 +795,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.x_offset_lst.append(x_offset)
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)
+        self.per_char_records.append(char_records)
 
     def frameBoundingRect(self, frame: QTextFrame):
         return QRectF(0, 0, max(self.document().pageSize().width(), self.max_width), 2147483647)
