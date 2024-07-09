@@ -29,7 +29,7 @@ preview
 
 ## On Windows
 If you don't want to install Python and Git by yourself and have access to the Internet:  
-Download BallonsTranslator_dev_src_with_gitpython.7z from[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip it and run launch_win.bat.   
+Download BallonsTranslator_dev_src_with_gitpython.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip it and run launch_win.bat.   
 Run scripts/local_gitpull.bat to get the latest update.
 
 ## Run the source code
@@ -229,7 +229,8 @@ Available translators: Google, DeepL, ChatGPT, Sugoi, Caiyun, Baidu. Papago, and
  * Sugoi translates Japanese to English completely offline.
  * [Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame)
 
- To add a new translator, please reference [how_to_add_new_translator](doc/how_to_add_new_translator.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
+For other good offline English translators, please refer to this [thread](https://github.com/dmMaze/BallonsTranslator/discussions/515).  
+To add a new translator, please reference [how_to_add_new_translator](doc/how_to_add_new_translator.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
 
 
 ## FAQ & Misc

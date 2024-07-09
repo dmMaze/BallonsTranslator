@@ -195,7 +195,8 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
  * DeepL 和 Sugoi (及它的 CT2 Translation 转换)翻译器，感谢 [Snowad14](https://github.com/Snowad14)  
  * 支持 [Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame)
 
- 如需添加新的翻译器请参考[加别的翻译器](doc/加别的翻译器.md)，本程序添加新翻译器只需要继承基类实现两个接口即可不需要理会代码其他部分，欢迎大佬提 pr
+其它优秀的离线英文翻译模型请参考[这条讨论](https://github.com/dmMaze/BallonsTranslator/discussions/515)  
+如需添加新的翻译器请参考[加别的翻译器](doc/加别的翻译器.md)，本程序添加新翻译器只需要继承基类实现两个接口即可不需要理会代码其他部分，欢迎大佬提 pr
 
 ## 杂
 * 电脑带N卡或 Apple silicon 默认启用 GPU 加速
