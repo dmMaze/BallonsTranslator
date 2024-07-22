@@ -96,8 +96,7 @@ class MainWindow(mainwindow_cls):
                 if osp.exists(proj_dir):
                     self.OpenProj(proj_dir)
 
-        if shared.HEADLESS:
-            self.run_batch(**exec_args)
+        self.run_batch(**exec_args)
 
     def setStyleSheet(self, styleSheet: str) -> None:
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
@@ -864,8 +863,7 @@ class MainWindow(mainwindow_cls):
         self.postprocess_mt_toggle = True
         if pcfg.module.empty_runcache and not shared.HEADLESS:
             self.module_manager.unload_all_models()
-        if shared.HEADLESS:
-            self.run_next_dir()
+        self.run_next_dir()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
         src_is_cjk = is_cjk(pcfg.module.translate_source)

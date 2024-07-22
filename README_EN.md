@@ -193,6 +193,15 @@ python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
 Note the configuration (source language, target language, inpaint model, etc) will load from config/config.json.  
 If the rendered font size is not right, specify logical DPI manually via ```--ldpi ```, typical values are 96 and 72.
 
+You can also use this command for translation, which will bring up the interface and display the images being translated in real-time, providing a better demonstration of the progress and accuracy of the translations:
+```python
+python launch.py --exec_dirs "[DIR_1],[DIR_2]..."
+```
+
+For a folder that contains multiple subfolders, where each subfolder consists of several comic images, you can use the following command to batch process all subfolders:
+```python
+python script.py --exec-subfolders "[DIR]"
+```
 
 # Automation modules
 This project is heavily dependent upon [manga-image-translator](https://github.com/zyddnys/manga-image-translator), online service and model training is not cheap, please consider to donate the project:  

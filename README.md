@@ -158,6 +158,16 @@ python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
 所有设置 (如检测模型, 原语言目标语言等) 会从 config/config.json 导入。  
 如果渲染字体大小不对, 通过 ```--ldpi ``` 指定 Logical DPI 大小, 通常为 96 和 72。
 
+你也可以使用这段命令翻译，这会弹出界面，并实时展示正在翻译的图片，以更好地展示翻译的进度和正确性：
+``` python
+python launch.py --exec_dirs "[DIR_1],[DIR_2]..."
+```
+
+对于一个包含了多个子文件夹的文件夹，其中每个子文件夹中是若干漫画图片，可以使用这段命令批量处理所有子文件夹：
+``` python
+python script.py --exec-subfolders "[DIR]"
+```
+
 # 自动化模块
 本项目重度依赖 [manga-image-translator](https://github.com/zyddnys/manga-image-translator)，在线服务器和模型训练需要费用，有条件请考虑支持一下
 - Ko-fi: <https://ko-fi.com/voilelabs>

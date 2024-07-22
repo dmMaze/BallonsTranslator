@@ -43,7 +43,11 @@ parser.add_argument("--requirements", default='requirements.txt')
 parser.add_argument("--headless", action='store_true', help='run without GUI')
 parser.add_argument("--exec_dirs", default='', help='translation queue (project directories) separated by comma')
 parser.add_argument("--ldpi", default=None, type=float, help='logical dots perinch')
+parser.add_argument("--exec-subfolders", default='', type=str, help='Folder containing subdirectories to be added to --exec_dirs')
 args, _ = parser.parse_known_args()
+if args.exec_subfolders:
+    subfolders = [os.path.join(args.exec_subfolders, d) for d in os.listdir(args.exec_subfolders) if os.path.isdir(os.path.join(args.exec_subfolders, d))]
+    args.exec_dirs = ','.join(subfolders)
 
 
 def is_installed(package):
