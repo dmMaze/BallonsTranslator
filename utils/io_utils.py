@@ -2,7 +2,7 @@ import json, os, sys, time, io
 import os.path as osp
 from pathlib import Path
 import importlib
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Union
 import base64
 import traceback
 
@@ -52,6 +52,24 @@ def find_all_imgs(img_dir, abs_path=False, sort=False):
         imglist = natsorted(imglist)
         
     return imglist
+
+def find_all_files_recursive(tgt_dir: Union[List, str], ext: Union[List, set], exclude_dirs=None):
+    if isinstance(tgt_dir, str):
+        tgt_dir = [tgt_dir]
+    
+    if exclude_dirs is None:
+        exclude_dirs = set()
+
+    filelst = []
+    for d in tgt_dir:
+        for root, _, files in os.walk(d):
+            if osp.basename(root) in exclude_dirs:
+                continue
+            for f in files:
+                if Path(f).suffix.lower() in ext:
+                    filelst.append(osp.join(root, f))
+    
+    return filelst
 
 def imread(imgpath, read_type=cv2.IMREAD_COLOR):
     if not osp.exists(imgpath):

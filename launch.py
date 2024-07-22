@@ -25,7 +25,8 @@ REQ_WIN = [
 ]
 
 PATH_ROOT=Path(__file__).parent  
-PATH_FONTS=PATH_ROOT/'fonts'
+PATH_FONTS=str(PATH_ROOT/'fonts')
+FONT_EXTS = {'.ttf','.otf','.ttc','.pfb'}
 
 IS_WIN7 = "Windows-7" in platform()
 
@@ -156,6 +157,7 @@ def main():
 
     from utils.logger import setup_logging, logger as LOGGER
     import utils.shared as shared
+    from utils.io_utils import find_all_files_recursive
     from utils import config as program_config
 
     from qtpy.QtCore import QTranslator, QLocale, Qt
@@ -216,12 +218,22 @@ def main():
 
     # Fonts
     # Load custom fonts if they exist
-    for font in os.listdir(PATH_FONTS):
-        if font.lower().endswith(('ttf','otf','ttc','pfb')):
-            fnt_idx = QFontDatabase.addApplicationFont((PATH_FONTS/font).as_posix())
+    if osp.exists(PATH_FONTS):
+        for fp in find_all_files_recursive(PATH_FONTS, FONT_EXTS):
+            fnt_idx = QFontDatabase.addApplicationFont(fp)
             if fnt_idx >= 0:
                 shared.CUSTOM_FONTS.append(QFontDatabase.applicationFontFamilies(fnt_idx)[0])
     
+    if sys.platform == 'win32' and args.headless:
+        # font database does not initialise on windows with qpa -offscreen: 
+        # whttps://github.com/dmMaze/BallonsTranslator/issues/519
+        from qtpy.QtCore import QStandardPaths
+        font_dir_list = QStandardPaths.standardLocations(QStandardPaths.FontsLocation)
+        for fd in font_dir_list:
+            fp_list = find_all_files_recursive(fd, FONT_EXTS)
+            for fp in fp_list:
+                fnt_idx = QFontDatabase.addApplicationFont(fp)
+
     if shared.FLAG_QT6:
         shared.FONT_FAMILIES = set(f for f in QFontDatabase.families())
     else:
