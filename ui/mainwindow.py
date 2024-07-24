@@ -351,6 +351,7 @@ class MainWindow(mainwindow_cls):
             self.imgtrans_proj.load(directory)
             self.st_manager.clearSceneTextitems()
             self.titleBar.setTitleContent(osp.basename(directory))
+            self.change_tstyles(directory)
             self.updatePageList()
             self.opening_dir = False
         except Exception as e:
@@ -1068,7 +1069,14 @@ class MainWindow(mainwindow_cls):
 
     def expand_tstyle_panel(self):
         self.textPanel.formatpanel.textstyle_panel.expand()
-
+    
+    def change_tstyles(self,directory):
+        try:
+            load_textstyle_from(self.imgtrans_proj.text_styles_path, raise_exception=True)
+            save_config()
+            self.textPanel.formatpanel.textstyle_panel.style_area.setStyles(text_styles)
+        except Exception as e:
+            create_error_dialog(e, self.tr(f'Failed to load from {self.imgtrans_proj.text_styles_path}'))
     def import_tstyles(self):
         ddir = osp.dirname(pcfg.text_styles_path)
         p = QFileDialog.getOpenFileName(self, self.tr("Import Text Styles"), ddir, None, "(.json)")
@@ -1078,6 +1086,7 @@ class MainWindow(mainwindow_cls):
             return
         try:
             load_textstyle_from(p, raise_exception=True)
+            self.imgtrans_proj.save_text_styles_path(p)
             save_config()
             self.textPanel.formatpanel.textstyle_panel.style_area.setStyles(text_styles)
         except Exception as e:

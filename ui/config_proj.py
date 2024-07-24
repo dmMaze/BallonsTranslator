@@ -66,11 +66,13 @@ class ProjImgTrans:
 
     def proj_name(self) -> str:
         return self.type+'_'+osp.basename(self.directory)
-
+    def proj_text_styles(self) -> str:
+        return 'text_styles_'+osp.basename(self.directory)
     def load(self, directory: str, json_path: str = None) -> bool:
         self.directory = directory
         if json_path is None:
             self.proj_path = osp.join(self.directory, self.proj_name() + '.json')
+            self.text_styles_path = osp.join(self.directory, self.proj_text_styles() + '.json')
         else:
             self.proj_path = json_path
         new_proj = False
@@ -83,7 +85,14 @@ class ProjImgTrans:
                     proj_dict = json.loads(f.read())
             except Exception as e:
                 raise ProjectLoadFailureException(e)
+            
             self.load_from_dict(proj_dict)
+            
+        if not osp.exists(self.text_styles_path):
+            with open(self.text_styles_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps([], ensure_ascii=False, cls=TextBlkEncoder))
+            self.save_text_styles_path(self.text_styles_path)
+                        
         if not osp.exists(self.inpainted_dir()):
             os.makedirs(self.inpainted_dir())
         if not osp.exists(self.mask_dir()):
@@ -136,7 +145,9 @@ class ProjImgTrans:
         if set_img_failed:
             if len(self.pages) > 0:
                 self.set_current_img_byidx(0)
-
+        if 'text_styles_path' in proj_dict:
+            self.text_styles_path = proj_dict['text_styles_path']  
+            
     def load_from_json(self, json_path: str):
         old_dir = self.directory
         directory = osp.dirname(json_path)
@@ -201,8 +212,21 @@ class ProjImgTrans:
             self._pagename2idx[imgname] = ii
             self._idx2pagename[ii] = imgname
         self.set_current_img_byidx(0)
+        with open(self.text_styles_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps([], ensure_ascii=False, cls=TextBlkEncoder))
         self.save()
-        
+    def save_text_styles_path(self,text_styles_path):
+        if not osp.exists(self.directory):
+            raise ProjectDirNotExistException  
+        try:
+            with open(self.proj_path, 'r', encoding='utf8') as f:
+                proj_dict = json.loads(f.read())
+            proj_dict['text_styles_path'] =  text_styles_path
+            with open(self.proj_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(proj_dict, ensure_ascii=False, cls=TextBlkEncoder))
+            self.load_from_dict(proj_dict)
+        except Exception as e:
+            raise ProjectLoadFailureException(e)
     def save(self):
         if not osp.exists(self.directory):
             raise ProjectDirNotExistException
@@ -216,6 +240,7 @@ class ProjImgTrans:
             'directory': self.directory,
             'pages': pages,
             'current_img': self.current_img,
+            'text_styles_path':self.text_styles_path
         }
 
     def read_img(self, imgname: str) -> np.ndarray:
