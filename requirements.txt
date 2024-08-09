@@ -24,7 +24,6 @@ termcolor
 bs4
 deepl>=1.16.0
 qtpy
-json5
 spacy-pkuseg
 sentencepiece
 ctranslate2
@@ -41,7 +40,6 @@ colorama
 openai
 pyyaml
 natsort
-filetype
 py7zr
 multivolumefile
 httpx[socks,brotli]

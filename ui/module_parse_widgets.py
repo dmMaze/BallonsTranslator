@@ -185,8 +185,9 @@ class ParamWidget(QWidget):
                 display_param_name = get_param_display_name(param_key, param_dict)
                 value = params[param_key]['value']
                 param_widget = None  # Ensure initialization
+                param_type = param_dict['type'] if 'type' in param_dict else 'line_editor'
 
-                if param_dict['type'] == 'selector':
+                if param_type == 'selector':
                     if 'url' in param_key:
                         size = CONFIG_COMBOBOX_MIDEAN
                     else:
@@ -202,33 +203,30 @@ class ParamWidget(QWidget):
                                 item = model.item(ii, 0)
                                 item.setEnabled(False)
                     param_widget.setCurrentText(str(value))
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
 
-                elif param_dict['type'] == 'editor':
+                elif param_type == 'editor':
                     param_widget = ParamEditor(param_key)
                     param_widget.setText(value)
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
 
-                elif param_dict['type'] == 'checkbox':
+                elif param_type == 'checkbox':
                     param_widget = ParamCheckBox(param_key)
                     if isinstance(value, str):
                         value = value.lower().strip() == 'true'
                         params[param_key]['value'] = value
                     param_widget.setChecked(value)
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
 
-                elif param_dict['type'] == 'pushbtn':
+                elif param_type == 'pushbtn':
                     param_widget = ParamPushButton(param_key, param_dict)
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
                     require_label = False
 
-                elif param_dict['type'] == 'float':  # Добавлен новый тип 'float'
-                    param_widget = ParamLineEditor(param_key, force_digital=True)
+                elif param_type == 'line_editor':
+                    param_widget = ParamLineEditor(param_key, force_digital=is_digital)
                     param_widget.setText(str(value))
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
 
-                if 'description' in param_dict and param_widget is not None:
-                    param_widget.setToolTip(param_dict['description'])
+                if param_widget is not None:
+                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+                    if 'description' in param_dict:
+                        param_widget.setToolTip(param_dict['description'])
 
             widget_idx = 0
             if require_label:
