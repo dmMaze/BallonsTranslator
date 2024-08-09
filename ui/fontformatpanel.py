@@ -4,8 +4,7 @@ from typing import List
 
 from qtpy.QtWidgets import QComboBox, QMenu, QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QScrollArea, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt, QRectF
-from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, QFontMetrics, QIcon, QColor, QPixmap, QPainter, QContextMenuEvent, QKeyEvent
-
+from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, QFontMetrics, QIcon, QColor, QPixmap, QPainter, QContextMenuEvent, QKeyEvent, QFontDatabase
 
 from utils.fontformat import FontFormat
 from utils import shared
@@ -335,6 +334,21 @@ class FontFamilyComboBox(QFontComboBox):
         self._current_font = self.currentFont().family()
         self.return_pressed = False
         
+        # Find all custom(application) fonts
+        application_fonts=[]
+        i=0
+        while True:
+            # Returns ['my_font_name']
+            font_=QFontDatabase.applicationFontFamilies(i)
+            if font_:
+                print(font_)
+                application_fonts.append(font_[0])
+            else:
+                break
+            i+=1
+        self.application_fonts=application_fonts
+
+        
     def apply_fontfamily(self):
         ffamily = self.currentFont().family()
         if ffamily in shared.FONT_FAMILIES:
@@ -351,6 +365,19 @@ class FontFamilyComboBox(QFontComboBox):
         else:
             self.apply_fontfamily()
             
+
+    def showPopup(self):
+        if pcfg.let_show_only_custom_fonts_flag:
+            current_font = self.currentFont().family()
+
+            # Override and set custom textlist of fonts
+            self.clear()
+            self.addItems(self.application_fonts)
+
+            # Prevent the current font from changing to first in list 
+            self.setCurrentText(current_font)
+            self.on_fontfamily_changed()
+        super().showPopup()
 
 CHEVRON_SIZE = 20
 def chevron_down():
