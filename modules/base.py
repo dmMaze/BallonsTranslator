@@ -113,11 +113,12 @@ class BaseModule:
         model_deleted = False
         if self._load_model_keys is not None:
             for k in self._load_model_keys:
-                model = getattr(self, k)
-                if model is not None:
-                    del model
-                    setattr(self, k, None)
-                    model_deleted = True
+                if hasattr(self, k):
+                    model = getattr(self, k)
+                    if model is not None:
+                        del model
+                        setattr(self, k, None)
+                        model_deleted = True
     
         if empty_cache and model_deleted:
             soft_empty_cache()
