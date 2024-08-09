@@ -165,4 +165,3 @@ class OCRLensAPI(OCRBase):
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        # Here you can add additional logic for updating parameters, if needed in the future
