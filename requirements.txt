@@ -45,6 +45,7 @@ multivolumefile
 httpx[socks,brotli]
 langdetect
 translators
+json5
 pywin32; sys_platform == 'win32'
 winsdk; sys_platform == 'win32'
 brotlicffi; sys_platform == 'win32'
