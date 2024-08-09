@@ -56,7 +56,7 @@ def get_punc_rect(char: str, ffamily: str, size: float, weight: int, italic: boo
 @lru_cache(maxsize=2048)
 def get_char_width(char: str, ffamily: str, size: float, weight: int, italic: bool) -> int:
     fm = _font_metrics(ffamily, size, weight, italic)
-    return fm.width(char)
+    return fm.horizontalAdvance(char)
 
 def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, italic: bool, stroke_width: float, h: int = None, w: int = None) -> List[int]:
     if h is None:
