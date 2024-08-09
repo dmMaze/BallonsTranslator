@@ -6,6 +6,10 @@ from utils.logger import logger as LOGGER
 from .stylewidgets import ConfigComboBox, NoBorderPushBtn, CustomComboBox
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from utils.config import pcfg
+import logging
+
+# Настройка логгера
+logging.basicConfig(level=logging.DEBUG)
 
 from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit, QGridLayout, QPushButton
 from qtpy.QtCore import Qt, Signal
@@ -160,12 +164,13 @@ class ParamWidget(QWidget):
             require_label = True
             is_str = isinstance(params[param_key], str)
             is_digital = isinstance(params[param_key], float) or isinstance(params[param_key], int)
+            param_widget = None  # Инициализация переменной
 
             if isinstance(params[param_key], bool):
-                    param_widget = ParamCheckBox(param_key)
-                    val = params[param_key]
-                    param_widget.setChecked(val)
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+                param_widget = ParamCheckBox(param_key)
+                val = params[param_key]
+                param_widget.setChecked(val)
+                param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
 
             elif is_str or is_digital:
                 param_widget = ParamLineEditor(param_key, force_digital=is_digital)
@@ -179,7 +184,10 @@ class ParamWidget(QWidget):
                 param_dict = params[param_key]
                 display_param_name = get_param_display_name(param_key, param_dict)
                 value = params[param_key]['value']
-                if param_dict['type'] == 'selector':
+                param_widget = None  # Ensure initialization
+                param_type = param_dict['type'] if 'type' in param_dict else 'line_editor'
+
+                if param_type == 'selector':
                     if 'url' in param_key:
                         size = CONFIG_COMBOBOX_MIDEAN
                     else:
@@ -187,8 +195,6 @@ class ParamWidget(QWidget):
 
                     param_widget = ParamComboBox(param_key, param_dict['options'], size=size, scrollWidget=scrollWidget)
 
-                    # if cuda is not available, disable combobox 'cuda' item
-                    # https://stackoverflow.com/questions/38915001/disable-specific-items-in-qcombobox
                     if param_key == 'device' and DEFAULT_DEVICE == 'cpu':
                         param_dict['value'] = 'cpu'
                         for ii, device in enumerate(param_dict['options']):
@@ -197,36 +203,58 @@ class ParamWidget(QWidget):
                                 item = model.item(ii, 0)
                                 item.setEnabled(False)
                     param_widget.setCurrentText(str(value))
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
-                elif param_dict['type'] == 'editor':
+
+                elif param_type == 'editor':
                     param_widget = ParamEditor(param_key)
                     param_widget.setText(value)
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
-                elif param_dict['type'] == 'checkbox':
+
+                elif param_type == 'checkbox':
                     param_widget = ParamCheckBox(param_key)
                     if isinstance(value, str):
                         value = value.lower().strip() == 'true'
                         params[param_key]['value'] = value
                     param_widget.setChecked(value)
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
-                elif param_dict['type'] == 'pushbtn':
+
+                elif param_type == 'pushbtn':
                     param_widget = ParamPushButton(param_key, param_dict)
-                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
                     require_label = False
-                if 'description' in param_dict:
-                    param_widget.setToolTip(param_dict['description'])
+
+                elif param_type == 'line_editor':
+                    param_widget = ParamLineEditor(param_key, force_digital=is_digital)
+                    param_widget.setText(str(value))
+
+                if param_widget is not None:
+                    param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
+                    if 'description' in param_dict:
+                        param_widget.setToolTip(param_dict['description'])
 
             widget_idx = 0
             if require_label:
                 param_label = ParamNameLabel(display_param_name)
                 param_layout.addWidget(param_label, ii, 0)
                 widget_idx = 1
-            param_layout.addWidget(param_widget, ii, widget_idx)
+            if param_widget:
+                param_layout.addWidget(param_widget, ii, widget_idx)
+            else:
+                raise ValueError(f"Failed to initialize widget for key: {param_key}")
 
     def on_paramwidget_edited(self, param_key, param_content):
-            content_dict = {'content': param_content}
-            self.paramwidget_edited.emit(param_key, content_dict)
+        content_dict = {'content': param_content}
+        self.paramwidget_edited.emit(param_key, content_dict)
 
+class ModuleParseWidgets(QWidget):
+    def addModulesParamWidgets(self, ocr_instance):
+        self.params = ocr_instance.get_params()
+        self.on_module_changed()
+
+    def on_module_changed(self):
+        self.updateModuleParamWidget()
+
+    def updateModuleParamWidget(self):
+        widget = ParamWidget(self.params, scrollWidget=self)
+        layout = QVBoxLayout()
+        layout.addWidget(widget)
+        self.setLayout(layout)
 
 class ModuleConfigParseWidget(QWidget):
     module_changed = Signal(str)
