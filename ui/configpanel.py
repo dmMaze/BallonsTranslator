@@ -350,6 +350,7 @@ class ConfigPanel(Widget):
 
     save_config = Signal()
     unload_models = Signal()
+    reload_textstyle = Signal(bool)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -365,7 +366,7 @@ class ConfigPanel(Widget):
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
         label_startup = self.tr('Startup')
-        label_lettering = self.tr('Typesetting')
+        label_typesetting = self.tr('Typesetting')
         label_save = self.tr('Save')
         label_saladict = self.tr('SalaDict')
     
@@ -377,7 +378,7 @@ class ConfigPanel(Widget):
         ])
         generalTableItem.appendRows([
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_lettering, CONFIG_FONTSIZE_TABLE),
+            TableItem(label_typesetting, CONFIG_FONTSIZE_TABLE),
             TableItem(label_save, CONFIG_FONTSIZE_TABLE),
             TableItem(label_saladict, CONFIG_FONTSIZE_TABLE),
         ])
@@ -414,7 +415,7 @@ class ConfigPanel(Widget):
         self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
-        generalConfigPanel.addTextLabel(label_lettering)
+        generalConfigPanel.addTextLabel(label_typesetting)
         dec_program_str = self.tr('decide by program')
         use_global_str = self.tr('use global setting')
 
@@ -465,6 +466,9 @@ class ConfigPanel(Widget):
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
         self.let_uppercase_checker, _ = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
+
+        self.let_textstyle_indep_checker, _ = generalConfigPanel.addCheckBox(self.tr('Independent text styles for each projects'))
+        self.let_textstyle_indep_checker.stateChanged.connect(self.on_textstyle_indep_changed)
 
         generalConfigPanel.addTextLabel(label_save)
         self.rst_imgformat_combobox, imsave_sublock = generalConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP'], self.tr('Result image format'))
@@ -549,6 +553,10 @@ class ConfigPanel(Widget):
     def on_uppercase_changed(self):
         pcfg.let_uppercase_flag = self.let_uppercase_checker.isChecked()
 
+    def on_textstyle_indep_changed(self):
+        pcfg.let_textstyle_indep_flag = self.let_textstyle_indep_checker.isChecked()
+        self.reload_textstyle.emit(pcfg.let_textstyle_indep_flag)
+
     def on_rst_imgformat_changed(self):
         pcfg.imgsave_ext = '.' + self.rst_imgformat_combobox.currentText().lower()
 
@@ -615,6 +623,7 @@ class ConfigPanel(Widget):
         self.let_autolayout_adaptive_fntsize_checker.setChecked(pcfg.let_autolayout_adaptive_fntsz)
         self.selectext_minimenu_checker.setChecked(pcfg.textselect_mini_menu)
         self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
+        self.let_textstyle_indep_checker.setChecked(pcfg.let_textstyle_indep_flag)
         self.saladict_shortcut.setKeySequence(pcfg.saladict_shortcut)
         self.searchurl_combobox.setCurrentText(pcfg.search_url)
         self.ocr_config_panel.restoreEmptyOCRChecker.setChecked(pcfg.restore_ocr_empty)
