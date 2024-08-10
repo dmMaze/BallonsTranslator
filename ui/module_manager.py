@@ -547,6 +547,8 @@ def merge_config_module_params(config_params: Dict, module_keys: List, get_modul
                                 cparam['value'] = mv
                     else:
                         if type(cparam) != type(mparam):
+                            if not isinstance(mparam, dict) and isinstance(cparam, dict):
+                                cparam = cparam['value']
                             try:
                                 cfg_param[mk] = type(mparam)(cparam)
                             except ValueError:

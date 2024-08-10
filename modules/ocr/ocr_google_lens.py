@@ -123,15 +123,10 @@ class LensAPI:
         }
 
 
-@register_OCR('lens_api_ocr')
+@register_OCR('google_lens')
 class OCRLensAPI(OCRBase):
     params = {
         "delay": 1.0,
-        'debug': {
-            'type': 'checkbox',
-            'value': False,
-            'description': 'Enable debug logging'
-        },
         'newline_handling': {
             'type': 'selector',
             'options': [
@@ -151,19 +146,15 @@ class OCRLensAPI(OCRBase):
     
     @property
     def request_delay(self):
-        return float(self.params['delay']['value'])
-    
-    @property
-    def debug_mode(self):
-        return bool(self.params['debug']['value'])
+        return self.get_param_value('delay')
     
     @property
     def newline_handling(self):
-        return self.params['newline_handling']['value']
+        return self.get_param_value('newline_handling')
     
     @property
     def no_uppercase(self):
-        return bool(self.params['no_uppercase']['value'])
+        return self.get_param_value('no_uppercase')
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
@@ -270,6 +261,7 @@ class OCRLensAPI(OCRBase):
         time_since_last_request = current_time - self.last_request_time
         if self.debug_mode:
             self.logger.info(f'Time since last request: {time_since_last_request} seconds')
+
         if time_since_last_request < self.request_delay:
             sleep_time = self.request_delay - time_since_last_request
             if self.debug_mode:

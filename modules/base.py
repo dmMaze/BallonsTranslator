@@ -6,6 +6,8 @@ from copy import deepcopy
 from collections import OrderedDict
 
 from utils.logger import logger as LOGGER
+from utils import shared
+
 
 GPUINTENSIVE_SET = {'cuda', 'mps'}
 
@@ -143,6 +145,11 @@ class BaseModule:
     
     def __del__(self):
         self.unload_model()
+
+    @property
+    def debug_mode(self):
+        return shared.DEBUG
+
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import torch
