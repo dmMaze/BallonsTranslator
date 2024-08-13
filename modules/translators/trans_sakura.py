@@ -65,7 +65,8 @@ class SakuraDict():
         self.dict_str = ""
         self.version = version
         if not os.path.exists(path):
-            self.logger.warning(f"字典文件不存在: {path}")
+            if self.version != "0.9":
+                self.logger.warning(f"字典文件不存在: {path}")
             return
         self.path = path
         if self.version == "0.10":
@@ -74,6 +75,8 @@ class SakuraDict():
             except Exception as e:
                 self.logger.warning(f"载入字典失败: {e}")
         elif self.version == "0.9":
+            pass
+        else:
             self.logger.info("您当前选择了Sakura 0.9版本，暂不支持术语表")
 
     def load_dict(self, dic_path: str) -> None:
@@ -86,6 +89,9 @@ class SakuraDict():
             字典文件路径
 
         """
+        if self.version == "0.9":
+            return
+
         dic_type = self._detect_type(dic_path)
         if dic_type == "galtransl":
             self._load_galtransl_dic(dic_path)
@@ -106,6 +112,9 @@ class SakuraDict():
             字典文件路径
 
         """
+        if self.version == "0.9":
+            return
+
         with open(dic_path, encoding="utf8") as f:
             dic_lines = f.readlines()
         if not dic_lines:
@@ -137,6 +146,9 @@ class SakuraDict():
             字典文件路径
 
         """
+        if self.version == "0.9":
+            return
+
         with open(dic_path, encoding="utf8") as f:
             dic_lines = f.readlines()
         if not dic_lines:
@@ -169,6 +181,9 @@ class SakuraDict():
             字典文件路径
 
         """
+        if self.version == "0.9":
+            return
+
         with open(dic_path, encoding="utf8") as f:
             dic_json = json.load(f)
         if not dic_json:
@@ -201,6 +216,9 @@ class SakuraDict():
             字典类型，可能的值有"galtransl"、"sakura"、"json"和"unknown"
 
         """
+        if self.version == "0.9":
+            return "unknown"
+
         with open(dic_path, encoding="utf8") as f:
             dic_lines = f.readlines()
         self.logger.debug(f"检测字典类型: {dic_path}")
@@ -227,6 +245,9 @@ class SakuraDict():
             字典内容字符串
 
         """
+        if self.version == "0.9":
+            return ""
+
         if not self.dict_str:
             try:
                 self.load_dict(self.path)
@@ -249,6 +270,9 @@ class SakuraDict():
             字典内容字符串
 
         """
+        if self.version == "0.9":
+            return ""
+
         if not self.dict_str:
             try:
                 self.load_dict(self.path)
@@ -280,6 +304,9 @@ class SakuraDict():
             字典内容的JSON格式字符串
 
         """
+        if self.version == "0.9":
+            return ""
+
         if not self.dict_str:
             try:
                 self.load_dict(self.path)
@@ -311,6 +338,9 @@ class SakuraDict():
             字典类型，可选值有"sakura"、"galtransl"和"json"，默认为"sakura"
 
         """
+        if self.version == "0.9":
+            return
+
         if dict_type == "sakura":
             with open(dic_path, "w", encoding="utf8") as f:
                 f.write(self.dict_str)
@@ -722,7 +752,7 @@ class SakuraTranslator(BaseTranslator):
                             e, 'Sakura翻译失败。返回原始文本。')
                         return '\n'.join(prompt)
                     self.logger.warning(
-                        f'Sakura因服务器错误而进行重试。 当前API baseurl为"{self.api_base}"，尝试次数： {server_error_attempt}, 错误信息： {e}')
+                        f'Sakura因服务器错误而进行重试，请检查Sakura是否已经启动，API baseurl是否正确，并关闭一切代理软件后重试。\n 当前API baseurl为"{self.api_base}"，尝试次数： {server_error_attempt}, 错误信息： {e}')
                     time.sleep(1)
                 except openai.error.APIConnectionError as e:
                     server_error_attempt += 1
