@@ -167,6 +167,8 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         layout.addWidget(self.inpaint_bar)
         layout.addWidget(self.translate_bar)
 
+        self.setFixedWidth(self.sizeHint().width())
+
     def updateDetectProgress(self, value: int, msg: str = ''):
         self.detect_bar.updateProgress(value, msg)
 
