@@ -8,11 +8,9 @@ import requests
 from PIL import Image
 import io
 import time
-# import json5
 import json5
 import lxml.html
 import http.cookiejar as cookielib
-import logging
 
 from .base import register_OCR, OCRBase, TextBlock
 
@@ -35,13 +33,6 @@ class LensCore:
         self.cookie_jar = cookielib.CookieJar()
         self.session = requests.Session()
         self.session.cookies = self.cookie_jar
-        self.logger = logging.getLogger('LensCore')
-        self.logger.setLevel(logging.INFO)
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        ch.setFormatter(formatter)
-        self.logger.addHandler(ch)
 
     def scan_by_data(self, data, mime, dimensions):
         headers = self.HEADERS.copy()
@@ -84,13 +75,6 @@ class Lens(LensCore):
 class LensAPI:
     def __init__(self):
         self.lens = Lens()
-        self.logger = logging.getLogger('LensAPI')
-        self.logger.setLevel(logging.INFO)
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        ch.setFormatter(formatter)
-        self.logger.addHandler(ch)
 
     @staticmethod
     def extract_full_text(data):
