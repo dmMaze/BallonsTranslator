@@ -761,7 +761,7 @@ class SakuraTranslator(BaseTranslator):
                             e, 'Sakura翻译失败。返回原始文本。')
                         return '\n'.join(prompt)
                     self.logger.warning(
-                        f'Sakura因服务器连接错误而进行重试。 当前API baseurl为"{self.api_base}"，尝试次数： {server_error_attempt}, 错误信息： {e}')
+                        f'Sakura因服务器连接错误而进行重试，请检查Sakura是否已经启动，API baseurl是否正确，并关闭一切代理软件后重试。\n 当前API baseurl为"{self.api_base}"，尝试次数： {server_error_attempt}, 错误信息： {e}')
                     time.sleep(1)
                 except FileNotFoundError:
                     self.logger.warning(
