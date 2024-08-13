@@ -96,6 +96,12 @@ class BaseModule:
     def updateParam(self, param_key: str, param_content):
         self.set_param_value(param_key, param_content)
 
+    @property
+    def low_vram_mode(self):
+        if 'low vram mode' in self.params:
+            return self.get_param_value('low vram mode')
+        return False
+
     def is_cpu_intensive(self)->bool:
         if self.params is not None and 'device' in self.params:
             return self.params['device']['value'] == 'cpu'

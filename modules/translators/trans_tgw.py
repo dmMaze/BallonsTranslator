@@ -30,7 +30,12 @@ class TGWTranslator(BaseTranslator):
   		"repetition_penalty": 1,
 		"repetition_penalty_range": 1024,
 		"do_sample": 'true',
-        "frequency_penalty": 0
+        "frequency_penalty": 0,
+        "low vram mode": {
+            'value': False,
+            'description': 'check it if you\'re running it locally on a single device and encountered a crash due to vram OOM',
+            'type': 'checkbox',
+        }
     }
     
     def _setup_translator(self):

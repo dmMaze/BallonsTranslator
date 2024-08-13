@@ -73,6 +73,11 @@ class GPTTranslator(BaseTranslator):
         '3rd party api url': '',
         'frequency penalty': 0.0,
         'presence penalty': 0.0,
+        'low vram mode': {
+            'value': False,
+            'description': 'check it if you\'re running it locally on a single device and encountered a crash due to vram OOM',
+            'type': 'checkbox',
+        }
     }
 
     def _setup_translator(self):

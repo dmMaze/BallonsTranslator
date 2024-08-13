@@ -122,9 +122,7 @@ sh scripts/build-macos-app.sh
 > 📌The packaged app is at ./data/BallonsTranslator/dist/BallonsTranslator.app, drag the app to macOS application folder to install. Ready to use out of box without extra Python config.
 
 
-</details>
-
-To use Sugoi translator(Japanese-English only), download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data/models.  
+</details> 
 
 # Usage
 
@@ -226,8 +224,8 @@ Available translators: Google, DeepL, ChatGPT, Sugoi, Caiyun, Baidu. Papago, and
  * Google shuts down translate service in China, please set corresponding 'url' in config panel to *.com.
  * [Caiyun](https://dashboard.caiyunapp.com/), [ChatGPT](https://platform.openai.com/playground), [Yandex](https://yandex.com/dev/translate/), [Baidu](http://developers.baidu.com/), and [DeepL](https://www.deepl.com/docs-api/api-access) translators needs to require a token or api key.
  * DeepL & Sugoi translator (and it's CT2 Translation conversion) thanks to [Snowad14](https://github.com/Snowad14).
- * Sugoi translates Japanese to English completely offline.
- * [Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame)
+ * Sugoi translates Japanese to English completely offline. Download [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), move "sugoi_translator" into the BallonsTranslator/ballontranslator/data/models. 
+ * [Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame), check ```low vram mode``` in config panel if you\'re running it locally on a single device and encountered a crash due to vram OOM (enabled by default).
 
 For other good offline English translators, please refer to this [thread](https://github.com/dmMaze/BallonsTranslator/discussions/515).  
 To add a new translator, please reference [how_to_add_new_translator](doc/how_to_add_new_translator.md), it is simple as subclass a BaseClass and implementing two interfaces, then you can use it in the application, you are welcome to contribute to the project.  
