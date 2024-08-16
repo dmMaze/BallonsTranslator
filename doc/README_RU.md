@@ -223,6 +223,7 @@ OCR и перевод выделенной области
  * [Caiyun](https://dashboard.caiyunapp.com/), [ChatGPT](https://platform.openai.com/playground), [Яндекс](https://yandex.com/dev/translate/ ), [Baidu](http://developers.baidu.com/) и [DeepL](https://www.deepl.com/docs-api/api-access) переводчикам требуется токен или ключ API. .
  * Переводчик DeepL и Sugoi (и преобразование перевода CT2) благодаря [Snowad14](https://github.com/Snowad14).
  * Sugoi переводит с японского на английский полностью в автономном режиме.
+ * **Deeplx API**. При данном выборе вам потребуется ссылка на свой прокси сервер запросов. Вы можете создать его на [Vercel](https://github.com/bropines/Deeplx-vercel) Или поставить на собственный сервер, используя бинарники [deeplx](https://github.com/OwO-Network/DeepLX). Как настраивать на собственном VPS вы можете уточнить у ChatGPT или его аналогов. Для Китая и Tencent советую использовать версию от [LegendLeo](https://github.com/LegendLeo/deeplx-serverless/).
 
 Чтобы добавить новый переводчик, обратитесь к [how_to_add_new_translator](how_to_add_new_translator.md), это просто подкласс BaseClass и реализация двух интерфейсов, затем вы можете использовать его в приложении, вы можете внести свой вклад в проект.
 
