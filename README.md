@@ -192,6 +192,7 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
  * papago  
  * DeepL 和 Sugoi (及它的 CT2 Translation 转换)翻译器，感谢 [Snowad14](https://github.com/Snowad14)，如果要使用Sugoi翻译器(仅日译英)，下载[离线模型](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm)，将 ```sugoi_translator``` 移入 BallonsTranslator/ballontranslator/data/models。 
  * 支持 [Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame)。如果在本地单卡上运行且显存不足，可以在设置面板里勾选 ```low vram mode``` (默认启用)。
+ * DeepLX 请参考[Vercel](https://github.com/bropines/Deeplx-vercel) 或 [deeplx](https://github.com/OwO-Network/DeepLX)
 
 其它优秀的离线英文翻译模型请参考[这条讨论](https://github.com/dmMaze/BallonsTranslator/discussions/515)  
 如需添加新的翻译器请参考[加别的翻译器](doc/加别的翻译器.md)，本程序添加新翻译器只需要继承基类实现两个接口即可不需要理会代码其他部分，欢迎大佬提 pr

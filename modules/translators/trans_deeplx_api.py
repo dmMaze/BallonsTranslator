@@ -6,7 +6,7 @@ class DeepLTranslatorv2(BaseTranslator):
 
     concate_text = False
     params: Dict = {
-        'api_url': 'https://dpltrnslt.bropinesd.online/translate',  # EndPoint will be provided by the user
+        'api_url': '',  # EndPoint will be provided by the user
         'delay': 0.0,
     }
 # Setup your endpoint api with https://github.com/OwO-Network/DeepLX
