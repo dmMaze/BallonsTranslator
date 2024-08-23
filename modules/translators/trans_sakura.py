@@ -365,7 +365,7 @@ class SakuraTranslator(BaseTranslator):
             'description': 'check it if you\'re running it locally on a single device and encountered a crash due to vram OOM',
             'type': 'checkbox',
         },
-        'api baseurl': 'https://127.0.0.1:8080/v1',
+        'api baseurl': 'http://127.0.0.1:8080/v1',
         'dict path': '',
         'version': {
             'type': 'selector',
