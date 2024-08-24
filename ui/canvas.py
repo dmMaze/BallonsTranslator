@@ -21,8 +21,8 @@ from .page_search_widget import PageSearchWidget
 from utils import shared as C
 from utils.config import pcfg
 
-CANVAS_SCALE_MAX = 3.0
-CANVAS_SCALE_MIN = 0.1
+CANVAS_SCALE_MAX = 10.0
+CANVAS_SCALE_MIN = 0.01
 CANVAS_SCALE_SPEED = 0.1
 
 
