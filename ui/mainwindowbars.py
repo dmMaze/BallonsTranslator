@@ -363,17 +363,15 @@ class TitleBar(Widget):
         drawBoardAction.setShortcut(QKeySequence('P'))
         texteditAction = QAction(self.tr('Text Editor'), self)
         texteditAction.setShortcut(QKeySequence('T'))
-        textStylesPanel = QAction(self.tr('Text Styles Panel'), self)
         importTextStyles = QAction(self.tr('Import Text Styles'), self)
         exportTextStyles = QAction(self.tr('Export Text Styles'), self)
         self.darkModeAction = darkModeAction = QAction(self.tr('Dark Mode'), self)
         darkModeAction.setCheckable(True)
 
-        viewMenu = QMenu(self.viewToolBtn)
+        self.viewMenu = viewMenu = QMenu(self.viewToolBtn)
         viewMenu.addMenu(self.displayLanguageMenu)
         viewMenu.addActions([drawBoardAction, texteditAction])
         viewMenu.addSeparator()
-        viewMenu.addAction(textStylesPanel)
         viewMenu.addAction(importTextStyles)
         viewMenu.addAction(exportTextStyles)
         viewMenu.addSeparator()
@@ -382,7 +380,6 @@ class TitleBar(Widget):
         self.viewToolBtn.setPopupMode(QToolButton.InstantPopup)
         self.textedit_trigger = texteditAction.triggered
         self.drawboard_trigger = drawBoardAction.triggered
-        self.expandtstylepanel_trigger = textStylesPanel.triggered
         self.importtstyle_trigger = importTextStyles.triggered
         self.exporttstyle_trigger = exportTextStyles.triggered
         self.darkmode_trigger = darkModeAction.triggered

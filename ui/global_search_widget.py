@@ -10,7 +10,8 @@ from utils.logger import logger as LOGGER
 from .page_search_widget import SearchEditor, HighlightMatched, SEARCHRST_HIGHLIGHT_COLOR
 from .misc import doc_replace
 from utils.config import pcfg
-from .stylewidgets import Widget, NoBorderPushBtn, ProgressMessageBox
+from .stylewidgets import Widget, NoBorderPushBtn
+from .message import ProgressMessageBox
 from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
 from .config_proj import ProjImgTrans

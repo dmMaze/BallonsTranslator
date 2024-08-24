@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 from functools import partial
 
-from qtpy.QtWidgets import QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
+from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
 from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard
 
@@ -27,14 +27,14 @@ from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
-from .stylewidgets import FrameLessMessageBox, ImgtransProgressMessageBox, Widget
+from .stylewidgets import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
 from . import shared_widget as SW
-from .message import MessageBox
+from .message import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox
 
 class PageListView(QListWidget):
 
@@ -76,6 +76,7 @@ class MainWindow(mainwindow_cls):
         self.create_errdialog.connect(self.on_create_errdialog)
         shared.create_infodialog_in_mainthread = self.create_infodialog.emit
         self.create_infodialog.connect(self.on_create_infodialog)
+        shared.register_view_widget = self.register_view_widget
 
         self.app = app
         self.backup_blkstyles = []
@@ -85,6 +86,7 @@ class MainWindow(mainwindow_cls):
         self.setupUi()
         self.setupConfig()
         self.setupShortcuts()
+        self.setupRegisterWidget()
         self.showMaximized()
         self.setAcceptDrops(True)
 
@@ -494,7 +496,6 @@ class MainWindow(mainwindow_cls):
         self.titleBar.run_trigger.connect(self.leftBar.runImgtransBtn.click)
         self.titleBar.run_woupdate_textstyle_trigger.connect(self.run_imgtrans_wo_textstyle_update)
         self.titleBar.translate_page_trigger.connect(self.bottomBar.transTranspageBtn.click)
-        self.titleBar.expandtstylepanel_trigger.connect(self.expand_tstyle_panel)
         self.titleBar.importtstyle_trigger.connect(self.import_tstyles)
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
@@ -1082,9 +1083,6 @@ class MainWindow(mainwindow_cls):
             self.canvas.search_widget.hide()
         self.canvas.updateLayers()
 
-    def expand_tstyle_panel(self):
-        self.textPanel.formatpanel.textstyle_panel.expand()
-
     def import_tstyles(self):
         ddir = osp.dirname(pcfg.text_styles_path)
         p = QFileDialog.getOpenFileName(self, self.tr("Import Text Styles"), ddir, None, "(.json)")
@@ -1297,7 +1295,50 @@ class MainWindow(mainwindow_cls):
             LOGGER.error(traceback.format_exc())
 
     def on_create_infodialog(self, info_dict: dict):
-
         QMessageBox.StandardButton.NoButton
         dialog = MessageBox(**info_dict)
         dialog.show()   # exec_ will block main thread
+
+    def setupRegisterWidget(self):
+        self.titleBar.viewMenu.addSeparator()
+        for cfg_name in shared.config_name_to_view_widget:
+            d = shared.config_name_to_view_widget[cfg_name]
+            widget: ViewWidget = d['widget']
+            action = QAction(widget.action_name, self.titleBar)
+            action.setCheckable(True)
+            visible = getattr(pcfg, cfg_name)
+            action.setChecked(visible)
+            action.triggered.connect(self.action_set_view_visible)
+            self.titleBar.viewMenu.addAction(action)
+            d['action'] = action
+            shared.action_to_view_config_name[action] = cfg_name
+            widget.set_expend_area(expend=getattr(pcfg, widget.config_expand_name), set_config=False)
+            widget.view_hide_btn_clicked.connect(self.on_hide_view_widget)
+            widget.setVisible(visible)
+
+    def register_view_widget(self, widget: ViewWidget):
+        assert widget.config_name not in shared.config_name_to_view_widget
+        d = {'widget': widget}
+        shared.config_name_to_view_widget[widget.config_name] = d
+
+    def action_set_view_visible(self):
+        action: QAction = self.sender()
+        show = action.isChecked()
+        cfg_name = shared.action_to_view_config_name[action]
+        widget: ViewWidget = shared.config_name_to_view_widget[cfg_name]['widget']
+        widget.setVisible(show)
+        setattr(pcfg, cfg_name, show)
+
+    def on_hide_view_widget(self, cfg_name: str):
+        d = shared.config_name_to_view_widget[cfg_name]
+        widget: ViewWidget = d['widget']
+        widget.setVisible(False)
+        action: QAction = d['action']
+        action.setChecked(False)
+        setattr(pcfg, cfg_name, False)
+
+    def set_textstyle_panel_visible(self, visible: bool):
+        pcfg.show_text_style_preset = visible
+        self.textPanel.formatpanel.textstyle_panel.setVisible(visible)
+
+    

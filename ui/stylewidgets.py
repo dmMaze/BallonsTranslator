@@ -1,11 +1,9 @@
-from qtpy.QtWidgets import QLayout, QWidgetItem, QLayoutItem, QWidgetItem, QApplication, QAbstractScrollArea, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QProgressBar, QMessageBox, QVBoxLayout, QStyle, QSlider, QHBoxLayout, QStyle, QStyleOptionSlider, QColorDialog, QPushButton
-from qtpy.QtCore import QParallelAnimationGroup, QEvent, Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize, QRect, QRectF, Signal, QPoint, Property, QAbstractAnimation
-from qtpy.QtGui import QFontMetrics, QMouseEvent, QShowEvent, QWheelEvent, QPainter, QFontMetrics, QColor
+from qtpy.QtWidgets import QApplication, QAbstractScrollArea, QGraphicsOpacityEffect, QFrame, QWidget, QComboBox, QLabel, QVBoxLayout, QStyle, QSlider, QHBoxLayout, QStyle, QStyleOptionSlider, QColorDialog, QPushButton, QSizePolicy
+from qtpy.QtCore import QEvent, Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize, QRect, QRectF, Signal, QPoint, Property, QAbstractAnimation
+from qtpy.QtGui import QIcon, QFontMetrics, QMouseEvent, QWheelEvent, QPainter, QFontMetrics, QColor
 from typing import List, Union, Tuple
-import time
-import datetime
 
-from utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, HORSLIDER_FIXHEIGHT
+from utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT
 from utils import shared as C
 from utils.config import pcfg
 
@@ -21,6 +19,136 @@ class Widget(QWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+
+# class ViewWidgetMetaclass(type, Widget):
+#     def __call__(cls, *args, **kwargs):
+#         """Called when you call MyNewClass() """
+#         widget = type.__call__(cls, *args, **kwargs)
+#         C.register_view_widget(widget)
+#         return widget
+
+
+class ViewWidget(Widget):
+
+    config_name: str = ''
+    config_expand_name: str = ''
+    action_name: str = ''
+    view_hide_btn_clicked = Signal(str)
+    expend_changed = Signal()
+
+    def __init__(self, content_widget: Widget, text=None, parent=None, *args, **kwargs):
+        super().__init__(parent=parent, *args, **kwargs)
+        
+        self.title_label = ExpandLabel(text, self)
+        self.title_label.hidelabel.clicked.connect(self.on_view_hide_btn_clicked)
+        self.content_widget = content_widget
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.content_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        self.title_label.clicked.connect(self.set_expend_area)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+
+    def on_view_hide_btn_clicked(self):
+        self.view_hide_btn_clicked.emit(self.config_name)
+    
+    def register_view_widget(self, config_name: str, config_expand_name: str, action_name: str):
+        self.config_name = config_name
+        self.config_expand_name = config_expand_name
+        self.action_name = action_name
+        C.register_view_widget(self)
+
+    def set_expend_area(self, expend: bool = None, set_config: bool = True):
+        if expend is None:
+            return self.set_expend_area(self.title_label.expanded)
+        if self.title_label.expanded != expend:
+            self.title_label.setExpand(expend)
+        self.content_widget.setVisible(expend)
+        if set_config:
+            setattr(pcfg, self.config_expand_name, expend)
+
+    def setTitle(self, text: str):
+        self.title_label.textlabel.setText(text)
+
+    def elidedText(self, text: str):
+        fm = QFontMetrics(self.title_label.font())
+        return fm.elidedText(text, Qt.TextElideMode.ElideRight, self.content_widget.width() - 40)
+
+    def title(self) -> str:
+        return self.title_label.textlabel.text()
+
+
+class HidePanelButton(QPushButton):
+    pass
+
+
+CHEVRON_SIZE = 20
+def chevron_down():
+    return QIcon(r'icons/chevron-down.svg').pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
+
+def chevron_right():
+    return QIcon(r'icons/chevron-right.svg').pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
+
+
+class ExpandLabel(Widget):
+
+    clicked = Signal()
+
+    def __init__(self, text=None, parent=None, *args, **kwargs):
+        super().__init__(parent=parent, *args, **kwargs)
+        self.textlabel = QLabel(self)
+        self.textlabel.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        font = self.textlabel.font()
+        if C.ON_MACOS:
+            font.setPointSize(13)
+        else:
+            font.setPointSizeF(10)
+        self.textlabel.setFont(font)
+        self.arrowlabel = QLabel(self)
+        self.arrowlabel.setFixedSize(CHEVRON_SIZE, CHEVRON_SIZE)
+        self.arrowlabel.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.hidelabel = HidePanelButton(self)
+        self.hidelabel.setVisible(False)
+
+        if text is not None:
+            self.textlabel.setText(text)
+        layout = QHBoxLayout(self)
+        layout.addWidget(self.arrowlabel)
+        layout.addWidget(self.textlabel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(1)
+        layout.addStretch(-1)
+        layout.addWidget(self.hidelabel)
+    
+        self.expanded = True
+        self.setExpand(True)
+        self.setFixedHeight(26)
+
+    def enterEvent(self, event) -> None:
+        self.hidelabel.setVisible(True)
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self.hidelabel.setVisible(False)
+        return super().leaveEvent(event)
+
+    def setExpand(self, expand: bool):
+        self.expanded = expand
+        if expand:
+            self.arrowlabel.setPixmap(chevron_down())
+        else:
+            self.arrowlabel.setPixmap(chevron_right())
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.setExpand(not self.expanded)
+            pcfg.expand_tstyle_panel = self.expanded
+            self.clicked.emit()
+        return super().mousePressEvent(e)
 
 
 class FadeLabel(QLabel):
@@ -59,145 +187,6 @@ class SeparatorWidget(QFrame):
         super().__init__(*args, **kwargs)
         self.setFrameShape(QFrame.HLine)
         self.setFrameShadow(QFrame.Sunken)
-
-
-class TaskProgressBar(Widget):
-    def __init__(self, description: str = '', verbose=False, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        self.progressbar = QProgressBar(self)
-        self.progressbar.setTextVisible(False)
-        self.textlabel = QLabel(self)
-        self.description = description
-        self.text_len = 89
-        layout = QVBoxLayout(self)
-
-        self.verbose = verbose
-        # if not verbose:
-        
-        if verbose:
-            self.start_time = 0
-            self.verbose_label = QLabel(self)
-            hl = QHBoxLayout()
-            hl.addWidget(self.textlabel)
-            hl.addStretch(1)
-            hl.addWidget(self.verbose_label)
-            layout.addLayout(hl)
-        else:
-            layout.addWidget(self.textlabel)
-            
-        layout.addWidget(self.progressbar)
-        self.updateProgress(0)
-
-    def updateProgress(self, progress: int, msg: str = ''):
-        self.progressbar.setValue(progress)
-        if self.description:
-            msg = self.description + msg
-        if len(msg) > self.text_len - 3:
-            msg = msg[:self.text_len - 3] + '...'
-        elif len(msg) < self.text_len:
-            pads = self.text_len - len(msg)
-            msg = msg + ' ' * pads
-        self.textlabel.setText(msg)
-        self.progressbar.setValue(progress)
-
-        if self.verbose:
-            if progress == 0:
-                self.verbose_label.setText('')
-                self.start_time = time.time()
-            elif progress == 100:
-                self.verbose_label.setText('')
-            else:
-                cur_time = time.time()
-                left_progress = 100 - progress
-                eta = left_progress / progress * (cur_time - self.start_time + 1e-6)
-                eta = datetime.timedelta(seconds=int(round(eta)))
-                added_str = f'{progress}% ETA {eta}'
-                self.verbose_label.setText(added_str)
-
-
-class FrameLessMessageBox(QMessageBox):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        
-
-class ProgressMessageBox(QDialog):
-    showed = Signal()
-    def __init__(self, task_name: str = None, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setModal(True)
-
-        layout = QVBoxLayout(self)
-        layout.setSpacing(0)
-        layout.setContentsMargins(20, 10, 20, 30)
-
-        self.task_progress_bar: TaskProgressBar = None
-        if task_name is not None:
-            self.task_progress_bar = TaskProgressBar(task_name)
-            layout.addWidget(self.task_progress_bar)
-
-    def updateTaskProgress(self, value: int, msg: str = ''):
-        if self.task_progress_bar is not None:
-            self.task_progress_bar.updateProgress(value, msg)
-
-    def setTaskName(self, task_name: str):
-        if self.task_progress_bar is not None:
-            self.task_progress_bar.description = task_name
-
-    def showEvent(self, e: QShowEvent) -> None:
-        self.showed.emit()
-        return super().showEvent(e)
-
-
-class ImgtransProgressMessageBox(ProgressMessageBox):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(None, *args, **kwargs)
-        
-        self.detect_bar = TaskProgressBar(self.tr('Detecting: '), True, self)
-        self.ocr_bar = TaskProgressBar(self.tr('OCR: '), True, self)
-        self.inpaint_bar = TaskProgressBar(self.tr('Inpainting: '), True, self)
-        self.translate_bar = TaskProgressBar(self.tr('Translating: '), True, self)
-
-        layout = self.layout()
-        layout.addWidget(self.detect_bar)
-        layout.addWidget(self.ocr_bar)
-        layout.addWidget(self.inpaint_bar)
-        layout.addWidget(self.translate_bar)
-
-        self.setFixedWidth(self.sizeHint().width())
-
-    def updateDetectProgress(self, value: int, msg: str = ''):
-        self.detect_bar.updateProgress(value, msg)
-
-    def updateOCRProgress(self, value: int, msg: str = ''):
-        self.ocr_bar.updateProgress(value, msg)
-
-    def updateInpaintProgress(self, value: int, msg: str = ''):
-        self.inpaint_bar.updateProgress(value, msg)
-
-    def updateTranslateProgress(self, value: int, msg: str = ''):
-        self.translate_bar.updateProgress(value, msg)
-    
-    def zero_progress(self):
-        self.updateDetectProgress(0)
-        self.updateOCRProgress(0)
-        self.updateInpaintProgress(0)
-        self.updateTranslateProgress(0)
-
-    def show_all_bars(self):
-        self.detect_bar.show()
-        self.ocr_bar.show()
-        self.translate_bar.show()
-        self.inpaint_bar.show()
-
-    def hide_all_bars(self):
-        self.detect_bar.hide()
-        self.ocr_bar.hide()
-        self.translate_bar.hide()
-        self.inpaint_bar.hide()
 
 
 class ColorPicker(QLabel):
@@ -563,6 +552,7 @@ class CheckableLabel(QLabel):
 
 class NoBorderPushBtn(QPushButton):
     pass
+
 
 class TextChecker(QLabel):
     checkStateChanged = Signal(bool)
@@ -995,207 +985,3 @@ class ScrollBar(QWidget):
 
     def wheelEvent(self, e):
         QApplication.sendEvent(self.parent().viewport(), e)
-
-
-class WidgetItem(QWidgetItem):
-
-    def sizeHint(self) -> QSize:
-        return self.widget().sizeHint()
-
-
-class FlowLayout(QLayout):
-    """ Flow layout """
-
-    def __init__(self, parent=None, needAni=False, isTight=False):
-        """
-        Parameters
-        ----------
-        parent:
-            parent window or layout
-
-        needAni: bool
-            whether to add moving animation
-
-        isTight: bool
-            whether to use the tight layout when widgets are hidden
-        """
-        super().__init__(parent)
-        self._items = []    # type: List[QLayoutItem]
-        self._anis = []
-        self._aniGroup = QParallelAnimationGroup(self)
-        self._verticalSpacing = 10
-        self._horizontalSpacing = 10
-        self.duration = 300
-        self.ease = QEasingCurve.Linear
-        self.needAni = needAni
-        self.isTight = isTight
-
-        self.height = 0
-
-    def insertWidget(self, idx: int, w: QWidget):
-        self.addChildWidget(w)
-        self.insertItem(idx, WidgetItem(w))
-
-    def insertItem(self, idx:int, item):
-        self._items.insert(idx, item)
-
-    def addItem(self, item):
-        self._items.append(item)
-
-    def addWidget(self, w):
-        super().addWidget(w)
-        if not self.needAni:
-            return
-
-        ani = QPropertyAnimation(w, b'geometry')
-        ani.setEndValue(QRect(QPoint(0, 0), w.size()))
-        ani.setDuration(self.duration)
-        ani.setEasingCurve(self.ease)
-        w.setProperty('flowAni', ani)
-        self._anis.append(ani)
-        self._aniGroup.addAnimation(ani)
-
-    def setAnimation(self, duration, ease=QEasingCurve.Linear):
-        """ set the moving animation
-
-        Parameters
-        ----------
-        duration: int
-            the duration of animation in milliseconds
-
-        ease: QEasingCurve
-            the easing curve of animation
-        """
-        if not self.needAni:
-            return
-
-        self.duration = duration
-        self.ease = ease
-
-        for ani in self._anis:
-            ani.setDuration(duration)
-            ani.setEasingCurve(ease)
-
-    def count(self):
-        return len(self._items)
-
-    def itemAt(self, index: int):
-        if 0 <= index < len(self._items):
-            return self._items[index]
-
-        return None
-
-    def takeAt(self, index: int):
-        if 0 <= index < len(self._items):
-            item = self._items[index]   # type: QWidgetItem
-            ani = item.widget().property('flowAni')
-            if ani:
-                self._anis.remove(ani)
-                self._aniGroup.removeAnimation(ani)
-                ani.deleteLater()
-
-            return self._items.pop(index).widget()
-
-        return None
-
-    def removeWidget(self, widget):
-        for i, item in enumerate(self._items):
-            if item.widget() is widget:
-                return self.takeAt(i)
-
-    def removeAllWidgets(self):
-        """ remove all widgets from layout """
-        while self._items:
-            self.takeAt(0)
-
-    def takeAllWidgets(self):
-        """ remove all widgets from layout and delete them """
-        while self._items:
-            w = self.takeAt(0)
-            if w:
-                w.deleteLater()
-
-    def expandingDirections(self):
-        return Qt.Orientation(0)
-
-    def hasHeightForWidth(self):
-        return True
-
-    def heightForWidth(self, width: int):
-        """ get the minimal height according to width """
-        return self._doLayout(QRect(0, 0, width, 0), False)
-
-    def setGeometry(self, rect: QRect):
-        super().setGeometry(rect)
-        self._doLayout(rect, True)
-
-    def sizeHint(self):
-        return self.minimumSize()
-
-    def minimumSize(self):
-        size = QSize()
-
-        for item in self._items:
-            size = size.expandedTo(item.minimumSize())
-
-        m = self.contentsMargins()
-        size += QSize(m.left()+m.right(), m.top()+m.bottom())
-
-        return size
-
-    def setVerticalSpacing(self, spacing: int):
-        """ set vertical spacing between widgets """
-        self._verticalSpacing = spacing
-
-    def verticalSpacing(self):
-        """ get vertical spacing between widgets """
-        return self._verticalSpacing
-
-    def setHorizontalSpacing(self, spacing: int):
-        """ set horizontal spacing between widgets """
-        self._horizontalSpacing = spacing
-
-    def horizontalSpacing(self):
-        """ get horizontal spacing between widgets """
-        return self._horizontalSpacing
-
-    def _doLayout(self, rect: QRect, move: bool):
-        """ adjust widgets position according to the window size """
-        aniRestart = False
-        margin = self.contentsMargins()
-        x = rect.x() + margin.left()
-        y = rect.y() + margin.top()
-        rowHeight = 0
-        spaceX = self.horizontalSpacing()
-        spaceY = self.verticalSpacing()
-
-        for i, item in enumerate(self._items):
-            if item.widget() and not item.widget().isVisible() and self.isTight:
-                continue
-
-            nextX = x + item.sizeHint().width() + spaceX
-
-            if nextX - spaceX > rect.right() and rowHeight > 0:
-                x = rect.x() + margin.left()
-                y = y + rowHeight + spaceY
-                nextX = x + item.sizeHint().width() + spaceX
-                rowHeight = 0
-
-            if move:
-                target = QRect(QPoint(x, y), item.sizeHint())
-                if not self.needAni:
-                    item.setGeometry(target)
-                elif target != self._anis[i].endValue():
-                    self._anis[i].stop()
-                    self._anis[i].setEndValue(target)
-                    aniRestart = True
-
-            x = nextX
-            rowHeight = max(rowHeight, item.sizeHint().height())
-
-        if self.needAni and aniRestart:
-            self._aniGroup.stop()
-            self._aniGroup.start()
-
-        self.height = y + rowHeight + margin.bottom() - rect.y()
-        return self.height

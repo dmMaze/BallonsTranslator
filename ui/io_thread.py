@@ -10,7 +10,7 @@ from utils.logger import logger as LOGGER
 from utils.io_utils import imread, imwrite
 from utils import create_error_dialog
 from .config_proj import ProjImgTrans
-from .stylewidgets import ProgressMessageBox
+from .message import ProgressMessageBox
 
 
 class ThreadBase(QThread):

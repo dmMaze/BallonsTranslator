@@ -20,12 +20,11 @@ modules.translators.SYSTEM_LANG = QLocale.system().name()
 from modules.textdetector import TextBlock
 from utils import shared
 from utils import create_error_dialog, create_info_dialog, connect_once
-from .stylewidgets import ImgtransProgressMessageBox
+from .message import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
+from .config_proj import ProjImgTrans
 from utils.config import pcfg
 cfg_module = pcfg.module
-from .config_proj import ProjImgTrans
-
 
 class ModuleThread(QThread):
 

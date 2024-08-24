@@ -107,6 +107,7 @@ class ProgramConfig(Config):
     display_lang: str = field(default_factory=lambda: shared.DEFAULT_DISPLAY_LANG) # to always apply shared.DEFAULT_DISPLAY_LANG
     imgsave_quality: int = 100
     imgsave_ext: str = '.png'
+    show_text_style_preset: bool = True
 
     @staticmethod
     def load(cfg_path: str):

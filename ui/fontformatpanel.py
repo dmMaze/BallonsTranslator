@@ -4,14 +4,15 @@ from typing import List
 
 from qtpy.QtWidgets import QComboBox, QMenu, QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QScrollArea, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
 from qtpy.QtCore import Signal, Qt, QRectF
-from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, QFontMetrics, QIcon, QColor, QPixmap, QPainter, QContextMenuEvent, QKeyEvent
+from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, QFontMetrics, QColor, QPixmap, QPainter, QContextMenuEvent, QKeyEvent
 
 
 from utils.fontformat import FontFormat
 from utils import shared
 from utils.config import pcfg, save_text_styles, text_styles
 from utils import config as C
-from .stylewidgets import Widget, ColorPicker, ClickableLabel, CheckableLabel, TextChecker, FlowLayout, ScrollBar
+from .stylewidgets import Widget, ColorPicker, ClickableLabel, CheckableLabel, TextChecker, ScrollBar, ViewWidget
+from .flow_layout import FlowLayout
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanel
 from . import funcmaps as FM
@@ -350,14 +351,6 @@ class FontFamilyComboBox(QFontComboBox):
             self.return_pressed = False
         else:
             self.apply_fontfamily()
-            
-
-CHEVRON_SIZE = 20
-def chevron_down():
-    return QIcon(r'icons/chevron-down.svg').pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
-
-def chevron_right():
-    return QIcon(r'icons/chevron-right.svg').pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
 
 
 class StyleLabel(QLineEdit):
@@ -820,92 +813,19 @@ class TextStyleArea(QScrollArea):
         return super().contextMenuEvent(e)
 
 
-class ExpandLabel(Widget):
+class TextStylePanel(ViewWidget):
 
-    clicked = Signal()
+    def __init__(self, text=None, parent=None, *args, **kwargs):
 
-    def __init__(self, text=None, parent=None, expanded=False, *args, **kwargs):
-        super().__init__(parent=parent, *args, **kwargs)
-        self.textlabel = QLabel(self)
-        self.textlabel.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        font = self.textlabel.font()
-        if shared.ON_MACOS:
-            font.setPointSize(13)
-        else:
-            font.setPointSizeF(10)
-        self.textlabel.setFont(font)
-        self.arrowlabel = QLabel(self)
-        self.arrowlabel.setFixedSize(CHEVRON_SIZE, CHEVRON_SIZE)
-        self.arrowlabel.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        style_area = TextStyleArea()
+        super().__init__(style_area, text=text, parent=parent, *args, **kwargs)
+        self.style_area = style_area
 
-        if text is not None:
-            self.textlabel.setText(text)
-        layout = QHBoxLayout(self)
-        layout.addWidget(self.arrowlabel)
-        layout.addWidget(self.textlabel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(1)
-        layout.addStretch(-1)
-    
-        self.expanded = False
-        self.setExpand(expanded)
-        self.setFixedHeight(26)
-
-    def setExpand(self, expand: bool):
-        self.expanded = expand
-        if expand:
-            self.arrowlabel.setPixmap(chevron_down())
-        else:
-            self.arrowlabel.setPixmap(chevron_right())
-
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        if e.button() == Qt.MouseButton.LeftButton:
-            self.setExpand(not self.expanded)
-            pcfg.expand_tstyle_panel = self.expanded
-            self.clicked.emit()
-        return super().mousePressEvent(e)
-
-
-class TextStylePanel(Widget):
-
-    def __init__(self, text=None, parent=None, expanded=True, *args, **kwargs):
-        super().__init__(parent=parent, *args, **kwargs)
-        
-        self.title_label = ExpandLabel(text, self, expanded=expanded)
-        self.style_area = TextStyleArea(self)
-
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.title_label)
-        layout.addWidget(self.style_area)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        if not expanded:
-            self.style_area.hide()
-        
-        self.title_label.clicked.connect(self.on_title_label_clicked)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-
-    def expand(self):
-        if not self.title_label.expanded:
-            self.title_label.setExpand(True)
-        if self.style_area.isHidden():
-            self.style_area.show()
-
-    def on_title_label_clicked(self):
-        if self.title_label.expanded:
-            self.style_area.show()
-        else:
-            self.style_area.hide()
-
-    def setTitle(self, text: str):
-        self.title_label.textlabel.setText(text)
-
-    def elidedText(self, text: str):
-        fm = QFontMetrics(self.title_label.font())
-        return fm.elidedText(text, Qt.TextElideMode.ElideRight, self.style_area.width() - 40)
-
-    def title(self) -> str:
-        return self.title_label.textlabel.text()
+        self.register_view_widget(
+            'show_text_style_preset',
+            'expand_tstyle_panel',
+            self.tr('Show Text Style Panel')
+        )
 
 
 class FontFormatPanel(Widget):
@@ -1003,7 +923,7 @@ class FontFormatPanel(Widget):
         lettersp_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
         
         self.global_fontfmt_str = self.tr("Global Font Format")
-        self.textstyle_panel = TextStylePanel(self.global_fontfmt_str, parent=self, expanded=pcfg.expand_tstyle_panel)
+        self.textstyle_panel = TextStylePanel(self.global_fontfmt_str, parent=self)
         self.textstyle_panel.style_area.active_text_style_label_changed.connect(self.on_active_textstyle_label_changed)
         self.textstyle_panel.style_area.active_stylename_edited.connect(self.on_active_stylename_edited)
 

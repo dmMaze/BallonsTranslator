@@ -141,3 +141,6 @@ def dump_cache():
     global CACHE_UPDATED
     CACHE_UPDATED = False
 
+config_name_to_view_widget = {}
+action_to_view_config_name = {}
+register_view_widget: lambda *args, **kwargs: None

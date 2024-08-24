@@ -937,7 +937,6 @@ TextAreaStyleButton {
     border-radius: 10px;
     padding: 5px;
     background-color: @widgetBackgroundColor;
-    
 }
 
 TextAreaStyleButton#NewTextStyleButton {
@@ -954,6 +953,19 @@ TextAreaStyleButton#ClearTextStyleButton::hover {
 
 TextAreaStyleButton::hover {
     background-color: #cad7ed;
+}
+
+HidePanelButton {
+    width: 12px;
+    height: 12px;
+    padding: 3px;
+    border: none;
+    background-color: @widgetBackgroundColor;
+    image: url(icons/titlebar_close.svg);
+}
+
+HidePanelButton::hover {
+    background-color: #FF605C;
 }
 
 Widget#TextStyleAreaContent {
