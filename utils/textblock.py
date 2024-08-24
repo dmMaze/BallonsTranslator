@@ -236,9 +236,21 @@ class TextBlock:
         return blk_dict
 
     def get_transformed_region(self, img: np.ndarray, idx: int, textheight: int, maxwidth: int = None) -> np.ndarray :
+        
+        line = np.round(np.array(self.lines[idx])).astype(np.int64)
+        x1, y1, x2, y2 = line[:, 0].min(), line[:, 1].min(), line[:, 0].max(), line[:, 1].max()
+        im_h, im_w = img.shape[:2]
+        x1 = np.clip(x1, 0, im_w)
+        y1 = np.clip(y1, 0, im_h)
+        x2 = np.clip(x2, 0, im_w)
+        y2 = np.clip(y2, 0, im_h)
+        img_croped = img[y1: y2, x1: x2]
+        
         direction = 'v' if self.src_is_vertical else 'h'
 
-        src_pts = np.array(self.lines[idx], dtype=np.float64)
+        src_pts = line.copy()
+        src_pts[:, 0] -= x1
+        src_pts[:, 1] -= y1
         middle_pnt = (src_pts[[1, 2, 3, 0]] + src_pts) / 2
         vec_v = middle_pnt[2] - middle_pnt[0]   # vertical vectors of textlines
         vec_h = middle_pnt[1] - middle_pnt[3]   # horizontal vectors of textlines
@@ -264,7 +276,7 @@ class TextBlock:
             if M is None:
                 print('invalid textpolygon to target img')
                 return np.zeros((textheight, textheight, 3), dtype=np.uint8)
-            region = cv2.warpPerspective(img, M, (w, h))
+            region = cv2.warpPerspective(img_croped, M, (w, h))
         elif direction == 'v' :
             w = int(textheight)
             h = int(round(textheight * ratio))
@@ -273,7 +285,7 @@ class TextBlock:
             if M is None:
                 print('invalid textpolygon to target img')
                 return np.zeros((textheight, textheight, 3), dtype=np.uint8)
-            region = cv2.warpPerspective(img, M, (w, h))
+            region = cv2.warpPerspective(img_croped, M, (w, h))
             region = cv2.rotate(region, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
         if maxwidth is not None:

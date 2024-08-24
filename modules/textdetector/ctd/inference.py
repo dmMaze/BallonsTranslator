@@ -343,7 +343,7 @@ class TextDetector:
         if lines.size == 0:
             lines = []
         else:
-            lines = lines.astype(np.int32)
+            lines = lines.astype(np.int64)
         blk_list = group_output(blks, lines, im_w, im_h, mask)
         mask_refined = refine_mask(img, mask, blk_list, refine_mode=refine_mode)
         if keep_undetected_mask:
