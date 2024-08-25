@@ -23,7 +23,7 @@ class FontFormat(Config):
     italic: bool = False
     alignment: int = 0
     vertical: bool = False
-    weight: int = 50
+    weight: int = None
     line_spacing: float = 1.2
     letter_spacing: float = 1.
     opacity: float = 1.

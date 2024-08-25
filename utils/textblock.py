@@ -76,7 +76,7 @@ class TextBlock:
     _bounding_rect: List = None
     default_stroke_width: float = 0.2
     stroke_decide_by_colordiff: bool = True
-    font_weight: int = 50
+    font_weight: int = None
     opacity: float = 1.
     shadow_radius: float = 0.
     shadow_strength: float = 1.
