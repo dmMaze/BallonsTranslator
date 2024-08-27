@@ -977,7 +977,7 @@ class MainWindow(mainwindow_cls):
             self.canvas.updateCanvas()
             self.st_manager.updateSceneTextitems()
 
-        if not pcfg.module.enable_detect:
+        if not pcfg.module.enable_detect and pcfg.module.enable_translate:
             for blkitem in self.st_manager.textblk_item_list:
                 blkitem.squeezeBoundingRect()
 
