@@ -359,6 +359,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         line_pos.setX(x_shift + line_pos.x())
                         line.setPosition(line_pos)
                     block = block.next()
+                for ii, xoffset in enumerate(self.x_offset_lst):
+                    self.x_offset_lst[ii] = xoffset + x_shift
         self.updateDrawOffsets()
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
