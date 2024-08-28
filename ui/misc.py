@@ -3,10 +3,21 @@ from pathlib import Path
 import numpy as np
 import os.path as osp
 from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
+from qtpy.QtCore import Qt, QPointF
 
 from utils import shared as C
 from utils.structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
-from utils.textblock import TextBlock
+
+
+QKEY = Qt.Key
+QNUMERIC_KEYS = {QKEY.Key_0:0,QKEY.Key_1:1,QKEY.Key_2:2,QKEY.Key_3:3,QKEY.Key_4:4,QKEY.Key_5:5,QKEY.Key_6:6,QKEY.Key_7:7,QKEY.Key_8:8,QKEY.Key_9:9}
+
+ARROWKEY2DIRECTION = {
+    QKEY.Key_Left: QPointF(-1., 0.),
+    QKEY.Key_Right: QPointF(1., 0.),
+    QKEY.Key_Up: QPointF(0., -1.),
+    QKEY.Key_Down: QPointF(0., 1.),
+}
 
 # return bgr tuple
 def qrgb2bgr(color: Union[QColor, Tuple, List] = None) -> Tuple[int, int, int]:

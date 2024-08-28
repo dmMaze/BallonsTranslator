@@ -11,7 +11,7 @@ try:
 except:
     from qtpy.QtGui import QUndoStack, QUndoCommand
 
-from .misc import ndarray2pixmap
+from .misc import ndarray2pixmap, QKEY, QNUMERIC_KEYS, ARROWKEY2DIRECTION
 from .config_proj import ProjImgTrans
 from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import TextBlkShapeControl
@@ -24,17 +24,6 @@ from utils.config import pcfg
 CANVAS_SCALE_MAX = 10.0
 CANVAS_SCALE_MIN = 0.01
 CANVAS_SCALE_SPEED = 0.1
-
-
-QKEY = Qt.Key
-QNUMERIC_KEYS = {QKEY.Key_0:0,QKEY.Key_1:1,QKEY.Key_2:2,QKEY.Key_3:3,QKEY.Key_4:4,QKEY.Key_5:5,QKEY.Key_6:6,QKEY.Key_7:7,QKEY.Key_8:8,QKEY.Key_9:9}
-
-ARROWKEY2DIRECTION = {
-    QKEY.Key_Left: QPointF(-1., 0.),
-    QKEY.Key_Right: QPointF(1., 0.),
-    QKEY.Key_Up: QPointF(0., -1.),
-    QKEY.Key_Down: QPointF(0., 1.),
-}
 
 class MoveByKeyCommand(QUndoCommand):
     def __init__(self, blkitems: List[TextBlkItem], direction: QPointF, shape_ctrl: TextBlkShapeControl) -> None:
@@ -192,6 +181,8 @@ class Canvas(QGraphicsScene):
     painting_shape = 0
     erasing_pen = QPen()
     image_edit_mode = ImageEditMode.NONE
+
+    # weird sometimes qt can't catch altmodifier: arow keys+alt
     alt_pressed = False
     scale_tool_mode = False
 
@@ -199,9 +190,9 @@ class Canvas(QGraphicsScene):
     proj_savestate_changed = Signal(bool)
     textstack_changed = Signal()
     drop_open_folder = Signal(str)
-
     context_menu_requested = Signal(QPoint, bool)
     incanvas_selection_changed = Signal()
+    switch_text_item = Signal(int, QKeyEvent)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -303,6 +294,10 @@ class Canvas(QGraphicsScene):
 
         self.textlayer_trans_slider: QSlider = None
         self.originallayer_trans_slider: QSlider = None
+
+    def on_switch_item(self, switch_delta: int, key_event: QKeyEvent = None):
+        if self.textEditMode() and self.editing_textblkitem is None:
+            self.switch_text_item.emit(switch_delta, key_event)
 
     def img_window_size(self):
         if self.imgtrans_proj.inpainted_valid:
@@ -480,8 +475,26 @@ class Canvas(QGraphicsScene):
         if self.hasFocus() and not self.block_selection_signal:
             self.incanvas_selection_changed.emit()
 
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if event.key() == QKEY.Key_Alt:
+            self.alt_pressed = False
+        return super().keyReleaseEvent(event)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
+
+        if key == QKEY.Key_Alt:
+            self.alt_pressed = True
+
+        modifiers = event.modifiers()
+        if (modifiers == Qt.KeyboardModifier.AltModifier or self.alt_pressed) and not key == QKEY.Key_Alt:
+            if key in {QKEY.Key_W, QKEY.Key_A, QKEY.Key_Left, QKEY.Key_Up}:
+                self.on_switch_item(-1, event)
+                return
+            elif key in {QKEY.Key_S, QKEY.Key_D, QKEY.Key_Right, QKEY.Key_Down}:
+                self.on_switch_item(1, event)
+                return
+
         if self.editing_textblkitem is not None:
             return super().keyPressEvent(event)
         elif key in ARROWKEY2DIRECTION:

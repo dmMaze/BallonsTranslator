@@ -5,7 +5,7 @@ import copy
 
 from qtpy.QtWidgets import QApplication, QWidget
 from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QPoint
-from qtpy.QtGui import QTextCursor, QFontMetrics, QFont, QTextCharFormat, QClipboard
+from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetrics, QFont, QTextCharFormat, QClipboard
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -325,6 +325,7 @@ class SceneTextManager(QObject):
         self.app = app     
         self.mainwindow = mainwindow
         self.canvas = canvas
+        canvas.switch_text_item.connect(self.on_switch_textitem)
         self.selectext_minimenu: SelectTextMiniMenu = None
         self.canvas.scalefactor_changed.connect(self.adjustSceneTextRect)
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
@@ -356,6 +357,33 @@ class SceneTextManager(QObject):
         self.hovering_transwidget : TransTextEdit = None
 
         self.prev_blkitem: TextBlkItem = None
+
+    def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None):
+        n_blk = len(self.textblk_item_list)
+        if n_blk < 1 or self.is_editting():
+            return
+
+        sel_blks = self.canvas.selected_text_items(sort=False)
+        if len(sel_blks) == 0:
+            return
+        sel_blk = sel_blks[0]
+        tgt_idx = sel_blk.idx + switch_delta
+        if tgt_idx < 0:
+            tgt_idx += n_blk
+        elif tgt_idx >= n_blk:
+            tgt_idx -= n_blk
+
+        blk = self.textblk_item_list[tgt_idx]
+        self.canvas.block_selection_signal = True
+        self.canvas.clearSelection()
+        blk.setSelected(True)
+        self.canvas.block_selection_signal = False
+        self.canvas.gv.ensureVisible(blk)
+        self.txtblkShapeControl.setBlkItem(blk)
+        edit = self.pairwidget_list[tgt_idx].e_trans
+        self.changeHoveringWidget(edit)
+        self.textEditList.set_selected_list([blk.idx])
+        key_event.accept()
 
     def setTextEditMode(self, edit: bool = False):
         if edit:

@@ -181,6 +181,7 @@ OCR & Translate Selected Area
 * ```0-9``` to adjust opacity of text layer
 * For text editing: bold - ```Ctrl+B```, underline - ```Ctrl+U```, Italics - ```Ctrl+I``` 
 * Set text shadow and transparency in the text style panel -> Effect.  
+* ```Ctrl+Arrow Keys``` or ```Ctrl+WASD``` to switch between text blocks.
   
 <img src="doc/src/configpanel.png">
 
