@@ -959,8 +959,9 @@ class SceneTextManager(QObject):
 
     def on_push_edit_stack(self, num_steps: int):
         edit: Union[TransTextEdit, SourceTextEdit] = self.sender()
-        blkitem = self.textblk_item_list[edit.idx] if type(edit) == TransTextEdit else None
-        self.canvas.push_undo_command(TextEditCommand(edit, num_steps, blkitem), update_pushed_step=False)
+        is_trans = type(edit) == TransTextEdit
+        blkitem = self.textblk_item_list[edit.idx] if is_trans else None
+        self.canvas.push_undo_command(TextEditCommand(edit, num_steps, blkitem), update_pushed_step=not is_trans)
 
     def on_propagate_textitem_edit(self, pos: int, added_text: str, input_method_used: bool):
         blk_item: TextBlkItem = self.sender()
