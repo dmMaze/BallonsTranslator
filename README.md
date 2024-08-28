@@ -146,7 +146,7 @@ OCR并翻译选中文本框
 * 0-9调整嵌字/原图透明度
 * 文本编辑下 ```Ctrl+B``` 加粗，```Ctrl+U``` 下划线，```Ctrl+I``` 斜体
 * 字体样式面板-"特效"修改透明度添加阴影
-* ```Ctrl+Arrow Keys``` 或 ```Ctrl+WASD``` 在文本块间切换
+* ```Alt+Arrow Keys``` 或 ```Alt+WASD``` 在文本块间切换
 
 <img src="doc/src/configpanel.png">  
 
