@@ -296,7 +296,7 @@ class Canvas(QGraphicsScene):
         self.originallayer_trans_slider: QSlider = None
 
     def on_switch_item(self, switch_delta: int, key_event: QKeyEvent = None):
-        if self.textEditMode() and self.editing_textblkitem is None:
+        if self.textEditMode():
             self.switch_text_item.emit(switch_delta, key_event)
 
     def img_window_size(self):
@@ -487,7 +487,9 @@ class Canvas(QGraphicsScene):
             self.alt_pressed = True
 
         modifiers = event.modifiers()
-        if (modifiers == Qt.KeyboardModifier.AltModifier or self.alt_pressed) and not key == QKEY.Key_Alt:
+        if (modifiers == Qt.KeyboardModifier.AltModifier or self.alt_pressed) and \
+            not key == QKEY.Key_Alt and \
+                self.editing_textblkitem is None:
             if key in {QKEY.Key_W, QKEY.Key_A, QKEY.Key_Left, QKEY.Key_Up}:
                 self.on_switch_item(-1, event)
                 return
