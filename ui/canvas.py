@@ -842,6 +842,9 @@ class Canvas(QGraphicsScene):
 
     def on_activation_changed(self):
         self.clear_states()
+        for textitem in self.selected_text_items():
+            if textitem.isEditing():
+                self.editing_textblkitem = textitem
 
     def clear_states(self):
         self.alt_pressed = False
