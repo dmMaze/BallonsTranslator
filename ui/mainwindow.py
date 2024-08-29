@@ -534,21 +534,27 @@ class MainWindow(mainwindow_cls):
 
     def shortcutNext(self):
         if self.centralStackWidget.currentIndex() == 0:
-            index = self.pageList.currentIndex()
-            page_count = self.pageList.count()
-            if index.isValid():
-                row = index.row()
-                row = (row + 1) % page_count
-                self.pageList.setCurrentRow(row)
+            if self.st_manager.is_editting():
+                self.st_manager.on_switch_textitem(1)
+            else:
+                index = self.pageList.currentIndex()
+                page_count = self.pageList.count()
+                if index.isValid():
+                    row = index.row()
+                    row = (row + 1) % page_count
+                    self.pageList.setCurrentRow(row)
 
     def shortcutBefore(self):
         if self.centralStackWidget.currentIndex() == 0:
-            index = self.pageList.currentIndex()
-            page_count = self.pageList.count()
-            if index.isValid():
-                row = index.row()
-                row = (row - 1 + page_count) % page_count
-                self.pageList.setCurrentRow(row)
+            if self.st_manager.is_editting():
+                self.st_manager.on_switch_textitem(-1)
+            else:
+                index = self.pageList.currentIndex()
+                page_count = self.pageList.count()
+                if index.isValid():
+                    row = index.row()
+                    row = (row - 1 + page_count) % page_count
+                    self.pageList.setCurrentRow(row)
 
     def shortcutTextedit(self):
         if self.centralStackWidget.currentIndex() == 0:

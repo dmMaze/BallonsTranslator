@@ -360,30 +360,44 @@ class SceneTextManager(QObject):
 
     def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None):
         n_blk = len(self.textblk_item_list)
-        if n_blk < 1 or self.is_editting():
+        if n_blk < 1:
             return
-
-        sel_blks = self.canvas.selected_text_items(sort=False)
-        if len(sel_blks) == 0:
-            return
-        sel_blk = sel_blks[0]
-        tgt_idx = sel_blk.idx + switch_delta
+        
+        editing_blk = self.editingTextItem()
+        if editing_blk is not None:
+            tgt_idx = editing_blk.idx + switch_delta
+        else:
+            sel_blks = self.canvas.selected_text_items(sort=False)
+            if len(sel_blks) == 0:
+                return
+            sel_blk = sel_blks[0]
+            tgt_idx = sel_blk.idx + switch_delta
         if tgt_idx < 0:
             tgt_idx += n_blk
         elif tgt_idx >= n_blk:
             tgt_idx -= n_blk
-
         blk = self.textblk_item_list[tgt_idx]
-        self.canvas.block_selection_signal = True
-        self.canvas.clearSelection()
-        blk.setSelected(True)
-        self.canvas.block_selection_signal = False
-        self.canvas.gv.ensureVisible(blk)
-        self.txtblkShapeControl.setBlkItem(blk)
-        edit = self.pairwidget_list[tgt_idx].e_trans
-        self.changeHoveringWidget(edit)
-        self.textEditList.set_selected_list([blk.idx])
-        key_event.accept()
+
+        if editing_blk is None:
+            self.canvas.block_selection_signal = True
+            self.canvas.clearSelection()
+            blk.setSelected(True)
+            self.canvas.block_selection_signal = False
+            self.canvas.gv.ensureVisible(blk)
+            self.txtblkShapeControl.setBlkItem(blk)
+            edit = self.pairwidget_list[tgt_idx].e_trans
+            self.changeHoveringWidget(edit)
+            self.textEditList.set_selected_list([blk.idx])
+        else:
+            editing_blk.endEdit()
+            editing_blk.setSelected(False)
+            self.txtblkShapeControl.setBlkItem(blk)
+            blk.setSelected(True)
+            blk.startEdit()
+            self.canvas.gv.ensureVisible(blk)
+
+        if key_event is not None:
+            key_event.accept()
 
     def setTextEditMode(self, edit: bool = False):
         if edit:
