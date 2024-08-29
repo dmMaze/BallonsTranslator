@@ -98,8 +98,9 @@ def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, select
         p = QPainter(qimg)
         line.draw(p, QPointF(-line.x(), -line.y()))
         p.end()
-        qimg.invertPixels(QImage.InvertMode.InvertRgba)
-        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg.createAlphaMask())
+        qimg = qimg.convertToFormat(QImage.Format.Format_Alpha8)
+        qimg.reinterpretAsFormat(QImage.Format.Format_Grayscale8)
+        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg)
     else:
         line.draw(painter, QPointF(x, y))
 
