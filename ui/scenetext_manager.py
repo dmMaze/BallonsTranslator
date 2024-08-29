@@ -990,7 +990,7 @@ class SceneTextManager(QObject):
     def on_push_textitem_undostack(self, num_steps: int, is_formatting: bool):
         blkitem: TextBlkItem = self.sender()
         e_trans = self.pairwidget_list[blkitem.idx].e_trans if not is_formatting else None
-        self.canvas.push_undo_command(TextItemEditCommand(blkitem, e_trans, num_steps), update_pushed_step=False)
+        self.canvas.push_undo_command(TextItemEditCommand(blkitem, e_trans, num_steps), update_pushed_step=is_formatting)
 
     def on_push_edit_stack(self, num_steps: int):
         edit: Union[TransTextEdit, SourceTextEdit] = self.sender()
