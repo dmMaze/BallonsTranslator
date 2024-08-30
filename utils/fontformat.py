@@ -10,6 +10,10 @@ def px2pt(px) -> float:
     return px / shared.LDPI * 72.
 
 
+fontweight_qt5_to_qt6 = {0: 100, 12: 200, 25: 300, 50: 400, 57: 500, 63: 600, 75: 700, 81: 800, 87: 900}
+fontweight_qt6_to_qt5 = {100: 0, 200: 12, 300: 25, 400: 50, 500: 57, 600: 63, 700: 75, 800: 81, 900: 87}
+
+
 @nested_dataclass
 class FontFormat(Config):
 
@@ -51,6 +55,15 @@ class FontFormat(Config):
         self.shadow_strength = text_block.shadow_strength
         self.shadow_color = text_block.shadow_color
         self.shadow_offset = text_block.shadow_offset
+
+    def __post_init__(self):
+        if self.weight is not None:
+            if shared.FLAG_QT6 and self.weight < 100:
+                if self.weight in fontweight_qt5_to_qt6:
+                    self.weight = fontweight_qt5_to_qt6[self.weight]
+            if not shared.FLAG_QT6 and self.weight >= 100:
+                if self.weight in fontweight_qt6_to_qt5:
+                    self.weight = fontweight_qt6_to_qt5[self.weight]
 
     def update_textblock_format(self, blk: TextBlock):
         blk.default_stroke_width = self.stroke_width

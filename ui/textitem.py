@@ -590,7 +590,7 @@ class TextBlkItem(QGraphicsTextItem):
         weight = font.weight()
         # https://doc.qt.io/qt-5/qfont.html#Weight-enum, 50 is normal
         if weight == 0:
-            weight = 50
+            weight = QFont.Weight.Normal
         
         return FontFormat(
             font.family(),
@@ -833,13 +833,9 @@ class TextBlkItem(QGraphicsTextItem):
 
     def setFontColor(self, value: Tuple, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, force=False):
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
-        if not self.document().isEmpty():
-            fraghtml = cursor.selection().toHtml()
-            cursor.insertHtml(set_html_color(fraghtml, value))
-        else:
-            cfmt = cursor.charFormat()
-            cfmt.setForeground(QColor(*value))
-            self.set_cursor_cfmt(cursor, cfmt, True)
+        cfmt = cursor.charFormat()
+        cfmt.setForeground(QColor(*value))
+        self.set_cursor_cfmt(cursor, cfmt, True)
         self._after_set_ffmt(cursor, repaint_background=repaint_background, restore_cursor=restore_cursor, **after_kwargs)
 
     def setStrokeColor(self, scolor, **kwargs):
