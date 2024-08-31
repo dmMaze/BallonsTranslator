@@ -198,8 +198,8 @@ class BaseTranslator(BaseModule):
                 text_list.append(text)
             translations.append(text)
 
-        non_empty_txtlst_str = ',\n'.join(text_list)
-        LOGGER.debug(f'non empty src text list: \n[{non_empty_txtlst_str}]')
+        # non_empty_txtlst_str = ',\n'.join(text_list)
+        # LOGGER.debug(f'non empty src text list: \n[{non_empty_txtlst_str}]')
 
         if len(text_list) > 0:
             _translations = self.translate(text_list)

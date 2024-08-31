@@ -47,17 +47,16 @@ class ColoredFormatter(logging.Formatter):
             record.lineno2 = termcolor.colored(record.lineno, color="cyan")
         return logging.Formatter.format(self, record)
 
+FORMAT = (
+    "[%(levelname2)s] %(module2)s:%(funcName2)s:%(lineno2)s - %(message2)s"
+)
 
 class ColoredLogger(logging.Logger):
-
-    FORMAT = (
-        "[%(levelname2)s] %(module2)s:%(funcName2)s:%(lineno2)s - %(message2)s"
-    )
 
     def __init__(self, name):
         logging.Logger.__init__(self, name, logging.INFO)
 
-        color_formatter = ColoredFormatter(self.FORMAT)
+        color_formatter = ColoredFormatter(FORMAT)
 
         console = logging.StreamHandler()
         console.setFormatter(color_formatter)
@@ -72,6 +71,7 @@ def setup_logging(logfile_dir: str, max_num_logs=14):
         os.makedirs(logfile_dir)
     else:
         old_logs = glob(osp.join(logfile_dir, '*.log'))
+        old_logs.sort()
         n_log = len(old_logs)
         if n_log >= max_num_logs:
             to_remove = n_log - max_num_logs + 1
@@ -84,6 +84,11 @@ def setup_logging(logfile_dir: str, max_num_logs=14):
     logfilename = datetime.datetime.now().strftime('_%Y_%m_%d-%H_%M_%S.log')
     logfilep = osp.join(logfile_dir, logfilename)
     fh = logging.FileHandler(logfilep, mode='w', encoding='utf-8')
+    fh.setFormatter(
+        logging.Formatter(
+            ("[%(levelname)s] %(module)s:%(funcName)s:%(lineno)s - %(message)s")
+        )
+    )
     fh.setLevel(logging.DEBUG)
     logger.addHandler(fh)
 
