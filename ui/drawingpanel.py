@@ -13,7 +13,7 @@ from utils.logger import logger
 from .module_manager import ModuleManager
 from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem
 from .configpanel import InpaintConfigPanel
-from .stylewidgets import Widget, SeparatorWidget, ColorPicker, PaintQSlider
+from .custom_widget import Widget, SeparatorWidget, PaintQSlider, ColorPickerLabel
 from .canvas import Canvas
 from .misc import ndarray2pixmap
 from utils.config import DrawPanelConfig, pcfg
@@ -129,7 +129,7 @@ class PenConfigPanel(Widget):
         self.alphaSlider.setValue(255)
         self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
 
-        self.colorPicker = ColorPicker()
+        self.colorPicker = ColorPickerLabel()
         self.colorPicker.colorChanged.connect(self.on_color_changed)
         
         color_label = ToolNameLabel(None, self.tr('Color'))

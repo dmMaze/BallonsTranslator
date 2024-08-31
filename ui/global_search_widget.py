@@ -1,19 +1,17 @@
+from typing import List, Union, Tuple, Dict
+import re, time
+
 from qtpy.QtWidgets import QHBoxLayout, QSizePolicy, QComboBox, QStyledItemDelegate, QLabel, QTreeView, QCheckBox, QStyleOptionViewItem, QVBoxLayout, QStyle, QMessageBox, QStyle,  QApplication, QWidget
 from qtpy.QtCore import Qt, QItemSelection, QSize, Signal, QUrl, QModelIndex, QRectF
 from qtpy.QtGui import QFont, QPainter, QTextCursor, QStandardItemModel, QStandardItem, QAbstractTextDocumentLayout, QColor, QPalette, QTextDocument, QTextCharFormat
-
-from typing import List, Union, Tuple, Dict
-import re, time
-import os.path as osp
 
 from utils.logger import logger as LOGGER
 from .page_search_widget import SearchEditor, HighlightMatched, SEARCHRST_HIGHLIGHT_COLOR
 from .misc import doc_replace
 from utils.config import pcfg
-from .stylewidgets import Widget, NoBorderPushBtn
-from .message import ProgressMessageBox
+from .custom_widget import ProgressMessageBox, Widget, NoBorderPushBtn
 from .textitem import TextBlkItem, TextBlock
-from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
+from .textedit_area import TransPairWidget, SourceTextEdit
 from .config_proj import ProjImgTrans
 from .io_thread import ThreadBase
 from utils import shared as C

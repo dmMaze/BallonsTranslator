@@ -37,9 +37,10 @@ Miscellaneous_Symbols_Pattern = r'\u2600-\u26FF'  # align center in vertical mod
 
 vertical_force_aligncentel_pattern = re.compile('[' + Dingbats_vertical_aligncenter + Miscellaneous_Symbols_Pattern + r'⁁⁂⁇⁈⁉⁊⁋⁎※⁑⁒⁕⁖⁘⁙⁛⁜‼‽]')
 
+
+@lru_cache
 def vertical_force_aligncentel(char: str) -> bool:
     return char in PUNSET_PAUSEORSTOP or vertical_force_aligncentel_pattern.match(char) is not None
-
 
 @lru_cache(maxsize=512)
 def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:
@@ -89,29 +90,6 @@ def punc_actual_rect_cached(line: LruIgnoreArg, char: str, family: str, size: fl
     '''
     # QtextLine line is invisibale to lru
     return punc_actual_rect(line.line, family, size, weight, italic, stroke_width, h, w)
-
-def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
-    # some how qt6 line.draw doesn't allow pass FormatRange
-    if selected:    
-        qimg = QImage(int(line.naturalTextWidth()), int(line.height()), QImage.Format.Format_ARGB32)
-        qimg.fill(Qt.GlobalColor.transparent)
-        p = QPainter(qimg)
-        line.draw(p, QPointF(-line.x(), -line.y()))
-        p.end()
-        qimg = qimg.convertToFormat(QImage.Format.Format_Alpha8)
-        qimg.reinterpretAsFormat(QImage.Format.Format_Grayscale8)
-        painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg)
-    else:
-        line.draw(painter, QPointF(x, y))
-
-def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None):
-    o = None
-    if selected:
-        o = QTextLayout.FormatRange()
-        o.start = line.textStart()
-        o.length = line.textLength()
-        o.format = selection.format
-    line.draw(painter, QPointF(x, y), o)
 
 
 class CharFontFormat:
@@ -163,6 +141,36 @@ class CharFontFormat:
         else:
             ar =  punc_actual_rect(line, self.family, self.size, self.weight, self.font.italic(), stroke_width, h, w)
         return ar
+
+
+def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None, char_fmt: CharFontFormat = None, char: str = None, line_width: int = None):
+    # some how qt6 line.draw doesn't allow pass FormatRange
+    if selected:    
+        qimg = QImage(int(line.naturalTextWidth()), int(line.height()), QImage.Format.Format_ARGB32)
+        qimg.fill(Qt.GlobalColor.transparent)
+        p = QPainter(qimg)
+        line.draw(p, QPointF(-line.x(), -line.y()))
+        p.end()
+        qimg = qimg.convertToFormat(QImage.Format.Format_Alpha8)
+        qimg.reinterpretAsFormat(QImage.Format.Format_Grayscale8)
+        if char_fmt is None:
+            painter.drawImage(QPointF(line.x() + x, line.y() + y), qimg)
+        else:
+            act_rect = char_fmt.punc_actual_rect(line, char, cache=True)
+            tbr = QRectF(0, act_rect[1], line_width, act_rect[3])
+            tgt_rect = QRectF(line.x() + x, line.y() + y + tbr.y(), line_width, tbr.height())
+            painter.drawImage(tgt_rect, qimg, tbr)
+    else:
+        line.draw(painter, QPointF(x, y))
+
+def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None, char_fmt: CharFontFormat = None, char: str = None):
+    o = None
+    if selected:
+        o = QTextLayout.FormatRange()
+        o.start = line.textStart()
+        o.length = line.textLength()
+        o.format = selection.format
+    line.draw(painter, QPointF(x, y), o)
 
 
 class SceneTextLayout(QAbstractTextDocumentLayout):
@@ -381,7 +389,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk_text_len = len(blk_text)
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
-
             char_records = self.per_char_records[blk_no]
 
             for ii in range(layout.lineCount()):
@@ -462,6 +469,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             layout = block.layout()
             blk_text = block.text()
             blk_text_len = len(blk_text)
+            char_records = self.per_char_records[blk_no]
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
 
@@ -489,6 +497,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     sel_end = selection.cursor.selectionEnd() - blpos
                     if char_idx < sel_end and char_idx >= sel_start:
                         selected = True
+
+                line_width = -1
+                if char_idx in char_records:
+                    line_width = char_records[char_idx]['line_width']
+                if line_width < 0:
+                    line_width = cfmt.tbr.width()
                 
                 if char in PUNSET_VERNEEDROTATE:
                     line_x, line_y = line.x(), line.y()
@@ -497,10 +511,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
                     inv_transform = QTransform(0, -1, 0, 1, 0, 0, -y_x, y_p_x, 1)
                     painter.setTransform(transform, True)
-                    self.line_draw(painter, line, xoff,  yoff, selected, selection)
+                    self.line_draw(painter, line, xoff,  yoff, selected, selection, char_fmt=None)
                     painter.setTransform(inv_transform, True)
                 else:
-                    self.line_draw(painter, line, xoff, yoff, selected, selection)
+                    self.line_draw(painter, line, xoff, yoff, selected, selection, char_fmt=cfmt, char=char, line_width=line_width)
 
             block = block.next()
 

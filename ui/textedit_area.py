@@ -2,12 +2,12 @@ from typing import List, Union
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QSizePolicy, QLabel, QLineEdit
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
-from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence
+from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence
 import keyboard
 import webbrowser
 import numpy as np
 
-from .stylewidgets import Widget, SeparatorWidget, ClickableLabel, ScrollBar
+from .custom_widget import ScrollBar, Widget, SeparatorWidget, ClickableLabel
 from .textitem import TextBlock
 from utils.config import pcfg
 from utils.logger import logger as LOGGER

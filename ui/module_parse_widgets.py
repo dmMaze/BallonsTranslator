@@ -3,7 +3,7 @@ from typing import List, Callable
 from modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRANSLATORS, GET_VALID_OCR, \
     BaseTranslator, DEFAULT_DEVICE, GPUINTENSIVE_SET
 from utils.logger import logger as LOGGER
-from .stylewidgets import ConfigComboBox, NoBorderPushBtn, CustomComboBox
+from .custom_widget import ConfigComboBox, ParamComboBox, NoBorderPushBtn
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from utils.config import pcfg
 import logging
@@ -11,9 +11,9 @@ import logging
 # Настройка логгера
 logging.basicConfig(level=logging.DEBUG)
 
-from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QComboBox, QCheckBox, QLineEdit, QGridLayout, QPushButton
+from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QCheckBox, QLineEdit, QGridLayout, QPushButton
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QFontMetricsF, QDoubleValidator
+from qtpy.QtGui import QDoubleValidator
 
 
 class ParamNameLabel(QLabel):
@@ -72,21 +72,6 @@ class ParamEditor(QPlainTextEdit):
 
     def text(self):
         return self.toPlainText()
-
-
-class ParamComboBox(CustomComboBox):
-    paramwidget_edited = Signal(str, str)
-    def __init__(self, param_key: str, options: List[str], size=CONFIG_COMBOBOX_SHORT, scrollWidget: QWidget = None, *args, **kwargs) -> None:
-        super().__init__(scrollWidget=scrollWidget, *args, **kwargs)
-        self.param_key = param_key
-        self.setFixedWidth(size)
-        self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
-        options = [str(opt) for opt in options]
-        self.addItems(options)
-        self.currentTextChanged.connect(self.on_select_changed)
-
-    def on_select_changed(self):
-        self.paramwidget_edited.emit(self.param_key, self.currentText())
 
 
 class ParamCheckerBox(QWidget):

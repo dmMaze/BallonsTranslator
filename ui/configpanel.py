@@ -1,23 +1,12 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QPushButton, QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QGroupBox, QLineEdit
+from qtpy.QtWidgets import QPushButton, QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
-from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QColor, QPalette, QIntValidator, QValidator, QFocusEvent
-from qtpy import API
+from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
-from utils import shared as C
-
-# nuitka seems to require import QtCore explicitly 
-if C.FLAG_QT6:
-    if API == 'pyside6':
-        from PySide6 import QtCore
-    else:
-        from PyQt6 import QtCore
-else:
-    from PyQt5 import QtCore
-
-from .stylewidgets import Widget, ConfigComboBox
+from .custom_widget import ConfigComboBox, Widget
 from utils.config import pcfg
+from utils import shared as C
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 
@@ -430,30 +419,30 @@ class ConfigPanel(Widget):
         self.let_fntsize_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Size'), parent=self, insert_stretch=True)
         global_fntfmt_layout.addWidget(sublock, 0, 0)
 
-        self.let_fntsize_combox.currentIndexChanged.connect(self.on_fntsize_flag_changed)
+        self.let_fntsize_combox.index_changed.connect(self.on_fntsize_flag_changed)
         self.let_fntstroke_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Stroke Size'), parent=self, insert_stretch=True)
-        self.let_fntstroke_combox.currentIndexChanged.connect(self.on_fntstroke_flag_changed)
+        self.let_fntstroke_combox.index_changed.connect(self.on_fntstroke_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 0, 1)
         
         self.let_fntcolor_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Color'), parent=self, insert_stretch=True)
-        self.let_fntcolor_combox.currentIndexChanged.connect(self.on_fontcolor_flag_changed)
+        self.let_fntcolor_combox.index_changed.connect(self.on_fontcolor_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 1, 0)
         self.let_fnt_scolor_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Stroke Color'), parent=self, insert_stretch=True)
-        self.let_fnt_scolor_combox.currentIndexChanged.connect(self.on_font_scolor_flag_changed)
+        self.let_fnt_scolor_combox.index_changed.connect(self.on_font_scolor_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 1, 1)
 
         self.let_effect_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Effect'), parent=self, insert_stretch=True)
-        self.let_effect_combox.currentIndexChanged.connect(self.on_effect_flag_changed)
+        self.let_effect_combox.index_changed.connect(self.on_effect_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 2, 0)
         self.let_alignment_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Alignment'), parent=self, insert_stretch=True)
-        self.let_alignment_combox.currentIndexChanged.connect(self.on_alignment_flag_changed)
+        self.let_alignment_combox.index_changed.connect(self.on_alignment_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 2, 1)
 
         self.let_writing_mode_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Writing-mode'), parent=self, insert_stretch=True)
-        self.let_writing_mode_combox.currentIndexChanged.connect(self.on_writing_mode_flag_changed)
+        self.let_writing_mode_combox.index_changed.connect(self.on_writing_mode_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 3, 0)
         self.let_family_combox, sublock = combobox_with_label([self.tr('Keep existing'), self.tr('Always use global setting')], self.tr('Font Family'), parent=self, insert_stretch=True)
-        self.let_family_combox.currentIndexChanged.connect(self.on_family_flag_changed)
+        self.let_family_combox.index_changed.connect(self.on_family_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 3, 1)
 
         global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
@@ -472,7 +461,7 @@ class ConfigPanel(Widget):
 
         generalConfigPanel.addTextLabel(label_save)
         self.rst_imgformat_combobox, imsave_sublock = generalConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP'], self.tr('Result image format'))
-        self.rst_imgformat_combobox.currentIndexChanged.connect(self.on_rst_imgformat_changed)
+        self.rst_imgformat_combobox.index_changed.connect(self.on_rst_imgformat_changed)
         self.rst_imgquality_edit = PercentageLineEdit('100')
         self.rst_imgquality_edit.setFixedWidth(CONFIG_COMBOBOX_SHORT)
         self.rst_imgquality_edit.finish_edited.connect(self.on_edit_quality_changed)
@@ -613,12 +602,14 @@ class ConfigPanel(Widget):
         if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
 
-        self.let_effect_combox.setCurrentIndex(pcfg.let_fnteffect_flag)
-        self.let_fntsize_combox.setCurrentIndex(pcfg.let_fntsize_flag)
-        self.let_fntstroke_combox.setCurrentIndex(pcfg.let_fntstroke_flag)
-        self.let_fntcolor_combox.setCurrentIndex(pcfg.let_fntcolor_flag)
-        self.let_fnt_scolor_combox.setCurrentIndex(pcfg.let_fnt_scolor_flag)
-        self.let_alignment_combox.setCurrentIndex(pcfg.let_alignment_flag)
+        self.let_effect_combox.set_current_index(pcfg.let_fnteffect_flag, user_input=False)
+        self.let_fntsize_combox.set_current_index(pcfg.let_fntsize_flag, user_input=False)
+        self.let_fntstroke_combox.set_current_index(pcfg.let_fntstroke_flag, user_input=False)
+        self.let_fntcolor_combox.set_current_index(pcfg.let_fntcolor_flag, user_input=False)
+        self.let_fnt_scolor_combox.set_current_index(pcfg.let_fnt_scolor_flag, user_input=False)
+        self.let_alignment_combox.set_current_index(pcfg.let_alignment_flag, user_input=False)
+        self.let_family_combox.set_current_index(pcfg.let_family_flag, user_input=False)
+        self.let_writing_mode_combox.set_current_index(pcfg.let_writing_mode_flag, user_input=False)
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
         self.let_autolayout_adaptive_fntsize_checker.setChecked(pcfg.let_autolayout_adaptive_fntsz)
         self.selectext_minimenu_checker.setChecked(pcfg.textselect_mini_menu)

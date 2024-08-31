@@ -27,14 +27,14 @@ from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
-from .stylewidgets import Widget, ViewWidget
+from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
 from . import shared_widget as SW
-from .message import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox
+from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox
 
 class PageListView(QListWidget):
 
@@ -190,8 +190,8 @@ class MainWindow(mainwindow_cls):
         self.textPanel.formatpanel.foldTextBtn.checkStateChanged.connect(self.fold_textarea)
         self.textPanel.formatpanel.sourceBtn.checkStateChanged.connect(self.show_source_text)
         self.textPanel.formatpanel.transBtn.checkStateChanged.connect(self.show_trans_text)
-        self.textPanel.formatpanel.textstyle_panel.style_area.export_style.connect(self.export_tstyles)
-        self.textPanel.formatpanel.textstyle_panel.style_area.import_style.connect(self.import_tstyles)
+        self.textPanel.formatpanel.textstyle_panel.export_style.connect(self.export_tstyles)
+        self.textPanel.formatpanel.textstyle_panel.import_style.connect(self.import_tstyles)
 
         self.ocrSubWidget = KeywordSubWidget(self.tr("Keyword substitution for OCR"))
         self.ocrSubWidget.setParent(self)
@@ -301,7 +301,7 @@ class MainWindow(mainwindow_cls):
         elif pcfg.imgtrans_paintmode:
             self.bottomBar.paintChecker.click()
 
-        self.textPanel.formatpanel.textstyle_panel.style_area.initStyles(text_styles)
+        self.textPanel.formatpanel.textstyle_panel.initStyles(text_styles)
 
         self.canvas.search_widget.whole_word_toggle.setChecked(pcfg.fsearch_whole_word)
         self.canvas.search_widget.case_sensitive_toggle.setChecked(pcfg.fsearch_case)
@@ -358,7 +358,7 @@ class MainWindow(mainwindow_cls):
             text_style_path = 'config/textstyles/default.json'
         if osp.exists(text_style_path):
             load_textstyle_from(text_style_path)
-            self.textPanel.formatpanel.textstyle_panel.style_area.setStyles(text_styles)
+            self.textPanel.formatpanel.textstyle_panel.setStyles(text_styles)
         else:
             pcfg.text_styles_path = text_style_path
             save_text_styles()
@@ -1125,7 +1125,7 @@ class MainWindow(mainwindow_cls):
         try:
             load_textstyle_from(p, raise_exception=True)
             save_config()
-            self.textPanel.formatpanel.textstyle_panel.style_area.setStyles(text_styles)
+            self.textPanel.formatpanel.textstyle_panel.setStyles(text_styles)
         except Exception as e:
             create_error_dialog(e, self.tr(f'Failed to load from {p}'))
 
@@ -1368,9 +1368,3 @@ class MainWindow(mainwindow_cls):
         action: QAction = d['action']
         action.setChecked(False)
         setattr(pcfg, cfg_name, False)
-
-    def set_textstyle_panel_visible(self, visible: bool):
-        pcfg.show_text_style_preset = visible
-        self.textPanel.formatpanel.textstyle_panel.setVisible(visible)
-
-    

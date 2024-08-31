@@ -1,4 +1,5 @@
 from typing import Union
+import enum
 import re
 
 from . import shared
@@ -11,6 +12,11 @@ def pt2px(pt) -> float:
 
 def px2pt(px) -> float:
     return px / shared.LDPI * 72.
+
+
+class LineSpacingType(enum.IntEnum):
+    Proportional = 0
+    Distance = 1
 
 
 @nested_dataclass
@@ -35,6 +41,7 @@ class FontFormat(Config):
     shadow_color: List = field(default_factory=lambda: [0, 0, 0])
     shadow_offset: List = field(default_factory=lambda: [0., 0.])
     _style_name: str = ''
+    line_spacing_type: int = LineSpacingType.Proportional
 
     def update_from_textblock(self, text_block: TextBlock):
         self.family = text_block.font_family
@@ -88,3 +95,5 @@ class FontFormat(Config):
                 self.update(key, target[key])
                 updated_keys.add(key)
         return updated_keys
+    
+

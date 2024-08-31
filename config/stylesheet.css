@@ -157,7 +157,7 @@ QLabel#letterSpacingLabel {
     min-height: 28px;
 }
 
-ColorPicker {
+ColorPickerLabel {
     max-height: 25px;
     min-height: 25px;
     min-width: 25px;
@@ -165,7 +165,7 @@ ColorPicker {
     border: 2px solid @borderColor;
 }
 
-ColorPicker::hover {
+ColorPickerLabel::hover {
     border: 2px solid rgb(30, 147, 229);
 }
 
@@ -413,11 +413,11 @@ QPushButton#closeBtn::hover {
     image: url(icons/titlebar_close_activate.svg);
 }
 
-TextChecker::hover {
+TextCheckerLabel::hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-TextChecker#OCRChecker {
+TextCheckerLabel#OCRChecker {
     height: 34px;
     width: 66;
     padding-left: 7px;
@@ -726,12 +726,6 @@ QLabel#angleLabel {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-.ExpandLabel {
-    border-bottom: 1px;
-    border-color: @borderColor;
-    border-style: solid;
-}
-
 DrawToolCheckBox::indicator {
     height: 34px;
     width: 34px;
@@ -968,19 +962,37 @@ HidePanelButton::hover {
     background-color: #FF605C;
 }
 
-Widget#TextStyleAreaContent {
+PanelAreaContent {
     background-color : @emptyContentBackgroundColor;
     border-radius: 7px;
     border: none;
     border-width: 0px;
 }
 
-TextStyleArea {
+PanelArea {
     background-color : @emptyContentBackgroundColor;
     border-radius: 7px;
     border: none;
     border-width: 0px;
 }
+
+
+PanelGroupBox {
+    border: 1px solid @borderColor;
+    margin-top: 6px;
+    background-color : @emptyContentBackgroundColor;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    border-radius: 7px;
+}
+
+PanelGroupBox::title {
+    subcontrol-origin: margin;
+    /* left: 12px; */
+    padding: 0px 5px 0px 10px;
+}
+
 
 TextStyleLabel {
     border-radius: 7px;

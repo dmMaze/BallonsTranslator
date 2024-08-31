@@ -9,7 +9,7 @@ from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout, QScrollArea, Q
 from utils import shared as C
 from .misc import pixmap2ndarray, ndarray2pixmap
 from utils.fontformat import FontFormat, pt2px
-from .stylewidgets import Widget, ColorPicker, PaintQSlider
+from .custom_widget import Widget, ColorPickerLabel, PaintQSlider
 
 
 def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, strength=1.0, radius=21) -> Tuple[
@@ -67,7 +67,7 @@ def text_effect_preview_pipe(target: QPixmap, font_size: float, fontfmt: FontFor
     return target
 
 
-class TextEffectPanel(QDialog):
+class TextEffectPanelDeprecated(QDialog):
     apply = Signal()
 
     def __init__(self, update_text_style_label: Callable, *args, **kwargs) -> None:
@@ -103,7 +103,7 @@ class TextEffectPanel(QDialog):
 
         # shadow
         shadow_label = QLabel(self.tr('Shadow'))
-        self.shadow_color_picker = ColorPicker(self)
+        self.shadow_color_picker = ColorPickerLabel(self)
         self.shadow_color_picker.colorChanged.connect(self.on_shadow_color_changed)
         self.shadow_color_picker.setToolTip(self.tr('Change shadow color'))
         self.shadow_radius_slider = PaintQSlider(self.tr('radius'))

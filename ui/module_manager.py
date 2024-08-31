@@ -1,7 +1,5 @@
 import time
 from typing import Union, List, Dict, Callable
-from functools import partial
-import traceback
 
 import numpy as np
 from qtpy.QtCore import QThread, Signal, QObject, QLocale, QTimer
@@ -20,11 +18,12 @@ modules.translators.SYSTEM_LANG = QLocale.system().name()
 from modules.textdetector import TextBlock
 from utils import shared
 from utils import create_error_dialog, create_info_dialog, connect_once
-from .message import ImgtransProgressMessageBox
+from .custom_widget import ImgtransProgressMessageBox
 from .configpanel import ConfigPanel
 from .config_proj import ProjImgTrans
 from utils.config import pcfg
 cfg_module = pcfg.module
+
 
 class ModuleThread(QThread):
 

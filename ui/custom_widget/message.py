@@ -7,7 +7,7 @@ from qtpy.QtGui import  QCloseEvent, QShowEvent
 from qtpy.QtCore import Qt, Signal
 
 from utils.shared import remove_from_runtime_widget_set, add_to_runtime_widget_set
-from .stylewidgets import Widget
+from .widget import Widget
 
 
 class MessageBox(QMessageBox):

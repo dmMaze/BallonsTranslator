@@ -3,7 +3,7 @@ import os.path as osp
 
 from . import shared
 from .fontformat import FontFormat
-from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
+from .structures import List, Dict, Config, field, nested_dataclass
 from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj
 
@@ -85,7 +85,6 @@ class ProgramConfig(Config):
     let_uppercase_flag: bool = True
     let_textstyle_indep_flag: bool = False
     text_styles_path: str = osp.join(shared.DEFAULT_TEXTSTYLE_DIR, 'default.json')
-    expand_tstyle_panel: bool = True
     fsearch_case: bool = False
     fsearch_whole_word: bool = False
     fsearch_regex: bool = False
@@ -108,6 +107,11 @@ class ProgramConfig(Config):
     imgsave_quality: int = 100
     imgsave_ext: str = '.png'
     show_text_style_preset: bool = True
+    expand_tstyle_panel: bool = True
+    show_text_effect_panel: bool = True
+    expand_teffect_panel: bool = True
+    text_advanced_format_panel: bool = True
+    expand_tadvanced_panel: bool = True
 
     @staticmethod
     def load(cfg_path: str):

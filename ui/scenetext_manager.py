@@ -16,7 +16,7 @@ from .canvas import Canvas
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
 from utils.fontformat import FontFormat, pt2px
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, ApplyEffectCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
-from .fontformatpanel import FontFormatPanel
+from .text_panel import FontFormatPanel
 from utils.config import pcfg
 from utils import config as C
 from utils import shared
@@ -347,7 +347,7 @@ class SceneTextManager(QObject):
         self.textEditList.rearrange_blks.connect(self.on_rearrange_blks)
         self.formatpanel = textpanel.formatpanel
         self.formatpanel.effect_panel.apply.connect(self.on_apply_effect)
-        self.formatpanel.textstyle_panel.style_area.apply_fontfmt.connect(self.onFormatTextblks)
+        self.formatpanel.textstyle_panel.apply_fontfmt.connect(self.onFormatTextblks)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
         self.textblk_item_list: List[TextBlkItem] = []

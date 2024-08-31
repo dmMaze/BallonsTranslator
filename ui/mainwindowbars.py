@@ -5,7 +5,7 @@ from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, Q
 from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup
 
-from .stylewidgets import Widget, PaintQSlider, TextChecker
+from .custom_widget import Widget, PaintQSlider
 from utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import startSystemMove
 from utils.config import pcfg
@@ -16,19 +16,11 @@ else:
     from qtpy.QtWidgets import QAction
 
 class ShowPageListChecker(QCheckBox):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    ...
 
 
 class OpenBtn(QToolButton):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-
-class RunBtn(QPushButton):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setText('Run')
+    ...
 
 
 class StatusButton(QPushButton):
@@ -175,7 +167,8 @@ class LeftBar(Widget):
         openBtnToolBar.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         openBtnToolBar.addWidget(self.openBtn)
         
-        self.runImgtransBtn = RunBtn()
+        self.runImgtransBtn = QPushButton()
+        self.runImgtransBtn.setText('RUN')
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.runImgtransBtn.clicked.connect(self.run_imgtrans)
 

@@ -7,7 +7,7 @@ from typing import List, Dict
 
 from utils.logger import logger as LOGGER
 from utils.fontformat import FontFormat
-from .stylewidgets import Widget, NoBorderPushBtn
+from .custom_widget import NoBorderPushBtn
 
 class KeywordSubWidget(QDialog):
 

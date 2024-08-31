@@ -6,7 +6,7 @@ from typing import List, Union, Tuple, Dict
 import re
 
 from utils.config import pcfg
-from .stylewidgets import Widget, ClickableLabel
+from .custom_widget import Widget, ClickableLabel
 from .textitem import TextBlkItem
 from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
 
