@@ -1,6 +1,9 @@
+from typing import Union
+import re
+
 from . import shared
 from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
-from .textblock import TextBlock
+from .textblock import TextBlock, fix_fontweight_qt
 
 
 def pt2px(pt) -> float:
@@ -51,6 +54,9 @@ class FontFormat(Config):
         self.shadow_strength = text_block.shadow_strength
         self.shadow_color = text_block.shadow_color
         self.shadow_offset = text_block.shadow_offset
+
+    def __post_init__(self):
+        self.weight = fix_fontweight_qt(self.weight)
 
     def update_textblock_format(self, blk: TextBlock):
         blk.default_stroke_width = self.stroke_width

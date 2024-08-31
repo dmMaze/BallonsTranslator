@@ -9,6 +9,7 @@ import re
 from .imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
 from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
 from .split_text_region import split_textblock as split_text_region
+from . import shared
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
@@ -48,6 +49,31 @@ def sort_pnts(pts: np.ndarray):
         pts_sorted[[0, 3]] = sorted(pts[[0, 1]], key=lambda x: x[1])
         pts_sorted[[1, 2]] = sorted(pts[[2, 3]], key=lambda x: x[1])
         return pts_sorted, is_vertical
+
+
+fontweight_qt5_to_qt6 = {0: 100, 12: 200, 25: 300, 50: 400, 57: 500, 63: 600, 75: 700, 81: 800, 87: 900}
+fontweight_qt6_to_qt5 = {100: 0, 200: 12, 300: 25, 400: 50, 500: 57, 600: 63, 700: 75, 800: 81, 900: 87}
+
+fontweight_pattern = re.compile(r'font-weight:(\d+)', re.DOTALL)
+
+def fix_fontweight_qt(weight: Union[str, int]):
+
+    def _fix_html_fntweight(matched):
+        weight = int(matched.group(1))
+        return f'font-weight:{fix_fontweight_qt(weight)}'
+
+    if weight is None:
+        return None
+    if isinstance(weight, int):
+        if shared.FLAG_QT6 and weight < 100:
+            if weight in fontweight_qt5_to_qt6:
+                weight = fontweight_qt5_to_qt6[weight]
+        if not shared.FLAG_QT6 and weight >= 100:
+            if weight in fontweight_qt6_to_qt5:
+                weight = fontweight_qt6_to_qt5[weight]
+    if isinstance(weight, str):
+        weight = fontweight_pattern.sub(lambda matched: _fix_html_fntweight(matched), weight)
+    return weight
 
 
 @nested_dataclass
@@ -102,6 +128,9 @@ class TextBlock:
             self.vec = np.array(self.vec, np.float32)
         if self.src_is_vertical is None:
             self.src_is_vertical = self.vertical
+        self.font_weight = fix_fontweight_qt(self.font_weight)
+        if self.rich_text:
+            self.rich_text = fix_fontweight_qt(self.rich_text)
 
         da = self.deprecated_attributes
         if len(da) > 0:

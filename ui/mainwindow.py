@@ -15,14 +15,14 @@ from utils.textblock import TextBlock
 from utils import shared
 from utils import create_error_dialog
 from modules.translators.trans_chatgpt import GPTTranslator
-from .misc import parse_stylesheet, set_html_family
+from .misc import parse_stylesheet, set_html_family, QKEY
 from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from, FontFormat
 from utils.fontformat import pt2px
 from .config_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
-from .textedit_area import SourceTextEdit, SelectTextMiniMenu
+from .textedit_area import SourceTextEdit, SelectTextMiniMenu, TransTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
@@ -500,6 +500,16 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
 
+        shortcutA = QShortcut(QKeySequence("A"), self)
+        shortcutA.activated.connect(self.shortcutBefore)
+        shortcutPageUp = QShortcut(QKeySequence(QKeySequence.StandardKey.MoveToPreviousPage), self)
+        shortcutPageUp.activated.connect(self.shortcutBefore)
+
+        shortcutD = QShortcut(QKeySequence("D"), self)
+        shortcutD.activated.connect(self.shortcutNext)
+        shortcutPageDown = QShortcut(QKeySequence(QKeySequence.StandardKey.MoveToNextPage), self)
+        shortcutPageDown.activated.connect(self.shortcutNext)
+
         shortcutTextblock = QShortcut(QKeySequence("W"), self)
         shortcutTextblock.activated.connect(self.shortcutTextblock)
         shortcutZoomIn = QShortcut(QKeySequence.StandardKey.ZoomIn, self)
@@ -533,9 +543,17 @@ class MainWindow(mainwindow_cls):
             self.drawingPanel.setShortcutTip(tool_name, shortcut_key)
 
     def shortcutNext(self):
+        sender: QShortcut = self.sender()
+        if isinstance(sender, QShortcut):
+            if sender.key() == QKEY.Key_D:
+                if self.canvas.editing_textblkitem is not None:
+                    return
         if self.centralStackWidget.currentIndex() == 0:
+            focus_widget = self.app.focusWidget()
             if self.st_manager.is_editting():
                 self.st_manager.on_switch_textitem(1)
+            elif isinstance(focus_widget, (SourceTextEdit, TransTextEdit)):
+                self.st_manager.on_switch_textitem(1, current_editing_widget=focus_widget)
             else:
                 index = self.pageList.currentIndex()
                 page_count = self.pageList.count()
@@ -545,9 +563,17 @@ class MainWindow(mainwindow_cls):
                     self.pageList.setCurrentRow(row)
 
     def shortcutBefore(self):
+        sender: QShortcut = self.sender()
+        if isinstance(sender, QShortcut):
+            if sender.key() == QKEY.Key_A:
+                if self.canvas.editing_textblkitem is not None:
+                    return
         if self.centralStackWidget.currentIndex() == 0:
+            focus_widget = self.app.focusWidget()
             if self.st_manager.is_editting():
                 self.st_manager.on_switch_textitem(-1)
+            elif isinstance(focus_widget, (SourceTextEdit, TransTextEdit)):
+                self.st_manager.on_switch_textitem(-1, current_editing_widget=focus_widget)
             else:
                 index = self.pageList.currentIndex()
                 page_count = self.pageList.count()

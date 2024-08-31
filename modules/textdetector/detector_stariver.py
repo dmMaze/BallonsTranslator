@@ -103,7 +103,7 @@ class StariverDetector(TextDetectorBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.url = 'https://dl.ap-sh.starivercs.cn/v2/manga_trans/advanced/manga_ocr'
+        self.url = 'https://dl.ap-qz.starivercs.cn/v2/manga_trans/advanced/manga_ocr'
         self.debug = False
         self.token = ''
         self.token_obtained = False

@@ -358,43 +358,60 @@ class SceneTextManager(QObject):
 
         self.prev_blkitem: TextBlkItem = None
 
-    def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None):
+    def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None, current_editing_widget: Union[SourceTextEdit, TransTextEdit] = None):
         n_blk = len(self.textblk_item_list)
         if n_blk < 1:
             return
         
-        editing_blk = self.editingTextItem()
-        if editing_blk is not None:
-            tgt_idx = editing_blk.idx + switch_delta
+        editing_blk = None
+        if current_editing_widget is None:
+            editing_blk = self.editingTextItem()
+            if editing_blk is not None:
+                tgt_idx = editing_blk.idx + switch_delta
+            else:
+                sel_blks = self.canvas.selected_text_items(sort=False)
+                if len(sel_blks) == 0:
+                    return
+                sel_blk = sel_blks[0]
+                tgt_idx = sel_blk.idx + switch_delta
         else:
-            sel_blks = self.canvas.selected_text_items(sort=False)
-            if len(sel_blks) == 0:
-                return
-            sel_blk = sel_blks[0]
-            tgt_idx = sel_blk.idx + switch_delta
+            tgt_idx = current_editing_widget.idx + switch_delta
+
         if tgt_idx < 0:
             tgt_idx += n_blk
         elif tgt_idx >= n_blk:
             tgt_idx -= n_blk
         blk = self.textblk_item_list[tgt_idx]
 
-        if editing_blk is None:
-            self.canvas.block_selection_signal = True
-            self.canvas.clearSelection()
-            blk.setSelected(True)
-            self.canvas.block_selection_signal = False
-            self.canvas.gv.ensureVisible(blk)
-            self.txtblkShapeControl.setBlkItem(blk)
-            edit = self.pairwidget_list[tgt_idx].e_trans
-            self.changeHoveringWidget(edit)
-            self.textEditList.set_selected_list([blk.idx])
+        if current_editing_widget is None:
+            if editing_blk is None:
+                self.canvas.block_selection_signal = True
+                self.canvas.clearSelection()
+                blk.setSelected(True)
+                self.canvas.block_selection_signal = False
+                self.canvas.gv.ensureVisible(blk)
+                self.txtblkShapeControl.setBlkItem(blk)
+                edit = self.pairwidget_list[tgt_idx].e_trans
+                self.changeHoveringWidget(edit)
+                self.textEditList.set_selected_list([blk.idx])
+            else:
+                editing_blk.endEdit()
+                editing_blk.setSelected(False)
+                self.txtblkShapeControl.setBlkItem(blk)
+                blk.setSelected(True)
+                blk.startEdit()
+                self.canvas.gv.ensureVisible(blk)
         else:
-            editing_blk.endEdit()
-            editing_blk.setSelected(False)
-            self.txtblkShapeControl.setBlkItem(blk)
-            blk.setSelected(True)
-            blk.startEdit()
-            self.canvas.gv.ensureVisible(blk)
+            self.textblk_item_list[current_editing_widget.idx].setSelected(False)
+            current_pw = self.pairwidget_list[tgt_idx]
+            is_trans = isinstance(current_editing_widget, TransTextEdit)
+            if is_trans:
+                w = current_pw.e_trans
+            else:
+                w = current_pw.e_source
+
+            self.changeHoveringWidget(w)
+            w.setFocus()
 
         if key_event is not None:
             key_event.accept()
@@ -453,7 +470,7 @@ class SceneTextManager(QObject):
         self.pairwidget_list.append(pair_widget)
         self.textEditList.addPairWidget(pair_widget)
         pair_widget.e_source.setPlainText(blk_item.blk.get_text())
-        pair_widget.e_source.focus_in.connect(self.onTransWidgetHoverEnter)
+        pair_widget.e_source.focus_in.connect(self.on_transwidget_focus_in)
         pair_widget.e_source.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
         pair_widget.e_source.push_undo_stack.connect(self.on_push_edit_stack)
         pair_widget.e_source.redo_signal.connect(self.on_textedit_redo)
@@ -462,7 +479,7 @@ class SceneTextManager(QObject):
         pair_widget.e_source.focus_out.connect(self.on_pairw_focusout)
 
         pair_widget.e_trans.setPlainText(blk_item.toPlainText())
-        pair_widget.e_trans.focus_in.connect(self.onTransWidgetHoverEnter)
+        pair_widget.e_trans.focus_in.connect(self.on_transwidget_focus_in)
         pair_widget.e_trans.propagate_user_edited.connect(self.on_propagate_transwidget_edit)
         pair_widget.e_trans.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
         pair_widget.e_trans.push_undo_stack.connect(self.on_push_edit_stack)
@@ -933,9 +950,13 @@ class SceneTextManager(QObject):
     def onRotateTextBlkItem(self, item: TextBlock):
         self.canvas.push_undo_command(RotateItemCommand(item))
     
-    def onTransWidgetHoverEnter(self, idx: int):
+    def on_transwidget_focus_in(self, idx: int):
         if self.is_editting():
-            return
+            textitm = self.editingTextItem()
+            textitm.endEdit()
+            self.pairwidget_list[textitm.idx].e_trans.setHoverEffect(False)
+            self.textEditList.clearAllSelected()
+
         if idx < len(self.textblk_item_list):
             blk_item = self.textblk_item_list[idx]
             self.canvas.gv.ensureVisible(blk_item)
@@ -969,7 +990,7 @@ class SceneTextManager(QObject):
     def on_push_textitem_undostack(self, num_steps: int, is_formatting: bool):
         blkitem: TextBlkItem = self.sender()
         e_trans = self.pairwidget_list[blkitem.idx].e_trans if not is_formatting else None
-        self.canvas.push_undo_command(TextItemEditCommand(blkitem, e_trans, num_steps), update_pushed_step=False)
+        self.canvas.push_undo_command(TextItemEditCommand(blkitem, e_trans, num_steps), update_pushed_step=is_formatting)
 
     def on_push_edit_stack(self, num_steps: int):
         edit: Union[TransTextEdit, SourceTextEdit] = self.sender()
