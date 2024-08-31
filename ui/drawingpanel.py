@@ -7,7 +7,7 @@ import numpy as np
 import cv2
 
 from utils.imgproc_utils import enlarge_window
-from utils.textblock_mask import canny_flood, connected_canny_flood
+from utils.textblock_mask import canny_flood, connected_canny_flood, existing_mask
 from utils.logger import logger
 
 from .module_manager import ModuleManager
@@ -201,7 +201,11 @@ class RectPanel(Widget):
         self.methodComboBox = QComboBox()
         self.methodComboBox.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.methodComboBox.setFixedWidth(CONFIG_COMBOBOX_SHORT)
-        self.methodComboBox.addItems([self.tr('method 1'), self.tr('method 2')])
+        self.methodComboBox.addItems([
+            self.tr('method 1'), 
+            self.tr('method 2'),
+            self.tr('Use Existing Mask')
+        ])
         self.autoChecker = QCheckBox(self.tr("Auto"))
         self.autoChecker.setToolTip(self.tr("run inpainting automatically."))
         self.autoChecker.stateChanged.connect(self.on_auto_changed)
@@ -243,8 +247,10 @@ class RectPanel(Widget):
     def get_maskseg_method(self):
         if self.methodComboBox.currentIndex() == 0:
             return canny_flood
-        else:
+        elif self.methodComboBox.currentIndex() == 1:
             return connected_canny_flood
+        elif self.methodComboBox.currentIndex() == 2:
+            return existing_mask
 
     def on_auto_changed(self):
         if self.autoChecker.isChecked():
@@ -775,7 +781,8 @@ class DrawingPanel(Widget):
             if mode == 0:
                 im = np.copy(img[y1: y2, x1: x2])
                 maskseg_method = self.rectPanel.get_maskseg_method()
-                inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im)
+                mask = self.canvas.imgtrans_proj.mask_array[y1: y2, x1: x2]
+                inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im, mask=mask)
                 mask = self.rectPanel.post_process_mask(inpaint_mask_array)
 
                 bground_bgr = bub_dict['bground_bgr']

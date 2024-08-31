@@ -94,7 +94,7 @@ def bground_calculator(buble_img, back_ground_mask, dilate=True):
     return bground_aver, bground_region, sd
 
 # 输入：文本块roi，分割出文本mask，根据mask计算文本bgr均值和标准差，决定纯色覆盖/inpaint修复
-def canny_flood(img, show_process=False, inpaint_sdthresh=10):
+def canny_flood(img, show_process=False, inpaint_sdthresh=10, **kwargs):
     # cv2.setNumThreads(4)
     WHITE = (255, 255, 255)
     BLACK = (0, 0, 0)
@@ -207,7 +207,7 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10):
     return mask, ballon_mask, bub_dict
 
 # 输入：文本块roi，分割出文本mask，根据mask计算文本bgr均值和标准差，决定纯色覆盖/inpaint修复
-def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_strokewidth_check=0):
+def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_strokewidth_check=0, **kwargs):
 
     # 寻找最可能是气泡的外轮廓mask
     def find_outermask(img):
@@ -339,6 +339,11 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_st
                 "inner_rect": inner_rect,
                 "need_inpaint": need_inpaint}
     return mask, ballon_mask, bub_dict
+
+
+def existing_mask(img, mask: np.ndarray):
+    bub_dict = {"bgr": [0, 0, 0],"bground_bgr": [255, 255, 255],"need_inpaint": True}
+    return mask, mask, bub_dict
 
 
 def extract_ballon_mask(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
