@@ -15,8 +15,8 @@ mecab-python3; sys_platform == 'darwin'
 fugashi
 unidic_lite
 tqdm
-opencv-python; sys_platform == 'win32' or sys_platform == 'linux'
-opencv-python<=4.10.0.82 ; sys_platform == 'darwin'
+opencv-python>=4.8.1.78; sys_platform == 'win32' or sys_platform == 'linux'
+opencv-python>=4.8.1.78,<=4.10.0.82 ; sys_platform == 'darwin'
 shapely
 pyclipper
 einops
@@ -34,7 +34,7 @@ keyboard
 ordered-set
 opencc-python-reimplemented
 requests
-Pillow
+Pillow>=10.0.1
 beautifulsoup4
 colorama
 openai
