@@ -7,9 +7,11 @@ import cv2
 import re
 
 from .imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
-from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
+from .structures import Tuple, Union, List, Dict, field, nested_dataclass
 from .split_text_region import split_textblock as split_text_region
+from .fontformat import FontFormat, LineSpacingType, TextAlignment, fix_fontweight_qt
 from . import shared
+
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
@@ -51,73 +53,166 @@ def sort_pnts(pts: np.ndarray):
         return pts_sorted, is_vertical
 
 
-fontweight_qt5_to_qt6 = {0: 100, 12: 200, 25: 300, 50: 400, 57: 500, 63: 600, 75: 700, 81: 800, 87: 900}
-fontweight_qt6_to_qt5 = {100: 0, 200: 12, 300: 25, 400: 50, 500: 57, 600: 63, 700: 75, 800: 81, 900: 87}
-
-fontweight_pattern = re.compile(r'font-weight:(\d+)', re.DOTALL)
-
-def fix_fontweight_qt(weight: Union[str, int]):
-
-    def _fix_html_fntweight(matched):
-        weight = int(matched.group(1))
-        return f'font-weight:{fix_fontweight_qt(weight)}'
-
-    if weight is None:
-        return None
-    if isinstance(weight, int):
-        if shared.FLAG_QT6 and weight < 100:
-            if weight in fontweight_qt5_to_qt6:
-                weight = fontweight_qt5_to_qt6[weight]
-        if not shared.FLAG_QT6 and weight >= 100:
-            if weight in fontweight_qt6_to_qt5:
-                weight = fontweight_qt6_to_qt5[weight]
-    if isinstance(weight, str):
-        weight = fontweight_pattern.sub(lambda matched: _fix_html_fntweight(matched), weight)
-    return weight
-
-
 @nested_dataclass
 class TextBlock:
     xyxy: List = field(default_factory = lambda: [0, 0, 0, 0])
     lines: List = field(default_factory = lambda: [])
     language: str = 'unknown'
-    vertical: bool = False
-    font_size: float = -1.
+    # font_size: float = -1.
     distance: np.ndarray = None
     angle: int = 0
     vec: List = None
     norm: float = -1
     merged: bool = False
-    sort_weight: float = -1
     text: List = field(default_factory = lambda : [])
     translation: str = ""
-    line_spacing: float = 1.
-    letter_spacing: float = 1.
-    font_family: str = ""
-    bold: bool = False
-    underline: bool = False
-    italic: bool = False
-    _alignment: int = -1
     rich_text: str = ""
     _bounding_rect: List = None
-    default_stroke_width: float = 0.2
-    stroke_decide_by_colordiff: bool = True
-    font_weight: int = None
-    opacity: float = 1.
-    shadow_radius: float = 0.
-    shadow_strength: float = 1.
-    shadow_color: Tuple = (0, 0, 0)
-    shadow_offset: List = field(default_factory = lambda : [0., 0.])
     src_is_vertical: bool = None
     _detected_font_size: float = -1
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
 
-    fg_colors: np.ndarray = field(default_factory = lambda : np.array([0., 0., 0.], dtype=np.float32))
-    bg_colors: np.ndarray = field(default_factory = lambda : np.array([0., 0., 0.], dtype=np.float32))
+    fontformat: FontFormat = field(default_factory=lambda: FontFormat())
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())
+
+    @property
+    def vertical(self):
+        return self.fontformat.vertical
+    
+    @vertical.setter
+    def vertical(self, value: bool):
+        self.fontformat.vertical = value
+
+    @property
+    def font_size(self):
+        return self.fontformat.font_size
+    
+    @font_size.setter
+    def font_size(self, value: float):
+        self.fontformat.font_size = value
+
+    @property
+    def line_spacing(self):
+        return self.fontformat.line_spacing
+
+    @line_spacing.setter
+    def line_spacing(self, value: float):
+        self.fontformat.line_spacing = value
+
+    @property
+    def letter_spacing(self):
+        return self.fontformat.letter_spacing
+
+    @letter_spacing.setter
+    def letter_spacing(self, value: float):
+        self.fontformat.letter_spacing = value
+
+    @property
+    def font_family(self):
+        return self.fontformat.font_family
+
+    @font_family.setter
+    def font_family(self, value: str):
+        self.fontformat.font_family = value
+
+    @property
+    def font_weight(self):
+        return self.fontformat.font_weight
+
+    @font_weight.setter
+    def font_weight(self, value: int):
+        self.fontformat.font_weight = value
+
+    @property
+    def bold(self):
+        return self.fontformat.bold
+
+    @bold.setter
+    def bold(self, value: bool):
+        self.fontformat.bold = value
+
+    @property
+    def italic(self):
+        return self.fontformat.italic
+
+    @italic.setter
+    def italic(self, value: bool):
+        self.fontformat.italic = value
+
+    @property
+    def underline(self):
+        return self.fontformat.underline
+
+    @underline.setter
+    def underline(self, value: bool):
+        self.fontformat.underline = value
+
+    @property
+    def stroke_width(self):
+        return self.fontformat.stroke_width
+
+    @stroke_width.setter
+    def stroke_width(self, value: float):
+        self.fontformat.stroke_width = value
+
+    @property
+    def opacity(self):
+        return self.fontformat.opacity
+
+    @opacity.setter
+    def opacity(self, value: float):
+        self.fontformat.opacity = value
+
+    @property
+    def shadow_radius(self):
+        return self.fontformat.shadow_radius
+
+    @shadow_radius.setter
+    def shadow_radius(self, value: float):
+        self.fontformat.shadow_radius = value
+
+    @property
+    def shadow_strength(self):
+        return self.fontformat.shadow_strength
+
+    @shadow_strength.setter
+    def shadow_strength(self, value: float):
+        self.fontformat.shadow_strength = value
+
+    @property
+    def shadow_color(self):
+        return self.fontformat.shadow_color
+
+    @shadow_color.setter
+    def shadow_color(self, value: float):
+        self.fontformat.shadow_color = value
+
+    @property
+    def shadow_offset(self):
+        return self.fontformat.shadow_offset
+
+    @shadow_offset.setter
+    def shadow_offset(self, value: float):
+        self.fontformat.shadow_offset = value
+
+    @property
+    def fg_colors(self):
+        return self.fontformat.frgb
+
+    @fg_colors.setter
+    def fg_colors(self, value: Union[np.ndarray, List]):
+        self.fontformat.frgb = value
+
+    @property
+    def bg_colors(self):
+       return self.fontformat.srgb
+
+    @bg_colors.setter
+    def bg_colors(self, value: np.ndarray):
+        self.fontformat.srgb = value
 
     def __post_init__(self):
         if self.xyxy is not None:
@@ -128,7 +223,7 @@ class TextBlock:
             self.vec = np.array(self.vec, np.float32)
         if self.src_is_vertical is None:
             self.src_is_vertical = self.vertical
-        self.font_weight = fix_fontweight_qt(self.font_weight)
+        
         if self.rich_text:
             self.rich_text = fix_fontweight_qt(self.rich_text)
 
@@ -141,6 +236,21 @@ class TextBlock:
                 if da['accumulate_color'] and len(self) > 0:
                     self.fg_colors /= nlines
                     self.bg_colors /= nlines
+
+            deprecated_blk_fmt_keys = {'vertical': None, 'line_spacing': None, 'letter_spacing': None, 'bold': None, 'underline': None, 'italic': None,
+                'opacity': None, 'shadow_radius': None, 'shadow_strength': None, 'shadow_color': None, 'shadow_offset': None,
+                 'font_size': 'size', 'font_family': None, '_alignment': 'alignment', 'default_stroke_width': 'stroke_width', 'font_weight': None,
+                 'fg_colors': 'frgb', 'bg_colors': 'srgb'
+                 }
+            for src_k, v in da.items():
+                if src_k in deprecated_blk_fmt_keys:
+                    if deprecated_blk_fmt_keys[src_k] is None:
+                        tgt_k = src_k
+                    else:
+                        tgt_k = deprecated_blk_fmt_keys[src_k]
+                    setattr(self.fontformat, tgt_k, v)
+            self.font_weight = fix_fontweight_qt(self.font_weight)
+
         del self.deprecated_attributes
 
     @property
@@ -260,8 +370,10 @@ class TextBlock:
     def __getitem__(self, idx):
         return self.lines[idx]
 
-    def to_dict(self):
-        blk_dict = copy.deepcopy(vars(self))
+    def to_dict(self, deep_copy=False):
+        blk_dict = vars(self)
+        if deep_copy:
+            blk_dict = copy.deepcopy(blk_dict)
         return blk_dict
 
     def get_transformed_region(self, img: np.ndarray, idx: int, textheight: int, maxwidth: int = None) -> np.ndarray :
@@ -340,9 +452,9 @@ class TextBlock:
 
     def set_font_colors(self, fg_colors = None, bg_colors = None):
         if fg_colors is not None:
-            self.fg_colors = np.array(fg_colors, dtype=np.float32)
+            self.fg_colors = fg_colors
         if bg_colors is not None:
-            self.bg_colors = np.array(bg_colors, dtype=np.float32)
+            self.bg_colors = bg_colors
 
     def update_font_colors(self, fg_colors: np.ndarray, bg_colors: np.ndarray):
         nlines = len(self)
@@ -351,6 +463,10 @@ class TextBlock:
                 fg_colors = np.array(fg_colors, dtype=np.float32)
             if not isinstance(bg_colors, np.ndarray):
                 bg_colors = np.array(bg_colors, dtype=np.float32)
+            if not isinstance(self.fg_colors, np.ndarray):
+                self.fg_colors = np.array(self.fg_colors, dtype=np.float32)
+            if not isinstance(self.bg_colors, np.ndarray):
+                self.bg_colors = np.array(self.bg_colors, dtype=np.float32)
             self.fg_colors += fg_colors / nlines
             self.bg_colors += bg_colors / nlines
 
@@ -368,37 +484,27 @@ class TextBlock:
     def xywh(self):
         x, y, w, h = self.xyxy
         return [x, y, w-x, h-y]
-
-    # alignleft: 0, center: 1, right: 2 
-    def alignment(self):
-        if self._alignment >= 0:
-            return self._alignment
-        elif self.src_is_vertical:
-            return 1
-        lines = self.lines_array()
-        if len(lines) == 1:
-            return 1
+    
+    def recalulate_alignment(self):
         angled, center, polygons = self.unrotated_polygons()
         polygons = polygons.reshape(-1, 4, 2)
         
         left_std = np.std(polygons[:, 0, 0])
-        # right_std = np.std(polygons[:, 1, 0])
+        right_std = np.std(polygons[:, 1, 0])
         center_std = np.std((polygons[:, 0, 0] + polygons[:, 1, 0]) / 2)
-        if left_std < center_std:
-            return 0
+        
+        if left_std < right_std and left_std < center_std:
+            self.alignment = TextAlignment.Left
+        elif right_std < left_std and right_std < center_std:
+            self.alignment = TextAlignment.Right
         else:
-            return 1
+            self.alignment = TextAlignment.Center
 
-    def target_lang(self):
-        return self.target_lang
-
-    @property
-    def stroke_width(self):
-        if self.stroke_decide_by_colordiff:
-            diff = color_difference(*self.get_font_colors())
-            if diff < 15:
-                return 0
-        return self.default_stroke_width
+    def recalulate_stroke_width(self, color_diff_tol = 15, stroke_width: float = 0.2):
+        if color_difference(*self.get_font_colors()) < color_diff_tol:
+            self.stroke_width = 0.
+        else:
+            self.stroke_width = stroke_width
 
     def adjust_pos(self, dx: int, dy: int):
         self.xyxy[0] += dx
@@ -409,40 +515,6 @@ class TextBlock:
             self._bounding_rect[0] += dx
             self._bounding_rect[1] += dy
 
-def sort_textblk_list(blk_list: List[TextBlock], im_w: int, im_h: int) -> List[TextBlock]:
-    if len(blk_list) == 0:
-        return blk_list
-    num_ja = 0
-    xyxy = []
-    for blk in blk_list:
-        if blk.language == 'ja':
-            num_ja += 1
-        xyxy.append(blk.xyxy)
-    xyxy = np.array(xyxy)
-    flip_lr = num_ja > len(blk_list) / 2
-    im_oriw = im_w
-    if im_w > im_h:
-        im_w /= 2
-    num_gridy, num_gridx = 4, 3
-    img_area = im_h * im_w
-    center_x = (xyxy[:, 0] + xyxy[:, 2]) / 2
-    if flip_lr:
-        if im_w != im_oriw:
-            center_x = im_oriw - center_x
-        else:
-            center_x = im_w - center_x
-    grid_x = (center_x / im_w * num_gridx).astype(np.int32)
-    center_y = (xyxy[:, 1] + xyxy[:, 3]) / 2
-    grid_y = (center_y / im_h * num_gridy).astype(np.int32)
-    grid_indices = grid_y * num_gridx + grid_x
-    grid_weights = grid_indices * img_area + 1.2 * (center_x - grid_x * im_w / num_gridx) + (center_y - grid_y * im_h / num_gridy)
-    if im_w != im_oriw:
-        grid_weights[np.where(grid_x >= num_gridx)] += img_area * num_gridy * num_gridx
-    
-    for blk, weight in zip(blk_list, grid_weights):
-        blk.sort_weight = weight
-    blk_list.sort(key=lambda blk: blk.sort_weight)
-    return blk_list
 
 def sort_regions(regions: List[TextBlock], right_to_left=None) -> List[TextBlock]:
     # from manga image translator
@@ -667,8 +739,10 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
     final_blk_list += merge_textlines(scattered_lines['hor'])
     final_blk_list += merge_textlines(scattered_lines['ver'])
     if sort_blklist:
-        # final_blk_list = sort_textblk_list(final_blk_list, im_w, im_h)
         final_blk_list = sort_regions(final_blk_list, )
+    for blk in final_blk_list:
+        blk.distance = None
+
 
     if len(final_blk_list) > 1:
         _final_blks = [final_blk_list[0]]

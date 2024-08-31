@@ -201,8 +201,8 @@ class AutoLayoutCommand(QUndoCommand):
             item.setPlainText('')
             item.setRect(rect, repaint=False)
             item.setHtml(html)
-            if item.letter_spacing != 1:
-                item.setLetterSpacing(item.letter_spacing, force=True)
+            if item.fontformat.letter_spacing != 1:
+                item.setLetterSpacing(item.fontformat.letter_spacing, force=True)
             
     def undo(self):
         for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.old_html_lst, self.old_rect_lst):
@@ -210,8 +210,8 @@ class AutoLayoutCommand(QUndoCommand):
             item.setPlainText('')
             item.setRect(rect, repaint=False)
             item.setHtml(html)
-            if item.letter_spacing != 1:
-                item.setLetterSpacing(item.letter_spacing, force=True)
+            if item.fontformat.letter_spacing != 1:
+                item.setLetterSpacing(item.fontformat.letter_spacing, force=True)
 
 
 class SqueezeCommand(QUndoCommand):

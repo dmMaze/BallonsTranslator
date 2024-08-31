@@ -20,21 +20,30 @@ NP_INT_TYPES = (np.int_, np.int8, np.int16, np.int32, np.int64, np.uint, np.uint
 def to_dict(obj):
     return json.loads(json.dumps(obj, default=lambda o: o.__dict__, ensure_ascii=False))
 
-def json_dump_nested_obj(obj):
-    return json.dumps(obj, default=lambda o: o.__dict__, ensure_ascii=False)
+def serialize_np(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.ScalarType):
+        if isinstance(obj, NP_BOOL_TYPES):
+            return bool(obj)
+        elif isinstance(obj, NP_FLOAT_TYPES):
+            return float(obj)
+        elif isinstance(obj, NP_INT_TYPES):
+            return int(obj)
+    return obj
+
+def json_dump_nested_obj(obj, **kwargs):
+    def _default(obj):
+        if isinstance(obj, (np.ndarray, np.ScalarType)):
+            return serialize_np(obj)
+        return obj.__dict__
+    return json.dumps(obj, default=lambda o: _default(o), ensure_ascii=False, **kwargs)
 
 # https://stackoverflow.com/questions/26646362/numpy-array-is-not-json-serializable
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, np.ScalarType):
-            if isinstance(obj, NP_BOOL_TYPES):
-                return bool(obj)
-            elif isinstance(obj, NP_FLOAT_TYPES):
-                return float(obj)
-            elif isinstance(obj, NP_INT_TYPES):
-                return int(obj)
+        if isinstance(obj, (np.ndarray, np.ScalarType)):
+            return serialize_np(obj)
         return json.JSONEncoder.default(self, obj)
 
 def find_all_imgs(img_dir, abs_path=False, sort=False):

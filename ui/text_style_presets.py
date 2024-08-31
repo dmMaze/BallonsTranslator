@@ -144,7 +144,7 @@ class TextStyleLabel(Widget):
             fontfmt = C.active_format
         if fontfmt is None:
             return
-        updated_keys = self.fontfmt.merge(fontfmt)
+        updated_keys = self.fontfmt.merge(fontfmt, compare=True)
         if len(updated_keys) > 0:
             save_text_styles()
         
@@ -173,7 +173,7 @@ class TextStyleLabel(Widget):
 
     def updatePreview(self):
         font = self.stylelabel.font()
-        font.setFamily(self.fontfmt.family)
+        font.setFamily(self.fontfmt.font_family)
         self.stylelabel.setFont(font)
 
         d = int(self.colorw.width() * 0.66)
@@ -187,7 +187,7 @@ class TextStyleLabel(Widget):
 
         draw_rect, draw_radius = QRectF(0, 0, d, d), radius
         if self.fontfmt.stroke_width > 0:
-            r, g, b = self.fontfmt.srgb
+            r, g, b = self.fontfmt.stroke_color()
             color = QColor(r, g, b, 255)
             painter.setBrush(color)
             painter.drawRoundedRect(draw_rect, draw_radius, draw_radius)

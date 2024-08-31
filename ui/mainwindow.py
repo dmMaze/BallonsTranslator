@@ -11,7 +11,7 @@ from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, Q
 
 from utils.logger import logger as LOGGER
 from utils.text_processing import is_cjk, full_len, half_len
-from utils.textblock import TextBlock
+from utils.textblock import TextBlock, TextAlignment
 from utils import shared
 from utils import create_error_dialog
 from modules.translators.trans_chatgpt import GPTTranslator
@@ -892,7 +892,6 @@ class MainWindow(mainwindow_cls):
         for blkitem in blkitem_list:
             blk: TextBlock = blkitem.blk
             blk._bounding_rect = blkitem.absBoundingRect()
-            blk.vertical = blkitem.is_vertical
             blk.text = self.st_manager.pairwidget_list[blkitem.idx].e_source.toPlainText()
             blk_ids.append(blkitem.idx)
             blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
@@ -929,7 +928,7 @@ class MainWindow(mainwindow_cls):
         else:
             for blk in blk_list:
                 if blk.vertical:
-                    blk._alignment = 1
+                    blk.alignment = TextAlignment.Center
                 blk.translation = half_len(blk.translation)
                 blk.vertical = False
 
@@ -963,23 +962,24 @@ class MainWindow(mainwindow_cls):
         if not inpaint_only:
             for ii, blk in enumerate(blk_list):
                 if self._run_imgtrans_wo_textstyle_update and ffmt_list is not None:
-                    ffmt_list[ii].update_textblock_format(blk)
+                    blk.fontformat.merge(ffmt_list[ii])
                 else:
                     if override_fnt_size:
-                        blk.font_size = pt2px(gf.size)
+                        blk.font_size = gf.font_size
                     elif blk._detected_font_size > 0 and not pcfg.module.enable_detect:
                         blk.font_size = blk._detected_font_size
                     if override_fnt_stroke:
-                        blk.default_stroke_width = gf.stroke_width
-                        blk.stroke_decide_by_colordiff = False
-                    else:
-                        blk.stroke_decide_by_colordiff = True
+                        blk.stroke_width = gf.stroke_width
+                    elif pcfg.module.enable_ocr:
+                        blk.recalulate_stroke_width()
                     if override_fnt_color:
                         blk.set_font_colors(fg_colors=gf.frgb)
                     if override_fnt_scolor:
                         blk.set_font_colors(bg_colors=gf.srgb)
                     if override_alignment:
-                        blk._alignment = gf.alignment
+                        blk.alignment = gf.alignment
+                    elif pcfg.module.enable_detect and not blk.src_is_vertical:
+                        blk.recalulate_alignment()
                     if override_effect:
                         blk.opacity = gf.opacity
                         blk.shadow_color = gf.shadow_color
@@ -989,9 +989,9 @@ class MainWindow(mainwindow_cls):
                     if override_writing_mode:
                         blk.vertical = gf.vertical
                     if override_font_family:
-                        blk.font_family = gf.family
+                        blk.font_family = gf.font_family
                         if blk.rich_text:
-                            blk.rich_text = set_html_family(blk.rich_text, gf.family)
+                            blk.rich_text = set_html_family(blk.rich_text, gf.font_family)
                     
                     blk.line_spacing = gf.line_spacing
                     blk.letter_spacing = gf.letter_spacing
@@ -1096,16 +1096,12 @@ class MainWindow(mainwindow_cls):
                 self.backup_blkstyles.append(ffmt_list)
                 for textblk in blklist:
                     if not pcfg.module.enable_detect:
-                        ffmt = FontFormat.from_textblock(textblk)
-                        ffmt_list.append(ffmt)
+                        ffmt_list.append(textblk.fontformat.deepcopy())
                     if pcfg.module.enable_ocr:
-                        textblk.stroke_decide_by_colordiff = True
-                        textblk.default_stroke_width = 0.2
                         textblk.text = []
                         textblk.set_font_colors((0, 0, 0), (0, 0, 0))
                     if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
                         textblk.rich_text = ''
-                        # textblk.font_size = textblk.detected_font_size ???
                     textblk.vertical = textblk.src_is_vertical
         self.module_manager.runImgtransPipeline()
 

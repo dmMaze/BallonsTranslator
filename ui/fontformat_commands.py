@@ -54,7 +54,7 @@ def font_formating(push_undostack: bool = False):
                 if push_undostack:
                     params = copy.deepcopy(kwargs)
                     params.update({'param_name': param_name, 'act_ffmt': act_ffmt, 'is_global': is_global, 'blkitems': blkitems})
-                    undo_values = [blkitem.getFontFormatAttr(param_name) for blkitem in blkitems]
+                    undo_values = [getattr(blkitem.fontformat, param_name) for blkitem in blkitems]
                     cmd = TextStyleUndoCommand(formatting_func, params, values, undo_values)
                     SW.canvas.push_undo_command(cmd)
                 else:
@@ -67,7 +67,7 @@ def font_formating(push_undostack: bool = False):
     return func_wrapper
 
 @font_formating()
-def ffmt_change_family(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
+def ffmt_change_font_family(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
         blkitem.setFontFamily(value, **set_kwargs)
@@ -85,7 +85,7 @@ def ffmt_change_underline(param_name: str, values: str, act_ffmt: FontFormat, is
         blkitem.setFontUnderline(value, **set_kwargs)
 
 @font_formating()
-def ffmt_change_weight(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
+def ffmt_change_font_weight(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
         blkitem.setFontWeight(value, **set_kwargs)
@@ -132,11 +132,10 @@ def ffmt_change_srgb(param_name: str, values: tuple, act_ffmt: FontFormat, is_gl
 def ffmt_change_stroke_width(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
-        blkitem.blk.stroke_decide_by_colordiff = False
         blkitem.setStrokeWidth(value, **set_kwargs)
 
 @font_formating()
-def ffmt_change_size(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], clip_size=False, **kwargs):
+def ffmt_change_font_size(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], clip_size=False, **kwargs):
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
         if value < 0:

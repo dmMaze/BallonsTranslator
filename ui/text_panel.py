@@ -6,10 +6,9 @@ from qtpy.QtWidgets import QComboBox, QLineEdit, QSizePolicy, QHBoxLayout, QVBox
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent
 
-
-from utils.fontformat import FontFormat
 from utils import shared
 from utils import config as C
+from utils.fontformat import FontFormat, px2pt
 from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanelDeprecated
@@ -121,7 +120,8 @@ class IncrementalBtn(QPushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setFixedSize(13, 13)
-        
+
+
 class QFontChecker(QCheckBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -232,7 +232,7 @@ class FontSizeBox(QFrame):
         self.downBtn.setObjectName("FsizeIncrementDown")
         self.upBtn.clicked.connect(self.onUpBtnClicked)
         self.downBtn.clicked.connect(self.onDownBtnClicked)
-        self.fcombobox = SizeComboBox([1, 1000], 'size', self)
+        self.fcombobox = SizeComboBox([1, 1000], 'font_size', self)
         self.fcombobox.addItems([
             "5", "5.5", "6.5", "7.5", "8", "9", "10", "10.5",
             "11", "12", "14", "16", "18", "20", '22', "26", "28", 
@@ -261,7 +261,7 @@ class FontSizeBox(QFrame):
             newsize += 1
         newsize = min(1000, newsize)
         if newsize != size:
-            self.param_changed.emit('size', newsize)
+            self.param_changed.emit('font_size', newsize)
             self.fcombobox.setCurrentText(str(newsize))
         
     def onDownBtnClicked(self):
@@ -271,7 +271,7 @@ class FontSizeBox(QFrame):
             newsize -= 1
         newsize = max(1, newsize)
         if newsize != size:
-            self.param_changed.emit('size', newsize)
+            self.param_changed.emit('font_size', newsize)
             self.fcombobox.text_changed_by_user = False
             self.fcombobox.setCurrentText(str(newsize))
 
@@ -340,7 +340,7 @@ class FontFamilyComboBox(QFontComboBox):
     def apply_fontfamily(self):
         ffamily = self.currentFont().family()
         if ffamily in shared.FONT_FAMILIES:
-            self.param_changed.emit('family', ffamily)
+            self.param_changed.emit('font_family', ffamily)
             self._current_font = ffamily
 
     def on_return_pressed(self):
@@ -457,16 +457,16 @@ class FontFormatPanel(Widget):
         self.textstyle_panel.active_text_style_label_changed.connect(self.on_active_textstyle_label_changed)
         self.textstyle_panel.active_stylename_edited.connect(self.on_active_stylename_edited)
 
-        self.texteffect_panel = TextEffectPanel(
-            self.tr("Text Effect"),
-            config_name='show_text_effect_panel',
-            config_expand_name='expand_teffect_panel',
-        )
-        self.textadvancedfmt_panel = TextAdvancedFormatPanel(
-            self.tr('Advanced Text Format'),
-            config_name='text_advanced_format_panel',
-            config_expand_name='expand_tadvanced_panel'
-        )
+        # self.texteffect_panel = TextEffectPanel(
+        #     self.tr("Text Effect"),
+        #     config_name='show_text_effect_panel',
+        #     config_expand_name='expand_teffect_panel',
+        # )
+        # self.textadvancedfmt_panel = TextAdvancedFormatPanel(
+        #     self.tr('Advanced Text Format'),
+        #     config_name='text_advanced_format_panel',
+        #     config_expand_name='expand_tadvanced_panel'
+        # )
 
         self.effectBtn = ClickableLabel(self.tr("Effect"), self)
         self.effectBtn.clicked.connect(self.on_effectbtn_clicked)
@@ -481,8 +481,8 @@ class FontFormatPanel(Widget):
 
         vl0 = QVBoxLayout()
         vl0.addWidget(self.textstyle_panel.view_widget)
-        vl0.addWidget(self.texteffect_panel.view_widget)
-        vl0.addWidget(self.textadvancedfmt_panel.view_widget)
+        # vl0.addWidget(self.texteffect_panel.view_widget)
+        # vl0.addWidget(self.textadvancedfmt_panel.view_widget)
         vl0.setSpacing(0)
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
@@ -538,7 +538,7 @@ class FontFormatPanel(Widget):
     def on_param_changed(self, param_name: str, value):
         func = FM.handle_ffmt_change.get(param_name)
         func_kwargs = {}
-        if param_name == 'size':
+        if param_name == 'font_size':
             func_kwargs['clip_size'] = True
         if self.global_mode():
             func(param_name, value, self.global_format, is_global=True, **func_kwargs)
@@ -583,9 +583,14 @@ class FontFormatPanel(Widget):
     def set_active_format(self, font_format: FontFormat):
         C.active_format = font_format
         self.familybox.blockSignals(True)
-        self.fontsizebox.fcombobox.setCurrentText(str(int(font_format.size)))
-        self.familybox.setCurrentText(font_format.family)
-        self.colorPicker.setPickerColor(font_format.frgb)
+        font_size = px2pt(font_format.font_size)
+        if round(font_size) == font_size:
+            font_size = str(font_size)
+        else:
+            font_size = f'{font_size:.1f}'
+        self.fontsizebox.fcombobox.setCurrentText(font_size)
+        self.familybox.setCurrentText(font_format.font_family)
+        self.colorPicker.setPickerColor(font_format.foreground_color())
         self.strokeColorPicker.setPickerColor(font_format.srgb)
         self.strokeWidthBox.setValue(font_format.stroke_width)
         self.lineSpacingBox.setValue(font_format.line_spacing)
@@ -596,8 +601,8 @@ class FontFormatPanel(Widget):
         self.formatBtnGroup.italicBtn.setChecked(font_format.italic)
         self.alignBtnGroup.setAlignment(font_format.alignment)
         self.familybox.blockSignals(False)
-        self.texteffect_panel.set_active_format(font_format)
-        self.textadvancedfmt_panel.set_active_format(font_format)
+        # self.texteffect_panel.set_active_format(font_format)
+        # self.textadvancedfmt_panel.set_active_format(font_format)
 
     def set_globalfmt_title(self):
         active_text_style_label = self.active_text_style_label()
@@ -611,7 +616,7 @@ class FontFormatPanel(Widget):
     def on_active_textstyle_label_changed(self):
         active_text_style_label = self.active_text_style_label()
         if active_text_style_label is not None:
-            updated_keys = self.global_format.merge(active_text_style_label.fontfmt)
+            updated_keys = self.global_format.merge(active_text_style_label.fontfmt, compare=True)
             if self.global_mode() and len(updated_keys) > 0:
                 self.set_active_format(self.global_format)
             self.set_globalfmt_title()

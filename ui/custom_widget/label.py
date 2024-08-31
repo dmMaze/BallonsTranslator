@@ -1,7 +1,11 @@
+from typing import List, Union, Tuple
+
+import numpy as np
 from qtpy.QtWidgets import QGraphicsOpacityEffect, QLabel, QColorDialog
 from qtpy.QtCore import  Qt, QPropertyAnimation, QEasingCurve, Signal
 from qtpy.QtGui import QMouseEvent, QWheelEvent, QColor
-from typing import List, Union, Tuple
+
+
 
 class FadeLabel(QLabel):
     def __init__(self, *args, **kwargs):
@@ -51,6 +55,8 @@ class ColorPickerLabel(QLabel):
 
     def setPickerColor(self, color: Union[QColor, List, Tuple]):
         if not isinstance(color, QColor):
+            if isinstance(color, np.ndarray):
+                color = np.round(color).astype(np.uint8).tolist()
             color = QColor(*color)
         self.color = color
         r, g, b, a = color.getRgb()

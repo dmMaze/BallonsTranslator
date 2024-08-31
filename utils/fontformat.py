@@ -1,14 +1,19 @@
 from typing import Union
 import enum
 import re
+import copy
+
+import numpy as np
 
 from . import shared
 from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
-from .textblock import TextBlock, fix_fontweight_qt
 
 
-def pt2px(pt) -> float:
-    return int(round(pt * shared.LDPI / 72.))
+def pt2px(pt, to_int=False) -> float:
+    if to_int:
+        return int(round(pt * shared.LDPI / 72.))
+    else:
+        return pt * shared.LDPI / 72.
 
 def px2pt(px) -> float:
     return px / shared.LDPI * 72.
@@ -19,12 +24,43 @@ class LineSpacingType(enum.IntEnum):
     Distance = 1
 
 
+class TextAlignment(enum.IntEnum):
+    Left = 0
+    Center = 1
+    Right = 2
+
+
+fontweight_qt5_to_qt6 = {0: 100, 12: 200, 25: 300, 50: 400, 57: 500, 63: 600, 75: 700, 81: 800, 87: 900}
+fontweight_qt6_to_qt5 = {100: 0, 200: 12, 300: 25, 400: 50, 500: 57, 600: 63, 700: 75, 800: 81, 900: 87}
+
+fontweight_pattern = re.compile(r'font-weight:(\d+)', re.DOTALL)
+
+def fix_fontweight_qt(weight: Union[str, int]):
+
+    def _fix_html_fntweight(matched):
+        weight = int(matched.group(1))
+        return f'font-weight:{fix_fontweight_qt(weight)}'
+
+    if weight is None:
+        return None
+    if isinstance(weight, int):
+        if shared.FLAG_QT6 and weight < 100:
+            if weight in fontweight_qt5_to_qt6:
+                weight = fontweight_qt5_to_qt6[weight]
+        if not shared.FLAG_QT6 and weight >= 100:
+            if weight in fontweight_qt6_to_qt5:
+                weight = fontweight_qt6_to_qt5[weight]
+    if isinstance(weight, str):
+        weight = fontweight_pattern.sub(lambda matched: _fix_html_fntweight(matched), weight)
+    return weight
+
+
 @nested_dataclass
 class FontFormat(Config):
 
-    family: str = field(default_factory=lambda: shared.DEFAULT_FONT_FAMILY) # to always apply shared.DEFAULT_FONT_FAMILY
-    size: float = 24
-    stroke_width: float = 0
+    font_family: str = field(default_factory=lambda: shared.DEFAULT_FONT_FAMILY) # to always apply shared.DEFAULT_FONT_FAMILY
+    font_size: float = 24
+    stroke_width: float = 0.
     frgb: List = field(default_factory=lambda: [0, 0, 0])
     srgb: List = field(default_factory=lambda: [0, 0, 0])
     bold: bool = False
@@ -32,9 +68,9 @@ class FontFormat(Config):
     italic: bool = False
     alignment: int = 0
     vertical: bool = False
-    weight: int = None
+    font_weight: int = None
     line_spacing: float = 1.2
-    letter_spacing: float = 1.
+    letter_spacing: float = 1.15
     opacity: float = 1.
     shadow_radius: float = 0.
     shadow_strength: float = 1.
@@ -43,57 +79,51 @@ class FontFormat(Config):
     _style_name: str = ''
     line_spacing_type: int = LineSpacingType.Proportional
 
-    def update_from_textblock(self, text_block: TextBlock):
-        self.family = text_block.font_family
-        self.size = px2pt(text_block.font_size)
-        self.stroke_width = text_block.stroke_width
-        self.frgb, self.srgb = text_block.get_font_colors()
-        self.bold = text_block.bold
-        self.weight = text_block.font_weight
-        self.underline = text_block.underline
-        self.italic = text_block.italic
-        self.alignment = text_block.alignment()
-        self.vertical = text_block.vertical
-        self.line_spacing = text_block.line_spacing
-        self.letter_spacing = text_block.letter_spacing
-        self.opacity = text_block.opacity
-        self.shadow_radius = text_block.shadow_radius
-        self.shadow_strength = text_block.shadow_strength
-        self.shadow_color = text_block.shadow_color
-        self.shadow_offset = text_block.shadow_offset
+    deprecated_attributes: dict = field(default_factory = lambda: dict())
+
+    @property
+    def size_pt(self):
+        return px2pt(self.font_size)
 
     def __post_init__(self):
-        self.weight = fix_fontweight_qt(self.weight)
+        da = self.deprecated_attributes
+        if len(da) > 0:
+            if 'size' in da:
+                self.font_size = pt2px(da['size'])
+            if 'weight' in da:
+                self.font_weight = da['weight']
+            if 'family' in da:
+                self.font_family = da['family']
 
-    def update_textblock_format(self, blk: TextBlock):
-        blk.default_stroke_width = self.stroke_width
-        blk.line_spacing = self.line_spacing
-        blk.letter_spacing = self.letter_spacing
-        blk.font_family = self.family
-        blk.font_size = pt2px(self.size)
-        blk.font_weight = self.weight
-        blk._alignment = self.alignment
-        blk.shadow_color = self.shadow_color
-        blk.shadow_radius = self.shadow_radius
-        blk.shadow_strength = self.shadow_strength
-        blk.shadow_offset = self.shadow_offset
-        blk.opacity = self.opacity
-        blk.vertical = self.vertical
-        blk.set_font_colors(self.frgb, self.srgb)
+        self.font_weight = fix_fontweight_qt(self.font_weight)
+        self.deprecated_attributes = {}
 
-    @staticmethod
-    def from_textblock(text_block: TextBlock):
-        ffmt = FontFormat()
-        ffmt.update_from_textblock(text_block)
-        return ffmt
+    def deepcopy(self):
+        fmt_copyed: FontFormat = None
+        fmt_copyed = copy.deepcopy(self)
+        return fmt_copyed
 
-    def merge(self, target: Config):
+    def merge(self, target: Config, compare: bool = False):
         tgt_keys = target.annotations_set()
         updated_keys = set()
         for key in tgt_keys:
-            if key != '_style_name' and self[key] != target[key]:
-                self.update(key, target[key])
-                updated_keys.add(key)
+            if not hasattr(self, key):
+                continue
+            if compare:
+                if key != '_style_name':
+                    if isinstance(target[key], np.ndarray):
+                        is_diff = np.any(self[key] != target[key])
+                    else:
+                        is_diff = self[key] != target[key]
+                    if is_diff:
+                        self.update(key, copy.deepcopy(target[key]))
+                        updated_keys.add(key)
+            else:
+                self.update(key, copy.deepcopy(target[key]))
         return updated_keys
-    
 
+    def foreground_color(self):
+        return [int(round(x)) for x in self.frgb]
+    
+    def stroke_color(self):
+        return [int(round(x)) for x in self.srgb]

@@ -821,7 +821,7 @@ class SceneTextManager(QObject):
         if max_central_width != np.inf:
             max_central_width = max(int(max_central_width * text_w), 0.75 * region_rect[2])
 
-        padding = pt2px(blk_font.pointSizeF()) + 20   # dummpy padding variable
+        padding = pt2px(blk_font.pointSizeF(), to_int=True) + 20   # dummpy padding variable
         if fmt.alignment == 1:
             if len(blkitem.blk) > 0:
                 centroid = blkitem.blk.center().astype(np.int64).tolist()

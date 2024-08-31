@@ -277,10 +277,6 @@ class AOTInpainter(InpainterBase):
         elif param_key == 'inpaint_size':
             self.inpaint_size = int(self.params['inpaint_size']['value'])
 
-    def unload_model(self):
-        del self.model
-        super().unload_model(True)
-
 
 from .lama import LamaFourier, load_lama_mpe
 

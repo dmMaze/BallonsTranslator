@@ -9,7 +9,7 @@ from PIL import Image
 
 from utils.logger import logger as LOGGER
 from utils.io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
-from utils.textblock import TextBlock
+from utils.textblock import TextBlock, FontFormat
 from utils.config import pcfg
 from utils import shared
 from .misc import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException
@@ -31,6 +31,8 @@ class TextBlkEncoder(NumpyEncoder):
     def default(self, obj):
         if isinstance(obj, TextBlock):
             return obj.to_dict()
+        elif isinstance(obj, FontFormat):
+            return vars(obj)
         return NumpyEncoder.default(self, obj)
 
 

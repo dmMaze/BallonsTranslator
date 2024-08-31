@@ -21,7 +21,7 @@ class TextAdvancedFormatPanel(PanelArea):
         )
 
         vlayout = QVBoxLayout()
-        vlayout.addWidget(QPushButton('rrrr'))
+        vlayout.addWidget(self.linespacing_combobox)
         self.setContentLayout(vlayout)
 
     def set_active_format(self, font_format: FontFormat):
