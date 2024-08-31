@@ -8,7 +8,7 @@ transformers
 fugashi
 unidic_lite
 tqdm
-opencv-python==4.5.*
+opencv-python>=4.8.1.78
 PyQt6
 numpy
 tokenizers

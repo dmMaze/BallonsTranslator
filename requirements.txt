@@ -8,7 +8,7 @@ transformers
 fugashi
 unidic_lite
 tqdm
-opencv-python==4.5.*
+opencv-python>=4.8.1.78
 PyQt6>=6.4.2   #PyQt5>=5.15.9
 pywin32
 shapely
@@ -28,7 +28,7 @@ keyboard
 ordered-set
 opencc
 requests
-Pillow
+Pillow>=10.0.1
 beautifulsoup4
 colorama
 gallery-dl
