@@ -7,6 +7,9 @@ import base64
 from .base import register_textdetectors, TextDetectorBase, TextBlock
 from utils import create_error_dialog, create_info_dialog
 
+import json
+import time
+import os
 
 @register_textdetectors('stariver_ocr')
 class StariverDetector(TextDetectorBase):
@@ -40,6 +43,7 @@ class StariverDetector(TextDetectorBase):
         "font_size_offset": "0",
         "font_size_min(set to -1 to disable)": "-1",
         "font_size_max(set to -1 to disable)": "-1",
+        "font_size_multiplier": "1.0",
         'update_token_btn': {
             'type': 'pushbtn',
             'value': '',
@@ -100,6 +104,10 @@ class StariverDetector(TextDetectorBase):
     @property
     def font_size_max(self):
         return int(self.params['font_size_max(set to -1 to disable)'])
+    
+    @property
+    def font_size_multiplier(self):
+        return float(self.params['font_size_multiplier'])
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
@@ -131,10 +139,12 @@ class StariverDetector(TextDetectorBase):
             new_font_size = max(new_font_size, self.font_size_min)
         if self.font_size_max != -1:
             new_font_size = min(new_font_size, self.font_size_max)
+        if self.font_size_multiplier != 1.0:
+            new_font_size = int(new_font_size * self.font_size_multiplier)
         return new_font_size
 
     def detect(self, img: np.ndarray) -> Tuple[np.ndarray, List[TextBlock]]:
-        self.update_token_if_needed() # 在向服务器发送请求前尝试更新 Token
+        self.update_token_if_needed()  # 在向服务器发送请求前尝试更新 Token
         if not self.token or self.token == '':
             self.logger.error(
                 f'stariver detector token 没有设置。当前token：{self.token}')
@@ -182,6 +192,8 @@ class StariverDetector(TextDetectorBase):
         if self.debug:
             payload_log = {k: v for k, v in payload.items() if k != 'image'}
             self.logger.debug(f'stariver detector 请求参数：{payload_log}')
+            self.save_debug_json(payload_log, 'request')
+
         response = requests.post(self.url, json=payload)
         if response.status_code != 200:
             self.logger.error(
@@ -193,6 +205,9 @@ class StariverDetector(TextDetectorBase):
                     f.write(response.text)
             raise ValueError('stariver detector 请求失败。')
         response_data = response.json()['Data']
+
+        if self.debug:
+            self.save_debug_json(response_data, 'response')
 
         blk_list = []
         for block in response_data.get('text_block', []):
@@ -218,10 +233,8 @@ class StariverDetector(TextDetectorBase):
                      for text in block.get('texts', [])]
 
             original_font_size = block.get('text_size', 0)
-
             scaled_font_size = original_font_size / \
                 scale if scale < 1 else original_font_size
-
             font_size_recalculated = self.adjust_font_size(scaled_font_size)
 
             if self.debug:
@@ -245,7 +258,11 @@ class StariverDetector(TextDetectorBase):
             if self.debug:
                 self.logger.debug(f'检测到文本块：{blk.to_dict()}')
 
-        mask = self._decode_base64_mask(response_data['mask'])
+        mask = self._decode_base64_mask(
+            response_data['mask']) if response_data.get('mask', '') != '' else None
+        if mask is None:
+            self.logger.warning(f'stariver detector 未检测到文字')
+            return None, []
         mask = self.expand_mask(mask)
 
         # scale back to original size
@@ -325,3 +342,12 @@ class StariverDetector(TextDetectorBase):
                     create_info_dialog('Token 更新成功')
             except Exception as e:
                 create_error_dialog(e, 'Token 更新失败', 'TokenUpdateFailed')
+
+    def save_debug_json(self, data, prefix='debug'):
+        timestamp = int(time.time())
+        filename = f"{prefix}_{timestamp}.json"
+        os.makedirs('debug_logs', exist_ok=True)
+        filepath = os.path.join('debug_logs', filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        self.logger.debug(f"Debug JSON saved to {filepath}")
