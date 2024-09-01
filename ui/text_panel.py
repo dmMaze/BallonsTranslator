@@ -596,7 +596,7 @@ class FontFormatPanel(Widget):
         self.fontsizebox.fcombobox.setCurrentText(font_size)
         self.familybox.setCurrentText(font_format.font_family)
         self.colorPicker.setPickerColor(font_format.foreground_color())
-        self.strokeColorPicker.setPickerColor(font_format.srgb)
+        self.strokeColorPicker.setPickerColor(font_format.stroke_color())
         self.strokeWidthBox.setValue(font_format.stroke_width)
         self.lineSpacingBox.setValue(font_format.line_spacing)
         self.letterSpacingBox.setValue(font_format.letter_spacing)
