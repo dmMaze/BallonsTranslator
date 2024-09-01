@@ -65,7 +65,6 @@ class TextBlkItem(QGraphicsTextItem):
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
-        self.setVertical(False)
         self.initTextBlock(blk, set_format=set_format)
         self.setBoundingRegionGranularity(0)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
@@ -142,7 +141,8 @@ class TextBlkItem(QGraphicsTextItem):
     def paint_stroke(self, painter: QPainter):
         doc = self.document().clone()
         doc.setDocumentMargin(self.padding())
-        layout = VerticalTextDocumentLayout(doc) if self.fontformat.vertical else HorizontalTextDocumentLayout(doc)
+        layout = VerticalTextDocumentLayout(doc, self.fontformat) if self.fontformat.vertical \
+            else HorizontalTextDocumentLayout(doc, self.fontformat)
         layout._draw_offset = self.layout._draw_offset
         layout.line_spacing = self.fontformat.line_spacing
         layout.letter_spacing = self.fontformat.letter_spacing
@@ -224,7 +224,8 @@ class TextBlkItem(QGraphicsTextItem):
             bx1, by1, bx2, by2 = xyxy
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
-        self.setVertical(blk.vertical)
+        init_html = blk.rich_text if blk.rich_text else blk.get_text()
+        self.setVertical(blk.vertical, init_html)
         self.setRect(blk.bounding_rect())
         
         if blk.angle != 0:
@@ -353,7 +354,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.setRotation(angle)
         self.blk.angle = angle
 
-    def setVertical(self, vertical: bool):
+    def setVertical(self, vertical: bool, init_html: str = None):
         if self.fontformat is not None:
             self.fontformat.vertical = vertical
 
@@ -377,10 +378,12 @@ class TextBlkItem(QGraphicsTextItem):
 
         doc = QTextDocument()
         doc.setDocumentMargin(doc_margin)
+        if not valid_layout and init_html is not None:
+            doc.setHtml(html)
         if vertical:
-            layout = VerticalTextDocumentLayout(doc)
+            layout = VerticalTextDocumentLayout(doc, self.fontformat)
         else:
-            layout = HorizontalTextDocumentLayout(doc)
+            layout = HorizontalTextDocumentLayout(doc, self.fontformat)
         
         self.layout = layout
         self.setDocument(doc)
@@ -396,7 +399,6 @@ class TextBlkItem(QGraphicsTextItem):
             doc.setHtml(html)
 
             self.setCenterTransform()
-            self.setLineSpacing(self.fontformat.line_spacing)
             self.repaint_background()
 
             if self.fontformat.letter_spacing != 1:
@@ -749,6 +751,15 @@ class TextBlkItem(QGraphicsTextItem):
         self.is_formatting = True
         self.fontformat.line_spacing = value
         self.layout.setLineSpacing(value)
+        if repaint_background:
+            self.repaint_background()
+            self.update()
+        self.is_formatting = False
+
+    def setLineSpacingType(self, value: int, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        self.is_formatting = True
+        self.fontformat.line_spacing_type = value
+        self.layout.setLineSpacingType(value)
         if repaint_background:
             self.repaint_background()
             self.update()

@@ -8,7 +8,7 @@ from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, 
 
 from utils import shared
 from utils import config as C
-from utils.fontformat import FontFormat, px2pt
+from utils.fontformat import FontFormat, px2pt, LineSpacingType
 from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanelDeprecated
@@ -385,7 +385,7 @@ class FontFormatPanel(Widget):
         self.lineSpacingLabel.size_ctrl_changed.connect(self.onLineSpacingCtrlChanged)
         self.lineSpacingLabel.btn_released.connect(lambda : self.on_param_changed('line_spacing', self.lineSpacingBox.value()))
 
-        self.lineSpacingBox = SizeComboBox([0, 10], 'line_spacing', self)
+        self.lineSpacingBox = SizeComboBox([0, 100], 'line_spacing', self)
         self.lineSpacingBox.addItems(["1.0", "1.1", "1.2"])
         self.lineSpacingBox.setToolTip(self.tr("Change line spacing"))
         self.lineSpacingBox.param_changed.connect(self.on_param_changed)
@@ -462,11 +462,12 @@ class FontFormatPanel(Widget):
         #     config_name='show_text_effect_panel',
         #     config_expand_name='expand_teffect_panel',
         # )
-        # self.textadvancedfmt_panel = TextAdvancedFormatPanel(
-        #     self.tr('Advanced Text Format'),
-        #     config_name='text_advanced_format_panel',
-        #     config_expand_name='expand_tadvanced_panel'
-        # )
+        self.textadvancedfmt_panel = TextAdvancedFormatPanel(
+            self.tr('Advanced Text Format'),
+            config_name='text_advanced_format_panel',
+            config_expand_name='expand_tadvanced_panel'
+        )
+        self.textadvancedfmt_panel.param_changed.connect(self.on_param_changed)
 
         self.effectBtn = ClickableLabel(self.tr("Effect"), self)
         self.effectBtn.clicked.connect(self.on_effectbtn_clicked)
@@ -482,7 +483,7 @@ class FontFormatPanel(Widget):
         vl0 = QVBoxLayout()
         vl0.addWidget(self.textstyle_panel.view_widget)
         # vl0.addWidget(self.texteffect_panel.view_widget)
-        # vl0.addWidget(self.textadvancedfmt_panel.view_widget)
+        vl0.addWidget(self.textadvancedfmt_panel.view_widget)
         vl0.setSpacing(0)
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
@@ -578,7 +579,11 @@ class FontFormatPanel(Widget):
         self.letterSpacingBox.setValue(self.letterSpacingBox.value() + delta * 0.01)
 
     def onLineSpacingCtrlChanged(self, delta: int):
-        self.lineSpacingBox.setValue(self.lineSpacingBox.value() + delta * 0.01)
+        if C.active_format.line_spacing_type == LineSpacingType.Distance:
+            mul = 0.1
+        else:
+            mul = 0.01
+        self.lineSpacingBox.setValue(self.lineSpacingBox.value() + delta * mul)
             
     def set_active_format(self, font_format: FontFormat):
         C.active_format = font_format
@@ -602,7 +607,7 @@ class FontFormatPanel(Widget):
         self.alignBtnGroup.setAlignment(font_format.alignment)
         self.familybox.blockSignals(False)
         # self.texteffect_panel.set_active_format(font_format)
-        # self.textadvancedfmt_panel.set_active_format(font_format)
+        self.textadvancedfmt_panel.set_active_format(font_format)
 
     def set_globalfmt_title(self):
         active_text_style_label = self.active_text_style_label()

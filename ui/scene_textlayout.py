@@ -13,7 +13,7 @@ from functools import lru_cache, cached_property
 
 from .misc import pixmap2ndarray, LruIgnoreArg
 from utils import shared as C
-from utils.fontformat import pt2px
+from utils.fontformat import pt2px, FontFormat, LineSpacingType
 
 def print_transform(tr: QTransform):
     print(f'[[{tr.m11(), tr.m12(), tr.m13()}]\n [{tr.m21(), tr.m22(), tr.m23()}]\n [{tr.m31(), tr.m32(), tr.m33()}]]')
@@ -175,14 +175,16 @@ def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, select
 
 class SceneTextLayout(QAbstractTextDocumentLayout):
     size_enlarged = Signal()
-    def __init__(self, doc: QTextDocument) -> None:
+    def __init__(self, doc: QTextDocument, fontformat: FontFormat) -> None:
         super().__init__(doc)
         self.max_height = 0
         self.max_width = 0
         self.available_width = 0
         self.available_height = 0
-        self.line_spacing = 1.
-        self.letter_spacing = 1.
+        self.line_spacing = fontformat.line_spacing
+        self.letter_spacing = fontformat.letter_spacing
+        self.linespacing_type = fontformat.line_spacing_type
+        self.fontformat = fontformat
 
         self.x_offset_lst = []
         self.y_offset_lst = []
@@ -222,6 +224,27 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         if self.line_spacing != line_spacing:
             self.line_spacing = line_spacing
             self.reLayout()
+
+    def setLineSpacingType(self, linespacing_type: int):
+        if self.linespacing_type != linespacing_type:
+            self.linespacing_type = linespacing_type
+            self.reLayout()
+
+    def calculate_line_spacing(self, size: float, line_spacing: float = 1):
+        if self.linespacing_type == LineSpacingType.Proportional:
+            return line_spacing * size
+        elif self.linespacing_type == LineSpacingType.Distance:
+            return line_spacing * 10 + size
+        else:
+            raise Exception(f'Invalid line spacing type: {self.linespacing_type}')
+
+    def identity_linespacing(self):
+        if self.linespacing_type == LineSpacingType.Proportional:
+            return 1.
+        elif self.linespacing_type == LineSpacingType.Distance:
+            return 0.
+        else:
+            raise Exception(f'Invalid line spacing type: {self.linespacing_type}')
 
     def blockBoundingRect(self, block: QTextBlock) -> QRectF:
         if not block.isValid():
@@ -311,8 +334,8 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
 class VerticalTextDocumentLayout(SceneTextLayout):
 
-    def __init__(self, doc: QTextDocument):
-        super().__init__(doc)
+    def __init__(self, doc: QTextDocument, fontformat: FontFormat):
+        super().__init__(doc, fontformat)
 
         self.line_spaces_lst = []
         self.min_height = 0
@@ -608,7 +631,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 break
             blk = blk.next()
         return blk.position() + off
-
+    
     def layoutBlock(self, block: QTextBlock):
         doc = self.document()
         ls = self.letter_spacing
@@ -753,7 +776,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             line_not_set.append(line)
             if out_of_vspace or end_char:
                 if is_first_line:
-                    line_spacing = 1.
+                    line_spacing = self.identity_linespacing()
                 else:
                     line_spacing = self.line_spacing
                 if len(width_list) == 0:
@@ -774,14 +797,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     char_records[cidx] = {'line_width': idea_line_width}
                 line_char_ids = []
 
-                x_offset = x_offset - idea_line_width * line_spacing
+                x_offset = x_offset - self.calculate_line_spacing(idea_line_width, line_spacing)
                 
                 for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
                     line.setPosition(QPointF(x_offset, ypos))
                 if out_of_vspace:
                     if end_char:
                         if not len(line_not_set) == 1:
-                            x_offset = x_offset - end_w * line_spacing
+                            x_offset = x_offset - self.calculate_line_spacing(end_w, line_spacing)
                         end_line.setPosition(QPointF(x_offset, end_ypos))
                         char_records[end_char_id] = {'line_width': end_w}
                     else:
@@ -826,8 +849,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
 
-    def __init__(self, doc: QTextDocument):
-        super().__init__(doc)
+    def __init__(self, doc: QTextDocument, fontformat: FontFormat):
+        super().__init__(doc, fontformat)
         self.need_ideal_height = True
 
     def reLayout(self):
@@ -954,7 +977,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             tw = line.naturalTextWidth()
             shrink_width = max(tw, shrink_width)
             self.shrink_height = max(idea_height + y_offset - doc_margin, self.shrink_height)    #????
-            y_offset += idea_height * self.line_spacing
+            y_offset += self.calculate_line_spacing(idea_height, self.line_spacing)
             line_idx += 1
             char_idx += nchar
 

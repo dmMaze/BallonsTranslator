@@ -9,33 +9,15 @@ from utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_CO
 
 class ComboBox(QComboBox):
 
-    index_changed = Signal()
-
     # https://stackoverflow.com/questions/3241830/qt-how-to-disable-mouse-scrolling-of-qcombobox
     def __init__(self, parent: QWidget = None, scrollWidget: QWidget = None, options: List[str] = None) -> None:
         super().__init__(parent)
         self.scrollWidget = scrollWidget
         if options is not None:
             self.addItems(options)
-        self.currentIndexChanged.connect(self.on_current_index_changed)
-        self._program_set_flag = False
 
     def setScrollWidget(self, scrollWidget: QWidget):
         self.scrollWidget = scrollWidget
-
-    def on_current_index_changed(self):
-        if self._program_set_flag:
-            return
-        self.index_changed.emit()
-
-    def set_current_index(self, index: int, user_input: bool = True):
-        '''
-        emit index_changed only if user_input is True
-        '''
-        
-        self._program_set_flag = not user_input
-        self.setCurrentIndex(index)
-        self._program_set_flag = False
 
     def wheelEvent(self, *args, **kwargs):
         if self.scrollWidget is None or self.hasFocus():
