@@ -235,7 +235,7 @@ class TextBlkItem(QGraphicsTextItem):
         if blk.translation:
             set_char_fmt = True
 
-        font_fmt = blk.fontformat.deepcopy()
+        font_fmt = blk.fontformat
         if set_format:
             self.set_fontformat(font_fmt, set_char_format=set_char_fmt, set_stroke_width=False, set_effect=False)
 
@@ -245,6 +245,13 @@ class TextBlkItem(QGraphicsTextItem):
         else:
             self.setHtml(blk.rich_text)
             self.setLetterSpacing(font_fmt.letter_spacing, repaint_background=False)
+            cursor = self.textCursor()
+            cursor.clearSelection()
+            cursor.movePosition(QTextCursor.MoveOperation.Start)
+            cfmt = cursor.charFormat()
+            cursor.setCharFormat(cfmt)
+            cursor.setBlockCharFormat(cfmt)
+            self.setTextCursor(cursor)
         self.update_effect(font_fmt, repaint=False)
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
         self.repaint_background()

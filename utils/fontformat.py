@@ -104,6 +104,8 @@ class FontFormat(Config):
         return fmt_copyed
 
     def merge(self, target: Config, compare: bool = False):
+        if id(self) == id(target):
+            return set()
         tgt_keys = target.annotations_set()
         updated_keys = set()
         for key in tgt_keys:
