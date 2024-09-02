@@ -620,10 +620,10 @@ class TextBlkItem(QGraphicsTextItem):
         if set_stroke_width:
             self.setStrokeWidth(ffmat.stroke_width)
         
-        alignment = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][ffmat.alignment]
+        alignment_qt_flag = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][ffmat.alignment]
         doc = self.document()
         op = doc.defaultTextOption()
-        op.setAlignment(alignment)
+        op.setAlignment(alignment_qt_flag)
         doc.setDefaultTextOption(op)
         
         if ffmat.vertical:
@@ -835,10 +835,10 @@ class TextBlkItem(QGraphicsTextItem):
     def setAlignment(self, value, restore_cursor=False, repaint_background=True, *args, **kwargs):
         cursor, after_kwargs = self._before_set_ffmt(set_selected=False, restore_cursor=restore_cursor)
         if isinstance(value, int):
-            value = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][value]
+            qt_align_flag = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][value]
         doc = self.document()
         op = doc.defaultTextOption()
-        op.setAlignment(value)
+        op.setAlignment(qt_align_flag)
         doc.setDefaultTextOption(op)
         if repaint_background:
             self.repaint_background()

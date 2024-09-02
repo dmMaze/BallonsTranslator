@@ -215,6 +215,14 @@ class TextBlock:
     def bg_colors(self, value: np.ndarray):
         self.fontformat.srgb = value
 
+    @property
+    def alignment(self):
+       return self.fontformat.alignment
+
+    @alignment.setter
+    def alignment(self, value: int):
+        self.fontformat.alignment = value
+
     def __post_init__(self):
         if self.xyxy is not None:
             self.xyxy = [int(num) for num in self.xyxy]
