@@ -272,7 +272,6 @@ class MainWindow(mainwindow_cls):
         module_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         module_manager.imgtrans_thread.mask_postprocess = self.drawingPanel.rectPanel.post_process_mask
         module_manager.blktrans_pipeline_finished.connect(self.on_blktrans_finished)
-        module_manager.imgtrans_thread.get_maskseg_method = self.drawingPanel.rectPanel.get_maskseg_method
         module_manager.imgtrans_thread.post_process_mask = self.drawingPanel.rectPanel.post_process_mask
 
         self.leftBar.run_imgtrans.connect(self.on_run_imgtrans)
@@ -449,7 +448,6 @@ class MainWindow(mainwindow_cls):
             self.restart_signal.emit()
 
     def save_config(self):
-        pcfg.drawpanel = self.drawingPanel.get_config()
         save_config()
 
     def onHideCanvas(self):
@@ -880,6 +878,7 @@ class MainWindow(mainwindow_cls):
         tgt_img = self.imgtrans_proj.img_array
         if tgt_img is None:
             return False
+        tgt_mask = self.imgtrans_proj.mask_array
         
         if len(blkitem_list) < 1:
             return False
@@ -897,7 +896,7 @@ class MainWindow(mainwindow_cls):
             blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
             blk_list.append(blk)
 
-        self.module_manager.runBlktransPipeline(blk_list, tgt_img, mode, blk_ids)
+        self.module_manager.runBlktransPipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask = tgt_mask)
         return True
 
 

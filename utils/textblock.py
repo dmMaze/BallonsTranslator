@@ -11,6 +11,7 @@ from .structures import Tuple, Union, List, Dict, field, nested_dataclass
 from .split_text_region import split_textblock as split_text_region
 from .fontformat import FontFormat, LineSpacingType, TextAlignment, fix_fontweight_qt
 from . import shared
+from .textblock_mask import canny_flood
 
 
 LANG_LIST = ['eng', 'ja', 'unknown']
@@ -806,7 +807,7 @@ def collect_textblock_regions(img: np.ndarray, textblk_lst: List[TextBlock], tex
     for blk_idx, textblk in enumerate(textblk_lst):
         for ii in range(len(textblk)):
             if split_textblk and len(textblk) == 1:
-                assert seg_func is not None
+                seg_func = canny_flood
                 region = textblk.get_transformed_region(img, ii, None, maxwidth=None)
                 mask  = seg_func(region)[0]
                 split_lines = split_text_region(mask)[0]

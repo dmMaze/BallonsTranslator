@@ -4,6 +4,7 @@ from typing import Union, List, Dict, Callable
 import numpy as np
 from qtpy.QtCore import QThread, Signal, QObject, QLocale, QTimer
 
+from .funcmaps import get_maskseg_method
 from utils.logger import logger as LOGGER
 from utils.registry import Registry
 from utils.imgproc_utils import enlarge_window, get_block_mask
@@ -305,14 +306,14 @@ class ImgtransThread(QThread):
         self.job = self._imgtrans_pipeline
         self.start()
 
-    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int]):
-        self.job = lambda : self._blktrans_pipeline(blk_list, tgt_img, mode, blk_ids)
+    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
+        self.job = lambda : self._blktrans_pipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask)
         self.start()
 
-    def _blktrans_pipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int]):
+    def _blktrans_pipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
         if mode >= 0 and mode < 3:
             try:
-                self.ocr_thread.module.run_ocr(tgt_img, blk_list, split_textblk=True, seg_func=self.get_maskseg_method())
+                self.ocr_thread.module.run_ocr(tgt_img, blk_list, split_textblk=True)
             except Exception as e:
                 create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
             self.finish_blktrans.emit(mode, blk_ids)
@@ -330,8 +331,8 @@ class ImgtransThread(QThread):
                 blk.region_inpaint_dict = None
                 if y2 - y1 > 2 and x2 - x1 > 2:
                     im = np.copy(tgt_img[y1: y2, x1: x2])
-                    maskseg_method = self.get_maskseg_method()
-                    inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im)
+                    maskseg_method = get_maskseg_method()
+                    inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im, mask=tgt_mask[y1: y2, x1: x2])
                     mask = self.post_process_mask(inpaint_mask_array)
                     if mask.sum() > 0:
                         inpainted = self.inpaint_thread.inpainter.inpaint(im, mask)
@@ -746,7 +747,7 @@ class ModuleManager(QObject):
         self.progress_msgbox.show()
         self.imgtrans_thread.runImgtransPipeline(self.imgtrans_proj)
 
-    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int]):
+    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
         self.terminateRunningThread()
         self.progress_msgbox.hide_all_bars()
         if mode >= 0 and mode < 3:
@@ -757,7 +758,7 @@ class ModuleManager(QObject):
             self.progress_msgbox.translate_bar.show()
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show()
-        self.imgtrans_thread.runBlktransPipeline(blk_list, tgt_img, mode, blk_ids)
+        self.imgtrans_thread.runBlktransPipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask)
 
     def on_finish_blktrans_stage(self, stage: str, progress: int):
         if stage == 'ocr':
