@@ -210,6 +210,7 @@ class ProjImgTrans:
             raise ProjectDirNotExistException
         with open(self.proj_path, "w", encoding="utf-8") as f:
             f.write(json.dumps(self.to_dict(), ensure_ascii=False, cls=TextBlkEncoder))
+            LOGGER.debug(f'project saved to {self.proj_path}')
 
     def to_dict(self) -> Dict:
         pages = self.pages.copy()
