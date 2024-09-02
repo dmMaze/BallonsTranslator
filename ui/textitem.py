@@ -588,12 +588,12 @@ class TextBlkItem(QGraphicsTextItem):
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setFamily(ffmat.font_family)
         font.setPointSizeF(ffmat.font_size)
-        font.setBold(ffmat.bold)
 
         fweight = ffmat.font_weight
         if fweight is  None:
             fweight = font.weight()
             ffmat.font_weight = fweight
+        font.setBold(ffmat.bold)
 
         self.document().setDefaultFont(font)
         format.setFont(font)
@@ -629,6 +629,7 @@ class TextBlkItem(QGraphicsTextItem):
         if ffmat.vertical:
             self.setLetterSpacing(ffmat.letter_spacing)
         self.setLineSpacing(ffmat.line_spacing)
+        self.fontformat.merge(ffmat)
 
     def updateBlkFormat(self):
         fmt = self.get_fontformat()
