@@ -275,10 +275,10 @@ class OCRLensAPI(OCRBase):
                 if self.newline_handling == 'remove':
                     full_text = full_text.replace('\n', ' ')
 
+                full_text = self._apply_punctuation_and_spacing(full_text)
+
                 if self.no_uppercase:
                     full_text = self._apply_no_uppercase(full_text)
-
-                full_text = self._apply_punctuation_and_spacing(full_text)
 
                 if isinstance(full_text, list):
                     return '\n'.join(full_text)
