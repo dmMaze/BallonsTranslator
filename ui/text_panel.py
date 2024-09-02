@@ -53,13 +53,9 @@ class SizeComboBox(QComboBox):
     param_changed = Signal(str, float)
     def __init__(self, val_range: List = None, param_name: str = '', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        lineedit = LineEdit(parent=self)
-        lineedit.return_pressed_wochange.connect(self.apply_size)
-        self.setLineEdit(lineedit)
-        self.text_changed_by_user = False
         self.param_name = param_name
         self.editTextChanged.connect(self.on_text_changed)
-        self.currentIndexChanged.connect(self.on_current_index_changed)
+        self.activated.connect(self.on_current_index_changed)
         self.setEditable(True)
         self.min_val = val_range[0]
         self.max_val = val_range[1]
@@ -70,32 +66,15 @@ class SizeComboBox(QComboBox):
         validator.setNotation(QDoubleValidator.Notation.StandardNotation)
 
         self.setValidator(validator)
-
-        self.lineEdit().setValidator(validator)
         self._value = 0
-
-    def apply_size(self):
-        self.param_changed.emit(self.param_name, self.value())
-
-    def keyPressEvent(self, e: QKeyEvent) -> None:
-        key = e.key()
-        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-            self.check_change()
-        super().keyPressEvent(e)
-
-    def focusInEvent(self, e: QFocusEvent) -> None:
-        super().focusInEvent(e)
-        self.text_changed_by_user = False
 
     def on_text_changed(self):
         if self.hasFocus():
-            self.text_changed_by_user = True
-            self.check_change()
+            self.param_changed.emit(self.param_name, self.value())
 
     def on_current_index_changed(self):
         if self.hasFocus() or self.view().isVisible():
-            self.text_changed_by_user = True
-            self.check_change()
+            self.param_changed.emit(self.param_name, self.value())
 
     def value(self) -> float:
         txt = self.currentText()
@@ -109,11 +88,6 @@ class SizeComboBox(QComboBox):
     def setValue(self, value: float):
         value = min(self.max_val, max(self.min_val, value))
         self.setCurrentText(str(round(value, 2)))
-
-    def check_change(self):
-        if self.text_changed_by_user:
-            self.text_changed_by_user = False
-            self.param_changed.emit(self.param_name, self.value())
 
 
 class IncrementalBtn(QPushButton):
@@ -272,7 +246,6 @@ class FontSizeBox(QFrame):
         newsize = max(1, newsize)
         if newsize != size:
             self.param_changed.emit('font_size', newsize)
-            self.fcombobox.text_changed_by_user = False
             self.fcombobox.setCurrentText(str(newsize))
 
 

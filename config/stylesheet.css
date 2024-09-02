@@ -121,11 +121,11 @@ QFontComboBox#FontFamilyBox::hover {
 }
 
 SizeComboBox {
-    padding-left: 6px;
-    padding-right: 3px;
-    font-size: 13px;
-    min-width: 43px;
-    max-width: 43px;
+    padding-left: 0px;
+    padding-right: 0px;
+    font-size: 12px;
+    min-width: 54px;
+    max-width: 54px;
     border-color: @borderColor;
 }
 
@@ -135,10 +135,14 @@ SizeComboBox::hover {
 
 SizeComboBox::down-arrow {
     image: url(icons/combobox_arrow.svg);
-    width: 28px;
+    width: 24px;
     height: 11px;
-    padding-right: 3px;
-    margin-right: 3px;
+    padding-right: 11px;
+    margin-right: 0px;
+}
+
+SizeComboBox::drop-down {
+    width: 12px;
 }
 
 QLabel#lineSpacingLabel {
