@@ -746,6 +746,9 @@ class SceneTextManager(QObject):
             text = blkitem.toPlainText()
             restore_charfmts = True
 
+        if not text.strip():
+            return
+
         if mask is None:
             im_h, im_w = img.shape[:2]
             bounding_rect = blkitem.absBoundingRect(max_h=im_h, max_w=im_w)
@@ -788,6 +791,8 @@ class SceneTextManager(QObject):
             # or the longest word exceeds the region_width
             # dont remember why i divide line_hight here
             # resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list), blkitem.blk.font_size / line_height), downscale_constraint, 1.0) 
+            if max(wl_list) == 0:
+                pass
             resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list)), downscale_constraint, 1.0)
 
         max_central_width = np.inf
