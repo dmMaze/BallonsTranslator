@@ -773,7 +773,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.layout.setLetterSpacing(value)
         else:
             cursor = QTextCursor(self.document())
-            char_fmt = cursor.charFormat()
+            char_fmt = QTextCharFormat()
             char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
             char_fmt.setFontLetterSpacing(value * 100)
             cursor.select(QTextCursor.SelectionType.Document)
@@ -787,7 +787,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def setFontColor(self, value: Tuple, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, force=False):
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
-        cfmt = cursor.charFormat()
+        cfmt = QTextCharFormat()
         cfmt.setForeground(QColor(*value))
         self.set_cursor_cfmt(cursor, cfmt, True)
         self._after_set_ffmt(cursor, repaint_background=repaint_background, restore_cursor=restore_cursor, **after_kwargs)
