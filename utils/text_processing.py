@@ -81,7 +81,7 @@ def seg_eng(text: str) -> List[str]:
                     append_left = cond_prev
             elif len_next > 0:
                 append_right = cond_next
-            elif len_prev:
+            elif len_prev > 0:
                 append_left = cond_prev
 
             if append_left:

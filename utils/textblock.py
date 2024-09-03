@@ -348,14 +348,16 @@ class TextBlock:
             min_bbox = rotate_polygons(center, min_bbox, -self.angle)
         return min_bbox.reshape(-1, 4, 2).astype(np.int64)
 
-    def normalizd_width_list(self) -> List[float]:
+    def normalizd_width_list(self, normalize=True) -> List[float]:
         angled, center, polygons = self.unrotated_polygons()
         width_list = []
         for polygon in polygons:
-            width_list.append((polygon[[2, 4]] - polygon[[0, 6]]).sum())
-        width_list = np.array(width_list)
-        width_list = width_list / np.sum(width_list)
-        return width_list.tolist()
+            width_list.append((polygon[[2, 4]] - polygon[[0, 6]]).mean())
+        if normalize:
+            width_list = np.array(width_list)
+            width_list = width_list / np.sum(width_list)
+            width_list = width_list.tolist()
+        return width_list
 
     # equivalent to qt's boundingRect, ignore angle
     def bounding_rect(self) -> List[int]:

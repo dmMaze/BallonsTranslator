@@ -693,7 +693,7 @@ class SceneTextManager(QObject):
     def onAutoLayoutTextblks(self):
         selected_blks = self.canvas.selected_text_items()
         old_html_lst, old_rect_lst, trans_widget_lst = [], [], []
-        selected_blks = [blk for blk in selected_blks if not blk.is_vertical]
+        selected_blks = [blk for blk in selected_blks if not blk.fontformat.vertical]
         if len(selected_blks) > 0:
             for blkitem in selected_blks:
                 old_html_lst.append(blkitem.toHtml())
@@ -768,8 +768,6 @@ class SceneTextManager(QObject):
         region_x, region_y, region_w, region_h = region_rect
         
         words, delimiter = seg_text(text, pcfg.module.translate_target)
-        if len(words) == 0:
-            return
 
         wl_list = get_words_length_list(QFontMetrics(blk_font), words)
         text_w, text_h = text_size_func(text)
@@ -796,7 +794,7 @@ class SceneTextManager(QObject):
             resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list)), downscale_constraint, 1.0)
 
         max_central_width = np.inf
-        if tgt_is_cjk and not src_is_cjk:
+        if not src_is_cjk:
             if ballon_area / text_area > 2:
                 if blkitem.blk.text:
                     _, _, brw, brh = blkitem.blk.bounding_rect()
@@ -844,7 +842,22 @@ class SceneTextManager(QObject):
                 centroid[0] = int(abs_centroid[0] - mask_xyxy[0])
                 centroid[1] = int(abs_centroid[1] - mask_xyxy[1])
 
-        new_text, xywh = layout_text(mask, mask_xyxy, centroid, words, wl_list, delimiter, delimiter_len, blkitem.blk.angle, line_height, fmt.alignment, fmt.vertical, 0, padding, max_central_width)
+        new_text, xywh, start_from_top, adjust_xy = layout_text(
+            blkitem.blk,
+            mask, 
+            mask_xyxy, 
+            centroid, 
+            words, 
+            wl_list, 
+            delimiter, 
+            delimiter_len, 
+            line_height, 
+            0, 
+            padding, 
+            max_central_width,
+            src_is_cjk=src_is_cjk,
+            tgt_is_cjk=tgt_is_cjk
+        )
 
         # font size post adjustment
         post_resize_ratio = 1
@@ -868,13 +881,10 @@ class SceneTextManager(QObject):
             blkitem.textCursor().clearSelection()
             blkitem.setFontSize(new_font_size)
 
-        scale = blkitem.scale()
-        if scale != 1 and not fmt.alignment == 0:
-            xywh = (np.array(xywh, np.float64) * scale).astype(np.int32).tolist()
-
         if restore_charfmts:
             char_fmts = blkitem.get_char_fmts()        
         
+        pos_before = blkitem.pos()
         blkitem.set_size(xywh[2], xywh[3], set_layout_maxsize=True)
         blkitem.setPlainText(new_text)
         if len(self.pairwidget_list) > blkitem.idx:
@@ -882,6 +892,9 @@ class SceneTextManager(QObject):
         if restore_charfmts:
             self.restore_charfmts(blkitem, text, new_text, char_fmts)
         blkitem.squeezeBoundingRect()
+        if start_from_top:
+            blkitem.setPos(blkitem.pos().x(), pos_before.y() + adjust_xy[1])
+            blkitem.blk._bounding_rect[1] = int(blkitem.pos().y())
         return True
     
     def restore_charfmts(self, blkitem: TextBlkItem, text: str, new_text: str, char_fmts: List[QTextCharFormat]):
@@ -1120,5 +1133,5 @@ def get_text_size(fm: QFontMetrics, text: str) -> Tuple[int, int]:
     return br.width(), brt.height()
     
 def get_words_length_list(fm: QFontMetrics, words: List[str]) -> List[int]:
-    return [fm.tightBoundingRect(word).width() for word in words]
+    return [fm.horizontalAdvance(word) for word in words]
 

@@ -908,7 +908,7 @@ class TextBlkItem(QGraphicsTextItem):
             if repaint:
                 self.repaint_background()
             
-    def set_size(self, w: float, h: float, set_layout_maxsize=False, set_blk_size=False):
+    def set_size(self, w: float, h: float, set_layout_maxsize=False, set_blk_size=True):
         '''
         rotation invariant
         '''
