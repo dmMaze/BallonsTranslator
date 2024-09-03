@@ -41,13 +41,13 @@ class ProjImgTrans:
     def __init__(self, directory: str = None):
         self.type = 'imgtrans'
         self.directory: str = None
-        self.pages: Dict[List[TextBlock]] = {}
+        self.pages: Dict[str, List[TextBlock]] = {}
         self._pagename2idx = {}
         self._idx2pagename = {}
 
         self._fuzzy_inpainted_list = None
 
-        self.not_found_pages: Dict[List[TextBlock]] = {}
+        self.not_found_pages: Dict[str, List[TextBlock]] = {}
         self.new_pages: List[str] = []
         self.proj_path: str = None
 
@@ -384,6 +384,26 @@ class ProjImgTrans:
         if delete_tmp_folder:
             shutil.rmtree(cuts_dir)
 
+    def dump_txt_path(self, dump_target, suffix):
+        save_path = osp.join(self.directory, self.proj_name() + f'_{dump_target}{suffix}')
+        return save_path
+
+    def dump_txt(self, dump_target: str, suffix='.txt'):
+        save_path = self.dump_txt_path(dump_target, suffix=suffix)
+        text_all = []
+        assert dump_target in {'source', 'translation'}
+        assert suffix in {'.txt', '.md'}
+        for page_name, blk_list in self.pages.items():
+            text_in_page = ['### ' + page_name]
+            for ii, blk in enumerate(blk_list):
+                if dump_target == 'translation':
+                    text = blk.translation.strip()
+                elif dump_target == 'source':
+                    text = blk.get_text().strip()
+                text_in_page.append(f'{ii + 1}. {text}')
+            text_all.append('\n\n'.join(text_in_page))
+        with open(save_path, 'w', encoding='utf8') as f:
+            f.write('\n\n\n'.join(text_all))
 
     def load_doc(self, doc_path, delete_tmp_folder=True, fin_page_signal=None):
         tmp_bubble_folder = osp.join(self.directory, 'img_folder')

@@ -107,9 +107,6 @@ class LeftBar(Widget):
     open_json_proj = Signal(str)
     save_proj = Signal()
     save_config = Signal()
-    run_imgtrans = Signal()
-    export_doc = Signal()
-    import_doc = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.mainwindow: QMainWindow = mainwindow
@@ -143,9 +140,19 @@ class LeftBar(Widget):
         actionSaveProj.setShortcut(QKeySequence.StandardKey.Save)
 
         actionExportAsDoc = QAction(self.tr("Export as Doc"), self)
-        actionExportAsDoc.triggered.connect(self.export_doc)
+        self.export_doc = actionExportAsDoc.triggered
         actionImportFromDoc = QAction(self.tr("Import from Doc"), self)
-        actionImportFromDoc.triggered.connect(self.import_doc)
+        self.import_doc = actionImportFromDoc.triggered
+
+        actionExportSrcTxt = QAction(self.tr("Export soure text as TXT"), self)
+        self.export_src_txt = actionExportSrcTxt.triggered
+        actionExportTranslationTxt = QAction(self.tr("Export translation as TXT"), self)
+        self.export_trans_txt = actionExportTranslationTxt.triggered
+
+        actionExportSrcMD = QAction(self.tr("Export soure text as markdown"), self)
+        self.export_src_md = actionExportSrcMD.triggered
+        actionExportTranslationMD = QAction(self.tr("Export translation as markdown"), self)
+        self.export_trans_md = actionExportTranslationMD.triggered
 
         self.recentMenu = QMenu(self.tr("Open Recent"), self)
         
@@ -156,7 +163,11 @@ class LeftBar(Widget):
         openMenu.addActions([
             actionSaveProj,
             actionExportAsDoc,
-            actionImportFromDoc
+            actionImportFromDoc,
+            actionExportSrcTxt,
+            actionExportTranslationTxt,
+            actionExportSrcMD,
+            actionExportTranslationMD,
         ])
         self.openBtn = OpenBtn()
         self.openBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
@@ -170,8 +181,7 @@ class LeftBar(Widget):
         self.runImgtransBtn = QPushButton()
         self.runImgtransBtn.setText('RUN')
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
-        self.runImgtransBtn.clicked.connect(self.run_imgtrans)
-
+        self.run_imgtrans = self.runImgtransBtn.clicked
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
 
         vlayout = QVBoxLayout(self)

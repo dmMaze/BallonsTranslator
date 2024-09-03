@@ -135,6 +135,10 @@ class MainWindow(mainwindow_cls):
         self.leftBar.save_proj.connect(self.save_proj)
         self.leftBar.export_doc.connect(self.on_export_doc)
         self.leftBar.import_doc.connect(self.on_import_doc)
+        self.leftBar.export_src_txt.connect(lambda : self.on_export_txt(dump_target='source'))
+        self.leftBar.export_trans_txt.connect(lambda : self.on_export_txt(dump_target='translation'))
+        self.leftBar.export_src_md.connect(lambda : self.on_export_txt(dump_target='source', suffix='.md'))
+        self.leftBar.export_trans_md.connect(lambda : self.on_export_txt(dump_target='translation', suffix='.md'))
 
         self.pageList = PageListView()
         self.pageList.reveal_file.connect(self.on_reveal_file)
@@ -1165,6 +1169,15 @@ class MainWindow(mainwindow_cls):
 
     def on_import_doc(self):
         self.import_doc_thread.importDoc(self.imgtrans_proj)
+
+    def on_export_txt(self, dump_target, suffix='.txt'):
+        try:
+            self.imgtrans_proj.dump_txt(dump_target=dump_target, suffix=suffix)
+            msg = QMessageBox()
+            msg.setText(self.tr('Text file exported to ') + self.imgtrans_proj.dump_txt_path(dump_target, suffix))
+            msg.exec_()
+        except Exception as e:
+            create_error_dialog(e, self.tr('failed to export as TEXT file'))
 
     def on_reveal_file(self):
         current_img_path = self.imgtrans_proj.current_img_path()
