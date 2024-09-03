@@ -1,13 +1,13 @@
+import re
 import numpy as np
 import time
 import cv2
-import re
 from typing import List
 
-import requests
+import httpx
+from httpx_socks import SyncProxyTransport
 from PIL import Image
 import io
-import time
 import json5
 import lxml.html
 import http.cookiejar as cookielib
@@ -29,10 +29,27 @@ class LensCore:
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     }
 
-    def __init__(self):
+    def __init__(self, proxy=None):
+        self.proxy = proxy
         self.cookie_jar = cookielib.CookieJar()
-        self.session = requests.Session()
-        self.session.cookies = self.cookie_jar
+
+    def _send_request(self, url, headers, files):
+        try:
+            if self.proxy:
+                if self.proxy.startswith('socks5://') or self.proxy.startswith('socks4://'):
+                    transport = SyncProxyTransport.from_url(self.proxy)
+                    client = httpx.Client(transport=transport)
+                    response = client.post(url, headers=headers, files=files)
+                else:
+                    response = httpx.post(url, headers=headers, files=files, proxies=self.proxy)
+            else:
+                response = httpx.post(url, headers=headers, files=files)
+
+            if response.status_code != 200:
+                raise Exception(f"Failed to upload image. Status code: {response.status_code}")
+            return response
+        except Exception as e:
+            raise
 
     def scan_by_data(self, data, mime, dimensions):
         headers = self.HEADERS.copy()
@@ -50,8 +67,10 @@ class LensCore:
         r = tree.xpath("//script[@class='ds:1']")
         return json5.loads(r[0].text[len("AF_initDataCallback("):-2])
 
-
 class Lens(LensCore):
+    def __init__(self, proxy=None):
+        super().__init__(proxy=proxy)
+
     @staticmethod
     def resize_image(image, max_size=(1000, 1000)):
         image.thumbnail(max_size)
@@ -71,10 +90,9 @@ class Lens(LensCore):
         img_data, dimensions = self.resize_image(img)
         return self.scan_by_data(img_data, 'image/jpeg', dimensions)
 
-
 class LensAPI:
-    def __init__(self):
-        self.lens = Lens()
+    def __init__(self, proxy=None):
+        self.lens = Lens(proxy=proxy)
 
     @staticmethod
     def extract_text_and_coordinates(data):
@@ -99,7 +117,6 @@ class LensAPI:
 
     @staticmethod
     def stitch_text_smart(text_with_coords):
-        # Преобразование Swap X and Y
         transformed_coords = [{'text': item['text'], 'coordinates': [item['coordinates'][1], item['coordinates'][0]]} for item in text_with_coords]
         sorted_elements = sorted(transformed_coords, key=lambda x: (round(x['coordinates'][1], 2), x['coordinates'][0]))
 
@@ -122,12 +139,8 @@ class LensAPI:
 
     @staticmethod
     def stitch_text_sequential(text_with_coords):
-        # Используем порядок элементов в исходном списке
         stitched_text = " ".join([element['text'] for element in text_with_coords])
-        
-        # Удаляем лишние пробелы вокруг знаков препинания
         stitched_text = re.sub(r'\s+([,?.!])', r'\1', stitched_text)
-        
         return stitched_text.strip()
 
     @staticmethod
@@ -138,7 +151,7 @@ class LensAPI:
                 return "\n".join(text_data)
             return text_data
         except (IndexError, TypeError):
-            return "Full text not found(or Lens could not recognize it)"
+            return "Full text not found (or Lens could not recognize it)"
 
     @staticmethod
     def extract_language(data):
@@ -206,6 +219,10 @@ class OCRLensAPI(OCRBase):
             'value': 'Full Text',
             'description': 'Choose the method for extracting text from image'
         },
+        'proxy': {
+            'value': '',
+            'description': 'Proxy address (e.g., http(s)://user:password@host:port or socks4/5://user:password@host:port)'
+        },
         'description': 'OCR using Google Lens API'
     }
     
@@ -224,10 +241,14 @@ class OCRLensAPI(OCRBase):
     @property
     def response_method(self):
         return self.get_param_value('response_method')
+    
+    @property
+    def proxy(self):
+        return self.get_param_value('proxy')
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.api = LensAPI()
+        self.api = LensAPI(proxy=self.proxy)
         self.last_request_time = 0
 
     def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs):
@@ -267,7 +288,7 @@ class OCRLensAPI(OCRBase):
                     self.logger.info(f'OCR result: {result}')
                 ignore_texts = [
                     'Full text not found in expected structure',
-                    'Full text not found(or Lens could not recognize it)'
+                    'Full text not found (or Lens could not recognize it)'
                 ]
                 if result['full_text'] in ignore_texts:
                     return ''
@@ -327,3 +348,7 @@ class OCRLensAPI(OCRBase):
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
+        if param_key == 'proxy':
+            # При изменении прокси пересоздаем клиента
+            self.api.lens.proxy = self.proxy  # Обновляем прокси
+            self.api.lens.client = None  # Обнуляем клиента, чтобы создать его при следующем запросе
