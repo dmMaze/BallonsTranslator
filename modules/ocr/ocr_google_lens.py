@@ -59,7 +59,7 @@ class LensCore:
             'original_height': (None, str(dimensions[1])),
             'processed_image_dimensions': (None, f"{dimensions[0]},{dimensions[1]}")
         }
-        response = self.session.post(self.LENS_ENDPOINT, headers=headers, files=files)
+        response = self._send_request(self.LENS_ENDPOINT, headers, files)
         if response.status_code != 200:
             raise Exception(f"Failed to upload image. Status code: {response.status_code}")
         
