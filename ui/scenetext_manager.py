@@ -777,7 +777,10 @@ class SceneTextManager(QObject):
         wl_list = get_words_length_list(QFontMetricsF(blk_font), words)
         text_w, text_h = text_size_func(text)
         text_area = text_w * text_h
-        line_height = int(round(fmt.line_spacing * text_h))
+        if tgt_is_cjk:
+            line_height = int(round(fmt.line_spacing * text_size_func('X木')[1]))
+        else:
+            line_height = int(round(fmt.line_spacing * text_size_func('X')[1]))
         delimiter_len = text_size_func(delimiter)[0]
  
         ref_src_lines = False
@@ -807,7 +810,7 @@ class SceneTextManager(QObject):
                     _, src_width = blkitem.blk.normalizd_width_list(normalize=False)
                     resize_ratio_src = src_width / (sum(wl_list) + max((len(wl_list) - 1 - len(blkitem.blk.lines_array())), 0) * delimiter_len)
                     resize_ratio = max(resize_ratio_src * 1.5, 0.5)
-                resize_ratio = min(max(resize_ratio, 0.7), 1)
+                resize_ratio = min(max(resize_ratio, 0.6), 1)
 
         if resize_ratio != 1:
             new_font_size = blk_font.pointSizeF() * resize_ratio   

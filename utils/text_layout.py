@@ -77,6 +77,10 @@ def layout_lines_aligncenter(
     srcline_wlist=None,
     start_from_top=False
 )->List[Line]:
+    
+    lh_pad = 0
+    if blk.line_spacing > 1:
+        lh_pad = int(np.ceil(line_height - line_height / blk.line_spacing))
 
     centroid_x, centroid_y = centroid
     adjust_x = adjust_y = 0
@@ -120,16 +124,16 @@ def layout_lines_aligncenter(
             new_x_l = centroid_x - new_len_l // 2
             new_r_l = new_x_l + new_len_l
             if (new_x_l > 0 and new_r_l < bw):
-                if mask[pos_y: line_bottom, new_x_l].mean() > border_thr and \
-                    mask[pos_y: line_bottom, new_r_l].mean() > border_thr:
+                if mask[pos_y: line_bottom - lh_pad, new_x_l].mean() > border_thr and \
+                    mask[pos_y: line_bottom - lh_pad, new_r_l].mean() > border_thr:
                     left_valid = True
         if sum_right > 0:
             new_len_r = central_line.length + len_right[0] + delimiter_len
             new_x_r = centroid_x - new_len_r // 2 - line_height // 2
             new_r_r = centroid_x + new_len_r // 2 + line_height // 2
             if (new_x_r > 0 and new_r_r < bw):
-                if mask[pos_y: line_bottom, new_x_r].mean() > border_thr and \
-                    mask[pos_y: line_bottom, new_r_r].mean() > border_thr:
+                if mask[pos_y: line_bottom - lh_pad, new_x_r].mean() > border_thr and \
+                    mask[pos_y: line_bottom - lh_pad, new_r_r].mean() > border_thr:
                     right_valid = True
 
         insert_left = False
@@ -147,6 +151,9 @@ def layout_lines_aligncenter(
             new_len = central_line.length + len_right[0] + delimiter_len
 
         line_valid = line_is_valid(central_line, new_len, delimiter_len, max_central_width, words_length, srcline_wlist, -1, line_height, ref_src_lines)
+        if ref_src_lines and not line_valid and len(srcline_wlist) == 1:
+            if new_len < max_central_width:
+                line_valid = True
         if not line_valid:
             break
 
@@ -210,9 +217,12 @@ def layout_lines_aligncenter(
             right_x = new_x + new_len + line_height // 2
             if new_x < 0 or right_x >= bw:
                 line_valid = False
-            elif mask[pos_y: line_bottom, new_x].mean() < border_thr or\
-                mask[pos_y: line_bottom, right_x].mean() < border_thr:
+            elif mask[pos_y: line_bottom - lh_pad, new_x].mean() < border_thr or\
+                mask[pos_y: line_bottom - lh_pad, right_x].mean() < border_thr:
                 line_valid = False
+                if (len(lines) == 1 and ref_src_lines or line_right_no + 1 >= len(srcline_wlist)) and \
+                    line_is_valid(line, new_len, delimiter_len, max_central_width, words_length, srcline_wlist, line_right_no, line_height, ref_src_lines):
+                    line_valid = True
             else:
                 line_valid = True
             if line_valid:
@@ -228,6 +238,11 @@ def layout_lines_aligncenter(
                         break
 
             if not line_valid:
+                # import cv2
+                # m = mask.copy()
+                # m = cv2.cvtColor(m, cv2.COLOR_GRAY2BGR)
+                # cv2.rectangle(m, (new_x, pos_y), (right_x, line_bottom), (255, 0, 0), 1)
+                # cv2.imwrite('mask.jpg', m)
                 pos_x = centroid_x - wl // 2
                 pos_y = line_bottom
                 line_bottom += line_height
@@ -253,9 +268,12 @@ def layout_lines_aligncenter(
             right_x = new_x + new_len + line_height // 2
             if new_x <= 0 or right_x >= bw:
                 line_valid = False
-            elif mask[pos_y: line_bottom, new_x].mean() < border_thr or\
-                mask[pos_y: line_bottom, right_x].mean() < border_thr:
+            elif mask[pos_y: line_bottom - lh_pad, new_x].mean() < border_thr or\
+                mask[pos_y: line_bottom - lh_pad, right_x].mean() < border_thr:
                 line_valid = False
+                if line_left_no - 1 < 0 and \
+                    line_is_valid(line, new_len, delimiter_len, max_central_width, words_length, srcline_wlist, line_left_no, line_height, ref_src_lines):
+                    line_valid = True
             else:
                 line_valid = True
             if line_valid:
@@ -313,6 +331,11 @@ def layout_lines_alignside(
     blk_width = blk_rect[2]
     lines = []
     words_length = sum(wl_list)
+
+    lh_pad = 0
+    if blk.line_spacing > 1:
+        lh_pad = int(np.ceil(line_height - line_height / blk.line_spacing))
+
     if num_words > 0:
         sum_right = np.array(wl_list).sum()
         w, wl = words.pop(0), wl_list.pop(0)
@@ -332,9 +355,11 @@ def layout_lines_alignside(
                 new_x = ox + new_len + line_height // 2
             line_valid = False
             if new_x < bw and new_x > 0:
-                in_ballon = np.any(mask[np.clip(pos_y, 0, bh - 1): np.clip(line_bottom, 0, bh), new_x] != 0)
-                if in_ballon:
+                if mask[np.clip(pos_y, 0, bh - 1): np.clip(line_bottom - lh_pad, 0, bh), new_x].mean() > 240:
                     line_valid = True
+                else:
+                    if line_id + 1 >= len(srcline_wlist) and line_is_valid(line, new_len, delimiter_len, max_width, words_length, srcline_wlist, line_id, line_height, ref_src_lines):
+                        line_valid = True
             if line_valid:
                 line_valid = line_is_valid(line, new_len, delimiter_len, max_width, words_length, srcline_wlist, line_id, line_height, ref_src_lines)
             if line_valid:
@@ -374,10 +399,14 @@ def layout_text(
 
     if ref_src_lines:
         srcline_wlist, srcline_width = blk.normalizd_width_list(normalize=False)
-        tgtline_width = sum(wl_list) + delimiter_len * max(len(wl_list) - 1, 0)
-        if tgtline_width < srcline_width:
-            max_central_width = max(srcline_wlist)
-            pass
+        # tgtline_width = sum(wl_list) + delimiter_len * max(len(wl_list) - 1, 0)
+        # if tgtline_width < srcline_width:
+        #     min_bbox = blk.min_rect(rotate_back=True)[0]
+        #     x1, y1 = min_bbox[0]
+        #     x2, y2 = min_bbox[2]
+        #     w = x2 - x1
+        #     max_central_width = min(max_central_width, w)
+        #     pass
 
         if alignment == TextAlignment.Center and \
         len(srcline_wlist) > 1:
@@ -393,6 +422,7 @@ def layout_text(
 
         srcline_wlist = np.array(srcline_wlist) / srcline_width
         srcline_wlist = srcline_wlist.tolist()
+        # line_height = min((blk.detected_font_size), line_height)
 
     # if ref_src_lines:
     #     mask = np.ones_like(mask) * 255
