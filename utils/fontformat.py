@@ -58,7 +58,7 @@ def fix_fontweight_qt(weight: Union[str, int]):
 @nested_dataclass
 class FontFormat(Config):
 
-    font_family: str = field(default_factory=lambda: shared.DEFAULT_FONT_FAMILY) # to always apply shared.DEFAULT_FONT_FAMILY
+    font_family: str = None # to always apply shared.DEFAULT_FONT_FAMILY
     font_size: float = 24
     stroke_width: float = 0.
     frgb: List = field(default_factory=lambda: [0, 0, 0])

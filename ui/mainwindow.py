@@ -991,7 +991,7 @@ class MainWindow(mainwindow_cls):
                         blk.shadow_offset = gf.shadow_offset
                     if override_writing_mode:
                         blk.vertical = gf.vertical
-                    if override_font_family:
+                    if override_font_family or blk.font_family is None:
                         blk.font_family = gf.font_family
                         if blk.rich_text:
                             blk.rich_text = set_html_family(blk.rich_text, gf.font_family)

@@ -39,20 +39,27 @@ class Line:
         self.pos_x += self.spacing
         self.spacing = 0
 
-def get_max_width(line: Line, delimiter_len, max_width, words_length, srcline_wlist, line_no: int, line_height, reference_src_lines: bool = False):
-    if reference_src_lines:
-        if line_no >= 0 and line_no < len(srcline_wlist):
-            _max_width = min(srcline_wlist[line_no], max_width)
-        else:
-            _max_width = max_width
+def line_is_valid(line: Line, new_len: int, delimiter_len, max_width, words_length, srcline_wlist, line_no: int, line_height, ref_src_lines: bool = False):
+    if ref_src_lines:
         # if line_no >= 0 and line_no < len(srcline_wlist):
-        #     _max_width = srcline_wlist[line_no] / sum(srcline_wlist) * words_length
+        #     _max_width = min(srcline_wlist[line_no], max_width)
         # else:
-        #     _max_width = np.inf
-            # _max_width = max(srcline_wlist) / sum(srcline_wlist) * words_length
-        # _max_width = _max_width + delimiter_len * (line.num_words + 1) + line_height * 0.66
+        #     _max_width = max_width
+        if line_no >= 0 and line_no < len(srcline_wlist):
+            _max_width = srcline_wlist[line_no] * words_length
+        else:
+            _max_width = np.inf
+            _max_width = max(srcline_wlist) * words_length
+        _max_width = _max_width + delimiter_len * line.num_words
         max_width = min(max_width, _max_width)
-    return max_width
+
+    if new_len < max_width:
+        return True
+    else:
+        if line.length / max_width < max_width / new_len:
+            return True
+        else:
+            return False
 
 def layout_lines_aligncenter(
     blk: TextBlock,
@@ -66,7 +73,7 @@ def layout_lines_aligncenter(
     delimiter: str = ' ',
     max_central_width: float = np.inf,
     word_break: bool = False,
-    reference_src_lines = False,
+    ref_src_lines = False,
     srcline_wlist=None,
     start_from_top=False
 )->List[Line]:
@@ -74,7 +81,7 @@ def layout_lines_aligncenter(
     centroid_x, centroid_y = centroid
     adjust_x = adjust_y = 0
 
-    border_thr = 240
+    border_thr = 220
     
     # layout the central line, the center word is approximately aligned with the centroid of the mask
     num_words = len(words)
@@ -118,8 +125,8 @@ def layout_lines_aligncenter(
                     left_valid = True
         if sum_right > 0:
             new_len_r = central_line.length + len_right[0] + delimiter_len
-            new_x_r = centroid_x - new_len_r // 2
-            new_r_r = new_x_r + new_len_r
+            new_x_r = centroid_x - new_len_r // 2 - line_height // 2
+            new_r_r = centroid_x + new_len_r // 2 + line_height // 2
             if (new_x_r > 0 and new_r_r < bw):
                 if mask[pos_y: line_bottom, new_x_r].mean() > border_thr and \
                     mask[pos_y: line_bottom, new_r_r].mean() > border_thr:
@@ -135,6 +142,15 @@ def layout_lines_aligncenter(
             break
 
         if insert_left:
+            new_len = central_line.length + len_left[-1] + delimiter_len
+        else:
+            new_len = central_line.length + len_right[0] + delimiter_len
+
+        line_valid = line_is_valid(central_line, new_len, delimiter_len, max_central_width, words_length, srcline_wlist, -1, line_height, ref_src_lines)
+        if not line_valid:
+            break
+
+        if insert_left:
             central_line.append_left(wlst_left.pop(-1), len_left[-1] + delimiter_len, delimiter)
             sum_left -= len_left.pop(-1)
             central_line.pos_x = new_x_l
@@ -142,12 +158,9 @@ def layout_lines_aligncenter(
             central_line.append_right(wlst_right.pop(0), len_right[0] + delimiter_len, delimiter)
             sum_right -= len_right.pop(0)
             central_line.pos_x = new_x_r
-        _max_width = get_max_width(central_line, delimiter_len, max_central_width, words_length, srcline_wlist, -1, line_height, reference_src_lines)
-        if central_line.length > _max_width:
-            break
 
     line_right_no = line_left_no = 0
-    if reference_src_lines:
+    if ref_src_lines:
         nl = len(srcline_wlist)
         if nl % 2 == 0:
             line_right_no = nl // 2
@@ -193,9 +206,9 @@ def layout_lines_aligncenter(
             w, wl = wlst_right.pop(0), len_right.pop(0)
             sum_right -= wl
             new_len = line.length + wl + delimiter_len
-            new_x = centroid_x - new_len // 2
-            right_x = new_x + new_len
-            if new_x <= 0 or right_x >= bw:
+            new_x = centroid_x - new_len // 2 - line_height // 2
+            right_x = new_x + new_len + line_height // 2
+            if new_x < 0 or right_x >= bw:
                 line_valid = False
             elif mask[pos_y: line_bottom, new_x].mean() < border_thr or\
                 mask[pos_y: line_bottom, right_x].mean() < border_thr:
@@ -205,9 +218,8 @@ def layout_lines_aligncenter(
             if line_valid:
                 line.append_right(w, wl+delimiter_len, delimiter)
                 line.pos_x = new_x
-                _max_width = get_max_width(line, delimiter_len, max_central_width, words_length, srcline_wlist, line_right_no, line_height, reference_src_lines)
-                if new_len > _max_width:
-                    line_valid = False
+                line_valid = line_is_valid(line, new_len, delimiter_len, max_central_width, words_length, srcline_wlist, line_right_no, line_height, ref_src_lines)
+                if not line_valid:
                     if sum_right > 0:
                         w, wl = wlst_right.pop(0), len_right.pop(0)
                         sum_right -= wl
@@ -237,8 +249,8 @@ def layout_lines_aligncenter(
             w, wl = wlst_left.pop(-1), len_left.pop(-1)
             sum_left -= wl
             new_len = line.length + wl + delimiter_len
-            new_x = centroid_x - new_len // 2
-            right_x = new_x + new_len
+            new_x = centroid_x - new_len // 2 - line_height // 2
+            right_x = new_x + new_len + line_height // 2
             if new_x <= 0 or right_x >= bw:
                 line_valid = False
             elif mask[pos_y: line_bottom, new_x].mean() < border_thr or\
@@ -249,9 +261,8 @@ def layout_lines_aligncenter(
             if line_valid:
                 line.append_left(w, wl+delimiter_len, delimiter)
                 line.pos_x = new_x
-                _max_width = get_max_width(line, delimiter_len, max_central_width, words_length, srcline_wlist, line_left_no, line_height, reference_src_lines)
-                if new_len > _max_width:
-                    line_valid = False
+                line_valid = line_is_valid(line, new_len, delimiter_len, max_central_width, words_length, srcline_wlist, line_left_no, line_height, ref_src_lines)
+                if not line_valid:
                     if sum_left > 0:
                         w, wl = wlst_left.pop(-1), len_left.pop(-1)
                         sum_left -= wl
@@ -289,7 +300,7 @@ def layout_lines_alignside(
     delimiter: str = ' ',
     word_break: bool = False,
     max_width: int = np.inf,
-    reference_src_lines = False,
+    ref_src_lines = False,
     srcline_wlist=None,
 )->List[Line]:
 
@@ -316,17 +327,16 @@ def layout_lines_alignside(
             sum_right -= wl
             new_len = line.length + wl + delimiter_len
             if align_right:
-                new_x = ox + blk_width - new_len
+                new_x = ox + blk_width - new_len - line_height // 2
             else:
-                new_x = ox + new_len
+                new_x = ox + new_len + line_height // 2
             line_valid = False
             if new_x < bw and new_x > 0:
                 in_ballon = np.any(mask[np.clip(pos_y, 0, bh - 1): np.clip(line_bottom, 0, bh), new_x] != 0)
                 if in_ballon:
                     line_valid = True
-            _max_width = get_max_width(line, delimiter_len, max_width, words_length, srcline_wlist, line_id, line_height, reference_src_lines)
-            if new_len > _max_width:
-                line_valid = False
+            if line_valid:
+                line_valid = line_is_valid(line, new_len, delimiter_len, max_width, words_length, srcline_wlist, line_id, line_height, ref_src_lines)
             if line_valid:
                 line.append_right(w, wl+delimiter_len, delimiter)
             else:
@@ -350,11 +360,10 @@ def layout_text(
     delimiter_len: int,
     line_height: int,
     spacing: int = 0,
-    padding: float = 0, 
     max_central_width=np.inf,
     src_is_cjk=False,
     tgt_is_cjk=False,
-    reference_src_lines = False
+    ref_src_lines = False
 ) -> Tuple[str, List]:
 
     angle = blk.angle
@@ -362,31 +371,34 @@ def layout_text(
 
     start_from_top = False
     srcline_wlist = None
-    reference_src_lines = False
-    if len(blk.lines) > 0 and not tgt_is_cjk:
-        srcline_wlist = blk.normalizd_width_list(normalize=False)
-        srcline_width = sum(srcline_wlist)
-        tgtline_width = sum(wl_list) + delimiter_len * max(len(wl_list) - 1, 0)
-        content_growth = tgtline_width / srcline_width
-        if content_growth < 1 and max_central_width != np.inf:
-            max_central_width = max_central_width * content_growth
-            pass
-        if content_growth < 1.1:
-            reference_src_lines = True
-            if alignment == TextAlignment.Center and \
-            len(srcline_wlist) > 1:
-                if len(srcline_wlist) == 2:
-                    start_from_top = True
-                else:
-                    nw = len(srcline_wlist)
-                    # nl = min(nw // 2, 2)
-                    nl = 1
-                    sum_top = sum(srcline_wlist[:nl])
-                    sum_btn = sum(srcline_wlist[-nl:])
-                    start_from_top = sum_top / sum_btn > 1.2 and srcline_wlist[0] / max(srcline_wlist) > 0.9
-                    pass
 
-    num_words = len(words)
+    if ref_src_lines:
+        srcline_wlist, srcline_width = blk.normalizd_width_list(normalize=False)
+        tgtline_width = sum(wl_list) + delimiter_len * max(len(wl_list) - 1, 0)
+        if tgtline_width < srcline_width:
+            max_central_width = max(srcline_wlist)
+            pass
+
+        if alignment == TextAlignment.Center and \
+        len(srcline_wlist) > 1:
+            if len(srcline_wlist) == 2:
+                start_from_top = True
+            else:
+                nw = len(srcline_wlist)
+                # nl = min(nw // 2, 2)
+                nl = 1
+                sum_top = sum(srcline_wlist[:nl])
+                sum_btn = sum(srcline_wlist[-nl:])
+                start_from_top = sum_top / sum_btn > 1.2 and srcline_wlist[0] / max(srcline_wlist) > 0.9
+
+        srcline_wlist = np.array(srcline_wlist) / srcline_width
+        srcline_wlist = srcline_wlist.tolist()
+
+    # if ref_src_lines:
+    #     mask = np.ones_like(mask) * 255
+
+    if max_central_width == np.inf:
+        max_central_width = mask.shape[1]
 
     centroid_x, centroid_y = centroid
     center_x = mask_xyxy[0] + centroid_x
@@ -413,11 +425,11 @@ def layout_text(
 
     if alignment == TextAlignment.Center:
         lines, adjust_xy = layout_lines_aligncenter(blk, mask, words, centroid, wl_list, delimiter_len, line_height, spacing, delimiter, 
-                                         max_central_width, reference_src_lines=reference_src_lines, srcline_wlist=srcline_wlist,
+                                         max_central_width, ref_src_lines=ref_src_lines, srcline_wlist=srcline_wlist,
                                          start_from_top=start_from_top)    
     else:
-        lines, adjust_xy = layout_lines_alignside(blk, mask, words, centroid, wl_list, delimiter_len, line_height, spacing, delimiter, max_central_width, 
-                                       reference_src_lines=reference_src_lines, srcline_wlist=srcline_wlist)
+        lines, adjust_xy = layout_lines_alignside(blk, mask, words, centroid, wl_list, delimiter_len, line_height, spacing, delimiter, False, max_central_width, 
+                                       ref_src_lines=ref_src_lines, srcline_wlist=srcline_wlist)
     
     concated_text = []
     pos_x_lst, pos_right_lst = [], []
@@ -429,8 +441,8 @@ def layout_text(
 
     pos_x_lst = np.array(pos_x_lst)
     pos_right_lst = np.array(pos_right_lst)
-    canvas_l, canvas_r = pos_x_lst.min() - padding, pos_right_lst.max() + padding
-    canvas_t, canvas_b = lines[0].pos_y - padding, lines[-1].pos_y + line_height + padding
+    canvas_l, canvas_r = pos_x_lst.min(), pos_right_lst.max()
+    canvas_t, canvas_b = lines[0].pos_y, lines[-1].pos_y + line_height
 
     canvas_h = int(canvas_b - canvas_t)
     canvas_w = int(canvas_r - canvas_l)

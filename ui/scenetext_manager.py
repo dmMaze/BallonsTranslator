@@ -5,7 +5,7 @@ import copy
 
 from qtpy.QtWidgets import QApplication, QWidget
 from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QPoint
-from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetrics, QFont, QTextCharFormat, QClipboard
+from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetrics, QFontMetricsF, QFont, QTextCharFormat, QClipboard
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -723,8 +723,7 @@ class SceneTextManager(QObject):
         '''
         auto text layout, vertical writing is not supported yet.
         '''
-        
-        old_br = blkitem.absBoundingRect()
+
         img = self.imgtrans_proj.img_array
         if img is None:
             return
@@ -735,11 +734,16 @@ class SceneTextManager(QObject):
         # disable for vertical writing
         if blkitem.blk.vertical:
             return
+        
+        old_br = blkitem.absBoundingRect(qrect=True)
+        old_br = [old_br.x(), old_br.y(), old_br.width(), old_br.height()]
+        if old_br[2] < 1:
+            return
 
         blk_font = blkitem.font()
         fmt = blkitem.get_fontformat()
         blk_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, fmt.letter_spacing * 100)
-        text_size_func = lambda text: get_text_size(QFontMetrics(blk_font), text)
+        text_size_func = lambda text: get_text_size(QFontMetricsF(blk_font), text)
 
         restore_charfmts = False
         if text is None:
@@ -765,54 +769,46 @@ class SceneTextManager(QObject):
             mask, ballon_area, mask_xyxy, region_rect = extract_ballon_region(img, bounding_rect, enlarge_ratio=enlarge_ratio, cal_region_rect=True)
         else:
             mask_xyxy = [bounding_rect[0], bounding_rect[1], bounding_rect[0]+bounding_rect[2], bounding_rect[1]+bounding_rect[3]]
-        region_x, region_y, region_w, region_h = region_rect
         
         words, delimiter = seg_text(text, pcfg.module.translate_target)
+        if len(words) < 1:
+            return
 
-        wl_list = get_words_length_list(QFontMetrics(blk_font), words)
+        wl_list = get_words_length_list(QFontMetricsF(blk_font), words)
         text_w, text_h = text_size_func(text)
         text_area = text_w * text_h
         line_height = int(round(fmt.line_spacing * text_h))
         delimiter_len = text_size_func(delimiter)[0]
  
+        ref_src_lines = False
+        if not blkitem.blk.src_is_vertical:
+            ref_src_lines = blkitem.blk.line_coord_valid(old_br)
+
         adaptive_fntsize = False
-        if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0 and pcfg.let_autolayout_flag and pcfg.let_autolayout_adaptive_fntsz:
+        resize_ratio = 1
+        if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0 and pcfg.let_autolayout_flag:
             if blkitem.blk.src_is_vertical and blkitem.blk.vertical != blkitem.blk.src_is_vertical:
                 adaptive_fntsize = True
-            
-        resize_ratio = 1
-        if adaptive_fntsize:
-            area_ratio = ballon_area / text_area
-            ballon_area_thresh = 1.7
-            downscale_constraint = 0.6
-            # downscale the font size if textarea exceeds the balloon_area / ballon_area_thresh
-            # or the longest word exceeds the region_width
-            # dont remember why i divide line_hight here
-            # resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list), blkitem.blk.font_size / line_height), downscale_constraint, 1.0) 
-            if max(wl_list) == 0:
-                pass
-            resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list)), downscale_constraint, 1.0)
+                area_ratio = ballon_area / text_area
+                ballon_area_thresh = 1.7
+                downscale_constraint = 0.6
+                resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list)), downscale_constraint, 1.0)
 
-        max_central_width = np.inf
-        if not src_is_cjk:
-            if ballon_area / text_area > 2:
-                if blkitem.blk.text:
-                    _, _, brw, brh = blkitem.blk.bounding_rect()
-                    br_area = brw * brh
-                    if src_is_cjk:
-                        resize_ratio = np.sqrt(region_h * region_w / br_area)
-                    else:
-                        resize_ratio = np.clip(max(np.sqrt(br_area / text_area) * 0.8, np.sqrt(ballon_area / text_area ) * 0.7), 1, 1.1)
-                    if len(blkitem.blk) > 1:
-                        normalized_width_list = blkitem.blk.normalizd_width_list()
-                        max_central_width = max(normalized_width_list)
-                else:
-                    resize_ratio = 1.1
             else:
-                if ballon_area / text_area < 1.5:   # default eng->cjk font_size = 1.1 * detected_size, because detected eng bboxes are a bit small
-                    # print(1.8 * text_area / ballon_area)
-                    resize_ratio = max(ballon_area / 1.5 / text_area, 0.5)
-                    
+                if not src_is_cjk:
+                    resize_ratio_ballon = max(ballon_area / 1.2 / text_area, 0.7)
+                    if ref_src_lines:
+                        _, src_width = blkitem.blk.normalizd_width_list(normalize=False)
+                        resize_ratio_src = src_width / (sum(wl_list) + max((len(wl_list) - 1 - len(blkitem.blk.lines_array())), 0) * delimiter_len)
+                        resize_ratio = min(resize_ratio_ballon, resize_ratio_src)
+                    else:
+                        resize_ratio = resize_ratio_ballon
+                elif not blkitem.blk.src_is_vertical and ref_src_lines:
+                    _, src_width = blkitem.blk.normalizd_width_list(normalize=False)
+                    resize_ratio_src = src_width / (sum(wl_list) + max((len(wl_list) - 1 - len(blkitem.blk.lines_array())), 0) * delimiter_len)
+                    resize_ratio = max(resize_ratio_src * 1.5, 0.5)
+                resize_ratio = min(max(resize_ratio, 0.7), 1)
+
         if resize_ratio != 1:
             new_font_size = blk_font.pointSizeF() * resize_ratio   
             blk_font.setPointSizeF(new_font_size)
@@ -821,10 +817,7 @@ class SceneTextManager(QObject):
             text_w = int(text_w * resize_ratio)
             delimiter_len = int(delimiter_len * resize_ratio)
 
-        if max_central_width != np.inf:
-            max_central_width = max(int(max_central_width * text_w), 0.75 * region_rect[2])
-
-        padding = pt2px(blk_font.pointSizeF(), to_int=True) + 20   # dummpy padding variable
+        max_central_width = np.inf
         if fmt.alignment == 1:
             if len(blkitem.blk) > 0:
                 centroid = blkitem.blk.center().astype(np.int64).tolist()
@@ -853,23 +846,19 @@ class SceneTextManager(QObject):
             delimiter_len, 
             line_height, 
             0, 
-            padding, 
             max_central_width,
             src_is_cjk=src_is_cjk,
-            tgt_is_cjk=tgt_is_cjk
+            tgt_is_cjk=tgt_is_cjk,
+            ref_src_lines=ref_src_lines
         )
 
         # font size post adjustment
         post_resize_ratio = 1
         if adaptive_fntsize:
             downscale_constraint = 0.5
-            w = xywh[2] - padding * 2
+            w = xywh[2]
             post_resize_ratio = np.clip(max(region_rect[2] / w, downscale_constraint), 0, 1)
             resize_ratio *= post_resize_ratio
-
-        # if tgt_is_cjk:
-        #     resize_ratio = 1
-        #     post_resize_ratio = 1 / resize_ratio
 
         if post_resize_ratio != 1:
             cx, cy = xywh[0] + xywh[2] / 2, xywh[1] + xywh[3] / 2
@@ -880,21 +869,21 @@ class SceneTextManager(QObject):
             new_font_size = blkitem.font().pointSizeF() * resize_ratio
             blkitem.textCursor().clearSelection()
             blkitem.setFontSize(new_font_size)
+            blk_font.setPointSizeF(new_font_size)
 
         if restore_charfmts:
             char_fmts = blkitem.get_char_fmts()        
         
-        pos_before = blkitem.pos()
-        blkitem.set_size(xywh[2], xywh[3], set_layout_maxsize=True)
+        ffmt = QFontMetricsF(blk_font)
+        maxw = max([ffmt.horizontalAdvance(t) for t in new_text.split('\n')])
+        maxw = int(np.ceil(maxw))
+        blkitem.set_size(maxw, xywh[3], set_layout_maxsize=True)
         blkitem.setPlainText(new_text)
         if len(self.pairwidget_list) > blkitem.idx:
             self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
         if restore_charfmts:
             self.restore_charfmts(blkitem, text, new_text, char_fmts)
         blkitem.squeezeBoundingRect()
-        if start_from_top:
-            blkitem.setPos(blkitem.pos().x(), pos_before.y() + adjust_xy[1])
-            blkitem.blk._bounding_rect[1] = int(blkitem.pos().y())
         return True
     
     def restore_charfmts(self, blkitem: TextBlkItem, text: str, new_text: str, char_fmts: List[QTextCharFormat]):
@@ -1127,11 +1116,11 @@ class SceneTextManager(QObject):
     def on_page_replace_all(self):
         self.canvas.push_undo_command(PageReplaceAllCommand(self.canvas.search_widget))
 
-def get_text_size(fm: QFontMetrics, text: str) -> Tuple[int, int]:
+def get_text_size(fm: QFontMetricsF, text: str) -> Tuple[int, int]:
     brt = fm.tightBoundingRect(text)
     br = fm.boundingRect(text)
-    return br.width(), brt.height()
+    return int(np.ceil(fm.horizontalAdvance(text))), int(np.ceil(brt.height()))
     
-def get_words_length_list(fm: QFontMetrics, words: List[str]) -> List[int]:
-    return [fm.horizontalAdvance(word) for word in words]
+def get_words_length_list(fm: QFontMetricsF, words: List[str]) -> List[int]:
+    return [int(np.ceil(fm.horizontalAdvance(word))) for word in words]
 

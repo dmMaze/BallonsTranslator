@@ -71,6 +71,7 @@ class TextBlock:
     _bounding_rect: List = None
     src_is_vertical: bool = None
     _detected_font_size: float = -1
+    det_model: str = None
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
@@ -348,16 +349,17 @@ class TextBlock:
             min_bbox = rotate_polygons(center, min_bbox, -self.angle)
         return min_bbox.reshape(-1, 4, 2).astype(np.int64)
 
-    def normalizd_width_list(self, normalize=True) -> List[float]:
+    def normalizd_width_list(self, normalize=True):
         angled, center, polygons = self.unrotated_polygons()
         width_list = []
         for polygon in polygons:
             width_list.append((polygon[[2, 4]] - polygon[[0, 6]]).mean())
+        sum_width = sum(width_list)
         if normalize:
             width_list = np.array(width_list)
-            width_list = width_list / np.sum(width_list)
+            width_list = width_list / sum_width
             width_list = width_list.tolist()
-        return width_list
+        return width_list, sum_width
 
     # equivalent to qt's boundingRect, ignore angle
     def bounding_rect(self) -> List[int]:
@@ -388,10 +390,22 @@ class TextBlock:
         return blk_dict
 
     def get_transformed_region(self, img: np.ndarray, idx: int, textheight: int, maxwidth: int = None) -> np.ndarray :
-        
-        line = np.round(np.array(self.lines[idx])).astype(np.int64)
-        x1, y1, x2, y2 = line[:, 0].min(), line[:, 1].min(), line[:, 0].max(), line[:, 1].max()
         im_h, im_w = img.shape[:2]
+
+        lines = np.round(np.array(self.lines[idx])).astype(np.int64)[None]
+
+
+        expand_size = max(int(self._detected_font_size * 0.1), 2)
+        rad = np.deg2rad(self.angle)
+        shifted_vec = np.array([[[-1, -1],[1, -1],[1, 1],[-1, 1]]])
+        shifted_vec = shifted_vec * np.array([[[np.sin(rad), np.cos(rad)]]]) * expand_size
+        lines = lines + shifted_vec
+        lines[..., 0] = np.clip(lines[..., 0], 0, im_w)
+        lines[..., 1] = np.clip(lines[..., 1], 0, im_h)
+        line = np.round(lines[0]).astype(np.int64)
+
+        x1, y1, x2, y2 = line[:, 0].min(), line[:, 1].min(), line[:, 0].max(), line[:, 1].max()
+        
         x1 = np.clip(x1, 0, im_w)
         y1 = np.clip(y1, 0, im_h)
         x2 = np.clip(x2, 0, im_w)
@@ -502,7 +516,7 @@ class TextBlock:
         
         left_std = np.std(polygons[:, 0, 0])
         right_std = np.std(polygons[:, 1, 0])
-        center_std = np.std((polygons[:, 0, 0] + polygons[:, 1, 0]) / 2)
+        center_std = np.std((polygons[:, 0, 0] + polygons[:, 1, 0]) / 2) * 0.7
         
         if left_std < right_std and left_std < center_std:
             self.alignment = TextAlignment.Left
@@ -525,6 +539,29 @@ class TextBlock:
         if self._bounding_rect is not None:
             self._bounding_rect[0] += dx
             self._bounding_rect[1] += dy
+
+    def line_coord_valid(self, rect):
+        if self.det_model is None:
+            return False
+        if rect is None:
+            rect = self.bounding_rect()
+
+        min_bbox = self.min_rect(rotate_back=True)[0]
+        x1, y1 = min_bbox[0]
+        x2, y2 = min_bbox[2]
+        w = x2 - x1
+        h = y2 - y1
+        if w < 1 or h < 1:
+            return False
+        rx1, ry1, rx2, ry2 = rect
+        rx2 += rx1
+        ry2 += ry1
+        intersect = max(min(x2, rx2) - max(x1, rx1), 0) * max(min(y2, ry2) - max(y1, ry1), 0)
+        if intersect == 0:
+            return False
+        if intersect / (w * h) < 0.6:
+            return False
+        return True
 
 
 def sort_regions(regions: List[TextBlock], right_to_left=None) -> List[TextBlock]:
@@ -783,15 +820,15 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
             if num_lines == 0:
                 continue
             # blk.line_spacing = blk.bounding_rect()[3] / num_lines / blk.font_size
-            expand_size = max(int(blk.font_size * 0.1), 3)
-            rad = np.deg2rad(blk.angle)
-            shifted_vec = np.array([[[-1, -1],[1, -1],[1, 1],[-1, 1]]])
-            shifted_vec = shifted_vec * np.array([[[np.sin(rad), np.cos(rad)]]]) * expand_size
-            lines = blk.lines_array() + shifted_vec
-            lines[..., 0] = np.clip(lines[..., 0], 0, im_w-1)
-            lines[..., 1] = np.clip(lines[..., 1], 0, im_h-1)
-            blk.lines = lines.astype(np.int64).tolist()
-            blk.font_size += expand_size
+            # expand_size = max(int(blk.font_size * 0.1), 1)
+            # rad = np.deg2rad(blk.angle)
+            # shifted_vec = np.array([[[-1, -1],[1, -1],[1, 1],[-1, 1]]])
+            # shifted_vec = shifted_vec * np.array([[[np.sin(rad), np.cos(rad)]]]) * expand_size
+            # lines = blk.lines_array() + shifted_vec
+            # lines[..., 0] = np.clip(lines[..., 0], 0, im_w-1)
+            # lines[..., 1] = np.clip(lines[..., 1], 0, im_h-1)
+            # blk.lines = lines.astype(np.int64).tolist()
+            # blk.font_size += expand_size
         blk._detected_font_size = blk.font_size
             
     return final_blk_list
