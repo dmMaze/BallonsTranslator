@@ -163,7 +163,7 @@ def line_draw_qt6(painter: QPainter, line: QTextLine, x: float, y: float, select
     else:
         line.draw(painter, QPointF(x, y))
 
-def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None, char_fmt: CharFontFormat = None, char: str = None):
+def line_draw_qt5(painter: QPainter, line: QTextLine, x: float, y: float, selected: bool, selection: QAbstractTextDocumentLayout.Selection = None, char_fmt: CharFontFormat = None, char: str = None, line_width: int = None):
     o = None
     if selected:
         o = QTextLayout.FormatRange()
