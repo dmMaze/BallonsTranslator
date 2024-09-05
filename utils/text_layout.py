@@ -220,7 +220,7 @@ def layout_lines_aligncenter(
             elif mask[pos_y: line_bottom - lh_pad, new_x].mean() < border_thr or\
                 mask[pos_y: line_bottom - lh_pad, right_x].mean() < border_thr:
                 line_valid = False
-                if (len(lines) == 1 and ref_src_lines or line_right_no + 1 >= len(srcline_wlist)) and \
+                if ref_src_lines and (len(wl_list) == 1 or line_right_no + 1 >= len(srcline_wlist)) and \
                     line_is_valid(line, new_len, delimiter_len, max_central_width, words_length, srcline_wlist, line_right_no, line_height, ref_src_lines):
                     line_valid = True
             else:
@@ -271,7 +271,7 @@ def layout_lines_aligncenter(
             elif mask[pos_y: line_bottom - lh_pad, new_x].mean() < border_thr or\
                 mask[pos_y: line_bottom - lh_pad, right_x].mean() < border_thr:
                 line_valid = False
-                if line_left_no - 1 < 0 and \
+                if ref_src_lines and line_left_no - 1 < 0 and \
                     line_is_valid(line, new_len, delimiter_len, max_central_width, words_length, srcline_wlist, line_left_no, line_height, ref_src_lines):
                     line_valid = True
             else:
@@ -358,7 +358,7 @@ def layout_lines_alignside(
                 if mask[np.clip(pos_y, 0, bh - 1): np.clip(line_bottom - lh_pad, 0, bh), new_x].mean() > 240:
                     line_valid = True
                 else:
-                    if line_id + 1 >= len(srcline_wlist) and line_is_valid(line, new_len, delimiter_len, max_width, words_length, srcline_wlist, line_id, line_height, ref_src_lines):
+                    if ref_src_lines and line_id + 1 >= len(srcline_wlist) and line_is_valid(line, new_len, delimiter_len, max_width, words_length, srcline_wlist, line_id, line_height, ref_src_lines):
                         line_valid = True
             if line_valid:
                 line_valid = line_is_valid(line, new_len, delimiter_len, max_width, words_length, srcline_wlist, line_id, line_height, ref_src_lines)

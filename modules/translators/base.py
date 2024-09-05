@@ -88,7 +88,7 @@ class BaseTranslator(BaseModule):
             if TRANSLATORS.module_dict[key] == self.__class__:
                 self.name = key
                 break
-        self.textblk_break = '\n###\n'
+        self.textblk_break = '\n##\n'
         self.lang_source: str = lang_source
         self.lang_target: str = lang_target
         self.lang_map: Dict = LANGMAP_GLOBAL.copy()
