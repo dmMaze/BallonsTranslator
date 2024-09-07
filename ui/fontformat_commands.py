@@ -8,7 +8,7 @@ except:
     from qtpy.QtGui import QUndoCommand
 
 from . import shared_widget as SW
-from utils.fontformat import FontFormat
+from utils.fontformat import FontFormat, px2pt
 from .textitem import TextBlkItem
 
 global_default_set_kwargs = dict(set_selected=False, restore_cursor=False)
@@ -140,7 +140,7 @@ def ffmt_change_font_size(param_name: str, values: float, act_ffmt: FontFormat, 
     for blkitem, value in zip(blkitems, values):
         if value < 0:
             continue
-        blkitem.setFontSize(value, clip_size=clip_size, **set_kwargs)
+        blkitem.setFontSize(px2pt(value), clip_size=clip_size, **set_kwargs)
 
 @font_formating(push_undostack=True)
 def ffmt_change_alignment(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):

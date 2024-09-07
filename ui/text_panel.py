@@ -561,9 +561,9 @@ class FontFormatPanel(Widget):
     def set_active_format(self, font_format: FontFormat):
         C.active_format = font_format
         self.familybox.blockSignals(True)
-        font_size = px2pt(font_format.font_size)
-        if round(font_size) == font_size:
-            font_size = str(font_size)
+        font_size = round(font_format.font_size, 1)
+        if int(font_size) == font_size:
+            font_size = str(int(font_size))
         else:
             font_size = f'{font_size:.1f}'
         self.fontsizebox.fcombobox.setCurrentText(font_size)

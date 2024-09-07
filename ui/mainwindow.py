@@ -17,7 +17,6 @@ from utils import create_error_dialog
 from modules.translators.trans_chatgpt import GPTTranslator
 from .misc import parse_stylesheet, set_html_family, QKEY
 from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from, FontFormat
-from utils.fontformat import pt2px
 from .config_proj import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
