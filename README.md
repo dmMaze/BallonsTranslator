@@ -1,3 +1,6 @@
+> [!IMPORTANT]  
+> **如打算公开分享本工具的机翻结果，且没有有经验的译者参与翻译或校对，请在显眼位置注明机翻。**
+
 # BallonTranslator
 简体中文 | [English](/README_EN.md) | [pt-BR](doc/README_PT-BR.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md) | [Tiếng Việt](doc/README_VI.md)
 
