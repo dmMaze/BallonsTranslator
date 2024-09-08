@@ -342,6 +342,16 @@ class GPTTranslator(BaseTranslator):
         url = self.params['3rd party api url'].strip()
         if not url:
             return None
+        
+        # 移除末尾的斜杠
+        if url.endswith('v1/'):
+            url = url[:-1]
+            self.logger.debug(f"Removed trailing slash after 'v1': {url}")
+
+        # 检查是否包含"/v1"
+        if '/v1' not in url:
+            self.logger.warning(f"API URL does not contain '/v1': {url}, please ensure it's the correct URL.")
+        
         return url
 
     def _request_translation(self, prompt, chat_sample: List):
