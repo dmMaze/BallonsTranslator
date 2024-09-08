@@ -4,6 +4,7 @@ from typing import List, Union
 from pathlib import Path
 import subprocess
 from functools import partial
+import time
 
 from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
@@ -1296,6 +1297,8 @@ class MainWindow(mainwindow_cls):
 
     def run_next_dir(self):
         if len(self.exec_dirs) == 0:
+            while self.imsave_thread.isRunning():
+                time.sleep(0.1)
             LOGGER.info(f'finished translating all dirs, quit app...')
             self.app.quit()
             return
