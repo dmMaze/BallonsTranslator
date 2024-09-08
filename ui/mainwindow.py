@@ -999,7 +999,7 @@ class MainWindow(mainwindow_cls):
                     blk.letter_spacing = gf.letter_spacing
                     sw = blk.stroke_width
                     if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect and not override_fnt_size:
-                        blk.font_size = int(blk.font_size / (1 + sw))
+                        blk.font_size = blk.font_size / (1 + sw)
 
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (pcfg.module.enable_detect or pcfg.module.enable_translate)

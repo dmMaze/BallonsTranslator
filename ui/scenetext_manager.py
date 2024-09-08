@@ -879,8 +879,7 @@ class SceneTextManager(QObject):
         
         ffmt = QFontMetricsF(blk_font)
         maxw = max([ffmt.horizontalAdvance(t) for t in new_text.split('\n')])
-        maxw = int(np.ceil(maxw))
-        blkitem.set_size(maxw, xywh[3], set_layout_maxsize=True)
+        blkitem.set_size(maxw * 1.5, xywh[3], set_layout_maxsize=True)
         blkitem.setPlainText(new_text)
         if len(self.pairwidget_list) > blkitem.idx:
             self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)

@@ -206,6 +206,12 @@ def main():
         app_args = sys.argv + ['-platform', 'offscreen']
     app = QApplication(app_args)
 
+    if not args.headless:
+        ps = QGuiApplication.primaryScreen()
+        shared.LDPI = ps.logicalDotsPerInch()
+        shared.SCREEN_W = ps.geometry().width()
+        shared.SCREEN_H = ps.geometry().height()
+
     lang = config.display_lang
     langp = osp.join(shared.TRANSLATE_DIR, lang + '.qm')
     if osp.exists(langp):
@@ -262,10 +268,6 @@ def main():
     BT.restart_signal.connect(restart)
 
     if not args.headless:
-        ps = QGuiApplication.primaryScreen()
-        shared.LDPI = ps.logicalDotsPerInch()
-        shared.SCREEN_W = ps.geometry().width()
-        shared.SCREEN_H = ps.geometry().height()
         if shared.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
             # https://github.com/dmMaze/BallonsTranslator/issues/220
             BT.comicTransSplitter.setHandleWidth(10)
