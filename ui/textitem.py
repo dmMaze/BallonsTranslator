@@ -605,7 +605,8 @@ class TextBlkItem(QGraphicsTextItem):
         self.document().setDefaultFont(font)
         format.setFont(font)
         format.setForeground(QColor(*ffmat.foreground_color()))
-        format.setFontWeight(fweight)
+        if not ffmat.bold:
+            format.setFontWeight(fweight)
         format.setFontItalic(ffmat.italic)
         format.setFontUnderline(ffmat.underline)
         if not ffmat.vertical:

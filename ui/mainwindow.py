@@ -998,6 +998,9 @@ class MainWindow(mainwindow_cls):
                     
                     blk.line_spacing = gf.line_spacing
                     blk.letter_spacing = gf.letter_spacing
+                    blk.italic = gf.italic
+                    blk.bold = gf.bold
+                    blk.underline = gf.underline
                     sw = blk.stroke_width
                     if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
