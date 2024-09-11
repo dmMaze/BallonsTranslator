@@ -2,14 +2,14 @@ import copy
 import sys
 from typing import List
 
-from qtpy.QtWidgets import QComboBox, QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QCheckBox, QLabel
+from qtpy.QtWidgets import QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QLabel
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QDoubleValidator, QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent
+from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent
 
 from utils import shared
 from utils import config as C
 from utils.fontformat import FontFormat, px2pt, LineSpacingType
-from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel
+from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox
 from .textitem import TextBlkItem
 from .text_graphical_effect import TextEffectPanelDeprecated
 from .text_effect import TextEffectPanel
@@ -48,70 +48,10 @@ class LineEdit(QLineEdit):
                 self.return_pressed_wochange.emit()
 
 
-class SizeComboBox(QComboBox):
-    
-    param_changed = Signal(str, float)
-    def __init__(self, val_range: List = None, param_name: str = '', *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.param_name = param_name
-        self.editTextChanged.connect(self.on_text_changed)
-        self.activated.connect(self.on_current_index_changed)
-        self.setEditable(True)
-        self.min_val = val_range[0]
-        self.max_val = val_range[1]
-        validator = QDoubleValidator()
-        if val_range is not None:
-            validator.setTop(val_range[1])
-            validator.setBottom(val_range[0])
-        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-
-        self.setValidator(validator)
-        self._value = 0
-
-    def on_text_changed(self):
-        if self.hasFocus():
-            self.param_changed.emit(self.param_name, self.value())
-
-    def on_current_index_changed(self):
-        if self.hasFocus() or self.view().isVisible():
-            self.param_changed.emit(self.param_name, self.value())
-
-    def value(self) -> float:
-        txt = self.currentText()
-        try:
-            val = float(txt)
-            self._value = val
-            return val
-        except:
-            return self._value
-
-    def setValue(self, value: float):
-        value = min(self.max_val, max(self.min_val, value))
-        self.setCurrentText(str(round(value, 2)))
-
-
 class IncrementalBtn(QPushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setFixedSize(13, 13)
-
-
-class QFontChecker(QCheckBox):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if sys.platform == 'darwin':
-            self.setStyleSheet("min-width: 45px")
-
-class AlignmentChecker(QCheckBox):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if sys.platform == 'darwin':
-            self.setStyleSheet("min-width: 15px")
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if self.isChecked():
-            return event.accept()
-        return super().mousePressEvent(event)
 
 
 class AlignmentBtnGroup(QFrame):

@@ -3,8 +3,10 @@ from typing import Any, Callable
 from qtpy.QtWidgets import QVBoxLayout, QPushButton, QComboBox, QLabel, QHBoxLayout
 from qtpy.QtCore import Signal, Qt, QRectF
 
-from .custom_widget import PanelGroupBox, PanelArea, ComboBox
+from .custom_widget import PanelGroupBox, PanelArea, ComboBox, QFontChecker
 from utils.fontformat import FontFormat
+
+
 
 
 class TextAdvancedFormatPanel(PanelArea):
@@ -32,6 +34,8 @@ class TextAdvancedFormatPanel(PanelArea):
         linespacing_type_layout.addWidget(self.linespacing_type_combobox)
         # linespacing_type_layout.addStretch()
 
+        # self.tate_chu_yoko_checker = QFontChecker()
+
         vlayout = QVBoxLayout()
         vlayout.addLayout(linespacing_type_layout)
         self.setContentLayout(vlayout)
@@ -39,6 +43,7 @@ class TextAdvancedFormatPanel(PanelArea):
     def set_active_format(self, font_format: FontFormat):
         self.active_format = font_format
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
+        # self.tate_chu_yoko_checker.setChecked(font_format.font)
 
     def on_format_changed(self, format_name: str, get_format: Callable):
         self.param_changed.emit(format_name, get_format())
