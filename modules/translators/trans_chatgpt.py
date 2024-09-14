@@ -343,10 +343,10 @@ class GPTTranslator(BaseTranslator):
         if not url:
             return None
         
-        # 移除末尾的斜杠
+        # 对于小于v1.0.0版本的openai包，末尾的斜杠会导致请求失败，因此弹出警告
         if url.endswith('v1/'):
-            url = url[:-1]
-            self.logger.debug(f"Removed trailing slash after 'v1': {url}")
+            if not OPENAPI_V1_API:
+                self.logger.warning(f"The OpenAI package version you are using is outdated. Please remove the trailing slash after 'v1' in the URL: {url}")
 
         # 检查是否包含"/v1"
         if '/v1' not in url:
