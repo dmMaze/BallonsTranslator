@@ -22,7 +22,7 @@ def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, 
 
     mask = img[..., -1].copy()
     ksize = radius * 2 + 1
-    mask = cv2.GaussianBlur(mask, (ksize, ksize), ksize // 6)
+    mask = cv2.GaussianBlur(mask, (ksize, ksize), ksize / 6)
     if strength != 1:
         mask = np.clip(mask.astype(np.float32) * strength, 0, 255).astype(np.uint8)
     bg_img = np.zeros((img.shape[0], img.shape[1], 4), dtype=np.uint8)
