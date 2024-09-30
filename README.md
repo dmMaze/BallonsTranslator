@@ -78,7 +78,7 @@ python3 launch.py
 
 # 第6步：下载macos_arm64_patchmatch_libs.7z到项目根目录下的'.btrans_cache'隐藏文件夹
 # 该步骤是为了防止打包好的应用程序首次启动时重新下载macos_arm64_patchmatch_libs.7z导致启动失败（大概率）
-mkdir ./.btrans_cache2
+mkdir ./.btrans_cache
 curl -L https://github.com/dmMaze/PyPatchMatchInpaint/releases/download/v1.0/macos_arm64_patchmatch_libs.7z -o ./.btrans_cache/macos_arm64_patchmatch_libs.7z
 
 # 第7步：下载微软雅黑字体并放到fonts文件夹下，该步骤为可选项，不影响打包，只影响字体报错信息
