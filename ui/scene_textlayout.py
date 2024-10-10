@@ -210,6 +210,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         
         self._is_painting_stroke = False
         self._draw_offset = []
+        self.text_padding = 0
 
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
@@ -320,7 +321,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         return fs
 
     def minSize(self):
-        return (self.shrink_height, self.shrink_width)
+        return (self.shrink_height + self.text_padding, self.shrink_width + self.text_padding)
     
     def get_char_fontfmt(self, block_number: int, char_idx: int) -> CharFontFormat:
         charidx2frag_map = self._map_charidx2frag[block_number]
@@ -361,6 +362,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.draw_shifted = 0
         self.shrink_height = 0
         self.shrink_width = 0
+        self.text_padding = 0
         doc = self.document()
         doc_margin = doc.documentMargin()
         block = doc.firstBlock()
@@ -856,6 +858,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
     def reLayout(self):
         doc = self.document()
         doc_margin = self.document().documentMargin()
+        self.text_padding = 0
         self.shrink_height = 0
         self.shrink_width = 0
         block = doc.firstBlock()
@@ -943,6 +946,11 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         shrink_width = 0
         char_idx = 0
         blk_no = block.blockNumber()
+        is_last_block = blk_no == self.document().blockCount() - 1
+        is_first_block = blk_no == 0
+        text_padding = 0
+        is_first_line = False
+
         while True:
             line = tl.createLine()
             if not line.isValid():
@@ -980,8 +988,16 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             y_offset += self.calculate_line_spacing(idea_height, self.line_spacing)
             line_idx += 1
             char_idx += nchar
+            if is_first_block and is_first_line:
+                text_padding = max(text_padding, idea_height)
+            elif is_last_block:
+                text_padding = idea_height
+            is_first_line = False
 
         tl.endLayout()
+
+        if is_first_block or is_last_block:
+            self.text_padding = max(self.text_padding, text_padding / 2)
         self.y_offset_lst.append(y_offset)
         self.shrink_width = max(shrink_width, self.shrink_width)
         return 1
