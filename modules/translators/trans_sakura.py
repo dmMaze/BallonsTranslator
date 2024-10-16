@@ -396,6 +396,11 @@ class SakuraTranslator(BaseTranslator):
             'description': 'Force apply the dictionary regardless of whether the terms appear in the original text \n DO NOT CHECK THIS IF YOU ARE NOT SURE WHAT IT MEANS',
             'type': 'checkbox',
         },
+        'do enlarge small kana': {
+            'value': True,
+            'description': 'Enlarge small kana to normal size',
+            'type': 'checkbox',
+        }
     }
 
     _CHAT_SYSTEM_TEMPLATE_009 = (
@@ -449,6 +454,10 @@ class SakuraTranslator(BaseTranslator):
     @property
     def force_apply_dict(self) -> bool:
         return self.params['force apply dict']['value']
+    
+    @property
+    def do_enlarge_small_kana(self) -> bool:
+        return self.params['do enlarge small kana']['value']
 
     def _setup_translator(self):
         self.lang_map['简体中文'] = 'Simplified Chinese'
@@ -612,7 +621,8 @@ class SakuraTranslator(BaseTranslator):
         """
         预处理查询文本,去除emoji,替换特殊字符,并添加「」标记。
         """
-        queries = [self.enlarge_small_kana(query) for query in queries]
+        if self.do_enlarge_small_kana:
+            queries = [self.enlarge_small_kana(query) for query in queries]
         queries = [self._emoji_pattern.sub('', query) for query in queries]
         queries = [self._heart_pattern.sub('♥', query) for query in queries]
         queries = [f'「{query}」' for query in queries]
