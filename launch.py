@@ -11,6 +11,8 @@ from platform import platform
 BRANCH = 'dev'
 VERSION = '1.4.0'
 
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
 python = sys.executable
 git = os.environ.get('GIT', "git")
 skip_install = False

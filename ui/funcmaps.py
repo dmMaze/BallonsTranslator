@@ -6,7 +6,7 @@ from utils.textblock_mask import canny_flood, connected_canny_flood, existing_ma
 # Build base function map
 handle_ffmt_change = build_funcmap('ui.fontformat_commands', 
                                      list(FontFormat.params().keys()) + ['rel_font_size'], 
-                                     'ffmt_change_', verbose=False)
+                                     'ffmt_change_', verbose=True)
 
 
 def get_maskseg_method():

@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .mit48px_ctc import AvgMeter, chunks, TextBlock
-
+from utils.logger import logger as LOGGER
 
 def fixed_pos_embedding(x):
     seq_len, dim = x.shape
@@ -123,6 +123,7 @@ class Model48pxOCR:
 
         super().__init__(*args, **kwargs)
 
+        LOGGER.debug('mit48px')
         self.device = device
         self.text_height = 48
         self.maxwidth = 8100

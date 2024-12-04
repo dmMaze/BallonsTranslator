@@ -7,9 +7,9 @@ from functools import partial
 import time
 
 from tqdm import tqdm
-from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
+from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit, QDialog
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
-from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard
+from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard, QImage
 
 from utils.logger import logger as LOGGER
 from utils.text_processing import is_cjk, full_len, half_len
@@ -37,6 +37,8 @@ from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
 from . import shared_widget as SW
 from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox
+from utils.OcrFixEngine import OcrFixEngine
+from .SpellCheckDialog import SpellCheckDialog
 
 class PageListView(QListWidget):
 
@@ -70,6 +72,9 @@ class MainWindow(mainwindow_cls):
     restart_signal = Signal()
     create_errdialog = Signal(str, str, str)
     create_infodialog = Signal(dict)
+
+     # Define the signal at the class level with correct types
+    data_updated = Signal(str, str, QImage, list)
     
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
@@ -91,6 +96,8 @@ class MainWindow(mainwindow_cls):
         self.setupRegisterWidget()
         self.showMaximized()
         self.setAcceptDrops(True)
+
+        self.OcrFixEngine = OcrFixEngine()
 
         if open_dir != '' and osp.exists(open_dir):
             self.OpenProj(open_dir)
@@ -252,6 +259,20 @@ class MainWindow(mainwindow_cls):
         self.comicTransSplitter.setStretchFactor(2, 1)
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
         self.resetStyleSheet()
+        
+        
+        # self.data_updated = Signal(str, bytes, list)
+        self.data_updated.connect(self.update_dialog)
+        # self.__class__.data_updated.connect(self.update_dialog)
+
+        self.spellCheckDialog = SpellCheckDialog(self)
+        self.spellCheckDialog.setParent(self)
+        self.spellCheckDialog.setWindowFlags(Qt.WindowType.Window)
+        self.spellCheckDialog.hide()
+
+    def update_dialog(self, text, word: str, img: QImage, suggestions):
+        self.spellCheckDialog.setText(text, word, img, suggestions)
+        self.spellCheckDialog.show()  # Show the dialog when data is available
 
     def on_finish_setdetector(self):
         module_manager = self.module_manager
@@ -261,6 +282,7 @@ class MainWindow(mainwindow_cls):
             self.configPanel.detect_config_panel.setDetector(name)
             self.bottomBar.textdet_selector.setSelectedValue(name)
             LOGGER.info('Text detector set to {}'.format(name))
+
 
     def on_finish_setocr(self):
         module_manager = self.module_manager
@@ -1420,9 +1442,62 @@ class MainWindow(mainwindow_cls):
         self.resetStyleSheet(reverse_icon=True)
         self.save_config()
 
+    def SpellCheck(self, text: str, xyxy, img):
+        import numpy as np
+        # Example NumPy array (replace with your image data)
+        # Assuming array shape: (height, width, channels) with dtype uint8
+        # array = np.random.rand(100, 100, 3) * 255  # Random RGB image
+        # array = img.astype(np.uint8)  # Ensure uint8 type
+
+        # Unpack the coordinates
+        x1, y1, x2, y2 = xyxy
+         # Crop the image using NumPy array slicing
+        cropped_img = img[y1:y2, x1:x2]
+
+        # Convert NumPy array to QImage
+        height, width, channel = cropped_img.shape
+        bytes_per_line = width * channel
+
+        # Ensure the image data is contiguous in memory
+        if not cropped_img.flags['C_CONTIGUOUS']:
+            cropped_img = np.ascontiguousarray(cropped_img)
+
+        # qimg = QImage(img.data, width, height, bytes_per_line, QImage.Format.Format_ARGB32)
+        qimg = QImage(cropped_img.data.tobytes(), width, height, bytes_per_line, QImage.Format.Format_RGB888)
+
+        # breakpoint()  # or debugpy.breakpoint()
+        # wordsNotFound: int = self.OcrFixEngine.CountUnknownWordsViaDictionary(text)
+        unknownWords = self.OcrFixEngine.GetUnknownWordsViaDictionary(text)
+        for word in unknownWords:
+            suggestions = self.OcrFixEngine.DoSuggest(word)
+            # dialog = SpellCheckDialog(suggestions)
+            self.data_updated.emit(text, word, qimg, suggestions)  # Emit the signal
+            # self.spellCheckDialog.setText(text, img, suggestions)
+            if self.spellCheckDialog.exec() == QDialog.Accepted:
+            # if self.spellCheckDialog.exec():
+                # Handle the acceptance of the dialog if needed
+                print("Dialog accepted")
+
+        # if os.path.exists(DICT_PATH):
+            # from folder where en_US.aff and en_US.dic are present
+            # dictionary = Dictionary.from_files(DICT_PATH)
+            # or, from Firefox/LibreOffice dictionary extension
+            #dictionary = Dictionary.from_zip('/path/to/dictionary/en_US.odt')
+            # or, from system folders (on Linux)
+            #dictionary = Dictionary.from_system('en_US')
+        # for word in text.split():
+        #     print(dictionary.lookup(word))
+        #     for suggestion in dictionary.suggest(word):
+        #         print(suggestion)
+        #         dialog = SpellCheckDialog(words)
+        #         if dialog.exec_() == QDialog.Accepted:
+        #             # Handle the acceptance of the dialog if needed
+        #             print("Dialog accepted")
+
     def ocr_postprocess(self, textblocks: List[TextBlock], img, ocr_module=None, **kwargs):
         for blk in textblocks:
             text = blk.get_text()
+            self.SpellCheck(text, blk.xyxy, img)
             blk.text = self.ocrSubWidget.sub_text(text)
 
     def translate_preprocess(self, translations: List[str] = None, textblocks: List[TextBlock] = None, translator = None, source_text:list = []):

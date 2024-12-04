@@ -57,3 +57,4 @@ launch_win_venv.bat
 install_venv.bat
 install-BT.cmd
 download_models.bat
+/myenv/

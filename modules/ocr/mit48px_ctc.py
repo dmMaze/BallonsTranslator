@@ -11,13 +11,14 @@ import einops
 from typing import List, Tuple, Optional
 
 from utils.textblock import TextBlock
-
+from utils.logger import logger as LOGGER
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
+        LOGGER.debug('mit48px_ctc')
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
@@ -302,6 +303,7 @@ class OCR(nn.Module) :
         return self.decode_ctc_top1(pred_char_logits, pred_color_values, blank, verbose = verbose)
 
     def decode_ctc_top1(self, pred_char_logits, pred_color_values, blank, verbose = False) -> List[List[Tuple[str, float, int, int, int, int, int, int]]] :
+        LOGGER.debug('OCR(nn.Module decode_ctc_top1')
         pred_chars: List[List[Tuple[str, float, int, int, int, int, int, int]]] = []
         for _ in range(pred_char_logits.size(0)) :
             pred_chars.append([])
@@ -342,6 +344,7 @@ class OCR(nn.Module) :
         return pred_chars
 
     def eval_ocr(self, input_lengths, target_lengths, pred_char_logits, pred_color_values, gt_char_index, gt_color_values, blank, blank1) :
+        LOGGER.debug('OCR(nn.Module eval_ocr')
         correct_char = 0
         total_char = 0
         color_diff = 0
@@ -416,7 +419,7 @@ class OCR48pxCTC:
 
     @torch.no_grad()
     def __call__(self, textblk_lst: List[TextBlock], regions: List[np.ndarray], textblk_lst_indices: List, chunk_size = 16) -> None:
-
+        LOGGER.debug('OCR48pxCTC: __call__')
         perm = range(len(regions))
         chunck_idx = 0
         for indices in chunks(perm, chunk_size) :
