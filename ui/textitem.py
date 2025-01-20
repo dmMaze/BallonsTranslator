@@ -189,7 +189,6 @@ class TextBlkItem(QGraphicsTextItem):
         else:
             self.document().drawContents(painter)
 
-        # shadow
         if paint_shadow:
             r = int(round(self.fontformat.shadow_radius * font_size))
             xoffset, yoffset = int(self.fontformat.shadow_offset[0] * font_size), int(self.fontformat.shadow_offset[1] * font_size)
@@ -472,22 +471,9 @@ class TextBlkItem(QGraphicsTextItem):
         painter.restore()
 
         if self.fontformat.gradient_enabled:
-            # Paint text to a temporary pixmap first
-            pixmap = QPixmap(br.size().toSize())
-            pixmap.fill(Qt.GlobalColor.transparent)
-            temp_painter = QPainter(pixmap)
-            temp_painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
-            
-            # Draw text in white
-            doc = self.document()
-            temp_painter.translate(doc.documentMargin(), doc.documentMargin())
-            cursor = QTextCursor(doc)
-            cursor.select(QTextCursor.SelectionType.Document)
-            fmt = cursor.charFormat()
-            fmt.setForeground(Qt.GlobalColor.white)
-            cursor.mergeCharFormat(fmt)
-            doc.drawContents(temp_painter)
-            temp_painter.end()
+            # First draw the normal text
+            option.state = QStyle.State_None
+            super().paint(painter, option, widget)
 
             # Create gradient
             gradient = QLinearGradient()
@@ -509,18 +495,11 @@ class TextBlkItem(QGraphicsTextItem):
             gradient.setColorAt(0, start_color)
             gradient.setColorAt(1, end_color)
 
-            # Paint the gradient using the text as a mask
+            # Apply gradient over the text
             painter.save()
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-            painter.setBrush(QBrush(gradient))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawPixmap(br.topLeft(), pixmap)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-            painter.drawRect(br)
+            painter.fillRect(br, gradient)
             painter.restore()
-
-            fmt.setForeground(QColor(*self.fontformat.frgb))
-            cursor.mergeCharFormat(fmt)
         else:
             option.state = QStyle.State_None
             super().paint(painter, option, widget)
