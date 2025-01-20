@@ -39,6 +39,7 @@ class TextAdvancedFormatPanel(PanelArea):
         vlayout = QVBoxLayout()
         vlayout.addLayout(linespacing_type_layout)
         self.setContentLayout(vlayout)
+        self.vlayout = vlayout
 
     def set_active_format(self, font_format: FontFormat):
         self.active_format = font_format

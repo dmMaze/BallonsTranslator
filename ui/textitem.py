@@ -533,8 +533,12 @@ class TextBlkItem(QGraphicsTextItem):
         block = doc.firstBlock()
         if block.isValid():
             it = block.begin()
-            # causes frozen for pyside==6.8.1
-            firstFontSize = it.fragment().charFormat().fontPointSize()
+            if it.atEnd():
+                firstFontSize = block.charFormat().fontPointSize()
+            else:
+                # empty blocks causes frozen for pyside==6.8.1
+                # also randomly freezes pyqt==6.6.1 https://github.com/dmMaze/BallonsTranslator/issues/736
+                firstFontSize = it.fragment().charFormat().fontPointSize()
         else:
             return False
         while block.isValid():

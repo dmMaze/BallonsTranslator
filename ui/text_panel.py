@@ -413,8 +413,10 @@ class FontFormatPanel(Widget):
 
         self.shadowBtn = ClickableLabel(self.tr("Shadow"), self)
         self.shadowBtn.clicked.connect(self.on_shadow_btn_clicked)
+        self.textadvancedfmt_panel.vlayout.addWidget(self.shadowBtn)
         self.gradientBtn = ClickableLabel(self.tr("Gradient"), self)
         self.gradientBtn.clicked.connect(self.on_gradient_btn_clicked)
+        self.textadvancedfmt_panel.vlayout.addWidget(self.gradientBtn)
         
         self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
         self.sourceBtn = TextCheckerLabel(self.tr("Source"))
@@ -454,8 +456,6 @@ class FontFormatPanel(Widget):
         hl3.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl3.addLayout(stroke_hlayout)
         hl3.addLayout(lettersp_hlayout)
-        hl3.addWidget(self.shadowBtn)
-        hl3.addWidget(self.gradientBtn)
         hl3.setContentsMargins(3, 0, 3, 0)
         hl3.setSpacing(13)
         hl4 = QHBoxLayout()
