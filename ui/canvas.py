@@ -60,6 +60,47 @@ class MoveByKeyCommand(QUndoCommand):
         return 1
 
 
+class ChangeFontSizeCommand(QUndoCommand):
+    def __init__(self, blkitems: List['TextBlkItem'], delta: int, shape_ctrl: 'TextBlkShapeControl', parent=None):
+        super().__init__(parent)
+        self.blkitems = blkitems
+        self.shape_ctrl = shape_ctrl
+        self.original_formats = [item.blk.fontformat.deepcopy() for item in self.blkitems]
+        self.new_formats = []
+        for fmt in self.original_formats:
+            new_fmt = fmt.deepcopy()
+            new_fmt.font_size = max(1, new_fmt.font_size + delta)
+            self.new_formats.append(new_fmt)
+        self.setText(f"Change font size by {delta} px")
+
+    def _apply_formats(self, formats):
+        for item, fmt in zip(self.blkitems, formats):
+            item.blk.fontformat = fmt # Explicitly update the data model
+            item.set_fontformat(fmt, set_char_format=True)
+            item.layout.reLayoutEverything()
+            item.squeezeBoundingRect(cond_on_alignment=True)
+        if self.shape_ctrl.blk_item in self.blkitems:
+            self.shape_ctrl.updateBoundingRect()
+
+    def undo(self):
+        self._apply_formats(self.original_formats)
+
+    def redo(self):
+        self._apply_formats(self.new_formats)
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        if not isinstance(other, ChangeFontSizeCommand) or self.blkitems != other.blkitems:
+            return False
+        self.new_formats = other.new_formats
+        if self.original_formats and other.original_formats:
+            delta = self.new_formats[0].font_size - self.original_formats[0].font_size
+            self.setText(f"Change font size by {delta:.0f} px")
+        return True
+
+    def id(self) -> int:
+        return 101
+
+
 class CustomGV(QGraphicsView):
     ctrl_pressed = False
     scale_up_signal = Signal()
@@ -87,6 +128,21 @@ class CustomGV(QGraphicsView):
             else:
                 self.scale_down_signal.emit()
             return
+
+        selected_items = self.canvas.selected_text_items()
+        if len(selected_items) > 0:
+            delta = 0
+            if event.angleDelta().y() > 0:
+                delta = -2
+            else:
+                delta = 2
+            
+            if delta != 0:
+                cmd = ChangeFontSizeCommand(selected_items, delta, self.canvas.txtblkShapeControl)
+                self.canvas.push_undo_command(cmd)
+                event.accept()
+                return
+            
         return super().wheelEvent(event)
 
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
