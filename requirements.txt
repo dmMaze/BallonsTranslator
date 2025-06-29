@@ -8,8 +8,8 @@ numpy<2
 urllib3; sys_platform == 'win32' # https://github.com/psf/requests/issues/5740
 urllib3; sys_platform == 'darwin' # fix urllib3.package.six.move module not found error
 jaconv
-torch
-torchvision
+#torch
+#torchvision
 transformers
 mecab-python3; sys_platform == 'darwin'
 fugashi
