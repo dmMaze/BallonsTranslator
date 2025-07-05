@@ -2,7 +2,7 @@
 import sys
 
 if sys.platform == "win32":
-    from .win32_utils import WindowsMoveResize as MoveResize
+    from ...win32_utils import WindowsMoveResize as MoveResize
 elif sys.platform == "darwin":
     from .mac_utils import MacMoveResize as MoveResize
 else:
@@ -21,6 +21,17 @@ def startSystemMove(window, globalPos):
         the global point of mouse release event
     """
     MoveResize.startSystemMove(window, globalPos)
+
+
+def toggleMaxState(window):
+    """toggle maximized state of window
+
+    Parameters
+    ----------
+    window: QWidget
+        the window to be toggled
+    """
+    MoveResize.toggleMaxState(window)
 
 
 def starSystemResize(window, globalPos, edges):

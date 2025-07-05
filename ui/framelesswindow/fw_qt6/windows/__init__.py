@@ -2,28 +2,32 @@
 from ctypes import cast
 from ctypes.wintypes import LPRECT, MSG
 
+import win32api
 import win32con
 import win32gui
-from qtpy.QtCore import Qt
-from qtpy.QtGui import QCloseEvent, QCursor
+from qtpy.QtCore import Qt, QSize, QRect
+from qtpy.QtGui import QCloseEvent
 from qtpy.QtWidgets import QApplication, QWidget
 from qtpy import QT_VERSION
 installed_version = QT_VERSION
 
 # from ..titlebar import TitleBar
-from ..utils import win32_utils as win_utils
-from ..utils.win32_utils import Taskbar
-from .c_structures import LPNCCALCSIZE_PARAMS
-from .window_effect import WindowsWindowEffect
+from ... import win32_utils as win_utils
+from ...win32_utils import Taskbar, isSystemBorderAccentEnabled, getSystemAccentColor
+from ...win_c_structures import LPNCCALCSIZE_PARAMS
+from ...win_window_effect import WindowsWindowEffect
 
 
-class WindowsFramelessWindow(QWidget):
-    """  Frameless window for Windows system """
+class WindowsFramelessWindowBase:
+    """ Frameless window base class for Windows system """
 
     BORDER_WIDTH = 5
 
     def __init__(self, parent=None):
-        super().__init__(parent=parent)
+        super().__init__(parent)
+        self._isSystemButtonVisible = False
+
+    def _initFrameless(self):
         self.windowEffect = WindowsWindowEffect(self)
         # self.titleBar = TitleBar(self)
         self._isResizeEnabled = True
@@ -38,11 +42,8 @@ class WindowsFramelessWindow(QWidget):
 
     def updateFrameless(self):
         """ update frameless window """
-        if not win_utils.isWin7():
-            self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
-        else:
-            self.setWindowFlags(Qt.WindowType.FramelessWindowHint |
-                                Qt.WindowType.WindowMinMaxButtonsHint)
+        stayOnTop = Qt.WindowStaysOnTopHint if self.windowFlags() & Qt.WindowStaysOnTopHint else 0
+        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | stayOnTop)
 
         # add DWM shadow and window animation
         self.windowEffect.addWindowAnimation(self.winId())
@@ -58,6 +59,7 @@ class WindowsFramelessWindow(QWidget):
     #         title bar
     #     """
     #     self.titleBar.deleteLater()
+    #     self.titleBar.hide()
     #     self.titleBar = titleBar
     #     self.titleBar.setParent(self)
     #     self.titleBar.raise_()
@@ -66,9 +68,40 @@ class WindowsFramelessWindow(QWidget):
         """ set whether resizing is enabled """
         self._isResizeEnabled = isEnabled
 
-    # def resizeEvent(self, e):
-    #     super().resizeEvent(e)
-        # self.titleBar.resize(self.width(), self.titleBar.height())
+    def setStayOnTop(self, isTop: bool):
+        """ set the stay on top status """
+        if isTop:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        else:
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+
+        self.updateFrameless()
+        self.show()
+
+    def toggleStayOnTop(self):
+        """ toggle the stay on top status """
+        if self.windowFlags() & Qt.WindowStaysOnTopHint:
+            self.setStayOnTop(False)
+        else:
+            self.setStayOnTop(True)
+
+    def isSystemButtonVisible(self):
+        """ Returns whether the system title bar button is visible """
+        return self._isSystemButtonVisible
+
+    def setSystemTitleBarButtonVisible(self, isVisible):
+        """ set the visibility of system title bar button, only works for macOS """
+        pass
+
+    def systemTitleBarRect(self, size: QSize) -> QRect:
+        """ Returns the system title bar rect, only works for macOS
+
+        Parameters
+        ----------
+        size: QSize
+            original system title bar rect
+        """
+        return QRect(0, 0, size.width(), size.height())
 
     def nativeEvent(self, eventType, message):
         """ Handle the Windows message """
@@ -77,18 +110,18 @@ class WindowsFramelessWindow(QWidget):
             return False, 0
 
         if msg.message == win32con.WM_NCHITTEST and self._isResizeEnabled:
-            pos = QCursor.pos()
-            xPos = pos.x() - self.x()
-            yPos = pos.y() - self.y()
-            w = self.frameGeometry().width()
-            h = self.frameGeometry().height()
+            xPos, yPos = win32gui.ScreenToClient(msg.hWnd, win32api.GetCursorPos())
+            clientRect = win32gui.GetClientRect(msg.hWnd)
+
+            w = clientRect[2] - clientRect[0]
+            h = clientRect[3] - clientRect[1]
 
             # fixes https://github.com/zhiyiYo/PyQt-Frameless-Window/issues/98
             bw = 0 if win_utils.isMaximized(msg.hWnd) or win_utils.isFullScreen(msg.hWnd) else self.BORDER_WIDTH
-            lx = xPos < bw
-            rx = xPos > w - bw
-            ty = yPos < bw
-            by = yPos > h - bw
+            lx = xPos < bw  # left
+            rx = xPos > w - bw  # right
+            ty = yPos < bw  # top
+            by = yPos > h - bw  # bottom
             if lx and ty:
                 return True, win32con.HTTOPLEFT
             elif rx and by:
@@ -138,6 +171,12 @@ class WindowsFramelessWindow(QWidget):
 
             result = 0 if not msg.wParam else win32con.WVR_REDRAW
             return True, result
+        elif msg.message == win32con.WM_SETFOCUS and isSystemBorderAccentEnabled():
+            self.windowEffect.setBorderAccentColor(self.winId(), getSystemAccentColor())
+            return True, 0
+        elif msg.message == win32con.WM_KILLFOCUS:
+            self.windowEffect.removeBorderAccentColor(self.winId())
+            return True, 0
 
         return False, 0
 
@@ -146,6 +185,16 @@ class WindowsFramelessWindow(QWidget):
         win32gui.SetWindowPos(hWnd, None, 0, 0, 0, 0, win32con.SWP_NOMOVE |
                               win32con.SWP_NOSIZE | win32con.SWP_FRAMECHANGED)
 
+    # def resizeEvent(self, e):
+    #     self.titleBar.resize(self.width(), self.titleBar.height())
+
+
+class WindowsFramelessWindow(WindowsFramelessWindowBase, QWidget):
+    """  Frameless window for Windows system """
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self._initFrameless()
 
 
 class AcrylicWindow(WindowsFramelessWindow):

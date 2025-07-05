@@ -1,16 +1,59 @@
 # coding:utf-8
-from ctypes import Structure, byref, sizeof, windll, c_int
+from ctypes import Structure, byref, sizeof, windll, c_int, c_ulong, c_bool, POINTER, WinDLL, wintypes
 from ctypes.wintypes import DWORD, HWND, LPARAM, RECT, UINT
 from platform import platform
 import sys
+import warnings
 
+from winreg import OpenKey, HKEY_CURRENT_USER, KEY_READ, QueryValueEx, CloseKey
 import win32api
 import win32con
 import win32gui
 import win32print
-from PyQt5.QtCore import QOperatingSystemVersion
-from PyQt5.QtGui import QGuiApplication
 from win32comext.shell import shellcon
+from qtpy.QtCore import QOperatingSystemVersion, QObject, QEvent, qVersion
+from qtpy.QtGui import QGuiApplication, QColor
+from qtpy.QtWidgets import QWidget
+from qtpy import API
+USE_PYSIDE6 = API == 'pyside6'
+QT_VERSION = tuple(int(v) for v in qVersion().split('.'))
+
+
+def getSystemAccentColor():
+    """ get the accent color of system
+
+    Returns
+    -------
+    color: QColor
+        accent color
+    """
+    DwmGetColorizationColor = windll.dwmapi.DwmGetColorizationColor
+    DwmGetColorizationColor.restype = c_ulong
+    DwmGetColorizationColor.argtypes = [POINTER(c_ulong), POINTER(c_bool)]
+
+    color = c_ulong()
+    code = DwmGetColorizationColor(byref(color), byref(c_bool()))
+
+    if code != 0:
+        warnings.warn("Unable to obtain system accent color.")
+        return QColor()
+
+    return QColor(color.value)
+
+
+def isSystemBorderAccentEnabled():
+    """ Check whether the border accent is enabled """
+    if not isGreaterEqualWin11():
+        return False
+
+    try:
+        key = OpenKey(HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\DWM", 0, KEY_READ)
+        value, _ = QueryValueEx(key, "ColorPrevalence")
+        CloseKey(key)
+
+        return bool(value)
+    except:
+        return False
 
 
 def isMaximized(hWnd):
@@ -52,13 +95,6 @@ def isFullScreen(hWnd):
     return all(i == j for i, j in zip(winRect, monitorRect))
 
 
-def isCompositionEnabled():
-    """ detect if dwm composition is enabled """
-    bResult = c_int(0)
-    windll.dwmapi.DwmIsCompositionEnabled(byref(bResult))
-    return bool(bResult.value)
-
-
 def getMonitorInfo(hWnd, dwFlags):
     """ get monitor info, return `None` if failed
 
@@ -98,7 +134,7 @@ def getResizeBorderThickness(hWnd, horizontal=True):
     if result > 0:
         return result
 
-    thickness = 8 if isCompositionEnabled() else 4
+    thickness = 8 if IsCompositionEnabled() else 4
     return round(thickness*window.devicePixelRatio())
 
 
@@ -123,6 +159,8 @@ def getDpiForWindow(hWnd, horizontal=True):
         whether to use dpi scale
     """
     if hasattr(windll.user32, 'GetDpiForWindow'):
+        windll.user32.GetDpiForWindow.argtypes = [HWND]
+        windll.user32.GetDpiForWindow.restype = UINT
         return windll.user32.GetDpiForWindow(hWnd)
 
     hdc = win32gui.GetDC(hWnd)
@@ -161,6 +199,13 @@ def findWindow(hWnd):
             return window
 
 
+def IsCompositionEnabled():
+    """ detect if dwm composition is enabled """
+    bResult = c_int(0)
+    windll.dwmapi.DwmIsCompositionEnabled(byref(bResult))
+    return bool(bResult.value)
+
+
 def isGreaterEqualVersion(version):
     """ determine if the windows version ≥ the specifics version
 
@@ -171,25 +216,66 @@ def isGreaterEqualVersion(version):
     """
     return QOperatingSystemVersion.current() >= version
 
-
-def isGreaterEqualWin8_1():
-    """ determine if the windows version ≥ Win8.1 """
-    return isGreaterEqualVersion(QOperatingSystemVersion.Windows8_1)
-
-
-def isGreaterEqualWin10():
-    """ determine if the windows version ≥ Win10 """
-    return isGreaterEqualVersion(QOperatingSystemVersion.Windows10)
+if USE_PYSIDE6:
+    from PySide6.QtCore import QVersionNumber
+    def isGreaterEqualWin8_1():
+        """ determine if the windows version ≥ Win8.1 """
+        cv = QOperatingSystemVersion.current()
+        cv = QVersionNumber(cv.majorVersion(), cv.minorVersion(), cv.microVersion())
+        return cv >= QVersionNumber(8, 1, 0)
 
 
-def isGreaterEqualWin11():
-    """ determine if the windows version ≥ Win10 """
-    return isGreaterEqualVersion(QOperatingSystemVersion.Windows10) and sys.getwindowsversion().build >= 22000
+    def isGreaterEqualWin10():
+        """ determine if the windows version ≥ Win10 """
+        return "Windows-10" in platform()
 
 
-def isWin7():
-    """ determine if the windows version is Win7 """
-    return "Windows-7" in platform()
+    def isGreaterEqualWin11():
+        """ determine if the windows version ≥ Win10 """
+        return isGreaterEqualWin10() and sys.getwindowsversion().build >= 22000
+
+
+    def isWin7():
+        """ determine if the windows version is Win7 """
+        return "Windows-7" in platform()
+
+else:
+    def isGreaterEqualWin8_1():
+        """ determine if the windows version ≥ Win8.1 """
+        return isGreaterEqualVersion(QOperatingSystemVersion.Windows8_1)
+
+
+    def isGreaterEqualWin10():
+        """ determine if the windows version ≥ Win10 """
+        return isGreaterEqualVersion(QOperatingSystemVersion.Windows10)
+
+
+    def isGreaterEqualWin11():
+        """ determine if the windows version ≥ Win10 """
+        return isGreaterEqualVersion(QOperatingSystemVersion.Windows10) and sys.getwindowsversion().build >= 22000
+
+
+    def isWin7():
+        """ determine if the windows version is Win7 """
+        return "Windows-7" in platform()
+
+
+def releaseMouseLeftButton(hWnd, x=0, y=0):
+    """ release mouse left button at (x, y)
+
+    Parameters
+    ----------
+    hWnd: int or `sip.voidptr`
+        window handle
+
+    x: int
+        mouse x pos
+
+    y: int
+        mouse y pos
+    """
+    lp = (y & 0xFFFF) << 16 | (x & 0xFFFF)
+    win32api.SendMessage(int(hWnd), win32con.WM_LBUTTONUP, 0, lp)
 
 
 class APPBARDATA(Structure):
@@ -308,3 +394,46 @@ class WindowsMoveResize:
             window edges
         """
         pass
+
+    @classmethod
+    def toggleMaxState(cls, window):
+        if QT_VERSION < (6, 8, 0):
+            if window.isMaximized():
+                window.showNormal()
+            else:
+                window.showMaximized()
+        else:
+            if window.isMaximized():
+                win32gui.PostMessage(int(window.winId()), win32con.WM_SYSCOMMAND, win32con.SC_RESTORE, 0)
+            else:
+                win32gui.PostMessage(int(window.winId()), win32con.WM_SYSCOMMAND, win32con.SC_MAXIMIZE, 0)
+
+        releaseMouseLeftButton(window.winId())
+
+
+class WindowsScreenCaptureFilter(QObject):
+    """ Filter for screen capture """
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self.setScreenCaptureEnabled(False)
+
+    def eventFilter(self, watched, event):
+        if watched == self.parent():
+            if event.type() == QEvent.Type.WinIdChange:
+                self.setScreenCaptureEnabled(self.isScreenCaptureEnabled)
+
+        return super().eventFilter(watched, event)
+
+    def setScreenCaptureEnabled(self, enabled: bool):
+        """ Set screen capture enabled """
+        self.isScreenCaptureEnabled = enabled
+        WDA_NONE = 0x00000000
+        WDA_EXCLUDEFROMCAPTURE = 0x00000011
+
+        user32 = WinDLL('user32', use_last_error=True)
+        SetWindowDisplayAffinity = user32.SetWindowDisplayAffinity
+        SetWindowDisplayAffinity.argtypes = (wintypes.HWND, wintypes.DWORD)
+        SetWindowDisplayAffinity.restype = wintypes.BOOL
+
+        SetWindowDisplayAffinity(int(self.parent().winId()), WDA_NONE if enabled else WDA_EXCLUDEFROMCAPTURE)

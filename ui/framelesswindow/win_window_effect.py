@@ -7,12 +7,13 @@ from ctypes.wintypes import DWORD, LONG, LPCVOID
 import win32api
 import win32con
 import win32gui
+from qtpy.QtGui import QColor
 
-from .c_structures import (ACCENT_POLICY, ACCENT_STATE, DWMNCRENDERINGPOLICY,
+from .win_c_structures import (ACCENT_POLICY, ACCENT_STATE, DWMNCRENDERINGPOLICY,
                            DWMWINDOWATTRIBUTE, MARGINS,
                            WINDOWCOMPOSITIONATTRIB,
                            WINDOWCOMPOSITIONATTRIBDATA, DWM_BLURBEHIND)
-from ..utils.win32_utils import isGreaterEqualWin10, isGreaterEqualWin11, IsCompositionEnabled
+from .win32_utils import isGreaterEqualWin10, isGreaterEqualWin11, IsCompositionEnabled
 
 
 class WindowsWindowEffect:
@@ -73,14 +74,51 @@ class WindowsWindowEffect:
         gradientColor = ''.join(gradientColor[i:i+2] for i in range(6, -1, -2))
         gradientColor = DWORD(int(gradientColor, base=16))
         animationId = DWORD(animationId)
-        accentFlags = DWORD(0x20 | 0x40 | 0x80 |
-                            0x100) if enableShadow else DWORD(0)
+        accentFlags = DWORD(0x20 | 0x40 | 0x80 | 0x100) if enableShadow else DWORD(0)
         self.accentPolicy.AccentState = ACCENT_STATE.ACCENT_ENABLE_ACRYLICBLURBEHIND.value
         self.accentPolicy.GradientColor = gradientColor
         self.accentPolicy.AccentFlags = accentFlags
         self.accentPolicy.AnimationId = animationId
         self.winCompAttrData.Attribute = WINDOWCOMPOSITIONATTRIB.WCA_ACCENT_POLICY.value
         self.SetWindowCompositionAttribute(hWnd, pointer(self.winCompAttrData))
+
+    def setBorderAccentColor(self, hWnd, color: QColor):
+        """ Set the border color of the window
+
+        Parameters
+        ----------
+        hWnd: int or `sip.voidptr`
+            Window handle
+
+        color: QColor
+            Border Accent color
+        """
+        if not isGreaterEqualWin11():
+            return
+
+        hWnd = int(hWnd)
+        colorref =  DWORD(color.red() | (color.green() << 8) | (color.blue() << 16))
+        self.DwmSetWindowAttribute(hWnd,
+                                   DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR.value,
+                                   byref(colorref),
+                                   4)
+
+    def removeBorderAccentColor(self, hWnd):
+        """ Remove the border color of the window
+
+        Parameters
+        ----------
+        hWnd: int or `sip.voidptr`
+            Window handle
+        """
+        if not isGreaterEqualWin11():
+            return
+
+        hWnd = int(hWnd)
+        self.DwmSetWindowAttribute(hWnd,
+                                   DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR.value,
+                                   byref(DWORD(0xFFFFFFFF)),
+                                   4)
 
     def setMicaEffect(self, hWnd, isDarkMode=False, isAlt=False):
         """ Add the mica effect to the window (Win11 only)
@@ -101,7 +139,8 @@ class WindowsWindowEffect:
             return
 
         hWnd = int(hWnd)
-        margins = MARGINS(-1, -1, -1, -1)
+        # fix issue #125
+        margins = MARGINS(16777215, 16777215, 0, 0)
         self.DwmExtendFrameIntoClientArea(hWnd, byref(margins))
 
         self.winCompAttrData.Attribute = WINDOWCOMPOSITIONATTRIB.WCA_ACCENT_POLICY.value
@@ -110,15 +149,14 @@ class WindowsWindowEffect:
 
         if isDarkMode:
             self.winCompAttrData.Attribute = WINDOWCOMPOSITIONATTRIB.WCA_USEDARKMODECOLORS.value
-            self.SetWindowCompositionAttribute(
-                hWnd, pointer(self.winCompAttrData))
+            self.SetWindowCompositionAttribute(hWnd, pointer(self.winCompAttrData))
 
         if sys.getwindowsversion().build < 22523:
             self.DwmSetWindowAttribute(hWnd, 1029, byref(c_int(1)), 4)
         else:
-            self.DwmSetWindowAttribute(hWnd, 38, byref(c_int(4 if isAlt else 2)), 4)
+            self.DwmSetWindowAttribute(hWnd, DWMWINDOWATTRIBUTE.DWMWA_SYSTEMBACKDROP_TYPE.value, byref(c_int(4 if isAlt else 2)), 4)
 
-        self.DwmSetWindowAttribute(hWnd, 20, byref(c_int(1*isDarkMode)), 4)
+        self.DwmSetWindowAttribute(hWnd, DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE.value, byref(c_int(1*isDarkMode)), 4)
 
     def setAeroEffect(self, hWnd):
         """ Add the aero effect to the window

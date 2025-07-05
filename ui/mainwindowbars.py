@@ -8,7 +8,7 @@ from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon
 from modules.translators import BaseTranslator
 from .custom_widget import Widget, PaintQSlider, SmallComboBox, ConfigClickableLabel
 from utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
-from .framelesswindow import startSystemMove
+from .framelesswindow import startSystemMove, framelss_utils
 from utils.config import pcfg
 from utils import shared as C
 if C.FLAG_QT6:
@@ -434,17 +434,27 @@ class TitleBar(Widget):
         hlayout.setContentsMargins(0, 0, 0, 0)
         hlayout.setSpacing(0)
 
+    def eventFilter(self, obj, e):
+        if obj == self.mainwindow:
+            if e.type() == QEvent.Type.WindowStateChange:
+                self.maxBtn.setChecked(self.mainwindow.isMaximized())
+                return False
+
+        return super().eventFilter(obj, e)
+
     def stageEnableStateChanged(self):
         sender = self.sender()
         idx= self.stageActions.index(sender)
         checked = sender.isChecked()
         self.enable_module.emit(idx, checked)
 
+    def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
+        super().mouseDoubleClickEvent(e)
+        if not C.ON_MACOS:
+            framelss_utils.toggleMaxState(self.mainwindow)
+
     def onMaxBtnClicked(self):
-        if self.mainwindow.isMaximized():
-            self.mainwindow.showNormal()
-        else:
-            self.mainwindow.showMaximized()
+        framelss_utils.toggleMaxState(self.mainwindow)
 
     def onMinBtnClicked(self):
         self.mainwindow.showMinimized()
