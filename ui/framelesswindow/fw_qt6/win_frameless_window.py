@@ -12,10 +12,10 @@ from qtpy import QT_VERSION
 installed_version = QT_VERSION
 
 # from ..titlebar import TitleBar
-from ... import win32_utils as win_utils
-from ...win32_utils import Taskbar, isSystemBorderAccentEnabled, getSystemAccentColor
-from ...win_c_structures import LPNCCALCSIZE_PARAMS
-from ...win_window_effect import WindowsWindowEffect
+from .. import win32_utils as win_utils
+from ..win32_utils import Taskbar, isSystemBorderAccentEnabled, getSystemAccentColor
+from ..win_c_structures import LPNCCALCSIZE_PARAMS
+from ..win_window_effect import WindowsWindowEffect
 
 
 class WindowsFramelessWindowBase:

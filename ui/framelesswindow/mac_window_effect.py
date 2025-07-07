@@ -1,8 +1,18 @@
 # coding:utf-8
-import objc
 import Cocoa
-from PyQt5.QtWidgets import QMacCocoaViewContainer
-from ..utils.mac_utils import getNSWindow
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import QWidget
+
+from .mac_utils import getNSWindow
+
+
+class QMacCocoaViewContainer(QWidget):
+
+    def __init__(self, view, parent=None):
+        super().__init__(parent=parent)
+        self.setAttribute(Qt.WA_NativeWindow)
+
 
 class MacWindowEffect:
     """ Mac OS window effect """
@@ -46,13 +56,42 @@ class MacWindowEffect:
         content.addSubview_positioned_relativeTo_(
             visualEffectView, Cocoa.NSWindowBelow, container)
 
-    def setMicaEffect(self, hWnd):
+    def setBorderAccentColor(self, hWnd, color: QColor):
+        """ Set the border color of the window
+
+        Parameters
+        ----------
+        hWnd: int or `sip.voidptr`
+            Window handle
+
+        color: QColor
+            Border Accent color
+        """
+        pass
+
+    def removeBorderAccentColor(self, hWnd):
+        """ Remove the border color of the window
+
+        Parameters
+        ----------
+        hWnd: int or `sip.voidptr`
+            Window handle
+        """
+        pass
+
+    def setMicaEffect(self, hWnd, isDarkMode=False, isAlt=False):
         """ Add mica effect to the window (Win11 only)
 
         Parameters
         ----------
         hWnd: int or `sip.voidptr`
             Window handle
+
+        isDarkMode: bool
+            whether to use dark mode mica effect
+
+        isAlt: bool
+            whether to use mica alt effect
         """
         self.setAcrylicEffect(hWnd)
 
@@ -134,6 +173,25 @@ class MacWindowEffect:
         Parameters
         ----------
         hWnd : int or `sip.voidptr`
+            Window handle
+        """
+        pass
+
+    @staticmethod
+    def disableMaximizeButton(hWnd):
+        """ Disable the maximize button of window
+
+        Parameters
+        ----------
+        hWnd : int or `sip.voidptr`
+            Window handle
+        """
+
+    def enableBlurBehindWindow(self, hWnd):
+        """ enable the blur effect behind the whole client
+        Parameters
+        ----------
+        hWnd: int or `sip.voidptr`
             Window handle
         """
         pass

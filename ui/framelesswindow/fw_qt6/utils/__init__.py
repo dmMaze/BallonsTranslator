@@ -4,7 +4,7 @@ import sys
 if sys.platform == "win32":
     from ...win32_utils import WindowsMoveResize as MoveResize
 elif sys.platform == "darwin":
-    from .mac_utils import MacMoveResize as MoveResize
+    from ...mac_utils import MacMoveResize as MoveResize
 else:
     from .linux_utils import LinuxMoveResize as MoveResize
 

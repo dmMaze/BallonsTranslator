@@ -3,12 +3,13 @@ from ctypes import c_void_p
 
 import Cocoa
 import objc
-from PyQt5.QtCore import QT_VERSION_STR
-from PyQt5.QtWidgets import QWidget
+from qtpy.QtCore import qVersion, QEvent, QObject
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import QWidget
 from Quartz.CoreGraphics import (CGEventCreateMouseEvent,
                                  kCGEventLeftMouseDown, kCGMouseButtonLeft)
 
-QT_VERSION = tuple(int(v) for v in QT_VERSION_STR.split('.'))
+QT_VERSION = tuple(int(v) for v in qVersion().split('.'))
 
 
 class MacMoveResize:
@@ -59,6 +60,13 @@ class MacMoveResize:
         """
         pass
 
+    @classmethod
+    def toggleMaxState(cls, window):
+        if window.isMaximized():
+            window.showNormal()
+        else:
+            window.showMaximized()
+
 
 def getNSWindow(winId):
     """ convert window handle to NSWindow
@@ -70,3 +78,44 @@ def getNSWindow(winId):
     """
     view = objc.objc_object(c_void_p=c_void_p(int(winId)))
     return view.window()
+
+
+def getSystemAccentColor():
+    """ get the accent color of system
+
+    Returns
+    -------
+    color: QColor
+        accent color
+    """
+    color = Cocoa.NSColor.controlAccentColor()
+    color = color.colorUsingColorSpace_(Cocoa.NSColorSpace.sRGBColorSpace())
+    r = int(color.redComponent() * 255)
+    g = int(color.greenComponent() * 255)
+    b = int(color.blueComponent() * 255)
+    return QColor(r, g, b)
+
+
+class MacScreenCaptureFilter(QObject):
+    """ Filter for screen capture """
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self.setScreenCaptureEnabled(False)
+
+    def eventFilter(self, watched, event):
+        if watched == self.parent():
+            if event.type() == QEvent.Type.WinIdChange:
+                self.setScreenCaptureEnabled(self.isScreenCaptureEnabled)
+
+        return super().eventFilter(watched, event)
+
+    def setScreenCaptureEnabled(self, enabled: bool):
+        """ Set screen capture enabled """
+        self.isScreenCaptureEnabled = enabled
+
+        nsWindow = getNSWindow(self.parent().winId())
+        if nsWindow:
+            NSWindowSharingNone = 0
+            NSWindowSharingReadOnly = 1
+            nsWindow.setSharingType_(NSWindowSharingReadOnly if enabled else NSWindowSharingNone)

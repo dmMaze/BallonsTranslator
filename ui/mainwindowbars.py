@@ -273,8 +273,6 @@ class TitleBar(Widget):
 
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
-        if C.ON_MACOS:# https://bugreports.qt.io/browse/QTBUG-133215
-            self.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
         self.mainwindow : QMainWindow = parent
         self.mPos: QPoint = None
         self.normalsize = False
@@ -400,7 +398,7 @@ class TitleBar(Widget):
         if not C.ON_MACOS:
             self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
         else:
-            self.iconLabel.setFixedWidth(LEFTBAR_WIDTH)
+            self.iconLabel.setFixedWidth(LEFTBAR_WIDTH + 8)
 
         self.titleLabel = QLabel('BallonTranslator')
         self.titleLabel.setObjectName('TitleLabel')
@@ -416,6 +414,7 @@ class TitleBar(Widget):
         hlayout.addStretch()
         hlayout.addWidget(self.titleLabel)
         hlayout.addStretch()
+        hlayout.setContentsMargins(0, 0, 0, 0)
 
         if not C.ON_MACOS:
             self.minBtn = QPushButton()
@@ -431,8 +430,8 @@ class TitleBar(Widget):
             hlayout.addWidget(self.minBtn)
             hlayout.addWidget(self.maxBtn)
             hlayout.addWidget(self.closeBtn)
-        hlayout.setContentsMargins(0, 0, 0, 0)
-        hlayout.setSpacing(0)
+            hlayout.setContentsMargins(0, 0, 0, 0)
+            hlayout.setSpacing(0)
 
     def eventFilter(self, obj, e):
         if obj == self.mainwindow:
@@ -450,8 +449,8 @@ class TitleBar(Widget):
 
     def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
         super().mouseDoubleClickEvent(e)
-        if not C.ON_MACOS:
-            framelss_utils.toggleMaxState(self.mainwindow)
+        # if not C.ON_MACOS:
+        framelss_utils.toggleMaxState(self.mainwindow)
 
     def onMaxBtnClicked(self):
         framelss_utils.toggleMaxState(self.mainwindow)
