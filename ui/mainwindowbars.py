@@ -8,7 +8,7 @@ from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon
 from modules.translators import BaseTranslator
 from .custom_widget import Widget, PaintQSlider, SmallComboBox, ConfigClickableLabel
 from utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
-from .framelesswindow import startSystemMove, framelss_utils
+from .framelesswindow import FramelessMoveResize
 from utils.config import pcfg
 from utils import shared as C
 if C.FLAG_QT6:
@@ -274,6 +274,7 @@ class TitleBar(Widget):
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
         self.mainwindow : QMainWindow = parent
+        self.mainwindow.installEventFilter(self)
         self.mPos: QPoint = None
         self.normalsize = False
         self.proj_name = ''
@@ -435,7 +436,7 @@ class TitleBar(Widget):
 
     def eventFilter(self, obj, e):
         if obj == self.mainwindow:
-            if e.type() == QEvent.Type.WindowStateChange:
+            if e.type() == QEvent.Type.WindowStateChange and not C.ON_MACOS:
                 self.maxBtn.setChecked(self.mainwindow.isMaximized())
                 return False
 
@@ -449,11 +450,10 @@ class TitleBar(Widget):
 
     def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
         super().mouseDoubleClickEvent(e)
-        # if not C.ON_MACOS:
-        framelss_utils.toggleMaxState(self.mainwindow)
+        FramelessMoveResize.toggleMaxState(self.mainwindow)
 
     def onMaxBtnClicked(self):
-        framelss_utils.toggleMaxState(self.mainwindow)
+        FramelessMoveResize.toggleMaxState(self.mainwindow)
 
     def onMinBtnClicked(self):
         self.mainwindow.showMinimized()
@@ -487,7 +487,7 @@ class TitleBar(Widget):
                 g_pos = event.globalPosition().toPoint()
             else:
                 g_pos = event.globalPos()
-            startSystemMove(self.window(), g_pos)
+            FramelessMoveResize.startSystemMove(self.window(), g_pos)
 
     def hideEvent(self, e) -> None:
         self.mPos = None
