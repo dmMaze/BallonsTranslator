@@ -47,34 +47,30 @@ class ImgSaveThread(ThreadBase):
 
     def saveImg(self, save_path: str, img: QImage, pagename_in_proj: str = '', save_params: dict = None):
         self.im_save_list.append((save_path, img, pagename_in_proj, save_params))
-        if self.job is None:
+        if not self.isRunning():
             self.job = self._save_img
             self.start()
 
     def _save_img(self):
-        while True:
-            if len(self.im_save_list) == 0:
-                break
-            save_path, img, pagename_in_proj, save_params = self.im_save_list[0]
-            if save_params is None:
-                save_params = {}
-            if isinstance(img, QImage) or isinstance(img, QPixmap):
-                img = pixmap2ndarray(img, keep_alpha=False)
-            imwrite(save_path, img, **save_params)
-            self.img_writed.emit(pagename_in_proj)
-            self.im_save_list.pop(0)
+        while len(self.im_save_list) > 0:
+            try:
+                save_path, img, pagename_in_proj, save_params = self.im_save_list.pop(0)
+                if save_params is None:
+                    save_params = {}
+                if isinstance(img, QImage) or isinstance(img, QPixmap):
+                    img = pixmap2ndarray(img, keep_alpha=True)
+                imwrite(save_path, img, **save_params)
+                self.img_writed.emit(pagename_in_proj)
+            except Exception as e:
+                LOGGER.error(f"Failed to save image {save_path}: {e}")
+                # Continue processing other images even if one fails
+                continue
+        self.job = None
 
     def on_exec_failed(self):
-        if len(self.im_save_list) > 0:
-            self.im_save_list.pop(0)
-            if len(self.im_save_list) == 0:
-                self.job = None
-            else:
-                try:
-                    self.job()
-                except Exception as e:
-                    self.on_exec_failed()
-                    create_error_dialog(e, self._thread_error_msg, self._thread_exception_type)
+        # Clear the save list on failure to prevent getting stuck
+        self.im_save_list.clear()
+        self.job = None
 
 
 
@@ -168,6 +164,10 @@ class ImportDocThread(ImgTransProjFileIOThread):
             return
         self.fin_counter = 0
         self.num_pages = self.proj.num_pages
+        self.proj.load_doc(self.doc_path, fin_page_signal=self.fin_page)
+        self.proj = None
+        self.progress_bar.hide()
+        self.fin_io.emit()
         self.proj.load_doc(self.doc_path, fin_page_signal=self.fin_page)
         self.proj = None
         self.progress_bar.hide()

@@ -573,7 +573,11 @@ class OCR32pxModel:
             region = np.zeros((N, self.text_height, max_width, 3), dtype = np.uint8)
             for i, idx in enumerate(indices) :
                 W = regions[idx].shape[1]
-                region[i, :, : W, :] = regions[idx]
+                # Convert RGBA to RGB if necessary for model input
+                region_data = regions[idx]
+                if region_data.shape[2] == 4:
+                    region_data = cv2.cvtColor(region_data, cv2.COLOR_RGBA2RGB)
+                region[i, :, : W, :] = region_data
             images = (torch.from_numpy(region).float() - 127.5) / 127.5
             images = einops.rearrange(images, 'N H W C -> N C H W')
             if self.device != 'cpu':

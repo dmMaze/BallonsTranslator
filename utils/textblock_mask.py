@@ -51,6 +51,10 @@ def letter_calculator(img, mask, bground_rgb, show_process=False):
 
 # 预处理让文本颜色提取准确点
 def usm(src):
+    # Handle RGBA images by converting to RGB for processing
+    if len(src.shape) == 3 and src.shape[2] == 4:
+        src = cv2.cvtColor(src, cv2.COLOR_RGBA2RGB)
+        
     blur_img = cv2.GaussianBlur(src, (0, 0), 5)
     usm = cv2.addWeighted(src, 1.5, blur_img, -0.5, 0)
     h, w = src.shape[:2]
@@ -100,6 +104,11 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, **kwargs):
     BLACK = (0, 0, 0)
     kernel = np.ones((3,3),np.uint8)
     orih, oriw = img.shape[0], img.shape[1]
+    
+    # Handle RGBA images by converting to RGB for processing
+    if len(img.shape) == 3 and img.shape[2] == 4:
+        # Convert RGBA to RGB for processing
+        img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
     scaleR = 1
     if orih > 300 and oriw > 300:
         scaleR = 0.6
@@ -204,10 +213,16 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, **kwargs):
                 "bground_rgb": bground_aver,
                 "inner_rect": inner_rect,
                 "need_inpaint": need_inpaint}
+    
     return mask, ballon_mask, bub_dict
 
 # 输入：文本块roi，分割出文本mask，根据mask计算文本bgr均值和标准差，决定纯色覆盖/inpaint修复
 def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_strokewidth_check=0, **kwargs):
+
+    # Handle RGBA images by converting to RGB for processing
+    if len(img.shape) == 3 and img.shape[2] == 4:
+        # Convert RGBA to RGB for processing
+        img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
 
     # 寻找最可能是气泡的外轮廓mask
     def find_outermask(img):
@@ -338,6 +353,7 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_st
                 "bground_rgb": bground_aver,
                 "inner_rect": inner_rect,
                 "need_inpaint": need_inpaint}
+    
     return mask, ballon_mask, bub_dict
 
 
@@ -351,6 +367,10 @@ def extract_ballon_mask(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, 
     Given original img and text mask (cropped)
     return ballon mask & non text mask
     '''
+    # Handle RGBA images by converting to RGB for processing
+    if len(img.shape) == 3 and img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+        
     img = cv2.GaussianBlur(img,(3,3),cv2.BORDER_DEFAULT)
     h, w = img.shape[:2]
     text_sum = np.sum(mask)

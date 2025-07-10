@@ -669,6 +669,19 @@ class DrawingPanel(Widget):
         inpaint_rect = inpaint_dict['inpaint_rect']
         mask_array = self.canvas.imgtrans_proj.mask_array
         mask = cv2.bitwise_or(inpaint_dict['mask'], mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]])
+        
+        # Handle RGBA preservation: if original image was RGBA, restore alpha channel
+        original_region = self.canvas.imgtrans_proj.inpainted_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+        if len(original_region.shape) == 3 and original_region.shape[2] == 4:
+            # Original was RGBA, but inpainted result is likely RGB
+            if len(inpainted.shape) == 3 and inpainted.shape[2] == 3:
+                # Add alpha channel back to inpainted result
+                h, w = inpainted.shape[:2]
+                inpainted_rgba = np.zeros((h, w, 4), dtype=inpainted.dtype)
+                inpainted_rgba[:, :, :3] = inpainted  # Copy RGB channels
+                inpainted_rgba[:, :, 3] = original_region[:, :, 3]  # Restore original alpha
+                inpainted = inpainted_rgba
+        
         self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
         self.clearInpaintItems()
 
@@ -799,8 +812,37 @@ class DrawingPanel(Widget):
         bground_rgb = inpaint_dict['bground_rgb']
         ballon_mask = inpaint_dict['ballon_mask']
         if not need_inpaint and pcfg.module.check_need_inpaint:
-            img[np.where(ballon_mask > 0)] = bground_rgb
-            self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect'], merge_existing_mask=True))
+            img_copy = img.copy()  # Create a copy to avoid modifying original
+            
+            # Handle RGBA images properly - preserve alpha channel for transparent areas
+            if len(img_copy.shape) == 3 and img_copy.shape[2] == 4:
+                # For RGBA images, we need to preserve transparency
+                balloon_areas = np.where(ballon_mask > 0)
+                if len(balloon_areas[0]) > 0:
+                    # Check if most of the background is transparent
+                    background_pixels = img_copy[balloon_areas]
+                    avg_alpha = np.mean(background_pixels[:, 3])
+                    
+                    # If background is mostly transparent (avg alpha < 64), keep areas transparent
+                    if avg_alpha < 64:
+                        # Set the balloon areas to transparent
+                        img_copy[balloon_areas] = [0, 0, 0, 0]  # Fully transparent
+                    else:
+                        # Background has some opacity, use calculated background color
+                        bg_rgb = np.array(bground_rgb[:3] if len(bground_rgb) > 3 else bground_rgb)
+                        
+                        # For each pixel, preserve alpha but set RGB to background
+                        for i in range(len(balloon_areas[0])):
+                            y, x = balloon_areas[0][i], balloon_areas[1][i]
+                            current_alpha = img_copy[y, x, 3]
+                            img_copy[y, x, :3] = bg_rgb
+                            img_copy[y, x, 3] = current_alpha  # Preserve original alpha
+            else:
+                # For RGB images, use original logic
+                bg_rgb = np.array(bground_rgb[:3] if len(bground_rgb) > 3 else bground_rgb)
+                img_copy[np.where(ballon_mask > 0)] = bg_rgb
+                
+            self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, img_copy, mask, inpaint_dict['inpaint_rect'], merge_existing_mask=True))
             self.clearInpaintItems()
         else:
             self.runInpaint(inpaint_dict=inpaint_dict)

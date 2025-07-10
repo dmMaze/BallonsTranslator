@@ -369,13 +369,29 @@ class Canvas(QGraphicsScene):
             if blk_item.isSelected():
                 blk_item.setSelected(False)
 
-        result = ndarray2pixmap(self.imgtrans_proj.inpainted_array, return_qimg=True)
+        # Get the canvas size and base image
         canvas_sz = self.img_window_size()
+        
+        # Start with the inpainted image as base
+        if self.imgtrans_proj.inpainted_array is not None:
+            base_img = ndarray2pixmap(self.imgtrans_proj.inpainted_array, return_qimg=True)
+        else:
+            base_img = QImage(canvas_sz.width(), canvas_sz.height(), QImage.Format.Format_ARGB32)
+            base_img.fill(0)  # Transparent
+            
+        # Create the final result image
+        result = QImage(canvas_sz.width(), canvas_sz.height(), QImage.Format.Format_ARGB32)
+        result.fill(0)  # Start with transparent background
+        
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
+        
+        # Draw the base image first
+        painter.drawImage(0, 0, base_img)
+        
+        # Render the scene (which includes text layers and other overlays)
         rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
-        self.render(painter, rect, rect)   #  produce blurred result if target/source rect not specified #320
+        self.render(painter, rect, rect)
         painter.end()
         
         if tlayer_opacity_before != 1:
@@ -991,6 +1007,13 @@ class Canvas(QGraphicsScene):
     def text_change_unsaved(self) -> bool:
         return self.saved_textundo_step != self.num_pushed_textstep
 
+    def draw_change_unsaved(self) -> bool:
+        return self.saved_drawundo_step != self.num_pushed_drawstep
+
+    def prepareClose(self):
+        self.blockSignals(True)
+        self.text_undo_stack.blockSignals(True)
+        self.draw_undo_stack.blockSignals(True)
     def draw_change_unsaved(self) -> bool:
         return self.saved_drawundo_step != self.num_pushed_drawstep
 

@@ -97,7 +97,10 @@ def imread(imgpath, read_type=cv2.IMREAD_COLOR, max_retry_limit=5, retry_interva
         try:
             img = Image.open(imgpath)
             if read_type != cv2.IMREAD_GRAYSCALE:
-                img = img.convert('RGB')
+                if img.mode == 'RGBA':
+                    img = img.convert('RGBA')
+                else:
+                    img = img.convert('RGB')
             img = np.array(img)
             break
         except PIL.UnidentifiedImageError as e:
@@ -123,7 +126,6 @@ def imread(imgpath, read_type=cv2.IMREAD_COLOR, max_retry_limit=5, retry_interva
 
 
 def imwrite(img_path, img, ext='.png', quality=100, jxl_encode_effort=3):
-    # cv2 writing is faster than PIL
     suffix = Path(img_path).suffix
     ext = ext.lower()
     assert ext in IMG_EXT
@@ -131,16 +133,35 @@ def imwrite(img_path, img, ext='.png', quality=100, jxl_encode_effort=3):
         img_path = img_path.replace(suffix, ext)
     else:
         img_path += ext
+    
+    # Ensure directory exists
+    save_dir = osp.dirname(img_path)
+    if save_dir and not osp.exists(save_dir):
+        os.makedirs(save_dir)
+    
     encode_param = None
     if ext in {'.jpg', '.jpeg'}:
         encode_param = [cv2.IMWRITE_JPEG_QUALITY, quality]
     elif ext == '.webp':
         encode_param = [cv2.IMWRITE_WEBP_QUALITY, quality]
     if ext == '.jxl':
-        # jxl_encode_effort: https://github.com/Isotr0py/pillow-jpegxl-plugin/issues/23
-        # higher values theoretically produce smaller files at the expense of time, 3 seems to strike a balance
-        lossless = quality > 99 # quality=100, lossless=False seems to result in larger file compared with lossless=True
+        lossless = quality > 99
         Image.fromarray(img).save(img_path, quality=quality, lossless=lossless, effort=jxl_encode_effort)
+        return
+    elif ext == '.png':
+        # Handle RGBA PNGs with transparency
+        if len(img.shape) == 3 and img.shape[-1] == 4:
+            # Ensure contiguous and uint8 for PIL
+            img = np.ascontiguousarray(img, dtype=np.uint8)
+            # Use PIL to save RGBA PNG with proper transparency
+            pil_img = Image.fromarray(img, mode='RGBA')
+            pil_img.save(img_path, format='PNG', optimize=False)
+            return
+        else:
+            if len(img.shape) == 3 and img.shape[-1] == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            cv2.imencode(ext, img, encode_param)[1].tofile(img_path)
+            return
     else:
         if len(img.shape) == 3:
             if img.shape[-1] == 3:
@@ -148,7 +169,6 @@ def imwrite(img_path, img, ext='.png', quality=100, jxl_encode_effort=3):
             elif img.shape[-1] == 4:
                 img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA)
         cv2.imencode(ext, img, encode_param)[1].tofile(img_path)
-
 
 def show_img_by_dict(imgdicts):
     for keyname in imgdicts.keys():
