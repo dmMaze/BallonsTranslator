@@ -1381,6 +1381,12 @@ class MainWindow(mainwindow_cls):
                     msg += '\n' + self.tr('Unmatched pages: ') + '\n'
                     msg += '\n'.join(match_rst['unmatched_pages'])
                 msg = msg.strip()
+
+            for pagename in matched_pages:
+                for blk in self.imgtrans_proj.pages[pagename]:
+                    blk.translation = self.mtSubWidget.sub_text(blk.translation)
+            self.imgtrans_proj.merge_from_proj_dict(self.imgtrans_proj.pages)
+            
             create_info_dialog(msg)
 
         except Exception as e:
