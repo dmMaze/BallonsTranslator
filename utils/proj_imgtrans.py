@@ -256,6 +256,11 @@ class ProjImgTrans:
             self.mask_array = None
             self.inpainted_array = None
 
+    def current_has_alpha(self):
+        if self.current_img is None:
+            return False
+        return len(self.img_array.shape) and self.img_array.shape[-1] == 4
+
     def set_current_img_byidx(self, idx: int):
         num_pages = self.num_pages
         if idx < 0:
@@ -340,9 +345,6 @@ class ProjImgTrans:
         mp = self.get_mask_path(imgname, get_last_modified=True)
         if osp.exists(mp):
             mask = imread(mp, cv2.IMREAD_GRAYSCALE)
-            # Ensure mask is 2D grayscale
-            if mask is not None and mask.ndim == 3:
-                mask = cv2.cvtColor(mask, cv2.COLOR_RGB2GRAY)
         return mask
 
     def get_inpainted_path(self, imgname: str = None, get_last_modified=False) -> str:

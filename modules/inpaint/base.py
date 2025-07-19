@@ -15,6 +15,28 @@ INPAINTERS = Registry('inpainters')
 register_inpainter = INPAINTERS.register_module
 
 
+def inpaint_handle_alpha_channel(original_alpha, mask):
+    '''
+    perhaps a better idea is to feed the alpha into inpainting model, but it'll double the cost  
+    for now it just return the original alpha
+    '''
+
+    result_alpha = original_alpha.copy()
+    return result_alpha
+    
+    # Analyze the alpha values around the original mask to determine appropriate transparency
+    mask_dilated = cv2.dilate((mask > 0).astype(np.uint8), np.ones((15, 15), np.uint8), iterations=1)
+    surrounding_mask = mask_dilated - (mask > 0).astype(np.uint8)
+    
+    if np.any(surrounding_mask > 0):
+        surrounding_alpha = original_alpha[surrounding_mask > 0]
+        if len(surrounding_alpha) > 0:
+            median_surrounding_alpha = np.median(surrounding_alpha)
+            result_alpha[surrounding_mask] = median_surrounding_alpha
+
+    return result_alpha
+
+
 class InpainterBase(BaseModule):
 
     inpaint_by_block = True
@@ -85,47 +107,12 @@ class InpainterBase(BaseModule):
                         result_rgb[np.where(ballon_msk > 0)] = average_bg_color
                         # Recombine with alpha if original was RGBA
                         if original_alpha is not None:
-                            # For background color filling: analyze surrounding transparency
-                            result_alpha = original_alpha.copy()
-                            
-                            # Analyze the alpha values around the balloon mask
-                            ballon_dilated = cv2.dilate((ballon_msk > 127).astype(np.uint8), np.ones((15, 15), np.uint8), iterations=1)
-                            surrounding_mask = ballon_dilated - (ballon_msk > 127).astype(np.uint8)
-                            
-                            if np.any(surrounding_mask > 0):
-                                surrounding_alpha = original_alpha[surrounding_mask > 0]
-                                if len(surrounding_alpha) > 0:
-                                    median_surrounding_alpha = np.median(surrounding_alpha)
-                                    
-                                    # If surrounding area is mostly transparent, make filled areas transparent too
-                                    if median_surrounding_alpha < 128:
-                                        balloon_mask_area = (ballon_msk > 127)
-                                        result_alpha[balloon_mask_area] = median_surrounding_alpha
-                            
-                            return np.concatenate([result_rgb, result_alpha], axis=2)
+                            return np.concatenate([result_rgb, original_alpha], axis=2)
                         return result_rgb
             result_rgb = self.memory_safe_inpaint(img_rgb, mask, textblock_list)
             # Recombine with alpha if original was RGBA
             if original_alpha is not None:
-                # For text removal: if the surrounding background is transparent,
-                # the inpainted areas should also become transparent
-                result_alpha = original_alpha.copy()
-                
-                # Analyze the alpha values around the mask to determine appropriate transparency
-                mask_dilated = cv2.dilate((mask > 127).astype(np.uint8), np.ones((15, 15), np.uint8), iterations=1)
-                surrounding_mask = mask_dilated - (mask > 127).astype(np.uint8)
-                
-                if np.any(surrounding_mask > 0):
-                    surrounding_alpha = original_alpha[surrounding_mask > 0]
-                    if len(surrounding_alpha) > 0:
-                        median_surrounding_alpha = np.median(surrounding_alpha)
-                        
-                        # If surrounding area is mostly transparent (median alpha < 128),
-                        # make inpainted areas transparent too
-                        if median_surrounding_alpha < 128:
-                            inpainted_mask = (mask > 127)
-                            result_alpha[inpainted_mask] = median_surrounding_alpha
-                
+                result_alpha = inpaint_handle_alpha_channel(original_alpha, mask)
                 return np.concatenate([result_rgb, result_alpha], axis=2)
             return result_rgb
         else:
@@ -165,25 +152,7 @@ class InpainterBase(BaseModule):
             
             # Recombine with alpha if original was RGBA
             if original_alpha is not None:
-                # For text removal: if the surrounding background is transparent,
-                # the inpainted areas should also become transparent
-                result_alpha = original_alpha.copy()
-                
-                # Analyze the alpha values around the original mask to determine appropriate transparency
-                mask_dilated = cv2.dilate((original_mask > 127).astype(np.uint8), np.ones((15, 15), np.uint8), iterations=1)
-                surrounding_mask = mask_dilated - (original_mask > 127).astype(np.uint8)
-                
-                if np.any(surrounding_mask > 0):
-                    surrounding_alpha = original_alpha[surrounding_mask > 0]
-                    if len(surrounding_alpha) > 0:
-                        median_surrounding_alpha = np.median(surrounding_alpha)
-                        
-                        # If surrounding area is mostly transparent (median alpha < 128),
-                        # make inpainted areas transparent too
-                        if median_surrounding_alpha < 128:
-                            inpainted_mask = (original_mask > 127)
-                            result_alpha[inpainted_mask] = median_surrounding_alpha
-                
+                result_alpha = inpaint_handle_alpha_channel(original_alpha, mask)
                 return np.concatenate([inpainted, result_alpha], axis=2)
             return inpainted
 

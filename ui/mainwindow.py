@@ -920,12 +920,8 @@ class MainWindow(mainwindow_cls):
                 if not save_rst_only:
                     mask_path = self.imgtrans_proj.get_mask_path()
                     mask_array = self.imgtrans_proj.mask_array
-                    # Ensure mask is saved as grayscale
                     if mask_array is not None:
-                        if mask_array.ndim == 3:
-                            mask_array = cv2.cvtColor(mask_array, cv2.COLOR_RGB2GRAY)
                         self.imsave_thread.saveImg(mask_path, mask_array, save_params={'ext': pcfg.intermediate_imgsave_ext})
-                    
                     inpainted_path = self.imgtrans_proj.get_inpainted_path()
                     if self.canvas.drawingLayer.drawed():
                         inpainted = self.canvas.base_pixmap.copy()
@@ -935,18 +931,15 @@ class MainWindow(mainwindow_cls):
                     else:
                         inpainted = self.imgtrans_proj.inpainted_array
                     if inpainted is not None:
-                        self.imsave_thread.saveImg(inpainted_path, inpainted, save_params={'ext': pcfg.intermediate_imgsave_ext})
+                        self.imsave_thread.saveImg(inpainted_path, inpainted, save_params={'ext': pcfg.intermediate_imgsave_ext}, keep_alpha=self.imgtrans_proj.current_has_alpha())
             except Exception as e:
                 LOGGER.error(f"Failed to save project files: {e}")
 
         # Render the final result image properly
         try:
             img = self.canvas.render_result_img()
-            # Ensure the rendered image preserves transparency for PNG
-            if hasattr(img, 'hasAlphaChannel') and img.hasAlphaChannel() and pcfg.imgsave_ext == '.png':
-                img = img.convertToFormat(QImage.Format.Format_ARGB32)
             imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
-            self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality})
+            self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality}, keep_alpha=self.imgtrans_proj.current_has_alpha())
         except Exception as e:
             LOGGER.error(f"Failed to render and save result image: {e}")
             
