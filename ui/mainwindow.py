@@ -1385,7 +1385,6 @@ class MainWindow(mainwindow_cls):
             for pagename in matched_pages:
                 for blk in self.imgtrans_proj.pages[pagename]:
                     blk.translation = self.mtSubWidget.sub_text(blk.translation)
-            self.imgtrans_proj.merge_from_proj_dict(self.imgtrans_proj.pages)
             
             create_info_dialog(msg)
 
