@@ -43,7 +43,7 @@ class TextSpan(object):
         else:
             raise AttributeError(f'Invalid key: {index}')
 
-def split_step0(span, thresh, sumby_yaxis, thresh2=None) -> list[TextSpan]:
+def split_step0(span, thresh, sumby_yaxis, thresh2=None):
     candidate_pnts = (np.where(sumby_yaxis[span.top: span.bottom] > thresh)[0] + span.top).tolist()
     span_list = []
     if len(candidate_pnts) == 0:
@@ -293,7 +293,7 @@ def textspan2list(span_list):
 
 
 
-def manga_split(img, bbox=None, show_process=False, clip_width=False) -> list[TextSpan]:
+def manga_split(img, bbox=None, show_process=False, clip_width=False):
 
     im = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
     imh, imw = im.shape[:2]

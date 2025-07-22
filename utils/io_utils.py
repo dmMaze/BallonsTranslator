@@ -12,7 +12,7 @@ from PIL import Image
 import PIL
 import cv2
 import numpy as np
-import pillow_jxl
+#import pillow_jxl
 from natsort import natsorted
 
 IMG_EXT = ['.bmp', '.jpg', '.png', '.jpeg', '.webp', '.jxl']

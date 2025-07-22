@@ -214,7 +214,7 @@ def soft_empty_cache():
         torch.mps.empty_cache()
 
 
-def DEVICE_SELECTOR(not_supported:list[str]=[]): return deepcopy(
+def DEVICE_SELECTOR(not_supported=[]): return deepcopy(
     {
         'type': 'selector',
         'options': [opt for opt in AVAILABLE_DEVICES if all(device not in opt for device in not_supported)],

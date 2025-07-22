@@ -604,6 +604,16 @@ class TextBlkItem(QGraphicsTextItem):
         if tables:
             _, td = td_pattern.findall(html)[0]
             html = tables[0] + td + '</body></html>'
+        #fix anything related to color and weight and size in nested span
+        #pattern=re.compile("font-weight:([0-9]+)",re.MULTILINE)
+        #find all font-weight in html
+        #matches=pattern.findall(html)
+        #get the first(overall) weight
+        #if matches:
+        #    overall_weight=matches[0]
+            #replace any weight with this weight
+        #    for match in matches:
+               # html=html.replace(f"font-weight:{match}",f"font-weight:{overall_weight}")
 
         return html.replace('>\n<', '><')
 

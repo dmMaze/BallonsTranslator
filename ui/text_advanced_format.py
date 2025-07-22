@@ -80,8 +80,7 @@ class TextShadowGroup(QGroupBox):
 
 class TextGradientGroup(QGroupBox):
     def __init__(self, on_param_changed: Callable = None):
-        super().__init__()
-        self.setTitle(self.tr('Gradient'))
+        super().__init__(title='Gradient')
         self.on_param_changed = on_param_changed
 
         self.start_picker = SmallColorPickerLabel(self, param_name='gradient_start_color')
