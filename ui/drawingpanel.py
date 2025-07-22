@@ -799,7 +799,14 @@ class DrawingPanel(Widget):
         bground_rgb = inpaint_dict['bground_rgb']
         ballon_mask = inpaint_dict['ballon_mask']
         if not need_inpaint and pcfg.module.check_need_inpaint:
-            img[np.where(ballon_mask > 0)] = bground_rgb
+            bg_pixel_value = [bground_rgb[ii] for ii in range(3)]
+            balloon_areas = np.where(ballon_mask > 0)
+            if len(img.shape) == 3 and img.shape[2] == 4:
+                avg_alpha = np.mean(img[balloon_areas][..., 3])
+                avg_alpha = 0 if avg_alpha < 127 else avg_alpha
+                bg_pixel_value.append(avg_alpha)
+            bg_pixel_value = np.array(np.round(bg_pixel_value), dtype=np.uint8)
+            img[balloon_areas] = bg_pixel_value
             self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect'], merge_existing_mask=True))
             self.clearInpaintItems()
         else:
