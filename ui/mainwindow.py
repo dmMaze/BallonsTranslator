@@ -5,11 +5,12 @@ from pathlib import Path
 import subprocess
 from functools import partial
 import time
+import cv2
 
 from tqdm import tqdm
 from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
-from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard
+from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard, QImage
 
 from utils.logger import logger as LOGGER
 from utils.text_processing import is_cjk, full_len, half_len
@@ -533,12 +534,16 @@ class MainWindow(mainwindow_cls):
         save_config()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if not self.imgtrans_proj.is_empty:
+            self.conditional_save(keep_exist_as_backup=True)
+        while True:
+            if not self.imsave_thread.isRunning():
+                break
+            time.sleep(0.1)
         self.st_manager.hovering_transwidget = None
         self.st_manager.blockSignals(True)
         self.canvas.prepareClose()
         self.save_config()
-        if not self.imgtrans_proj.is_empty:
-            self.imgtrans_proj.save()
         return super().closeEvent(event)
 
     def changeEvent(self, event: QEvent):
@@ -568,14 +573,14 @@ class MainWindow(mainwindow_cls):
         self.canvas.alt_pressed = False
         self.canvas.scale_tool_mode = False
 
-    def conditional_save(self):
+    def conditional_save(self, keep_exist_as_backup=False):
         if self.canvas.projstate_unsaved and not self.opening_dir:
             update_scene_text = save_proj = self.canvas.text_change_unsaved()
             save_rst_only = not self.canvas.draw_change_unsaved()
             if not save_rst_only:
                 save_proj = True
             
-            self.saveCurrentPage(update_scene_text, save_proj, restore_interface=True, save_rst_only=save_rst_only)
+            self.saveCurrentPage(update_scene_text, save_proj, restore_interface=True, save_rst_only=save_rst_only, keep_exist_as_backup=keep_exist_as_backup)
 
     def pageListCurrentItemChanged(self):
         item = self.pageList.currentItem()
@@ -881,7 +886,7 @@ class MainWindow(mainwindow_cls):
             LOGGER.debug('Manually saving...')
             self.saveCurrentPage(update_scene_text=True, save_proj=True, restore_interface=True, save_rst_only=False)
 
-    def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False):
+    def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False, keep_exist_as_backup=False):
         
         if not self.imgtrans_proj.img_valid:
             return
@@ -914,24 +919,33 @@ class MainWindow(mainwindow_cls):
             os.makedirs(self.imgtrans_proj.result_dir())
 
         if save_proj:
-            self.imgtrans_proj.save()
-            if not save_rst_only:
-                mask_path = self.imgtrans_proj.get_mask_path()
-                mask_array = self.imgtrans_proj.mask_array
-                self.imsave_thread.saveImg(mask_path, mask_array, save_params={'ext': pcfg.intermediate_imgsave_ext})
-                inpainted_path = self.imgtrans_proj.get_inpainted_path()
-                if self.canvas.drawingLayer.drawed():
-                    inpainted = self.canvas.base_pixmap.copy()
-                    painter = QPainter(inpainted)
-                    painter.drawPixmap(0, 0, self.canvas.drawingLayer.get_drawed_pixmap())
-                    painter.end()
-                else:
-                    inpainted = self.imgtrans_proj.inpainted_array
-                self.imsave_thread.saveImg(inpainted_path, inpainted, save_params={'ext': pcfg.intermediate_imgsave_ext})
+            try:
+                self.imgtrans_proj.save(keep_exist_as_backup=keep_exist_as_backup)
+                if not save_rst_only:
+                    mask_path = self.imgtrans_proj.get_mask_path()
+                    mask_array = self.imgtrans_proj.mask_array
+                    if mask_array is not None:
+                        self.imsave_thread.saveImg(mask_path, mask_array, save_params={'ext': pcfg.intermediate_imgsave_ext})
+                    inpainted_path = self.imgtrans_proj.get_inpainted_path()
+                    if self.canvas.drawingLayer.drawed():
+                        inpainted = self.canvas.base_pixmap.copy()
+                        painter = QPainter(inpainted)
+                        painter.drawPixmap(0, 0, self.canvas.drawingLayer.get_drawed_pixmap())
+                        painter.end()
+                    else:
+                        inpainted = self.imgtrans_proj.inpainted_array
+                    if inpainted is not None:
+                        self.imsave_thread.saveImg(inpainted_path, inpainted, save_params={'ext': pcfg.intermediate_imgsave_ext}, keep_alpha=self.imgtrans_proj.current_has_alpha())
+            except Exception as e:
+                LOGGER.error(f"Failed to save project files: {e}")
 
-        img = self.canvas.render_result_img()
-        imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
-        self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality})
+        # Render the final result image properly
+        try:
+            img = self.canvas.render_result_img()
+            imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
+            self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality}, keep_alpha=self.imgtrans_proj.current_has_alpha())
+        except Exception as e:
+            LOGGER.error(f"Failed to render and save result image: {e}")
             
         self.canvas.setProjSaveState(False)
         self.canvas.update_saved_undostep()

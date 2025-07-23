@@ -7,7 +7,7 @@ import numpy as np
 import cv2
 
 from .base import register_textdetectors, TextDetectorBase, TextBlock, DEVICE_SELECTOR
-from utils.textblock import mit_merge_textlines, sort_regions, examine_textblk
+from utils.textblock import mit_merge_textlines, sort_regions, examine_textblk, sort_pnts
 from utils.textblock_mask import canny_flood
 from utils.split_text_region import manga_split, split_textblock
 from utils.imgproc_utils import xywh2xyxypoly
@@ -219,7 +219,8 @@ class YSGYoloDetector(TextDetectorBase):
             blk_list += mit_merge_textlines(pts_list, width=im_w, height=im_h)
         else:
             for pts in pts_list:
-                blk = TextBlock(lines=[pts])
+                pts_sorted, is_vertical = sort_pnts(pts)
+                blk = TextBlock(lines=[pts_sorted], src_is_vertical=is_vertical)
                 blk.adjust_bbox()
                 examine_textblk(blk, im_w, im_h)
                 blk_list.append(blk)

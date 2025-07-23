@@ -256,6 +256,11 @@ class ProjImgTrans:
             self.mask_array = None
             self.inpainted_array = None
 
+    def current_has_alpha(self):
+        if self.current_img is None:
+            return False
+        return len(self.img_array.shape) and self.img_array.shape[-1] == 4
+
     def set_current_img_byidx(self, idx: int):
         num_pages = self.num_pages
         if idx < 0:
@@ -291,12 +296,21 @@ class ProjImgTrans:
         self.set_current_img_byidx(0)
         self.save()
         
-    def save(self):
+    def save(self, keep_exist_as_backup=False):
         if not osp.exists(self.directory):
             raise ProjectDirNotExistException
-        with open(self.proj_path, "w", encoding="utf-8") as f:
-            f.write(json.dumps(self.to_dict(), ensure_ascii=False, cls=TextBlkEncoder))
-            LOGGER.debug(f'project saved to {self.proj_path}')
+        tmp_save_tgt = self.proj_path + '.tmp'
+        try:
+            with open(tmp_save_tgt, "w", encoding="utf-8") as f:
+                f.write(json.dumps(self.to_dict(), ensure_ascii=False, cls=TextBlkEncoder))
+        except:
+            raise Exception(f'Failed to write {self.to_dict()}')
+        if osp.exists(self.proj_path) and keep_exist_as_backup:
+            os.replace(self.proj_path, self.proj_path + '.backup')
+            os.replace(tmp_save_tgt, self.proj_path)
+        else:
+            os.replace(tmp_save_tgt, self.proj_path)
+        LOGGER.debug(f'project saved to {self.proj_path}')
 
     def to_dict(self) -> Dict:
         pages = self.pages.copy()

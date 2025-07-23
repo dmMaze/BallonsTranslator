@@ -45,8 +45,8 @@ class ImgSaveThread(ThreadBase):
         super().__init__(*args, **kwargs)
         self.im_save_list = []
 
-    def saveImg(self, save_path: str, img: QImage, pagename_in_proj: str = '', save_params: dict = None):
-        self.im_save_list.append((save_path, img, pagename_in_proj, save_params))
+    def saveImg(self, save_path: str, img: QImage, pagename_in_proj: str = '', save_params: dict = None, keep_alpha=False):
+        self.im_save_list.append((save_path, img, pagename_in_proj, save_params, keep_alpha))
         if self.job is None:
             self.job = self._save_img
             self.start()
@@ -55,11 +55,11 @@ class ImgSaveThread(ThreadBase):
         while True:
             if len(self.im_save_list) == 0:
                 break
-            save_path, img, pagename_in_proj, save_params = self.im_save_list[0]
+            save_path, img, pagename_in_proj, save_params, keep_alpha = self.im_save_list[0]
             if save_params is None:
                 save_params = {}
             if isinstance(img, QImage) or isinstance(img, QPixmap):
-                img = pixmap2ndarray(img, keep_alpha=False)
+                img = pixmap2ndarray(img, keep_alpha=keep_alpha)
             imwrite(save_path, img, **save_params)
             self.img_writed.emit(pagename_in_proj)
             self.im_save_list.pop(0)

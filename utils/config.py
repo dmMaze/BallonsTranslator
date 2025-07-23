@@ -1,6 +1,7 @@
 import json, os, traceback
 import os.path as osp
 import copy
+from typing import Callable
 
 from . import shared
 from .fontformat import FontFormat
@@ -256,14 +257,17 @@ def json_dump_program_config(obj, **kwargs):
 def save_config():
     global pcfg
     try:
-        with open(shared.CONFIG_PATH, 'w', encoding='utf8') as f:
+        tmp_save_tgt = shared.CONFIG_PATH + '.tmp'
+        with open(tmp_save_tgt, 'w', encoding='utf8') as f:
             f.write(json_dump_program_config(pcfg))
-        LOGGER.info('Config saved')
-        return True
     except Exception as e:
-        LOGGER.error(f'Failed save config to {shared.CONFIG_PATH}: {e}')
+        LOGGER.error(f'Failed save config to {tmp_save_tgt}: {e}')
         LOGGER.error(traceback.format_exc())
         return False
+    
+    os.replace(tmp_save_tgt, shared.CONFIG_PATH)
+    LOGGER.info('Config saved')
+    return True
 
 def save_text_styles(raise_exception = False):
     global pcfg, text_styles
@@ -271,13 +275,83 @@ def save_text_styles(raise_exception = False):
         style_dir = osp.dirname(pcfg.text_styles_path)
         if not osp.exists(style_dir):
             os.makedirs(style_dir)
-        with open(pcfg.text_styles_path, 'w', encoding='utf8') as f:
+        tmp_save_tgt = pcfg.text_styles_path + '.tmp'
+        with open(tmp_save_tgt, 'w', encoding='utf8') as f:
             f.write(json_dump_nested_obj(text_styles))
-        LOGGER.info('Text style saved')
-        return True
+
     except Exception as e:
-        LOGGER.error(f'Failed save text style to {pcfg.text_styles_path}: {e}')
+        LOGGER.error(f'Failed save text style to {tmp_save_tgt}: {e}')
         LOGGER.error(traceback.format_exc())
         if raise_exception:
             raise e
         return False
+
+    os.replace(tmp_save_tgt, pcfg.text_styles_path)
+    LOGGER.info('Text style saved')
+    return True
+
+
+def merge_config_module_params(config_params: Dict, module_keys: List, get_module: Callable) -> Dict:
+    for module_key in module_keys:
+        module_params = get_module(module_key).params
+        if module_key not in config_params or config_params[module_key] is None:
+            config_params[module_key] = module_params
+        else:
+            cfg_param = config_params[module_key]
+            cfg_key_set = set(cfg_param.keys())
+            module_key_set = set(module_params.keys())
+            for ck in cfg_key_set:
+                if ck not in module_key_set:
+                    LOGGER.warning(f'Found invalid {module_key} config: {ck}')
+                    cfg_param.pop(ck)
+
+            for mk in module_key_set:
+                if mk not in cfg_key_set:
+                    # LOGGER.info(f'Found new {module_key} config: {mk}')
+                    cfg_param[mk] = module_params[mk]
+                else:
+                    mparam = module_params[mk]
+                    cparam = cfg_param[mk]
+                    if isinstance(mparam, dict):
+                        tgt_type = type(mparam['value'])
+                        if isinstance(cparam, dict):
+                            if 'value' in cparam:
+                                v = cparam['value']
+                            elif isinstance(mparam['value'], dict):
+                                for k in mparam['value']:
+                                    if k in cparam:
+                                        mparam['value'][k] = cparam[k]
+                                v = mparam['value']
+                            else:
+                                v = mparam['value']
+                        else:
+                            v = cparam
+                        valid = True
+                        if tgt_type != type(v):
+                            try:
+                                v = tgt_type(v)
+                            except:
+                                valid = False
+                                LOGGER.warning(f'Invalid param value {v} for defined dtype: {tgt_type}, it will be set to default value: {mparam}')
+                        if valid:
+                            mparam['value'] = v
+                        cfg_param[mk] = mparam
+                    else:
+                        if type(cparam) != type(mparam):
+                            if not isinstance(mparam, dict) and isinstance(cparam, dict):
+                                cparam = cparam['value']
+                            try:
+                                cfg_param[mk] = type(mparam)(cparam)
+                            except ValueError:
+                                LOGGER.warning(f'Invalid param value {cparam} for defined dtype: {type(mparam)}, it will be set to default value: {mparam}')
+                                cfg_param[mk] = mparam
+            
+            cfg_key_list = list(cfg_param.keys())
+            module_key_list = list(module_params.keys())
+            if cfg_key_list != module_key_list:
+                LOGGER.info(f'Reorder param dict in config')
+                new_params = {key: cfg_param[key] for key in module_key_list}
+                cfg_param.clear()
+                cfg_param.update(new_params)
+
+    return config_params

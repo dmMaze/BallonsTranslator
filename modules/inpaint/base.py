@@ -15,6 +15,30 @@ INPAINTERS = Registry('inpainters')
 register_inpainter = INPAINTERS.register_module
 
 
+def inpaint_handle_alpha_channel(original_alpha, mask):
+    '''
+    perhaps a better idea is to feed the alpha into inpainting model, but it'll double the cost  
+    for now it just return the original alpha
+    '''
+
+    result_alpha = original_alpha.copy()
+
+    # Analyze the alpha values around the original mask to determine appropriate transparency
+    mask_dilated = cv2.dilate((mask > 127).astype(np.uint8), np.ones((15, 15), np.uint8), iterations=1)
+    surrounding_mask = mask_dilated - (mask > 127).astype(np.uint8)
+
+    if np.any(surrounding_mask > 0):
+        surrounding_alpha = original_alpha[surrounding_mask > 0]
+        if len(surrounding_alpha) > 0:
+            median_surrounding_alpha = np.median(surrounding_alpha)
+            # If surrounding area is mostly transparent (median alpha < 128),
+            # make inpainted areas transparent too
+            if median_surrounding_alpha < 128:
+                inpainted_mask = (mask > 127)
+                result_alpha[inpainted_mask] = median_surrounding_alpha
+
+    return result_alpha
+
 class InpainterBase(BaseModule):
 
     inpaint_by_block = True
@@ -62,24 +86,44 @@ class InpainterBase(BaseModule):
         if not self.all_model_loaded():
             self.load_model()
         
+        # Handle RGBA images by preserving alpha channel
+        original_alpha = None
+        if len(img.shape) == 3 and img.shape[2] == 4:
+            original_alpha = img[:, :, 3:4]  # Keep alpha channel
+            img_rgb = img[:, :, :3]  # Use only RGB for inpainting
+        else:
+            img_rgb = img
+        
         if not self.inpaint_by_block or textblock_list is None:
             if check_need_inpaint:
-                ballon_msk, non_text_msk = extract_ballon_mask(img, mask)
+                ballon_msk, non_text_msk = extract_ballon_mask(img_rgb, mask)
                 if ballon_msk is not None:
                     non_text_region = np.where(non_text_msk > 0)
-                    non_text_px = img[non_text_region]
+                    non_text_px = img_rgb[non_text_region]
                     average_bg_color = np.median(non_text_px, axis=0)
                     std_rgb = np.std(non_text_px - average_bg_color, axis=0)
                     std_max = np.max(std_rgb)
                     inpaint_thresh = 7 if np.std(std_rgb) > 1 else 10
                     if std_max < inpaint_thresh:
-                        img = img.copy()
-                        img[np.where(ballon_msk > 0)] = average_bg_color
-                        return img
-            return self.memory_safe_inpaint(img, mask, textblock_list)
+                        result_rgb = img_rgb.copy()
+                        result_rgb[np.where(ballon_msk > 0)] = average_bg_color
+                        # Recombine with alpha if original was RGBA
+                        if original_alpha is not None:
+                            return np.concatenate([result_rgb, original_alpha], axis=2)
+                        return result_rgb
+            result_rgb = self.memory_safe_inpaint(img_rgb, mask, textblock_list)
+            # Recombine with alpha if original was RGBA
+            if original_alpha is not None:
+                result_alpha = inpaint_handle_alpha_channel(original_alpha, mask)
+                return np.concatenate([result_rgb, result_alpha], axis=2)
+            return result_rgb
         else:
-            im_h, im_w = img.shape[:2]
-            inpainted = np.copy(img)
+            im_h, im_w = img_rgb.shape[:2]
+            inpainted = np.copy(img_rgb)
+            
+            # Preserve original mask for transparency analysis
+            original_mask = mask.copy()
+            
             for blk in textblock_list:
                 xyxy = blk.xyxy
                 xyxy_e = enlarge_window(xyxy, im_w, im_h, ratio=1.7)
@@ -107,6 +151,11 @@ class InpainterBase(BaseModule):
                     inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]] = self.memory_safe_inpaint(im, msk)
 
                 mask[xyxy[1]:xyxy[3], xyxy[0]:xyxy[2]] = 0
+            
+            # Recombine with alpha if original was RGBA
+            if original_alpha is not None:
+                result_alpha = inpaint_handle_alpha_channel(original_alpha, original_mask)
+                return np.concatenate([inpainted, result_alpha], axis=2)
             return inpainted
 
     def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
