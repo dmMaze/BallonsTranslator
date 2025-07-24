@@ -215,9 +215,9 @@ def main():
 
     # import msl.loadlib (required by translators/trans_eztrans) before init QApplication
     # yield QWindowsContext: OleInitialize() failed on py3.10, 
-    from modules.base import load_modules
+    from modules.base import init_module_registries
     from modules.prepare_local_files import prepare_local_files_forall
-    load_modules()
+    init_module_registries()
     prepare_local_files_forall()
 
     if not args.headless:

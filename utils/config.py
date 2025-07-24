@@ -44,6 +44,8 @@ class ModuleConfig(Config):
             for pk, pv in module_params.items():
                 if pk in {'description'}:
                     continue
+                if pk.startswith('__'):
+                    continue
                 if isinstance(pv, dict):
                     pv = pv['value']
                 saving_module_params[pk] = pv
@@ -181,7 +183,7 @@ class ProgramConfig(Config):
         return ProgramConfig(**config_dict)
     
 
-pcfg: ProgramConfig = None
+pcfg = ProgramConfig()
 text_styles: List[FontFormat] = []
 active_format: FontFormat = None
 
@@ -229,7 +231,7 @@ def load_config(config_path: str = shared.CONFIG_PATH):
         config = ProgramConfig()
     
     global pcfg
-    pcfg = config
+    pcfg.merge(config)
 
     p = pcfg.text_styles_path
     if not osp.exists(pcfg.text_styles_path):
@@ -289,69 +291,3 @@ def save_text_styles(raise_exception = False):
     os.replace(tmp_save_tgt, pcfg.text_styles_path)
     LOGGER.info('Text style saved')
     return True
-
-
-def merge_config_module_params(config_params: Dict, module_keys: List, get_module: Callable) -> Dict:
-    for module_key in module_keys:
-        module_params = get_module(module_key).params
-        if module_key not in config_params or config_params[module_key] is None:
-            config_params[module_key] = module_params
-        else:
-            cfg_param = config_params[module_key]
-            cfg_key_set = set(cfg_param.keys())
-            module_key_set = set(module_params.keys())
-            for ck in cfg_key_set:
-                if ck not in module_key_set:
-                    LOGGER.warning(f'Found invalid {module_key} config: {ck}')
-                    cfg_param.pop(ck)
-
-            for mk in module_key_set:
-                if mk not in cfg_key_set:
-                    # LOGGER.info(f'Found new {module_key} config: {mk}')
-                    cfg_param[mk] = module_params[mk]
-                else:
-                    mparam = module_params[mk]
-                    cparam = cfg_param[mk]
-                    if isinstance(mparam, dict):
-                        tgt_type = type(mparam['value'])
-                        if isinstance(cparam, dict):
-                            if 'value' in cparam:
-                                v = cparam['value']
-                            elif isinstance(mparam['value'], dict):
-                                for k in mparam['value']:
-                                    if k in cparam:
-                                        mparam['value'][k] = cparam[k]
-                                v = mparam['value']
-                            else:
-                                v = mparam['value']
-                        else:
-                            v = cparam
-                        valid = True
-                        if tgt_type != type(v):
-                            try:
-                                v = tgt_type(v)
-                            except:
-                                valid = False
-                                LOGGER.warning(f'Invalid param value {v} for defined dtype: {tgt_type}, it will be set to default value: {mparam}')
-                        if valid:
-                            mparam['value'] = v
-                        cfg_param[mk] = mparam
-                    else:
-                        if type(cparam) != type(mparam):
-                            if not isinstance(mparam, dict) and isinstance(cparam, dict):
-                                cparam = cparam['value']
-                            try:
-                                cfg_param[mk] = type(mparam)(cparam)
-                            except ValueError:
-                                LOGGER.warning(f'Invalid param value {cparam} for defined dtype: {type(mparam)}, it will be set to default value: {mparam}')
-                                cfg_param[mk] = mparam
-            
-            cfg_key_list = list(cfg_param.keys())
-            module_key_list = list(module_params.keys())
-            if cfg_key_list != module_key_list:
-                LOGGER.info(f'Reorder param dict in config')
-                new_params = {key: cfg_param[key] for key in module_key_list}
-                cfg_param.clear()
-                cfg_param.update(new_params)
-
-    return config_params

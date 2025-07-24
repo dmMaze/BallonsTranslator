@@ -33,6 +33,79 @@ def register_hooks(hooks_registered: OrderedDict, callbacks: Union[List, Callabl
             hooks_registered[hk] = callback
             nhooks += 1
 
+
+def patch_module_params(cfg_param, module_params, module_name: str = ''):
+    # cfg_param = config_params[module_key]
+    cfg_key_set = set(cfg_param.keys())
+    module_key_set = set(module_params.keys())
+    for ck in cfg_key_set:
+        if ck not in module_key_set:
+            LOGGER.warning(f'Found invalid {module_name} config: {ck}')
+            cfg_param.pop(ck)
+
+    for mk in module_key_set:
+        if mk not in cfg_key_set:
+            if not mk.startswith('__') and mk != 'description':
+                LOGGER.info(f'Found new {module_name} config: {mk}')
+            cfg_param[mk] = module_params[mk]
+        else:
+            mparam = module_params[mk]
+            cparam = cfg_param[mk]
+            if isinstance(mparam, dict):
+                tgt_type = type(mparam['value'])
+                if isinstance(cparam, dict):
+                    if 'value' in cparam:
+                        v = cparam['value']
+                    elif isinstance(mparam['value'], dict):
+                        for k in mparam['value']:
+                            if k in cparam:
+                                mparam['value'][k] = cparam[k]
+                        v = mparam['value']
+                    else:
+                        v = mparam['value']
+                else:
+                    v = cparam
+                valid = True
+                if tgt_type != type(v):
+                    try:
+                        v = tgt_type(v)
+                    except:
+                        valid = False
+                        LOGGER.warning(f'Invalid param value {v} for defined dtype: {tgt_type}, it will be set to default value: {mparam}')
+                if valid:
+                    mparam['value'] = v
+                cfg_param[mk] = mparam
+            else:
+                if type(cparam) != type(mparam):
+                    if not isinstance(mparam, dict) and isinstance(cparam, dict):
+                        cparam = cparam['value']
+                    try:
+                        cfg_param[mk] = type(mparam)(cparam)
+                    except ValueError:
+                        LOGGER.warning(f'Invalid param value {cparam} for defined dtype: {type(mparam)}, it will be set to default value: {mparam}')
+                        cfg_param[mk] = mparam
+    
+    cfg_key_list = list(cfg_param.keys())
+    module_key_list = list(module_params.keys())
+    if cfg_key_list != module_key_list:
+        new_params = {key: cfg_param[key] for key in module_key_list}
+        cfg_param.clear()
+        cfg_param.update(new_params)
+        module_key_set = set(module_params.keys())
+    cfg_param['__param_patched'] = True
+    return cfg_param
+
+
+def merge_config_module_params(config_params: Dict, module_keys: List, get_module: Callable) -> Dict:
+    for module_key in module_keys:
+        module_params = get_module(module_key).params
+        if module_key not in config_params or config_params[module_key] is None:
+            config_params[module_key] = module_params
+        else:
+            patch_module_params(config_params[module_key], module_params, module_key)
+    return config_params
+
+
 class BaseModule:
 
     params: Dict = None
@@ -47,6 +120,8 @@ class BaseModule:
     _load_model_keys: set = None
 
     def __init__(self, **params) -> None:
+        if self.params is not None and '__param_patched' not in params:
+            params = patch_module_params(params, self.params, self)
         if params:
             if self.params is None:
                 self.params = params
@@ -227,8 +302,15 @@ TORCH_DTYPE_MAP = {
     'fp16': torch.float16,
     'bf16': torch.bfloat16,
 }
+
+MODULE_SCRIPTS = {
+    'translator': {'module_dir': 'modules/translators', 'module_pattern': r'trans_(.*?).py'},
+    'textdetector': {'module_dir': 'modules/textdetector', 'module_pattern': r'detector_(.*?).py'},
+    'inpainter': {'module_dir': 'modules/inpaint', 'module_pattern': r'inpaint_(.*?).py'},
+    'ocr': {'module_dir': 'modules/ocr', 'module_pattern': r'ocr_(.*?).py'},
+}
     
-def load_modules():
+def init_module_registries(target_modules=None):
     def _load_module(module_dir: str, module_pattern: str):
         modules = os.listdir(module_dir)
         pattern = re.compile(module_pattern)
@@ -243,10 +325,27 @@ def load_modules():
                 except Exception as e:
                     LOGGER.warning(f'Failed to import {module}: {e}')
 
-    for kwargs in [
-        {'module_dir': 'modules/translators', 'module_pattern': r'trans_(.*?).py'},
-        {'module_dir': 'modules/textdetector', 'module_pattern': r'detector_(.*?).py'},
-        {'module_dir': 'modules/inpaint', 'module_pattern': r'inpaint_(.*?).py'},
-        {'module_dir': 'modules/ocr', 'module_pattern': r'ocr_(.*?).py'},
-    ]:
-        _load_module(**kwargs)
+    if target_modules is None:
+        target_modules = MODULE_SCRIPTS
+    if isinstance(target_modules, str):
+        target_modules = [target_modules]
+
+    for k in target_modules:
+        _load_module(**MODULE_SCRIPTS[k])
+
+
+def init_textdetector_registries():
+    init_module_registries('textdetector')
+
+
+def init_inpainter_registries():
+    init_module_registries('inpainter')
+
+
+def init_ocr_registries():
+    init_module_registries('ocr')
+
+
+def init_translator_registries():
+    init_module_registries('translator')
+
