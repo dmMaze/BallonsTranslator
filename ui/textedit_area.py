@@ -2,7 +2,7 @@ from typing import List, Union
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QSizePolicy, QLabel, QLineEdit
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
-from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence
+from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence, QTextCharFormat, QTextDocument, QPalette
 import keyboard
 import webbrowser
 import numpy as np
@@ -294,6 +294,43 @@ class SourceTextEdit(QTextEdit):
         cursor = QTextCursor(self.document())
         cursor.select(QTextCursor.SelectionType.Document)
         cursor.insertText(text)
+
+    def highlight_one_word(self, word: str, color: QColor, bgcolor: QColor):
+        """
+        Highlights exactly one occurrence of `word` in the QTextEdit
+        (whole-word, case-sensitive), then stops.
+        """
+        # 1) First clear all existing formatting
+        clear_fmt = QTextCharFormat()  # Create a clear format
+        palette = self.palette()
+        clear_fmt.setBackground(Qt.GlobalColor.transparent)
+        clear_fmt.setForeground(palette.color(QPalette.Text))
+
+        doc = self.document()
+        clear_cursor = QTextCursor(doc)  # New cursor tied DIRECTLY to the document
+        # Use the QTextEdit's own cursor to ensure UI updates
+        clear_cursor.select(QTextCursor.Document)  # Select the entire document
+        clear_cursor.mergeCharFormat(clear_fmt)     # Wipe out all foreground/background
+        
+        # 2) prepare your QTextCharFormat
+        fmt = QTextCharFormat()
+        fmt.setForeground(color)
+        fmt.setBackground(bgcolor)
+
+        # 3) start at top of document
+        doc = self.document()
+        search_cursor = QTextCursor(doc)
+        search_cursor.movePosition(QTextCursor.Start)
+
+        # 4) search for the whole word, case-sensitive
+        flags = QTextDocument.FindWholeWords | QTextDocument.FindCaseSensitively
+        found_cursor = doc.find(word, search_cursor, flags)
+
+        # 5) if we found it, apply the format
+        if not found_cursor.isNull():
+            found_cursor.mergeCharFormat(fmt)
+        else:
+            LOGGER.debug(f"No occurrence of `{word}` found.")
 
         
 class TransTextEdit(SourceTextEdit):

@@ -2,7 +2,7 @@ import copy
 import sys
 from typing import List
 
-from qtpy.QtWidgets import QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QLabel, QGroupBox, QCheckBox, QSlider
+from qtpy.QtWidgets import QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QLabel, QGroupBox, QCheckBox, QSlider, QListWidget
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent
 
@@ -11,7 +11,7 @@ from utils import config as C
 from utils.fontformat import FontFormat, px2pt, LineSpacingType
 from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel
 from .textitem import TextBlkItem
-from .text_advanced_format import TextAdvancedFormatPanel
+from .text_advanced_format import TextAdvancedFormatPanel, WordListPanel
 from .text_style_presets import TextStylePresetPanel
 from . import funcmaps as FM
 
@@ -370,11 +370,18 @@ class FontFormatPanel(Widget):
         self.sourceBtn = TextCheckerLabel(self.tr("Source"))
         self.transBtn = TextCheckerLabel(self.tr("Translation"))
 
+        self.word_panel = WordListPanel(
+            panel_name="SpellCheck",
+            config_name="vocab_list_config",
+            config_expand_name="vocab_list_expand_state"
+        )
+
         FONTFORMAT_SPACING = 6
 
         vl0 = QVBoxLayout()
         vl0.addWidget(self.textstyle_panel.view_widget)
         vl0.addWidget(self.textadvancedfmt_panel.view_widget)
+        vl0.addWidget(self.word_panel.view_widget)  # Add the word list widget here
         vl0.setSpacing(0)
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()

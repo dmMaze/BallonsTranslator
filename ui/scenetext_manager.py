@@ -5,7 +5,7 @@ import copy
 
 from qtpy.QtWidgets import QApplication, QWidget, QGraphicsItem
 from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QPoint
-from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetricsF, QFont, QTextCharFormat, QClipboard
+from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetricsF, QFont, QTextCharFormat, QClipboard, QColor
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -23,6 +23,7 @@ from utils.imgproc_utils import extract_ballon_region, rotate_polygons, get_bloc
 from utils.text_processing import seg_text, is_cjk
 from utils.text_layout import layout_text
 
+from utils.spell_check_engine import SpellCheckEngine
 
 class CreateItemCommand(QUndoCommand):
     def __init__(self, blk_item: TextBlkItem, ctrl, parent=None):
@@ -356,6 +357,10 @@ class SceneTextManager(QObject):
 
         self.prev_blkitem: TextBlkItem = None
 
+        self.SpellCheckEngine = SpellCheckEngine()
+        self.textpanel.formatpanel.word_panel.word_selected.connect(self.on_spell_word_clicked)
+        self.textpanel.formatpanel.word_panel.wordDeleted.connect(self.onWordDeleted)
+
     def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None, current_editing_widget: Union[SourceTextEdit, TransTextEdit] = None):
         n_blk = len(self.textblk_item_list)
         if n_blk < 1:
@@ -439,13 +444,23 @@ class SceneTextManager(QObject):
         self.pairwidget_list.clear()
 
     def updateSceneTextitems(self):
+        """
+        This is a "destructive" function that rebuilds the UI.
+        It should only be called safely from the event loop, not directly from
+        a signal handler of a widget it is about to destroy.
+        """
         self.hovering_transwidget = None
         self.txtblkShapeControl.setBlkItem(None)
         self.clearSceneTextitems()
+
         for textblock in self.imgtrans_proj.current_block_list():
             if textblock.font_family is None or textblock.font_family.strip() == '':
                 textblock.font_family = self.formatpanel.familybox.currentText()
             blk_item = self.addTextBlock(textblock)
+        
+        # Update the word panel with the extracted words
+        self.updateUnknownWordsPanel()
+
         if self.auto_textlayout_flag:
             self.updateTextBlkList()
 
@@ -477,6 +492,7 @@ class SceneTextManager(QObject):
         pair_widget.e_source.undo_signal.connect(self.on_textedit_undo)
         pair_widget.e_source.show_select_menu.connect(self.on_show_select_menu)
         pair_widget.e_source.focus_out.connect(self.on_pairw_focusout)
+        pair_widget.e_source.text_changed.connect(self._on_source_text_changed)
 
         pair_widget.e_trans.setPlainText(blk_item.toPlainText())
         pair_widget.e_trans.focus_in.connect(self.on_transwidget_focus_in)
@@ -512,6 +528,58 @@ class SceneTextManager(QObject):
         textblk_item.doc_size_changed.connect(self.onTextBlkItemSizeChanged)
         textblk_item.pasted.connect(self.onBlkitemPaste)
         return textblk_item
+
+    def _on_source_text_changed(self):
+        """
+        Handles the text_changed signal from a SourceTextEdit widget.
+
+        This function retrieves the sender, updates the underlying data model with
+        the new text, and then triggers a refresh of the unknown words panel.
+        """
+        sender = self.sender()
+        if not sender:
+            return
+
+        idx = sender.idx
+        new_text = sender.toPlainText()
+
+        try:
+            # 1. Update the data model (TextBlock) with the latest text.
+            #    This is a crucial first step.
+            text_block: TextBlock = self.imgtrans_proj.current_block_list()[idx]
+            text_block.text = new_text # Assumes a method like 'set_text' exists
+
+        except (IndexError, AttributeError) as e:
+            print(f"Could not update text block {idx}: {e}")
+            return
+
+        # 2. Call the new, lightweight function to update the word panel.
+        #    This is safe to call directly because it does not destroy the sender.
+        self.updateUnknownWordsPanel()
+
+
+    def updateUnknownWordsPanel(self):
+        """
+        Gathers all text from the data model, finds unknown words, and
+        updates the word panel UI. This is a targeted update and is much
+        more efficient than rebuilding all scene items.
+        """
+        words = []
+        # Iterate through the data model (the single source of truth)
+        # using enumerate to get the index, which your original code used.
+        for idx, textblock in enumerate(self.imgtrans_proj.current_block_list()):
+            text_segments = textblock.get_text()
+            if text_segments:
+                # Create a tuple containing the text segment and its index
+                combined_item = (text_segments, idx)
+                words.append(combined_item)
+        
+        # Get the list of unknown words from your engine
+        unknownWords = self.SpellCheckEngine.GetUnknownWordsViaDictionaryFromList(words)
+        
+        # Update just the word panel with the new list
+        self.textpanel.formatpanel.word_panel.set_words(unknownWords)
+
 
     def deleteTextblkItemList(self, blkitem_list: List[TextBlkItem], p_widget_list: List[TransPairWidget]):
         selection_changed = False
@@ -660,7 +728,6 @@ class SceneTextManager(QObject):
             textlist.append(blkitem.toPlainText().strip())
         textlist = '\n'.join(textlist)
         self.app_clipborad.setText(textlist, QClipboard.Mode.Clipboard)
-
 
     def onPasteBlkItems(self, pos: QPointF):
         if pos is None:
@@ -1128,6 +1195,24 @@ class SceneTextManager(QObject):
     def on_page_replace_all(self):
         self.canvas.push_undo_command(PageReplaceAllCommand(self.canvas.search_widget))
 
+    def on_spell_word_clicked(self, word: str, idx: object):
+        if idx < len(self.textblk_item_list):
+            blk_item = self.textblk_item_list[idx]
+            self.canvas.gv.ensureVisible(blk_item)
+            self.txtblkShapeControl.setBlkItem(blk_item)
+            self.textblk_item_list[idx].setSelected(True)
+            self.changeHoveringWidget(self.pairwidget_list[idx].e_trans)
+            self.pairwidget_list[idx].e_source.highlight_one_word(word, QColor(Qt.blue), QColor(Qt.yellow))
+
+    def onWordDeleted(self, word: str):
+        self.SpellCheckEngine.onWordDeleted(word)
+        self.updateSceneTextitems()
+
+    def get_trans_edit_for_blkitem(self, idx) -> TransTextEdit:
+        if 0 <= idx < len(self.pairwidget_list):
+            return self.pairwidget_list[idx].e_trans
+        return None
+
 def get_text_size(fm: QFontMetricsF, text: str) -> Tuple[int, int]:
     brt = fm.tightBoundingRect(text)
     br = fm.boundingRect(text)
@@ -1135,4 +1220,3 @@ def get_text_size(fm: QFontMetricsF, text: str) -> Tuple[int, int]:
     
 def get_words_length_list(fm: QFontMetricsF, words: List[str]) -> List[int]:
     return [int(np.ceil(fm.horizontalAdvance(word))) for word in words]
-
