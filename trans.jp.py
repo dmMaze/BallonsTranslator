@@ -6,16 +6,18 @@ from collections import deque
 from google.genai import types
 from google import genai
 from pydantic import BaseModel
+import tqdm
 import sys
 import time
 import os
 sys.path.append('e:/')
 ###############
 from api_key import google as API_KEY
+from api_key import deepseek as DEEPSEEK_API_KEY
 ################
-client = OpenAI(api_key=API_KEY, base_url="https://api.deepseek.com")
+client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+ai_service="deepseek"
 sys_message = '''你是中国本土的专业日语翻译家，你能够精确、忠实、流畅地翻译日语为生活化、通俗易懂的简体中文。现在有一些待翻译的漫画文本（存在OCR识别错误的可能），请结合语境给出一句完整的翻译。直接回答翻译语句，不做任何解释，不添加引号。对于无法翻译的句子，直接返回原文。
-术语：
 '''
 '''
 1. ナナチ：娜娜奇
@@ -88,6 +90,21 @@ class StructuredJSON(BaseModel):
     recipe_name: str
     ingredients: list[str]
 
+def translate_text(text, context: deque):
+    global id
+    if len(cache) > id:
+        id += 1
+        c = cache[id - 1]
+        if c:
+            return c
+    text = pre_clean(text)
+    if text:
+        ret = ai_google(text, context) if ai_service=="google" else ai_openai(text,context)
+    else:
+        ret=""
+    if ret:
+        cache.append(ret)
+    return ret
 
 def ai_google(text, context):
     global id
@@ -115,22 +132,9 @@ def ai_google(text, context):
     id += 1
     ret = response.text
     ret = sanitize(ret)
-    print(ret)
     return ret
 
 
-def translate_text(text, context: deque):
-    global id
-    if len(cache) > id:
-        id += 1
-        c = cache[id - 1]
-        if c:
-            return c
-    text = pre_clean(text)
-    ret = ai_google(text, context)
-    if ret:
-        cache.append(ret)
-    return ret
 
 
 def ai_openai(text, context):
@@ -150,7 +154,6 @@ def ai_openai(text, context):
     )
     ret = response.choices[0].message.content
     ret = sanitize(ret)
-    print(ret)
     return ret
 
 
@@ -160,7 +163,10 @@ def translate_markdown(markdown_content):
     context = deque(maxlen=10)
     context.append(first)
     error = False
-    for line in markdown_content.splitlines():
+    lines=markdown_content.splitlines()
+    prog=tqdm.tqdm(total=len(lines))
+    for line in lines:
+        prog.update(1)
         match = pattern.match(line)
         if match:
             prefix = match.group(1)
@@ -178,6 +184,7 @@ def translate_markdown(markdown_content):
                     writecache()
             else:
                 translated_text = ""
+            prog.set_description(translated_text)
             translated_line = f"{prefix}{translated_text}"
             translated_content.append(translated_line)
             context.append(f"'{text}'='{translated_text}'")  # 更新上下文
