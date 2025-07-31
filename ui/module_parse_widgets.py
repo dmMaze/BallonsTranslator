@@ -147,7 +147,7 @@ class ParamWidget(QWidget):
             self.setToolTip(params['description'])
 
         for ii, param_key in enumerate(params):
-            if param_key == 'description':
+            if param_key == 'description' or param_key.startswith('__'):
                 continue
             display_param_name = param_key
 

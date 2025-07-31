@@ -426,6 +426,13 @@ class FontFormatPanel(Widget):
     def active_text_style_label(self):
         return self.textstyle_panel.active_text_style_label
 
+    def active_text_style_format(self):
+        af = self.active_text_style_label()
+        if af is not None:
+            return af.fontfmt
+        else:
+            return None
+
     def on_param_changed(self, param_name: str, value):
         func = FM.handle_ffmt_change.get(param_name)
         func_kwargs = {}
@@ -498,7 +505,16 @@ class FontFormatPanel(Widget):
             valid_title = self.textstyle_panel.elidedText(title)
             self.textstyle_panel.setTitle(valid_title)
 
+
+    def deactivate_style_label(self):
+        if self.active_text_style_label() is not None:
+            self.textstyle_panel.on_stylelabel_activated(False)
+
+
     def on_active_textstyle_label_changed(self):
+        '''
+        merge activate textstyle into global format
+        '''
         active_text_style_label = self.active_text_style_label()
         if active_text_style_label is not None:
             updated_keys = self.global_format.merge(active_text_style_label.fontfmt, compare=True)

@@ -74,7 +74,10 @@ class Config:
     def merge(self, target):
         tgt_keys = target.annotations_set()
         for key in tgt_keys:
-            self.update(key, target[key])
+            if isinstance(self[key], Config):
+                self[key].merge(target[key])
+            else:
+                self.update(key, target[key])
 
     def copy(self):
         return copy.deepcopy(self)

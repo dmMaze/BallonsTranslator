@@ -15,7 +15,7 @@ from modules.translators import MissingTranslatorParams
 from modules.base import BaseModule, soft_empty_cache
 from modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     GET_VALID_TRANSLATORS, GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_OCR, \
-    BaseTranslator, InpainterBase, TextDetectorBase, OCRBase
+    BaseTranslator, InpainterBase, TextDetectorBase, OCRBase, merge_config_module_params
 import modules
 modules.translators.SYSTEM_LANG = QLocale.system().name()
 from utils.textblock import TextBlock, sort_regions
@@ -24,7 +24,7 @@ from utils.message import create_error_dialog, create_info_dialog
 from .custom_widget import ImgtransProgressMessageBox, ParamComboBox
 from .configpanel import ConfigPanel
 from utils.proj_imgtrans import ProjImgTrans
-from utils.config import pcfg, merge_config_module_params
+from utils.config import pcfg
 cfg_module = pcfg.module
 
 
