@@ -570,8 +570,7 @@ class MainWindow(mainwindow_cls):
         save_config()
 
     def onHideCanvas(self):
-        self.canvas.alt_pressed = False
-        self.canvas.scale_tool_mode = False
+        self.canvas.clearToolStates()
 
     def conditional_save(self, keep_exist_as_backup=False):
         if self.canvas.projstate_unsaved and not self.opening_dir:
@@ -1495,23 +1494,6 @@ class MainWindow(mainwindow_cls):
         text_list = text_list[:n_paragraph]
 
         self.canvas.push_undo_command(PasteSrcItemsCommand(src_widget_list, text_list))
-
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        key = event.key()
-        if hasattr(self, 'canvas'):
-            if key == Qt.Key.Key_Alt:
-                self.canvas.alt_pressed = True
-        return super().keyPressEvent(event)
-    
-    def keyReleaseEvent(self, event: QKeyEvent) -> None:
-        if hasattr(self, 'canvas'):
-            if event.key() == Qt.Key.Key_Alt:
-                self.canvas.alt_pressed = False
-                if self.canvas.scale_tool_mode:
-                    self.canvas.scale_tool_mode = False
-                    self.canvas.end_scale_tool.emit()
-        return super().keyReleaseEvent(event)
     
     def run_batch(self, exec_dirs: Union[List, str], **kwargs):
         if not isinstance(exec_dirs, List):

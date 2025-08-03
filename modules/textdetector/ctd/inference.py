@@ -207,10 +207,6 @@ def preprocess_img(img, detect_size=(1024, 1024), device='cpu', bgr2rgb=True, ha
     if isinstance(detect_size, int):
         detect_size = (detect_size, detect_size)
     
-    # Handle images with alpha channel (RGBA -> RGB) for model processing
-    if len(img.shape) == 3 and img.shape[2] == 4:
-        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-    
     if bgr2rgb:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img_in, ratio, (dw, dh) = letterbox(img, new_shape=detect_size, auto=False, stride=64)

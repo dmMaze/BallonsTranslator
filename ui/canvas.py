@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Union
 import os
 
-from qtpy.QtWidgets import QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
 from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
 
@@ -182,10 +182,6 @@ class Canvas(QGraphicsScene):
     painting_shape = 0
     erasing_pen = QPen()
     image_edit_mode = ImageEditMode.NONE
-
-    # weird sometimes qt can't catch altmodifier: arow keys+alt
-    alt_pressed = False
-    scale_tool_mode = False
 
     projstate_unsaved = False
     proj_savestate_changed = Signal(bool)
@@ -479,19 +475,11 @@ class Canvas(QGraphicsScene):
         if self.hasFocus() and not self.block_selection_signal:
             self.incanvas_selection_changed.emit()
 
-    def keyReleaseEvent(self, event: QKeyEvent) -> None:
-        if event.key() == QKEY.Key_Alt:
-            self.alt_pressed = False
-        return super().keyReleaseEvent(event)
-
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
 
-        if key == QKEY.Key_Alt:
-            self.alt_pressed = True
-
         modifiers = event.modifiers()
-        if (modifiers == Qt.KeyboardModifier.AltModifier or self.alt_pressed) and \
+        if (modifiers == Qt.KeyboardModifier.AltModifier) and \
             not key == QKEY.Key_Alt and \
                 self.editing_textblkitem is None:
             if key in {QKEY.Key_W, QKEY.Key_A, QKEY.Key_Left, QKEY.Key_Up}:
@@ -600,6 +588,13 @@ class Canvas(QGraphicsScene):
                 self.setSelectionArea(sel_path, Qt.ItemSelectionMode.IntersectsItemBoundingRect, self.gv.viewportTransform())
         
         return super().mouseMoveEvent(event)
+    
+    @property
+    def scale_tool_mode(self):
+        return self.drawMode() and self.gv.isVisible() and QApplication.keyboardModifiers() == Qt.KeyboardModifier.AltModifier
+
+    def clearToolStates(self):
+        self.end_scale_tool.emit()
 
     def selected_text_items(self, sort: bool = True) -> List[TextBlkItem]:
         sel_textitems = []
@@ -648,8 +643,7 @@ class Canvas(QGraphicsScene):
 
             elif btn == Qt.MouseButton.LeftButton:
                 # user is drawing using the pen/inpainting tool
-                if self.alt_pressed:
-                    self.scale_tool_mode = True
+                if self.scale_tool_mode:
                     self.begin_scale_tool.emit(event.scenePos())
                 elif self.painting:
                     self.addStrokeImageItem(self.inpaintLayer.mapFromScene(event.scenePos()), self.painting_pen)
@@ -692,7 +686,6 @@ class Canvas(QGraphicsScene):
             if self.stroke_img_item is not None:
                 self.finish_painting.emit(self.stroke_img_item)
             elif self.scale_tool_mode:
-                self.scale_tool_mode = False
                 self.end_scale_tool.emit()
         return super().mouseReleaseEvent(event)
 
@@ -857,8 +850,6 @@ class Canvas(QGraphicsScene):
                 self.editing_textblkitem = textitem
 
     def clear_states(self):
-        self.alt_pressed = False
-        self.scale_tool_mode = False
         self.creating_textblock = False
         self.create_block_origin = None
         self.editing_textblkitem = None

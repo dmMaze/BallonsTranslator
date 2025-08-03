@@ -40,6 +40,11 @@ class TextDetectorBase(BaseModule):
         # TODO: allow processing proj entirely in _detect and yield progress
         if not self.all_model_loaded():
             self.load_model()
+        
+        # All text detectors only support 3 channels input 
+        if img.ndim == 3 and img.shape[2] == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+
         mask, blk_list = self._detect(img, proj)
         for blk in blk_list:
             blk.det_model = self.name

@@ -232,9 +232,6 @@ if PADDLE_OCR_AVAILABLE:
                 x1, y1, x2, y2 = blk.xyxy
                 if 0 <= x1 < x2 <= im_w and 0 <= y1 < y2 <= im_h:
                     cropped_img = img[y1:y2, x1:x2]
-                    # Convert RGBA to RGB if necessary for model input
-                    if len(cropped_img.shape) == 3 and cropped_img.shape[2] == 4:
-                        cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_RGBA2RGB)
                     try:
                         result = self.model.ocr(
                             cropped_img, det=True, rec=True, cls=self.use_angle_cls

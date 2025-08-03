@@ -348,8 +348,9 @@ class ImgtransThread(QThread):
         self.inpaint_counter = 0
         self.num_pages = num_pages = len(self.imgtrans_proj.pages)
 
-        low_vram_trans = self.translator.low_vram_mode
+        low_vram_trans = False
         if self.translator is not None:
+            low_vram_trans = self.translator.low_vram_mode
             self.parallel_trans = not self.translator.is_computational_intensive() and not low_vram_trans
         else:
             self.parallel_trans = False

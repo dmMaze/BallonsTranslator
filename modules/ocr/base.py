@@ -1,9 +1,9 @@
 from typing import Tuple, List, Dict, Union, Callable
 import numpy as np
+import cv2
 from collections import OrderedDict
 
 from utils.textblock import TextBlock
-
 from utils.registry import Registry
 OCR = Registry('OCR')
 register_OCR = OCR.register_module
@@ -28,6 +28,9 @@ class OCRBase(BaseModule):
 
         if not self.all_model_loaded():
             self.load_model()
+
+        if img.ndim == 3 and img.shape[-1] == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
 
         if blk_list is None:
             text = self.ocr_img(img)
