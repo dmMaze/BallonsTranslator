@@ -62,5 +62,5 @@ install-BT.cmd
 download_models.bat
 Ultralytics/settings.json
 
-cache.txt
+cache/
 translation.md
