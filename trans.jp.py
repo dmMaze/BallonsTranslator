@@ -17,21 +17,37 @@ from api_key import google as API_KEY
 from api_key import deepseek as DEEPSEEK_API_KEY
 ################
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
-ai_service = "deepseek"
+proxy = "http://localhost:7890"
+
+
+class SERVICE():
+    @staticmethod
+    def deepseek(*args, **kwargs):
+        return ai_openai(*args, **kwargs)
+
+    @staticmethod
+    def google(*args, **kwargs):
+        return ai_google(*args, **kwargs)
+
+
+ai_service = SERVICE.deepseek
 sys_message = '''你是中国本土的专业日语翻译家，你能够精确、忠实、流畅地翻译日语为生活化、通俗易懂的简体中文。现在有一些待翻译的漫画文本（存在OCR识别错误的可能），请结合语境给出一句完整的翻译。直接回答翻译语句，不做任何解释，不添加引号。对于无法翻译的句子，直接返回原文。
 '''
-'''
-1. ナナチ：娜娜奇
-2. リコ：莉可
-3. レグ　：雷古
-4. ヤタラマル：亚塔拉马努
-5. テバステ：迪帕斯蒂'''
-
-
-first = ''  # '''历史记录：'MAS PRAM!!'='普拉姆先生！！''''
+terms_begin = '''以下是文本用到的术语表：'''
+terms_body = ''
+terms_end = ''''''
+if os.path.exists("terms.txt"):
+    with open("terms.txt", 'r', encoding='utf-8') as f:
+        terms_body = f.read()
+if terms_body:
+    sys_message += terms_begin
+    sys_message += terms_body
+    sys_message += terms_end
+first_context = ''
 id = 0
 cache = []
-cache_name=""
+cache_name = ""
+
 
 def waitfor():
     time.sleep(10)
@@ -73,15 +89,22 @@ read_cache()
 
 def writecache():
     if not os.path.exists('cache'):
-        os.mkdirs('cache',exist_ok=1)
+        os.makedirs('cache', exist_ok=True)
     with open(f"./cache/{cache_name}.json", "w", encoding='utf-8') as f:
         json.dump(cache, f, ensure_ascii=False)
 
 
 def sanitize(text):
+    if text.startswith('```'):
+        lines = text.split('\n')
+        begin = 1
+        end = None
+        if lines[-1].startswith('```'):
+            end = -1
+        text = '\n'.join(lines[begin:end])
     text = text.replace('?', '？')
     text = text.replace('!', '！')
-    text = text.replace('？！', '?!')
+    text = text.replace('？！', '?!⁈')
     text = text.replace('...', '…')
     return text
 
@@ -93,8 +116,6 @@ def pre_clean(text):
 
 oldClient = Client.__init__
 oldAsyncClient = AsyncClient.__init__
-
-proxy = "http://localhost:7890"
 
 
 def newClient(self, *args, **kwargs):
@@ -127,8 +148,7 @@ def translate_text(text, context: deque):
             return c
     text = pre_clean(text)
     if text:
-        ret = ai_google(text, context) if ai_service == "google" else ai_openai(
-            text, context)
+        ret = ai_service(text, context)
     else:
         ret = ""
     if ret:
@@ -189,9 +209,10 @@ def translate_markdown(markdown_content):
     pattern = re.compile(r'(\d+\.\s+)(.*)')
     translated_content = []
     context = deque(maxlen=10)
-    context.append(first)
+    if first_context:
+        context.append(first_context)
     error = False
-    lines = markdown_content.split('\n\n').replace('\n', '$')
+    lines = markdown_content.split('\n\n')
     prog = tqdm.tqdm(total=len(lines))
     for line in lines:
         prog.update(1)
@@ -202,7 +223,7 @@ def translate_markdown(markdown_content):
             if not error:
                 for i in range(5):
                     translated_text = translate_text(
-                        text.replace('$', '\n'), context)
+                        text, context)
                     if not translated_text:
                         waitfor()
                     else:
@@ -213,7 +234,7 @@ def translate_markdown(markdown_content):
                     writecache()
             else:
                 translated_text = ""
-            prog.set_description(translated_text)
+            prog.set_description(f"{text:10s}->{translated_text:10s}")
             translated_line = f"{prefix}{translated_text}"
             translated_content.append(translated_line)
             context.append(f"'{text}'='{translated_text}'")  # 更新上下文
@@ -229,7 +250,7 @@ def main():
     input_file = sys.argv[1]
     previous_file = sys.argv[2] if len(sys.argv) > 2 else None
     global cache_name
-    cache_name=str(hash(input_file))
+    cache_name = str(hash(input_file))
     with open(input_file, 'r', encoding='utf-8') as file:
         markdown_content = file.read()
     if previous_file and os.path.exists(previous_file):
