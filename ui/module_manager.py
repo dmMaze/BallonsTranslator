@@ -67,16 +67,17 @@ class ModuleThread(QThread):
     def pipeline_finished(self):
         if self.imgtrans_proj is None:
             return True
-        elif self.finished_counter == len(self.imgtrans_proj.pages):
+        elif self.finished_counter == self.num_pages:
             return True
         return False
 
-    def initImgtransPipeline(self, proj: ProjImgTrans):
+    def initImgtransPipeline(self, proj: ProjImgTrans, num_pages: int):
         if self.isRunning():
             self.terminate()
         self.imgtrans_proj = proj
         self.finished_counter = 0
         self.pipeline_pagekey_queue.clear()
+        self.num_pages = num_pages
 
     def run(self):
         if self.job is not None:
@@ -215,8 +216,8 @@ class TranslateThread(ModuleThread):
     def push_pagekey_queue(self, page_key: str):
         self.pipeline_pagekey_queue.append(page_key)
 
-    def runTranslatePipeline(self, imgtrans_proj: ProjImgTrans):
-        self.initImgtransPipeline(imgtrans_proj)
+    def runTranslatePipeline(self, imgtrans_proj: ProjImgTrans, num_pages: int):
+        self.initImgtransPipeline(imgtrans_proj, num_pages)
         self.job = self._run_translate_pipeline
         self.start()
 
@@ -301,9 +302,10 @@ class ImgtransThread(QThread):
     def inpainter(self) -> InpainterBase:
         return self.inpaint_thread.inpainter
 
-    def runImgtransPipeline(self, imgtrans_proj: ProjImgTrans):
+    def runImgtransPipeline(self, imgtrans_proj: ProjImgTrans, pages: Dict[str, List[TextBlock]]):
         self.imgtrans_proj = imgtrans_proj
-        self.num_pages = len(self.imgtrans_proj.pages)
+        self.pages = pages
+        self.num_pages = len(pages)
         self.job = self._imgtrans_pipeline
         self.start()
 
@@ -346,7 +348,6 @@ class ImgtransThread(QThread):
         self.ocr_counter = 0
         self.translate_counter = 0
         self.inpaint_counter = 0
-        self.num_pages = num_pages = len(self.imgtrans_proj.pages)
 
         low_vram_trans = self.translator.low_vram_mode
         if self.translator is not None:
@@ -354,9 +355,9 @@ class ImgtransThread(QThread):
         else:
             self.parallel_trans = False
         if self.parallel_trans and cfg_module.enable_translate:
-            self.translate_thread.runTranslatePipeline(self.imgtrans_proj)
+            self.translate_thread.runTranslatePipeline(self.imgtrans_proj, self.num_pages)
 
-        for imgname in self.imgtrans_proj.pages:
+        for imgname in self.pages:
             img = self.imgtrans_proj.read_img(imgname)
             mask = blk_list = None
             need_save_mask = False
@@ -461,7 +462,7 @@ class ImgtransThread(QThread):
         
         if cfg_module.enable_translate and low_vram_trans:
             unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
-            for imgname in self.imgtrans_proj.pages:
+            for imgname in self.pages:
                 blk_list = self.imgtrans_proj.pages[imgname]
                 self.translator.translate_textblk_lst(blk_list)
                 self.translate_counter += 1
@@ -530,7 +531,7 @@ class ModuleManager(QObject):
 
     imgtrans_pipeline_finished = Signal()
     blktrans_pipeline_finished = Signal(int, list)
-    page_trans_finished = Signal(int)
+    page_trans_finished = Signal(str)
 
     run_canvas_inpaint = False
     is_waiting_th = False
@@ -624,7 +625,7 @@ class ModuleManager(QObject):
                 LOGGER.warning('Terminating a running translation thread.')
                 self.translate_thread.terminate()
             return
-        self.translate_thread.translatePage(self.imgtrans_proj.pages, page_key)
+        self.translate_thread.translatePage(self.pages, page_key)
 
     def inpainterBusy(self):
         return self.inpaint_thread.isRunning()
@@ -652,17 +653,20 @@ class ModuleManager(QObject):
         self.check_inpaint_fin_timer.stop()
         self.inpaint_th_finished.emit()
 
-    def runImgtransPipeline(self):
+    def runImgtransPipeline(self, pages: Dict[str, List[TextBlock]]):
         if self.imgtrans_proj.is_empty:
             LOGGER.info('proj file is empty, nothing to do')
             self.progress_msgbox.hide()
             return
         self.last_finished_index = -1
+        self.pages = pages
         self.terminateRunningThread()
         
         if cfg_module.all_stages_disabled() and self.imgtrans_proj is not None and self.imgtrans_proj.num_pages > 0:
+            keys_list = list(self.pages.keys())
             for ii in range(self.imgtrans_proj.num_pages):
-                self.page_trans_finished.emit(ii)
+                key_at_index = keys_list[ii]
+                self.page_trans_finished.emit(key_at_index)
             self.imgtrans_pipeline_finished.emit()
             return
         
@@ -672,7 +676,7 @@ class ModuleManager(QObject):
         self.progress_msgbox.inpaint_bar.setVisible(cfg_module.enable_inpaint)
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show()
-        self.imgtrans_thread.runImgtransPipeline(self.imgtrans_proj)
+        self.imgtrans_thread.runImgtransPipeline(self.imgtrans_proj, pages)
 
     def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
         self.terminateRunningThread()
@@ -709,7 +713,9 @@ class ModuleManager(QObject):
         self.progress_msgbox.updateDetectProgress(progress)
         if ri != self.last_finished_index:
             self.last_finished_index = ri
-            self.page_trans_finished.emit(ri)
+            keys_list = list(self.pages.keys())
+            key_at_index = keys_list[ri]
+            self.page_trans_finished.emit(key_at_index)
         if progress == 100:
             self.finishImgtransPipeline()
 
@@ -721,7 +727,9 @@ class ModuleManager(QObject):
         self.progress_msgbox.updateOCRProgress(progress)
         if ri != self.last_finished_index:
             self.last_finished_index = ri
-            self.page_trans_finished.emit(ri)
+            keys_list = list(self.pages.keys())
+            key_at_index = keys_list[ri]
+            self.page_trans_finished.emit(key_at_index)
         if progress == 100:
             self.finishImgtransPipeline()
 
@@ -733,7 +741,9 @@ class ModuleManager(QObject):
         self.progress_msgbox.updateTranslateProgress(progress)
         if ri != self.last_finished_index:
             self.last_finished_index = ri
-            self.page_trans_finished.emit(ri)
+            keys_list = list(self.pages.keys())
+            key_at_index = keys_list[ri]
+            self.page_trans_finished.emit(key_at_index)
         if progress == 100:
             self.finishImgtransPipeline()
 
@@ -745,7 +755,9 @@ class ModuleManager(QObject):
         self.progress_msgbox.updateInpaintProgress(progress)
         if ri != self.last_finished_index:
             self.last_finished_index = ri
-            self.page_trans_finished.emit(ri)
+            keys_list = list(self.pages.keys())
+            key_at_index = keys_list[ri]
+            self.page_trans_finished.emit(key_at_index)
         if progress == 100:
             self.finishImgtransPipeline()
 

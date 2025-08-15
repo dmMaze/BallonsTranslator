@@ -1,6 +1,6 @@
 import os.path as osp
 import os, re, traceback, sys
-from typing import List, Union
+from typing import List, Union, Dict
 from pathlib import Path
 import subprocess
 from functools import partial
@@ -42,18 +42,36 @@ from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMess
 class PageListView(QListWidget):
 
     reveal_file = Signal()
+    run_selected_act = Signal(list)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setIconSize(QSize(shared.PAGELIST_THUMBNAIL_SIZE, shared.PAGELIST_THUMBNAIL_SIZE))
+        self.setSelectionMode(QListWidget.ExtendedSelection)
 
     def contextMenuEvent(self, e: QContextMenuEvent):
         menu = QMenu()
-        reveal_act = menu.addAction(self.tr('Reveal in File Explorer'))
-        rst = menu.exec_(e.globalPos())
 
-        if rst == reveal_act:
-            self.reveal_file.emit()
+        # Get selected items
+        selected_items = self.selectedItems()
+
+        if len(selected_items) == 1:
+            # Single file selected
+            reveal_act = menu.addAction(self.tr('Reveal in File Explorer'))
+            menu.addSeparator()
+            
+            rst = menu.exec_(e.globalPos())
+        
+            if rst == reveal_act:
+                self.reveal_file.emit()
+        else:
+            # Multiple files selected
+            run_selected_act = menu.addAction(self.tr(f'Run {len(selected_items)} files'))
+
+            rst = menu.exec_(e.globalPos())
+            
+            if rst ==  run_selected_act:
+                self.run_selected_act.emit(selected_items)
 
         return super().contextMenuEvent(e)
 
@@ -153,6 +171,7 @@ class MainWindow(mainwindow_cls):
 
         self.pageList = PageListView()
         self.pageList.reveal_file.connect(self.on_reveal_file)
+        self.pageList.run_selected_act.connect(self.on_run_selected) 
         self.pageList.setHidden(True)
         self.pageList.currentItemChanged.connect(self.pageListCurrentItemChanged)
 
@@ -1121,8 +1140,10 @@ class MainWindow(mainwindow_cls):
             if pcfg.let_uppercase_flag:
                 blk.translation = blk.translation.upper()
 
-    def on_pagtrans_finished(self, page_index: int):
-        blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
+    def on_pagtrans_finished(self, page: str):
+        keys_list = list(self.imgtrans_proj.pages.keys())
+        page_index = keys_list.index(page)
+        blk_list = self.imgtrans_proj.pages[page]
         ffmt_list = None
         if len(self.backup_blkstyles) == self.imgtrans_proj.num_pages and len(self.backup_blkstyles[page_index]) == len(blk_list):
             ffmt_list: List[FontFormat] = self.backup_blkstyles[page_index]
@@ -1255,20 +1276,22 @@ class MainWindow(mainwindow_cls):
             pcfg.display_lang = lang
             self.set_display_lang(lang)
 
-    def run_imgtrans(self):
+    def run_imgtrans(self, pages: Dict[str, List[TextBlock]] = None):
         if not self.imgtrans_proj.is_all_pages_no_text and not pcfg.module.keep_exist_textlines:
             reply = QMessageBox.question(self, self.tr('Confirmation'),
                                          self.tr('Are you sure to run image translation again?\nAll existing translation results will be cleared!'),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply != QMessageBox.Yes:
                 return
-        self.on_run_imgtrans()
+        if not isinstance(pages, dict):
+            pages = self.imgtrans_proj.pages
+        self.on_run_imgtrans(pages)
 
     def run_imgtrans_wo_textstyle_update(self):
         self._run_imgtrans_wo_textstyle_update = True
         self.run_imgtrans()
 
-    def on_run_imgtrans(self):
+    def on_run_imgtrans(self, pages: Dict[str, List[TextBlock]]):
         self.backup_blkstyles.clear()
 
         if self.bottomBar.textblockChecker.isChecked():
@@ -1277,25 +1300,26 @@ class MainWindow(mainwindow_cls):
 
         all_disabled = pcfg.module.all_stages_disabled()
         if pcfg.module.enable_detect:
-            for page in self.imgtrans_proj.pages:
+            for page in pages:
                 if not pcfg.module.keep_exist_textlines:
                     self.imgtrans_proj.pages[page].clear()
         else:
             self.st_manager.updateTextBlkList()
             textblk: TextBlock = None
-            for blklist in self.imgtrans_proj.pages.values():
-                ffmt_list = []
-                self.backup_blkstyles.append(ffmt_list)
-                for textblk in blklist:
-                    if not pcfg.module.enable_detect:
-                        ffmt_list.append(textblk.fontformat.deepcopy())
-                    if pcfg.module.enable_ocr:
-                        textblk.text = []
-                        textblk.set_font_colors((0, 0, 0), (0, 0, 0))
-                    if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
-                        textblk.rich_text = ''
-                    textblk.vertical = textblk.src_is_vertical
-        self.module_manager.runImgtransPipeline()
+            for page in pages:
+                for blklist in page:
+                    ffmt_list = []
+                    self.backup_blkstyles.append(ffmt_list)
+                    for textblk in blklist:
+                        if not pcfg.module.enable_detect:
+                            ffmt_list.append(textblk.fontformat.deepcopy())
+                        if pcfg.module.enable_ocr:
+                            textblk.text = []
+                            textblk.set_font_colors((0, 0, 0), (0, 0, 0))
+                        if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
+                            textblk.rich_text = ''
+                        textblk.vertical = textblk.src_is_vertical
+        self.module_manager.runImgtransPipeline(pages)
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
@@ -1414,6 +1438,15 @@ class MainWindow(mainwindow_cls):
         elif sys.platform == 'darwin':
             p = "\""+current_img_path+"\""
             subprocess.Popen("open -R "+p, shell=True)
+
+    def on_run_selected(self, items: list):
+        """Handling launch on multiple files"""
+        pages: Dict[str, List[TextBlock]] = {}
+        items_converted = [i.text() for i in items]
+        for page in self.imgtrans_proj.pages:
+            if (page in items_converted):
+                pages[page] =  self.imgtrans_proj.pages[page]
+        self.run_imgtrans(pages)
 
     def on_set_gsearch_widget(self):
         setup = self.leftBar.globalSearchChecker.isChecked()
