@@ -59,11 +59,14 @@ class PageListView(QListWidget):
             # Single file selected
             reveal_act = menu.addAction(self.tr('Reveal in File Explorer'))
             menu.addSeparator()
+            run_selected_act = menu.addAction(self.tr(f'Run {len(selected_items)} files'))
             
             rst = menu.exec_(e.globalPos())
         
             if rst == reveal_act:
                 self.reveal_file.emit()
+            elif rst ==  run_selected_act:
+                self.run_selected_act.emit(selected_items)
         else:
             # Multiple files selected
             run_selected_act = menu.addAction(self.tr(f'Run {len(selected_items)} files'))
@@ -1306,19 +1309,18 @@ class MainWindow(mainwindow_cls):
         else:
             self.st_manager.updateTextBlkList()
             textblk: TextBlock = None
-            for page in pages:
-                for blklist in page:
-                    ffmt_list = []
-                    self.backup_blkstyles.append(ffmt_list)
-                    for textblk in blklist:
-                        if not pcfg.module.enable_detect:
-                            ffmt_list.append(textblk.fontformat.deepcopy())
-                        if pcfg.module.enable_ocr:
-                            textblk.text = []
-                            textblk.set_font_colors((0, 0, 0), (0, 0, 0))
-                        if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
-                            textblk.rich_text = ''
-                        textblk.vertical = textblk.src_is_vertical
+            for blklist in pages.values():
+                ffmt_list = []
+                self.backup_blkstyles.append(ffmt_list)
+                for textblk in blklist:
+                    if not pcfg.module.enable_detect:
+                        ffmt_list.append(textblk.fontformat.deepcopy())
+                    if pcfg.module.enable_ocr:
+                        textblk.text = []
+                        textblk.set_font_colors((0, 0, 0), (0, 0, 0))
+                    if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
+                        textblk.rich_text = ''
+                    textblk.vertical = textblk.src_is_vertical
         self.module_manager.runImgtransPipeline(pages)
 
     def on_transpanel_changed(self):
@@ -1438,6 +1440,15 @@ class MainWindow(mainwindow_cls):
         elif sys.platform == 'darwin':
             p = "\""+current_img_path+"\""
             subprocess.Popen("open -R "+p, shell=True)
+
+    def on_run_selected(self, items: list):
+        """Handling launch on multiple files"""
+        pages: Dict[str, List[TextBlock]] = {}
+        items_converted = [i.text() for i in items]
+        for page in self.imgtrans_proj.pages:
+            if (page in items_converted):
+                pages[page] =  self.imgtrans_proj.pages[page]
+        self.run_imgtrans(pages)
 
     def on_run_selected(self, items: list):
         """Handling launch on multiple files"""
