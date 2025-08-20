@@ -73,6 +73,7 @@ class FourierUnit(nn.Module):
 
     def forward(self, x):
         batch = x.shape[0]
+        input_dtype = x.dtype
 
         if self.spatial_scale_factor is not None:
             orig_size = x.shape[-2:]
@@ -95,7 +96,7 @@ class FourierUnit(nn.Module):
                 print(f'FFT OP not supported with this card, try run it with cpu...')
         if not FFT_OP_SUPPORT:  # dont use else, it would not be the same
             ffted = torch.fft.rfftn(x.to(device='cpu', dtype=torch.float32), dim=fft_dim, norm=self.fft_norm).to(
-                device=x.device, dtype=x.dtype)
+                device=x.device)
 
         ffted = torch.stack((ffted.real, ffted.imag), dim=-1)
         ffted = ffted.permute(0, 1, 4, 2, 3).contiguous()  # (batch, c, 2, h, w/2+1)
@@ -124,7 +125,7 @@ class FourierUnit(nn.Module):
             output = torch.fft.irfftn(ffted, s=ifft_shape_slice, dim=fft_dim, norm=self.fft_norm)
         else:
             output = torch.fft.irfftn(ffted.to(device='cpu', dtype=torch.float32), s=ifft_shape_slice, dim=fft_dim,
-                                      norm=self.fft_norm).to(device=ffted.device, dtype=ffted.dtype)
+                                      norm=self.fft_norm).to(device=ffted.device, dtype=input_dtype)
 
         if self.spatial_scale_factor is not None:
             output = F.interpolate(output, size=orig_size, mode=self.spatial_scale_mode, align_corners=False)
