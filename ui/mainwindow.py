@@ -1450,15 +1450,6 @@ class MainWindow(mainwindow_cls):
                 pages[page] =  self.imgtrans_proj.pages[page]
         self.run_imgtrans(pages)
 
-    def on_run_selected(self, items: list):
-        """Handling launch on multiple files"""
-        pages: Dict[str, List[TextBlock]] = {}
-        items_converted = [i.text() for i in items]
-        for page in self.imgtrans_proj.pages:
-            if (page in items_converted):
-                pages[page] =  self.imgtrans_proj.pages[page]
-        self.run_imgtrans(pages)
-
     def on_set_gsearch_widget(self):
         setup = self.leftBar.globalSearchChecker.isChecked()
         if setup:
