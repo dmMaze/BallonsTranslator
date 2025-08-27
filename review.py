@@ -31,13 +31,12 @@ class SERVICE():
 
 
 ai_service = SERVICE.deepseek
-sys_message = '''你是中国本土的专业日语翻译家，你能够精确、忠实、流畅地翻译日语为生活化、通俗易懂的简体中文。现在有一些待翻译的漫画文本（存在OCR识别错误的可能），请结合语境给出一句完整的翻译。直接回答翻译语句，不做任何解释，不添加引号。对于无法翻译的句子，直接返回原文。
-'''
-terms_begin = '''以下是术语介绍：'''
+sys_message = '''你是日语翻译教授，请你帮我分析日语漫画的简体中文翻译、英语翻译，判断怎样才能在中文里正确地表达原文的意思。我将分批发送页面的翻译文本。请逐句回答。'''
+terms_begin = '''以下是一个例子：'''
 terms_body = ''
 terms_end = ''''''
-if os.path.exists("terms.txt"):
-    with open("terms.txt", 'r', encoding='utf-8') as f:
+if os.path.exists("review.txt"):
+    with open("review.txt", 'r', encoding='utf-8') as f:
         terms_body = f.read()
 if terms_body:
     sys_message += terms_begin
@@ -103,14 +102,11 @@ def sanitize(text):
     text = text.replace('!', '！')
     text = text.replace('？！', '?!⁈')
     text = text.replace('...', '…')
-    text = text.replace('．．．', '…')
     return text
 
 
 def pre_clean(text):
     text = text.strip().replace("\n", "").lower()
-    text = text.replace('...', '…')
-    text = text.replace('．．．', '…')
     return text
 
 
@@ -216,10 +212,10 @@ def translate_markdown(markdown_content):
     prog = tqdm.tqdm(total=len(lines))
     for line in lines:
         prog.update(1)
-        match = pattern.match(line.replace('\n','$'))
+        match = pattern.match(line)
         if match:
             prefix = match.group(1)
-            text = match.group(2).replace('$','\n')
+            text = match.group(2)
             if not error:
                 for i in range(5):
                     translated_text = translate_text(
@@ -260,23 +256,45 @@ def string_hash(s):
         # hash * 33 + char
         hash_value = (hash_value * 33 + ord(char)) & 0xFFFFFFFF  # 32位无符号整数
     return hash_value
-
+def cli():
+    while 1:
+        orig=""
+        chs=""
+        eng=""
+        other=""
+        inp=input()
 
 def main():
     import sys
     input_file = sys.argv[1]
-    previous_file = sys.argv[2] if len(sys.argv) > 2 else None
+    chinese_file = sys.argv[2] if len(sys.argv) > 2 else None
+    if not chinese_file:
+        return cli()
+    english_file = sys.argv[3] if len(sys.argv) > 3 else None
+    other_file = sys.argv[4] if len(sys.argv) > 4 else None
+    markdown_content=[]
+    markdown_content1=[]
+    markdown_content2=[]
+    markdown_content3=[]
     global cache_name
     cache_name = str(string_hash(input_file))
     read_cache()
     with open(input_file, 'r', encoding='utf-8') as file:
         markdown_content = file.read()
+    with open(chinese_file, 'r', encoding='utf-8') as file:
+        markdown_content1 = file.read()
+    if english_file:
+        with open(english_file, 'r', encoding='utf-8') as file:
+            markdown_content2 = file.read()
+    if other_file:
+        with open(other_file, 'r', encoding='utf-8') as file:
+            markdown_content3 = file.read()
     if previous_file and os.path.exists(previous_file):
         with open(previous_file, 'r', encoding='utf-8') as file:
             c = file.read()
             read_from_previous(c)
 
-    translated_content = translate_markdown(markdown_content)
+    translated_content = translate_markdown(markdown_content,markdown_content1,markdown_content2,markdown_content3)
 
     with open('translation.md', 'w', encoding='utf-8') as file:
         file.write(translated_content)
