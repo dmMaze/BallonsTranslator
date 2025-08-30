@@ -261,7 +261,7 @@ def main():
         fdb = QFontDatabase()
         shared.FONT_FAMILIES = set(fdb.families())
 
-    app_font = QFont('Microsoft YaHei UI')
+    app_font = QFont('맑은고딕')
     if not app_font.exactMatch() or sys.platform == 'darwin':
         app_font = app.font()
     app_font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)

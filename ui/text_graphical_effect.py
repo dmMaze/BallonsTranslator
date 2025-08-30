@@ -21,7 +21,7 @@ def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, 
     if strength != 1:
         mask = np.clip(mask.astype(np.float32) * strength, 0, 255).astype(np.uint8)
     bg_img = np.zeros((img.shape[0], img.shape[1], 4), dtype=np.uint8)
-    bg_img[..., :3] = np.array(color, np.uint8)[::-1]
+    bg_img[..., :3] = np.array(color, np.uint8)
     bg_img[..., 3] = mask
 
     result = ndarray2pixmap(bg_img)

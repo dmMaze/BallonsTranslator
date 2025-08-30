@@ -54,7 +54,9 @@ class ColorPickerLabel(QLabel):
         btn = event.button()
         if btn == Qt.MouseButton.LeftButton:
             self.changingColor.emit()
-            color = QColorDialog.getColor()
+            # Set current color as initial value
+            initial_color = self.color if self.color is not None else QColor(255, 255, 255)
+            color = QColorDialog.getColor(initial_color)
             is_valid = color.isValid()
             if is_valid:
                 self.setPickerColor(color)

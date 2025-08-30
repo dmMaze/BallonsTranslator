@@ -167,10 +167,12 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
         # Detections matrix nx6 (xyxy, conf, cls)
         if multi_label:
             i, j = (x[:, 5:] > conf_thres).nonzero(as_tuple=False).T
-            x = torch.cat((box[i], x[i, j + 5, None], j[:, None].float()), 1)
+            j.float = j.to('cpu').float().to(x.device) if x.device.type == 'xpu' else j.float() # XPU: bypass via CPU, CUDA: compute directly
+            x = torch.cat((box[i], x[i, j + 5, None], j_float[:, None]), 1)
         else:  # best class only
             conf, j = x[:, 5:].max(1, keepdim=True)
-            x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
+            j_float = j.to('cpu').float().to(x.device) if x.device.type == 'xpu' else j.float() # XPU: bypass via CPU, CUDA: compute directly
+            x = torch.cat((box, conf, j_float), 1)[conf.view(-1) > conf_thres]
 
         # Filter by class
         if classes is not None:
