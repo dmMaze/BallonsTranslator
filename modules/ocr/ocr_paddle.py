@@ -24,6 +24,7 @@ from .base import OCRBase, register_OCR, DEFAULT_DEVICE, DEVICE_SELECTOR, TextBl
 PADDLE_OCR_PATH = os.path.join("data", "models", "paddle-ocr")
 # Set an environment variable to store PaddleOCR models
 os.environ["PPOCR_HOME"] = PADDLE_OCR_PATH
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 if PADDLE_OCR_AVAILABLE:
 
