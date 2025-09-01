@@ -7,7 +7,7 @@ import numpy as np
 from typing import List, Optional
 
 from openai import OpenAI
-import numpy as np
+import httpx
 
 from .base import register_OCR, OCRBase, TextBlock
 
@@ -154,13 +154,13 @@ class LLM_OCR(OCRBase):
         },
         "api_key": {"value": "", "description": "Your API key."},
         "endpoint": {
-            "value": "",  # Default to empty, allowing provider to dictate
+            "value": "",
             "description": "Base URL for the API. Leave empty to use provider default.",
         },
         "model": {
             "type": "selector",
             "options": popular_models,
-            "value": "",  # Default to empty, allowing provider to dictate
+            "value": "",
             "description": "Select the model to use. Leave empty to use provider default. (Provider prefix indicates the provider).",
         },
         "override_model": {
@@ -191,44 +191,58 @@ class LLM_OCR(OCRBase):
             "value": 15,
             "description": "Maximum number of requests per minute (0 for no limit).",
         },
+        "max_response_tokens": {
+            "value": 10000,
+            "description": "Maximum number of tokens in the LLM's response.",
+        },
         "description": "OCR using various LLMs compatible with the OpenAI API.",
     }
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
         self.last_request_time = 0
-        self.client = None
-        self._initialize_client()
+        self.client = None ### ИЗМЕНЕНИЕ ###: Инициализируем клиент как None
         self.request_count_minute = 0
         self.minute_start_time = time.time()
 
     def _initialize_client(self):
-        import httpx
-
         # Configure proxies using mounts
+        transport = None # ### ИЗМЕНЕНИЕ ###: Явно определим transport
         if self.proxy:
-            proxy_mounts = {
-                "http://": httpx.HTTPTransport(proxy=self.proxy),
-                "https://": httpx.HTTPTransport(proxy=self.proxy),
-            }
-            transport = httpx.Client(mounts=proxy_mounts)
-        else:
-            transport = httpx.Client()  # No proxy
-
+            try:
+                # Проверка, что прокси не пустая строка
+                if self.debug_mode:
+                    self.logger.info(f"Using proxy: {self.proxy}")
+                proxy_mounts = {
+                    "http://": httpx.HTTPTransport(proxy=self.proxy),
+                    "https://": httpx.HTTPTransport(proxy=self.proxy),
+                }
+                # ### ИЗМЕНЕНИЕ ###: httpx.Client теперь не нужен, используем mounts напрямую в OpenAI клиенте
+                transport = httpx.HTTPTransport(proxy=self.proxy)
+            except Exception as e:
+                self.logger.error(f"Invalid proxy configuration: {self.proxy}. Error: {e}")
+                # Если прокси невалидный, не используем его
+                transport = None
+        
         # Determine the endpoint
         endpoint = self.endpoint
-        if not endpoint:  # If endpoint is empty, use provider default
+        if not endpoint:
             provider = self.provider
             if provider == "OpenAI":
                 endpoint = "https://api.openai.com/v1"
             elif provider == "Google":
                 endpoint = "https://generativelanguage.googleapis.com/v1beta/openai"
             else:
-                endpoint = "https://api.openai.com/v1"  # Default
+                endpoint = "https://api.openai.com/v1"
 
         self.client = OpenAI(
-            api_key=self.api_key, base_url=endpoint, http_client=transport
+            api_key=self.api_key,
+            base_url=endpoint,
+            http_client=httpx.Client(transport=transport) if transport else None
         )
+        if self.debug_mode:
+            self.logger.info("LLM client initialized.")
+
 
     @property
     def provider(self):
@@ -278,10 +292,17 @@ class LLM_OCR(OCRBase):
     def requests_per_minute(self):
         return int(self.get_param_value("requests_per_minute"))
 
+
+    @property
+    def max_response_tokens(self):
+        try:
+            return int(self.get_param_value("max_response_tokens"))
+        except (ValueError, TypeError):
+            return 10000
+
     def _respect_delay(self):
         current_time = time.time()
 
-        # Handle RPM limit
         if self.requests_per_minute > 0:
             if current_time - self.minute_start_time >= 60:
                 self.request_count_minute = 0
@@ -295,11 +316,9 @@ class LLM_OCR(OCRBase):
                             f"Reached request limit. Waiting {wait_time:.2f} seconds."
                         )
                     time.sleep(wait_time)
-                # Reset the counter and start time after waiting, just in case.
                 self.request_count_minute = 0
                 self.minute_start_time = time.time()
 
-        # Handle delay parameter
         time_since_last_request = current_time - self.last_request_time
         if self.debug_mode:
             self.logger.info(
@@ -320,6 +339,11 @@ class LLM_OCR(OCRBase):
         """
         Performs OCR on a base64 encoded image.
         """
+        if self.client is None:
+            if self.debug_mode:
+                self.logger.debug("Client is not initialized. Initializing now.")
+            self._initialize_client()
+
         if self.debug_mode:
             self.logger.debug(f"Starting OCR on image")
         self._respect_delay()
@@ -347,46 +371,45 @@ class LLM_OCR(OCRBase):
                 }
             )
 
-            # Determine the model
             model_name = self.override_model
-            if not model_name:  # If override_model is empty
+            if not model_name:
                 model_name = self.model
-                if not model_name:  # If model is also empty, determine from provider
+                if not model_name:
                     provider = self.provider
-                    # You might want to set default models for each provider here
                     if provider == "OpenAI":
                         model_name = "gpt-4-vision-preview"
                     elif provider == "Google":
                         model_name = "gemini-1.5-pro-latest"
                     else:
-                        model_name = "gpt-4-vision-preview"  # Default
+                        model_name = "gpt-4-vision-preview"
 
-                # Extract model name without provider prefix if it exists
                 if ": " in model_name:
                     model_name = model_name.split(": ", 1)[1]
 
-            # Log the model being used
             if self.debug_mode:
                 self.logger.info(f"Using model: {model_name}")
 
             response = self.client.chat.completions.create(
                 model=model_name,
                 messages=messages,
-                max_tokens=300,  # Adjust as needed
+                max_tokens=self.max_response_tokens,
             )
+
+            if self.debug_mode:
+                self.logger.debug(f"Raw API response: {response.model_dump_json(indent=2)}")
 
             if response.choices:
                 full_text = response.choices[0].message.content
-                if full_text is None:  # Добавлена проверка на None
+                if full_text is None:
                     if self.debug_mode:
                         self.logger.warning("OCR response content is None.")
-                    return ""  # Возвращаем пустую строку в случае None
+                    return ""
                 if self.debug_mode:
                     self.logger.debug(f"OCR result: {full_text}")
                 return full_text
             else:
                 if self.debug_mode:
-                    self.logger.warning("No text found in OCR response")
+                    self.logger.warning("No text found in OCR response choices.")
                 return ""
 
         except Exception as e:
@@ -416,7 +439,6 @@ class LLM_OCR(OCRBase):
             ):
                 cropped_img = img[y1:y2, x1:x2]
 
-                # Encode the cropped image to base64
                 _, buffer = cv2.imencode(".jpg", cropped_img)
                 img_base64 = base64.b64encode(buffer).decode("utf-8")
 
@@ -434,7 +456,6 @@ class LLM_OCR(OCRBase):
         """
         Performs OCR on the entire image.
         """
-        # Encode the entire image to base64
         _, buffer = cv2.imencode(".jpg", img)
         img_base64 = base64.b64encode(buffer).decode("utf-8")
         return self.ocr(img_base64, prompt_override=prompt)
@@ -448,8 +469,11 @@ class LLM_OCR(OCRBase):
             "provider",
             "model",
             "override_model",
+            "max_response_tokens"
         ]:
-            self._initialize_client()
+            self.client = None
+#            if self.debug_mode:
+#                self.logger.info(f"Parameter '{param_key}' changed. Client will be re-initialized on next request.")
 
         if param_key in ["requests_per_minute", "delay"]:
             current_time = time.time()
