@@ -231,8 +231,9 @@ class ProjImgTrans:
         try:
             self.load(directory, json_path=json_path)
         except Exception as e:
-            self.load(old_dir)
-            raise ProjectLoadFailureException(e)
+            pass
+            #self.load(old_dir)
+            #raise ProjectLoadFailureException(e)
 
     def set_current_img(self, imgname: str):
         if imgname is not None:
