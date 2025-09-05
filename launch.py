@@ -312,10 +312,10 @@ def supported_amd_nightly_gpu():
             output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
 
             if any(keyword in output for keyword in
-                ["RX 7900", "RX 7800", "RX 7700", "RX 7600", "RX 7500"]):
+                   ["RX 7900", "RX 7800", "RX 7700", "RX 7600", "PRO W7900", "PRO W7800", "PRO W7700"]):
                 return "RDNA3"
             if any(keyword in output for keyword in
-                       ["RX 9950", "RX 9900", "RX 9800", "RX 9700", "RX 9600", "RX 9500"]):
+                   ["RX 9070", "RX 9060"]):
                 return "RDNA4"
         else:
             return "None"
