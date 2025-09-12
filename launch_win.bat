@@ -35,7 +35,8 @@ goto :show_stdout_stderr
 
 
 :launch
-%PYTHON% launch.py  %* -platform windows:fontengine=gdi
+%PYTHON% launch.py  %*
+@REM %PYTHON% launch.py  %* -platform windows:fontengine=gdi
 pause
 exit /b
 
