@@ -214,6 +214,7 @@ class FontFamilyComboBox(QFontComboBox):
         self.currentFontChanged.connect(self.on_fontfamily_changed)
         self.lineedit = lineedit = LineEdit(parent=self)
         lineedit.return_pressed.connect(self.on_return_pressed)
+        lineedit.editingFinished.connect(self.apply_fontfamily)
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
         self.return_pressed = False
