@@ -1404,6 +1404,13 @@ class MainWindow(mainwindow_cls):
         except Exception as e:
             create_error_dialog(e, self.tr('Failed to import translation from ') + selected_file)
 
+        self.auto_layout_all_pages()
+    
+   
+
+    
+
+
     def on_reveal_file(self):
         current_img_path = self.imgtrans_proj.current_img_path()
         if sys.platform == 'win32':
@@ -1589,3 +1596,15 @@ class MainWindow(mainwindow_cls):
         action: QAction = d['action']
         action.setChecked(False)
         setattr(pcfg, cfg_name, False)
+
+    def auto_layout_all_pages(self):
+        for page_idx in range(self.imgtrans_proj.num_pages):
+            self.imgtrans_proj.set_current_img_byidx(page_idx)
+            self.st_manager.updateSceneTextitems()
+            # Select all text blocks
+            for blkitem in self.st_manager.textblk_item_list:
+                blkitem.setSelected(True)
+            # Apply auto layout to all selected blocks
+            self.st_manager.onAutoLayoutTextblks()
+            # Optionally, save after each page
+            self.saveCurrentPage(update_scene_text=False, save_proj=True)
