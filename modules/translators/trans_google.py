@@ -1,322 +1,191 @@
 from .base import *
-
-
-"""
-google translator API copied from https://pypi.org/project/deep-translator/
-"""
-
-
-
-from .constants import BASE_URLS, GOOGLE_LANGUAGES_TO_CODES, GOOGLE_LANGUAGES_SECONDARY_NAMES
-from .exceptions import TooManyRequests, LanguageNotSupportedException, TranslationNotFound, NotValidPayload, RequestError, InvalidSourceOrTargetLanguage, NotValidLength
-from bs4 import BeautifulSoup
 import requests
-from time import sleep
-import warnings
-import logging
-from abc import ABC, abstractmethod
-import string
+import json
+import html # For html.unescape
 
-class GoogleTransBase(ABC):
+
+# --- exceptions ---
+class ProviderError(Exception):
+    pass
+
+
+class TranslateError(ProviderError):
+    pass
+
+
+# --- Constants for Google Translate ---
+USER_AGENT_BROWSER = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36"
+# Use the API key from your example as a constant
+GOOGLE_API_KEY = "AIzaSyATBXajvzQLTDHEQbcpq0Ihe0vWDHmO520"
+GOOGLE_API_URL_BASE = "https://translate-pa.googleapis.com/v1"  # Base API URL
+
+
+class GoogleTranslateProviderPython:
     """
-    Abstract class that serve as a parent translator for other different translators
+    Провайдер для взаимодействия с неофициальным Google Translate API (translateHtml).
+    Использует предопределенный API ключ.
     """
-    def __init__(self,
-                 base_url=None,
-                 source="auto",
-                 target="en",
-                 payload_key=None,
-                 element_tag=None,
-                 element_query=None,
-                 **url_params):
-        """
-        @param source: source language to translate from
-        @param target: target language to translate to
-        """
-        if source == target:
-            raise InvalidSourceOrTargetLanguage(source)
 
-        self.__base_url = base_url
-        self._source = source
-        self._target = target
-        self._url_params = url_params
-        self._element_tag = element_tag
-        self._element_query = element_query
-        self.payload_key = payload_key
-        self.headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) '
-                                      'AppleWebit/535.19'
-                                      '(KHTML, like Gecko) Chrome/18.0.1025.168 Safari/535.19'}
-        super(GoogleTransBase, self).__init__()
+    api_url_path_segment = "/translateHtml"  # Path to the translation endpoint
 
-    @staticmethod
-    def _validate_payload(payload, min_chars=1, max_chars=5000):
-        """
-        validate the target text to translate
-        @param payload: text to translate
-        @return: bool
-        """
+    def __init__(self, timeout: int = 10):
+        self.base_headers = {
+            "X-Goog-API-Key": GOOGLE_API_KEY,  # Use the constant
+            "Content-Type": "application/json+protobuf",
+            "User-Agent": USER_AGENT_BROWSER,
+        }
+        self.fetch_opts = {"timeout": timeout}
+        self.requests_session = requests.Session()
+        self.requests_session.headers.update(self.base_headers)
 
-        if not payload or not isinstance(payload, str) or not payload.strip() or payload.isdigit():
-            raise NotValidPayload(payload)
+    def _request(self, method: str = "POST", json_payload: Dict = None):
+        actual_url = f"{GOOGLE_API_URL_BASE}{self.api_url_path_segment}"
 
-        # check if payload contains only symbols
-        if all(i in string.punctuation for i in payload):
-            raise NotValidPayload(payload)
-
-        if not GoogleTransBase.__check_length(payload, min_chars, max_chars):
-            raise NotValidLength(payload, min_chars, max_chars)
-        return True
-
-    @staticmethod
-    def __check_length(payload, min_chars, max_chars):
-        """
-        check length of the provided target text to translate
-        @param payload: text to translate
-        @param min_chars: minimum characters allowed
-        @param max_chars: maximum characters allowed
-        @return: bool
-        """
-        return True if min_chars <= len(payload) < max_chars else False
-
-    @abstractmethod
-    def translate(self, text, **kwargs):
-        """
-        translate a text using a translator under the hood and return the translated text
-        @param text: text to translate
-        @param kwargs: additional arguments
-        @return: str
-        """
-        return NotImplemented('You need to implement the translate method!')
-
-
-class GoogleTranslator(GoogleTransBase):
-    """
-    class that wraps functions, which use google translate under the hood to translate text(s)
-    """
-    _languages = GOOGLE_LANGUAGES_TO_CODES
-    supported_languages = list(_languages.keys())
-
-    def __init__(self, source="auto", target="en", proxies=None, **kwargs):
-        """
-        @param source: source language to translate from
-        @param target: target language to translate to
-        """
-        self.__base_url = BASE_URLS.get("GOOGLE_TRANSLATE")
-        self.proxies = proxies
-
-        # code snipppet that converts the language into lower-case and skip lower-case conversion for abbreviations
-        # since abbreviations like zh-CN if converted to lower-case will result into error
-        #######################################
-        source_lower = source
-        target_lower = target
-        if not source in self._languages.values():
-            source_lower=source.lower()
-        if not target in self._languages.values():
-            target_lower=target.lower()
-        #######################################
-
-        # if self.is_language_supported(source_lower, target_lower):
-        self._source, self._target = self._map_language_to_code(source_lower, target_lower)
-        super(GoogleTranslator, self).__init__(base_url=self.__base_url,
-                                               source=self._source,
-                                               target=self._target,
-                                               element_tag='div',
-                                               element_query={"class": "t0"},
-                                               payload_key='q',  # key of text in the url
-                                               tl=self._target,
-                                               sl=self._source,
-                                               **kwargs)
-
-        self._alt_element_query = {"class": "result-container"}
-
-    @staticmethod
-    def get_supported_languages(as_dict=False, **kwargs):
-        """
-        return the supported languages by the google translator
-        @param as_dict: if True, the languages will be returned as a dictionary mapping languages to their abbreviations
-        @return: list or dict
-        """
-        return GoogleTranslator.supported_languages if not as_dict else GoogleTranslator._languages
-
-    def is_secondary(self, lang):
-        """
-        Function to check if lang is a secondary name of any primary language
-        @param lang: language name
-        @return: primary name of a language if found otherwise False
-        """
-        for primary_name, secondary_names in GOOGLE_LANGUAGES_SECONDARY_NAMES.items():
-            if lang in secondary_names:
-                return primary_name
-        return False
-
-    def _map_language_to_code(self, *languages):
-        """
-        map language to its corresponding code (abbreviation) if the language was passed by its full name by the user
-        @param languages: list of languages
-        @return: mapped value of the language or raise an exception if the language is not supported
-        """
-        for language in languages:
-            if language in self._languages.values() or language == 'auto':
-                yield language
-            elif language in self._languages.keys():
-                yield self._languages[language]
-            else:
-                yield self._languages[self.is_secondary(language)]
-
-    def is_language_supported(self, *languages):
-        """
-        check if the language is supported by the translator
-        @param languages: list of languages
-        @return: bool or raise an Exception
-        """
-        for lang in languages:
-            if lang != 'auto' and lang not in self._languages.keys():
-                if lang != 'auto' and lang not in self._languages.values():
-                    if not self.is_secondary(lang):
-                        raise LanguageNotSupportedException(lang)
-        return True
-
-    def translate(self, text, **kwargs):
-        """
-        function that uses google translate to translate a text
-        @param text: desired text to translate
-        @return: str: translated text
-        """
-
-        if self._validate_payload(text):
-            text = text.strip()
-
-            if self.payload_key:
-                self._url_params[self.payload_key] = text
-            response = requests.get(self.__base_url,
-                                    params=self._url_params,
-                                    proxies=self.proxies)
-            if response.status_code == 429:
-                raise TooManyRequests()
-
-            if response.status_code != 200:
-                raise RequestError()
-
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            element = soup.find(self._element_tag, self._element_query)
-
-            if not element:
-                element = soup.find(self._element_tag, self._alt_element_query)
-                if not element:
-                    raise TranslationNotFound(text)
-            if element.get_text(strip=True) == text.strip():
-                to_translate_alpha = ''.join(ch for ch in text.strip() if ch.isalnum())
-                translated_alpha = ''.join(ch for ch in element.get_text(strip=True) if ch.isalnum())
-                if to_translate_alpha and translated_alpha and to_translate_alpha == translated_alpha:
-                    self._url_params["tl"] = self._target
-                    if "hl" not in self._url_params:
-                        return text.strip()
-                    del self._url_params["hl"]
-                    return self.translate(text)
-
-            else:
-                return element.get_text(strip=True)
-
-    def translate_file(self, path, **kwargs):
-        """
-        translate directly from file
-        @param path: path to the target file
-        @type path: str
-        @param kwargs: additional args
-        @return: str
-        """
         try:
-            with open(path) as f:
-                text = f.read().strip()
-            return self.translate(text)
-        except Exception as e:
-            raise e
+            response = self.requests_session.request(
+                method, actual_url, json=json_payload, **self.fetch_opts
+            )
 
-    def translate_sentences(self, sentences=None, **kwargs):
+            if response.status_code >= 400:
+                message = response.reason
+                try:
+                    error_data = response.json()
+                    if "error" in error_data and isinstance(error_data["error"], dict):
+                        message = error_data["error"].get("message", response.reason)
+                except json.JSONDecodeError:
+                    pass  # Using response.reason
+                raise ProviderError(f"HTTP {response.status_code}: {message}")
+
+            response_data = response.json()
+
+            if isinstance(response_data, dict) and "error" in response_data:
+                error_details = response_data.get("error")
+                msg = "API error"
+                if isinstance(error_details, dict) and "message" in error_details:
+                    msg = error_details["message"]
+                raise ProviderError(msg)
+            return response_data
+        except requests.exceptions.RequestException as e:
+            raise ProviderError(f"Request failed: {e}")
+        except json.JSONDecodeError:
+            raw_text = (
+                response.text[:200]
+                if response and hasattr(response, "text")
+                else "NoResponseObject"
+            )
+            raise ProviderError(f"Failed to decode JSON. Raw: {raw_text}")
+
+    def translate(
+        self, text_list: List[str], target_language: str, source_language: str = "auto"
+    ) -> Dict[str, any]:
         """
-        translate many sentences together. This makes sense if you have sentences with different languages
-        and you want to translate all to unified language. This is handy because it detects
-        automatically the language of each sentence and then translate it.
-
-        @param sentences: list of sentences to translate
-        @return: list of all translated sentences
+        Переводит список текстов.
+        source_language: 'auto' или код языка (например, 'en')
+        target_language: код языка (например, 'ru')
         """
-        warnings.warn("deprecated. Use the translate_batch function instead", DeprecationWarning, stacklevel=2)
-        logging.warning("deprecated. Use the translate_batch function instead")
-        if not sentences:
-            raise NotValidPayload(sentences)
+        if not text_list:
+            return {"lang": target_language, "translations": []}
 
-        translated_sentences = []
-        try:
-            for sentence in sentences:
-                translated = self.translate(text=sentence)
-                translated_sentences.append(translated)
+        translations_result = []
+        for text_item in text_list:
+            if not text_item or not text_item.strip():
+                translations_result.append("")
+                continue
 
-            return translated_sentences
+            payload = [[[text_item], source_language, target_language], "wt_lib"]
 
-        except Exception as e:
-            raise e
+            try:
+                response_data = self._request(method="POST", json_payload=payload)
 
-    def translate_batch(self, batch=None, **kwargs):
-        """
-        translate a list of texts
-        @param batch: list of texts you want to translate
-        @return: list of translations
-        """
-        if not batch:
-            raise Exception("Enter your text list that you want to translate")
-        arr = []
-        for i, text in enumerate(batch):
+                extracted_text = None
+                if (
+                    response_data
+                    and isinstance(response_data, list)
+                    and len(response_data) > 0
+                ):
+                    if isinstance(response_data[0], list) and len(response_data[0]) > 0:
+                        first_inner_item = response_data[0][0]
+                        if isinstance(first_inner_item, str):
+                            extracted_text = first_inner_item
+                        elif (
+                            isinstance(first_inner_item, list)
+                            and len(first_inner_item) > 0
+                            and isinstance(first_inner_item[0], str)
+                        ):
+                            extracted_text = first_inner_item[0]
 
-            translated = self.translate(text, **kwargs)
-            arr.append(translated)
-        return arr
+                if extracted_text:
+                    translations_result.append(html.unescape(extracted_text))
+                else:
+                    translations_result.append("")
+            except ProviderError:
+                translations_result.append("")
+
+        return {"lang": target_language, "translations": translations_result}
 
 
-@register_translator('google')
+@register_translator("google")
 class TransGoogle(BaseTranslator):
 
-    concate_text = True
+    concate_text = False
     params: Dict = {
-        'delay': 0.0,
+        "delay": 0.0,
     }
-    
+
     def _setup_translator(self):
-        self.lang_map['简体中文'] = 'zh-CN'
-        self.lang_map['繁體中文'] = 'zh-TW'
-        self.lang_map['日本語'] = 'ja'
-        self.lang_map['English'] = 'en'
-        self.lang_map['한국어'] = 'ko'
-        self.lang_map['Tiếng Việt'] = 'vi'
-        self.lang_map['čeština'] = 'cs'
-        self.lang_map['Nederlands'] = 'nl'
-        self.lang_map['Français'] = 'fr'
-        self.lang_map['Deutsch'] = 'de'
-        self.lang_map['magyar nyelv'] = 'hu'
-        self.lang_map['Italiano'] = 'it'
-        self.lang_map['Polski'] = 'pl'
-        self.lang_map['Português'] = 'pt'
-        self.lang_map['Limba română'] = 'ro'
-        self.lang_map['русский язык'] = 'ru'
-        self.lang_map['Español'] = 'es'
-        self.lang_map['Türk dili'] = 'tr'
-        self.lang_map['Indonesia'] = 'id'
-        self.lang_map['Thai'] = 'th'
-        self.lang_map['Arabic'] = 'ar'
-        self.lang_map['Malayalam'] = 'ml'
-        self.lang_map['Tamil'] = 'ta'
-        self.lang_map['Hindi'] = 'hi'
+        self.internal_google_translator = GoogleTranslateProviderPython()
 
-        self.googletrans = GoogleTranslator()
-        
+        self.lang_map["Auto"] = "auto"
+        self.lang_map["简体中文"] = "zh-CN"
+        self.lang_map["繁體中文"] = "zh-TW"
+        self.lang_map["日本語"] = "ja"
+        self.lang_map["English"] = "en"
+        self.lang_map["한국어"] = "ko"
+        self.lang_map["Tiếng Việt"] = "vi"
+        self.lang_map["čeština"] = "cs"
+        self.lang_map["Nederlands"] = "nl"
+        self.lang_map["Français"] = "fr"
+        self.lang_map["Deutsch"] = "de"
+        self.lang_map["magyar nyelv"] = "hu"
+        self.lang_map["Italiano"] = "it"
+        self.lang_map["Polski"] = "pl"
+        self.lang_map["Português"] = "pt"
+        self.lang_map["limba română"] = "ro"
+        self.lang_map["русский язык"] = "ru"
+        self.lang_map["Español"] = "es"
+        self.lang_map["Türk dili"] = "tr"
+        self.lang_map["украї́нська мо́ва"] = "uk"
+        self.lang_map["Thai"] = "th"
+        self.lang_map["Arabic"] = "ar"
+        self.lang_map["Hindi"] = "hi"
+        self.lang_map["Malayalam"] = "ml"
+        self.lang_map["Tamil"] = "ta"
+
     def _translate(self, src_list: List[str]) -> List[str]:
-        
-        self.googletrans._source = self.lang_map[self.lang_source]
-        self.googletrans._url_params['sl'] = self.lang_map[self.lang_source]
-        self.googletrans._target = self.lang_map[self.lang_target]
-        self.googletrans._url_params['tl'] = self.lang_map[self.lang_target]
-        self.googletrans.__base_url = "https://translate.google.com/m"
-        translations = [self.googletrans.translate(t) for t in src_list]
+        if not src_list:
+            return []
 
-        return translations
+        try:
+            source_lang_code = self.lang_map.get(self.lang_source, "auto")
+            target_lang_code = self.lang_map.get(self.lang_target, "en")
+
+            response_data = self.internal_google_translator.translate(
+                src_list,
+                target_language=target_lang_code,
+                source_language=source_lang_code,
+            )
+
+            if response_data and isinstance(response_data.get("translations"), list):
+                translated_texts = response_data["translations"]
+                if len(translated_texts) == len(src_list):
+                    return translated_texts
+
+            # In case of mismatch or error, we return empty strings
+            return [""] * len(src_list)
+
+        except ProviderError as e:
+            LOGGER.error(f"Google Translate provider error: {e}")
+            return [""] * len(src_list)
+        except Exception as e:
+            LOGGER.error(f"An unexpected error occurred in Google Translate: {e}")
+            return [""] * len(src_list)
