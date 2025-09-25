@@ -472,7 +472,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         yoff = -act_rect[1]
                     else:
                         yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - line.ascent())
-                    xoff = -act_rect[0] + (line_width - act_rect[2]) / 2
+                    #xoff = -act_rect[0] + (line_width - act_rect[2]) / 2
+                    char_width = cfmt.tbr.width()
+                    xoff = (line_width - char_width) / 2
+                    
                     # if char in PUNSET_ALIGNTOP:
                     #     yoff = yoff + (cfmt.tbr.height() - act_rect[3]) / 2
                     
