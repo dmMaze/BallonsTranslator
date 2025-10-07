@@ -715,6 +715,8 @@ class DrawingPanel(Widget):
         self.scale_circle.setRect(0, 0, radius, radius)
 
     def on_end_scale_tool(self):
+        if self.scale_tool_pos is None:
+            return
         circle_size = int(self.scale_circle.rect().width() / self.canvas.scale_factor)
         self.scale_tool_pos = None
         self.canvas.removeItem(self.scale_circle)

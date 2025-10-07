@@ -77,8 +77,6 @@ class MangaOCR(OCRBase):
                 x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
                 # Extract region and convert RGBA to RGB if necessary for model input
                 region = img[y1:y2, x1:x2]
-                if len(region.shape) == 3 and region.shape[2] == 4:
-                    region = cv2.cvtColor(region, cv2.COLOR_RGBA2RGB)
                 blk.text = self.model(region)
             else:
                 self.logger.warning('invalid textbbox to target img')

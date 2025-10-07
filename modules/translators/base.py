@@ -1,7 +1,7 @@
 import urllib.request
 from ordered_set import OrderedSet
 from typing import Dict, List, Union, Set, Callable
-import time, requests, re, uuid, base64, hmac, functools, json
+import time, requests, re, uuid, base64, hmac, functools, json, copy
 from collections import OrderedDict
 
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
@@ -165,12 +165,6 @@ class BaseTranslator(BaseModule):
                 LOGGER.error('This translator seems to messed up the translation which resulted in inconsistent translated line count.\n \
                              Set concate_text to False or change textblk_break in the source code may solve the problem.')
                 raise
-            # for ii, t in enumerate(text_trans):
-            #     for callback in self._postprocess_hooks:
-            #         text_trans[ii] = callback(t)
-        # else:
-        #     for callback in self._postprocess_hooks:
-        #         text_trans = callback(text_trans)
 
         return text_trans
 
@@ -235,3 +229,45 @@ class BaseTranslator(BaseModule):
                 except:
                     pass
         return 0.
+
+
+@register_translator('None')
+class TransNone(BaseTranslator):
+
+    concate_text = False
+    cht_require_convert = True
+    params: Dict = {
+        'description': 'Return existing translation'
+    }
+
+    def _setup_translator(self):
+        for k in self.lang_map.keys():
+            self.lang_map[k] = 'dummy language'
+        
+    def _translate(self, src_list: List[str]) -> List[str]:
+        return copy.copy(src_list)
+    
+def transhook_copy_original(translations: List[str] = None, textblocks: List[TextBlock] = None, translator: BaseTranslator = None, **kwargs):
+    if textblocks is not None and isinstance(translator, TransNone):
+        for ii, _ in enumerate(translations):
+            translations[ii] = textblocks[ii].translation
+
+TransNone.register_postprocess_hooks({'copy_original': transhook_copy_original})
+
+
+@register_translator('Copy Source')
+class TransSource(BaseTranslator):
+
+    concate_text = False
+    cht_require_convert = True
+    params: Dict = {
+        'description': 'Return source text as translation'
+    }
+
+    def _setup_translator(self):
+        for k in self.lang_map.keys():
+            self.lang_map[k] = 'dummy language'
+        self.register_preprocess_hooks
+        
+    def _translate(self, src_list: List[str]) -> List[str]:
+        return copy.copy(src_list)

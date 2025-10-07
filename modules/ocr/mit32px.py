@@ -575,8 +575,6 @@ class OCR32pxModel:
                 W = regions[idx].shape[1]
                 # Convert RGBA to RGB if necessary for model input
                 region_data = regions[idx]
-                if region_data.shape[2] == 4:
-                    region_data = cv2.cvtColor(region_data, cv2.COLOR_RGBA2RGB)
                 region[i, :, : W, :] = region_data
             images = (torch.from_numpy(region).float() - 127.5) / 127.5
             images = einops.rearrange(images, 'N H W C -> N C H W')

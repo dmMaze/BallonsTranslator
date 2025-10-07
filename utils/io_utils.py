@@ -98,10 +98,16 @@ def imread(imgpath, read_type=cv2.IMREAD_COLOR, max_retry_limit=5, retry_interva
             img = Image.open(imgpath)
             if read_type == cv2.IMREAD_GRAYSCALE:
                 img = img.convert('L')
-            else:
-                if img.mode != 'RGBA':
-                    img = img.convert('RGB')
             img = np.array(img)
+            if read_type != cv2.IMREAD_GRAYSCALE:
+                if img.ndim == 3 and img.shape[-1] == 1:
+                    img = img[..., :2]
+                if img.ndim == 2:
+                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+
+            if img.ndim == 3 and img.shape[-1] == 4:
+                if np.all(img[..., -1] == 255):
+                    img = np.ascontiguousarray(img[..., :3])
             break
         except PIL.UnidentifiedImageError as e:
             # IMG I/O thread might not finished yet

@@ -54,7 +54,7 @@ python3 launch.py --update
 
 第一次运行会自动安装 torch 等依赖项并下载所需模型和文件，如果模型下载失败，需要手动从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 data 文件夹(或者报错里提到缺失的文件)，并保存到源码目录下的对应位置。
 
-## 构建 macOS 应用（适用 apple silicon 芯片）
+## 构建 macOS 应用(适用 apple silicon 芯片)
 [参考](doc/macOS_app_CN.md)  
 可能会有各种问题，目前还是推荐跑源码
 
@@ -135,7 +135,7 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
   
 ### 文本检测
  * 暂时仅支持日文(方块字都差不多)和英文检测，训练代码和说明见https://github.com/dmMaze/comic-text-detector
- * 支持使用 [星河云（团子漫画OCR）](https://cloud.stariver.org.cn/)的文本检测，需要填写用户名和密码，每次启动时会自动登录。
+ * 支持使用 [星河云(团子漫画OCR)](https://cloud.stariver.org.cn/)的文本检测，需要填写用户名和密码，每次启动时会自动登录。
    * 详细说明见 [团子OCR说明](doc/团子OCR说明.md)
  * `YSGDetector` 是由 [lhj5426](https://github.com/lhj5426) 训练的模型，能更好地过滤日漫/CG里的拟声词。需要手动从 [YSGYoloDetector](https://huggingface.co/YSGforMTL/YSGYoloDetector) 下载模型放到 data/models 目录下。
 
@@ -143,7 +143,7 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 ### OCR
  * 所有 mit 模型来自 manga-image-translator，支持日英汉识别和颜色提取
  * [manga_ocr](https://github.com/kha-white/manga-ocr) 来自 [kha-white](https://github.com/kha-white)，支持日语识别，注意选用该模型程序不会提取颜色
- * 支持使用 [星河云（团子漫画OCR）](https://cloud.stariver.org.cn/)的OCR，需要填写用户名和密码，每次启动时会自动登录。
+ * 支持使用 [星河云(团子漫画OCR)](https://cloud.stariver.org.cn/)的OCR，需要填写用户名和密码，每次启动时会自动登录。
    * 目前的实现方案是逐个textblock进行OCR，速度较慢，准确度没有明显提升，不推荐使用。如果有需要，请使用团子Detector。
    * 推荐文本检测设置为团子Detector时，将OCR设为none_ocr，直接读取文本，节省时间和请求次数。
    * 详细说明见 [团子OCR说明](doc/团子OCR说明.md)
@@ -177,14 +177,24 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 * 第三方输入法可能会造成右侧编辑框显示 bug，见[#76](https://github.com/dmMaze/BallonsTranslator/issues/76)，暂时不打算修
 * 选中文本迷你菜单支持*聚合词典专业划词翻译*[沙拉查词](https://saladict.crimx.com): [安装说明](doc/saladict_chs.md)
 <details>
-  <summary><i>启用 AMD（ROCm6）显卡加速步骤</i></summary>
+  <summary><i>启用 AMD ROCm 显卡加速方法</i></summary>
 
-1. 更新显卡驱动至最新版（建议 24.12.1 及以上，下载并安装 [AMD HIP SDK 6.2](https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html)  
-2. 下载 [ZLUDA](https://github.com/lshqqytiger/ZLUDA/releases)（ROCm6版本）并解压到 zluda 文件夹内，复制 zluda 文件夹到系统盘下：比如c盘（C:\zluda）  
-3. 配置系统环境变量，以 windows 10 系统为例：设置 - 系统属性 - 高级系统设置 - 环境变量 - 系统变量 - 找到 path 变量，点击编辑，在最后添加 `C:\zluda` 和 `%HIP_PATH_62%bin` 两项  
-4. 替换 CUDA 库的动态链接文件：将 `C:\zluda` 文件夹内的 `cublas.dll` `cusparse.dll` 和 `nvrtc.dll` 复制出一份到桌面，按如下规则重命名复制出来的文件  
+### 通用方案 ZLUDA (ROCm6)
 
-**注意：(AMD 驱动 25.5.1 务必更新 ZLUDA 版本到 3.9.5 及以上)**
+**优点:**
+文本和文本框识别速度比社区预览版快，当然比 CPU 更快
+
+**缺点:**
+需要额外安装并进行相关配置才可工作，首次启动以及更换识别模型和驱动都需要长时间预热缓存
+
+**安装步骤:**
+
+1. 更新显卡驱动至最新版 (建议 24.12.1 及以上，下载并安装 [AMD HIP SDK 6.2](https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html)  )
+2. 下载 [ZLUDA](https://github.com/lshqqytiger/ZLUDA/releases)(ROCm6版本)并解压到 zluda 文件夹内，复制 zluda 文件夹到系统盘下: 比如c盘 (C:\zluda)  
+3. 配置系统环境变量，以 windows 10 系统为例:设置 - 系统属性 - 高级系统设置 - 环境变量 - 系统变量 - 找到 path 变量，点击编辑，在最后添加 `C:\zluda` 和 `%HIP_PATH_62%bin` 两项  
+4. 替换 CUDA 库的动态链接文件: 将 `C:\zluda` 文件夹内的 `cublas.dll` `cusparse.dll` 和 `nvrtc.dll` 复制出一份到桌面，按如下规则重命名复制出来的文件  
+
+**注意: (AMD 驱动 25.5.1 务必更新 ZLUDA 版本到 3.9.5 及以上)**
 
 ```
   原文件名 → 新文件名
@@ -197,7 +207,24 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 ```
   将已经重命名的文件替换掉 `BallonsTranslator\ballontrans_pylibs_win\Lib\site-packages\torch\lib\` 目录中的同名文件
 
-5. 启动程序并设置 OCR 和文本检测 为 Cuda **（图像修复请继续使用 CPU）**
-6. 运行 OCR 并等待 ZLUDA 编译 PTX 文件 **（首次编译大概需要 5-10 分钟，取决于 CPU 性能）**,**下次运行无需编译**
+5. 启动程序并设置 OCR 和文本检测 为 Cuda **(图像修复请继续使用 CPU)**
+6. 运行 OCR 并等待 ZLUDA 编译 PTX 文件 **(首次编译大概需要 5-10 分钟，取决于 CPU 性能)**,**下次运行无需编译**
+
+### 原生社区预览方案 (ROCm7)
+
+**优点:**
+无需额外安装，开箱即用。且图像修复工具可以正常使用 CUDA 加速。
+
+**缺点:**
+由于社区版尚未集成FA2等注意力优化框架，速度不如 ZLUDA。
+
+而且对显卡限制大，对Python版本也有要求
+
+**安装步骤:**
+
+1. 检查显卡架构是否为 RDNA3 和 RDNA4, 目前社区预览版 ROCm7 仅支持这两种架构的显卡 既 RX7000 和 9000系列,以及对应的专业卡
+2. 确保 Python 版本不低于 3.12.x
+3. 使用 [launch_win_amd_nightly.bat](launch_win_amd_nightly.bat) 启动程序
+4. 检查　OCR 和文本检测、图像修复设置是否为　CUDA
   
 </details>
