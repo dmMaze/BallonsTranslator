@@ -868,7 +868,7 @@ class DrawingPanel(Widget):
 
     def setup_thickness_range(self):
         img = self.canvas.imgtrans_proj.inpainted_array
-        # max size would be 20% of smaller dimension between h and w
-        max_size = int(min(*img.shape[:2]) * 0.2)
+        # max size would be 40% of smaller dimension between h and w
+        max_size = int(min(*img.shape[:2]) * 0.4)
         self.inpaintConfigPanel.set_thickness_range(MIN_PEN_SIZE, max_size)
         self.penConfigPanel.set_thickness_range(MIN_PEN_SIZE, max_size)
