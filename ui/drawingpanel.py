@@ -66,7 +66,7 @@ class InpaintPanel(Widget):
         super().__init__(*args, **kwargs)
 
         self.thicknessSlider = PaintQSlider()
-        self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
+        self.set_thickness_range(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         self.thicknessSlider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
@@ -103,6 +103,9 @@ class InpaintPanel(Widget):
         if self.thicknessSlider.hasFocus():
             self.thicknessChanged.emit(self.thicknessSlider.value())
 
+    def set_thickness_range(self, min_value, max_value):
+        self.thicknessSlider.setRange(min_value, max_value)
+
     def showEvent(self, e) -> None:
         self.inpaint_layout.addWidget(self.inpainter_panel.module_combobox)
         super().showEvent(e)
@@ -122,7 +125,7 @@ class PenConfigPanel(Widget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.thicknessSlider = PaintQSlider()
-        self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
+        self.set_thickness_range(MIN_PEN_SIZE, MAX_PEN_SIZE)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         self.thicknessSlider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.alphaSlider = PaintQSlider()
@@ -169,6 +172,9 @@ class PenConfigPanel(Widget):
     def on_thickness_changed(self):
         if self.thicknessSlider.hasFocus():
             self.thicknessChanged.emit(self.thicknessSlider.value())
+
+    def set_thickness_range(self, min_value, max_value):
+        self.thicknessSlider.setRange(min_value, max_value)
 
     def on_alpha_changed(self):
         color = self.colorPicker.rgba()
@@ -858,3 +864,11 @@ class DrawingPanel(Widget):
 
     def handle_page_changed(self):
         self.clearInpaintItems()
+        self.setup_thickness_range()
+
+    def setup_thickness_range(self):
+        img = self.canvas.imgtrans_proj.inpainted_array
+        # max size would be 20% of smaller dimension between h and w
+        max_size = int(min(*img.shape[:2]) * 0.2)
+        self.inpaintConfigPanel.set_thickness_range(MIN_PEN_SIZE, max_size)
+        self.penConfigPanel.set_thickness_range(MIN_PEN_SIZE, max_size)
