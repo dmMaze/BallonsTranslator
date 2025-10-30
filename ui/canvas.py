@@ -172,6 +172,9 @@ class Canvas(QGraphicsScene):
 
     run_blktrans = Signal(int)
 
+    # new action: import image into an empty selected text block
+    import_image_to_blk = Signal()
+
     begin_scale_tool = Signal(QPointF)
     scale_tool = Signal(QPointF)
     end_scale_tool = Signal()
@@ -773,6 +776,12 @@ class Canvas(QGraphicsScene):
 
             menu.addSeparator()
 
+            # show Import Image only when exactly one empty text block is selected
+            import_image_act = None
+            sel_items = self.selected_text_items()
+            if len(sel_items) == 1 and sel_items[0].document().isEmpty():
+                import_image_act = menu.addAction(self.tr("Import Image"))
+
             format_act = menu.addAction(self.tr("Apply font formatting"))
             layout_act = menu.addAction(self.tr("Auto layout"))
             angle_act = menu.addAction(self.tr("Reset Angle"))
@@ -798,6 +807,8 @@ class Canvas(QGraphicsScene):
                 self.copy_src_signal.emit()
             elif rst == paste_src_act:
                 self.paste_src_signal.emit()
+            elif import_image_act is not None and rst == import_image_act:
+                self.import_image_to_blk.emit()
             elif rst == format_act:
                 self.format_textblks.emit()
             elif rst == layout_act:

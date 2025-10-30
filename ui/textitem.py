@@ -1,4 +1,5 @@
 import math, re
+import os.path as osp
 import numpy as np
 from typing import List, Union, Tuple
 
@@ -75,6 +76,10 @@ class TextBlkItem(QGraphicsTextItem):
         self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
 
     def inputMethodEvent(self, e: QInputMethodEvent):
+        # Block IME input when all input is disabled (e.g., image-only block)
+        if self.block_all_input:
+            e.setAccepted(True)
+            return
         if self.pre_editing == False:
             cursor = self.textCursor()
             self.input_method_from = cursor.selectionStart()
@@ -246,6 +251,44 @@ class TextBlkItem(QGraphicsTextItem):
         self.setShadow(font_fmt, repaint=False)
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
         self.repaint_background()
+
+        # If a foreground image path is set, load and display it and block typing
+        try:
+            fg_path = getattr(blk, 'foreground_image_path', '')
+            if isinstance(fg_path, str) and fg_path:
+                img = QImage(fg_path)
+                # Fallback: if loading failed, try resolving relative to project directory
+                if img.isNull():
+                    try:
+                        scene = self.scene()
+                        proj = getattr(scene, 'imgtrans_proj', None)
+                        proj_dir = getattr(proj, 'directory', None)
+                        if proj_dir:
+                            # If path is relative, resolve under project dir; if absolute, try basename in project dir
+                            candidate = osp.join(proj_dir, fg_path) if not osp.isabs(fg_path) else osp.join(proj_dir, osp.basename(fg_path))
+                            if osp.exists(candidate):
+                                img = QImage(candidate)
+                    except Exception:
+                        pass
+                if not img.isNull():
+                    inner_rect = self.unpadRect(self.boundingRect())
+                    disp_w = inner_rect.width() if inner_rect.width() > 0 else self.boundingRect().width()
+                    if disp_w <= 0:
+                        disp_w = img.width()
+                    disp_h = img.height() * disp_w / max(img.width(), 1)
+                    scaled = img.scaled(int(disp_w), int(disp_h), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    # SceneTextLayout attributes
+                    self.layout.foreground_pixmap = QPixmap.fromImage(scaled)
+                    self.layout.foreground_source_img = img
+                    # Expand block size to fit the image including padding
+                    total_h = disp_h + self.padding() * 2
+                    total_w = disp_w + self.padding() * 2
+                    self.set_size(total_w, total_h, set_layout_maxsize=True, set_blk_size=True)
+                    # Disable typing for image blocks
+                    self.block_all_input = True
+                    self.update()
+        except Exception:
+            pass
 
     def setCenterTransform(self):
         center = self.boundingRect().center()
@@ -490,6 +533,9 @@ class TextBlkItem(QGraphicsTextItem):
 
 
     def startEdit(self, pos: QPointF = None) -> None:
+        # Prevent entering edit mode when input is blocked (e.g., image-only block)
+        if self.block_all_input:
+            return
         self.pre_editing = False
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
@@ -555,6 +601,10 @@ class TextBlkItem(QGraphicsTextItem):
         return min_font_size
 
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        # Disallow starting edit via double-click for image-only blocks
+        if self.block_all_input:
+            event.setAccepted(True)
+            return
         if not self.isEditing():
             self.startEdit(pos=event.pos())
         else:

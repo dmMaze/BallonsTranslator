@@ -45,6 +45,10 @@ class TextBlock:
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
 
+    # Path to a foreground image to display within the block.
+    # If non-empty, this block will render the image and typing is disabled.
+    foreground_image_path: str = ""
+
     fontformat: FontFormat = field(default_factory=lambda: FontFormat())
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())

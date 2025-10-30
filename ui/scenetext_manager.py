@@ -1,11 +1,14 @@
 
 from typing import List, Union, Tuple
+import os
+import os.path as osp
+import shutil
 import numpy as np
 import copy
 
-from qtpy.QtWidgets import QApplication, QWidget, QGraphicsItem
-from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QPoint
-from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetricsF, QFont, QTextCharFormat, QClipboard
+from qtpy.QtWidgets import QApplication, QWidget, QGraphicsItem, QFileDialog
+from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QPoint, QUrl
+from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetricsF, QFont, QTextCharFormat, QClipboard, QImage, QTextImageFormat, QTextDocument, QPixmap
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -337,6 +340,8 @@ class SceneTextManager(QObject):
         self.canvas.reset_angle.connect(self.onResetAngle)
         self.canvas.squeeze_blk.connect(self.onSqueezeBlk)
         self.canvas.incanvas_selection_changed.connect(self.on_incanvas_selection_changed)
+        # connect import-image action from canvas context menu
+        self.canvas.import_image_to_blk.connect(self.onImportImageToBlk)
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
         self.textEditList = textpanel.textEditList
@@ -459,6 +464,11 @@ class SceneTextManager(QObject):
                 translation = blk.translation
                 blk.translation = ''
             blk_item = TextBlkItem(blk, len(self.textblk_item_list), show_rect=self.canvas.textblock_mode)
+            # If this block references a foreground image, resolve and apply it now
+            try:
+                self._init_foreground_image_for_block(blk_item)
+            except Exception:
+                pass
             if translation:
                 blk.translation = translation
                 rst = self.layout_textblk(blk_item, text=translation)
@@ -623,6 +633,11 @@ class SceneTextManager(QObject):
         
     def onTextBlkItemReshaped(self, item: TextBlkItem):
         self.canvas.push_undo_command(ReshapeItemCommand(item))
+        # If this block displays a foreground image, rescale it to fit new inner width
+        try:
+            self._update_foreground_image(item)
+        except Exception:
+            pass
 
     def onTextBlkItemRotated(self, new_angle: float):
         blk_item = self.txtblkShapeControl.blk_item
@@ -1005,6 +1020,192 @@ class SceneTextManager(QObject):
         if isinstance(sender, TransTextEdit) and idx < len(self.textblk_item_list):
             blk_item = self.textblk_item_list[idx]
             blk_item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+
+    def onImportImageToBlk(self):
+        # Use the single selected empty text block
+        sel_blks = self.canvas.selected_text_items(sort=False)
+        blk_item = sel_blks[0] if len(sel_blks) == 1 else None
+        if blk_item is None:
+            blk_item = self.txtblkShapeControl.blk_item
+        if blk_item is None:
+            return
+        # Only for empty documents per requirement
+        if not blk_item.document().isEmpty():
+            return
+
+        fname_tuple = QFileDialog.getOpenFileName(
+            self.mainwindow,
+            self.tr('Import Image'),
+            '',
+            'Images (*.png *.jpg *.jpeg *.bmp *.gif)'
+        )
+        fname = fname_tuple[0] if isinstance(fname_tuple, tuple) else fname_tuple
+        if not fname:
+            return
+
+        # Copy the image into project overlays folder for stable persistence
+        proj = self.imgtrans_proj
+        proj_dir = getattr(proj, 'directory', None)
+        target_path = fname
+        if proj_dir:
+            overlays_dir = osp.join(proj_dir, 'overlays')
+            try:
+                os.makedirs(overlays_dir, exist_ok=True)
+            except Exception:
+                pass
+            base = osp.basename(fname)
+            name, ext = osp.splitext(base)
+            candidate = osp.join(overlays_dir, base)
+            if osp.exists(candidate):
+                idx = 1
+                while True:
+                    new_name = f"{name}_{idx}{ext}"
+                    new_candidate = osp.join(overlays_dir, new_name)
+                    if not osp.exists(new_candidate):
+                        candidate = new_candidate
+                        break
+                    idx += 1
+            try:
+                shutil.copy2(fname, candidate)
+                target_path = candidate
+            except Exception:
+                target_path = fname
+
+        img = QImage(target_path)
+        if img.isNull():
+            return
+
+        # Instead of inline image (not supported by custom layout), use foreground pixmap
+        inner_rect = blk_item.unpadRect(blk_item.boundingRect())
+        disp_w = inner_rect.width() if inner_rect.width() > 0 else blk_item.boundingRect().width()
+        if disp_w <= 0:
+            disp_w = img.width()
+        disp_h = img.height() * disp_w / max(img.width(), 1)
+        scaled = img.scaled(int(disp_w), int(disp_h), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
+        # Set foreground pixmap so layout will draw it
+        blk_item.layout.foreground_pixmap = QPixmap.fromImage(scaled)
+        # Keep original image to allow responsive rescaling on future resizes
+        blk_item.layout.foreground_source_img = img
+        # Persist the image path and disable typing on this block
+        try:
+            # Persist relative path if under project directory; else absolute
+            if proj_dir and target_path.startswith(proj_dir):
+                rel = osp.relpath(target_path, proj_dir)
+                blk_item.blk.foreground_image_path = rel
+            else:
+                blk_item.blk.foreground_image_path = target_path
+        except Exception:
+            pass
+        blk_item.block_all_input = True
+
+        # Expand block size to fit the image including padding
+        total_h = disp_h + blk_item.padding() * 2
+        total_w = disp_w + blk_item.padding() * 2
+        blk_item.set_size(total_w, total_h, set_layout_maxsize=True, set_blk_size=True)
+        blk_item.update()
+
+    def _update_foreground_image(self, blk_item: TextBlkItem):
+        layout = blk_item.layout
+        if not hasattr(layout, 'foreground_source_img') or layout.foreground_source_img is None:
+            return
+        src = layout.foreground_source_img
+        inner_rect = blk_item.unpadRect(blk_item.boundingRect())
+        disp_w = inner_rect.width() if inner_rect.width() > 0 else blk_item.boundingRect().width()
+        if disp_w <= 0 or src.width() <= 0:
+            return
+        disp_h = src.height() * disp_w / max(src.width(), 1)
+        scaled = src.scaled(int(disp_w), int(disp_h), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        layout.foreground_pixmap = QPixmap.fromImage(scaled)
+        blk_item.update()
+
+    def _init_foreground_image_for_block(self, blk_item: TextBlkItem):
+        """Resolve saved foreground image path and apply to layout on initial load."""
+        fg_path = getattr(blk_item.blk, 'foreground_image_path', '')
+        if not isinstance(fg_path, str) or not fg_path:
+            return
+        proj_dir = getattr(self.imgtrans_proj, 'directory', None)
+        candidate = fg_path
+        # Resolve relative paths under project directory; try basename fallback for absolute paths
+        if proj_dir:
+            if not osp.isabs(fg_path):
+                candidate = osp.join(proj_dir, fg_path)
+            else:
+                # absolute saved path might differ across machines; try basename within project dir
+                basename_candidate = osp.join(proj_dir, osp.basename(fg_path))
+                if osp.exists(basename_candidate):
+                    candidate = basename_candidate
+        img = QImage(candidate)
+        if img.isNull():
+            return
+        # Compute display size respecting inner width
+        inner_rect = blk_item.unpadRect(blk_item.boundingRect())
+        disp_w = inner_rect.width() if inner_rect.width() > 0 else blk_item.boundingRect().width()
+        if disp_w <= 0:
+            disp_w = img.width()
+        disp_h = img.height() * disp_w / max(img.width(), 1)
+        scaled = img.scaled(int(disp_w), int(disp_h), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        # Apply to layout and store source for responsive rescaling
+        blk_item.layout.foreground_pixmap = QPixmap.fromImage(scaled)
+        blk_item.layout.foreground_source_img = img
+        # Disable typing and expand block to fit image
+        blk_item.block_all_input = True
+        total_h = disp_h + blk_item.padding() * 2
+        total_w = disp_w + blk_item.padding() * 2
+        blk_item.set_size(total_w, total_h, set_layout_maxsize=True, set_blk_size=True)
+        blk_item.update()
+
+    def cleanup_unused_overlays(self) -> int:
+        """Delete files in the project's overlays folder that aren't referenced by any text block.
+
+        Returns the number of files deleted.
+        """
+        proj_dir = getattr(self.imgtrans_proj, 'directory', None)
+        if not proj_dir:
+            return 0
+        overlays_dir = osp.join(proj_dir, 'overlays')
+        if not osp.isdir(overlays_dir):
+            return 0
+        # Collect referenced overlay basenames from current blocks
+        used_basenames = set()
+        try:
+            blocks = self.imgtrans_proj.current_block_list()
+        except Exception:
+            blocks = []
+        for blk in blocks:
+            fg_path = getattr(blk, 'foreground_image_path', '')
+            if not fg_path:
+                continue
+            # Normalize separators for robust parsing
+            norm = str(fg_path).replace('\\', '/')
+            if not osp.isabs(fg_path):
+                parts = norm.split('/')
+                if parts and parts[0].lower() == 'overlays' and len(parts) >= 2:
+                    used_basenames.add(parts[-1].lower())
+            else:
+                # If absolute path points inside overlays dir, use its basename
+                try:
+                    if osp.commonpath([overlays_dir, osp.dirname(fg_path)]) == overlays_dir:
+                        used_basenames.add(osp.basename(fg_path).lower())
+                except Exception:
+                    pass
+        # Delete unreferenced files
+        deleted = 0
+        try:
+            for name in os.listdir(overlays_dir):
+                full = osp.join(overlays_dir, name)
+                if not osp.isfile(full):
+                    continue
+                if name.lower() not in used_basenames:
+                    try:
+                        os.remove(full)
+                        deleted += 1
+                    except Exception:
+                        # ignore errors deleting individual files
+                        pass
+        except Exception:
+            return deleted
+        return deleted
 
     def on_push_textitem_undostack(self, num_steps: int, is_formatting: bool):
         blkitem: TextBlkItem = self.sender()
