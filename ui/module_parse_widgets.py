@@ -144,7 +144,20 @@ class ParamWidget(QWidget):
         layout.addStretch(-1)
 
         if 'description' in params:
-            self.setToolTip(params['description'])
+            desc = params['description']
+            if isinstance(desc, str):
+                self.setToolTip(desc)
+            elif isinstance(desc, dict):
+                # Gracefully handle unexpected dict-type descriptions
+                # Prefer nested 'description' string, otherwise use a simple stringified 'value'
+                nested_desc = desc.get('description')
+                if isinstance(nested_desc, str):
+                    self.setToolTip(nested_desc)
+                else:
+                    val = desc.get('value')
+                    if isinstance(val, (str, int, float)):
+                        self.setToolTip(str(val))
+                    # If none of the above, skip setting tooltip to avoid TypeError
 
         for ii, param_key in enumerate(params):
             if param_key == 'description' or param_key.startswith('__'):
