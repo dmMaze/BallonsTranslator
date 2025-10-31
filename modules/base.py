@@ -52,7 +52,7 @@ def patch_module_params(cfg_param, module_params, module_name: str = ''):
             mparam = module_params[mk]
             cparam = cfg_param[mk]
             if isinstance(mparam, dict):
-                tgt_type = type(mparam['value'])
+                tgt_type = mparam.get('data_type', type(mparam['value']))
                 if isinstance(cparam, dict):
                     if 'value' in cparam:
                         v = cparam['value']
@@ -106,6 +106,17 @@ def merge_config_module_params(config_params: Dict, module_keys: List, get_modul
     return config_params
 
 
+def standardize_module_params(params):
+    if params is None:
+        return
+    for k, v in params.items():
+        if not isinstance(v, dict):
+            v = {'value': v}
+        if 'data_type' not in v:
+            v['data_type'] = type(v['value'])
+        params[k] = v
+
+
 class BaseModule:
 
     params: Dict = None
@@ -120,6 +131,7 @@ class BaseModule:
     _load_model_keys: set = None
 
     def __init__(self, **params) -> None:
+        standardize_module_params(self.params)
         if self.params is not None and '__param_patched' not in params:
             params = patch_module_params(params, self.params, self)
         if params:
@@ -157,7 +169,8 @@ class BaseModule:
         if isinstance(p, dict):
             if convert_dtype:
                 try:
-                    param_value = type(p['value'])(param_value)
+                    val_type = p.get('data_type', type(p['value']))
+                    param_value = val_type(param_value)
                 except ValueError:
                     dtype = type(p['value'])
                     self.logger.warning(f'Invalid param value {param_value} for defined dtype: {dtype}')

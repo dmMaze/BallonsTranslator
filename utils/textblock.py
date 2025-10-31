@@ -40,6 +40,7 @@ class TextBlock:
     src_is_vertical: bool = None
     _detected_font_size: float = -1
     det_model: str = None
+    label: str = None # ysg yolo label
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
