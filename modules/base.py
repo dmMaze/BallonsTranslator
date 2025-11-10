@@ -110,9 +110,9 @@ def standardize_module_params(params):
     if params is None:
         return
     for k, v in params.items():
-        if not isinstance(v, dict):
+        if not isinstance(v, dict) and k not in {'description'}:  # remember to exclude special keys here
             v = {'value': v}
-        if 'data_type' not in v:
+        if isinstance(v, dict) and 'data_type' not in v:
             v['data_type'] = type(v['value'])
         params[k] = v
 
