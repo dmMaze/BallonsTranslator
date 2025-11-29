@@ -478,6 +478,9 @@ class MainWindow(mainwindow_cls):
     def openDir(self, directory: str):
         try:
             self.opening_dir = True
+            # 在加载项目前检查并生成TIF文件的预览图
+            self.generate_tif_thumbnails(directory)
+            # 重新加载项目，此时应该只加载预览图
             self.imgtrans_proj.load(directory)
             self.st_manager.clearSceneTextitems()
             self.titleBar.setTitleContent(osp.basename(directory))
@@ -487,6 +490,29 @@ class MainWindow(mainwindow_cls):
             self.opening_dir = False
             create_error_dialog(e, self.tr('Failed to load project ') + directory)
             return
+
+    def generate_tif_thumbnails(self, directory: str):
+        """
+        为目录中的TIF文件生成预览图，并确保只加载预览图
+        """
+        try:
+            from utils.io_utils import create_thumbnail, find_tif_files
+            # 查找目录中的所有TIF文件
+            tif_files = find_tif_files(directory)
+            
+            # 为每个TIF文件生成预览图
+            for tif_file in tif_files:
+                tif_path = osp.join(directory, tif_file)
+                # 检查是否已经存在对应的预览图
+                base_path = Path(tif_path)
+                thumb_path = base_path.parent / f"{base_path.stem}_thumb.jpg"
+                
+                # 如果预览图不存在，则生成预览图
+                if not osp.exists(thumb_path):
+                    create_thumbnail(tif_path, max_width=1000)
+                    
+        except Exception as e:
+            LOGGER.error(f"Failed to generate TIF thumbnails: {e}")
         
     def dropOpenDir(self, directory: str):
         if isinstance(directory, str) and osp.exists(directory):

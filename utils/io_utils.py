@@ -60,10 +60,73 @@ def find_all_imgs(img_dir, abs_path=False, sort=False):
         file_suffix = Path(filename).suffix
         if file_suffix.lower() not in IMG_EXT:
             continue
+        # 额外检查：确保不包含原始TIF文件，但可以包含预览图
+        if file_suffix.lower() in ['.tif', '.tiff']:
+            continue
         if abs_path:
             imglist.append(osp.join(img_dir, filename))
         else:
             imglist.append(filename)
+
+    if sort:
+        imglist = natsorted(imglist)
+        
+    return imglist
+
+def create_thumbnail(img_path, max_width=1000):
+    """
+    为图像创建缩略图，保持宽高比。
+    缩略图的最大宽度为 max_width（默认 1000），
+    高度将根据原始比例自动计算。
+
+    参数:
+        img_path (str): 原始图像的文件路径
+        max_width (int): 缩略图最大宽度，默认为 1000
+
+    返回:
+        bool: 成功创建缩略图返回 True，否则返回 False
+    """
+    try:
+        # 使用 PIL 打开图像
+        with Image.open(img_path) as img:
+            # 获取原始尺寸
+            original_width, original_height = img.size
+            # 如果原图tif是黑白位图转换为灰度
+            if img.mode == '1':
+                img = img.convert('L')
+            # 计算缩放比例并确定新尺寸
+            scale_factor = max_width / original_width
+            new_width = max_width
+            new_height = int(original_height * scale_factor)
+
+            # 使用高质量重采样算法进行缩放（LANCZOS）
+            thumbnail = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # 构造缩略图保存路径：原路径目录下，文件名 + _thumb.jpg
+            base_path = Path(img_path)
+            thumb_path = base_path.parent / f"{base_path.stem}_thumb.jpg"
+
+            # 保存为 JPEG 格式，质量设为 95，启用优化
+            thumbnail.save(thumb_path, 'JPEG', quality=95, optimize=True)
+
+            LOGGER.info(f"Thumbnail created: {thumb_path}")
+            return True
+
+    except Exception as e:
+        LOGGER.error(f"Failed to create thumbnail for {img_path}: {e}")
+        return False
+def find_tif_files(img_dir, abs_path=False, sort=False):
+    """
+    查找目录中的TIF文件，用于生成预览图
+    """
+    imglist = []
+    for filename in os.listdir(img_dir):
+        file_suffix = Path(filename).suffix.lower()
+        if file_suffix in ['.tif', '.tiff']:
+            if abs_path:
+                imglist.append(osp.join(img_dir, filename))
+            else:
+                imglist.append(filename)
 
     if sort:
         imglist = natsorted(imglist)
