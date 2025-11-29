@@ -47,6 +47,10 @@ class TextBlock:
 
     fontformat: FontFormat = field(default_factory=lambda: FontFormat())
 
+    # 字体识别相关属性
+    _detected_font_name: str = ""  # 识别出的字体名称
+    _detected_font_confidence: float = 0.0  # 识别置信度
+
     deprecated_attributes: dict = field(default_factory = lambda: dict())
 
     @property

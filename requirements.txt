@@ -36,7 +36,7 @@ requests
 ultralytics==8.3.90
 beautifulsoup4
 colorama
-openai>=1.59.5
+openai>=2.8.1
 pyyaml
 natsort
 py7zr

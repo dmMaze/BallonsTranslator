@@ -315,10 +315,25 @@ class ProjImgTrans:
     def to_dict(self) -> Dict:
         pages = self.pages.copy()
         pages.update(self.not_found_pages)
+        
+        # 添加每张图片的像素尺寸信息
+        image_info = {}
+        for imgname in pages.keys():
+            img_path = osp.join(self.directory, imgname)
+            if osp.exists(img_path):
+                try:
+                    img = imread(img_path)
+                    h, w = img.shape[:2]
+                    image_info[imgname] = {'width': w, 'height': h}
+                except:
+                    # 如果无法读取图片，则跳过
+                    continue
+        
         return {
             'directory': self.directory,
             'pages': pages,
             'current_img': self.current_img,
+            'image_info': image_info,
         }
 
     def read_img(self, imgname: str) -> np.ndarray:
