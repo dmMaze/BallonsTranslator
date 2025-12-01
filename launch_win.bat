@@ -5,7 +5,7 @@ cd %~dp0
 
 @echo off
 
-call conda activate llm-pt26 2>nul
+call conda activate bt 2>nul
 
 :: Set the path for PaddleOCR and PyTorch libraries
 set "PADDLE_PATH=%~dp0ballontrans_pylibs_win\Lib\site-packages\torch\lib"
@@ -35,8 +35,8 @@ goto :show_stdout_stderr
 
 
 :launch
-%PYTHON% launch.py  %*
-@REM %PYTHON% launch.py  %* -platform windows:fontengine=gdi
+::%PYTHON% launch.py  %*
+%PYTHON% launch.py  %* -platform windows:fontengine=gdi
 pause
 exit /b
 
