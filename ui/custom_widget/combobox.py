@@ -72,10 +72,10 @@ class ParamComboBox(ComboBox):
         self.currentTextChanged.connect(self.on_select_changed)
         
         if flush_btn:
-            self.flush_btn = NoBorderPushBtn('Refresh')
+            self.flush_btn = NoBorderPushBtn(self.tr('Flush'))
             self.flush_btn.clicked.connect(self.flushbtn_clicked)
         if path_selector:
-            self.path_select_btn = NoBorderPushBtn('Select Path')
+            self.path_select_btn = NoBorderPushBtn(self.tr('Select Path'))
             self.path_select_btn.clicked.connect(self.pathbtn_clicked)
 
     def on_select_changed(self):
