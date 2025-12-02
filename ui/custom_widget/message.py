@@ -179,10 +179,10 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(None, show_stop_btn=False, *args, **kwargs)
         
-        self.detect_bar = TaskProgressBar('检测: ', True, self)
+        self.detect_bar = TaskProgressBar('Detect: ', True, self)
         self.ocr_bar = TaskProgressBar('OCR: ', True, self)
-        self.inpaint_bar = TaskProgressBar('修复: ', True, self)
-        self.translate_bar = TaskProgressBar('翻译: ', True, self)
+        self.inpaint_bar = TaskProgressBar('Inpaint: ', True, self)
+        self.translate_bar = TaskProgressBar('Translate: ', True, self)
 
         layout = self.layout()
         layout.addWidget(self.detect_bar)
