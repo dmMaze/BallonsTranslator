@@ -131,7 +131,7 @@ class ProgressMessageBox(QDialog):
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setModal(False)  # 改为非模态，允许用户操作主界面
+        self.setModal(True)  # 模态对话框，防止运行时操作主界面导致状态问题
 
         layout = QVBoxLayout(self)
         layout.setSpacing(0)
