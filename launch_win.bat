@@ -4,7 +4,7 @@
 @echo off
 cd /d "%~dp0"
 
-call conda-env BallonsTranslator python=3.12
+call conda-env.bat BallonsTranslator 3.12
 
 :: Set the path for PaddleOCR and PyTorch libraries
 set "PADDLE_PATH=%~dp0ballontrans_pylibs_win\Lib\site-packages\torch\lib"
