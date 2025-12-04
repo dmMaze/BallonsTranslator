@@ -149,22 +149,12 @@ class LeftBar(Widget):
         self.run_imgtrans_clicked = self.runImgtransBtn.clicked
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         
-        # 添加"本页"按钮
-        self.runCurrentPageBtn = QPushButton()
-        self.runCurrentPageBtn.setObjectName('RunCurrentPageButton')
-        self.runCurrentPageBtn.setText('本页')
-        self.runCurrentPageBtn.setToolTip('仅对本页执行')
-        self.runCurrentPageBtn.setFont(font)
-        self.runCurrentPageBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
-        self.run_current_page_clicked = self.runCurrentPageBtn.clicked
-
         vlayout = QVBoxLayout(self)
         vlayout.addWidget(openBtnToolBar)
         vlayout.addWidget(self.showPageListLabel)
         vlayout.addWidget(self.globalSearchChecker)
         vlayout.addWidget(self.imgTransChecker)
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
-        vlayout.addWidget(self.runCurrentPageBtn)
         vlayout.addWidget(self.configChecker)
         vlayout.addWidget(self.runImgtransBtn)
         vlayout.setContentsMargins(padding, LEFTBTN_WIDTH // 2, padding, LEFTBTN_WIDTH // 2)

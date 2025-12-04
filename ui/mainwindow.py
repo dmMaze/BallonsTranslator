@@ -374,7 +374,6 @@ class MainWindow(mainwindow_cls):
         module_manager.setInpainter()
 
         self.leftBar.run_imgtrans_clicked.connect(self.run_imgtrans)
-        self.leftBar.run_current_page_clicked.connect(self.run_current_page)
 
         self.titleBar.darkModeAction.setChecked(pcfg.darkmode)
 
@@ -1245,9 +1244,6 @@ class MainWindow(mainwindow_cls):
     def on_imgtrans_pipeline_finished(self):
         self.backup_blkstyles.clear()
         self._run_imgtrans_wo_textstyle_update = False
-        # 重置单页模式标志
-        if hasattr(self, 'run_single_page_mode'):
-            self.run_single_page_mode = False
         self.postprocess_mt_toggle = True
         if pcfg.module.empty_runcache and not shared.HEADLESS:
             self.module_manager.unload_all_models()
@@ -1349,19 +1345,12 @@ class MainWindow(mainwindow_cls):
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (pcfg.module.enable_detect or pcfg.module.enable_translate)
         
-        # 如果是单页模式，保持在当前页面不跳转
-        if hasattr(self, 'run_single_page_mode') and self.run_single_page_mode:
-            # 更新当前页面的显示
+        if page_index != self.pageList.currentIndex().row():
+            self.pageList.setCurrentRow(page_index)
+        else:
+            self.imgtrans_proj.set_current_img_byidx(page_index)
             self.canvas.updateCanvas()
             self.st_manager.updateSceneTextitems()
-        else:
-            # 正常模式：跳转到完成的页面
-            if page_index != self.pageList.currentIndex().row():
-                self.pageList.setCurrentRow(page_index)
-            else:
-                self.imgtrans_proj.set_current_img_byidx(page_index)
-                self.canvas.updateCanvas()
-                self.st_manager.updateSceneTextitems()
 
         if not pcfg.module.enable_detect and pcfg.module.enable_translate:
             for blkitem in self.st_manager.textblk_item_list:
@@ -1420,24 +1409,6 @@ class MainWindow(mainwindow_cls):
         if lang != pcfg.display_lang:
             pcfg.display_lang = lang
             self.set_display_lang(lang)
-
-    def run_current_page(self):
-        """仅对当前页面执行OCR/翻译"""
-        if self.imgtrans_proj.is_empty:
-            return
-        
-        current_page = self.imgtrans_proj.current_img
-        if not current_page:
-            QMessageBox.warning(self, '警告', '没有选中的页面')
-            return
-        
-        # 保存当前页面索引，执行完成后不要跳转
-        self.run_single_page_mode = True
-        self.single_page_index = self.pageList.currentIndex().row()
-        
-        # 只处理当前页面
-        pages_to_process = [current_page]
-        self.on_run_imgtrans(continue_mode=False, pages_to_process=pages_to_process)
     
     def run_imgtrans(self):
         if not self.imgtrans_proj.is_all_pages_no_text and not pcfg.module.keep_exist_textlines:
@@ -1445,12 +1416,12 @@ class MainWindow(mainwindow_cls):
             msgBox = QMessageBox(self)
             msgBox.setIcon(QMessageBox.Question)
             msgBox.setWindowTitle(self.tr('Confirmation'))
-            msgBox.setText('确定要重新运行吗？现有翻译结果将被清空！\n或者点击"继续运行"从中断处继续运行')
+            msgBox.setText(self.tr('\"Run\" will clear previous results, \"Continue\" will try to run from previous progress'))
             
             # 添加三个按钮（直接使用中文）
-            restart_btn = msgBox.addButton('重新运行', QMessageBox.YesRole)
-            continue_btn = msgBox.addButton('继续运行', QMessageBox.AcceptRole)
-            cancel_btn = msgBox.addButton('取消', QMessageBox.RejectRole)
+            restart_btn = msgBox.addButton(self.tr('Run'), QMessageBox.YesRole)
+            continue_btn = msgBox.addButton(self.tr('Continue'), QMessageBox.AcceptRole)
+            cancel_btn = msgBox.addButton(self.tr('Cancel'), QMessageBox.RejectRole)
             
             msgBox.setDefaultButton(continue_btn)
             msgBox.exec_()
@@ -1531,7 +1502,7 @@ class MainWindow(mainwindow_cls):
         # 传递需要处理的页面列表给module_manager
         # 调试：显示要处理的页面
         if pages_to_process:
-            print(f'DEBUG: pages_to_process = {pages_to_process}')
+            LOGGER.debug(f'imgtrans pages_to_process = {pages_to_process}')
             # QMessageBox.information(self, '调试', f'要处理的页面: {pages_to_process}')
         
         # 如果有指定pages_to_process或者是continue_mode，则传递页面列表

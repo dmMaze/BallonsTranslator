@@ -66,35 +66,31 @@ class ColoredLogger(logging.Logger):
 
 
 def setup_logging(logfile_dir: str, max_num_logs=14):
-    # 禁用日志文件生成，只输出到控制台
-    # 如果需要重新启用日志文件，取消下面代码的注释
-    
-    # if not osp.exists(logfile_dir):
-    #     os.makedirs(logfile_dir)
-    # else:
-    #     old_logs = glob(osp.join(logfile_dir, '*.log'))
-    #     old_logs.sort()
-    #     n_log = len(old_logs)
-    #     if n_log >= max_num_logs:
-    #         to_remove = n_log - max_num_logs + 1
-    #         try:
-    #             for ii in range(to_remove):
-    #                 os.remove(old_logs[ii])
-    #         except Exception as e:
-    #             logger.error(e)
 
-    # logfilename = datetime.datetime.now().strftime('_%Y_%m_%d-%H_%M_%S.log')
-    # logfilep = osp.join(logfile_dir, logfilename)
-    # fh = logging.FileHandler(logfilep, mode='w', encoding='utf-8')
-    # fh.setFormatter(
-    #     logging.Formatter(
-    #         ("[%(levelname)s] %(module)s:%(funcName)s:%(lineno)s - %(message)s")
-    #     )
-    # )
-    # fh.setLevel(logging.DEBUG)
-    # logger.addHandler(fh)
-    
-    pass  # 不生成日志文件
+    if not osp.exists(logfile_dir):
+        os.makedirs(logfile_dir)
+    else:
+        old_logs = glob(osp.join(logfile_dir, '*.log'))
+        old_logs.sort()
+        n_log = len(old_logs)
+        if n_log >= max_num_logs:
+            to_remove = n_log - max_num_logs + 1
+            try:
+                for ii in range(to_remove):
+                    os.remove(old_logs[ii])
+            except Exception as e:
+                logger.error(e)
+
+    logfilename = datetime.datetime.now().strftime('_%Y_%m_%d-%H_%M_%S.log')
+    logfilep = osp.join(logfile_dir, logfilename)
+    fh = logging.FileHandler(logfilep, mode='w', encoding='utf-8')
+    fh.setFormatter(
+        logging.Formatter(
+            ("[%(levelname)s] %(module)s:%(funcName)s:%(lineno)s - %(message)s")
+        )
+    )
+    fh.setLevel(logging.DEBUG)
+    logger.addHandler(fh)
 
 
 logging.setLoggerClass(ColoredLogger)

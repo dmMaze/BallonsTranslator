@@ -5,6 +5,7 @@ import os.path as osp
 import numpy as np
 from qtpy.QtCore import QThread, Signal, QObject, QLocale, QTimer
 from qtpy.QtWidgets import QFileDialog
+from sympy import true
 
 from .funcmaps import get_maskseg_method
 from utils.logger import logger as LOGGER
@@ -32,6 +33,7 @@ class ModuleThread(QThread):
 
     finish_set_module = Signal()
     _failed_set_module_msg = 'Failed to set module.'
+    module_thread_stopped = Signal()
 
     def __init__(self, module_key: str, MODULE_REGISTER: Registry, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -42,7 +44,9 @@ class ModuleThread(QThread):
 
         self.pipeline_pagekey_queue = []
         self.finished_counter = 0
+        self.num_process_pages = 0
         self.imgtrans_proj: ProjImgTrans = None
+        self.stop_requested = False
 
     def _set_module(self, module_name: str):
         old_module = self.module
@@ -67,7 +71,7 @@ class ModuleThread(QThread):
     def pipeline_finished(self):
         if self.imgtrans_proj is None:
             return True
-        elif self.finished_counter == len(self.imgtrans_proj.pages):
+        elif self.finished_counter >= self.num_process_pages:
             return True
         return False
 
@@ -77,6 +81,9 @@ class ModuleThread(QThread):
         self.imgtrans_proj = proj
         self.finished_counter = 0
         self.pipeline_pagekey_queue.clear()
+
+    def requestStop(self):
+        self.stop_requested = True
 
     def run(self):
         if self.job is not None:
@@ -220,10 +227,16 @@ class TranslateThread(ModuleThread):
         self.job = self._run_translate_pipeline
         self.start()
 
+
     def _run_translate_pipeline(self):
         delay = self.translator.delay()
 
         while not self.pipeline_finished():
+            if self.stop_requested:
+                self.module_thread_stopped.emit()
+                self.stop_requested = False
+                break
+
             if len(self.pipeline_pagekey_queue) == 0:
                 time.sleep(0.1)
                 continue
@@ -256,8 +269,7 @@ class TranslateThread(ModuleThread):
 
 class ImgtransThread(QThread):
 
-    finished = Signal(object)
-    pipeline_finished = Signal()  # 新增：pipeline完成信号
+    pipeline_stopped = Signal()
     update_detect_progress = Signal(int)
     update_ocr_progress = Signal(int)
     update_translate_progress = Signal(int)
@@ -282,11 +294,22 @@ class ImgtransThread(QThread):
         self.textdetect_thread = textdetect_thread
         self.ocr_thread = ocr_thread
         self.translate_thread = translate_thread
+        self.translate_thread.module_thread_stopped.connect(self.on_module_thread_stopped)
         self.inpaint_thread = inpaint_thread
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
         self.stop_requested = False
         self.pages_to_process = None  # 需要处理的页面列表（用于继续运行模式）
+
+    def on_module_thread_stopped(self):
+        while True:
+            # might freeze UI
+            if self.translate_thread.isRunning() or self.inpaint_thread.isRunning() or self.ocr_thread.isRunning() or self.textdetect_thread.isRunning():
+                time.sleep(0.1)
+                continue
+            break
+
+        self.pipeline_stopped.emit()
 
     @property
     def textdetector(self) -> TextDetectorBase:
@@ -319,9 +342,7 @@ class ImgtransThread(QThread):
         self.stop_requested = True
         # 同时停止翻译线程
         if self.translate_thread.isRunning():
-            self.translate_thread.imgtrans_proj = None
-            self.translate_thread.finished_counter = 0
-            self.translate_thread.pipeline_pagekey_queue.clear()
+            self.translate_thread.requestStop()
 
     def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
         self.job = lambda : self._blktrans_pipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask)
@@ -380,6 +401,10 @@ class ImgtransThread(QThread):
             for i in range(num_pages):
                 self.process_idx_to_page_idx[i] = i
             LOGGER.info(f'Processing all {num_pages} pages')
+        self.textdetect_thread.num_process_pages = self.num_pages
+        self.ocr_thread.num_process_pages = self.num_pages
+        self.inpaint_thread.num_process_pages = self.num_pages
+        self.translate_thread.num_process_pages = self.num_pages
 
         low_vram_trans = False
         if self.translator is not None:
@@ -512,6 +537,9 @@ class ImgtransThread(QThread):
                 self.translate_counter += 1
                 self.update_translate_progress.emit(self.translate_counter)
 
+        if self.stop_requested and (not cfg_module.enable_translate or not self.parallel_trans):
+            self.pipeline_stopped.emit()
+
     def detect_finished(self) -> bool:
         if self.imgtrans_proj is None:
             return True
@@ -607,7 +635,6 @@ class ModuleManager(QObject):
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
 
         self.progress_msgbox = imgtrans_progress_msgbox
-        # 连接停止按钮信号
         self.progress_msgbox.stop_clicked.connect(self.stopImgtransPipeline)
 
         self.imgtrans_thread = ImgtransThread(self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread)
@@ -617,7 +644,7 @@ class ModuleManager(QObject):
         self.imgtrans_thread.update_inpaint_progress.connect(self.on_update_inpaint_progress)
         self.imgtrans_thread.finish_blktrans_stage.connect(self.on_finish_blktrans_stage)
         self.imgtrans_thread.finish_blktrans.connect(self.on_finish_blktrans)
-        self.imgtrans_thread.finished.connect(self.on_imgtrans_thread_finished)
+        self.imgtrans_thread.pipeline_stopped.connect(self.on_imgtrans_thread_stopped)
 
         self.translator_panel = translator_panel = config_panel.trans_config_panel        
         translator_params = merge_config_module_params(cfg_module.translator_params, GET_VALID_TRANSLATORS(), TRANSLATORS.get)
@@ -732,11 +759,6 @@ class ModuleManager(QObject):
         LOGGER.info('Stopping image translation pipeline...')
         if self.imgtrans_thread.isRunning():
             self.imgtrans_thread.requestStop()
-            # 强制终止线程以立即停止
-            self.imgtrans_thread.terminate()
-            self.imgtrans_thread.wait()
-        # 确保进度对话框关闭
-        self.progress_msgbox.hide()
 
     def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
         self.terminateRunningThread()
@@ -839,13 +861,10 @@ class ModuleManager(QObject):
             self.progress_msgbox.hide()
             self.imgtrans_pipeline_finished.emit()
     
-    def on_imgtrans_thread_finished(self):
+    def on_imgtrans_thread_stopped(self):
         """线程完成时确保关闭进度对话框"""
         # 线程完成了，直接关闭窗口
         self.progress_msgbox.hide()
-        if not self.imgtrans_pipeline_finished.receivers(self.imgtrans_pipeline_finished):
-            # 如果没有接收者，直接返回
-            return
         self.imgtrans_pipeline_finished.emit()
 
     def setTranslator(self, translator: str = None):

@@ -131,7 +131,7 @@ class ProgressMessageBox(QDialog):
         super().__init__(*args, **kwargs)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setModal(True)  # 模态对话框，防止运行时操作主界面导致状态问题
+        self.setModal(True)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(0)
@@ -141,16 +141,6 @@ class ProgressMessageBox(QDialog):
         if task_name is not None:
             self.task_progress_bar = TaskProgressBar(task_name, True)
             layout.addWidget(self.task_progress_bar)
-        
-        # 添加停止按钮
-        if show_stop_btn:
-            self.stop_button = QPushButton('停止', self)
-            self.stop_button.clicked.connect(self.on_stop_clicked)
-            button_layout = QHBoxLayout()
-            button_layout.addStretch()
-            button_layout.addWidget(self.stop_button)
-            button_layout.addStretch()
-            layout.addLayout(button_layout)
 
     def on_stop_clicked(self):
         self.stop_clicked.emit()
@@ -177,12 +167,12 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
     stop_clicked = Signal()
     
     def __init__(self, *args, **kwargs) -> None:
-        super().__init__(None, show_stop_btn=False, *args, **kwargs)
+        super().__init__(None, *args, **kwargs)
         
-        self.detect_bar = TaskProgressBar('Detect: ', True, self)
-        self.ocr_bar = TaskProgressBar('OCR: ', True, self)
-        self.inpaint_bar = TaskProgressBar('Inpaint: ', True, self)
-        self.translate_bar = TaskProgressBar('Translate: ', True, self)
+        self.detect_bar = TaskProgressBar(self.tr('Detecting: '), True, self)
+        self.ocr_bar = TaskProgressBar(self.tr('OCR: '), True, self)
+        self.inpaint_bar = TaskProgressBar(self.tr('Inpainting: '), True, self)
+        self.translate_bar = TaskProgressBar(self.tr('Translating: '), True, self)
 
         layout = self.layout()
         layout.addWidget(self.detect_bar)
@@ -191,7 +181,7 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         layout.addWidget(self.translate_bar)
         
         # 添加停止按钮
-        self.stop_button = QPushButton('停止', self)
+        self.stop_button = QPushButton(self.tr('Stop'), self)
         self.stop_button.clicked.connect(self.on_stop_clicked)
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -202,13 +192,11 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         self.setFixedWidth(self.sizeHint().width())
     
     def on_stop_clicked(self):
-        # 发送停止信号
         self.stop_clicked.emit()
-        # 立即关闭进度对话框
-        self.hide()
         # 重置按钮状态（为下次使用准备）
-        self.stop_button.setEnabled(True)
-        self.stop_button.setText('停止')
+        self.stop_button.setEnabled(False)
+        self.stop_button.setText(self.tr('trying to stop...'))
+
 
     def updateDetectProgress(self, value: int, msg: str = ''):
         self.detect_bar.updateProgress(value, msg)
@@ -229,7 +217,7 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         self.updateTranslateProgress(0)
         # 重置停止按钮状态
         self.stop_button.setEnabled(True)
-        self.stop_button.setText('停止')
+        self.stop_button.setText(self.tr('Stop'))
 
     def show_all_bars(self):
         self.detect_bar.show()
