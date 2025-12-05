@@ -177,6 +177,12 @@ class ProjImgTrans:
                 self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
         except Exception as e:
             raise ProjectNotSupportedException(e)
+        
+        if 'image_info' in proj_dict:
+            self._image_info = proj_dict['image_info']
+        else:
+            self._image_info = {}
+            
         set_img_failed = False
         if 'current_img' in proj_dict:
             current_img = proj_dict['current_img']
@@ -316,21 +322,10 @@ class ProjImgTrans:
         pages = self.pages.copy()
         pages.update(self.not_found_pages)
         
-        # 使用已缓存的图片尺寸信息，如果没有则尝试读取
+        # 只使用已缓存的图片尺寸信息，不在这里读取图片
         if not hasattr(self, '_image_info'):
             self._image_info = {}
         image_info = self._image_info.copy()
-        for imgname in pages.keys():
-            if imgname not in image_info:
-                img_path = osp.join(self.directory, imgname)
-                if osp.exists(img_path):
-                    try:
-                        img = imread(img_path)
-                        h, w = img.shape[:2]
-                        image_info[imgname] = {'width': w, 'height': h}
-                    except:
-                        # 如果无法读取图片，则跳过
-                        continue
         
         return {
             'directory': self.directory,
@@ -348,7 +343,9 @@ class ProjImgTrans:
         if not hasattr(self, '_image_info'):
             self._image_info = {}
         h, w = img.shape[:2]
-        self._image_info[imgname] = {'width': w, 'height': h}
+        # 只有当该图片的尺寸信息不存在时才更新
+        if imgname not in self._image_info:
+            self._image_info[imgname] = {'width': w, 'height': h}
         return img
 
     def save_mask(self, img_name, mask: np.ndarray):
