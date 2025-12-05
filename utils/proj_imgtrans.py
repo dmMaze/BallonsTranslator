@@ -316,18 +316,21 @@ class ProjImgTrans:
         pages = self.pages.copy()
         pages.update(self.not_found_pages)
         
-        # 添加每张图片的像素尺寸信息
-        image_info = {}
+        # 使用已缓存的图片尺寸信息，如果没有则尝试读取
+        if not hasattr(self, '_image_info'):
+            self._image_info = {}
+        image_info = self._image_info.copy()
         for imgname in pages.keys():
-            img_path = osp.join(self.directory, imgname)
-            if osp.exists(img_path):
-                try:
-                    img = imread(img_path)
-                    h, w = img.shape[:2]
-                    image_info[imgname] = {'width': w, 'height': h}
-                except:
-                    # 如果无法读取图片，则跳过
-                    continue
+            if imgname not in image_info:
+                img_path = osp.join(self.directory, imgname)
+                if osp.exists(img_path):
+                    try:
+                        img = imread(img_path)
+                        h, w = img.shape[:2]
+                        image_info[imgname] = {'width': w, 'height': h}
+                    except:
+                        # 如果无法读取图片，则跳过
+                        continue
         
         return {
             'directory': self.directory,
@@ -339,7 +342,14 @@ class ProjImgTrans:
     def read_img(self, imgname: str) -> np.ndarray:
         if imgname not in self.pages:
             raise ImgnameNotInProjectException
-        return imread(osp.join(self.directory, imgname))
+        img_path = osp.join(self.directory, imgname)
+        img = imread(img_path)
+        # 在读取图片时记录宽高信息
+        if not hasattr(self, '_image_info'):
+            self._image_info = {}
+        h, w = img.shape[:2]
+        self._image_info[imgname] = {'width': w, 'height': h}
+        return img
 
     def save_mask(self, img_name, mask: np.ndarray):
         imwrite(self.get_mask_path(img_name), mask, ext=pcfg.intermediate_imgsave_ext)

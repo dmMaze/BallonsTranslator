@@ -1,10 +1,3 @@
-# 在此文件中实现字体检测功能，基于 YuzuMarker.FontDetection 模型。
-# https://github.com/JeffersonQin/YuzuMarker.FontDetection 
-# 文件夹路径是data\models\YuzuMarker.FontDetection
-# 同时需要下载模型文件 name=4x-epoch=18-step=368676.ckpt也放入其中。
-# 只需要data\models\YuzuMarker.FontDetection\font_dataset存在其他的是训练用的不需要。
-# 字体缓存文件路径是data\font_demo_cache.bin因为下载不到所以传到data目录。
-
 import os
 import hashlib
 import logging
@@ -29,6 +22,7 @@ except Exception as e:
     transforms = None
 
 from utils import shared
+from utils import download_util
 
 MODEL_REL_PATH = os.path.join('data', 'models', 'YuzuMarker.FontDetection', 'name=4x-epoch=18-step=368676.ckpt')
 MODEL_URL = 'https://huggingface.co/gyrojeff/YuzuMarker.FontDetection/resolve/main/name=4x-epoch=18-step=368676.ckpt'
@@ -47,14 +41,7 @@ def _sha256_of_file(path: str) -> str:
         if not os.path.exists(path):
             logger.error(f"File does not exist: {path}")
             raise FileNotFoundError(f"File does not exist: {path}")
-        h = hashlib.sha256()
-        with open(path, 'rb') as f:
-            logger.debug(f"Opened file {path} for SHA256 computation")
-            for i, chunk in enumerate(iter(lambda: f.read(8192), b'')):
-                h.update(chunk)
-                if i % 50 == 0:  # Log progress every 50 chunks
-                    logger.debug(f"Processed chunk {i} for SHA256 computation")
-        result = h.hexdigest()
+        result = download_util.calculate_sha256(path)
         logger.debug(f"SHA256 computation completed: {result[:16]}...")
         return result
     except FileNotFoundError as e:
@@ -73,63 +60,13 @@ def _sha256_of_file(path: str) -> str:
 
 
 def _download_file(url: str, dst: str) -> None:
-    try:
-        import requests
-    except ImportError as e:
-        logger.error(f"requests module is required to download model: {e}")
-        raise RuntimeError(f'requests is required to download model: {e}')
-
     logger.info(f"Starting download from {url} to {dst}")
     try:
-        import ssl
-        # Create a context that doesn't verify SSL certificates
-        import urllib.request
-        from urllib.request import urlopen
-        import urllib.error
-        
-        # Try with requests first (normal method)
-        try:
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # Disable SSL warnings
-            
-            tmp = dst + '.tmp'
-            with requests.get(url, stream=True, verify=False) as r:  # Disable SSL verification
-                r.raise_for_status()
-                with open(tmp, 'wb') as f:
-                    for i, chunk in enumerate(r.iter_content(chunk_size=8192)):
-                        if chunk:
-                            f.write(chunk)
-            logger.info(f"Download completed, replacing {tmp} with {dst}")
-            os.replace(tmp, dst)
-            logger.info(f"Model successfully downloaded to {dst}")
-        except requests.exceptions.SSLError as ssl_error:
-            logger.warning(f"SSL error with requests: {ssl_error}, trying alternative method")
-            # Fallback to urllib
-            tmp = dst + '.tmp'
-            # Create unverified SSL context
-            unverified_context = ssl._create_unverified_context()
-            with urlopen(url, context=unverified_context) as response:
-                with open(tmp, 'wb') as f:
-                    while True:
-                        chunk = response.read(8192)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-            logger.info(f"Download completed with urllib, replacing {tmp} with {dst}")
-            os.replace(tmp, dst)
-            logger.info(f"Model successfully downloaded to {dst}")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request error during download: {e}")
-        raise RuntimeError(f'Download failed: {e}')
-    except urllib.error.URLError as e:
-        logger.error(f"URL error during download: {e}")
-        raise RuntimeError(f'Download failed: {e}')
-    except OSError as e:
-        logger.error(f"File system error during download: {e}")
-        raise RuntimeError(f'File system error during download: {e}')
+        download_util.download_url_to_file(url, dst, progress=True)
+        logger.info(f"Model successfully downloaded to {dst}")
     except Exception as e:
-        logger.error(f"Unexpected error during download: {e}")
-        raise RuntimeError(f'Unexpected error during download: {e}')
+        logger.error(f"Download failed: {e}")
+        raise RuntimeError(f'Download failed: {e}')
 
 
 def _clean_state_dict_keys(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
