@@ -119,6 +119,13 @@ def restart():
         BT.close()
     os.execv(sys.executable, ['python'] + sys.argv)
 
+
+def setup_locks():
+    from utils.lock import RUNTIME_LOCKS
+    from qtpy.QtCore import QMutex
+    RUNTIME_LOCKS['model_loading'] = QMutex()
+
+
 def main():
 
     if args.debug:
@@ -273,8 +280,9 @@ def main():
     if args.ldpi:
         shared.LDPI = args.ldpi
 
-    from ui.mainwindow import MainWindow
+    setup_locks()
 
+    from ui.mainwindow import MainWindow
     ballontrans = MainWindow(app, config, open_dir=args.proj_dir, **vars(args))
     global BT
     BT = ballontrans

@@ -9,6 +9,7 @@ import importlib
 
 from utils.logger import logger as LOGGER
 from utils import shared
+from utils.lock import aquire_model_loading_lock, release_model_loading_lock
 
 
 GPUINTENSIVE_SET = {'cuda', 'mps', 'xpu', 'privateuseone'}
@@ -227,8 +228,10 @@ class BaseModule:
         return model_deleted
 
     def load_model(self):
-        # TODO: check and download files
+        # TODO: check and download files & inform UIs
+        aquire_model_loading_lock()
         self._load_model()
+        release_model_loading_lock()
         return
 
     def _load_model(self):

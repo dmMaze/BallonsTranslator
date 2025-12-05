@@ -9,7 +9,7 @@ urllib3
 jaconv
 torch
 torchvision
-transformers
+transformers==4.57.1
 mecab-python3; sys_platform == 'darwin'
 fugashi
 unidic_lite
