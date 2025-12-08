@@ -452,6 +452,14 @@ class OCRConfigPanel(ModuleConfigParseWidget):
         self.restoreEmptyOCRChecker = QCheckBox(self.tr("Delete and restore region where OCR return empty string."), self)
         self.restoreEmptyOCRChecker.clicked.connect(self.on_restore_empty_ocr)
         self.vlayout.addWidget(self.restoreEmptyOCRChecker)
+        # 字体检测选项
+        self.fontDetectChecker = QCheckBox(self.tr("Font Detection"), self)
+        self.fontDetectChecker.setChecked(pcfg.module.ocr_font_detect)
+        self.fontDetectChecker.clicked.connect(self.on_fontdetect_changed)
+        self.vlayout.addWidget(self.fontDetectChecker)
 
     def on_restore_empty_ocr(self):
         pcfg.restore_ocr_empty = self.restoreEmptyOCRChecker.isChecked()
+
+    def on_fontdetect_changed(self):
+        pcfg.module.ocr_font_detect = self.fontDetectChecker.isChecked()

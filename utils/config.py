@@ -21,6 +21,8 @@ class ModuleConfig(Config):
     enable_ocr: bool = True
     enable_translate: bool = True
     enable_inpaint: bool = True
+    # 是否在 OCR 后进行字体检测（默认不启用）
+    ocr_font_detect: bool = False
     textdetector_params: Dict = field(default_factory=lambda: dict())
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())

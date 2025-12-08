@@ -1,5 +1,4 @@
 import math
-from functools import cached_property
 
 import numpy as np
 from qtpy.QtWidgets import QGraphicsPixmapItem, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QLabel, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QGraphicsRectItem
@@ -13,31 +12,27 @@ from .textitem import TextBlkItem
 CBEDGE_WIDTH = 30
 
 VISUALIZE_HITBOX = False
-ctrlidx_to_hitbox = {
-    0: [-0.75, -0.75, 0.75, 0.75],
-    1: [-0.5, -0.75, 1, 0.75],
-    2: [0., -0.75, 0.75, 0.75],
-    3: [0., -0.5, 0.75, 1],
-    4: [0., 0., 0.75, 0.75],
-    5: [-0.5, 0., 1, 0.75],
-    6: [-0.75, 0., 0.75, 0.75],
-    7: [-0.75, -0.5, 0.75, 1]
-}
-for k, v in ctrlidx_to_hitbox.items():
-    ctrlidx_to_hitbox[k] = np.array(v, dtype=np.float32)
+ctrlidx_to_hitbox = np.array([
+    [-0.75, -0.75, 0.75, 0.75],
+    [-0.5, -0.75, 1, 0.75],
+    [0., -0.75, 0.75, 0.75],
+    [0., -0.5, 0.75, 1],
+    [0., 0., 0.75, 0.75],
+    [-0.5, 0., 1, 0.75],
+    [-0.75, 0., 0.75, 0.75],
+    [-0.75, -0.5, 0.75, 1]
+], dtype=np.float32)
 
-ctrlidx_to_visiblebox = {
-    0: [0.25, 0.25, 0.75, 0.75],
-    1: [0.25, 0.25, 0.75],
-    2: [0., 0.25, 0.75, 0.75],
-    3: [0., 0.25, 0.75, 1],
-    4: [0., 0., 0.75, 0.75],
-    5: [0.25, 0., 1, 0.75],
-    6: [0.25, 0., 0.75, 0.75],
-    7: [0.25, 0.25, 0.75, 1]
-}
-for k, v in ctrlidx_to_visiblebox.items():
-    ctrlidx_to_visiblebox[k] = np.array(v, dtype=np.float32)
+ctrlidx_to_visiblebox = np.array([
+    [0.25, 0.25],
+    [0.25, 0.25],
+    [0., 0.25],
+    [0., 0.25],
+    [0., 0.],
+    [0.25, 0.],
+    [0.25, 0.],
+    [0.25, 0.25]
+], dtype=np.float32)
 
 class ControlBlockItem(QGraphicsRectItem):
     DRAG_NONE = 0
@@ -79,10 +74,10 @@ class ControlBlockItem(QGraphicsRectItem):
     def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:        
         return super().hoverEnterEvent(event)
 
-    def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        self.drag_mode = self.DRAG_NONE
-        self.CURSOR_IDX = -1
-        return super().hoverLeaveEvent(event)
+    # def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
+    #     self.drag_mode = self.DRAG_NONE
+    #     self.CURSOR_IDX = -1
+    #     return super().hoverLeaveEvent(event)
 
     def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
         angle = self.ctrl.rotation() + 45 * self.idx
