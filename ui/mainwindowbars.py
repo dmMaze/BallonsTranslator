@@ -148,7 +148,7 @@ class LeftBar(Widget):
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.run_imgtrans_clicked = self.runImgtransBtn.clicked
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
-
+        
         vlayout = QVBoxLayout(self)
         vlayout.addWidget(openBtnToolBar)
         vlayout.addWidget(self.showPageListLabel)
@@ -368,6 +368,20 @@ class TitleBar(Widget):
         self.prevpage_trigger = prevPageAction.triggered
         self.nextpage_trigger = nextPageAction.triggered
 
+        # 工具菜单
+        self.toolsToolBtn = TitleBarToolBtn(self)
+        self.toolsToolBtn.setText('工具')
+        
+        # 区域合并工具
+        mergeToolAction = QAction('区域合并工具', self)
+        mergeToolAction.setShortcut(QKeySequence('Ctrl+Shift+M'))
+        self.merge_tool_trigger = mergeToolAction.triggered
+        
+        toolsMenu = QMenu(self.toolsToolBtn)
+        toolsMenu.addAction(mergeToolAction)
+        self.toolsToolBtn.setMenu(toolsMenu)
+        self.toolsToolBtn.setPopupMode(QToolButton.InstantPopup)
+
         self.runToolBtn = TitleBarToolBtn(self)
         self.runToolBtn.setText(self.tr('Run'))
 
@@ -412,6 +426,7 @@ class TitleBar(Widget):
         hlayout.addWidget(self.viewToolBtn)
         hlayout.addWidget(self.goToolBtn)
         hlayout.addWidget(self.runToolBtn)
+        hlayout.addWidget(self.toolsToolBtn)
         hlayout.addStretch()
         hlayout.addWidget(self.titleLabel)
         hlayout.addStretch()

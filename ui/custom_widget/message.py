@@ -2,7 +2,7 @@ from typing import Callable, List, Dict
 import time
 import datetime
 
-from qtpy.QtWidgets import QDialog, QLabel, QHBoxLayout, QVBoxLayout, QMessageBox, QSizePolicy, QProgressBar
+from qtpy.QtWidgets import QDialog, QLabel, QHBoxLayout, QVBoxLayout, QMessageBox, QSizePolicy, QProgressBar, QPushButton
 from qtpy.QtGui import  QCloseEvent, QShowEvent
 from qtpy.QtCore import Qt, Signal
 
@@ -125,9 +125,11 @@ class FrameLessMessageBox(QMessageBox):
 
 class ProgressMessageBox(QDialog):
     showed = Signal()
-    def __init__(self, task_name: str = None, *args, **kwargs) -> None:
+    stop_clicked = Signal()
+    
+    def __init__(self, task_name: str = None, show_stop_btn: bool = True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setModal(True)
 
@@ -137,8 +139,12 @@ class ProgressMessageBox(QDialog):
 
         self.task_progress_bar: TaskProgressBar = None
         if task_name is not None:
-            self.task_progress_bar = TaskProgressBar(task_name)
+            self.task_progress_bar = TaskProgressBar(task_name, True)
             layout.addWidget(self.task_progress_bar)
+
+    def on_stop_clicked(self):
+        self.stop_clicked.emit()
+        self.hide()
 
     def updateTaskProgress(self, value: int, msg: str = ''):
         if self.task_progress_bar is not None:
@@ -147,6 +153,10 @@ class ProgressMessageBox(QDialog):
     def setTaskName(self, task_name: str):
         if self.task_progress_bar is not None:
             self.task_progress_bar.description = task_name
+    
+    def zero_progress(self):
+        if self.task_progress_bar is not None:
+            self.task_progress_bar.updateProgress(0)
 
     def showEvent(self, e: QShowEvent) -> None:
         self.showed.emit()
@@ -154,6 +164,8 @@ class ProgressMessageBox(QDialog):
 
 
 class ImgtransProgressMessageBox(ProgressMessageBox):
+    stop_clicked = Signal()
+    
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(None, *args, **kwargs)
         
@@ -167,8 +179,24 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         layout.addWidget(self.ocr_bar)
         layout.addWidget(self.inpaint_bar)
         layout.addWidget(self.translate_bar)
+        
+        # 添加停止按钮
+        self.stop_button = QPushButton(self.tr('Stop'), self)
+        self.stop_button.clicked.connect(self.on_stop_clicked)
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(self.stop_button)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
 
         self.setFixedWidth(self.sizeHint().width())
+    
+    def on_stop_clicked(self):
+        self.stop_clicked.emit()
+        # 重置按钮状态（为下次使用准备）
+        self.stop_button.setEnabled(False)
+        self.stop_button.setText(self.tr('trying to stop...'))
+
 
     def updateDetectProgress(self, value: int, msg: str = ''):
         self.detect_bar.updateProgress(value, msg)
@@ -187,6 +215,9 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         self.updateOCRProgress(0)
         self.updateInpaintProgress(0)
         self.updateTranslateProgress(0)
+        # 重置停止按钮状态
+        self.stop_button.setEnabled(True)
+        self.stop_button.setText(self.tr('Stop'))
 
     def show_all_bars(self):
         self.detect_bar.show()
