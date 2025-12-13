@@ -25,7 +25,7 @@ from utils.message import create_error_dialog, create_info_dialog
 from .custom_widget import ImgtransProgressMessageBox, ParamComboBox
 from .configpanel import ConfigPanel
 from utils.proj_imgtrans import ProjImgTrans
-from utils.config import pcfg
+from utils.config import pcfg, RunStatus
 cfg_module = pcfg.module
 
 
@@ -243,12 +243,12 @@ class TranslateThread(ModuleThread):
             
             page_key = self.pipeline_pagekey_queue.pop(0)
             self.blockSignals(True)
+            trans_success = True
             try:
                 self._translate_page(self.imgtrans_proj.pages, page_key, emit_finished=False)
             except Exception as e:
-                
                 # TODO: allowing retry/skip/terminate
-
+                trans_success = False
                 msg = self.tr('Translation Failed.')
                 if isinstance(e, MissingTranslatorParams):
                     msg = msg + '\n' + str(e) + self.tr(' is required for ' + self.translator.name)
@@ -261,6 +261,8 @@ class TranslateThread(ModuleThread):
                 # return
             self.blockSignals(False)
             self.finished_counter += 1
+            if trans_success:
+                self.imgtrans_proj.update_page_progress(page_key, RunStatus.FIN_TRANSLATE)
             self.progress_changed.emit(self.finished_counter)
 
             if not self.pipeline_finished() and delay > 0:
@@ -446,6 +448,7 @@ class ImgtransThread(QThread):
                     self.imgtrans_proj.save_mask(imgname, mask)
                     need_save_mask = False
                     
+                self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_DET)
                 self.update_detect_progress.emit(self.detect_counter)
 
             if blk_list is None:
@@ -493,6 +496,7 @@ class ImgtransThread(QThread):
                                 self.imgtrans_proj.save_mask(imgname, mask)
                                 need_save_mask = False
 
+                self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_OCR)
                 self.update_ocr_progress.emit(self.ocr_counter)
 
             if need_save_mask and mask is not None:
@@ -519,6 +523,7 @@ class ImgtransThread(QThread):
                         create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
                     
                 self.inpaint_counter += 1
+                self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_INPAINT)
                 self.update_inpaint_progress.emit(self.inpaint_counter)
             else:
                 if len(blk_removed) > 0:
@@ -535,6 +540,7 @@ class ImgtransThread(QThread):
                 blk_list = self.imgtrans_proj.pages[imgname]
                 self.translator.translate_textblk_lst(blk_list)
                 self.translate_counter += 1
+                self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_TRANSLATE)
                 self.update_translate_progress.emit(self.translate_counter)
 
         if self.stop_requested and (not cfg_module.enable_translate or not self.parallel_trans):

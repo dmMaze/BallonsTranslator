@@ -9,6 +9,13 @@ from .structures import List, Dict, Config, field, nested_dataclass
 from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
 
+class RunStatus:
+    FIN_DET = 1
+    FIN_OCR = 2
+    FIN_INPAINT = 4
+    FIN_TRANSLATE = 8
+    FIN_ALL = 15
+
 
 @nested_dataclass
 class ModuleConfig(Config):
@@ -32,6 +39,7 @@ class ModuleConfig(Config):
     check_need_inpaint: bool = True
     load_model_on_demand: bool = False
     empty_runcache: bool = False
+    finish_code: int = 15
 
     def get_params(self, module_key: str, for_saving=False) -> dict:
         d = self[module_key + '_params']
@@ -77,6 +85,15 @@ class ModuleConfig(Config):
         
     def all_stages_disabled(self):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
+
+    def __post_init__(self):
+        self.update_finish_code()
+
+    def update_finish_code(self):
+        self.finish_code = self.enable_detect * RunStatus.FIN_DET + \
+            self.enable_ocr * RunStatus.FIN_OCR + \
+                self.enable_translate * RunStatus.FIN_TRANSLATE + \
+                    self.enable_inpaint * RunStatus.FIN_INPAINT
         
 
 @nested_dataclass

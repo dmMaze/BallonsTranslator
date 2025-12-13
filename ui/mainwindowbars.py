@@ -370,7 +370,7 @@ class TitleBar(Widget):
 
         # 工具菜单
         self.toolsToolBtn = TitleBarToolBtn(self)
-        self.toolsToolBtn.setText('工具')
+        self.toolsToolBtn.setText(self.tr('Tools'))
         
         # 区域合并工具
         mergeToolAction = QAction('区域合并工具', self)

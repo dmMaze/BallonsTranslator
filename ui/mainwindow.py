@@ -312,6 +312,7 @@ class MainWindow(mainwindow_cls):
         elif idx == 3:
             pcfg.module.enable_inpaint = checked
             self.bottomBar.inpaint_selector.setVisible(checked)
+        pcfg.module.update_finish_code()
 
     def setupConfig(self):
 
@@ -1466,7 +1467,7 @@ class MainWindow(mainwindow_cls):
         self._run_imgtrans_wo_textstyle_update = True
         self.run_imgtrans()
 
-    def on_run_imgtrans(self, continue_mode=False, pages_to_process=None):
+    def on_run_imgtrans(self, continue_mode=False):
         self.backup_blkstyles.clear()
 
         if self.bottomBar.textblockChecker.isChecked():
@@ -1475,31 +1476,23 @@ class MainWindow(mainwindow_cls):
 
         all_disabled = pcfg.module.all_stages_disabled()
         
-        # 如果没有指定pages_to_process，则根据continue_mode决定
-        if pages_to_process is None:
-            pages_to_process = []
+        pages_to_process = []
         
         # 继续模式：先检查哪些页面需要处理
-        if continue_mode and not pages_to_process:
+        if continue_mode:
             for page_name in self.imgtrans_proj.pages:
-                page_blklist = self.imgtrans_proj.pages[page_name]
-                # 如果页面没有文本块，或者所有文本块都没有文本，则需要处理
-                if len(page_blklist) == 0:
+                if not self.imgtrans_proj.get_page_progress(page_name):
                     pages_to_process.append(page_name)
-                else:
-                    # 检查是否有文本块没有文本
-                    has_empty_blk = any(not blk.text or len(blk.text) == 0 for blk in page_blklist)
-                    if has_empty_blk:
-                        pages_to_process.append(page_name)
+            if len(pages_to_process) == 0:
+                return
+        else:
+            for page_name in self.imgtrans_proj.pages:
+                self.imgtrans_proj.set_page_progress(page_name, 0)
         
         if pcfg.module.enable_detect:
             for page in self.imgtrans_proj.pages:
                 if not pcfg.module.keep_exist_textlines:
-                    # 如果指定了pages_to_process（仅本页或继续模式），只清空指定的页面
-                    if pages_to_process:
-                        if page in pages_to_process:
-                            self.imgtrans_proj.pages[page].clear()
-                    else:
+                    if not pages_to_process:
                         # 没有指定pages_to_process，清空所有页面
                         self.imgtrans_proj.pages[page].clear()
         else:
@@ -1524,12 +1517,6 @@ class MainWindow(mainwindow_cls):
                     if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
                         textblk.rich_text = ''
                     textblk.vertical = textblk.src_is_vertical
-        
-        # 传递需要处理的页面列表给module_manager
-        # 调试：显示要处理的页面
-        if pages_to_process:
-            LOGGER.debug(f'imgtrans pages_to_process = {pages_to_process}')
-            # QMessageBox.information(self, '调试', f'要处理的页面: {pages_to_process}')
         
         # 如果有指定pages_to_process或者是continue_mode，则传递页面列表
         self.module_manager.runImgtransPipeline(pages_to_process if (pages_to_process or continue_mode) else None)
