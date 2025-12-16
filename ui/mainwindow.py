@@ -1023,6 +1023,9 @@ class MainWindow(mainwindow_cls):
         edit.setTextCursor(cursor)
 
     def shortcutEscape(self):
+        if getattr(self.canvas, 'text_mask_edit_mode', False):
+            self.canvas.text_mask_edit_mode = False
+            return
         if self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
         elif self.canvas.editing_textblkitem is not None and self.canvas.editing_textblkitem.isEditing():

@@ -6,7 +6,7 @@ from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGr
 from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
 from qtpy.QtGui import (QGradient, QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, 
                        QInputMethodEvent, QPainter, QPen, QColor, QTextCharFormat, QTextDocument, QLinearGradient, 
-                       QBrush, QPalette, QAbstractTextDocumentLayout)
+                       QBrush, QPalette, QAbstractTextDocumentLayout, QImage, QTransform, QPolygonF)
 
 from utils.textblock import TextBlock, FontFormat, TextAlignment, LineSpacingType
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
@@ -36,6 +36,8 @@ class TextBlkItem(QGraphicsTextItem):
     undo_signal = Signal()
     push_undo_stack = Signal(int, bool)
     propagate_user_edited = Signal(int, str, bool)
+    warped = Signal(object, object)
+    text_mask_stroke_finished = Signal(object)
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,6 +75,13 @@ class TextBlkItem(QGraphicsTextItem):
         self.setBoundingRegionGranularity(0)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
         self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+
+        self._text_mask_img: QImage = None
+        self._text_mask_dirty = True
+        self._text_mask_drawing = False
+        self._text_mask_last_point: QPointF = None
+        self._text_mask_stroke_points: List[QPointF] = []
+        self._text_mask_stroke_radius_px: float = 0.0
 
     def inputMethodEvent(self, e: QInputMethodEvent):
         if self.pre_editing == False:
@@ -121,6 +130,8 @@ class TextBlkItem(QGraphicsTextItem):
             if self.repaint_on_changed:
                 if not self.repainting:
                     self.repaint_background()
+            if not self.is_editting():
+                self.invalidate_text_mask_cache()
             self.update()
 
     def paint_stroke(self, painter: QPainter):
@@ -246,6 +257,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.setShadow(font_fmt, repaint=False)
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
         self.repaint_background()
+        self.invalidate_text_mask_cache()
 
     def setCenterTransform(self):
         center = self.boundingRect().center()
@@ -283,6 +295,7 @@ class TextBlkItem(QGraphicsTextItem):
         self._display_rect = rect
         self.layout.setMaxSize(rect.width(), rect.height())
         self.setCenterTransform()
+        self.invalidate_text_mask_cache()
         if repaint:
             self.repaint_background()
 
@@ -452,6 +465,191 @@ class TextBlkItem(QGraphicsTextItem):
         else:
             return self.scale()
 
+    def invalidate_text_mask_cache(self):
+        self._text_mask_dirty = True
+        self._text_mask_img = None
+
+    def has_text_mask(self) -> bool:
+        return self._text_mask_drawing or (self.blk is not None and bool(getattr(self.blk, 'text_mask_strokes', None)))
+
+    def _ensure_text_mask_image(self, size: QSizeF):
+        w = int(max(1, math.ceil(size.width())))
+        h = int(max(1, math.ceil(size.height())))
+        if self._text_mask_img is not None and not self._text_mask_dirty:
+            if self._text_mask_img.width() == w and self._text_mask_img.height() == h:
+                return
+        self._text_mask_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        self._text_mask_img.fill(Qt.GlobalColor.transparent)
+        self._text_mask_dirty = False
+
+        strokes = getattr(self.blk, 'text_mask_strokes', None) or []
+        if len(strokes) == 0:
+            return
+
+        p = QPainter(self._text_mask_img)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for s in strokes:
+            pts = s.get('points', None) or []
+            if len(pts) == 0:
+                continue
+            radius_n = float(s.get('radius', 0.0) or 0.0)
+            radius_px = max(0.5, radius_n * min(w, h))
+            pen = QPen(QColor(0, 0, 0, 255), radius_px * 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            p.setPen(pen)
+            if len(pts) == 1:
+                x, y = pts[0]
+                p.drawPoint(QPointF(float(x) * w, float(y) * h))
+            else:
+                qpts = [QPointF(float(x) * w, float(y) * h) for x, y in pts]
+                for a, b in zip(qpts[:-1], qpts[1:]):
+                    p.drawLine(a, b)
+        p.end()
+
+    def begin_text_mask_stroke(self, local_pos: QPointF, radius_px: float):
+        self._text_mask_drawing = True
+        self._text_mask_stroke_points = [QPointF(local_pos)]
+        self._text_mask_stroke_radius_px = float(radius_px)
+        self._text_mask_last_point = QPointF(local_pos)
+        self._ensure_text_mask_image(self.boundingRect().size())
+        p = QPainter(self._text_mask_img)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(0, 0, 0, 255), self._text_mask_stroke_radius_px * 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        p.drawPoint(self._text_mask_last_point)
+        p.end()
+        self.update()
+
+    def continue_text_mask_stroke(self, local_pos: QPointF):
+        if not self._text_mask_drawing or self._text_mask_img is None:
+            return
+        p2 = QPointF(local_pos)
+        self._text_mask_stroke_points.append(p2)
+        p = QPainter(self._text_mask_img)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(0, 0, 0, 255), self._text_mask_stroke_radius_px * 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        p.drawLine(self._text_mask_last_point, p2)
+        p.end()
+        self._text_mask_last_point = p2
+        self.update()
+
+    def end_text_mask_stroke(self) -> dict:
+        if not self._text_mask_drawing:
+            return None
+        self._text_mask_drawing = False
+        pts = self._text_mask_stroke_points or []
+        self._text_mask_stroke_points = []
+        self._text_mask_last_point = None
+        br = self.boundingRect()
+        w = max(1.0, br.width())
+        h = max(1.0, br.height())
+        r_norm = 0.0
+        if self._text_mask_stroke_radius_px > 0:
+            r_norm = float(self._text_mask_stroke_radius_px) / float(min(w, h))
+        stroke = {
+            'radius': r_norm,
+            'points': [[float(p.x()) / w, float(p.y()) / h] for p in pts if p is not None],
+        }
+        self._text_mask_stroke_radius_px = 0.0
+        return stroke
+
+    def _has_warp(self) -> bool:
+        if self.blk is None:
+            return False
+        mode = getattr(self.blk, 'warp_mode', 'none') or 'none'
+        if mode == 'quad':
+            quad = getattr(self.blk, 'warp_quad', None)
+            return quad is not None and len(quad) == 4
+        if mode == 'mesh':
+            mesh = getattr(self.blk, 'warp_mesh', None)
+            mesh_size = getattr(self.blk, 'warp_mesh_size', None)
+            if mesh is None or mesh_size is None or len(mesh_size) != 2:
+                return False
+            nx, ny = int(mesh_size[0]), int(mesh_size[1])
+            return nx >= 2 and ny >= 2 and len(mesh) == nx * ny
+        return False
+
+    def _warp_quad_points_px(self, w: int, h: int) -> List[QPointF]:
+        quad = getattr(self.blk, 'warp_quad', None)
+        if quad is None or len(quad) != 4:
+            return [QPointF(0, 0), QPointF(w, 0), QPointF(w, h), QPointF(0, h)]
+        pts = []
+        for x, y in quad:
+            pts.append(QPointF(float(x) * w, float(y) * h))
+        return pts
+
+    def _quad_to_quad_transform(self, src_poly: QPolygonF, dst_poly: QPolygonF):
+        try:
+            qtq = QTransform.quadToQuad(src_poly, dst_poly)
+        except TypeError:
+            transform = QTransform()
+            ok = QTransform.quadToQuad(src_poly, dst_poly, transform)
+            return bool(ok), transform
+        if isinstance(qtq, tuple) and len(qtq) == 2:
+            a, b = qtq
+            if isinstance(a, bool):
+                return bool(a), b
+            if isinstance(b, bool):
+                return bool(b), a
+        return True, qtq
+
+    def _apply_quad_warp(self, src: QImage, quad_norm: List) -> QImage:
+        w, h = src.width(), src.height()
+        dst_pts = []
+        for x, y in quad_norm:
+            dst_pts.append(QPointF(float(x) * w, float(y) * h))
+        src_poly = QPolygonF([QPointF(0, 0), QPointF(w, 0), QPointF(w, h), QPointF(0, h)])
+        dst_poly = QPolygonF(dst_pts)
+        ok, transform = self._quad_to_quad_transform(src_poly, dst_poly)
+        if not ok:
+            return src
+        out = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        out.fill(Qt.GlobalColor.transparent)
+        p = QPainter(out)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.addPolygon(dst_poly)
+        p.setClipPath(path)
+        p.setTransform(transform)
+        p.drawImage(0, 0, src)
+        p.end()
+        return out
+
+    def _apply_mesh_warp(self, src: QImage, mesh_size: List, mesh: List) -> QImage:
+        w, h = src.width(), src.height()
+        nx, ny = int(mesh_size[0]), int(mesh_size[1])
+        pts = [QPointF(float(x) * w, float(y) * h) for x, y in mesh]
+        out = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        out.fill(Qt.GlobalColor.transparent)
+        p = QPainter(out)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for j in range(ny - 1):
+            for i in range(nx - 1):
+                x0 = w * i / (nx - 1)
+                x1 = w * (i + 1) / (nx - 1)
+                y0 = h * j / (ny - 1)
+                y1 = h * (j + 1) / (ny - 1)
+                src_poly = QPolygonF([QPointF(x0, y0), QPointF(x1, y0), QPointF(x1, y1), QPointF(x0, y1)])
+                p00 = pts[j * nx + i]
+                p10 = pts[j * nx + (i + 1)]
+                p11 = pts[(j + 1) * nx + (i + 1)]
+                p01 = pts[(j + 1) * nx + i]
+                dst_poly = QPolygonF([p00, p10, p11, p01])
+                ok, transform = self._quad_to_quad_transform(src_poly, dst_poly)
+                if not ok:
+                    continue
+                path = QPainterPath()
+                path.addPolygon(dst_poly)
+                p.save()
+                p.setClipPath(path)
+                p.setTransform(transform)
+                p.drawImage(0, 0, src)
+                p.restore()
+        p.end()
+        return out
+
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         # subpixel antialiasing is enabled for super().paint upon drawing on some non-transparent background https://github.com/dmMaze/BallonsTranslator/issues/919
         # which can be avoided by calling super().paint first, but it results in disappeared background in editting mode
@@ -461,19 +659,51 @@ class TextBlkItem(QGraphicsTextItem):
             self._draw_accessories(painter)
 
         option.state = QStyle.State_None
-        super().paint(painter, option, widget)
+        if not self.is_editting() and (self._has_warp() or self.has_text_mask()):
+            br = self.boundingRect()
+            w = int(max(1, math.ceil(br.width())))
+            h = int(max(1, math.ceil(br.height())))
+
+            base_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+            base_img.fill(Qt.GlobalColor.transparent)
+            p = QPainter(base_img)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            if self.background_pixmap is not None:
+                p.drawPixmap(QRect(0, 0, w, h), self.background_pixmap)
+            self.document().drawContents(p, QRectF(0, 0, w, h))
+            p.end()
+
+            if self.has_text_mask():
+                self._ensure_text_mask_image(br.size())
+                if self._text_mask_img is not None:
+                    p = QPainter(base_img)
+                    p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
+                    p.drawImage(0, 0, self._text_mask_img)
+                    p.end()
+
+            if self._has_warp():
+                mode = getattr(self.blk, 'warp_mode', 'none') or 'none'
+                if mode == 'quad':
+                    base_img = self._apply_quad_warp(base_img, getattr(self.blk, 'warp_quad', None))
+                elif mode == 'mesh':
+                    base_img = self._apply_mesh_warp(base_img, getattr(self.blk, 'warp_mesh_size', None), getattr(self.blk, 'warp_mesh', None))
+
+            painter.drawImage(br.topLeft(), base_img)
+        else:
+            super().paint(painter, option, widget)
 
         if not self.is_editting():
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOver)
-            self._draw_accessories(painter)
+            self._draw_accessories(painter, draw_background=not (self._has_warp() or self.has_text_mask()))
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
 
-    def _draw_accessories(self, painter: QPainter):
+    def _draw_accessories(self, painter: QPainter, draw_background: bool = True):
         br = self.boundingRect()
         painter.save()
         
-        if self.background_pixmap is not None:
+        if draw_background and self.background_pixmap is not None:
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             painter.drawPixmap(br.toRect(), self.background_pixmap)
 
@@ -561,6 +791,10 @@ class TextBlkItem(QGraphicsTextItem):
             super().mouseDoubleClickEvent(event)
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self._text_mask_drawing:
+            self.continue_text_mask_stroke(event.pos())
+            event.accept()
+            return
         super().mouseMoveEvent(event)  
         if self.textInteractionFlags() != Qt.TextInteractionFlag.TextEditorInteraction:
             self.moving.emit(self)
@@ -570,12 +804,27 @@ class TextBlkItem(QGraphicsTextItem):
         return super().contextMenuEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.RightButton and not self.isEditing():
+            scene = self.scene()
+            if scene is not None and getattr(scene, 'text_mask_edit_mode', False) and self.isSelected():
+                radius_px = float(getattr(scene, 'text_mask_brush_px', 18.0))
+                radius_local = radius_px / max(0.0001, self.get_scale())
+                self.begin_text_mask_stroke(event.pos(), radius_local)
+                event.accept()
+                return
         if event.button() == Qt.MouseButton.LeftButton:
             self.oldPos = self.pos()
             self.leftbutton_pressed.emit(self.idx)
         return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.RightButton and self._text_mask_drawing:
+            stroke = self.end_text_mask_stroke()
+            scene = self.scene()
+            if stroke is not None and scene is not None and hasattr(scene, 'push_undo_command'):
+                self.text_mask_stroke_finished.emit(stroke)
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.oldPos != self.pos():
                 self.moved.emit()

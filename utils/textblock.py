@@ -47,6 +47,13 @@ class TextBlock:
 
     fontformat: FontFormat = field(default_factory=lambda: FontFormat())
 
+    warp_mode: str = 'none'
+    warp_quad: List = None
+    warp_mesh_size: List = None
+    warp_mesh: List = None
+
+    text_mask_strokes: List = field(default_factory=lambda: [])
+
     # 字体识别相关属性
     _detected_font_name: str = ""  # 识别出的字体名称
     _detected_font_confidence: float = 0.0  # 识别置信度

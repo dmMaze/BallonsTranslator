@@ -16,6 +16,7 @@ from .texteditshapecontrol import TextBlkShapeControl
 from .page_search_widget import PageSearchWidget, Matched
 from utils.proj_imgtrans import ProjImgTrans
 from .scene_textlayout import PUNSET_HALF
+import copy
 
 
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, joint_previous: bool = False):
@@ -145,6 +146,75 @@ class RotateItemCommand(QUndoCommand):
             return False
         self.new_angle = item.angle
         return True
+
+
+class WarpItemCommand(QUndoCommand):
+    def __init__(self, item: TextBlkItem, before: tuple, after: tuple, shape_ctrl: TextBlkShapeControl):
+        super(WarpItemCommand, self).__init__()
+        self.item = item
+        self.before = before
+        self.after = after
+        self.shape_ctrl = shape_ctrl
+
+    def _apply(self, state: tuple):
+        mode, quad, mesh_size, mesh = state
+        blk = self.item.blk
+        blk.warp_mode = mode
+        blk.warp_quad = copy.deepcopy(quad)
+        blk.warp_mesh_size = copy.deepcopy(mesh_size)
+        blk.warp_mesh = copy.deepcopy(mesh)
+        self.item.invalidate_text_mask_cache()
+        self.item.update()
+        if self.shape_ctrl is not None and self.shape_ctrl.blk_item == self.item:
+            self.shape_ctrl.updateControlBlocks()
+
+    def redo(self):
+        self._apply(self.after)
+
+    def undo(self):
+        self._apply(self.before)
+
+
+class TextMaskStrokeCommand(QUndoCommand):
+    def __init__(self, item: TextBlkItem, stroke: dict):
+        super(TextMaskStrokeCommand, self).__init__()
+        self.item = item
+        self.stroke = copy.deepcopy(stroke)
+        self.old_len = len(getattr(self.item.blk, 'text_mask_strokes', []) or [])
+
+    def redo(self):
+        strokes = getattr(self.item.blk, 'text_mask_strokes', None)
+        if strokes is None:
+            self.item.blk.text_mask_strokes = []
+            strokes = self.item.blk.text_mask_strokes
+        if len(strokes) == self.old_len:
+            strokes.append(copy.deepcopy(self.stroke))
+        self.item.invalidate_text_mask_cache()
+        self.item.update()
+
+    def undo(self):
+        strokes = getattr(self.item.blk, 'text_mask_strokes', None) or []
+        if len(strokes) > self.old_len:
+            self.item.blk.text_mask_strokes = strokes[: self.old_len]
+        self.item.invalidate_text_mask_cache()
+        self.item.update()
+
+
+class ClearTextMaskCommand(QUndoCommand):
+    def __init__(self, item: TextBlkItem):
+        super(ClearTextMaskCommand, self).__init__()
+        self.item = item
+        self.old = copy.deepcopy(getattr(self.item.blk, 'text_mask_strokes', None) or [])
+
+    def redo(self):
+        self.item.blk.text_mask_strokes = []
+        self.item.invalidate_text_mask_cache()
+        self.item.update()
+
+    def undo(self):
+        self.item.blk.text_mask_strokes = copy.deepcopy(self.old)
+        self.item.invalidate_text_mask_cache()
+        self.item.update()
 
 
 class AutoLayoutCommand(QUndoCommand):

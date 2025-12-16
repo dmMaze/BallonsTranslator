@@ -1,6 +1,7 @@
 import math
 
 import numpy as np
+import copy
 from qtpy.QtWidgets import QGraphicsPixmapItem, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QLabel, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QGraphicsRectItem
 from qtpy.QtCore import Qt, QRect, QRectF, QPointF, QPoint
 from qtpy.QtGui import QPainter, QPen, QColor
@@ -38,6 +39,7 @@ class ControlBlockItem(QGraphicsRectItem):
     DRAG_NONE = 0
     DRAG_RESHAPE = 1
     DRAG_ROTATE = 2
+    DRAG_WARP = 3
     CURSOR_IDX = -1
     def __init__(self, parent, idx: int):
         super().__init__(parent)
@@ -99,6 +101,12 @@ class ControlBlockItem(QGraphicsRectItem):
         if event.button() == Qt.MouseButton.LeftButton and self.ctrl.blk_item is not None:
             blk_item = self.ctrl.blk_item
             blk_item.setSelected(True)
+            if self.ctrl.warp_editing and getattr(blk_item.blk, 'warp_mode', 'none') == 'quad' and self.idx in {0, 2, 4, 6}:
+                self.drag_mode = self.DRAG_WARP
+                self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
+                self.ctrl.beginWarpEdit()
+                event.accept()
+                return
             if self.visible_rect.contains(event.pos()):
                 self.ctrl.reshaping = True
                 self.drag_mode = self.DRAG_RESHAPE
@@ -135,6 +143,10 @@ class ControlBlockItem(QGraphicsRectItem):
         super().mouseMoveEvent(event)
         blk_item = self.ctrl.blk_item
         if blk_item is None:
+            return
+        if self.drag_mode == self.DRAG_WARP:
+            lp = self.ctrl.mapFromScene(event.scenePos())
+            self.ctrl.updateWarpCornerFromLocal(self.idx, lp)
             return
         if self.drag_mode == self.DRAG_RESHAPE:    
             block_group = self.ctrl.ctrlblock_group
@@ -207,6 +219,8 @@ class ControlBlockItem(QGraphicsRectItem):
                 self.ctrl.blk_item.endReshape()
             if self.drag_mode == self.DRAG_ROTATE:
                 self.ctrl.blk_item.rotated.emit(self.ctrl.rotation())
+            if self.drag_mode == self.DRAG_WARP:
+                self.ctrl.endWarpEdit()
             self.drag_mode = self.DRAG_NONE
             
             self.ctrl.previewPixmap.setVisible(False)
@@ -223,6 +237,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def __init__(self, parent) -> None:
         super().__init__()
         self.gv = parent
+        self.warp_editing = False
+        self._warp_before = None
         self.ctrlblock_group = [
             ControlBlockItem(self, idx) for idx in range(8)
         ]
@@ -262,6 +278,17 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.updateBoundingRect()
         self.show()
 
+    def setWarpEditing(self, enabled: bool):
+        self.warp_editing = bool(enabled)
+        if self.blk_item is not None:
+            if self.warp_editing:
+                blk = self.blk_item.blk
+                if getattr(blk, 'warp_mode', 'none') == 'none':
+                    blk.warp_mode = 'quad'
+                    blk.warp_quad = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+            self.updateBoundingRect()
+            self.updateControlBlocks()
+
     def updateBoundingRect(self):
         if self.blk_item is None:
             return
@@ -281,14 +308,73 @@ class TextBlkShapeControl(QGraphicsRectItem):
         b_rect = self.rect()
         b_rect = [b_rect.x(), b_rect.y(), b_rect.width(), b_rect.height()]
         corner_pnts = xywh2xyxypoly(np.array([b_rect])).reshape(-1, 2)
+        if self.warp_editing and self.blk_item is not None:
+            blk = self.blk_item.blk
+            if getattr(blk, 'warp_mode', 'none') == 'quad':
+                if getattr(blk, 'warp_quad', None) is None:
+                    blk.warp_quad = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+                quad = blk.warp_quad
+                w = max(1.0, float(b_rect[2]))
+                h = max(1.0, float(b_rect[3]))
+                corner_pnts = np.array([[quad[0][0] * w, quad[0][1] * h],
+                                        [quad[1][0] * w, quad[1][1] * h],
+                                        [quad[2][0] * w, quad[2][1] * h],
+                                        [quad[3][0] * w, quad[3][1] * h]], dtype=np.float32)
         edge_pnts = (corner_pnts[[1, 2, 3, 0]] + corner_pnts) / 2
         pnts = [edge_pnts, corner_pnts]
         for ii, ctrlblock in enumerate(self.ctrlblock_group):
+            if self.warp_editing and self.blk_item is not None and getattr(self.blk_item.blk, 'warp_mode', 'none') == 'quad' and ii % 2 == 1:
+                ctrlblock.hide()
+                continue
+            if self.warp_editing and self.blk_item is not None and getattr(self.blk_item.blk, 'warp_mode', 'none') == 'quad' and ii not in {0, 2, 4, 6}:
+                ctrlblock.hide()
+                continue
+            ctrlblock.show()
             is_corner = not ii % 2
             idx = ii // 2
             hitbox_xy = ctrlidx_to_hitbox[ii][:2]
             pos = pnts[is_corner][idx] + hitbox_xy * ctrlblock.edge_width
             ctrlblock.setPos(pos[0], pos[1])
+
+    def beginWarpEdit(self):
+        if self.blk_item is None:
+            self._warp_before = None
+            return
+        blk = self.blk_item.blk
+        self._warp_before = (getattr(blk, 'warp_mode', 'none'), copy.deepcopy(getattr(blk, 'warp_quad', None)),
+                             copy.deepcopy(getattr(blk, 'warp_mesh_size', None)), copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+
+    def updateWarpCornerFromLocal(self, ctrl_idx: int, local_pos: QPointF):
+        if self.blk_item is None:
+            return
+        if ctrl_idx not in {0, 2, 4, 6}:
+            return
+        blk = self.blk_item.blk
+        if getattr(blk, 'warp_mode', 'none') != 'quad' or getattr(blk, 'warp_quad', None) is None:
+            blk.warp_mode = 'quad'
+            blk.warp_quad = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+        w = max(1.0, float(self.rect().width()))
+        h = max(1.0, float(self.rect().height()))
+        x = max(0.0, min(w, float(local_pos.x())))
+        y = max(0.0, min(h, float(local_pos.y())))
+        nx = x / w
+        ny = y / h
+        corner_map = {0: 0, 2: 1, 4: 2, 6: 3}
+        blk.warp_quad[corner_map[ctrl_idx]] = [nx, ny]
+        self.blk_item.update()
+        self.updateControlBlocks()
+
+    def endWarpEdit(self):
+        if self.blk_item is None or self._warp_before is None:
+            self._warp_before = None
+            return
+        blk = self.blk_item.blk
+        before = self._warp_before
+        after = (getattr(blk, 'warp_mode', 'none'), copy.deepcopy(getattr(blk, 'warp_quad', None)),
+                 copy.deepcopy(getattr(blk, 'warp_mesh_size', None)), copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+        self._warp_before = None
+        if before != after:
+            self.blk_item.warped.emit(before, after)
 
     def setAngle(self, angle: int) -> None:
         center = self.boundingRect().center()

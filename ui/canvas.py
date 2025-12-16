@@ -1,8 +1,10 @@
 import numpy as np
 from typing import List, Union
 import os
+import copy
+import math
 
-from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand, QAction
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSizeF, QEvent
 from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
 
@@ -20,6 +22,7 @@ from .page_search_widget import PageSearchWidget
 from utils import shared as C
 from utils.config import pcfg
 from utils.proj_imgtrans import ProjImgTrans
+from .textedit_commands import ClearTextMaskCommand, WarpItemCommand
 
 CANVAS_SCALE_MAX = 10.0
 CANVAS_SCALE_MIN = 0.01
@@ -199,6 +202,9 @@ class Canvas(QGraphicsScene):
         self.creating_textblock = False
         self.create_block_origin: QPointF = None
         self.editing_textblkitem: TextBlkItem = None
+        self.warp_edit_mode = False
+        self.text_mask_edit_mode = False
+        self.text_mask_brush_px = 18.0
 
         self.gv = CustomGV(self)
         self.gv.scale_down_signal.connect(self.scaleDown)
@@ -472,6 +478,7 @@ class Canvas(QGraphicsScene):
             blk_item = self.txtblkShapeControl.blk_item
             if blk_item is not None and blk_item.isEditing():
                 blk_item.endEdit()
+            self.txtblkShapeControl.setWarpEditing(self.warp_edit_mode)
         if self.hasFocus() and not self.block_selection_signal:
             self.incanvas_selection_changed.emit()
 
@@ -554,6 +561,11 @@ class Canvas(QGraphicsScene):
         return textblk_created
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.textEditMode() and self.text_mask_edit_mode:
+            sel = self.selected_text_items(sort=False)
+            for it in sel:
+                if getattr(it, '_text_mask_drawing', False):
+                    return super().mouseMoveEvent(event)
         if self.mid_btn_pressed:
             new_pos = event.screenPos()
             delta_pos = new_pos - self.pan_initial_pos
@@ -632,6 +644,8 @@ class Canvas(QGraphicsScene):
             self.mid_btn_pressed = True
             self.pan_initial_pos = event.screenPos()
             return
+        if btn == Qt.MouseButton.RightButton and self.textEditMode() and self.text_mask_edit_mode:
+            return super().mousePressEvent(event)
         
         if self.imgtrans_proj.img_valid:
             if self.textblock_mode and len(self.selectedItems()) == 0 and self.textEditMode():
@@ -680,7 +694,7 @@ class Canvas(QGraphicsScene):
         if btn == Qt.MouseButton.RightButton:
             if self.stroke_img_item is not None:
                 self.finish_erasing.emit(self.stroke_img_item)
-            if self.textEditMode() and not textblk_created:
+            if self.textEditMode() and not textblk_created and not self.text_mask_edit_mode:
                 self.context_menu_requested.emit(event.screenPos(), False)
         if btn == Qt.MouseButton.LeftButton:
             if self.stroke_img_item is not None:
@@ -778,6 +792,25 @@ class Canvas(QGraphicsScene):
             angle_act = menu.addAction(self.tr("Reset Angle"))
             squeeze_act = menu.addAction(self.tr("Squeeze"))
             menu.addSeparator()
+            free_transform_act = QAction(self.tr("Free Transform"), menu)
+            free_transform_act.setCheckable(True)
+            free_transform_act.setChecked(self.warp_edit_mode)
+            menu.addAction(free_transform_act)
+
+            text_eraser_act = QAction(self.tr("Text Eraser"), menu)
+            text_eraser_act.setCheckable(True)
+            text_eraser_act.setChecked(self.text_mask_edit_mode)
+            menu.addAction(text_eraser_act)
+
+            clear_text_eraser_act = menu.addAction(self.tr("Clear Text Mask"))
+
+            warp_menu = menu.addMenu(self.tr("Warp Preset"))
+            warp_reset = warp_menu.addAction(self.tr("Reset Warp"))
+            warp_arc_up = warp_menu.addAction(self.tr("Arc Up"))
+            warp_arc_down = warp_menu.addAction(self.tr("Arc Down"))
+            warp_arch = warp_menu.addAction(self.tr("Arch"))
+            warp_flag = warp_menu.addAction(self.tr("Flag"))
+            menu.addSeparator()
             translate_act = menu.addAction(self.tr("translate"))
             ocr_act = menu.addAction(self.tr("OCR"))
             ocr_translate_act = menu.addAction(self.tr("OCR and translate"))
@@ -806,6 +839,50 @@ class Canvas(QGraphicsScene):
                 self.reset_angle.emit()
             elif rst == squeeze_act:
                 self.squeeze_blk.emit()
+            elif rst == free_transform_act:
+                self.warp_edit_mode = not self.warp_edit_mode
+                if self.txtblkShapeControl is not None:
+                    self.txtblkShapeControl.setWarpEditing(self.warp_edit_mode)
+            elif rst == text_eraser_act:
+                self.text_mask_edit_mode = not self.text_mask_edit_mode
+            elif rst == clear_text_eraser_act:
+                sel = self.selected_text_items(sort=False)
+                if len(sel) == 0 and self.txtblkShapeControl.blk_item is not None:
+                    sel = [self.txtblkShapeControl.blk_item]
+                if len(sel) == 1:
+                    self.push_undo_command(ClearTextMaskCommand(sel[0]))
+            elif rst in {warp_reset, warp_arc_up, warp_arc_down, warp_arch, warp_flag}:
+                sel = self.selected_text_items(sort=False)
+                if len(sel) == 0 and self.txtblkShapeControl.blk_item is not None:
+                    sel = [self.txtblkShapeControl.blk_item]
+                for item in sel:
+                    blk = item.blk
+                    before = (getattr(blk, 'warp_mode', 'none'),
+                              copy.deepcopy(getattr(blk, 'warp_quad', None)),
+                              copy.deepcopy(getattr(blk, 'warp_mesh_size', None)),
+                              copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+                    if rst == warp_reset:
+                        after = ('none', None, None, None)
+                    else:
+                        amp = 0.18
+                        nx, ny = 5, 3
+                        mesh = []
+                        for j in range(ny):
+                            y = j / (ny - 1)
+                            for i in range(nx):
+                                x = i / (nx - 1)
+                                if rst == warp_arc_up:
+                                    dy = -amp * math.sin(math.pi * x)
+                                elif rst == warp_arc_down:
+                                    dy = amp * math.sin(math.pi * x)
+                                elif rst == warp_arch:
+                                    dy = -amp * math.sin(math.pi * x) * (1.0 - y)
+                                else:
+                                    dy = amp * math.sin(2 * math.pi * x)
+                                yy = max(0.0, min(1.0, y + dy))
+                                mesh.append([x, yy])
+                        after = ('mesh', None, [nx, ny], mesh)
+                    self.push_undo_command(WarpItemCommand(item, before, after, self.txtblkShapeControl))
             elif rst == translate_act:
                 self.run_blktrans.emit(-1)
             elif rst == ocr_act:
