@@ -5,6 +5,7 @@ from qtpy.QtCore import Signal, Qt
 
 from .custom_widget import SmallColorPickerLabel, SmallParamLabel, PanelArea, SmallSizeControlLabel, SmallSizeComboBox, SmallParamLabel, SmallSizeComboBox, SmallComboBox, TextCheckerLabel
 from utils.fontformat import FontFormat
+from utils.config import pcfg
 
 
 class TextShadowGroup(QGroupBox):
@@ -137,6 +138,12 @@ class TextGradientGroup(QGroupBox):
 class TextAdvancedFormatPanel(PanelArea):
 
     param_changed = Signal(str, object)
+    warp_edit_toggled = Signal(bool)
+    text_eraser_toggled = Signal(bool)
+    clear_text_mask_clicked = Signal()
+    warp_preset_clicked = Signal(str)
+    reset_angle_clicked = Signal()
+    squeeze_clicked = Signal()
 
     def __init__(self, panel_name: str, config_name: str, config_expand_name: str, on_format_changed: Callable):
         super().__init__(panel_name, config_name, config_expand_name)
@@ -177,6 +184,52 @@ class TextAdvancedFormatPanel(PanelArea):
         self.gradient_group = TextGradientGroup(self.on_format_changed)
         self.gradient_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
+        self.tools_group = QGroupBox(self.tr('Text Tools'))
+        self.free_transform_toggle = TextCheckerLabel(self.tr('Free Transform'))
+        self.free_transform_toggle.checkStateChanged.connect(self.warp_edit_toggled.emit)
+        self.text_eraser_toggle = TextCheckerLabel(self.tr('Text Eraser'))
+        self.text_eraser_toggle.checkStateChanged.connect(self.text_eraser_toggled.emit)
+
+        self.clear_text_mask_btn = QPushButton(self.tr('Clear Text Mask'))
+        self.clear_text_mask_btn.clicked.connect(self.clear_text_mask_clicked.emit)
+        self.reset_angle_btn = QPushButton(self.tr('Reset Angle'))
+        self.reset_angle_btn.clicked.connect(self.reset_angle_clicked.emit)
+        self.squeeze_btn = QPushButton(self.tr('Squeeze'))
+        self.squeeze_btn.clicked.connect(self.squeeze_clicked.emit)
+
+        self.warp_reset_btn = QPushButton(self.tr('Reset Warp'))
+        self.warp_reset_btn.clicked.connect(lambda: self.warp_preset_clicked.emit('reset'))
+        self.warp_arc_up_btn = QPushButton(self.tr('Arc Up'))
+        self.warp_arc_up_btn.clicked.connect(lambda: self.warp_preset_clicked.emit('arc_up'))
+        self.warp_arc_down_btn = QPushButton(self.tr('Arc Down'))
+        self.warp_arc_down_btn.clicked.connect(lambda: self.warp_preset_clicked.emit('arc_down'))
+        self.warp_arch_btn = QPushButton(self.tr('Arch'))
+        self.warp_arch_btn.clicked.connect(lambda: self.warp_preset_clicked.emit('arch'))
+        self.warp_flag_btn = QPushButton(self.tr('Flag'))
+        self.warp_flag_btn.clicked.connect(lambda: self.warp_preset_clicked.emit('flag'))
+
+        toggles_layout = QHBoxLayout()
+        toggles_layout.addWidget(self.free_transform_toggle)
+        toggles_layout.addWidget(self.text_eraser_toggle)
+
+        transform_layout = QHBoxLayout()
+        transform_layout.addWidget(self.reset_angle_btn)
+        transform_layout.addWidget(self.squeeze_btn)
+        transform_layout.addWidget(self.clear_text_mask_btn)
+
+        warp_layout = QHBoxLayout()
+        warp_layout.addWidget(self.warp_reset_btn)
+        warp_layout.addWidget(self.warp_arc_up_btn)
+        warp_layout.addWidget(self.warp_arc_down_btn)
+        warp_layout.addWidget(self.warp_arch_btn)
+        warp_layout.addWidget(self.warp_flag_btn)
+
+        tools_layout = QVBoxLayout(self.tools_group)
+        tools_layout.addLayout(toggles_layout)
+        tools_layout.addLayout(transform_layout)
+        tools_layout.addLayout(warp_layout)
+        self.tools_group.setVisible(bool(getattr(pcfg, 'move_text_tools_to_sidebar', False)))
+
         hlayout = QHBoxLayout()
         hlayout.addLayout(linespacing_type_layout)
         hlayout.addLayout(opacity_layout)
@@ -185,9 +238,20 @@ class TextAdvancedFormatPanel(PanelArea):
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
+        vlayout.addWidget(self.tools_group)
 
         self.setContentLayout(vlayout)
         self.vlayout = vlayout
+
+    def set_text_tools_visible(self, visible: bool):
+        self.tools_group.setVisible(bool(visible))
+        self.adjuset_size()
+
+    def set_warp_edit_mode_checked(self, checked: bool):
+        self.free_transform_toggle.setCheckState(bool(checked))
+
+    def set_text_eraser_checked(self, checked: bool):
+        self.text_eraser_toggle.setCheckState(bool(checked))
 
     def adjuset_size(self):
         TEXT_ADVANCED_PANEL_MAXH = 300

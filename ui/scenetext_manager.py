@@ -346,6 +346,7 @@ class SceneTextManager(QObject):
         self.textEditList.rearrange_blks.connect(self.on_rearrange_blks)
         self.formatpanel = textpanel.formatpanel
         self.formatpanel.textstyle_panel.apply_fontfmt.connect(self.onFormatTextblks)
+        self.formatpanel.bind_canvas(canvas)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
         self.textblk_item_list: List[TextBlkItem] = []
@@ -355,6 +356,14 @@ class SceneTextManager(QObject):
         self.hovering_transwidget : TransTextEdit = None
 
         self.prev_blkitem: TextBlkItem = None
+
+        if hasattr(self.mainwindow, 'configPanel') and hasattr(self.mainwindow.configPanel, 'text_tools_placement_changed'):
+            self.mainwindow.configPanel.text_tools_placement_changed.connect(self.on_text_tools_placement_changed)
+        self.on_text_tools_placement_changed(pcfg.move_text_tools_to_sidebar)
+
+    def on_text_tools_placement_changed(self, enabled: bool):
+        if hasattr(self.formatpanel, 'set_text_tools_visible'):
+            self.formatpanel.set_text_tools_visible(bool(enabled))
 
     def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None, current_editing_widget: Union[SourceTextEdit, TransTextEdit] = None):
         n_blk = len(self.textblk_item_list)

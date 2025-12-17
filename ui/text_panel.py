@@ -253,6 +253,7 @@ class FontFormatPanel(Widget):
     def __init__(self, app: QApplication, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.app = app
+        self.canvas = None
 
         self.vlayout = QVBoxLayout(self)
         self.vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -419,6 +420,27 @@ class FontFormatPanel(Widget):
 
         self.focusOnColorDialog = False
         C.active_format = self.global_format
+
+    def bind_canvas(self, canvas):
+        if self.canvas is canvas:
+            return
+        self.canvas = canvas
+
+        self.textadvancedfmt_panel.warp_edit_toggled.connect(self.canvas.setWarpEditMode)
+        self.textadvancedfmt_panel.text_eraser_toggled.connect(self.canvas.setTextMaskEditMode)
+        self.textadvancedfmt_panel.clear_text_mask_clicked.connect(self.canvas.clearTextMask)
+        self.textadvancedfmt_panel.warp_preset_clicked.connect(self.canvas.applyWarpPreset)
+        self.textadvancedfmt_panel.reset_angle_clicked.connect(self.canvas.triggerResetAngle)
+        self.textadvancedfmt_panel.squeeze_clicked.connect(self.canvas.triggerSqueeze)
+
+        self.canvas.warp_edit_mode_changed.connect(self.textadvancedfmt_panel.set_warp_edit_mode_checked)
+        self.canvas.text_mask_edit_mode_changed.connect(self.textadvancedfmt_panel.set_text_eraser_checked)
+
+        self.textadvancedfmt_panel.set_warp_edit_mode_checked(getattr(self.canvas, 'warp_edit_mode', False))
+        self.textadvancedfmt_panel.set_text_eraser_checked(getattr(self.canvas, 'text_mask_edit_mode', False))
+
+    def set_text_tools_visible(self, visible: bool):
+        self.textadvancedfmt_panel.set_text_tools_visible(visible)
 
     def global_mode(self):
         return id(C.active_format) == id(self.global_format)

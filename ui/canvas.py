@@ -192,6 +192,8 @@ class Canvas(QGraphicsScene):
     drop_open_folder = Signal(str)
     context_menu_requested = Signal(QPoint, bool)
     incanvas_selection_changed = Signal()
+    warp_edit_mode_changed = Signal(bool)
+    text_mask_edit_mode_changed = Signal(bool)
     switch_text_item = Signal(int, QKeyEvent)
 
     def __init__(self, parent=None):
@@ -769,8 +771,76 @@ class Canvas(QGraphicsScene):
     def setTextBlockMode(self, mode: bool):
         self.textblock_mode = mode
 
+    def setWarpEditMode(self, enabled: bool):
+        enabled = bool(enabled)
+        if self.warp_edit_mode == enabled:
+            return
+        self.warp_edit_mode = enabled
+        if self.txtblkShapeControl is not None:
+            self.txtblkShapeControl.setWarpEditing(self.warp_edit_mode)
+        self.warp_edit_mode_changed.emit(self.warp_edit_mode)
+
+    def setTextMaskEditMode(self, enabled: bool):
+        enabled = bool(enabled)
+        if self.text_mask_edit_mode == enabled:
+            return
+        self.text_mask_edit_mode = enabled
+        self.text_mask_edit_mode_changed.emit(self.text_mask_edit_mode)
+
+    def _selected_or_controlled_text_items(self):
+        sel = self.selected_text_items(sort=False)
+        if len(sel) == 0 and self.txtblkShapeControl.blk_item is not None:
+            sel = [self.txtblkShapeControl.blk_item]
+        return sel
+
+    def clearTextMask(self):
+        sel = self._selected_or_controlled_text_items()
+        if len(sel) == 1:
+            self.push_undo_command(ClearTextMaskCommand(sel[0]))
+
+    def applyWarpPreset(self, preset: str):
+        preset = str(preset)
+        sel = self._selected_or_controlled_text_items()
+        if len(sel) == 0:
+            return
+        for item in sel:
+            blk = item.blk
+            before = (getattr(blk, 'warp_mode', 'none'),
+                      copy.deepcopy(getattr(blk, 'warp_quad', None)),
+                      copy.deepcopy(getattr(blk, 'warp_mesh_size', None)),
+                      copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+            if preset == 'reset':
+                after = ('none', None, None, None)
+            else:
+                amp = 0.18
+                nx, ny = 5, 3
+                mesh = []
+                for j in range(ny):
+                    y = j / (ny - 1)
+                    for i in range(nx):
+                        x = i / (nx - 1)
+                        if preset == 'arc_up':
+                            dy = -amp * math.sin(math.pi * x)
+                        elif preset == 'arc_down':
+                            dy = amp * math.sin(math.pi * x)
+                        elif preset == 'arch':
+                            dy = -amp * math.sin(math.pi * x) * (1.0 - y)
+                        else:
+                            dy = amp * math.sin(2 * math.pi * x)
+                        yy = max(0.0, min(1.0, y + dy))
+                        mesh.append([x, yy])
+                after = ('mesh', None, [nx, ny], mesh)
+            self.push_undo_command(WarpItemCommand(item, before, after, self.txtblkShapeControl))
+
+    def triggerResetAngle(self):
+        self.reset_angle.emit()
+
+    def triggerSqueeze(self):
+        self.squeeze_blk.emit()
+
     def on_create_contextmenu(self, pos: QPoint, is_textpanel: bool):
         if self.textEditMode() and not self.creating_textblock:
+            move_tools_to_sidebar = bool(getattr(pcfg, 'move_text_tools_to_sidebar', False))
             menu = QMenu(self.gv)
             copy_act = menu.addAction(self.tr("Copy"))
             copy_act.setShortcut(QKeySequence.StandardKey.Copy)
@@ -789,27 +859,42 @@ class Canvas(QGraphicsScene):
 
             format_act = menu.addAction(self.tr("Apply font formatting"))
             layout_act = menu.addAction(self.tr("Auto layout"))
-            angle_act = menu.addAction(self.tr("Reset Angle"))
-            squeeze_act = menu.addAction(self.tr("Squeeze"))
-            menu.addSeparator()
-            free_transform_act = QAction(self.tr("Free Transform"), menu)
-            free_transform_act.setCheckable(True)
-            free_transform_act.setChecked(self.warp_edit_mode)
-            menu.addAction(free_transform_act)
+            angle_act = None
+            squeeze_act = None
+            free_transform_act = None
+            text_eraser_act = None
+            clear_text_eraser_act = None
+            warp_actions = {}
+            if not move_tools_to_sidebar:
+                angle_act = menu.addAction(self.tr("Reset Angle"))
+                squeeze_act = menu.addAction(self.tr("Squeeze"))
+                menu.addSeparator()
 
-            text_eraser_act = QAction(self.tr("Text Eraser"), menu)
-            text_eraser_act.setCheckable(True)
-            text_eraser_act.setChecked(self.text_mask_edit_mode)
-            menu.addAction(text_eraser_act)
+                free_transform_act = QAction(self.tr("Free Transform"), menu)
+                free_transform_act.setCheckable(True)
+                free_transform_act.setChecked(self.warp_edit_mode)
+                menu.addAction(free_transform_act)
 
-            clear_text_eraser_act = menu.addAction(self.tr("Clear Text Mask"))
+                text_eraser_act = QAction(self.tr("Text Eraser"), menu)
+                text_eraser_act.setCheckable(True)
+                text_eraser_act.setChecked(self.text_mask_edit_mode)
+                menu.addAction(text_eraser_act)
 
-            warp_menu = menu.addMenu(self.tr("Warp Preset"))
-            warp_reset = warp_menu.addAction(self.tr("Reset Warp"))
-            warp_arc_up = warp_menu.addAction(self.tr("Arc Up"))
-            warp_arc_down = warp_menu.addAction(self.tr("Arc Down"))
-            warp_arch = warp_menu.addAction(self.tr("Arch"))
-            warp_flag = warp_menu.addAction(self.tr("Flag"))
+                clear_text_eraser_act = menu.addAction(self.tr("Clear Text Mask"))
+
+                warp_menu = menu.addMenu(self.tr("Warp Preset"))
+                warp_reset = warp_menu.addAction(self.tr("Reset Warp"))
+                warp_arc_up = warp_menu.addAction(self.tr("Arc Up"))
+                warp_arc_down = warp_menu.addAction(self.tr("Arc Down"))
+                warp_arch = warp_menu.addAction(self.tr("Arch"))
+                warp_flag = warp_menu.addAction(self.tr("Flag"))
+                warp_actions = {
+                    warp_reset: 'reset',
+                    warp_arc_up: 'arc_up',
+                    warp_arc_down: 'arc_down',
+                    warp_arch: 'arch',
+                    warp_flag: 'flag',
+                }
             menu.addSeparator()
             translate_act = menu.addAction(self.tr("translate"))
             ocr_act = menu.addAction(self.tr("OCR"))
@@ -835,54 +920,18 @@ class Canvas(QGraphicsScene):
                 self.format_textblks.emit()
             elif rst == layout_act:
                 self.layout_textblks.emit()
-            elif rst == angle_act:
-                self.reset_angle.emit()
-            elif rst == squeeze_act:
-                self.squeeze_blk.emit()
-            elif rst == free_transform_act:
-                self.warp_edit_mode = not self.warp_edit_mode
-                if self.txtblkShapeControl is not None:
-                    self.txtblkShapeControl.setWarpEditing(self.warp_edit_mode)
-            elif rst == text_eraser_act:
-                self.text_mask_edit_mode = not self.text_mask_edit_mode
-            elif rst == clear_text_eraser_act:
-                sel = self.selected_text_items(sort=False)
-                if len(sel) == 0 and self.txtblkShapeControl.blk_item is not None:
-                    sel = [self.txtblkShapeControl.blk_item]
-                if len(sel) == 1:
-                    self.push_undo_command(ClearTextMaskCommand(sel[0]))
-            elif rst in {warp_reset, warp_arc_up, warp_arc_down, warp_arch, warp_flag}:
-                sel = self.selected_text_items(sort=False)
-                if len(sel) == 0 and self.txtblkShapeControl.blk_item is not None:
-                    sel = [self.txtblkShapeControl.blk_item]
-                for item in sel:
-                    blk = item.blk
-                    before = (getattr(blk, 'warp_mode', 'none'),
-                              copy.deepcopy(getattr(blk, 'warp_quad', None)),
-                              copy.deepcopy(getattr(blk, 'warp_mesh_size', None)),
-                              copy.deepcopy(getattr(blk, 'warp_mesh', None)))
-                    if rst == warp_reset:
-                        after = ('none', None, None, None)
-                    else:
-                        amp = 0.18
-                        nx, ny = 5, 3
-                        mesh = []
-                        for j in range(ny):
-                            y = j / (ny - 1)
-                            for i in range(nx):
-                                x = i / (nx - 1)
-                                if rst == warp_arc_up:
-                                    dy = -amp * math.sin(math.pi * x)
-                                elif rst == warp_arc_down:
-                                    dy = amp * math.sin(math.pi * x)
-                                elif rst == warp_arch:
-                                    dy = -amp * math.sin(math.pi * x) * (1.0 - y)
-                                else:
-                                    dy = amp * math.sin(2 * math.pi * x)
-                                yy = max(0.0, min(1.0, y + dy))
-                                mesh.append([x, yy])
-                        after = ('mesh', None, [nx, ny], mesh)
-                    self.push_undo_command(WarpItemCommand(item, before, after, self.txtblkShapeControl))
+            elif angle_act is not None and rst == angle_act:
+                self.triggerResetAngle()
+            elif squeeze_act is not None and rst == squeeze_act:
+                self.triggerSqueeze()
+            elif free_transform_act is not None and rst == free_transform_act:
+                self.setWarpEditMode(not self.warp_edit_mode)
+            elif text_eraser_act is not None and rst == text_eraser_act:
+                self.setTextMaskEditMode(not self.text_mask_edit_mode)
+            elif clear_text_eraser_act is not None and rst == clear_text_eraser_act:
+                self.clearTextMask()
+            elif rst in warp_actions:
+                self.applyWarpPreset(warp_actions[rst])
             elif rst == translate_act:
                 self.run_blktrans.emit(-1)
             elif rst == ocr_act:

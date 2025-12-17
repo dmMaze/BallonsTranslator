@@ -164,6 +164,7 @@ class ProgramConfig(Config):
     expand_teffect_panel: bool = True
     text_advanced_format_panel: bool = True
     expand_tadvanced_panel: bool = True
+    move_text_tools_to_sidebar: bool = False
 
     @staticmethod
     def load(cfg_path: str):
