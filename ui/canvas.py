@@ -859,15 +859,13 @@ class Canvas(QGraphicsScene):
 
             format_act = menu.addAction(self.tr("Apply font formatting"))
             layout_act = menu.addAction(self.tr("Auto layout"))
-            angle_act = None
-            squeeze_act = None
+            angle_act = menu.addAction(self.tr("Reset Angle"))
+            squeeze_act = menu.addAction(self.tr("Squeeze"))
             free_transform_act = None
             text_eraser_act = None
             clear_text_eraser_act = None
             warp_actions = {}
             if not move_tools_to_sidebar:
-                angle_act = menu.addAction(self.tr("Reset Angle"))
-                squeeze_act = menu.addAction(self.tr("Squeeze"))
                 menu.addSeparator()
 
                 free_transform_act = QAction(self.tr("Free Transform"), menu)
@@ -920,9 +918,9 @@ class Canvas(QGraphicsScene):
                 self.format_textblks.emit()
             elif rst == layout_act:
                 self.layout_textblks.emit()
-            elif angle_act is not None and rst == angle_act:
+            elif rst == angle_act:
                 self.triggerResetAngle()
-            elif squeeze_act is not None and rst == squeeze_act:
+            elif rst == squeeze_act:
                 self.triggerSqueeze()
             elif free_transform_act is not None and rst == free_transform_act:
                 self.setWarpEditMode(not self.warp_edit_mode)

@@ -430,8 +430,6 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.text_eraser_toggled.connect(self.canvas.setTextMaskEditMode)
         self.textadvancedfmt_panel.clear_text_mask_clicked.connect(self.canvas.clearTextMask)
         self.textadvancedfmt_panel.warp_preset_clicked.connect(self.canvas.applyWarpPreset)
-        self.textadvancedfmt_panel.reset_angle_clicked.connect(self.canvas.triggerResetAngle)
-        self.textadvancedfmt_panel.squeeze_clicked.connect(self.canvas.triggerSqueeze)
 
         self.canvas.warp_edit_mode_changed.connect(self.textadvancedfmt_panel.set_warp_edit_mode_checked)
         self.canvas.text_mask_edit_mode_changed.connect(self.textadvancedfmt_panel.set_text_eraser_checked)

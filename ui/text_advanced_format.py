@@ -142,8 +142,6 @@ class TextAdvancedFormatPanel(PanelArea):
     text_eraser_toggled = Signal(bool)
     clear_text_mask_clicked = Signal()
     warp_preset_clicked = Signal(str)
-    reset_angle_clicked = Signal()
-    squeeze_clicked = Signal()
 
     def __init__(self, panel_name: str, config_name: str, config_expand_name: str, on_format_changed: Callable):
         super().__init__(panel_name, config_name, config_expand_name)
@@ -192,10 +190,6 @@ class TextAdvancedFormatPanel(PanelArea):
 
         self.clear_text_mask_btn = QPushButton(self.tr('Clear Text Mask'))
         self.clear_text_mask_btn.clicked.connect(self.clear_text_mask_clicked.emit)
-        self.reset_angle_btn = QPushButton(self.tr('Reset Angle'))
-        self.reset_angle_btn.clicked.connect(self.reset_angle_clicked.emit)
-        self.squeeze_btn = QPushButton(self.tr('Squeeze'))
-        self.squeeze_btn.clicked.connect(self.squeeze_clicked.emit)
 
         self.warp_reset_btn = QPushButton(self.tr('Reset Warp'))
         self.warp_reset_btn.clicked.connect(lambda: self.warp_preset_clicked.emit('reset'))
@@ -213,8 +207,6 @@ class TextAdvancedFormatPanel(PanelArea):
         toggles_layout.addWidget(self.text_eraser_toggle)
 
         transform_layout = QHBoxLayout()
-        transform_layout.addWidget(self.reset_angle_btn)
-        transform_layout.addWidget(self.squeeze_btn)
         transform_layout.addWidget(self.clear_text_mask_btn)
 
         warp_layout = QHBoxLayout()
