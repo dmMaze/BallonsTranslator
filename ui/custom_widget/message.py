@@ -129,7 +129,7 @@ class ProgressMessageBox(QDialog):
     
     def __init__(self, task_name: str = None, show_stop_btn: bool = True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setModal(True)
 

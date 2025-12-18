@@ -307,7 +307,7 @@ class ImgtransThread(QThread):
         while True:
             # might freeze UI
             if self.translate_thread.isRunning() or self.inpaint_thread.isRunning() or self.ocr_thread.isRunning() or self.textdetect_thread.isRunning():
-                time.sleep(0.1)
+                time.sleep(0.05)
                 continue
             break
 
