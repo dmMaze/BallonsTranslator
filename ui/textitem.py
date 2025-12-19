@@ -6,7 +6,7 @@ from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGr
 from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
 from qtpy.QtGui import (QGradient, QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, 
                        QInputMethodEvent, QPainter, QPen, QColor, QTextCharFormat, QTextDocument, QLinearGradient, 
-                       QBrush, QPalette, QAbstractTextDocumentLayout, QImage, QTransform, QPolygonF)
+                       QBrush, QPalette, QAbstractTextDocumentLayout, QImage, QTransform, QPolygonF, QPainterPathStroker)
 
 from utils.textblock import TextBlock, FontFormat, TextAlignment, LineSpacingType
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
@@ -625,6 +625,8 @@ class TextBlkItem(QGraphicsTextItem):
         p = QPainter(out)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        stroker = QPainterPathStroker()
+        stroker.setWidth(1.5)
         for j in range(ny - 1):
             for i in range(nx - 1):
                 x0 = w * i / (nx - 1)
@@ -642,6 +644,7 @@ class TextBlkItem(QGraphicsTextItem):
                     continue
                 path = QPainterPath()
                 path.addPolygon(dst_poly)
+                path = stroker.createStroke(path).united(path)
                 p.save()
                 p.setClipPath(path)
                 p.setTransform(transform)
