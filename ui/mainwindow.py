@@ -1004,6 +1004,7 @@ class MainWindow(mainwindow_cls):
             self.navigator_dialog = NavigatorDialog(self)
             self.navigator_dialog.navigator.navigation_requested.connect(self.on_navigator_navigation)
             self.navigator_dialog.zoom_changed.connect(self.on_navigator_zoom_changed)
+            self.navigator_dialog.zoom_at_point.connect(self.on_navigator_zoom_at_point)
             self.navigator_dialog.viewport_update_requested.connect(self.update_navigator_viewport)
             
             # 连接画布缩放变化信号
@@ -1059,19 +1060,57 @@ class MainWindow(mainwindow_cls):
         
         # 获取画布视口信息
         gv = self.canvas.gv
-        scene_rect = self.canvas.sceneRect()
         
-        if scene_rect.width() <= 0 or scene_rect.height() <= 0:
+        # 获取原始图像大小（未缩放的 baseLayer.rect）
+        base_rect = self.canvas.baseLayer.rect()
+        if base_rect.width() <= 0 or base_rect.height() <= 0:
             return
         
-        # 获取可见区域
-        visible_rect = gv.mapToScene(gv.viewport().rect()).boundingRect()
+        img_width = base_rect.width()
+        img_height = base_rect.height()
+        
+        # 获取缩放因子
+        scale = self.canvas.scale_factor
+        if scale <= 0:
+            scale = 1.0
+        
+        # 获取视口在场景中的可见区域
+        viewport_rect = gv.viewport().rect()
+        visible_scene_rect = gv.mapToScene(viewport_rect).boundingRect()
+        
+        # 将场景坐标转换为 baseLayer 的本地坐标（即原始图像坐标）
+        vis_x = visible_scene_rect.x() / scale
+        vis_y = visible_scene_rect.y() / scale
+        vis_w = visible_scene_rect.width() / scale
+        vis_h = visible_scene_rect.height() / scale
+        
+        # 计算可见区域与图像区域的交集
+        # 图像区域是 (0, 0, img_width, img_height)
+        left = max(0.0, vis_x)
+        top = max(0.0, vis_y)
+        right = min(img_width, vis_x + vis_w)
+        bottom = min(img_height, vis_y + vis_h)
+        
+        # 如果视口完全包含图像（图像完全可见），则红框应覆盖整个缩略图
+        # 检查：如果可见宽度 >= 图像宽度 且 可见区域包含整个图像
+        if vis_w >= img_width and vis_x <= 0 and (vis_x + vis_w) >= img_width:
+            left = 0.0
+            right = img_width
+        if vis_h >= img_height and vis_y <= 0 and (vis_y + vis_h) >= img_height:
+            top = 0.0
+            bottom = img_height
         
         # 计算视口比例
-        x_ratio = max(0, visible_rect.x()) / scene_rect.width()
-        y_ratio = max(0, visible_rect.y()) / scene_rect.height()
-        width_ratio = min(1.0, visible_rect.width() / scene_rect.width())
-        height_ratio = min(1.0, visible_rect.height() / scene_rect.height())
+        x_ratio = left / img_width
+        y_ratio = top / img_height
+        width_ratio = (right - left) / img_width
+        height_ratio = (bottom - top) / img_height
+        
+        # 确保范围有效
+        x_ratio = max(0.0, min(1.0, x_ratio))
+        y_ratio = max(0.0, min(1.0, y_ratio))
+        width_ratio = max(0.0, min(1.0, width_ratio))
+        height_ratio = max(0.0, min(1.0, height_ratio))
         
         self.navigator_dialog.set_viewport(x_ratio, y_ratio, width_ratio, height_ratio)
     
@@ -1105,6 +1144,40 @@ class MainWindow(mainwindow_cls):
         if abs(new_scale - current_scale) > 0.001:
             factor = new_scale / current_scale
             self.canvas.scaleImage(factor)
+
+    def on_navigator_zoom_at_point(self, zoom_percentage: int, x_ratio: float, y_ratio: float):
+        """处理导航器中以指定位置为中心的缩放"""
+        if not self.imgtrans_proj.img_valid:
+            return
+        
+        # 获取原始图像大小
+        base_rect = self.canvas.baseLayer.rect()
+        img_width = base_rect.width()
+        img_height = base_rect.height()
+        
+        # 计算目标点在图像上的坐标
+        target_img_x = x_ratio * img_width
+        target_img_y = y_ratio * img_height
+        
+        # 计算新的缩放因子
+        new_scale = zoom_percentage / 100.0
+        current_scale = self.canvas.scale_factor
+        
+        if abs(new_scale - current_scale) > 0.001:
+            # 计算目标点在场景中的坐标（缩放前）
+            target_scene_x = target_img_x * current_scale
+            target_scene_y = target_img_y * current_scale
+            
+            # 执行缩放
+            factor = new_scale / current_scale
+            self.canvas.scaleImage(factor)
+            
+            # 计算目标点在场景中的新坐标（缩放后）
+            new_target_scene_x = target_img_x * new_scale
+            new_target_scene_y = target_img_y * new_scale
+            
+            # 将视图中心移动到目标点
+            self.canvas.gv.centerOn(new_target_scene_x, new_target_scene_y)
     
     def on_canvas_scale_changed(self):
         """画布缩放变化时更新导航器"""

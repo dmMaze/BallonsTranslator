@@ -461,6 +461,7 @@ class NavigatorDialog(QDialog):
     """Standalone navigator window with zoom controls"""
     
     zoom_changed = Signal(int)
+    zoom_at_point = Signal(int, float, float)  # zoom_percentage, x_ratio, y_ratio
     viewport_update_requested = Signal()
     
     def __init__(self, parent=None):
@@ -721,10 +722,19 @@ class NavigatorDialog(QDialog):
         self.zoom_changed.emit(new_zoom)
         
     def handle_wheel_zoom(self, event) -> None:
-        """Handle mouse wheel events for zoom control."""
+        """Handle mouse wheel events for zoom control.
+        
+        普通滚轮: +/- 1%
+        Ctrl+滚轮: +/- 5%
+        """
         delta = event.angleDelta().y()
         
-        zoom_step = 5
+        # 检查是否按住 Ctrl 键
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            zoom_step = 5
+        else:
+            zoom_step = 1
+        
         if delta > 0:
             zoom_increment = zoom_step
         elif delta < 0:
@@ -736,5 +746,20 @@ class NavigatorDialog(QDialog):
         new_zoom = max(1, min(1000, new_zoom))
         
         self.set_zoom_value(new_zoom)
-        self.zoom_changed.emit(new_zoom)
+        
+        # 获取鼠标在导航器缩略图上的位置比例
+        mouse_pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+        nav_widget = self.navigator
+        if nav_widget.image_rect.contains(mouse_pos):
+            # 计算鼠标相对于图像的比例位置
+            rel_x = mouse_pos.x() - nav_widget.image_rect.x()
+            rel_y = mouse_pos.y() - nav_widget.image_rect.y()
+            x_ratio = rel_x / nav_widget.image_rect.width()
+            y_ratio = rel_y / nav_widget.image_rect.height()
+            # 发射带位置的缩放信号
+            self.zoom_at_point.emit(new_zoom, x_ratio, y_ratio)
+        else:
+            # 鼠标不在图像区域，使用普通缩放
+            self.zoom_changed.emit(new_zoom)
+        
         event.accept()
