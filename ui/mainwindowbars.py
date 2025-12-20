@@ -377,8 +377,14 @@ class TitleBar(Widget):
         mergeToolAction.setShortcut(QKeySequence('Ctrl+Shift+M'))
         self.merge_tool_trigger = mergeToolAction.triggered
         
+        # 导航器工具
+        navigatorAction = QAction('导航器', self)
+        navigatorAction.setShortcut(QKeySequence('Alt+Z'))
+        self.navigator_trigger = navigatorAction.triggered
+        
         toolsMenu = QMenu(self.toolsToolBtn)
         toolsMenu.addAction(mergeToolAction)
+        toolsMenu.addAction(navigatorAction)
         self.toolsToolBtn.setMenu(toolsMenu)
         self.toolsToolBtn.setPopupMode(QToolButton.InstantPopup)
 

@@ -621,6 +621,9 @@ class MainWindow(mainwindow_cls):
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
             self.module_manager.handle_page_changed()
             self.drawingPanel.handle_page_changed()
+            # 更新导航器
+            self.update_navigator_image()
+            self.update_navigator_viewport()
             
         self.page_changing = False
 
@@ -644,6 +647,7 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
         self.titleBar.merge_tool_trigger.connect(self.on_open_merge_tool)
+        self.titleBar.navigator_trigger.connect(self.on_open_navigator)
 
         shortcutA = QShortcut(QKeySequence("A"), self)
         shortcutA.activated.connect(self.shortcutBefore)
@@ -991,6 +995,136 @@ class MainWindow(mainwindow_cls):
         # 显示结果
         total = success_count + fail_count
         QMessageBox.information(self, "完成", f"区域合并完成\n成功: {success_count}/{total}\n失败: {fail_count}/{total}")
+
+    def on_open_navigator(self):
+        """打开/关闭导航器窗口"""
+        if not hasattr(self, 'navigator_dialog') or self.navigator_dialog is None:
+            from .navigator_widget import NavigatorDialog
+            
+            self.navigator_dialog = NavigatorDialog(self)
+            self.navigator_dialog.navigator.navigation_requested.connect(self.on_navigator_navigation)
+            self.navigator_dialog.zoom_changed.connect(self.on_navigator_zoom_changed)
+            self.navigator_dialog.viewport_update_requested.connect(self.update_navigator_viewport)
+            
+            # 连接画布缩放变化信号
+            self.canvas.scalefactor_changed.connect(self.on_canvas_scale_changed)
+            self.canvas.gv.view_resized.connect(self.update_navigator_viewport)
+            
+            # 连接滚动条变化信号以实时更新视口
+            self.canvas.hscroll_bar.valueChanged.connect(self.update_navigator_viewport)
+            self.canvas.vscroll_bar.valueChanged.connect(self.update_navigator_viewport)
+            
+            # 连接鼠标位置变化信号
+            self.canvas.mouse_pos_changed.connect(self.on_canvas_mouse_pos_changed)
+            
+            # 加载配置
+            self.navigator_dialog.load_config()
+        
+        if self.navigator_dialog.isVisible():
+            # 如果已显示，则关闭（切换功能）
+            self.navigator_dialog.hide()
+        else:
+            # 显示导航器
+            self.navigator_dialog.show()
+            self.update_navigator_image()
+            self.update_navigator_viewport()
+            self.on_canvas_scale_changed()
+    
+    def update_navigator_image(self):
+        """更新导航器中的图像"""
+        if not hasattr(self, 'navigator_dialog') or self.navigator_dialog is None:
+            return
+        if not self.navigator_dialog.isVisible():
+            return
+        
+        if self.imgtrans_proj.img_valid:
+            # 使用当前显示的图像
+            if self.canvas.base_pixmap is not None:
+                self.navigator_dialog.set_image(self.canvas.base_pixmap)
+            elif self.imgtrans_proj.inpainted_valid:
+                from .misc import ndarray2pixmap
+                pixmap = ndarray2pixmap(self.imgtrans_proj.inpainted_array)
+                self.navigator_dialog.set_image(pixmap)
+        else:
+            self.navigator_dialog.set_image(None)
+    
+    def update_navigator_viewport(self):
+        """更新导航器中的视口矩形"""
+        if not hasattr(self, 'navigator_dialog') or self.navigator_dialog is None:
+            return
+        if not self.navigator_dialog.isVisible():
+            return
+        if not self.imgtrans_proj.img_valid:
+            return
+        
+        # 获取画布视口信息
+        gv = self.canvas.gv
+        scene_rect = self.canvas.sceneRect()
+        
+        if scene_rect.width() <= 0 or scene_rect.height() <= 0:
+            return
+        
+        # 获取可见区域
+        visible_rect = gv.mapToScene(gv.viewport().rect()).boundingRect()
+        
+        # 计算视口比例
+        x_ratio = max(0, visible_rect.x()) / scene_rect.width()
+        y_ratio = max(0, visible_rect.y()) / scene_rect.height()
+        width_ratio = min(1.0, visible_rect.width() / scene_rect.width())
+        height_ratio = min(1.0, visible_rect.height() / scene_rect.height())
+        
+        self.navigator_dialog.set_viewport(x_ratio, y_ratio, width_ratio, height_ratio)
+    
+    def on_navigator_navigation(self, x_ratio: float, y_ratio: float):
+        """处理导航器中的导航请求"""
+        if not self.imgtrans_proj.img_valid:
+            return
+        
+        scene_rect = self.canvas.sceneRect()
+        gv = self.canvas.gv
+        
+        # 计算目标场景坐标
+        target_x = x_ratio * scene_rect.width()
+        target_y = y_ratio * scene_rect.height()
+        
+        # 将视图中心移动到目标位置
+        gv.centerOn(target_x, target_y)
+        
+        # 更新视口显示
+        self.update_navigator_viewport()
+    
+    def on_navigator_zoom_changed(self, zoom_percentage: int):
+        """处理导航器中的缩放变化"""
+        if not self.imgtrans_proj.img_valid:
+            return
+        
+        # 计算新的缩放因子
+        new_scale = zoom_percentage / 100.0
+        current_scale = self.canvas.scale_factor
+        
+        if abs(new_scale - current_scale) > 0.001:
+            factor = new_scale / current_scale
+            self.canvas.scaleImage(factor)
+    
+    def on_canvas_scale_changed(self):
+        """画布缩放变化时更新导航器"""
+        if not hasattr(self, 'navigator_dialog') or self.navigator_dialog is None:
+            return
+        if not self.navigator_dialog.isVisible():
+            return
+        
+        zoom_percentage = int(self.canvas.scale_factor * 100)
+        self.navigator_dialog.set_zoom_value(zoom_percentage)
+        self.update_navigator_viewport()
+
+    def on_canvas_mouse_pos_changed(self, pos):
+        """画布鼠标位置变化时更新导航器"""
+        if not hasattr(self, 'navigator_dialog') or self.navigator_dialog is None:
+            return
+        if not self.navigator_dialog.isVisible():
+            return
+        
+        self.navigator_dialog.set_canvas_mouse_pos(pos)
 
     def on_req_update_pagetext(self):
         if self.canvas.text_change_unsaved():

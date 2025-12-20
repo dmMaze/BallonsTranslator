@@ -136,6 +136,12 @@ class CustomGV(QGraphicsView):
         self.hide_canvas.emit()
         return super().hideEvent(event)
 
+    def leaveEvent(self, event) -> None:
+        """鼠标离开画布时清除导航器的鼠标指示器"""
+        if self.canvas is not None:
+            self.canvas.mouse_pos_changed.emit(None)
+        return super().leaveEvent(event)
+
     def event(self, e):
         if isinstance(e, QNativeGestureEvent):
             if e.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
@@ -176,6 +182,9 @@ class Canvas(QGraphicsScene):
     scale_tool = Signal(QPointF)
     end_scale_tool = Signal()
     canvas_undostack_changed = Signal()
+    
+    # 鼠标位置变化信号（图像坐标）
+    mouse_pos_changed = Signal(object)  # QPointF or None
     
     imgtrans_proj: ProjImgTrans = None
     painting_pen = QPen()
@@ -554,6 +563,13 @@ class Canvas(QGraphicsScene):
         return textblk_created
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        # 发射鼠标位置信号（转换为图像坐标）
+        if self.imgtrans_proj and self.imgtrans_proj.img_valid:
+            scene_pos = event.scenePos()
+            # 转换为图像坐标（考虑缩放因子）
+            image_pos = scene_pos / self.scale_factor
+            self.mouse_pos_changed.emit(image_pos)
+        
         if self.mid_btn_pressed:
             new_pos = event.screenPos()
             delta_pos = new_pos - self.pan_initial_pos

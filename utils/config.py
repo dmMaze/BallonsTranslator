@@ -164,6 +164,17 @@ class ProgramConfig(Config):
     expand_teffect_panel: bool = True
     text_advanced_format_panel: bool = True
     expand_tadvanced_panel: bool = True
+    
+    # 导航器设置
+    navigator_x: int = -1
+    navigator_y: int = -1
+    navigator_width: int = 240
+    navigator_height: int = 300
+    navigator_show_mouse_indicator: bool = True
+    navigator_mouse_indicator_size: int = 4
+    navigator_mouse_indicator_color: List = field(default_factory=lambda: [255, 0, 0, 255])
+    navigator_show_viewport_cross: bool = False
+    navigator_viewport_color: List = field(default_factory=lambda: [255, 0, 0, 255])
 
     @staticmethod
     def load(cfg_path: str):
