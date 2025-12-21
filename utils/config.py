@@ -135,6 +135,7 @@ class ProgramConfig(Config):
     let_show_only_custom_fonts_flag: bool = False
     let_textstyle_indep_flag: bool = False
     text_styles_path: str = osp.join(shared.DEFAULT_TEXTSTYLE_DIR, 'default.json')
+    high_quality_warp_preview: bool = True
     fsearch_case: bool = False
     fsearch_whole_word: bool = False
     fsearch_regex: bool = False

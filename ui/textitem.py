@@ -19,6 +19,8 @@ TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
 
 
+from utils.config import pcfg
+
 class TextBlkItem(QGraphicsTextItem):
 
     begin_edit = Signal(int)
@@ -668,12 +670,18 @@ class TextBlkItem(QGraphicsTextItem):
             h = int(max(1, math.ceil(br.height())))
 
             device = painter.device()
-            dpr = float(getattr(device, "devicePixelRatioF", lambda: 1.0)() if device is not None else 1.0)
-            raster_scale = max(1.0, float(self.get_scale()) * dpr)
-            raster_scale = min(raster_scale, 8.0)
-            max_dim = 4096.0
-            raster_scale = min(raster_scale, max_dim / float(max(w, h)))
-            raster_scale = max(1.0, raster_scale)
+            is_export_render = isinstance(device, QImage)
+            use_high_quality = True if is_export_render else pcfg.high_quality_warp_preview
+
+            raster_scale = 1.0
+            if use_high_quality:
+                dpr = float(getattr(device, "devicePixelRatioF", lambda: 1.0)() if device is not None else 1.0)
+                raster_scale = max(1.0, float(self.get_scale()) * dpr)
+                raster_scale = min(raster_scale, 8.0)
+                max_dim = 4096.0
+                raster_scale = min(raster_scale, max_dim / float(max(w, h)))
+                raster_scale = max(1.0, raster_scale)
+
             rw = int(max(1, math.ceil(w * raster_scale)))
             rh = int(max(1, math.ceil(h * raster_scale)))
 
@@ -683,7 +691,8 @@ class TextBlkItem(QGraphicsTextItem):
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
             p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-            p.scale(raster_scale, raster_scale)
+            if use_high_quality:
+                p.scale(raster_scale, raster_scale)
             if self.background_pixmap is not None:
                 p.drawPixmap(QRect(0, 0, w, h), self.background_pixmap)
             self.document().drawContents(p, QRectF(0, 0, w, h))

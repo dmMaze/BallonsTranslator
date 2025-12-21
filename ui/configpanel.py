@@ -460,6 +460,9 @@ class ConfigPanel(Widget):
         self.let_textstyle_indep_checker, _ = generalConfigPanel.addCheckBox(self.tr('Independent text styles for each projects'))
         self.let_textstyle_indep_checker.stateChanged.connect(self.on_textstyle_indep_changed)
 
+        self.high_quality_warp_preview_checker, _ = generalConfigPanel.addCheckBox(self.tr('High Quality Warp Preview'))
+        self.high_quality_warp_preview_checker.stateChanged.connect(self.on_high_quality_warp_preview_changed)
+
         self.let_show_only_custom_fonts, sublock = generalConfigPanel.addCheckBox(self.tr("Show only custom fonts"))
         self.let_show_only_custom_fonts.stateChanged.connect(self.on_show_only_custom_fonts)
 
@@ -559,6 +562,11 @@ class ConfigPanel(Widget):
         pcfg.let_textstyle_indep_flag = self.let_textstyle_indep_checker.isChecked()
         self.reload_textstyle.emit(pcfg.let_textstyle_indep_flag)
 
+    def on_high_quality_warp_preview_changed(self):
+        pcfg.high_quality_warp_preview = self.high_quality_warp_preview_checker.isChecked()
+        if hasattr(self.parent(), 'canvas'):
+            self.parent().canvas.invalidateTextItemRenderCache()
+
     def on_rst_imgformat_changed(self):
         pcfg.imgsave_ext = '.' + self.rst_imgformat_combobox.currentText().lower()
 
@@ -649,6 +657,7 @@ class ConfigPanel(Widget):
         self.selectext_minimenu_checker.setChecked(pcfg.textselect_mini_menu)
         self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
         self.let_textstyle_indep_checker.setChecked(pcfg.let_textstyle_indep_flag)
+        self.high_quality_warp_preview_checker.setChecked(pcfg.high_quality_warp_preview)
         self.saladict_shortcut.setKeySequence(pcfg.saladict_shortcut)
         self.searchurl_combobox.setCurrentText(pcfg.search_url)
         self.ocr_config_panel.restoreEmptyOCRChecker.setChecked(pcfg.restore_ocr_empty)

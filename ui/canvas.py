@@ -436,6 +436,12 @@ class Canvas(QGraphicsScene):
         self.textLayer.setOpacity(transparency)
         self.text_transparency = transparency
 
+    def invalidateTextItemRenderCache(self):
+        for item in self.textLayer.childItems():
+            item.update()
+        self.textLayer.update()
+        self.update()
+
     def adjustScrollBar(self, scrollBar: QScrollBar, factor: float):
         scrollBar.setValue(int(factor * scrollBar.value() + ((factor - 1) * scrollBar.pageStep() / 2)))
 
