@@ -667,11 +667,23 @@ class TextBlkItem(QGraphicsTextItem):
             w = int(max(1, math.ceil(br.width())))
             h = int(max(1, math.ceil(br.height())))
 
-            base_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+            device = painter.device()
+            dpr = float(getattr(device, "devicePixelRatioF", lambda: 1.0)() if device is not None else 1.0)
+            raster_scale = max(1.0, float(self.get_scale()) * dpr)
+            raster_scale = min(raster_scale, 8.0)
+            max_dim = 4096.0
+            raster_scale = min(raster_scale, max_dim / float(max(w, h)))
+            raster_scale = max(1.0, raster_scale)
+            rw = int(max(1, math.ceil(w * raster_scale)))
+            rh = int(max(1, math.ceil(h * raster_scale)))
+
+            base_img = QImage(rw, rh, QImage.Format.Format_ARGB32_Premultiplied)
             base_img.fill(Qt.GlobalColor.transparent)
             p = QPainter(base_img)
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
             p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            p.scale(raster_scale, raster_scale)
             if self.background_pixmap is not None:
                 p.drawPixmap(QRect(0, 0, w, h), self.background_pixmap)
             self.document().drawContents(p, QRectF(0, 0, w, h))
@@ -682,7 +694,8 @@ class TextBlkItem(QGraphicsTextItem):
                 if self._text_mask_img is not None:
                     p = QPainter(base_img)
                     p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
-                    p.drawImage(0, 0, self._text_mask_img)
+                    p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+                    p.drawImage(QRect(0, 0, rw, rh), self._text_mask_img)
                     p.end()
 
             if self._has_warp():
@@ -692,7 +705,10 @@ class TextBlkItem(QGraphicsTextItem):
                 elif mode == 'mesh':
                     base_img = self._apply_mesh_warp(base_img, getattr(self.blk, 'warp_mesh_size', None), getattr(self.blk, 'warp_mesh', None))
 
-            painter.drawImage(br.topLeft(), base_img)
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            painter.drawImage(QRectF(br.topLeft(), br.size()), base_img, QRectF(0, 0, rw, rh))
+            painter.restore()
         else:
             super().paint(painter, option, widget)
 
