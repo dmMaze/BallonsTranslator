@@ -1,4 +1,5 @@
 import math, re
+import os.path as osp
 import numpy as np
 from typing import List, Union, Tuple
 
@@ -619,16 +620,137 @@ class TextBlkItem(QGraphicsTextItem):
         return out
 
     def _apply_mesh_warp(self, src: QImage, mesh_size: List, mesh: List) -> QImage:
+        try:
+            import cv2
+        except Exception:
+            return self._apply_mesh_warp_painter(src, mesh_size, mesh)
+        import hashlib
+
+        def _qimage_argb32premul_to_bgra(img: QImage) -> np.ndarray:
+            img = img.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+            iw, ih = img.width(), img.height()
+            bpl = img.bytesPerLine()
+            nbytes = int(getattr(img, "sizeInBytes", lambda: img.byteCount())())
+            ptr = img.bits()
+            try:
+                ptr.setsize(nbytes)
+            except Exception:
+                pass
+            buf = np.frombuffer(ptr, dtype=np.uint8)
+            if buf.size < bpl * ih:
+                buf = buf[: bpl * ih]
+            arr = buf.reshape((ih, bpl))[:, : iw * 4].reshape((ih, iw, 4)).copy()
+            return arr
+
+        def _tri_fill_map(mapx: np.ndarray, mapy: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndarray, sa: np.ndarray, sb: np.ndarray, sc: np.ndarray):
+            ax, ay = float(a[0]), float(a[1])
+            bx, by = float(b[0]), float(b[1])
+            cx, cy = float(c[0]), float(c[1])
+            den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+            if abs(den) < 1e-6:
+                return
+
+            xmin = int(max(0, math.floor(min(ax, bx, cx))))
+            xmax = int(min(mapx.shape[1] - 1, math.ceil(max(ax, bx, cx))))
+            ymin = int(max(0, math.floor(min(ay, by, cy))))
+            ymax = int(min(mapx.shape[0] - 1, math.ceil(max(ay, by, cy))))
+            if xmin > xmax or ymin > ymax:
+                return
+
+            xs = np.arange(xmin, xmax + 1, dtype=np.float32)
+            ys = np.arange(ymin, ymax + 1, dtype=np.float32)
+            gx, gy = np.meshgrid(xs, ys)
+
+            w1 = ((by - cy) * (gx - cx) + (cx - bx) * (gy - cy)) / den
+            w2 = ((cy - ay) * (gx - cx) + (ax - cx) * (gy - cy)) / den
+            w3 = 1.0 - w1 - w2
+            eps = 1e-3
+            mask = (w1 >= -eps) & (w2 >= -eps) & (w3 >= -eps)
+            if not mask.any():
+                return
+
+            src_x = w1 * float(sa[0]) + w2 * float(sb[0]) + w3 * float(sc[0])
+            src_y = w1 * float(sa[1]) + w2 * float(sb[1]) + w3 * float(sc[1])
+
+            mxx = mapx[ymin:ymax + 1, xmin:xmax + 1]
+            myy = mapy[ymin:ymax + 1, xmin:xmax + 1]
+            mxx[mask] = src_x[mask]
+            myy[mask] = src_y[mask]
+
+        w, h = src.width(), src.height()
+        nx, ny = int(mesh_size[0]), int(mesh_size[1])
+        if nx < 2 or ny < 2:
+            return src
+
+        src_np = _qimage_argb32premul_to_bgra(src)
+        mesh_hash = hashlib.blake2b(np.asarray(mesh, dtype=np.float32).tobytes(), digest_size=8).hexdigest()
+        cache_key = (int(w), int(h), int(nx), int(ny), str(mesh_hash))
+        cache_ok = (int(w) * int(h)) <= 2_000_000
+        mapx = None
+        mapy = None
+        if cache_ok and getattr(self, "_mesh_remap_cache_key", None) == cache_key:
+            cached = getattr(self, "_mesh_remap_cache_maps", None)
+            if isinstance(cached, tuple) and len(cached) == 2:
+                mapx, mapy = cached
+        if mapx is None or mapy is None:
+            mapx = np.full((h, w), -1.0, dtype=np.float32)
+            mapy = np.full((h, w), -1.0, dtype=np.float32)
+
+            dest = np.array(mesh, dtype=np.float32).reshape((ny, nx, 2))
+            dest[:, :, 0] *= float(w)
+            dest[:, :, 1] *= float(h)
+
+            for j in range(ny - 1):
+                v0 = float(j) / float(ny - 1)
+                v1 = float(j + 1) / float(ny - 1)
+                sy0 = v0 * float(h)
+                sy1 = v1 * float(h)
+                for i in range(nx - 1):
+                    u0 = float(i) / float(nx - 1)
+                    u1 = float(i + 1) / float(nx - 1)
+                    sx0 = u0 * float(w)
+                    sx1 = u1 * float(w)
+
+                    p00 = dest[j, i]
+                    p10 = dest[j, i + 1]
+                    p11 = dest[j + 1, i + 1]
+                    p01 = dest[j + 1, i]
+
+                    s00 = np.array([sx0, sy0], dtype=np.float32)
+                    s10 = np.array([sx1, sy0], dtype=np.float32)
+                    s11 = np.array([sx1, sy1], dtype=np.float32)
+                    s01 = np.array([sx0, sy1], dtype=np.float32)
+
+                    _tri_fill_map(mapx, mapy, p00, p10, p11, s00, s10, s11)
+                    _tri_fill_map(mapx, mapy, p00, p11, p01, s00, s11, s01)
+
+            if cache_ok:
+                self._mesh_remap_cache_key = cache_key
+                self._mesh_remap_cache_maps = (mapx, mapy)
+
+        warped = cv2.remap(
+            src_np,
+            mapx,
+            mapy,
+            interpolation=cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(0, 0, 0, 0),
+        )
+        out = QImage(warped.data, w, h, int(warped.strides[0]), QImage.Format.Format_ARGB32_Premultiplied).copy()
+        return out
+
+    def _apply_mesh_warp_painter(self, src: QImage, mesh_size: List, mesh: List) -> QImage:
         w, h = src.width(), src.height()
         nx, ny = int(mesh_size[0]), int(mesh_size[1])
         pts = [QPointF(float(x) * w, float(y) * h) for x, y in mesh]
         out = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
         out.fill(Qt.GlobalColor.transparent)
         p = QPainter(out)
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         stroker = QPainterPathStroker()
-        stroker.setWidth(1.5)
+        stroker.setWidth(2.5)
         for j in range(ny - 1):
             for i in range(nx - 1):
                 x0 = w * i / (nx - 1)
@@ -1372,7 +1494,13 @@ class TextBlkItem(QGraphicsTextItem):
         
         align_c = align_tl = align_tr = False
         if self.fontformat.vertical:
-            align_tr = True
+            alignment = self.fontformat.alignment
+            if alignment == TextAlignment.Left:
+                align_tl = True
+            elif alignment == TextAlignment.Right:
+                align_tr = True
+            else:
+                align_c = True
         else:
             alignment = self.fontformat.alignment
             if alignment == TextAlignment.Left:

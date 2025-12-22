@@ -819,7 +819,12 @@ class Canvas(QGraphicsScene):
                 after = ('none', None, None, None)
             else:
                 amp = 0.18
-                nx, ny = 5, 3
+                br = item.boundingRect()
+                w = float(br.width())
+                h = float(br.height())
+                target_cell_px = 64.0
+                nx = int(max(7, min(25, round(w / target_cell_px) + 1)))
+                ny = int(max(5, min(15, round(h / target_cell_px) + 1)))
                 mesh = []
                 for j in range(ny):
                     y = j / (ny - 1)

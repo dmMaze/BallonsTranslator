@@ -49,6 +49,7 @@ class ControlBlockItem(QGraphicsRectItem):
         self.drag_mode = self.DRAG_NONE
         self.setAcceptHoverEvents(True)
         self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setZValue(3 if (self.idx % 2 == 0) else 2)
         self.updateEdgeWidth(CBEDGE_WIDTH)
 
     def updateEdgeWidth(self, edge_width: float):
@@ -361,6 +362,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         b_rect = [b_rect.x(), b_rect.y(), b_rect.width(), b_rect.height()]
         corner_pnts = xywh2xyxypoly(np.array([b_rect])).reshape(-1, 2)
         center_pt = corner_pnts.mean(axis=0)
+        mesh_edge_pnts = None
         if self.warp_editing and self.blk_item is not None:
             blk = self.blk_item.blk
             if getattr(blk, 'warp_mode', 'none') == 'quad':
@@ -394,7 +396,15 @@ class TextBlkShapeControl(QGraphicsRectItem):
                         mj = int(round((ny - 1) / 2))
                         x0, y0 = mesh[mj * nx + mi]
                         center_pt = np.array([float(x0) * w, float(y0) * h], dtype=np.float32)
-        edge_pnts = (corner_pnts[[1, 2, 3, 0]] + corner_pnts) / 2
+                        p_top = mesh[0 * nx + mi]
+                        p_right = mesh[mj * nx + (nx - 1)]
+                        p_bottom = mesh[(ny - 1) * nx + mi]
+                        p_left = mesh[mj * nx + 0]
+                        mesh_edge_pnts = np.array([[float(p_top[0]) * w, float(p_top[1]) * h],
+                                                   [float(p_right[0]) * w, float(p_right[1]) * h],
+                                                   [float(p_bottom[0]) * w, float(p_bottom[1]) * h],
+                                                   [float(p_left[0]) * w, float(p_left[1]) * h]], dtype=np.float32)
+        edge_pnts = mesh_edge_pnts if mesh_edge_pnts is not None else (corner_pnts[[1, 2, 3, 0]] + corner_pnts) / 2
         pnts = [edge_pnts, corner_pnts]
         for ii, ctrlblock in enumerate(self.ctrlblock_group):
             ctrlblock.show()
@@ -420,6 +430,16 @@ class TextBlkShapeControl(QGraphicsRectItem):
         blk = self.blk_item.blk
         self._warp_before = (getattr(blk, 'warp_mode', 'none'), copy.deepcopy(getattr(blk, 'warp_quad', None)),
                              copy.deepcopy(getattr(blk, 'warp_mesh_size', None)), copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+
+    def _suggest_mesh_size(self, target_cell_px: float = 64.0, min_nx: int = 7, min_ny: int = 5, max_nx: int = 25, max_ny: int = 15):
+        w = float(self.rect().width())
+        h = float(self.rect().height())
+        target_cell_px = max(8.0, float(target_cell_px))
+        nx = int(max(min_nx, min(max_nx, round(w / target_cell_px) + 1)))
+        ny = int(max(min_ny, min(max_ny, round(h / target_cell_px) + 1)))
+        nx = max(2, nx)
+        ny = max(2, ny)
+        return nx, ny
 
     def _ensure_mesh_for_edit(self, nx: int = 5, ny: int = 3):
         if self.blk_item is None:
@@ -463,7 +483,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if self.blk_item is None:
             self._rise_fall_base = None
             return
-        self._ensure_mesh_for_edit(5, 3)
+        nx, ny = self._suggest_mesh_size()
+        self._ensure_mesh_for_edit(nx, ny)
         blk = self.blk_item.blk
         self._rise_fall_base = (copy.deepcopy(getattr(blk, 'warp_mesh_size', None)),
                                 copy.deepcopy(getattr(blk, 'warp_mesh', None)))
@@ -479,6 +500,12 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if mode != 'quad' or getattr(blk, 'warp_quad', None) is None:
             blk.warp_mode = 'quad'
             blk.warp_quad = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+
+        if ctrl_idx in {1, 3, 5, 7}:
+            nx, ny = self._suggest_mesh_size()
+            self._ensure_mesh_for_edit(nx, ny)
+            self._updateMeshFromHandle(ctrl_idx, local_pos)
+            return
 
         w = max(1.0, float(self.rect().width()))
         h = max(1.0, float(self.rect().height()))
@@ -523,7 +550,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         amp = max(-0.35, min(0.35, amp))
 
         if self._rise_fall_base is None:
-            self._ensure_mesh_for_edit(5, 3)
+            nx, ny = self._suggest_mesh_size()
+            self._ensure_mesh_for_edit(nx, ny)
             self._rise_fall_base = (copy.deepcopy(getattr(blk, 'warp_mesh_size', None)),
                                     copy.deepcopy(getattr(blk, 'warp_mesh', None)))
 
@@ -603,28 +631,34 @@ class TextBlkShapeControl(QGraphicsRectItem):
             return
 
         if ctrl_idx in {1, 3, 5, 7}:
-            edge_map = {1: (0, 1), 3: (1, 2), 5: (2, 3), 7: (3, 0)}
-            ia, ib = edge_map[ctrl_idx]
-            corners = [p00, p10, p11, p01]
-            ax, ay = float(corners[ia][0]) * w, float(corners[ia][1]) * h
-            bx, by = float(corners[ib][0]) * w, float(corners[ib][1]) * h
-            mx, my = (ax + bx) / 2.0, (ay + by) / 2.0
-            ddx = (x - mx) / w
-            ddy = (y - my) / h
+            mi = int(round((nx - 1) / 2))
+            mj = int(round((ny - 1) / 2))
+            if ctrl_idx == 1:
+                hx, hy = mesh[0 * nx + mi]
+            elif ctrl_idx == 5:
+                hx, hy = mesh[(ny - 1) * nx + mi]
+            elif ctrl_idx == 3:
+                hx, hy = mesh[mj * nx + (nx - 1)]
+            else:
+                hx, hy = mesh[mj * nx + 0]
+            ddx = dxn - float(hx)
+            ddy = dyn - float(hy)
 
             out_mesh = []
             for j in range(ny):
                 v = j / (ny - 1)
                 for i in range(nx):
                     u = i / (nx - 1)
+                    edge_u = 4.0 * u * (1.0 - u)
+                    edge_v = 4.0 * v * (1.0 - v)
                     if ctrl_idx == 1:
-                        weight = 1.0 - v
+                        weight = (1.0 - v) * edge_u
                     elif ctrl_idx == 5:
-                        weight = v
+                        weight = v * edge_u
                     elif ctrl_idx == 3:
-                        weight = u
+                        weight = u * edge_v
                     else:
-                        weight = 1.0 - u
+                        weight = (1.0 - u) * edge_v
                     x0, y0 = mesh[j * nx + i]
                     out_mesh.append([clamp01(float(x0) + ddx * weight), clamp01(float(y0) + ddy * weight)])
 
