@@ -288,6 +288,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         super().__init__()
         self.gv = parent
         self.warp_editing = False
+        self._controls_hidden = False
         self._warp_before = None
         self._rise_fall_base = None
         self.ctrlblock_group = [
@@ -407,7 +408,10 @@ class TextBlkShapeControl(QGraphicsRectItem):
         edge_pnts = mesh_edge_pnts if mesh_edge_pnts is not None else (corner_pnts[[1, 2, 3, 0]] + corner_pnts) / 2
         pnts = [edge_pnts, corner_pnts]
         for ii, ctrlblock in enumerate(self.ctrlblock_group):
-            ctrlblock.show()
+            if self._controls_hidden:
+                ctrlblock.hide()
+            else:
+                ctrlblock.show()
             is_corner = not ii % 2
             idx = ii // 2
             hitbox_xy = ctrlidx_to_hitbox[ii][:2]
@@ -415,7 +419,9 @@ class TextBlkShapeControl(QGraphicsRectItem):
             ctrlblock.setPos(pos[0], pos[1])
 
         if self.center_warp_ctrl is not None:
-            if self.warp_editing and self.blk_item is not None:
+            if self._controls_hidden:
+                self.center_warp_ctrl.hide()
+            elif self.warp_editing and self.blk_item is not None:
                 self.center_warp_ctrl.show()
                 cx = float(center_pt[0]) - self.center_warp_ctrl.edge_width / 2.0
                 cy = float(center_pt[1]) - self.center_warp_ctrl.edge_width / 2.0
@@ -697,12 +703,14 @@ class TextBlkShapeControl(QGraphicsRectItem):
         super().paint(painter, option, widget)
 
     def hideControls(self):
+        self._controls_hidden = True
         for ctrl in self.ctrlblock_group:
             ctrl.hide()
         if self.center_warp_ctrl is not None:
             self.center_warp_ctrl.hide()
 
     def showControls(self):
+        self._controls_hidden = False
         self.updateControlBlocks()
 
     def updateScale(self, scale: float):
@@ -731,12 +739,9 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
     def startEditing(self):
         self.setCursor(Qt.CursorShape.IBeamCursor)
-        for ctrlb in self.ctrlblock_group:
-            ctrlb.hide()
-        if self.center_warp_ctrl is not None:
-            self.center_warp_ctrl.hide()
+        self.hideControls()
 
     def endEditing(self):
         self.setCursor(Qt.CursorShape.SizeAllCursor)
         if self.isVisible():
-            self.updateControlBlocks()
+            self.showControls()
