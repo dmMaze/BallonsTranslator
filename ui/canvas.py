@@ -903,15 +903,15 @@ class Canvas(QGraphicsScene):
             self.on_textstack_changed()
 
     def on_drawstack_changed(self):
-        if self.num_pushed_drawstep != self.saved_drawundo_step:
+        if self.num_pushed_drawstep != self.saved_drawundo_step or self.num_pushed_textstep != self.saved_textundo_step:
             self.setProjSaveState(True)
-        elif self.num_pushed_textstep == self.saved_textundo_step:
+        else:
             self.setProjSaveState(False)
 
     def on_textstack_changed(self):
-        if self.num_pushed_textstep != self.saved_textundo_step:
+        if self.num_pushed_textstep != self.saved_textundo_step or self.num_pushed_drawstep != self.saved_drawundo_step:
             self.setProjSaveState(True)
-        elif self.num_pushed_drawstep == self.saved_drawundo_step:
+        else:
             self.setProjSaveState(False)
         self.textstack_changed.emit()
 

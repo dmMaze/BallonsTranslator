@@ -1,21 +1,21 @@
 import math
 import os
-import requests
+import errno
 import traceback
 import re
-import sys
 import shutil
 import os.path as osp
-from typing import List, Union
+from typing import List, Union, Optional, Any
 import hashlib
-
-from tqdm import tqdm
-from urllib.parse import urlparse
-from torch.hub import download_url_to_file as _torchhub_download_url_to_file, get_dir
-import requests
-import tqdm
-from py7zr import pack_7zarchive, unpack_7zarchive
+from dataclasses import dataclass, field, is_dataclass
+import tempfile
+import uuid
+from urllib.request import Request, urlopen
 import ssl
+
+import requests
+from tqdm import tqdm
+from py7zr import pack_7zarchive, unpack_7zarchive
 
 from . import shared
 from .logger import logger as LOGGER
@@ -23,6 +23,7 @@ from .logger import logger as LOGGER
 shutil.register_archive_format('7zip', pack_7zarchive, description='7zip archive')
 shutil.register_unpack_format('7zip', ['.7z'], unpack_7zarchive)
 
+READ_DATA_CHUNK = 128 * 1024
 
 def calculate_sha256(filename):
     hash_sha256 = hashlib.sha256()
@@ -110,43 +111,94 @@ def save_response_content(response, destination, file_size=None, chunk_size=3276
         if pbar is not None:
             pbar.close()
 
-# def load_file_from_url(url, model_dir=None, progress=True, file_name=None):
-#     """Load file form http url, will download models if necessary.
+def download_url_to_file(
+    url: str,
+    dst: str,
+    hash_prefix: Optional[str] = None,
+    progress: bool = True
+) -> None:
+    r"""Download object at the given URL to a local path.
 
-#     Ref:https://github.com/1adrianb/face-alignment/blob/master/face_alignment/utils.py
+    Args:
+        url (str): URL of the object to download
+        dst (str): Full path where object will be saved, e.g. ``/tmp/temporary_file``
+        hash_prefix (str, optional): If not None, the SHA256 downloaded file should start with ``hash_prefix``.
+            Default: None
+        progress (bool, optional): whether or not to display a progress bar to stderr
+            Default: True
 
-#     Args:
-#         url (str): URL to be downloaded.
-#         model_dir (str): The path to save the downloaded model. Should be a full path. If None, use pytorch hub_dir.
-#             Default: None.
-#         progress (bool): Whether to show the download progress. Default: True.
-#         file_name (str): The downloaded file name. If None, use the file name in the url. Default: None.
+    Example:
+        >>> # xdoctest: +REQUIRES(env:TORCH_DOCTEST_HUB)
+        >>> # xdoctest: +REQUIRES(POSIX)
+        >>> torch.hub.download_url_to_file(
+        ...     "https://s3.amazonaws.com/pytorch/models/resnet18-5c106cde.pth",
+        ...     "/tmp/temporary_file",
+        ... )
 
-#     Returns:
-#         str: The path to the downloaded file.
-#     """
-#     if model_dir is None:  # use the pytorch hub_dir
-#         hub_dir = get_dir()
-#         model_dir = os.path.join(hub_dir, 'checkpoints')
-
-#     os.makedirs(model_dir, exist_ok=True)
-
-#     parts = urlparse(url)
-#     filename = os.path.basename(parts.path)
-#     if file_name is not None:
-#         filename = file_name
-#     cached_file = os.path.abspath(os.path.join(model_dir, filename))
-#     if not os.path.exists(cached_file):
-#         print(f'Downloading: "{url}" to {cached_file}\n')
-#         download_url_to_file(url, cached_file, hash_prefix=None, progress=progress)
-#     return cached_file
-
-
-def torchhub_download_url_to_file(url: str, dst: str, progress: bool = True):
+    """
     original_ctx = ssl._create_default_https_context
     ssl._create_default_https_context = ssl._create_unverified_context  # https://stackoverflow.com/questions/50236117/scraping-ssl-certificate-verify-failed-error-for-http-en-wikipedia-org
-    _torchhub_download_url_to_file(url, dst, progress=progress)
-    ssl._create_default_https_context = original_ctx
+
+    file_size = None
+    req = Request(url, headers={"User-Agent": "torch.hub"})
+    u = urlopen(req)
+    meta = u.info()
+    if hasattr(meta, "getheaders"):
+        content_length = meta.getheaders("Content-Length")
+    else:
+        content_length = meta.get_all("Content-Length")
+    if content_length is not None and len(content_length) > 0:
+        file_size = int(content_length[0])
+
+    # We deliberately save it in a temp file and move it after
+    # download is complete. This prevents a local working checkpoint
+    # being overridden by a broken download.
+    # We deliberately do not use NamedTemporaryFile to avoid restrictive
+    # file permissions being applied to the downloaded file.
+    dst = os.path.expanduser(dst)
+    for _ in range(tempfile.TMP_MAX):
+        tmp_dst = dst + "." + uuid.uuid4().hex + ".partial"
+        try:
+            f = open(tmp_dst, "w+b")
+        except FileExistsError:
+            continue
+        break
+    else:
+        raise FileExistsError(errno.EEXIST, "No usable temporary file name found")
+
+    try:
+        if hash_prefix is not None:
+            sha256 = hashlib.sha256()
+        with tqdm(
+            total=file_size,
+            disable=not progress,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as pbar:
+            while True:
+                buffer = u.read(READ_DATA_CHUNK)
+                if len(buffer) == 0:
+                    break
+                f.write(buffer)  # type: ignore[possibly-undefined]
+                if hash_prefix is not None:
+                    sha256.update(buffer)  # type: ignore[possibly-undefined]
+                pbar.update(len(buffer))
+
+        f.close()
+        ssl._create_default_https_context = original_ctx
+        if hash_prefix is not None:
+            digest = sha256.hexdigest()  # type: ignore[possibly-undefined]
+            if digest[: len(hash_prefix)] != hash_prefix:
+                raise RuntimeError(
+                    f'invalid hash value (expected "{hash_prefix}", got "{digest}")'
+                )
+        shutil.move(f.name, dst)
+    finally:
+        f.close()
+        if os.path.exists(f.name):
+            os.remove(f.name)
+
 
 def check_local_file(local_file: str, sha256_precal: str = None, cache_hash: bool = False):
 
@@ -175,52 +227,20 @@ def get_filename_from_url(url: str, default: str = '') -> str:
     return default
 
 
-def download_url_with_progressbar(url: str, path: str,):
-    if os.path.basename(path) in ('.', '') or os.path.isdir(path):
-        new_filename = get_filename_from_url(url)
-        if not new_filename:
-            raise Exception('Could not determine filename')
-        path = os.path.join(path, new_filename)
+@dataclass
+class DownloadContext:
+    downloading_file: str = None
+    src_url: str = None
+    save_path: str = None
 
-    headers = {}
-    downloaded_size = 0
-    # the resume downloading here is buggy when the local file is corrupted or over-sized or intended to be replaced
-    # if os.path.isfile(path):  # its actually buggy
-    #     downloaded_size = os.path.getsize(path)
-    #     headers['Range'] = 'bytes=%d-' % downloaded_size
-    #     headers['Accept-Encoding'] = 'deflate'
 
-    r = requests.get(url, stream=True, allow_redirects=True, headers=headers)
-    if downloaded_size and r.headers.get('Accept-Ranges') != 'bytes':
-        print('Error: Webserver does not support partial downloads. Restarting from the beginning.')
-        r = requests.get(url, stream=True, allow_redirects=True)
-        downloaded_size = 0
-    total = int(r.headers.get('content-length', 0))
-    chunk_size = 1024
+    def clear(self):
+        self.downloading_file = None
+        self.src_url = None
+        self.save_path = None
 
-    if r.ok:
-        with tqdm.tqdm(
-            desc=os.path.basename(path),
-            initial=downloaded_size,
-            total=total+downloaded_size,
-            unit='iB',
-            unit_scale=True,
-            unit_divisor=chunk_size,
-        ) as bar:
-            with open(path, 'ab' if downloaded_size else 'wb') as f:
-                is_tty = sys.stdout.isatty()
-                downloaded_chunks = 0
-                for data in r.iter_content(chunk_size=chunk_size):
-                    size = f.write(data)
-                    bar.update(size)
 
-                    # Fallback for non TTYs so output still shown
-                    downloaded_chunks += 1
-                    if not is_tty and downloaded_chunks % 1000 == 0:
-                        print(bar)
-    else:
-        raise Exception(f'Couldn\'t resolve url: "{url}" (Error: {r.status_code})')
-
+DOWNLOAD_CONTEXT = DownloadContext()
 
 
 def try_download_files(url: str, 
@@ -256,11 +276,9 @@ def try_download_files(url: str,
 
             if gdrive_file_id is not None:
                 download_file_from_google_drive(gdrive_file_id, savep)
-            elif download_method == 'torch_hub':
-                LOGGER.info(f'downloading {savep} from {download_url} ...')
-                torchhub_download_url_to_file(download_url, savep)
             else:
-                download_url_with_progressbar(download_url, savep)
+                LOGGER.info(f'downloading {savep} from {download_url} ...')
+                download_url_to_file(download_url, savep)
             file_exists, valid_hash, sha256_calculated = check_local_file(savep, sha256_precal, cache_hash=cache_hash)
             if not file_exists:
                 raise Exception(f'Some how the downloaded {savep} doesnt exists.')
@@ -312,7 +330,7 @@ def download_and_check_files(url: str,
             save_files = _save_files
 
         return files, save_files, sha256_pre_calculated
-    
+
     def _all_valid(save_files: List[str] = None, sha256_pre_calculated: List[str] = None,):
         for savep, sha256_precal in zip(save_files, sha256_pre_calculated):
             file_exists, valid_hash, sha256_calculated = check_local_file(savep, sha256_precal, cache_hash=True)

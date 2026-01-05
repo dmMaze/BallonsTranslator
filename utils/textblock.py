@@ -40,11 +40,16 @@ class TextBlock:
     src_is_vertical: bool = None
     _detected_font_size: float = -1
     det_model: str = None
+    label: str = None # ysg yolo label
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
 
     fontformat: FontFormat = field(default_factory=lambda: FontFormat())
+
+    # 字体识别相关属性
+    _detected_font_name: str = ""  # 识别出的字体名称
+    _detected_font_confidence: float = 0.0  # 识别置信度
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())
 

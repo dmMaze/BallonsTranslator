@@ -1,4 +1,6 @@
 # coding:utf-8
+from qtpy.QtGui import QColor
+
 
 class LinuxWindowEffect:
     """ Linux window effect """
@@ -25,13 +27,42 @@ class LinuxWindowEffect:
         """
         pass
 
-    def setMicaEffect(self, hWnd):
+    def setBorderAccentColor(self, hWnd, color: QColor):
+        """ Set the border color of the window
+
+        Parameters
+        ----------
+        hWnd: int or `sip.voidptr`
+            Window handle
+
+        color: QColor
+            Border Accent color
+        """
+        pass
+
+    def removeBorderAccentColor(self, hWnd):
+        """ Remove the border color of the window
+
+        Parameters
+        ----------
+        hWnd: int or `sip.voidptr`
+            Window handle
+        """
+        pass
+
+    def setMicaEffect(self, hWnd, isDarkMode=False, isAlt=False):
         """ Add mica effect to the window (Win11 only)
 
         Parameters
         ----------
         hWnd: int or `sip.voidptr`
             Window handle
+
+        isDarkMode: bool
+            whether to use dark mode mica effect
+
+        isAlt: bool
+            whether to use mica alt effect
         """
         pass
 
@@ -116,6 +147,16 @@ class LinuxWindowEffect:
             Window handle
         """
         pass
+
+    @staticmethod
+    def disableMaximizeButton(hWnd):
+        """ Disable the maximize button of window
+
+        Parameters
+        ----------
+        hWnd : int or `sip.voidptr`
+            Window handle
+        """
 
     def enableBlurBehindWindow(self, hWnd):
         """ enable the blur effect behind the whole client
