@@ -49,7 +49,7 @@ class PercentageLineEdit(QLineEdit):
 
     def __init__(self, default_value: str = '100', parent=None) -> None:
         super().__init__(default_value, parent=parent)
-        validator = CustomIntValidator(0, 100, 3)
+        validator = CustomIntValidator(0, 101, 3)
         self.setValidator(validator)
         self.textEdited.connect(self.on_text_edited)
         self._edited = False

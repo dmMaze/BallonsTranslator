@@ -13,8 +13,8 @@ elif sys.platform == "darwin":
     from ..mac_window_effect import MacWindowEffect as WindowEffect
     from ..mac_utils import MacMoveResize as FramelessMoveResize
 else:
-    from .linux import LinuxFramelessWindow as FramelessWindow
-    from .linux import LinuxWindowEffect as WindowEffect
-    from .utils.linux_utils import LinuxMoveResize as FramelessMoveResize
+    from .linux_frameless_window import LinuxFramelessWindow as FramelessWindow
+    from ..linux_window_effect import LinuxWindowEffect as WindowEffect
+    from ..linux_utils import LinuxMoveResize as FramelessMoveResize
 
     AcrylicWindow = FramelessWindow

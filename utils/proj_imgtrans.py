@@ -10,7 +10,7 @@ from PIL import Image
 from .logger import logger as LOGGER
 from .io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
 from .textblock import TextBlock, FontFormat
-from .config import pcfg
+from .config import pcfg, RunStatus
 from . import shared
 from .exceptions import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException
 
@@ -96,6 +96,7 @@ class ProjImgTrans:
         self.pages: Dict[str, List[TextBlock]] = {}
         self._pagename2idx = {}
         self._idx2pagename = {}
+        self._image_info = {}
 
         self._fuzzy_inpainted_list = None
 
@@ -177,6 +178,25 @@ class ProjImgTrans:
                 self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
         except Exception as e:
             raise ProjectNotSupportedException(e)
+        
+        if 'image_info' in proj_dict:
+            self._image_info = proj_dict['image_info']
+        else:
+            self._image_info = {}
+
+        for p in self.pages:
+            if p not in self._image_info:
+                self._image_info[p] = {}
+            img_info = self._image_info[p]
+            if 'finish_code' not in img_info:
+                page_blklist = self.pages[p]
+                has_empty_blk = len(page_blklist) == 0 or \
+                    any(not blk.text or len(blk.text) == 0 for blk in page_blklist)
+                if has_empty_blk:
+                    img_info['finish_code'] = 0
+                else:
+                    img_info['finish_code'] = RunStatus.FIN_ALL
+            
         set_img_failed = False
         if 'current_img' in proj_dict:
             current_img = proj_dict['current_img']
@@ -186,10 +206,20 @@ class ProjImgTrans:
                 set_img_failed = True
         else:
             set_img_failed = True
-            LOGGER.warning(f'{current_img} not found.')
+
         if set_img_failed:
             if len(self.pages) > 0:
                 self.set_current_img_byidx(0)
+
+    def get_page_progress(self, pagename: str):
+        fin_code = self._image_info[pagename]['finish_code']
+        return (fin_code & pcfg.module.finish_code) == pcfg.module.finish_code
+
+    def set_page_progress(self, pagename, code):
+        self._image_info[pagename]['finish_code'] = code 
+
+    def update_page_progress(self, pagename, code):
+        self._image_info[pagename]['finish_code'] |= code 
 
     def load_translation_from_txt(self, file_path: str):
         page_list = parse_txt_translation(file_path)
@@ -290,10 +320,12 @@ class ProjImgTrans:
         self.pages = {}
         self._pagename2idx = {}
         self._idx2pagename = {}
+        self._image_info = {}
         for ii, imgname in enumerate(imglist):
             self.pages[imgname] = []
             self._pagename2idx[imgname] = ii
             self._idx2pagename[ii] = imgname
+            self._image_info[imgname] = {'finish_code': 0}
         self.set_current_img_byidx(0)
         self.save()
         
@@ -315,17 +347,23 @@ class ProjImgTrans:
 
     def to_dict(self) -> Dict:
         pages = self.pages.copy()
-        pages.update(self.not_found_pages)
+        pages.update(self.not_found_pages)        
+        image_info = self._image_info.copy()
         return {
             'directory': self.directory,
             'pages': pages,
             'current_img': self.current_img,
+            'image_info': image_info,
         }
 
     def read_img(self, imgname: str) -> np.ndarray:
         if imgname not in self.pages:
             raise ImgnameNotInProjectException
-        return imread(osp.join(self.directory, imgname))
+        img_path = osp.join(self.directory, imgname)
+        img = imread(img_path)
+        h, w = img.shape[:2]
+        self._image_info[imgname].update({'width': w, 'height': h})
+        return img
 
     def save_mask(self, img_name, mask: np.ndarray):
         imwrite(self.get_mask_path(img_name), mask, ext=pcfg.intermediate_imgsave_ext)

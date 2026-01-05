@@ -54,7 +54,7 @@ FORMAT = (
 class ColoredLogger(logging.Logger):
 
     def __init__(self, name):
-        logging.Logger.__init__(self, name, logging.INFO)
+        logging.Logger.__init__(self, name, logging.WARNING)
 
         color_formatter = ColoredFormatter(FORMAT)
 
