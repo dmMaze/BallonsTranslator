@@ -1073,8 +1073,16 @@ class SceneTextManager(QObject):
         for ii, blk_item in enumerate(self.textblk_item_list):
             if sel_ids is not None and ii not in sel_ids:
                 continue
-            blk_item.idx = ii
-            self.pairwidget_list[ii].updateIndex(ii)
+
+            # 只有当索引确实发生变化时才更新，并触发重绘
+            if blk_item.idx != ii:
+                blk_item.idx = ii
+                self.pairwidget_list[ii].updateIndex(ii)
+                blk_item.update()  # <--- 这是关键的新增行
+            else:
+                # 即使索引没变，也确保右侧面板的ID是最新的
+                self.pairwidget_list[ii].updateIndex(ii)
+
         cl = self.textEditList.checked_list
         if len(cl) != 0:
             cl.sort(key=lambda x: x.idx)

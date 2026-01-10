@@ -342,51 +342,57 @@ class Canvas(QGraphicsScene):
         self.baseLayer.setScale(scale)
         self.setSceneRect(0, 0, self.baseLayer.sceneBoundingRect().width(), self.baseLayer.sceneBoundingRect().height())
 
+
     def render_result_img(self):
+        # 设置渲染标志位
+        TextBlkItem.is_rendering_output = True
+        try:
+            self.inpaintLayer.hide()
+            tlayer_opacity_before = self.textLayer.opacity()
+            tlayer_visible = self.textLayer.isVisible()
+            if tlayer_opacity_before != 1:
+                self.textLayer.setOpacity(1)
+            if not tlayer_visible:
+                self.textLayer.show()
+            scale_before = self.scale_factor
+            if scale_before != 1:
+                hb_pos = self.hscroll_bar.value()
+                vb_pos = self.vscroll_bar.value()
+                self._set_scene_scale(1)
 
-        self.inpaintLayer.hide()
-        tlayer_opacity_before = self.textLayer.opacity()
-        tlayer_visible = self.textLayer.isVisible()
-        if tlayer_opacity_before != 1:
-            self.textLayer.setOpacity(1)
-        if not tlayer_visible:
-            self.textLayer.show()
-        scale_before = self.scale_factor
-        if scale_before != 1:
-            hb_pos = self.hscroll_bar.value()
-            vb_pos = self.vscroll_bar.value()
-            self._set_scene_scale(1)
+            self.clearSelection()
+            if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
+                blk_item = self.txtblkShapeControl.blk_item
+                if blk_item.is_editting():
+                    blk_item.endEdit(keep_focus=False)
+                if blk_item.isSelected():
+                    blk_item.setSelected(False)
 
-        self.clearSelection()
-        if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
-            blk_item = self.txtblkShapeControl.blk_item
-            if blk_item.is_editting():
-                blk_item.endEdit(keep_focus=False)
-            if blk_item.isSelected():
-                blk_item.setSelected(False)
+            result = ndarray2pixmap(self.imgtrans_proj.inpainted_array, return_qimg=True)
+            canvas_sz = self.img_window_size()
+            painter = QPainter(result)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        result = ndarray2pixmap(self.imgtrans_proj.inpainted_array, return_qimg=True)
-        canvas_sz = self.img_window_size()
-        painter = QPainter(result)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
+            self.render(painter, rect, rect)
+            painter.end()
 
-        rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
-        self.render(painter, rect, rect)   #  produce blurred result if target/source rect not specified #320
-        painter.end()
-        
-        if tlayer_opacity_before != 1:
-            self.textLayer.setOpacity(tlayer_opacity_before)
-        if not tlayer_visible:
-            self.textLayer.hide()
-        if scale_before != 1:
-            self._set_scene_scale(scale_before)
-            if self.hscroll_bar.value() != hb_pos:
-                self.hscroll_bar.setValue(hb_pos)
-            if self.vscroll_bar.value() != vb_pos:
-                self.vscroll_bar.setValue(vb_pos)
-        self.inpaintLayer.show()
+            if tlayer_opacity_before != 1:
+                self.textLayer.setOpacity(tlayer_opacity_before)
+            if not tlayer_visible:
+                self.textLayer.hide()
+            if scale_before != 1:
+                self._set_scene_scale(scale_before)
+                if self.hscroll_bar.value() != hb_pos:
+                    self.hscroll_bar.setValue(hb_pos)
+                if self.vscroll_bar.value() != vb_pos:
+                    self.vscroll_bar.setValue(vb_pos)
+            self.inpaintLayer.show()
 
-        return result
+            return result
+        finally:
+            # 确保在函数结束时恢复标志位
+            TextBlkItem.is_rendering_output = False
     
     def updateLayers(self):
         

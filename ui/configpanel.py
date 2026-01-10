@@ -2,11 +2,12 @@ from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QPushButton, QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
-from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
+from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent, QDoubleValidator
 
 from .custom_widget import ConfigComboBox, Widget
 from utils.config import pcfg
 from utils import shared as C
+from . import shared_widget as shared
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 
@@ -453,6 +454,35 @@ class ConfigPanel(Widget):
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region.'))
 
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
+        # <--- 在这里添加新的显示ID控件 --->
+
+        # 1. 创建一个水平布局来容纳ID相关的控件
+        id_display_layout = QHBoxLayout()
+
+        # 2. 添加“显示文本框ID”的复选框
+        self.show_text_id_checker, sublock_id = generalConfigPanel.addCheckBox(self.tr('Show Textblock ID'))
+        self.show_text_id_checker.stateChanged.connect(self.on_show_text_id_changed)
+
+        # 3. 添加“ID字体大小”的输入框
+        id_size_label = QLabel(self.tr("ID Font Size:"))
+        self.text_id_size_edit = QLineEdit()
+        self.text_id_size_edit.setValidator(QDoubleValidator(5.0, 30.0, 1))  # 限制大小范围为 5.0 - 30.0，1位小数
+        self.text_id_size_edit.setFixedWidth(60)
+        self.text_id_size_edit.editingFinished.connect(self.on_text_id_size_changed)
+
+        # 4. 将控件添加到水平布局中
+        id_display_layout.addWidget(id_size_label)
+        id_display_layout.addWidget(self.text_id_size_edit)
+        id_display_layout.addStretch()
+
+        # 5. 将这个水平布局添加到复选框所在的 sublock 中
+        sublock_id.layout().addLayout(id_display_layout)
+
+        # 6. 初始时，根据复选框状态决定大小输入框是否可用
+        self.text_id_size_edit.setEnabled(self.show_text_id_checker.isChecked())
+
+        # <--- 添加显示ID控件代码结束 --->
+
         self.let_uppercase_checker, _ = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
 
@@ -509,6 +539,33 @@ class ConfigPanel(Widget):
         hlayout.setContentsMargins(0, 0, 0, 0)
 
         self.configTable.expandAll()
+
+    # <--- 新增ID显示控件函数 --->
+    def _force_redraw_text_items(self):
+        """遍历并强制重绘所有文本框"""
+        if shared.canvas and shared.st_manager:
+            for item in shared.st_manager.textblk_item_list:
+                item.update()
+
+    def on_show_text_id_changed(self):
+        is_checked = self.show_text_id_checker.isChecked()
+        pcfg.show_text_id = is_checked
+        self.text_id_size_edit.setEnabled(is_checked)
+        # 使用新的强制刷新方法
+        self._force_redraw_text_items()
+
+    def on_text_id_size_changed(self):
+        try:
+            size = float(self.text_id_size_edit.text())
+            # 只有当值确实改变时才更新和重绘
+            if pcfg.text_id_font_size != size:
+                pcfg.text_id_font_size = size
+                # 使用新的强制刷新方法
+                self._force_redraw_text_items()
+        except ValueError:
+            # 如果输入无效，可以恢复默认值
+            self.text_id_size_edit.setText(str(pcfg.text_id_font_size))
+    # <--- 新增ID显示控件函数结束 --->
 
     def on_load_model_changed(self):
         pcfg.module.load_model_on_demand = self.load_model_checker.isChecked()
@@ -648,5 +705,10 @@ class ConfigPanel(Widget):
         self.load_model_checker.setChecked(pcfg.module.load_model_on_demand)
         self.empty_runcache_checker.setChecked(pcfg.module.empty_runcache)
         self.let_show_only_custom_fonts.setChecked(pcfg.let_show_only_custom_fonts_flag)
+
+        # <--- 在 setupConfig 方法的末尾（ blockSignals(False) 之前）添加以下代码 --->
+        self.show_text_id_checker.setChecked(pcfg.show_text_id)
+        self.text_id_size_edit.setText(str(pcfg.text_id_font_size))
+        self.text_id_size_edit.setEnabled(pcfg.show_text_id)
 
         self.blockSignals(False)

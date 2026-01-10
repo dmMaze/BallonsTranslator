@@ -164,6 +164,8 @@ class ProgramConfig(Config):
     expand_teffect_panel: bool = True
     text_advanced_format_panel: bool = True
     expand_tadvanced_panel: bool = True
+    show_text_id: bool = True           # 控制是否显示文本框ID
+    text_id_font_size: float = 10.0     # ID标签的基础字体大小（点数）
 
     @staticmethod
     def load(cfg_path: str):

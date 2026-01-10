@@ -6,11 +6,12 @@ from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGr
 from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
 from qtpy.QtGui import (QGradient, QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, 
                        QInputMethodEvent, QPainter, QPen, QColor, QTextCharFormat, QTextDocument, QLinearGradient, 
-                       QBrush, QPalette, QAbstractTextDocumentLayout)
+                       QBrush, QPalette, QAbstractTextDocumentLayout, QFontMetricsF)
 
 from utils.textblock import TextBlock, FontFormat, TextAlignment, LineSpacingType
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
 from utils.fontformat import FontFormat, px2pt, pt2px
+from utils.config import pcfg
 from .misc import td_pattern, table_pattern
 from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
 from .text_graphical_effect import apply_shadow_effect
@@ -18,8 +19,8 @@ from .text_graphical_effect import apply_shadow_effect
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
 
-
 class TextBlkItem(QGraphicsTextItem):
+    is_rendering_output = False  # 保存图片信号
 
     begin_edit = Signal(int)
     end_edit = Signal(int)
@@ -36,6 +37,7 @@ class TextBlkItem(QGraphicsTextItem):
     undo_signal = Signal()
     push_undo_stack = Signal(int, bool)
     propagate_user_edited = Signal(int, str, bool)
+
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -294,6 +296,7 @@ class TextBlkItem(QGraphicsTextItem):
         if self._display_rect is not None:
             br.setHeight(self._display_rect.height())
             br.setWidth(self._display_rect.width())
+
         return br
 
     def padding(self) -> float:
@@ -467,6 +470,71 @@ class TextBlkItem(QGraphicsTextItem):
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOver)
             self._draw_accessories(painter)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+
+            # --- 从这里开始是新增和修改的代码 ---
+            # --- 使用新的逻辑绘制ID标签 ---
+            if not TextBlkItem.is_rendering_output and pcfg.show_text_id:  # 没有渲染输出和开关使能才绘制id框
+                painter.save()  # <--- 在 try 之前调用 save()
+                try:
+                    # 1. 获取当前的缩放比例
+                    scale = self.scene_scale_factor()
+                    if scale == 0:  # 避免除以零的错误
+                        painter.restore()
+                        return
+                    idx = self.idx + 1
+
+                    # 2. 定义基础大小（在100%缩放时的大小）
+                    base_font_size = pcfg.text_id_font_size  # <--- 从 pcfg 读取字体大小
+                    base_margin = base_font_size * 0.3  # 边距可以和字体大小关联
+
+                    # 根据缩放比例调整字体和边距，使其在屏幕上看起来大小恒定
+                    # 这是实现等比例缩放的关键：我们在一个已经被缩放的画布上，用一个反向缩放的字体来绘制
+                    scaled_font_size = base_font_size / scale
+                    margin = base_margin / scale
+
+                    # 3. 设置动态调整后的字体
+                    id_font = QFont("Arial", 0)  # 使用点数大小浮点型，更精确
+                    id_font.setPointSizeF(scaled_font_size)
+                    painter.setFont(id_font)
+
+                    # 准备要显示的 ID 文本
+                    id_text = f"{idx}"
+
+                    # 使用新字体计算文本所需区域
+                    fm = painter.fontMetrics()
+                    text_rect = fm.boundingRect(id_text)
+
+                    # 4. 计算背景和位置
+                    # 背景矩形的大小
+                    bg_width = text_rect.width() + 2 * margin
+                    bg_height = text_rect.height() + margin
+
+                    # 获取文本框的“外部”矩形
+                    unpadded_rect = self.unpadRect(self.boundingRect())
+
+                    # 将背景矩形放置在文本框的“外部”左上角（正上方）
+
+                    # 将背景矩形放置在文本框的“外部”左侧，并垂直居中
+                    # bg_x 计算：从左边框向左移动背景框的宽度
+                    bg_x = unpadded_rect.left()
+
+                    # bg_y 计算：垂直居中对齐
+                    # 注意：这里我们让ID标签的中心和文本框的垂直中心对齐
+                    bg_y = unpadded_rect.top()
+
+                    bg_rect = QRectF(bg_x, bg_y, bg_width, bg_height)
+
+                    # 5. 绘制背景和文本
+                    painter.setBrush(QColor(0, 0, 0, 160))  # 半透明黑色背景
+                    painter.setPen(Qt.NoPen)
+                    painter.drawRect(bg_rect)
+
+                    painter.setPen(Qt.white)  # 白色文本
+                    painter.drawText(bg_rect, Qt.AlignCenter, id_text)
+
+                finally:
+                    painter.restore()  # 恢复 painter 的状态
+                # --- 新增代码到此结束 ---
 
 
     def _draw_accessories(self, painter: QPainter):
