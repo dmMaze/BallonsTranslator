@@ -814,9 +814,11 @@ class Canvas(QGraphicsScene):
             before = (getattr(blk, 'warp_mode', 'none'),
                       copy.deepcopy(getattr(blk, 'warp_quad', None)),
                       copy.deepcopy(getattr(blk, 'warp_mesh_size', None)),
-                      copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+                      copy.deepcopy(getattr(blk, 'warp_mesh', None)),
+                      float(getattr(blk, 'warp_rise_fall_u', 0.5) or 0.5),
+                      float(getattr(blk, 'warp_rise_fall_amp', 0.0) or 0.0))
             if preset == 'reset':
-                after = ('none', None, None, None)
+                after = ('none', None, None, None, 0.5, 0.0)
             else:
                 amp = 0.18
                 br = item.boundingRect()
@@ -840,7 +842,13 @@ class Canvas(QGraphicsScene):
                             dy = amp * math.sin(2 * math.pi * x)
                         yy = max(0.0, min(1.0, y + dy))
                         mesh.append([x, yy])
-                after = ('mesh', None, [nx, ny], mesh)
+                if preset == 'arc_up':
+                    ru, ra = 0.5, float(amp)
+                elif preset == 'arc_down':
+                    ru, ra = 0.5, float(-amp)
+                else:
+                    ru, ra = 0.5, 0.0
+                after = ('mesh', None, [nx, ny], mesh, ru, ra)
             self.push_undo_command(WarpItemCommand(item, before, after, self.txtblkShapeControl))
 
     def triggerResetAngle(self):

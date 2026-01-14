@@ -237,7 +237,7 @@ class CenterWarpBlockItem(QGraphicsRectItem):
         self.edge_width = 0.0
         self.dragging = False
         self.setAcceptHoverEvents(True)
-        self.setCursor(Qt.CursorShape.SizeVerCursor)
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
         self.updateEdgeWidth(CBEDGE_WIDTH)
 
     def updateEdgeWidth(self, edge_width: float):
@@ -259,6 +259,8 @@ class CenterWarpBlockItem(QGraphicsRectItem):
         if event.button() == Qt.MouseButton.LeftButton and self.ctrl.blk_item is not None and self.ctrl.warp_editing:
             self.dragging = True
             self.ctrl.beginRiseFallEdit()
+            lp = self.ctrl.mapFromScene(event.scenePos())
+            self.ctrl.beginRiseFallDrag(lp)
             event.accept()
             return
         return super().mousePressEvent(event)
@@ -291,6 +293,11 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._controls_hidden = False
         self._warp_before = None
         self._rise_fall_base = None
+        self._rise_fall_peak_u = 0.5
+        self._rise_fall_amp = 0.0
+        self._rise_fall_drag_start_local = None
+        self._rise_fall_drag_start_u = 0.5
+        self._rise_fall_drag_start_amp = 0.0
         self.ctrlblock_group = [
             ControlBlockItem(self, idx) for idx in range(8)
         ]
@@ -385,26 +392,44 @@ class TextBlkShapeControl(QGraphicsRectItem):
                 if mesh_size is not None and mesh is not None and len(mesh_size) == 2:
                     nx, ny = int(mesh_size[0]), int(mesh_size[1])
                     if nx >= 2 and ny >= 2 and len(mesh) == nx * ny:
-                        p00 = mesh[0]
-                        p10 = mesh[nx - 1]
-                        p11 = mesh[(ny - 1) * nx + (nx - 1)]
-                        p01 = mesh[(ny - 1) * nx]
-                        corner_pnts = np.array([[float(p00[0]) * w, float(p00[1]) * h],
-                                                [float(p10[0]) * w, float(p10[1]) * h],
-                                                [float(p11[0]) * w, float(p11[1]) * h],
-                                                [float(p01[0]) * w, float(p01[1]) * h]], dtype=np.float32)
-                        mi = int(round((nx - 1) / 2))
-                        mj = int(round((ny - 1) / 2))
-                        x0, y0 = mesh[mj * nx + mi]
-                        center_pt = np.array([float(x0) * w, float(y0) * h], dtype=np.float32)
-                        p_top = mesh[0 * nx + mi]
-                        p_right = mesh[mj * nx + (nx - 1)]
-                        p_bottom = mesh[(ny - 1) * nx + mi]
-                        p_left = mesh[mj * nx + 0]
-                        mesh_edge_pnts = np.array([[float(p_top[0]) * w, float(p_top[1]) * h],
-                                                   [float(p_right[0]) * w, float(p_right[1]) * h],
-                                                   [float(p_bottom[0]) * w, float(p_bottom[1]) * h],
-                                                   [float(p_left[0]) * w, float(p_left[1]) * h]], dtype=np.float32)
+                        def sample_mesh(uu: float, vv: float) -> np.ndarray:
+                            uu = max(0.0, min(1.0, float(uu)))
+                            vv = max(0.0, min(1.0, float(vv)))
+                            fu = uu * (nx - 1)
+                            fv = vv * (ny - 1)
+                            i0 = int(math.floor(fu))
+                            j0 = int(math.floor(fv))
+                            i1 = min(i0 + 1, nx - 1)
+                            j1 = min(j0 + 1, ny - 1)
+                            tu = fu - i0
+                            tv = fv - j0
+
+                            def mxy(ii: int, jj: int):
+                                pt = mesh[jj * nx + ii]
+                                return float(pt[0]), float(pt[1])
+
+                            x00, y00 = mxy(i0, j0)
+                            x10, y10 = mxy(i1, j0)
+                            x01, y01 = mxy(i0, j1)
+                            x11, y11 = mxy(i1, j1)
+
+                            x0 = (1.0 - tu) * x00 + tu * x10
+                            y0 = (1.0 - tu) * y00 + tu * y10
+                            x1 = (1.0 - tu) * x01 + tu * x11
+                            y1 = (1.0 - tu) * y01 + tu * y11
+                            x = (1.0 - tv) * x0 + tv * x1
+                            y = (1.0 - tv) * y0 + tv * y1
+                            return np.array([x * w, y * h], dtype=np.float32)
+
+                        corner_pnts = np.array([sample_mesh(0.0, 0.0),
+                                                sample_mesh(1.0, 0.0),
+                                                sample_mesh(1.0, 1.0),
+                                                sample_mesh(0.0, 1.0)], dtype=np.float32)
+                        center_pt = sample_mesh(0.5, 0.5)
+                        mesh_edge_pnts = np.array([sample_mesh(0.5, 0.0),
+                                                   sample_mesh(1.0, 0.5),
+                                                   sample_mesh(0.5, 1.0),
+                                                   sample_mesh(0.0, 0.5)], dtype=np.float32)
         edge_pnts = mesh_edge_pnts if mesh_edge_pnts is not None else (corner_pnts[[1, 2, 3, 0]] + corner_pnts) / 2
         pnts = [edge_pnts, corner_pnts]
         for ii, ctrlblock in enumerate(self.ctrlblock_group):
@@ -423,8 +448,19 @@ class TextBlkShapeControl(QGraphicsRectItem):
                 self.center_warp_ctrl.hide()
             elif self.warp_editing and self.blk_item is not None:
                 self.center_warp_ctrl.show()
-                cx = float(center_pt[0]) - self.center_warp_ctrl.edge_width / 2.0
-                cy = float(center_pt[1]) - self.center_warp_ctrl.edge_width / 2.0
+                blk = self.blk_item.blk
+                w = max(1.0, float(b_rect[2]))
+                h = max(1.0, float(b_rect[3]))
+                peak_u = float(getattr(blk, 'warp_rise_fall_u', 0.5) or 0.5)
+                peak_u = max(0.0, min(1.0, peak_u))
+                amp = float(getattr(blk, 'warp_rise_fall_amp', 0.0) or 0.0)
+                amp = max(-0.35, min(0.35, amp))
+                xh = peak_u * w
+                yh = h / 2.0 - (amp / 1.2) * h
+                xh = max(0.0, min(w, xh))
+                yh = max(0.0, min(h, yh))
+                cx = xh - self.center_warp_ctrl.edge_width / 2.0
+                cy = yh - self.center_warp_ctrl.edge_width / 2.0
                 self.center_warp_ctrl.setPos(cx, cy)
             else:
                 self.center_warp_ctrl.hide()
@@ -435,7 +471,9 @@ class TextBlkShapeControl(QGraphicsRectItem):
             return
         blk = self.blk_item.blk
         self._warp_before = (getattr(blk, 'warp_mode', 'none'), copy.deepcopy(getattr(blk, 'warp_quad', None)),
-                             copy.deepcopy(getattr(blk, 'warp_mesh_size', None)), copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+                             copy.deepcopy(getattr(blk, 'warp_mesh_size', None)), copy.deepcopy(getattr(blk, 'warp_mesh', None)),
+                             float(getattr(blk, 'warp_rise_fall_u', 0.5) or 0.5),
+                             float(getattr(blk, 'warp_rise_fall_amp', 0.0) or 0.0))
 
     def _suggest_mesh_size(self, target_cell_px: float = 64.0, min_nx: int = 7, min_ny: int = 5, max_nx: int = 25, max_ny: int = 15):
         w = float(self.rect().width())
@@ -467,17 +505,45 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if quad is None or len(quad) != 4:
             quad = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
 
-        p00 = np.array([float(quad[0][0]), float(quad[0][1])], dtype=np.float32)
-        p10 = np.array([float(quad[1][0]), float(quad[1][1])], dtype=np.float32)
-        p11 = np.array([float(quad[2][0]), float(quad[2][1])], dtype=np.float32)
-        p01 = np.array([float(quad[3][0]), float(quad[3][1])], dtype=np.float32)
+        p00 = np.array([float(quad[0][0]), float(quad[0][1])], dtype=np.float64)
+        p10 = np.array([float(quad[1][0]), float(quad[1][1])], dtype=np.float64)
+        p11 = np.array([float(quad[2][0]), float(quad[2][1])], dtype=np.float64)
+        p01 = np.array([float(quad[3][0]), float(quad[3][1])], dtype=np.float64)
+
+        src = np.array([[0.0, 0.0],
+                        [1.0, 0.0],
+                        [1.0, 1.0],
+                        [0.0, 1.0]], dtype=np.float64)
+        dst = np.array([p00, p10, p11, p01], dtype=np.float64)
+
+        A = []
+        for (x, y), (u, v) in zip(src, dst):
+            A.append([x, y, 1.0, 0.0, 0.0, 0.0, -u * x, -u * y, -u])
+            A.append([0.0, 0.0, 0.0, x, y, 1.0, -v * x, -v * y, -v])
+        A = np.asarray(A, dtype=np.float64)
+        _, _, Vt = np.linalg.svd(A)
+        H = Vt[-1, :].reshape(3, 3)
+        if abs(H[2, 2]) > 1e-12:
+            H = H / H[2, 2]
+
+        def map_uv(u: float, v: float):
+            p = H @ np.array([float(u), float(v), 1.0], dtype=np.float64)
+            w = float(p[2])
+            if abs(w) < 1e-12:
+                return 0.0, 0.0
+            x = float(p[0]) / w
+            y = float(p[1]) / w
+            x = max(0.0, min(1.0, x))
+            y = max(0.0, min(1.0, y))
+            return x, y
+
         out_mesh = []
         for j in range(ny):
             v = j / (ny - 1)
             for i in range(nx):
                 u = i / (nx - 1)
-                pt = (1 - u) * (1 - v) * p00 + u * (1 - v) * p10 + u * v * p11 + (1 - u) * v * p01
-                out_mesh.append([float(pt[0]), float(pt[1])])
+                x, y = map_uv(u, v)
+                out_mesh.append([x, y])
 
         blk.warp_mode = 'mesh'
         blk.warp_quad = None
@@ -488,12 +554,24 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.beginWarpEdit()
         if self.blk_item is None:
             self._rise_fall_base = None
+            self._rise_fall_drag_start_local = None
             return
+        blk = self.blk_item.blk
+        self._rise_fall_peak_u = float(getattr(blk, 'warp_rise_fall_u', 0.5) or 0.5)
+        self._rise_fall_amp = float(getattr(blk, 'warp_rise_fall_amp', 0.0) or 0.0)
         nx, ny = self._suggest_mesh_size()
         self._ensure_mesh_for_edit(nx, ny)
-        blk = self.blk_item.blk
         self._rise_fall_base = (copy.deepcopy(getattr(blk, 'warp_mesh_size', None)),
                                 copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+
+    def beginRiseFallDrag(self, local_pos: QPointF):
+        if self.blk_item is None:
+            self._rise_fall_drag_start_local = None
+            return
+        blk = self.blk_item.blk
+        self._rise_fall_drag_start_local = QPointF(local_pos)
+        self._rise_fall_drag_start_u = float(getattr(blk, 'warp_rise_fall_u', 0.5) or 0.5)
+        self._rise_fall_drag_start_amp = float(getattr(blk, 'warp_rise_fall_amp', 0.0) or 0.0)
 
     def updateWarpFromLocal(self, ctrl_idx: int, local_pos: QPointF):
         if self.blk_item is None:
@@ -551,9 +629,23 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
         w = max(1.0, float(self.rect().width()))
         h = max(1.0, float(self.rect().height()))
-        y = max(0.0, min(h, float(local_pos.y())))
-        amp = (h / 2.0 - y) / h * 1.2
-        amp = max(-0.35, min(0.35, amp))
+        if self._rise_fall_drag_start_local is not None:
+            dx = float(local_pos.x() - self._rise_fall_drag_start_local.x())
+            dy = float(local_pos.y() - self._rise_fall_drag_start_local.y())
+            peak_u = float(self._rise_fall_drag_start_u) + dx / w
+            amp = float(self._rise_fall_drag_start_amp) - (dy / h * 1.2)
+        else:
+            x = max(0.0, min(w, float(local_pos.x())))
+            y = max(0.0, min(h, float(local_pos.y())))
+            amp = (h / 2.0 - y) / h * 1.2
+            peak_u = x / w
+
+        amp = max(-0.35, min(0.35, float(amp)))
+        peak_u = max(0.05, min(0.95, float(peak_u)))
+        self._rise_fall_peak_u = peak_u
+        blk.warp_rise_fall_u = peak_u
+        self._rise_fall_amp = amp
+        blk.warp_rise_fall_amp = amp
 
         if self._rise_fall_base is None:
             nx, ny = self._suggest_mesh_size()
@@ -573,7 +665,11 @@ class TextBlkShapeControl(QGraphicsRectItem):
             for i in range(nx):
                 u = i / (nx - 1)
                 x0, y0 = base_mesh[j * nx + i]
-                dy = -amp * math.sin(math.pi * u)
+                if u <= peak_u:
+                    uu = 0.5 * (u / peak_u) if peak_u > 1e-6 else 0.0
+                else:
+                    uu = 0.5 + 0.5 * ((u - peak_u) / (1.0 - peak_u)) if (1.0 - peak_u) > 1e-6 else 1.0
+                dy = -amp * math.sin(math.pi * float(uu))
                 yy = max(0.0, min(1.0, float(y0) + dy))
                 out_mesh.append([float(x0), yy])
 
@@ -678,13 +774,17 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if self.blk_item is None or self._warp_before is None:
             self._warp_before = None
             self._rise_fall_base = None
+            self._rise_fall_drag_start_local = None
             return
         blk = self.blk_item.blk
         before = self._warp_before
         after = (getattr(blk, 'warp_mode', 'none'), copy.deepcopy(getattr(blk, 'warp_quad', None)),
-                 copy.deepcopy(getattr(blk, 'warp_mesh_size', None)), copy.deepcopy(getattr(blk, 'warp_mesh', None)))
+                 copy.deepcopy(getattr(blk, 'warp_mesh_size', None)), copy.deepcopy(getattr(blk, 'warp_mesh', None)),
+                 float(getattr(blk, 'warp_rise_fall_u', 0.5) or 0.5),
+                 float(getattr(blk, 'warp_rise_fall_amp', 0.0) or 0.0))
         self._warp_before = None
         self._rise_fall_base = None
+        self._rise_fall_drag_start_local = None
         if before != after:
             self.blk_item.warped.emit(before, after)
 

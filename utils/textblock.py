@@ -51,6 +51,8 @@ class TextBlock:
     warp_quad: List = None
     warp_mesh_size: List = None
     warp_mesh: List = None
+    warp_rise_fall_u: float = 0.5
+    warp_rise_fall_amp: float = 0.0
 
     text_mask_strokes: List = field(default_factory=lambda: [])
 

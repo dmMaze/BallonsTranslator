@@ -157,12 +157,20 @@ class WarpItemCommand(QUndoCommand):
         self.shape_ctrl = shape_ctrl
 
     def _apply(self, state: tuple):
-        mode, quad, mesh_size, mesh = state
+        if state is None:
+            return
+        if len(state) >= 6:
+            mode, quad, mesh_size, mesh, rise_fall_u, rise_fall_amp = state[:6]
+        else:
+            mode, quad, mesh_size, mesh = state
+            rise_fall_u, rise_fall_amp = 0.5, 0.0
         blk = self.item.blk
         blk.warp_mode = mode
         blk.warp_quad = copy.deepcopy(quad)
         blk.warp_mesh_size = copy.deepcopy(mesh_size)
         blk.warp_mesh = copy.deepcopy(mesh)
+        blk.warp_rise_fall_u = float(rise_fall_u if rise_fall_u is not None else 0.5)
+        blk.warp_rise_fall_amp = float(rise_fall_amp if rise_fall_amp is not None else 0.0)
         self.item.invalidate_text_mask_cache()
         self.item.update()
         if self.shape_ctrl is not None and self.shape_ctrl.blk_item == self.item:
