@@ -273,6 +273,14 @@ class TextBlkItem(QGraphicsTextItem):
         return QRectF(rect.x() - p, rect.y() - p, rect.width() + P, rect.height() + P)
 
     def setRect(self, rect: Union[List, QRectF], padding=True, repaint=True) -> None:
+        def xywh_to_xyxy(xywh):
+            if isinstance(rect, QRectF):
+                    # Access properties using QRectF methods
+                    x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
+            else:
+                # Fallback for list/tuple inputs
+                x, y, w, h = rect[0], rect[1], rect[2], rect[3]            
+            return [x, y, x + w, y + h]
         
         if isinstance(rect, List):
             rect = QRectF(*rect)
@@ -283,6 +291,7 @@ class TextBlkItem(QGraphicsTextItem):
         self._display_rect = rect
         self.layout.setMaxSize(rect.width(), rect.height())
         self.setCenterTransform()
+        self.blk.xyxy = xywh_to_xyxy(rect)
         if repaint:
             self.repaint_background()
 
