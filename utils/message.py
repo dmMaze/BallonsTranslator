@@ -29,7 +29,7 @@ def create_error_dialog(exception: Exception, error_msg: str = None, exception_t
         LOGGER.error(error_msg + '\n')
         LOGGER.error(detail_traceback)
 
-        if not shared.HEADLESS:
+        if not shared.HEADLESS and not shared.HEADLESS_CONTINUOUS:
             shared.create_errdialog_in_mainthread(error_msg, detail_traceback, exception_type)
 
 
@@ -38,7 +38,7 @@ def create_info_dialog(info_msg, btn_type=None, modal: bool = False, frame_less:
         Popup a info dialog in main thread
     '''
     LOGGER.info(info_msg)
-    if not shared.HEADLESS:
+    if not shared.HEADLESS and not shared.HEADLESS_CONTINUOUS:
         shared.create_infodialog_in_mainthread({'info_msg': info_msg, 'btn_type': btn_type, 'modal': modal, 'frame_less': frame_less, 'signal_slot_map_list': signal_slot_map_list})
 
 
