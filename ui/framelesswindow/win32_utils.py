@@ -399,7 +399,7 @@ class WindowsMoveResize:
 
     @classmethod
     def toggleMaxState(cls, window):
-        if shared.HEADLESS:
+        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
             return
         if QT_VERSION < (6, 8, 0):
             if window.isMaximized():

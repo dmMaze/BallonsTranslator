@@ -35,7 +35,7 @@ class LinuxMoveResize:
 
     @classmethod
     def toggleMaxState(cls, window):
-        if shared.HEADLESS:
+        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
             return
         if window.isMaximized():
             window.showNormal()
