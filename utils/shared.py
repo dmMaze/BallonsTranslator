@@ -98,6 +98,7 @@ USE_PYSIDE6 = False
 ON_MACOS = sys.platform == 'darwin'
 ON_WINDOWS = sys.platform == 'win32'
 HEADLESS = False
+HEADLESS_CONTINUOUS = False
 DEBUG = False
 args = None
 
