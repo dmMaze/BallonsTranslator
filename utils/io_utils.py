@@ -161,6 +161,8 @@ def imread(imgpath, read_type=cv2.IMREAD_COLOR, max_retry_limit=5, retry_interva
             img = Image.open(imgpath)
             if img.mode == 'CMYK':
                 img = img.convert('RGB')
+            elif img.mode == 'P':
+                img = img.convert('RGBA')
             if read_type == cv2.IMREAD_GRAYSCALE:
                 img = img.convert('L')
             img = np.array(img)
