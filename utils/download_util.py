@@ -278,7 +278,7 @@ def try_download_files(url: str,
                 download_file_from_google_drive(gdrive_file_id, savep)
             else:
                 LOGGER.info(f'downloading {savep} from {download_url} ...')
-                download_url_to_file(download_url, savep)
+                #download_url_to_file(download_url, savep)
             file_exists, valid_hash, sha256_calculated = check_local_file(savep, sha256_precal, cache_hash=cache_hash)
             if not file_exists:
                 raise Exception(f'Some how the downloaded {savep} doesnt exists.')
