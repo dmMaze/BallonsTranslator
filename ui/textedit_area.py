@@ -686,7 +686,7 @@ class TextEditListScrollArea(QScrollArea):
                     sel_min, sel_max = min(old_idx_list[0], tgt_w.idx), max(old_idx_list[-1], tgt_w.idx)
                 else:
                     if hasattr(self.sel_anchor_widget,'idx')  and hasattr(self.sel_anchor_widget,'idx'):
-                    sel_min, sel_max = min(self.sel_anchor_widget.idx, tgt_w.idx), max(self.sel_anchor_widget.idx, tgt_w.idx)
+                        sel_min, sel_max = min(self.sel_anchor_widget.idx, tgt_w.idx), max(self.sel_anchor_widget.idx, tgt_w.idx)
                 new_check_list = list(range(sel_min, sel_max + 1))
         elif ctrl_pressed:
             new_check_set = set(old_idx_list)
