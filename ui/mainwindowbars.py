@@ -46,7 +46,7 @@ class StateChecker(QCheckBox):
                 self.setChecked(True)
             elif self.uncheckable:
                 self.setChecked(False)
-                
+
     def setChecked(self, check: bool) -> None:
         check_state = self.isChecked()
         super().setChecked(check)
@@ -79,7 +79,7 @@ class LeftBar(Widget):
         self.imgTransChecker = StateChecker('imgtrans')
         self.imgTransChecker.setObjectName('ImgTransChecker')
         self.imgTransChecker.checked.connect(self.stateCheckerChanged)
-        
+
         self.configChecker = StateChecker('config', uncheckable=True)
         self.configChecker.setObjectName('ConfigChecker')
         self.configChecker.checked.connect(self.stateCheckerChanged)
@@ -114,8 +114,15 @@ class LeftBar(Widget):
         actionImportTranslationTxt = QAction(self.tr("Import translation from TXT/markdown"), self)
         self.import_trans_txt = actionImportTranslationTxt.triggered
 
+        # --- 2026.02.13 新增导入导出替换文本开始 ---
+        actionExportReplacementText = QAction(self.tr("Export Replacement Text"), self)
+        self.export_replacement_text = actionExportReplacementText.triggered
+        actionImportReplacementText = QAction(self.tr("Import Replacement Text"), self)
+        self.import_replacement_text = actionImportReplacementText.triggered
+        # --- 2026.02.13 新增导入导出替换文本代码结束 ---
+
         self.recentMenu = QMenu(self.tr("Open Recent"), self)
-        
+
         openMenu = QMenu(self)
         openMenu.addActions([actionOpenFolder, actionOpenProj])
         openMenu.addMenu(self.recentMenu)
@@ -129,16 +136,20 @@ class LeftBar(Widget):
             actionExportSrcMD,
             actionExportTranslationMD,
             actionImportTranslationTxt,
+            # --- 2026.02.13 新增代码开始 ---
+            actionExportReplacementText,
+            actionImportReplacementText,
+            # --- 2026.02.13 新增代码结束 ---
         ])
         self.openBtn = OpenBtn()
         self.openBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.openBtn.setMenu(openMenu)
         self.openBtn.setPopupMode(QToolButton.InstantPopup)
-    
+
         openBtnToolBar = QToolBar(self)
         openBtnToolBar.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         openBtnToolBar.addWidget(self.openBtn)
-        
+
         self.runImgtransBtn = QPushButton()
         self.runImgtransBtn.setObjectName('RunButton')
         self.runImgtransBtn.setText(self.tr('Run'))
@@ -148,7 +159,7 @@ class LeftBar(Widget):
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.run_imgtrans_clicked = self.runImgtransBtn.clicked
         self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
-        
+
         vlayout = QVBoxLayout(self)
         vlayout.addWidget(openBtnToolBar)
         vlayout.addWidget(self.showPageListLabel)
@@ -225,9 +236,9 @@ class LeftBar(Widget):
         else:
             self.recent_proj_list.remove(path)
             self.recentMenu.removeAction(self.sender())
-        
+
     def onOpenFolder(self) -> None:
-        
+
         d = None
         if len(self.recent_proj_list) > 0:
             for projp in self.recent_proj_list:
@@ -236,7 +247,7 @@ class LeftBar(Widget):
                 if osp.exists(projp):
                     d = projp
                     break
-        
+
         dialog = QFileDialog()
         folder_path = str(dialog.getExistingDirectory(self, self.tr("Select Directory"), d))
         if osp.exists(folder_path):
@@ -259,7 +270,7 @@ class LeftBar(Widget):
                 self.configChecked.emit()
             else:
                 self.imgTransChecker.setChecked(True)
-                
+
 
     def needleftStackWidget(self) -> bool:
         return self.showPageListLabel.isChecked() or self.globalSearchChecker.isChecked()
@@ -371,12 +382,12 @@ class TitleBar(Widget):
         # 工具菜单
         self.toolsToolBtn = TitleBarToolBtn(self)
         self.toolsToolBtn.setText(self.tr('Tools'))
-        
+
         # 区域合并工具
         mergeToolAction = QAction('区域合并工具', self)
         mergeToolAction.setShortcut(QKeySequence('Ctrl+Shift+M'))
         self.merge_tool_trigger = mergeToolAction.triggered
-        
+
         toolsMenu = QMenu(self.toolsToolBtn)
         toolsMenu.addAction(mergeToolAction)
         self.toolsToolBtn.setMenu(toolsMenu)
@@ -418,7 +429,7 @@ class TitleBar(Widget):
         self.titleLabel = QLabel('BallonTranslator')
         self.titleLabel.setObjectName('TitleLabel')
         self.titleLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+
         hlayout = QHBoxLayout(self)
         hlayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hlayout.addWidget(self.iconLabel)
@@ -546,7 +557,7 @@ class SelectionWithConfigWidget(Widget):
         super().__init__(*args, **kwargs)
         label = ConfigClickableLabel(text=selector_name)
         label.clicked.connect(self.cfg_clicked)
-        
+
         self.selector = SmallComboBox()
 
         self.cfg_btn = None
@@ -574,18 +585,18 @@ class SelectionWithConfigWidget(Widget):
         if self.cfg_btn is not None:
             self.cfg_btn.setIcon(QIcon())
         return super().leaveEvent(event)
-    
+
     def blockSignals(self, block: bool):
         self.selector.blockSignals(block)
         super().blockSignals(block)
-    
+
     def setSelectedValue(self, value: str, block_signals=True):
         if block_signals:
             self.blockSignals(True)
         self.selector.setCurrentText(value)
         if block_signals:
             self.blockSignals(False)
-    
+
 
 class TranslatorSelectionWidget(Widget):
 
@@ -599,7 +610,7 @@ class TranslatorSelectionWidget(Widget):
         label_src.clicked.connect(self.cfg_clicked)
         label_tgt = ConfigClickableLabel(text=self.tr('Target'))
         label_tgt.clicked.connect(self.cfg_clicked)
-        
+
         self.selector = SmallComboBox()
         self.src_selector = SmallComboBox()
         self.tgt_selector = SmallComboBox()
@@ -626,13 +637,13 @@ class TranslatorSelectionWidget(Widget):
         if self.cfg_btn is not None:
             self.cfg_btn.setIcon(QIcon())
         return super().leaveEvent(event)
-    
+
     def blockSignals(self, block: bool):
         self.src_selector.blockSignals(block)
         self.tgt_selector.blockSignals(block)
         self.selector.blockSignals(block)
         super().blockSignals(block)
-    
+
     def finishSetTranslator(self, translator: BaseTranslator):
         self.blockSignals(True)
         self.src_selector.clear()
@@ -647,7 +658,7 @@ class TranslatorSelectionWidget(Widget):
 
 
 class BottomBar(Widget):
-    
+
     textedit_checkchanged = Signal()
     paintmode_checkchanged = Signal()
     textblock_checkchanged = Signal()
@@ -657,7 +668,7 @@ class BottomBar(Widget):
         self.setFixedHeight(BOTTOMBAR_HEIGHT)
         self.setMouseTracking(True)
         self.mainwindow = mainwindow
-        
+
         self.textdet_selector = SelectionWithConfigWidget(self.tr('Text Detector'))
         self.ocr_selector = SelectionWithConfigWidget(self.tr('OCR'))
         self.inpaint_selector = SelectionWithConfigWidget(self.tr('Inpaint'))
@@ -675,7 +686,7 @@ class BottomBar(Widget):
         self.textblockChecker = QCheckBox()
         self.textblockChecker.setObjectName('TextblockChecker')
         self.textblockChecker.clicked.connect(self.onTextblockCheckerClicked)
-        
+
         self.originalSlider = PaintQSlider(self.tr("Original image opacity"), Qt.Orientation.Horizontal, self)
         self.originalSlider.setFixedWidth(150)
         self.originalSlider.setRange(0, 100)
@@ -684,7 +695,7 @@ class BottomBar(Widget):
         self.textlayerSlider.setFixedWidth(150)
         self.textlayerSlider.setValue(100)
         self.textlayerSlider.setRange(0, 100)
-        
+
         self.hlayout.addWidget(self.textdet_selector)
         self.hlayout.addWidget(self.ocr_selector)
         self.hlayout.addWidget(self.inpaint_selector)

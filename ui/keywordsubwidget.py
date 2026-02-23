@@ -51,6 +51,20 @@ class KeywordSubWidget(QDialog):
         for sub in sublist:
             self.add_subpair(**sub, save2sublist=False)
 
+    # --- 2026.02.13 新增代码开始 ---
+    def appendCfgSublist(self, sublist_to_append: List):
+        """在现有列表后追加新的替换规则"""
+        for sub in sublist_to_append:
+            self.add_subpair(**sub, save2sublist=True)
+    # --- 2026.02.13 新增代码结束 ---
+
+    def clearSublist(self):
+        """清空替换列表和模型"""
+        self.changing_rows = True
+        self.sublist.clear()
+        self.submodel.removeRows(0, self.submodel.rowCount())
+        self.changing_rows = False
+
     def on_new_subpair(self):
         self.add_subpair()
 
@@ -115,7 +129,7 @@ class KeywordSubWidget(QDialog):
             k = subpair['keyword']
             if k == '':
                 continue
-            
+
             regexr = k
             flag = re.DOTALL
             if not subpair['case_sens']:

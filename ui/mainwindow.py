@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 from functools import partial
 import time
+import json
 import cv2
 
 from tqdm import tqdm
@@ -71,7 +72,7 @@ class MainWindow(mainwindow_cls):
     restart_signal = Signal()
     create_errdialog = Signal(str, str, str)
     create_infodialog = Signal(dict)
-    
+
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
 
@@ -151,6 +152,11 @@ class MainWindow(mainwindow_cls):
         self.leftBar.export_trans_md.connect(lambda : self.on_export_txt(dump_target='translation', suffix='.md'))
         self.leftBar.import_trans_txt.connect(self.on_import_trans_txt)
 
+        # --- 2026.02.13 新增代码开始 ---
+        self.leftBar.export_replacement_text.connect(self.on_export_replacement_text)
+        self.leftBar.import_replacement_text.connect(self.on_import_replacement_text)
+        # --- 2026.02.13 新增代码结束 ---
+
         self.pageList = PageListView()
         self.pageList.reveal_file.connect(self.on_reveal_file)
         self.pageList.setHidden(True)
@@ -165,9 +171,9 @@ class MainWindow(mainwindow_cls):
         self.imsave_thread.img_writed.connect(self.global_search_widget.on_img_writed)
         self.global_search_widget.search_tree.result_item_clicked.connect(self.on_search_result_item_clicked)
         self.leftStackWidget.addWidget(self.global_search_widget)
-        
+
         self.centralStackWidget = QStackedWidget(self)
-        
+
         self.titleBar = TitleBar(self)
         self.titleBar.closebtn_clicked.connect(self.on_closebtn_clicked)
         self.titleBar.display_lang_changed.connect(self.on_display_lang_changed)
@@ -197,7 +203,7 @@ class MainWindow(mainwindow_cls):
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
         self.bottomBar.textlayerSlider.valueChanged.connect(self.canvas.setTextLayerTransparencyBySlider)
-        
+
         self.drawingPanel = DrawingPanel(self.canvas, self.configPanel.inpaint_config_panel)
         self.textPanel = TextPanel(self.app)
         self.textPanel.formatpanel.foldTextBtn.checkStateChanged.connect(self.fold_textarea)
@@ -298,7 +304,7 @@ class MainWindow(mainwindow_cls):
             LOGGER.info('Translator set to {}'.format(name))
         else:
             LOGGER.error('invalid translator')
-        
+
     def on_enable_module(self, idx, checked):
         if idx == 0:
             pcfg.module.enable_detect = checked
@@ -347,7 +353,7 @@ class MainWindow(mainwindow_cls):
         self.leftBar.imgTransChecker.setChecked(True)
         self.st_manager.formatpanel.global_format = pcfg.global_fontformat
         self.st_manager.formatpanel.set_active_format(pcfg.global_fontformat)
-        
+
         self.rightComicTransStackPanel.setHidden(True)
         self.st_manager.setTextEditMode(False)
         self.st_manager.formatpanel.foldTextBtn.setChecked(pcfg.fold_textarea)
@@ -453,7 +459,7 @@ class MainWindow(mainwindow_cls):
             self.openDir(proj_path)
         else:
             self.openJsonProj(proj_path)
-        
+
         if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
             self.load_textstyle_from_proj_dir(from_proj=True)
 
@@ -500,21 +506,21 @@ class MainWindow(mainwindow_cls):
             from utils.io_utils import create_thumbnail, find_tif_files
             # 查找目录中的所有TIF文件
             tif_files = find_tif_files(directory)
-            
+
             # 为每个TIF文件生成预览图
             for tif_file in tif_files:
                 tif_path = osp.join(directory, tif_file)
                 # 检查是否已经存在对应的预览图
                 base_path = Path(tif_path)
                 thumb_path = base_path.parent / f"{base_path.stem}_thumb.jpg"
-                
+
                 # 如果预览图不存在，则生成预览图
                 if not osp.exists(thumb_path):
                     create_thumbnail(tif_path, max_width=1000)
-                    
+
         except Exception as e:
             LOGGER.error(f"Failed to generate TIF thumbnails: {e}")
-        
+
     def dropOpenDir(self, directory: str):
         if isinstance(directory, str) and osp.exists(directory):
             self.leftBar.updateRecentProjList(directory)
@@ -532,7 +538,7 @@ class MainWindow(mainwindow_cls):
         except Exception as e:
             self.opening_dir = False
             create_error_dialog(e, self.tr('Failed to load project from') + json_path)
-        
+
     def updatePageList(self):
         if self.pageList.count() != 0:
             self.pageList.clear()
@@ -582,7 +588,7 @@ class MainWindow(mainwindow_cls):
             self.canvas.on_activation_changed()
 
         super().changeEvent(event)
-    
+
     def retranslateUI(self):
         # according to https://stackoverflow.com/questions/27635068/how-to-retranslate-dynamically-created-widgets
         # we got to do it manually ... I'd rather restart the program
@@ -605,7 +611,7 @@ class MainWindow(mainwindow_cls):
             save_rst_only = not self.canvas.draw_change_unsaved()
             if not save_rst_only:
                 save_proj = True
-            
+
             self.saveCurrentPage(update_scene_text, save_proj, restore_interface=True, save_rst_only=save_rst_only, keep_exist_as_backup=keep_exist_as_backup)
 
     def pageListCurrentItemChanged(self):
@@ -621,7 +627,7 @@ class MainWindow(mainwindow_cls):
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
             self.module_manager.handle_page_changed()
             self.drawingPanel.handle_page_changed()
-            
+
         self.page_changing = False
 
     def setupShortcuts(self):
@@ -824,7 +830,7 @@ class MainWindow(mainwindow_cls):
                 cursor = se.textCursor()
                 cursor.select(QTextCursor.SelectionType.Document)
                 se.setTextCursor(cursor)
-                
+
                 self.global_search_widget.commit_search()
 
     def show_pre_MT_keyword_window(self):
@@ -844,11 +850,11 @@ class MainWindow(mainwindow_cls):
             from qtpy.QtCore import QThread
             from qtpy.QtWidgets import QProgressDialog
             from utils import merger
-            
+
             self.merge_dialog = MergeDialog(self)
             self.merge_dialog.run_current_clicked.connect(lambda: self.run_merge_task(on_current=True))
             self.merge_dialog.run_all_clicked.connect(lambda: self.run_merge_task(on_current=False))
-        
+
         if self.merge_dialog.isVisible():
             self.merge_dialog.raise_()
             self.merge_dialog.activateWindow()
@@ -859,39 +865,39 @@ class MainWindow(mainwindow_cls):
         """执行区域合并任务"""
         from utils import merger
         from qtpy.QtWidgets import QMessageBox
-        
+
         if self.imgtrans_proj.is_empty:
             QMessageBox.warning(self, "警告", "请先打开一个项目")
             return
-        
+
         config = self.merge_dialog.get_config()
-        
+
         if on_current:
             # 对当前文件运行 - 直接在内存中操作，不读写文件
             from utils.textblock import TextBlock
-            
+
             current_img = self.imgtrans_proj.current_img
             if not current_img:
                 QMessageBox.warning(self, "警告", "没有当前文件")
                 return
-            
+
             # 直接从内存获取当前页面的文本框
             if current_img not in self.imgtrans_proj.pages:
                 QMessageBox.warning(self, "警告", "当前页面数据不存在")
                 return
-            
+
             textblocks = self.imgtrans_proj.pages[current_img]
             if not textblocks:
                 QMessageBox.warning(self, "提示", "当前页面没有文本框")
                 return
-            
+
             # 将 TextBlock 对象转换为字典格式（merger 需要字典）
             initial_shapes = [blk.to_dict() for blk in textblocks]
-            
+
             initial_count = len(initial_shapes)
             mode = config.get("MERGE_MODE", "NONE")
             total_merged = 0
-            
+
             # 在内存中执行合并
             if mode == "VERTICAL":
                 final_shapes, count = merger.perform_merge(initial_shapes, "VERTICAL", config)
@@ -909,7 +915,7 @@ class MainWindow(mainwindow_cls):
                 total_merged += (count1 + count2)
             else:
                 final_shapes = initial_shapes
-            
+
             if total_merged > 0:
                 # 将字典转回 TextBlock 对象并更新内存
                 self.imgtrans_proj.pages[current_img] = [TextBlock(**blk_dict) for blk_dict in final_shapes]
@@ -934,48 +940,48 @@ class MainWindow(mainwindow_cls):
             if not img_list:
                 QMessageBox.warning(self, "警告", "项目中没有图片")
                 return
-            
+
             # 使用项目的 JSON 文件路径
             json_path = self.imgtrans_proj.proj_path
             if not json_path or not osp.exists(json_path):
                 QMessageBox.warning(self, "警告", f"找不到项目 JSON 文件: {json_path}")
                 return
-            
+
             # 使用后台线程执行合并
             self.run_merge_all_async(json_path, img_list, config)
-    
+
     def run_merge_all_async(self, json_path, img_list, config):
         """异步执行所有文件的合并"""
         from .io_thread import MergeThread
-        
+
         # 创建合并线程（如果不存在）
         if not hasattr(self, 'merge_thread'):
             self.merge_thread = MergeThread()
             self.merge_thread.progress_changed.connect(self.on_merge_progress)
             self.merge_thread.merge_finished.connect(self.on_merge_finished)
             self.merge_thread.progress_bar.stop_clicked.connect(self.on_merge_stop)
-        
+
         # 启动合并
         if self.merge_thread.runMerge(json_path, img_list, config):
             # 显示进度对话框
             self.merge_thread.progress_bar.zero_progress()
             self.merge_thread.progress_bar.show()
-    
+
     def on_merge_progress(self, current, total):
         """合并进度更新"""
         progress = int(current / total * 100)
         self.merge_thread.progress_bar.updateTaskProgress(progress, f' {current}/{total}')
-    
+
     def on_merge_stop(self):
         """停止合并"""
         if hasattr(self, 'merge_thread'):
             self.merge_thread.requestStop()
             self.merge_thread.progress_bar.hide()
-    
+
     def on_merge_finished(self, success_count, fail_count):
         """合并完成"""
         self.merge_thread.progress_bar.hide()
-        
+
         # 重新加载整个项目
         try:
             json_path = self.imgtrans_proj.proj_path
@@ -987,7 +993,7 @@ class MainWindow(mainwindow_cls):
                 self.st_manager.updateSceneTextitems()
         except:
             pass
-        
+
         # 显示结果
         total = success_count + fail_count
         QMessageBox.information(self, "完成", f"区域合并完成\n成功: {success_count}/{total}\n失败: {fail_count}/{total}")
@@ -1069,10 +1075,10 @@ class MainWindow(mainwindow_cls):
             self.saveCurrentPage(update_scene_text=True, save_proj=True, restore_interface=True, save_rst_only=False)
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False, keep_exist_as_backup=False):
-        
+
         if not self.imgtrans_proj.img_valid:
             return
-        
+
         if restore_interface:
             set_canvas_focus = self.canvas.hasFocus()
             sel_textitem = self.canvas.selected_text_items()
@@ -1080,10 +1086,10 @@ class MainWindow(mainwindow_cls):
             editing_textitem = None
             if n_sel_textitems == 1 and sel_textitem[0].isEditing():
                 editing_textitem = sel_textitem[0]
-        
+
         if update_scene_text:
             self.st_manager.updateTextBlkList()
-        
+
         if self.rightComicTransStackPanel.isHidden():
             self.bottomBar.texteditChecker.click()
 
@@ -1128,7 +1134,7 @@ class MainWindow(mainwindow_cls):
             self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality}, keep_alpha=self.imgtrans_proj.current_has_alpha())
         except Exception as e:
             LOGGER.error(f"Failed to render and save result image: {e}")
-            
+
         self.canvas.setProjSaveState(False)
         self.canvas.update_saved_undostep()
 
@@ -1147,7 +1153,7 @@ class MainWindow(mainwindow_cls):
                 self.canvas.block_selection_signal = False
             if editing_textitem is not None:
                 editing_textitem.startEdit()
-        
+
     def to_trans_config(self):
         self.leftBar.configChecker.setChecked(True)
         self.configPanel.focusOnTranslator()
@@ -1233,7 +1239,7 @@ class MainWindow(mainwindow_cls):
 
         if len(blkitem_list) < 1:
             return
-        
+
         self.translateBlkitemList(blkitem_list, -1)
 
 
@@ -1243,12 +1249,12 @@ class MainWindow(mainwindow_cls):
         if tgt_img is None:
             return False
         tgt_mask = self.imgtrans_proj.mask_array
-        
+
         if len(blkitem_list) < 1:
             return False
-        
+
         self.global_search_widget.set_document_edited()
-        
+
         im_h, im_w = tgt_img.shape[:2]
 
         blk_list, blk_ids = [], []
@@ -1310,7 +1316,7 @@ class MainWindow(mainwindow_cls):
             ffmt_list: List[FontFormat] = self.backup_blkstyles[page_index]
 
         self.postprocess_translations(blk_list)
-                
+
         # override font format if necessary
         override_fnt_size = pcfg.let_fntsize_flag == 1
         override_fnt_stroke = pcfg.let_fntstroke_flag == 1
@@ -1324,7 +1330,7 @@ class MainWindow(mainwindow_cls):
 
         inpaint_only = pcfg.module.enable_inpaint
         inpaint_only = inpaint_only and not (pcfg.module.enable_detect or pcfg.module.enable_ocr or pcfg.module.enable_translate)
-        
+
         if not inpaint_only:
             for ii, blk in enumerate(blk_list):
                 if self._run_imgtrans_wo_textstyle_update and ffmt_list is not None:
@@ -1359,7 +1365,7 @@ class MainWindow(mainwindow_cls):
                         blk.font_family = gf.font_family
                         if blk.rich_text:
                             blk.rich_text = set_html_family(blk.rich_text, gf.font_family)
-                    
+
                     blk.line_spacing = gf.line_spacing
                     blk.letter_spacing = gf.letter_spacing
                     blk.italic = gf.italic
@@ -1371,7 +1377,7 @@ class MainWindow(mainwindow_cls):
 
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (pcfg.module.enable_detect or pcfg.module.enable_translate)
-        
+
         if page_index != self.pageList.currentIndex().row():
             self.pageList.setCurrentRow(page_index)
         else:
@@ -1407,7 +1413,7 @@ class MainWindow(mainwindow_cls):
 
         if len(blk_ids) < 1:
             return
-        
+
         blkitem_list = [self.st_manager.textblk_item_list[idx] for idx in blk_ids]
 
         pairw_list = []
@@ -1436,7 +1442,7 @@ class MainWindow(mainwindow_cls):
         if lang != pcfg.display_lang:
             pcfg.display_lang = lang
             self.set_display_lang(lang)
-    
+
     def run_imgtrans(self):
         if not self.imgtrans_proj.is_all_pages_no_text and not pcfg.module.keep_exist_textlines:
             # 创建自定义消息框，添加"继续运行"选项
@@ -1444,15 +1450,15 @@ class MainWindow(mainwindow_cls):
             msgBox.setIcon(QMessageBox.Question)
             msgBox.setWindowTitle(self.tr('Confirmation'))
             msgBox.setText(self.tr('\"Run\" will clear previous results, \"Continue\" will try to run from previous progress'))
-            
+
             # 添加三个按钮（直接使用中文）
             restart_btn = msgBox.addButton(self.tr('Run'), QMessageBox.YesRole)
             continue_btn = msgBox.addButton(self.tr('Continue'), QMessageBox.AcceptRole)
             cancel_btn = msgBox.addButton(self.tr('Cancel'), QMessageBox.RejectRole)
-            
+
             msgBox.setDefaultButton(continue_btn)
             msgBox.exec_()
-            
+
             clicked_button = msgBox.clickedButton()
             if clicked_button == cancel_btn:
                 return  # 取消，不执行任何操作
@@ -1475,9 +1481,9 @@ class MainWindow(mainwindow_cls):
         self.postprocess_mt_toggle = False
 
         all_disabled = pcfg.module.all_stages_disabled()
-        
+
         pages_to_process = []
-        
+
         # 继续模式：先检查哪些页面需要处理
         if continue_mode:
             for page_name in self.imgtrans_proj.pages:
@@ -1488,7 +1494,7 @@ class MainWindow(mainwindow_cls):
         else:
             for page_name in self.imgtrans_proj.pages:
                 self.imgtrans_proj.set_page_progress(page_name, 0)
-        
+
         if pcfg.module.enable_detect:
             for page in self.imgtrans_proj.pages:
                 if not pcfg.module.keep_exist_textlines:
@@ -1502,7 +1508,7 @@ class MainWindow(mainwindow_cls):
                 # 如果指定了pages_to_process，跳过不需要处理的页面
                 if pages_to_process and page_name not in pages_to_process:
                     continue
-                    
+
                 ffmt_list = []
                 self.backup_blkstyles.append(ffmt_list)
                 for textblk in blklist:
@@ -1517,7 +1523,7 @@ class MainWindow(mainwindow_cls):
                     if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
                         textblk.rich_text = ''
                     textblk.vertical = textblk.src_is_vertical
-        
+
         # 如果有指定pages_to_process或者是continue_mode，则传递页面列表
         self.module_manager.runImgtransPipeline(pages_to_process if (pages_to_process or continue_mode) else None)
 
@@ -1623,7 +1629,7 @@ class MainWindow(mainwindow_cls):
             for pagename in matched_pages:
                 for blk in self.imgtrans_proj.pages[pagename]:
                     blk.translation = self.mtSubWidget.sub_text(blk.translation)
-            
+
             create_info_dialog(msg)
 
         except Exception as e:
@@ -1702,7 +1708,7 @@ class MainWindow(mainwindow_cls):
     def translate_postprocess(self, translations: List[str] = None, textblocks: List[TextBlock] = None, translator = None):
         if not self.postprocess_mt_toggle:
             return
-        
+
         for ii, tr in enumerate(translations):
             translations[ii] = self.mtSubWidget.sub_text(tr)
 
@@ -1710,7 +1716,7 @@ class MainWindow(mainwindow_cls):
         blks = self.canvas.selected_text_items()
         if len(blks) == 0:
             return
-        
+
         if isinstance(self.module_manager.translator, GPTTranslator):
             src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText() for blk in blks]
             src_txt = ''
@@ -1730,16 +1736,16 @@ class MainWindow(mainwindow_cls):
 
         src_widget_list = [self.st_manager.pairwidget_list[blk.idx].e_source for blk in blks]
         text_list = self.st_manager.app_clipborad.text().split('\n')
-        
+
         n_paragraph = min(len(src_widget_list), len(text_list))
         if n_paragraph < 1:
             return
-        
+
         src_widget_list = src_widget_list[:n_paragraph]
         text_list = text_list[:n_paragraph]
 
         self.canvas.push_undo_command(PasteSrcItemsCommand(src_widget_list, text_list))
-    
+
     def run_batch(self, exec_dirs: Union[List, str], **kwargs):
         if not isinstance(exec_dirs, List):
             exec_dirs = exec_dirs.split(',')
@@ -1760,7 +1766,7 @@ class MainWindow(mainwindow_cls):
             self.app.quit()
             return
         d = self.exec_dirs.pop(0)
-        
+
         LOGGER.info(f'translating {d} ...')
         self.openDir(d)
         shared.pbar = {}
@@ -1834,3 +1840,99 @@ class MainWindow(mainwindow_cls):
         action: QAction = d['action']
         action.setChecked(False)
         setattr(pcfg, cfg_name, False)
+
+    # --- 2026.02.13 在 MainWindow 类的末尾添加以下新方法 ---
+
+    def on_export_replacement_text(self):
+        """导出所有替换文本列表到一个JSON文件"""
+        try:
+            default_path = osp.join(self.imgtrans_proj.directory or os.getcwd(), "replacement_text.json")
+            save_path, _ = QFileDialog.getSaveFileName(self, self.tr("Export Replacement Text"), default_path,
+                                                       "JSON Files (*.json)")
+
+            if not save_path:
+                return
+
+            data_to_save = {
+                "ocr": pcfg.ocr_sublist,
+                "pre_mt": pcfg.pre_mt_sublist,
+                "mt": pcfg.mt_sublist,
+            }
+
+            with open(save_path, 'w', encoding='utf-8') as f:
+                json.dump(data_to_save, f, indent=4, ensure_ascii=False)
+
+            create_info_dialog(self.tr(f'Replacement text successfully exported to {save_path}'))
+
+        except Exception as e:
+            create_error_dialog(e, self.tr('Failed to export replacement text.'))
+
+    def on_import_replacement_text(self):
+        """从一个JSON文件导入所有替换文本列表，并询问是追加还是替换。"""
+        try:
+            default_dir = self.imgtrans_proj.directory or os.getcwd()
+            file_path, _ = QFileDialog.getOpenFileName(self, self.tr("Import Replacement Text"), default_dir,
+                                                       "JSON Files (*.json)")
+
+            if not file_path:
+                return
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                loaded_data = json.load(f)
+
+            if not ("ocr" in loaded_data and "pre_mt" in loaded_data and "mt" in loaded_data):
+                raise ValueError(self.tr("Invalid file format. The file must contain 'ocr', 'pre_mt', and 'mt' keys."))
+
+            # --- 新增交互对话框 ---
+            msgBox = QMessageBox(self)
+            msgBox.setWindowTitle(self.tr("Import Mode"))
+            msgBox.setText(self.tr("How do you want to import the replacement text?"))
+            msgBox.setInformativeText(self.tr(
+                "Append: Add new rules to the existing list.\nReplace: Clear the existing list and import the new one."))
+
+            append_btn = msgBox.addButton(self.tr("Append"), QMessageBox.ActionRole)
+            replace_btn = msgBox.addButton(self.tr("Replace"), QMessageBox.ActionRole)
+            cancel_btn = msgBox.addButton(QMessageBox.Cancel)
+
+            msgBox.exec_()
+
+            clicked_button = msgBox.clickedButton()
+
+            if clicked_button == cancel_btn:
+                return  # 用户取消操作
+
+            elif clicked_button == append_btn:
+                # --- 追加逻辑 ---
+                pcfg.ocr_sublist.extend(loaded_data["ocr"])
+                pcfg.pre_mt_sublist.extend(loaded_data["pre_mt"])
+                pcfg.mt_sublist.extend(loaded_data["mt"])
+
+                self.ocrSubWidget.appendCfgSublist(loaded_data["ocr"])
+                self.mtPreSubWidget.appendCfgSublist(loaded_data["pre_mt"])
+                self.mtSubWidget.appendCfgSublist(loaded_data["mt"])
+
+                success_message = self.tr('Replacement text successfully appended.')
+
+            elif clicked_button == replace_btn:
+                # --- 替换逻辑 (原逻辑) ---
+                pcfg.ocr_sublist = loaded_data["ocr"]
+                pcfg.pre_mt_sublist = loaded_data["pre_mt"]
+                pcfg.mt_sublist = loaded_data["mt"]
+
+                self.ocrSubWidget.clearSublist()
+                self.ocrSubWidget.loadCfgSublist(pcfg.ocr_sublist)
+
+                self.mtPreSubWidget.clearSublist()
+                self.mtPreSubWidget.loadCfgSublist(pcfg.pre_mt_sublist)
+
+                self.mtSubWidget.clearSublist()
+                self.mtSubWidget.loadCfgSublist(pcfg.mt_sublist)
+
+                success_message = self.tr('Replacement text successfully replaced.')
+
+            # 保存配置并显示成功消息
+            self.save_config()
+            create_info_dialog(success_message)
+
+        except Exception as e:
+            create_error_dialog(e, self.tr('Failed to import replacement text.'))
