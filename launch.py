@@ -362,10 +362,10 @@ def prepare_environment():
                 Exception("No AMD Nightly GPU supported")
             if amd_nightly_gpu == "RDNA3":
                 torch_command = os.environ.get('TORCH_COMMAND',
-                                               "pip install rocm==7.0.0rc20250818 rocm-sdk-core==7.0.0rc20250818 rocm-sdk-libraries-gfx110X-dgpu==7.0.0rc20250818 torch==2.9.0a0+rocm7.0.0rc20250818 torchvision==0.24.0a0+rocm7.0.0rc20250818 --index-url https://d2awnip2yjpvqn.cloudfront.net/v2/gfx110X-dgpu/ intel-openmp==2025.1.1 --extra-index-url https://pypi.org/simple --disable-pip-version-check")
+                                               "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
             if amd_nightly_gpu == "RDNA4":
                 torch_command = os.environ.get('TORCH_COMMAND',
-                                               "pip install rocm==7.0.0rc20250817 rocm-sdk-core==7.0.0rc20250817 rocm-sdk-libraries-gfx120X-all==7.0.0rc20250817 torch==2.9.0a0+rocm7.0.0rc20250817 torchvision==0.24.0a0+rocm7.0.0rc20250817 --index-url https://d2awnip2yjpvqn.cloudfront.net/v2/gfx120X-all/ intel-openmp==2025.1.1 --extra-index-url https://pypi.org/simple --disable-pip-version-check")
+                                               "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
         else:
             # AMD GPU: Cuda 11.8, Pytorch 2.2.2
             torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")

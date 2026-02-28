@@ -182,22 +182,32 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 <details>
   <summary><i>启用 AMD ROCm 显卡加速方法</i></summary>
 
-### 通用方案 ZLUDA (ROCm6)
+### 通用方案 ZLUDA (ROCm)
 
 **优点:**
-文本和文本框识别速度比社区预览版快，当然比 CPU 更快
+文本和文本框识别速度比社区预览版略快，当然比 CPU 更快
 
 **缺点:**
-需要额外安装并进行相关配置才可工作，首次启动以及更换识别模型和驱动都需要长时间预热缓存
+需要额外安装并进行相关配置才可工作，首次启动以及更换识别模型、显卡驱动升级等都需要长时间预热缓存
 
 **安装步骤:**
 
-1. 更新显卡驱动至最新版 (建议 24.12.1 及以上，下载并安装 [AMD HIP SDK 6.2](https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html)  )
-2. 下载 [ZLUDA](https://github.com/lshqqytiger/ZLUDA/releases)(ROCm6版本)并解压到 zluda 文件夹内，复制 zluda 文件夹到系统盘下: 比如c盘 (C:\zluda)  
-3. 配置系统环境变量，以 windows 10 系统为例:设置 - 系统属性 - 高级系统设置 - 环境变量 - 系统变量 - 找到 path 变量，点击编辑，在最后添加 `C:\zluda` 和 `%HIP_PATH_62%bin` 两项  
+1. 更新显卡驱动至最新版 (建议 24.12.1 及以上，根据自身系统环境下载并安装 [AMD HIP SDK Page](https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html)  )
+2. 下载 [ZLUDA](https://github.com/lshqqytiger/ZLUDA/releases) 并解压到 zluda 文件夹内，复制 zluda 文件夹到系统盘下: 比如c盘 (C:\zluda)  
+3. 配置系统环境变量，以 windows 10 系统为例:设置 - 系统属性 - 高级系统设置 - 环境变量 - 系统变量 - 找到 path 变量，点击编辑，在最后添加 `C:\zluda` 和 `%HIP_PATH%bin` 两项  
 4. 替换 CUDA 库的动态链接文件: 将 `C:\zluda` 文件夹内的 `cublas.dll` `cusparse.dll` 和 `nvrtc.dll` 复制出一份到桌面，按如下规则重命名复制出来的文件  
 
-**注意: (AMD 驱动 25.5.1 务必更新 ZLUDA 版本到 3.9.5 及以上)**
+**注意事项**
+
+注意 HIP SDK 和 ZLUDA 版本对应关系，建议使用较新的AMD显卡驱动程序。
+
+|Windows 版本 | HIP SDK 版本 | ZLUDA 版本 |
+|---|---|---|
+|Windows 11 | 7.1.1 | 3.9.6 |
+|Windows 10 和 11 | 6.4.2 | 3.9.5 |  
+|Windows 10 和 11 | 6.2.4 | 3.9.5 |  
+|Windows 10 和 11 | 6.1.2 | 3.9.5 |  
+
 
 ```
   原文件名 → 新文件名
@@ -213,21 +223,26 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 5. 启动程序并设置 OCR 和文本检测 为 Cuda **(图像修复请继续使用 CPU)**
 6. 运行 OCR 并等待 ZLUDA 编译 PTX 文件 **(首次编译大概需要 5-10 分钟，取决于 CPU 性能)**,**下次运行无需编译**
 
-### 原生社区预览方案 (ROCm7)
+### 原生方案 (ROCm in Windows)
+
+2026年AMD终于在 2026.1.1 驱动下正式支持 ROCm 在 windows系统下工作了。不幸的是AMD官方发布的新的 Pytorch 三件套需要 Python 3.12 版本。
+所以如果想使用原生 AI 加速，需要卸载项目内建的 Python 3.10 并移除 3.10 版本的库。重新安装内嵌 Python 3.12 并重新安装相关依赖库。
 
 **优点:**
-无需额外安装，开箱即用。且图像修复工具可以正常使用 CUDA 加速。
+无需额外安装，开箱即用。（并不是）且图像修复工具可以正常使用 CUDA 加速。
 
 **缺点:**
-由于社区版尚未集成FA2等注意力优化框架，速度不如 ZLUDA。
-
-而且对显卡限制大，对Python版本也有要求
+对显卡限制大，对 Python 版本也有要求。
 
 **安装步骤:**
 
-1. 检查显卡架构是否为 RDNA3 和 RDNA4, 目前社区预览版 ROCm7 仅支持这两种架构的显卡 既 RX7000 和 9000系列,以及对应的专业卡
+1. 检查显卡是否在 AMD 显卡驱动 AI 套件支持范围内，如果不在支持范围内
 2. 确保 Python 版本不低于 3.12.x
 3. 使用 [launch_win_amd_nightly.bat](launch_win_amd_nightly.bat) 启动程序
 4. 检查　OCR 和文本检测、图像修复设置是否为　CUDA
-  
+
+**注意事项**
+launch_win_amd_nightly.bat 为了保证最大兼容性，默认下载并使用的是 Rocm6 的 Pytorch 三件套，如果需要 ROCm7，需要手动更新对应版本的 Pytorch。
+并且需要额外安装 ROCm7 自身的三个SDK库。
+ 
 </details>
