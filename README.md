@@ -225,6 +225,9 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 
 ### 原生方案 (ROCm in Windows)
 
+**警告:**
+需要 Python 3.12 和 HIP SDK 6.4 以及 AMD 2026.1.1 驱动，需要重新安装依赖库。
+
 2026年AMD终于在 2026.1.1 驱动下正式支持 ROCm 在 windows系统下工作了。不幸的是AMD官方发布的新的 Pytorch 三件套需要 Python 3.12 版本。
 所以如果想使用原生 AI 加速，需要卸载项目内建的 Python 3.10 并移除 3.10 版本的库。重新安装内嵌 Python 3.12 并重新安装相关依赖库。
 
@@ -239,10 +242,10 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 1. 检查显卡是否在 AMD 显卡驱动 AI 套件支持范围内，如果不在支持范围内
 2. 确保 Python 版本不低于 3.12.x
 3. 使用 [launch_win_amd_nightly.bat](launch_win_amd_nightly.bat) 启动程序
-4. 检查　OCR 和文本检测、图像修复设置是否为　CUDA
+4. 检查 OCR 和文本检测、图像修复设置是否为 CUDA
 
 **注意事项**
-launch_win_amd_nightly.bat 为了保证最大兼容性，默认下载并使用的是 Rocm6 的 Pytorch 三件套，如果需要 ROCm7，需要手动更新对应版本的 Pytorch。
+launch_win_amd_nightly.bat 为了保证最大兼容性，默认下载并使用的是 Rocm6.4 的 Pytorch 三件套，如果需要 ROCm7，需要手动更新对应版本的 Pytorch。
 并且需要额外安装 ROCm7 自身的三个SDK库。
  
 </details>
