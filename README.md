@@ -239,10 +239,10 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 
 **安装步骤:**
 
-1. 检查显卡是否在 AMD 显卡驱动 AI 套件支持范围内，如果不在支持范围内
-2. 确保 Python 版本不低于 3.12.x
-3. 使用 [launch_win_amd_nightly.bat](launch_win_amd_nightly.bat) 启动程序
-4. 检查 OCR 和文本检测、图像修复设置是否为 CUDA
+1. 检查显卡是否在 AMD 显卡驱动 AI 套件支持范围内。
+2. 确保 HIP SDK 为 6.4.x, Python 相关依赖库已经更新为 3.12 版本。
+3. 使用 [launch_win_amd_nightly.bat](launch_win_amd_nightly.bat) 启动程序。
+4. 检查 OCR 和文本检测、图像修复设置是否为 CUDA。
 
 **注意事项**
 launch_win_amd_nightly.bat 为了保证最大兼容性，默认下载并使用的是 Rocm6.4 的 Pytorch 三件套，如果需要 ROCm7，需要手动更新对应版本的 Pytorch。
