@@ -1,14 +1,14 @@
 from typing import List, Union, Tuple
 
 from qtpy.QtGui import QTextCursor
-from qtpy.QtCore import QPointF
+from qtpy.QtCore import QPointF, QRectF
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
     from qtpy.QtGui import QUndoCommand
 
 from .textitem import TextBlkItem, TextBlock
-from .textedit_area import TransTextEdit, SourceTextEdit
+from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget
 from utils.fontformat import FontFormat
 import utils.config as C
 from .misc import doc_replace, doc_replace_no_shift
@@ -517,3 +517,66 @@ class MultiPasteCommand(QUndoCommand):
         for blkitem, etran in zip(self.blkitems, self.etrans):
             blkitem.undo()
             etran.undo()
+
+
+class MergeBlkItemsCommand(QUndoCommand):
+    """Merge multiple selected TextBlkItems into one, combining their bounding rects and text."""
+    def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
+        super().__init__(parent)
+        self.ctrl = ctrl  # SceneTextManager
+        # Sort by idx so text order is top-to-bottom / left to right
+        blk_list = sorted(blk_list, key=lambda b: b.idx)
+        self.blk_list = blk_list
+        self.pwidget_list: List[TransPairWidget] = [ctrl.pairwidget_list[b.idx] for b in blk_list]
+
+        # Snapshot state for undo
+        self.old_rects = [b.absBoundingRect(qrect=True) for b in blk_list]
+        self.old_trans_texts = [pw.e_trans.toPlainText() for pw in self.pwidget_list]
+        self.old_src_texts = [pw.e_source.toPlainText() for pw in self.pwidget_list]
+        self.old_html_list = [b.toHtml() for b in blk_list]
+
+        # Compute union bounding rect (scene coordinates)
+        union = QRectF()
+        for b in blk_list:
+            union = union.united(b.absBoundingRect(qrect=True))
+        self.merged_rect = union
+
+        # Merge text: source and translation joined with newline
+        self.merged_src = '\n'.join(t for t in self.old_src_texts if t.strip())
+        self.merged_trans = '\n'.join(t for t in self.old_trans_texts if t.strip())
+
+        # Primary item (first one) will become the merged block
+        self.primary = blk_list[0]
+        self.primary_pwidget = self.pwidget_list[0]
+        # Secondary items to be deleted
+        self.secondary_list = blk_list[1:]
+        self.secondary_pwidget_list = self.pwidget_list[1:]
+
+        self.op_counter = 0
+
+    def redo(self):
+        if self.op_counter == 0:
+            self.op_counter += 1
+            # First call: state already set up in __init__, just apply
+        # Expand primary to union rect and set merged text
+        self.primary.setRect(self.merged_rect)
+        self.primary_pwidget.e_source.setPlainText(self.merged_src)
+        self.primary_pwidget.e_trans.setPlainText(self.merged_trans)
+        self.primary.setPlainText(self.merged_trans)
+        # Delete secondary items
+        if self.secondary_list:
+            self.ctrl.deleteTextblkItemList(self.secondary_list, self.secondary_pwidget_list)
+
+    def undo(self):
+        # Restore secondary items first
+        if self.secondary_list:
+            self.ctrl.recoverTextblkItemList(self.secondary_list, self.secondary_pwidget_list)
+        # Restore all items to original state
+        for b, pw, rect, html, src_text, trans_text in zip(
+                self.blk_list, self.pwidget_list,
+                self.old_rects, self.old_html_list,
+                self.old_src_texts, self.old_trans_texts):
+            b.setRect(rect)
+            b.setHtml(html)
+            pw.e_source.setPlainText(src_text)
+            pw.e_trans.setPlainText(trans_text)

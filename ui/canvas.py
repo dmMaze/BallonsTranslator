@@ -169,6 +169,7 @@ class Canvas(QGraphicsScene):
     layout_textblks = Signal()
     reset_angle = Signal()
     squeeze_blk = Signal()
+    merge_textblks = Signal()
 
     run_blktrans = Signal(int)
 
@@ -777,6 +778,12 @@ class Canvas(QGraphicsScene):
             layout_act = menu.addAction(self.tr("Auto layout"))
             angle_act = menu.addAction(self.tr("Reset Angle"))
             squeeze_act = menu.addAction(self.tr("Squeeze"))
+
+            # Only show merge option when 2+ text blocks are selected
+            merge_act = None
+            if len(self.selected_text_items()) > 1:
+                merge_act = menu.addAction(self.tr("Merge selected text blocks"))
+
             menu.addSeparator()
             translate_act = menu.addAction(self.tr("translate"))
             ocr_act = menu.addAction(self.tr("OCR"))
@@ -785,7 +792,7 @@ class Canvas(QGraphicsScene):
             inpaint_act = menu.addAction(self.tr("inpaint"))
 
             rst = menu.exec(pos)
-            
+
             if rst == delete_act:
                 self.delete_textblks.emit(0)
             elif rst == delete_recover_act:
@@ -806,6 +813,8 @@ class Canvas(QGraphicsScene):
                 self.reset_angle.emit()
             elif rst == squeeze_act:
                 self.squeeze_blk.emit()
+            elif merge_act is not None and rst == merge_act:
+                self.merge_textblks.emit()
             elif rst == translate_act:
                 self.run_blktrans.emit(-1)
             elif rst == ocr_act:

@@ -15,7 +15,7 @@ from .textitem import TextBlkItem, TextBlock
 from .canvas import Canvas
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
 from utils.fontformat import FontFormat
-from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
+from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand, MergeBlkItemsCommand
 from .text_panel import FontFormatPanel
 from utils.config import pcfg
 from utils import shared
@@ -336,6 +336,7 @@ class SceneTextManager(QObject):
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvas.reset_angle.connect(self.onResetAngle)
         self.canvas.squeeze_blk.connect(self.onSqueezeBlk)
+        self.canvas.merge_textblks.connect(self.onMergeBlkItems)
         self.canvas.incanvas_selection_changed.connect(self.on_incanvas_selection_changed)
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
@@ -712,6 +713,11 @@ class SceneTextManager(QObject):
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(SqueezeCommand(selected_blks, self.txtblkShapeControl))
+
+    def onMergeBlkItems(self):
+        selected_blks = self.canvas.selected_text_items()
+        if len(selected_blks) > 1:
+            self.canvas.push_undo_command(MergeBlkItemsCommand(selected_blks, self))
 
     def on_incanvas_selection_changed(self):
         if self.canvas.textEditMode():
