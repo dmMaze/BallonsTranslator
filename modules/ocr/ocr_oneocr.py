@@ -304,8 +304,11 @@ class OCROneAPI(OCRBase):
                 if crop.size == 0:
                     blk.text = ""
                     continue
+                is_vertical = blk.vertical
+                if self.logger:
+                    self.logger.debug(f"Block {i+1}: xyxy={blk.xyxy}, src_is_vertical={blk.src_is_vertical}, vertical={blk.vertical}, is_vertical={is_vertical}")
                 try:
-                    blk.text = self.ocr(crop, apply_postprocessing=True)
+                    blk.text = self.ocr(crop, apply_postprocessing=True, reverse_lines=is_vertical)
                 except Exception as e:  # Log error from main ocr call
                     if self.logger:
                         self.logger.error(
@@ -315,9 +318,9 @@ class OCROneAPI(OCRBase):
                 blk.text = ""  # Invalid coords
 
     def ocr_img(self, img: np.ndarray) -> str: return self.ocr(img,
-                                                               apply_postprocessing=True) if self.available else ""
+                                                               apply_postprocessing=True, reverse_lines=self.reverse_line_order) if self.available else ""
 
-    def ocr(self, img: np.ndarray, apply_postprocessing: bool = True) -> str:
+    def ocr(self, img: np.ndarray, apply_postprocessing: bool = True, reverse_lines: bool = None) -> str:
         if not self.available or self.engine is None or img is None or img.size == 0:
             return ""
         start_time = time.time()
@@ -363,9 +366,18 @@ class OCROneAPI(OCRBase):
             pil_image = PilImage.fromarray(img_rgb).convert("RGBA")
             # This might raise RuntimeError on failure code
             result_dict = self.engine.recognize_pil(pil_image)
-            lines = [line["text"]
-                     for line in result_dict.get("lines", []) if line.get("text")]
-            if self.reverse_line_order:
+            raw_lines = result_dict.get("lines", [])
+            if self.logger:
+                self.logger.debug(f"  reverse_lines={reverse_lines}, reverse_line_order={self.reverse_line_order}, total_lines={len(raw_lines)}")
+                for li, ln in enumerate(raw_lines):
+                    bb = ln.get("bounding_rect")
+                    self.logger.debug(f"  line[{li}]: text={repr(ln.get('text',''))[:40]}, bbox={bb}")
+            lines = [ln["text"] for ln in raw_lines if ln.get("text")]
+            base_reverse = reverse_lines if reverse_lines is not None else False
+            should_reverse = base_reverse ^ self.reverse_line_order
+            if self.logger:
+                self.logger.debug(f"  should_reverse={should_reverse}")
+            if should_reverse:
                 lines.reverse()
             full_text = "\n".join(lines)
             if apply_postprocessing:
