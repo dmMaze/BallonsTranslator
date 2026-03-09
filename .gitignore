@@ -51,6 +51,7 @@ fonts/*
 !fonts/put fonts here.txt
 
 #venv and autoinstaller folders
+windows
 aria2c
 python
 git
