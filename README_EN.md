@@ -37,6 +37,8 @@ This is method for linux users using and docker windows container. The basic of 
 > You can edit RAM size and Disk size in `compose.yaml`.
 
 1. Install [Docker](https://docs.docker.com/engine/install/) and [Docker Compose](https://docs.docker.com/compose/install/).
+   
+After installed Docker and Docker Compose, you can get statrt windows container and install archive from MEGA
 ```bash
 # Create folder for archive
 mkdir zip
