@@ -4,6 +4,8 @@ services:
     container_name: windows
     environment:
       VERSION: "10"
+      RAM_SIZE: "8G"
+      DISK_SIZE: "64G"
     devices:
       - /dev/kvm
       - /dev/net/tun
@@ -15,6 +17,6 @@ services:
       - 3389:3389/udp
     volumes:
       - ./windows:/storage
-      - ./.:/oem
+      - ./zip/BallonTranslator/:/oem
     restart: always
     stop_grace_period: 2m

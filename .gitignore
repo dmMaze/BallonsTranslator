@@ -55,6 +55,7 @@ windows
 aria2c
 python
 git
+zip/
 modules/experiments
 update_git.bat
 launch_win_venv.bat
