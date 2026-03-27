@@ -136,7 +136,7 @@ def load_cache():
             try:
                 with open(cache_path, "r", encoding="utf8") as file:
                     cache_data = json.load(file)
-            except:
+            except Exception:
                 print(f'cached file {cache_path} is invalid')
                 cache_data = {}
         else:
