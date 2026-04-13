@@ -121,6 +121,11 @@ class LLM_API_Translator(BaseTranslator):
             "description": "Frequency penalty (OpenAI).",
         },
         "presence penalty": {"value": 0.0, "description": "Presence penalty (OpenAI)."},
+        "low vram mode": {
+            'value': False,
+            'description': 'check it if you\'re running it locally on a single device and encountered a crash due to vram OOM',
+            'type': 'checkbox',
+        }
     }
 
     def _setup_translator(self):
