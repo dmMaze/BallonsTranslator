@@ -168,7 +168,7 @@ class LLM_OCR(OCRBase):
         "model": {
             "type": "selector",
             "options": popular_models + [
-                "OLLAMA: (override model field)" # ↓ 添加这行
+                "OLLAMA: (override model field)"
             ],
             "value": "OAI: gpt-4o-mini",
             "description": "Select the model to use.",
@@ -403,10 +403,12 @@ class LLM_OCR(OCRBase):
         return None
 
     def ocr(self, img_base64: str, prompt_override: str = None) -> str:
-        api_key_to_use = "dummy-key"
-        if self.provider != "Ollama":
-            api_key_to_use = self._select_api_key()
-            if not api_key_to_use:
+        api_key_to_use = self._select_api_key()
+        
+        if not api_key_to_use:
+            if self.provider in ["LLM Studio", "Ollama"]:
+                api_key_to_use = "dummy-key"
+            else:
                 return "[ERROR: No available API key]"
 
         # Re-initialize client if key is different from the last one used
@@ -492,3 +494,4 @@ class LLM_OCR(OCRBase):
             self.request_count_minute = 0
             self.minute_start_time = time.time()
             self.last_request_time = 0
+            

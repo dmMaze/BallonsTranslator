@@ -122,6 +122,11 @@ class LLM_API_Translator(BaseTranslator):
             "description": "Frequency penalty (OpenAI).",
         },
         "presence penalty": {"value": 0.0, "description": "Presence penalty (OpenAI)."},
+        "low vram mode": {
+            'value': False,
+            'description': 'check it if you\'re running it locally on a single device and encountered a crash due to vram OOM',
+            'type': 'checkbox',
+        }
     }
 
     def _setup_translator(self):
@@ -386,10 +391,12 @@ class LLM_API_Translator(BaseTranslator):
         return None
 
     def _request_translation(self, prompt: str) -> Optional[TranslationResponse]:
-        current_api_key = "dummy-key"
-        if self.provider not in ["LLM Studio", "Ollama"]:
-            current_api_key = self._select_api_key()
-            if not current_api_key:
+        current_api_key = self._select_api_key()
+        
+        if not current_api_key:
+            if self.provider in ["LLM Studio", "Ollama"]:
+                current_api_key = "dummy-key"
+            else:
                 raise ConnectionError("No available API key found.")
 
         if self.provider == "LLM Studio" and not self.endpoint:
@@ -609,3 +616,4 @@ class LLM_API_Translator(BaseTranslator):
 
         if param_key in ["proxy", "multiple_keys", "apikey", "provider", "endpoint"]:
             self.client = None
+            
