@@ -25,15 +25,15 @@ class HTMLDelegate( QStyledItemDelegate ):
         self.doc.setUndoRedoEnabled(False)
 
     def paint(self, painter, option, index):                                                                                                                                                                               
-        
+
         options = QStyleOptionViewItem(option)
         self.initStyleOption(options, index)
         painter.save()
         self.doc.setDefaultFont(options.font)
         self.doc.setHtml(options.text)
-        
+
         options.text = ''
-        
+
         painter.translate(options.rect.left(), options.rect.top())
 
         clip = QRectF(0, 0, options.rect.width(), options.rect.height())
@@ -171,7 +171,7 @@ class SearchResultTree(QTreeView):
 
     def rowCount(self):
         return self.root_item.rowCount()
-        
+
 
 class GlobalReplaceThead(ThreadBase):
 
@@ -208,7 +208,7 @@ class GlobalReplaceThead(ThreadBase):
         sceneitem_list = {'src': [], 'trans': []}
         background_list = {'src': [], 'trans': []}
         self.target_text = target
-        
+
         for ii in range(row_count):
             page_rst_item: PageSeachResultItem = self.srt.sm.item(ii, 0)
             self.progress_bar.updateTaskProgress(int(ii / row_count * 100))
@@ -222,13 +222,13 @@ class GlobalReplaceThead(ThreadBase):
                 for idx, rstitem_list in page_rst_item.blkid2match['trans'].items():
                     edit = self.pairwidget_list[idx].e_trans
                     item = self.textblk_item_list[idx]
-                    
+
                     sceneitem_list['trans'].append({
                         'edit': edit, 
                         'item': item,
                         'matched_map': [[rstitem.start, rstitem.end] for rstitem in rstitem_list]
                     })
-                    
+
             else:
                 for idx in page_rst_item.blkid2match['src']:
                     blk: TextBlock = self.proj.pages[page_rst_item.pagename][idx]
@@ -241,7 +241,7 @@ class GlobalReplaceThead(ThreadBase):
                         'idx': idx
                     })
                     blk.text = replace
-                
+
                 for idx, rstitem_list in page_rst_item.blkid2match['trans'].items():
                     blk: TextBlock = self.proj.pages[page_rst_item.pagename][idx]
                     ori = blk.translation
@@ -304,7 +304,7 @@ class GlobalSearchWidget(Widget):
         self.search_editor = SearchEditor(self, commit_latency=-1)
         self.search_editor.setPlaceholderText(self.tr('Find'))
         self.search_editor.enter_pressed.connect(self.commit_search)
-        
+
         self.no_result_str = self.tr('No results found. ')
         self.doc_edited_str = self.tr('Document changed. Press Enter to re-search.')
         self.search_rst_str = self.tr('Found results: ')
@@ -361,7 +361,7 @@ class GlobalSearchWidget(Widget):
         hlayout_bar1 = QHBoxLayout()
         hlayout_bar1.addLayout(hlayout_bar1_0)
         hlayout_bar1.addLayout(hlayout_bar1_1)
-        
+
         hlayout_bar2 = QHBoxLayout()
         hlayout_bar2.addWidget(self.replace_editor)
         hlayout_bar2.addWidget(self.range_label)
@@ -417,7 +417,7 @@ class GlobalSearchWidget(Widget):
             regexr = re.escape(regexr)
         if self.whole_word_toggle.isChecked():
             regexr = r'\b' + target_text + r'\b'
-        
+
         try: 
             return re.compile(regexr, flag)
         except re.error:
@@ -435,7 +435,7 @@ class GlobalSearchWidget(Widget):
 
         match_src = self.range_combobox.currentIndex() != 0
         match_trans = self.range_combobox.currentIndex() != 1
-        
+
         for pagename, page in self.imgtrans_proj.pages.items():
             page_match_counter = 0
             page_rstitem_list = []
@@ -485,7 +485,7 @@ class GlobalSearchWidget(Widget):
 
         msg = QMessageBox()
         msg.setText(self.tr('Replace all occurrences re-render all pages? It can\'t be undone.'))
-        
+
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         ret = msg.exec_()
         if ret == QMessageBox.StandardButton.No:
@@ -502,13 +502,18 @@ class GlobalSearchWidget(Widget):
                 rerender_pages.insert(0, [pagename, ii])
             else:
                 rerender_pages.append([pagename, ii])
+
+        # 20260418 优化全部替换并渲染全部文件界面卡顿问题
         self.progress_bar.updateTaskProgress(0)
         self.progress_bar.show()
+        # 新增：强制立即显示进度条弹窗
+        QApplication.processEvents()
+
         target = self.replace_editor.toPlainText()
 
         replace_src = self.range_combobox.currentIndex() != 0
         replace_trans = self.range_combobox.currentIndex() != 1
-        
+
         for pagename, page_row in rerender_pages:
             self.req_move_page.emit(pagename, False)
             page_rst_item: PageSeachResultItem = self.search_tree.sm.item(page_row, 0)
@@ -523,10 +528,17 @@ class GlobalSearchWidget(Widget):
                     item = self.textblk_item_list[idx]
                     span_list = [[rstitem.start, rstitem.end] for rstitem in rstitem_list]
                     doc_replace(item.document(), span_list, target)
-        
+
+            # 新增：释放主线程控制权，处理积压的 UI 事件。
+            # 这能防止程序未响应，并让后台保存线程（ImgSaveThread）发回的进度信号得以更新到进度条上。
+            QApplication.processEvents()
+
         if len(rerender_pages) > 0:
             self.req_move_page.emit(pagename, True)
             self.set_document_edited()
+            # 新增：确保最后一页的界面刷新不会卡顿
+            QApplication.processEvents()
+        # 20260418 优化全部替换并渲染全部文件界面卡顿问题 end
 
     def sizeHint(self) -> QSize:
         size = super().sizeHint()
