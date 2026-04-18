@@ -459,13 +459,8 @@ class MainWindow(mainwindow_cls):
             self.openDir(proj_path)
         else:
             self.openJsonProj(proj_path)
-<<<<<<< HEAD
-
-        if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
-=======
         
         if pcfg.let_textstyle_indep_flag and not (shared.HEADLESS or shared.HEADLESS_CONTINUOUS):
->>>>>>> upstream/dev
             self.load_textstyle_from_proj_dir(from_proj=True)
 
     def load_textstyle_from_proj_dir(self, from_proj=False):
