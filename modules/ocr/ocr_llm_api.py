@@ -148,7 +148,7 @@ class LLM_OCR(OCRBase):
     params = {
         "provider": {
             "type": "selector",
-            "options": ["OpenAI", "Google", "OpenRouter"],
+            "options": ["OpenAI", "Google", "OpenRouter", "Ollama"],
             "value": "OpenAI",
             "description": "Select the LLM provider.",
         },
@@ -167,7 +167,9 @@ class LLM_OCR(OCRBase):
         },
         "model": {
             "type": "selector",
-            "options": popular_models,
+            "options": popular_models + [
+                "OLLAMA: (override model field)"
+            ],
             "value": "OAI: gpt-4o-mini",
             "description": "Select the model to use.",
         },
@@ -232,6 +234,8 @@ class LLM_OCR(OCRBase):
                 endpoint = "https://generativelanguage.googleapis.com/v1beta/openai"
             elif provider == "OpenRouter":
                 endpoint = "https://openrouter.ai/api/v1"
+            elif provider == "Ollama":
+                endpoint = "http://localhost:11434/v1"
 
         http_client = None
         if self.proxy:
@@ -400,8 +404,12 @@ class LLM_OCR(OCRBase):
 
     def ocr(self, img_base64: str, prompt_override: str = None) -> str:
         api_key_to_use = self._select_api_key()
+        
         if not api_key_to_use:
-            return "[ERROR: No available API key]"
+            if self.provider in ["LLM Studio", "Ollama"]:
+                api_key_to_use = "dummy-key"
+            else:
+                return "[ERROR: No available API key]"
 
         # Re-initialize client if key is different from the last one used
         if not self.client or self.client.api_key != api_key_to_use:
@@ -486,3 +494,4 @@ class LLM_OCR(OCRBase):
             self.request_count_minute = 0
             self.minute_start_time = time.time()
             self.last_request_time = 0
+            

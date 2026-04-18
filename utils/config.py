@@ -36,6 +36,8 @@ class ModuleConfig(Config):
     inpainter_params: Dict = field(default_factory=lambda: dict())
     translate_source: str = '日本語'
     translate_target: str = '简体中文'
+    translate_by_textblock: bool = False
+
     check_need_inpaint: bool = True
     load_model_on_demand: bool = False
     empty_runcache: bool = False
@@ -122,6 +124,7 @@ class ProgramConfig(Config):
     mask_transparency: float = 0.
     original_transparency: float = 0.
     open_recent_on_startup: bool = True 
+
     let_fntsize_flag: int = 0
     let_fntstroke_flag: int = 0
     let_fntcolor_flag: int = 0
@@ -135,6 +138,7 @@ class ProgramConfig(Config):
     let_show_only_custom_fonts_flag: bool = False
     let_textstyle_indep_flag: bool = False
     text_styles_path: str = osp.join(shared.DEFAULT_TEXTSTYLE_DIR, 'default.json')
+
     fsearch_case: bool = False
     fsearch_whole_word: bool = False
     fsearch_regex: bool = False
@@ -143,6 +147,7 @@ class ProgramConfig(Config):
     gsearch_whole_word: bool = False
     gsearch_regex: bool = False
     gsearch_range: int = 0
+
     darkmode: bool = False
     textselect_mini_menu: bool = True
     fold_textarea: bool = False

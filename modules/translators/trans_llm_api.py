@@ -37,7 +37,7 @@ class LLM_API_Translator(BaseTranslator):
     params: Dict = {
         "provider": {
             "type": "selector",
-            "options": ["OpenAI", "Google", "Grok", "OpenRouter", "LLM Studio"],
+            "options": ["OpenAI", "Google", "Grok", "OpenRouter", "LLM Studio", "Ollama"],
             "value": "OpenAI",
             "description": "Select the LLM provider.",
         },
@@ -63,6 +63,7 @@ class LLM_API_Translator(BaseTranslator):
                 "XAI: grok-3",
                 "XAI: grok-3-mini",
                 "LLMS: (override model field)",
+                "OLLAMA: (override model field)",
             ],
             "value": "OAI: gpt-4o",
             "description": "Select a model that supports JSON Mode for structured output.",
@@ -121,6 +122,11 @@ class LLM_API_Translator(BaseTranslator):
             "description": "Frequency penalty (OpenAI).",
         },
         "presence penalty": {"value": 0.0, "description": "Presence penalty (OpenAI)."},
+        "low vram mode": {
+            'value': False,
+            'description': 'check it if you\'re running it locally on a single device and encountered a crash due to vram OOM',
+            'type': 'checkbox',
+        }
     }
 
     def _setup_translator(self):
@@ -170,6 +176,8 @@ class LLM_API_Translator(BaseTranslator):
                 endpoint = "https://openrouter.ai/api/v1"
             elif provider == "Grok":
                 endpoint = "https://api.x.ai/v1"
+            elif provider == "Ollama":
+                endpoint = "http://localhost:11434/v1"
 
         proxy = self.proxy
         http_client = None
@@ -383,10 +391,12 @@ class LLM_API_Translator(BaseTranslator):
         return None
 
     def _request_translation(self, prompt: str) -> Optional[TranslationResponse]:
-        current_api_key = "lm-studio"
-        if self.provider != "LLM Studio":
-            current_api_key = self._select_api_key()
-            if not current_api_key:
+        current_api_key = self._select_api_key()
+        
+        if not current_api_key:
+            if self.provider in ["LLM Studio", "Ollama"]:
+                current_api_key = "dummy-key"
+            else:
                 raise ConnectionError("No available API key found.")
 
         if self.provider == "LLM Studio" and not self.endpoint:
@@ -422,7 +432,7 @@ class LLM_API_Translator(BaseTranslator):
                 "type": "json_schema",
                 "json_schema": {"schema": TranslationResponse.model_json_schema()},
             }
-        elif self.provider in ["OpenAI", "Grok", "Google", "OpenRouter"]:
+        elif self.provider in ["OpenAI", "Grok", "Google", "OpenRouter", "Ollama"]:
             self.logger.debug(f"Using 'json_object' mode for {self.provider}.")
             api_args["response_format"] = {"type": "json_object"}
 
@@ -606,3 +616,4 @@ class LLM_API_Translator(BaseTranslator):
 
         if param_key in ["proxy", "multiple_keys", "apikey", "provider", "endpoint"]:
             self.client = None
+            

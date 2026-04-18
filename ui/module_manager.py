@@ -341,7 +341,8 @@ class ImgtransThread(QThread):
     
     def requestStop(self):
         """请求停止当前任务"""
-        self.stop_requested = True
+        if self.isRunning():
+            self.stop_requested = True
         # 同时停止翻译线程
         if self.translate_thread.isRunning():
             self.translate_thread.requestStop()
@@ -657,6 +658,9 @@ class ModuleManager(QObject):
         translator_panel.addModulesParamWidgets(translator_params)
         translator_panel.translator_changed.connect(self.setTranslator)
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
+        translator_panel.translateByTextblockBox.checker_changed.connect(self.on_translatebyblock_checker_changed)
+        translator_panel.translateByTextblockBox.checker.setChecked(cfg_module.translate_by_textblock)
+
         from modules.translators.hooks import chs2cht
         BaseTranslator.register_preprocess_hooks({'keyword_sub': translate_preprocess})
         BaseTranslator.register_postprocess_hooks({'chs2cht': chs2cht, 'keyword_sub': translate_postprocess})
@@ -763,8 +767,7 @@ class ModuleManager(QObject):
     def stopImgtransPipeline(self):
         """停止图像翻译流程"""
         LOGGER.info('Stopping image translation pipeline...')
-        if self.imgtrans_thread.isRunning():
-            self.imgtrans_thread.requestStop()
+        self.imgtrans_thread.requestStop()
 
     def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
         self.terminateRunningThread()
@@ -976,3 +979,7 @@ class ModuleManager(QObject):
     def on_inpainter_checker_changed(self, is_checked: bool):
         cfg_module.check_need_inpaint = is_checked
         InpainterBase.check_need_inpaint = is_checked
+
+    def on_translatebyblock_checker_changed(self, is_checked: bool):
+        cfg_module.translate_by_textblock = is_checked
+        BaseTranslator.translate_by_textblock = is_checked

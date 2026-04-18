@@ -386,6 +386,7 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.replaceOCRkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for source text"), self)
         self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
         self.replaceOCRkeywordBtn.setFixedWidth(500)
+        self.translateByTextblockBox = ParamCheckerBox(self.tr('Translate each text block individually'))
 
         st_layout = QHBoxLayout()
         st_layout.setSpacing(15)
@@ -396,6 +397,7 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         st_layout.addWidget(self.target_combobox)
         
         self.vlayout.insertLayout(1, st_layout) 
+        self.vlayout.addWidget(self.translateByTextblockBox)
         self.vlayout.addWidget(self.replaceOCRkeywordBtn)
         self.vlayout.addWidget(self.replacePreMTkeywordBtn)
         self.vlayout.addWidget(self.replaceMTkeywordBtn)
