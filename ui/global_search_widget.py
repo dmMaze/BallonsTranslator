@@ -502,13 +502,18 @@ class GlobalSearchWidget(Widget):
                 rerender_pages.insert(0, [pagename, ii])
             else:
                 rerender_pages.append([pagename, ii])
+
+        # 20260418 优化全部替换并渲染全部文件界面卡顿问题
         self.progress_bar.updateTaskProgress(0)
         self.progress_bar.show()
+        # 新增：强制立即显示进度条弹窗
+        QApplication.processEvents()
+
         target = self.replace_editor.toPlainText()
 
         replace_src = self.range_combobox.currentIndex() != 0
         replace_trans = self.range_combobox.currentIndex() != 1
-        
+
         for pagename, page_row in rerender_pages:
             self.req_move_page.emit(pagename, False)
             page_rst_item: PageSeachResultItem = self.search_tree.sm.item(page_row, 0)
@@ -523,10 +528,17 @@ class GlobalSearchWidget(Widget):
                     item = self.textblk_item_list[idx]
                     span_list = [[rstitem.start, rstitem.end] for rstitem in rstitem_list]
                     doc_replace(item.document(), span_list, target)
-        
+
+            # 新增：释放主线程控制权，处理积压的 UI 事件。
+            # 这能防止程序未响应，并让后台保存线程（ImgSaveThread）发回的进度信号得以更新到进度条上。
+            QApplication.processEvents()
+
         if len(rerender_pages) > 0:
             self.req_move_page.emit(pagename, True)
             self.set_document_edited()
+            # 新增：确保最后一页的界面刷新不会卡顿
+            QApplication.processEvents()
+        # 20260418 优化全部替换并渲染全部文件界面卡顿问题 end
 
     def sizeHint(self) -> QSize:
         size = super().sizeHint()

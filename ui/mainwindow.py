@@ -996,19 +996,26 @@ class MainWindow(mainwindow_cls):
         if self.canvas.text_change_unsaved():
             self.st_manager.updateTextBlkList()
 
+    # 20260418 全部替换并重新渲染 会导致图片切换不保存图片的bug
     def on_req_move_page(self, page_name: str, force_save=False):
         ori_save = self.save_on_page_changed
         self.save_on_page_changed = False
         current_img = self.imgtrans_proj.current_img
+
         if current_img == page_name and not force_save:
+            # 修复 Bug：提前返回时必须恢复自动保存的开关状态
+            self.save_on_page_changed = ori_save 
             return
+
         if current_img not in self.global_search_widget.page_set:
             if self.canvas.projstate_unsaved: 
                 self.saveCurrentPage()
         else:
             self.saveCurrentPage(save_rst_only=True)
+
         self.pageList.setCurrentRow(self.imgtrans_proj.pagename2idx(page_name))
         self.save_on_page_changed = ori_save
+    # 20260418 全部替换并重新渲染 会导致图片切换不保存图片的bug end
 
     def on_search_result_item_clicked(self, pagename: str, blk_idx: int, is_src: bool, start: int, end: int):
         idx = self.imgtrans_proj.pagename2idx(pagename)
