@@ -127,7 +127,7 @@ class GoogleTranslateProviderPython:
 @register_translator("google")
 class TransGoogle(BaseTranslator):
 
-    concate_text = True
+    concate_text = False
     params: Dict = {
         "delay": 0.0,
     }
