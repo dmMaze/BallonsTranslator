@@ -3,7 +3,6 @@ from typing import List, Union
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QSizePolicy, QLabel, QLineEdit
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
 from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence
-import keyboard
 import webbrowser
 import numpy as np
 
@@ -16,6 +15,9 @@ from utils.logger import logger as LOGGER
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
 STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
 STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
+
+from pynput.keyboard import Key, Controller
+keyboard = Controller()
 
 
 class SelectTextMiniMenu(Widget):

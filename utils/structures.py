@@ -2,8 +2,16 @@ from typing import Tuple, List, ClassVar, Union, Any, Dict, Set
 from dataclasses import dataclass, field, is_dataclass
 import copy
 import os
+import inspect
 
 import numpy as np
+
+
+def get_annotations(obj):
+    if hasattr(obj, '__annotations__'):
+        return obj.__annotations__
+    else:
+        return inspect.get_annotations(obj)
 
 
 # decorator to wrap original __init__
@@ -21,10 +29,10 @@ def nested_dataclass(*args, **dataclass_kwargs):
           
         def __init__(self, *args, **kwargs):
               
-            store_deprecated = 'deprecated_attributes' in self.__annotations__
+            store_deprecated = 'deprecated_attributes' in get_annotations(self)
             deprecated = {}
             for name in list(kwargs.keys()):
-                if name not in self.__annotations__:
+                if name not in get_annotations(self):
                     # print(f'warning: type object \'{self.__class__.__name__}\' has no attribute {name}, might be loading from an older config')
                     val = kwargs.pop(name)
                     if store_deprecated:
@@ -53,7 +61,7 @@ def nested_dataclass(*args, **dataclass_kwargs):
 class Config:
     
     def update(self, key: str, value):
-        assert key in self.__annotations__, f'type object \'{self.__class__.__name__}\' has no attribute {key}'
+        assert key in get_annotations(self), f'type object \'{self.__class__.__name__}\' has no attribute {key}'
         self.__setattr__(key, value)
 
     @classmethod
@@ -61,7 +69,7 @@ class Config:
         return set(list(cls.__annotations__))
     
     def __getitem__(self, key: str):
-        assert key in self.__annotations__, f'type object \'{self.__class__.__name__}\' has no attribute {key}'
+        assert key in get_annotations(self), f'type object \'{self.__class__.__name__}\' has no attribute {key}'
         return self.__getattribute__(key)
     
     def __setitem__(self, key: str, value):

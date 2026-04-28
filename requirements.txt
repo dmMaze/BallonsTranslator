@@ -4,18 +4,17 @@ PyQt6-Qt6>=6.6.2 ; python_version > "3.8"
 PyQt6>=6.6.1 ; python_version > "3.8"
 PyQt5-Qt5>=5.15.2 ; python_version <= "3.8"
 PyQt5>=5.15.10 ; python_version <= "3.8"
-numpy<2
+numpy
 urllib3
 jaconv
 torch
 torchvision
-transformers==4.57.1
+transformers
 mecab-python3; sys_platform == 'darwin'
 fugashi
 unidic_lite
 tqdm
 opencv-python>=4.8.1.78; sys_platform == 'win32' or sys_platform == 'linux'
-opencv-python>=4.8.1.78,<=4.10.0.82 ; sys_platform == 'darwin'
 shapely
 pyclipper
 einops
@@ -29,7 +28,7 @@ ctranslate2
 python-docx
 docx2txt
 piexif
-keyboard
+pynput
 ordered-set
 opencc-python-reimplemented
 requests
@@ -56,3 +55,6 @@ pyobjc-framework-coreml; sys_platform == 'darwin'
 pyobjc-framework-quartz; sys_platform == 'darwin'
 pyobjc-framework-vision; sys_platform == 'darwin'
 betterproto
+
+diffusers>=0.37.1
+accelerate>=1.13.0
