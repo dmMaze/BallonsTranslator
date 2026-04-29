@@ -37,6 +37,7 @@ if IS_WIN7:
 else:
     parser.add_argument("--qt-api", default='pyqt6', choices=QT_APIS, help='Set qt api')
 parser.add_argument("--debug", action='store_true')
+parser.add_argument("--system_hf_cache", action='store_true', help="use system huggingface cache directory instead of ./data/models")
 parser.add_argument("--requirements", default='requirements.txt')
 parser.add_argument("--headless", action='store_true', help='run without GUI')
 parser.add_argument("--headless_continuous", action='store_true', help='like headless but will not exit after finishing translation, prompts the user for new exec_dirs until user exits the program')
@@ -133,6 +134,7 @@ def main():
         os.environ['BALLOONTRANS_DEBUG'] = '1'
 
     os.environ['QT_API'] = args.qt_api
+    os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = '1'
 
     commit = commit_hash()
 
@@ -144,6 +146,9 @@ def main():
 
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
     os.chdir(APP_DIR)
+
+    if not args.system_hf_cache:
+        os.environ['HF_HOME'] = osp.join(APP_DIR, 'data/models')
 
     prepare_environment()
 

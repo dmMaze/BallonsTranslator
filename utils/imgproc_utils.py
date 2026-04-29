@@ -3,6 +3,18 @@ import cv2
 import random
 from typing import List, Tuple, Union
 
+def smart_resize(src: np.ndarray, target_size, upscale_interpolation=cv2.INTER_LINEAR, downscale_interpolation=cv2.INTER_AREA):
+    h, w = src.shape[:2]
+    th, tw = target_size
+    if th == h and tw == w:
+        return src.copy()
+    if th * tw < h * w:
+        interpolation = downscale_interpolation
+    else:
+        interpolation = upscale_interpolation
+    return cv2.resize(src, (tw, th), interpolation=interpolation)
+
+
 def hex2bgr(hex):
     gmask = 254 << 8
     rmask = 254

@@ -58,3 +58,4 @@ betterproto
 
 diffusers>=0.37.1
 accelerate>=1.13.0
+hf_transfer
