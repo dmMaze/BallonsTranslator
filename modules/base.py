@@ -279,7 +279,11 @@ try:
 except:
     # directml is not supported
     pass
-BF16_SUPPORTED = DEFAULT_DEVICE == 'cuda' and torch.cuda.is_bf16_supported() or DEFAULT_DEVICE == 'xpu' and torch.xpu.is_bf16_supported()
+BF16_SUPPORTED = False
+if DEFAULT_DEVICE == 'cuda' and torch.cuda.is_bf16_supported() or DEFAULT_DEVICE == 'xpu' and torch.xpu.is_bf16_supported():
+    BF16_SUPPORTED = True
+if DEFAULT_DEVICE == 'mps':
+    BF16_SUPPORTED = True
 
 def is_nvidia():
     if DEFAULT_DEVICE == 'cuda':
