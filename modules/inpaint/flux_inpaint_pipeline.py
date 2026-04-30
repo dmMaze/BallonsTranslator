@@ -543,7 +543,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent)  # (1, 128, 32, 32)
 
-        image_latent_ids = self._prepare_image_ids(image_latents)
+        image_latent_ids = self._prepare_image_ids(image_latents, batch_size=batch_size)
 
         # Pack each latent and concatenate
         packed_latents = []
@@ -849,16 +849,14 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             device,
         )
 
-        image_latents, _ = self.prepare_image_latents(image,
+        image_latents, cond_image_ids = self.prepare_image_latents(image,
                                                       batch_size=batch_size, generator=generator,
                                                       device=device, dtype=prompt_embeds.dtype)
         latents = self.scheduler.scale_noise(image_latents, 
                                              timesteps[:1].repeat(batch_size * num_images_per_prompt), noise)
+        
+        combined_image_ids = torch.cat([latent_ids, cond_image_ids], dim=1)
 
-        # 7. Denoising loop
-        # We set the index here to remove DtoH sync, helpful especially during compilation.
-        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
-        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -869,7 +867,8 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
                 latent_model_input = latents.to(self.transformer.dtype)
-                latent_image_ids = latent_ids
+
+                latent_model_input = torch.cat([latents, image_latents], dim=1)
 
                 with self.transformer.cache_context("cond"):
                     
@@ -879,7 +878,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                         guidance=None,
                         encoder_hidden_states=prompt_embeds,
                         txt_ids=text_ids,  # B, text_seq_len, 4
-                        img_ids=latent_image_ids,  # B, image_seq_len, 4
+                        img_ids=combined_image_ids,  # B, image_seq_len, 4
                         joint_attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )
@@ -959,3 +958,69 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             image = self.image_processor.postprocess(image, output_type=output_type)
 
         return image
+    
+
+    @staticmethod
+    def _prepare_image_ids(
+        image_latents: list[torch.Tensor],  # list of (B_i, C, H, W) before packing
+        batch_size: int,
+        scale: int = 10,
+    ):
+        r"""
+        Generates 4D time-space coordinates (T, H, W, L) for a sequence of image latents.
+
+        This function creates a unique coordinate for every pixel/patch across all input latent with different
+        dimensions.
+
+        Args:
+            image_latents (list[torch.Tensor]):
+                A list of image latent feature tensors, typically of shape (C, H, W).
+            scale (int, optional):
+                A factor used to define the time separation (T-coordinate) between latents. T-coordinate for the i-th
+                latent is: 'scale + scale * i'. Defaults to 10.
+
+        Returns:
+            torch.Tensor:
+                The combined coordinate tensor. Shape: (1, N_total, 4) Where N_total is the sum of (H * W) for all
+                input latents.
+
+        Coordinate Components (Dimension 4):
+            - T (Time): The unique index indicating which latent image the coordinate belongs to.
+            - H (Height): The row index within that latent image.
+            - W (Width): The column index within that latent image.
+            - L (Seq. Length): A sequence length dimension, which is always fixed at 0 (size 1)
+        """
+
+        if not isinstance(image_latents, list):
+            raise ValueError(f"Expected `image_latents` to be a list, got {type(image_latents)}.")
+
+        all_image_latent_ids = []
+        t_offset = scale
+        for x in image_latents:
+            b_i, _, height, width = x.shape
+
+            # Create IDs for a single image at this t_offset
+            t = torch.tensor([t_offset]).view(-1)
+            x_ids = torch.cartesian_prod(t, torch.arange(height), torch.arange(width), torch.arange(1))
+
+            if b_i == 1 or b_i == batch_size:
+                x_ids = x_ids.unsqueeze(0).expand(batch_size, -1, -1)
+                all_image_latent_ids.append(x_ids)
+                t_offset += scale
+            else:
+                # multiple images per sample in the batch
+                item_ids = [x_ids]
+                for _ in range(1, b_i):
+                    t_offset += scale
+                    t = torch.tensor([t_offset]).view(-1)
+                    item_ids.append(
+                        torch.cartesian_prod(t, torch.arange(height), torch.arange(width), torch.arange(1))
+                    )
+                x_ids = torch.cat(item_ids, dim=0)  # (b_i * h * w, 4)
+                x_ids = x_ids.unsqueeze(0).expand(batch_size, -1, -1)
+                all_image_latent_ids.append(x_ids)
+                t_offset += scale
+
+        image_latent_ids = torch.cat(all_image_latent_ids, dim=1)
+
+        return image_latent_ids
