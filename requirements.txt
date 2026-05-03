@@ -41,7 +41,6 @@ natsort
 py7zr
 multivolumefile
 httpx[socks,brotli]
-langdetect
 translators==5.9.5
 json5
 pillow-jxl-plugin>=1.3.4
