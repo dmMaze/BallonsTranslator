@@ -16,9 +16,12 @@ STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
 STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
 STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
 
-from pynput.keyboard import Key, Controller
-keyboard = Controller()
-
+try:
+    from pynput.keyboard import Key, Controller
+    keyboard = Controller()
+except:
+    LOGGER.warning(f'failed to import pynput')
+    keyboard = None
 
 class SelectTextMiniMenu(Widget):
 
@@ -50,11 +53,12 @@ class SelectTextMiniMenu(Widget):
         self.hide()
 
     def on_saladict(self):
-        self.app.clipboard().setText(self.selected_text)
-        self.block_current_editor.emit(True)
-        keyboard.press(pcfg.saladict_shortcut)
-        keyboard.release(pcfg.saladict_shortcut)
-        self.block_current_editor.emit(False)
+        if keyboard is not None:
+            self.app.clipboard().setText(self.selected_text)
+            self.block_current_editor.emit(True)
+            keyboard.press(pcfg.saladict_shortcut)
+            keyboard.release(pcfg.saladict_shortcut)
+            self.block_current_editor.emit(False)
         self.hide()
 
 
