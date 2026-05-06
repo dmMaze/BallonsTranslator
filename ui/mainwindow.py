@@ -1133,11 +1133,11 @@ class MainWindow(mainwindow_cls):
             img = self.canvas.render_result_img()
             imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
             self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality}, keep_alpha=self.imgtrans_proj.current_has_alpha())
+            self.canvas.setProjSaveState(False)
+            self.canvas.update_saved_undostep()
+        
         except Exception as e:
             LOGGER.error(f"Failed to render and save result image: {e}")
-            
-        self.canvas.setProjSaveState(False)
-        self.canvas.update_saved_undostep()
 
         if restore_interface:
             if restore_textblock_mode:
