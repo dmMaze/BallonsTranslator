@@ -1,0 +1,13 @@
+[WARNING] base:_load_module:346 - Failed to import modules.translators.trans_llm_api: No module named 'openai'
+[WARNING] base:_load_module:346 - Failed to import modules.translators.trans_chatgpt_exp: No module named 'openai'
+[WARNING] base:_load_module:346 - Failed to import modules.translators.trans_chatgpt: No module named 'openai'
+[WARNING] base:_load_module:346 - Failed to import modules.translators.trans_deepl: No module named 'deepl'
+[WARNING] base:_load_module:346 - Failed to import modules.translators.trans_sakura: No module named 'openai'
+[WARNING] base:_load_module:346 - Failed to import modules.ocr.ocr_manga: No module named 'jaconv'
+[DEBUG  ] ocr_paddle:<module>:14 - PaddleOCR is not installed, so the module will not be initialized.
+Check this issue https://github.com/dmMaze/BallonsTranslator/issues/835#issuecomment-2772940806
+[WARNING] base:_load_module:346 - Failed to import modules.ocr.ocr_llm_api: No module named 'openai'
+INFO:     Started server process [158260]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:5000 (Press CTRL+C to quit)

@@ -48,6 +48,7 @@ parser.add_argument("--export-source-txt", action='store_true', help='save sourc
 parser.add_argument("--frozen", action='store_true', help='run without checking requirements')
 parser.add_argument("--update", action='store_true', help="Update the repository before launching") # Add argument --update
 parser.add_argument("--config_path", default=shared.CONFIG_PATH, help='Config file to use for translation') # Named config_path to avoid conflict with existing name config
+parser.add_argument("--api", action="store_true", help="run as API server")
 parser.add_argument('--nightly', action='store_true', help="Enable AMD Nightly ROCm")
 args, _ = parser.parse_known_args()
 
@@ -155,6 +156,11 @@ def main():
     from utils.zluda_config import enable_zluda_config
     enable_zluda_config()
 
+    if args.api:
+        import uvicorn
+        from app_api import app
+        uvicorn.run(app, host="0.0.0.0", port=5000)
+        return
     if args.update:
         if getattr(sys, 'frozen', False):
             print('Running as app, skipping update.')

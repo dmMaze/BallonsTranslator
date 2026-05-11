@@ -1,0 +1,329 @@
+Collecting shapely
+  Downloading shapely-2.1.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (6.8 kB)
+Collecting pyclipper
+  Downloading pyclipper-1.4.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (8.6 kB)
+Collecting einops
+  Downloading einops-0.8.2-py3-none-any.whl.metadata (13 kB)
+Collecting termcolor
+  Downloading termcolor-3.3.0-py3-none-any.whl.metadata (6.5 kB)
+Collecting bs4
+  Downloading bs4-0.0.2-py2.py3-none-any.whl.metadata (411 bytes)
+Collecting sentencepiece
+  Downloading sentencepiece-0.2.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (10 kB)
+Collecting ctranslate2
+  Downloading ctranslate2-4.7.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (10 kB)
+Collecting python-docx
+  Downloading python_docx-1.2.0-py3-none-any.whl.metadata (2.0 kB)
+Collecting docx2txt
+  Downloading docx2txt-0.9-py3-none-any.whl.metadata (529 bytes)
+Collecting piexif
+  Downloading piexif-1.1.3-py2.py3-none-any.whl.metadata (3.7 kB)
+Collecting pynput
+  Downloading pynput-1.8.1-py2.py3-none-any.whl.metadata (32 kB)
+Collecting opencc-python-reimplemented
+  Downloading opencc_python_reimplemented-0.1.7-py2.py3-none-any.whl.metadata (4.6 kB)
+Collecting ultralytics
+  Downloading ultralytics-8.4.48-py3-none-any.whl.metadata (39 kB)
+Collecting translators==5.9.5
+  Downloading translators-5.9.5-py3-none-any.whl.metadata (70 kB)
+Collecting json5
+  Downloading json5-0.14.0-py3-none-any.whl.metadata (36 kB)
+Collecting pillow-jxl-plugin
+  Downloading pillow_jxl_plugin-1.3.7-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.8 kB)
+Collecting betterproto
+  Downloading betterproto-1.2.5.tar.gz (26 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting diffusers
+  Downloading diffusers-0.38.0-py3-none-any.whl.metadata (20 kB)
+Collecting gguf
+  Downloading gguf-0.19.0-py3-none-any.whl.metadata (4.1 kB)
+Collecting hf_transfer
+  Downloading hf_transfer-0.1.9-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.7 kB)
+Collecting transformers==4.57.6
+  Downloading transformers-4.57.6-py3-none-any.whl.metadata (43 kB)
+Collecting httpx[brotli,socks]
+  Using cached httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Requirement already satisfied: requests>=2.32.3 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from translators==5.9.5) (2.33.1)
+Collecting niquests>=3.12.2 (from translators==5.9.5)
+  Downloading niquests-3.18.8-py3-none-any.whl.metadata (16 kB)
+Collecting PyExecJS>=1.5.1 (from translators==5.9.5)
+  Downloading PyExecJS-1.5.1.tar.gz (13 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting lxml>=5.3.0 (from translators==5.9.5)
+  Downloading lxml-6.1.0-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl.metadata (4.0 kB)
+Collecting tqdm>=4.66.4 (from translators==5.9.5)
+  Downloading tqdm-4.67.3-py3-none-any.whl.metadata (57 kB)
+Collecting pathos>=0.3.3 (from translators==5.9.5)
+  Downloading pathos-0.3.5-py3-none-any.whl.metadata (11 kB)
+Collecting cryptography>=42.0.4 (from translators==5.9.5)
+  Downloading cryptography-48.0.0-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.3 kB)
+Requirement already satisfied: filelock in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from transformers==4.57.6) (3.29.0)
+Collecting huggingface-hub<1.0,>=0.34.0 (from transformers==4.57.6)
+  Downloading huggingface_hub-0.36.2-py3-none-any.whl.metadata (15 kB)
+Requirement already satisfied: numpy>=1.17 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from transformers==4.57.6) (2.4.4)
+Requirement already satisfied: packaging>=20.0 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from transformers==4.57.6) (26.2)
+Requirement already satisfied: pyyaml>=5.1 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from transformers==4.57.6) (6.0.3)
+Collecting regex!=2019.12.17 (from transformers==4.57.6)
+  Downloading regex-2026.5.9-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (40 kB)
+Collecting tokenizers<=0.23.0,>=0.22.0 (from transformers==4.57.6)
+  Downloading tokenizers-0.22.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (7.3 kB)
+Collecting safetensors>=0.4.3 (from transformers==4.57.6)
+  Downloading safetensors-0.7.0-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.1 kB)
+Requirement already satisfied: fsspec>=2023.5.0 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from huggingface-hub<1.0,>=0.34.0->transformers==4.57.6) (2026.4.0)
+Collecting hf-xet<2.0.0,>=1.1.3 (from huggingface-hub<1.0,>=0.34.0->transformers==4.57.6)
+  Downloading hf_xet-1.5.0-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (4.9 kB)
+Requirement already satisfied: typing-extensions>=3.7.4.3 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from huggingface-hub<1.0,>=0.34.0->transformers==4.57.6) (4.15.0)
+Collecting beautifulsoup4 (from bs4)
+  Downloading beautifulsoup4-4.14.3-py3-none-any.whl.metadata (3.8 kB)
+Requirement already satisfied: setuptools in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from ctranslate2) (81.0.0)
+Collecting six (from pynput)
+  Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Collecting evdev>=1.3 (from pynput)
+  Downloading evdev-1.9.3.tar.gz (32 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting python-xlib>=0.17 (from pynput)
+  Downloading python_xlib-0.33-py2.py3-none-any.whl.metadata (6.2 kB)
+Collecting matplotlib>=3.3.0 (from ultralytics)
+  Downloading matplotlib-3.10.9-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (52 kB)
+Collecting opencv-python>=4.6.0 (from ultralytics)
+  Downloading opencv_python-4.13.0.92-cp37-abi3-manylinux_2_28_x86_64.whl.metadata (19 kB)
+Requirement already satisfied: pillow>=7.1.2 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from ultralytics) (12.2.0)
+Collecting scipy>=1.4.1 (from ultralytics)
+  Downloading scipy-1.17.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+Requirement already satisfied: torch>=1.8.0 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from ultralytics) (2.11.0)
+Requirement already satisfied: torchvision>=0.9.0 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from ultralytics) (0.26.0)
+Collecting psutil>=5.8.0 (from ultralytics)
+  Downloading psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl.metadata (22 kB)
+Collecting polars>=0.20.0 (from ultralytics)
+  Downloading polars-1.40.1-py3-none-any.whl.metadata (10 kB)
+Collecting ultralytics-thop>=2.0.18 (from ultralytics)
+  Downloading ultralytics_thop-2.0.19-py3-none-any.whl.metadata (14 kB)
+Collecting anyio (from httpx[brotli,socks])
+  Downloading anyio-4.13.0-py3-none-any.whl.metadata (4.5 kB)
+Requirement already satisfied: certifi in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from httpx[brotli,socks]) (2026.4.22)
+Collecting httpcore==1.* (from httpx[brotli,socks])
+  Using cached httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Requirement already satisfied: idna in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from httpx[brotli,socks]) (3.14)
+Collecting brotli (from httpx[brotli,socks])
+  Downloading brotli-1.2.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (6.1 kB)
+Collecting socksio==1.* (from httpx[brotli,socks])
+  Downloading socksio-1.0.0-py3-none-any.whl.metadata (6.1 kB)
+Collecting h11>=0.16 (from httpcore==1.*->httpx[brotli,socks])
+  Using cached h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting grpclib (from betterproto)
+  Downloading grpclib-0.4.9-py3-none-any.whl.metadata (6.1 kB)
+Collecting stringcase (from betterproto)
+  Downloading stringcase-1.2.0.tar.gz (3.0 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting importlib_metadata (from diffusers)
+  Downloading importlib_metadata-9.0.0-py3-none-any.whl.metadata (4.5 kB)
+Collecting safetensors>=0.4.3 (from transformers==4.57.6)
+  Downloading safetensors-0.8.0rc0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.3 kB)
+Collecting cffi>=2.0.0 (from cryptography>=42.0.4->translators==5.9.5)
+  Using cached cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.6 kB)
+Collecting pycparser (from cffi>=2.0.0->cryptography>=42.0.4->translators==5.9.5)
+  Using cached pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
+Collecting contourpy>=1.0.1 (from matplotlib>=3.3.0->ultralytics)
+  Downloading contourpy-1.3.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (5.5 kB)
+Collecting cycler>=0.10 (from matplotlib>=3.3.0->ultralytics)
+  Downloading cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
+Collecting fonttools>=4.22.0 (from matplotlib>=3.3.0->ultralytics)
+  Downloading fonttools-4.62.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (117 kB)
+Collecting kiwisolver>=1.3.1 (from matplotlib>=3.3.0->ultralytics)
+  Downloading kiwisolver-1.5.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (5.1 kB)
+Collecting pyparsing>=3 (from matplotlib>=3.3.0->ultralytics)
+  Downloading pyparsing-3.3.2-py3-none-any.whl.metadata (5.8 kB)
+Collecting python-dateutil>=2.7 (from matplotlib>=3.3.0->ultralytics)
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Requirement already satisfied: charset-normalizer<4,>=2 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from niquests>=3.12.2->translators==5.9.5) (3.4.7)
+Collecting urllib3-future<3,>=2.13.903 (from niquests>=3.12.2->translators==5.9.5)
+  Downloading urllib3_future-2.20.902-py3-none-any.whl.metadata (19 kB)
+Collecting wassima<3,>=1.0.1 (from niquests>=3.12.2->translators==5.9.5)
+  Downloading wassima-2.1.0-py3-none-any.whl.metadata (5.6 kB)
+Collecting jh2<6.0.0,>=5.0.3 (from urllib3-future<3,>=2.13.903->niquests>=3.12.2->translators==5.9.5)
+  Downloading jh2-5.0.11-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.0 kB)
+Collecting qh3<2.0.0,>=1.5.4 (from urllib3-future<3,>=2.13.903->niquests>=3.12.2->translators==5.9.5)
+  Downloading qh3-1.8.1-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.1 kB)
+Collecting ppft>=1.7.8 (from pathos>=0.3.3->translators==5.9.5)
+  Downloading ppft-1.7.8-py3-none-any.whl.metadata (12 kB)
+Collecting dill>=0.4.1 (from pathos>=0.3.3->translators==5.9.5)
+  Downloading dill-0.4.1-py3-none-any.whl.metadata (10 kB)
+Collecting pox>=0.3.7 (from pathos>=0.3.3->translators==5.9.5)
+  Downloading pox-0.3.7-py3-none-any.whl.metadata (8.0 kB)
+Collecting multiprocess>=0.70.19 (from pathos>=0.3.3->translators==5.9.5)
+  Downloading multiprocess-0.70.19-py312-none-any.whl.metadata (7.5 kB)
+Collecting polars-runtime-32==1.40.1 (from polars>=0.20.0->ultralytics)
+  Downloading polars_runtime_32-1.40.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.5 kB)
+Requirement already satisfied: urllib3<3,>=1.26 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from requests>=2.32.3->translators==5.9.5) (2.7.0)
+Requirement already satisfied: sympy>=1.13.3 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (1.14.0)
+Requirement already satisfied: networkx>=2.5.1 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (3.6.1)
+Requirement already satisfied: jinja2 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (3.1.6)
+Requirement already satisfied: cuda-toolkit==13.0.2 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (13.0.2)
+Requirement already satisfied: cuda-bindings<14,>=13.0.3 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (13.2.0)
+Requirement already satisfied: nvidia-cudnn-cu13==9.19.0.56 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (9.19.0.56)
+Requirement already satisfied: nvidia-cusparselt-cu13==0.8.0 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (0.8.0)
+Requirement already satisfied: nvidia-nccl-cu13==2.28.9 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (2.28.9)
+Requirement already satisfied: nvidia-nvshmem-cu13==3.4.5 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (3.4.5)
+Requirement already satisfied: triton==3.6.0 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from torch>=1.8.0->ultralytics) (3.6.0)
+Requirement already satisfied: nvidia-cublas==13.1.0.3.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (13.1.0.3)
+Requirement already satisfied: nvidia-cuda-runtime==13.0.96.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (13.0.96)
+Requirement already satisfied: nvidia-cufft==12.0.0.61.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (12.0.0.61)
+Requirement already satisfied: nvidia-cufile==1.15.1.6.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (1.15.1.6)
+Requirement already satisfied: nvidia-cuda-cupti==13.0.85.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (13.0.85)
+Requirement already satisfied: nvidia-curand==10.4.0.35.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (10.4.0.35)
+Requirement already satisfied: nvidia-cusolver==12.0.4.66.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (12.0.4.66)
+Requirement already satisfied: nvidia-cusparse==12.6.3.3.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (12.6.3.3)
+Requirement already satisfied: nvidia-nvjitlink==13.0.88.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (13.0.88)
+Requirement already satisfied: nvidia-cuda-nvrtc==13.0.88.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (13.0.88)
+Requirement already satisfied: nvidia-nvtx==13.0.85.* in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == "Linux"->torch>=1.8.0->ultralytics) (13.0.85)
+Requirement already satisfied: cuda-pathfinder~=1.1 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from cuda-bindings<14,>=13.0.3->torch>=1.8.0->ultralytics) (1.5.4)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from sympy>=1.13.3->torch>=1.8.0->ultralytics) (1.3.0)
+Collecting soupsieve>=1.6.1 (from beautifulsoup4->bs4)
+  Downloading soupsieve-2.8.3-py3-none-any.whl.metadata (4.6 kB)
+Collecting h2<5,>=3.1.0 (from grpclib->betterproto)
+  Downloading h2-4.3.0-py3-none-any.whl.metadata (5.1 kB)
+Collecting multidict (from grpclib->betterproto)
+  Downloading multidict-6.7.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (5.3 kB)
+Collecting hyperframe<7,>=6.1 (from h2<5,>=3.1.0->grpclib->betterproto)
+  Downloading hyperframe-6.1.0-py3-none-any.whl.metadata (4.3 kB)
+Collecting hpack<5,>=4.1 (from h2<5,>=3.1.0->grpclib->betterproto)
+  Downloading hpack-4.1.0-py3-none-any.whl.metadata (4.6 kB)
+Collecting zipp>=3.20 (from importlib_metadata->diffusers)
+  Downloading zipp-3.23.1-py3-none-any.whl.metadata (3.6 kB)
+Requirement already satisfied: MarkupSafe>=2.0 in /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages (from jinja2->torch>=1.8.0->ultralytics) (3.0.3)
+Downloading translators-5.9.5-py3-none-any.whl (58 kB)
+Downloading transformers-4.57.6-py3-none-any.whl (12.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.0/12.0 MB 65.2 MB/s  0:00:00
+Downloading huggingface_hub-0.36.2-py3-none-any.whl (566 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 566.4/566.4 kB 14.9 MB/s  0:00:00
+Downloading hf_xet-1.5.0-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.5 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 43.3 MB/s  0:00:00
+Downloading tokenizers-0.22.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.3/3.3 MB 46.5 MB/s  0:00:00
+Downloading shapely-2.1.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (3.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.1/3.1 MB 61.9 MB/s  0:00:00
+Downloading pyclipper-1.4.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (978 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 978.2/978.2 kB 35.6 MB/s  0:00:00
+Downloading einops-0.8.2-py3-none-any.whl (65 kB)
+Downloading termcolor-3.3.0-py3-none-any.whl (7.7 kB)
+Downloading bs4-0.0.2-py2.py3-none-any.whl (1.2 kB)
+Downloading sentencepiece-0.2.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (1.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.4/1.4 MB 50.9 MB/s  0:00:00
+Downloading ctranslate2-4.7.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (39.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 39.0/39.0 MB 31.5 MB/s  0:00:01
+Downloading python_docx-1.2.0-py3-none-any.whl (252 kB)
+Downloading docx2txt-0.9-py3-none-any.whl (4.0 kB)
+Downloading piexif-1.1.3-py2.py3-none-any.whl (20 kB)
+Downloading pynput-1.8.1-py2.py3-none-any.whl (91 kB)
+Downloading opencc_python_reimplemented-0.1.7-py2.py3-none-any.whl (481 kB)
+Downloading ultralytics-8.4.48-py3-none-any.whl (1.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 53.9 MB/s  0:00:00
+Using cached httpx-0.28.1-py3-none-any.whl (73 kB)
+Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
+Downloading socksio-1.0.0-py3-none-any.whl (12 kB)
+Downloading json5-0.14.0-py3-none-any.whl (36 kB)
+Downloading pillow_jxl_plugin-1.3.7-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.6/2.6 MB 82.5 MB/s  0:00:00
+Downloading diffusers-0.38.0-py3-none-any.whl (5.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.2/5.2 MB 106.1 MB/s  0:00:00
+Downloading gguf-0.19.0-py3-none-any.whl (118 kB)
+Downloading hf_transfer-0.1.9-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.6/3.6 MB 87.4 MB/s  0:00:00
+Downloading cryptography-48.0.0-cp311-abi3-manylinux_2_34_x86_64.whl (4.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 109.4 MB/s  0:00:00
+Using cached cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (219 kB)
+Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+Downloading lxml-6.1.0-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl (5.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.2/5.2 MB 21.1 MB/s  0:00:00
+Downloading matplotlib-3.10.9-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (8.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 8.8/8.8 MB 23.0 MB/s  0:00:00
+Downloading contourpy-1.3.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (362 kB)
+Downloading cycler-0.12.1-py3-none-any.whl (8.3 kB)
+Downloading fonttools-4.62.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.0/5.0 MB 32.6 MB/s  0:00:00
+Downloading kiwisolver-1.5.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.5 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.5/1.5 MB 41.4 MB/s  0:00:00
+Downloading niquests-3.18.8-py3-none-any.whl (208 kB)
+Downloading urllib3_future-2.20.902-py3-none-any.whl (750 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 750.5/750.5 kB 48.9 MB/s  0:00:00
+Downloading jh2-5.0.11-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (399 kB)
+Downloading qh3-1.8.1-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.4/2.4 MB 16.7 MB/s  0:00:00
+Downloading wassima-2.1.0-py3-none-any.whl (128 kB)
+Downloading opencv_python-4.13.0.92-cp37-abi3-manylinux_2_28_x86_64.whl (72.9 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 72.9/72.9 MB 20.0 MB/s  0:00:03
+Downloading pathos-0.3.5-py3-none-any.whl (82 kB)
+Downloading dill-0.4.1-py3-none-any.whl (120 kB)
+Downloading multiprocess-0.70.19-py312-none-any.whl (150 kB)
+Downloading polars-1.40.1-py3-none-any.whl (828 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 828.7/828.7 kB 36.8 MB/s  0:00:00
+Downloading polars_runtime_32-1.40.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (56.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 56.3/56.3 MB 21.6 MB/s  0:00:02
+Downloading pox-0.3.7-py3-none-any.whl (29 kB)
+Downloading ppft-1.7.8-py3-none-any.whl (56 kB)
+Downloading psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl (155 kB)
+Downloading pyparsing-3.3.2-py3-none-any.whl (122 kB)
+Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Downloading python_xlib-0.33-py2.py3-none-any.whl (182 kB)
+Downloading regex-2026.5.9-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (801 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 801.2/801.2 kB 48.5 MB/s  0:00:00
+Downloading safetensors-0.8.0rc0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (509 kB)
+Downloading scipy-1.17.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (35.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.2/35.2 MB 22.0 MB/s  0:00:01
+Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Downloading tqdm-4.67.3-py3-none-any.whl (78 kB)
+Downloading ultralytics_thop-2.0.19-py3-none-any.whl (28 kB)
+Downloading anyio-4.13.0-py3-none-any.whl (114 kB)
+Downloading beautifulsoup4-4.14.3-py3-none-any.whl (107 kB)
+Downloading soupsieve-2.8.3-py3-none-any.whl (37 kB)
+Downloading brotli-1.2.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.4/1.4 MB 34.8 MB/s  0:00:00
+Downloading grpclib-0.4.9-py3-none-any.whl (77 kB)
+Downloading h2-4.3.0-py3-none-any.whl (61 kB)
+Downloading hpack-4.1.0-py3-none-any.whl (34 kB)
+Downloading hyperframe-6.1.0-py3-none-any.whl (13 kB)
+Downloading importlib_metadata-9.0.0-py3-none-any.whl (27 kB)
+Downloading zipp-3.23.1-py3-none-any.whl (10 kB)
+Downloading multidict-6.7.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (256 kB)
+Using cached pycparser-3.0-py3-none-any.whl (48 kB)
+Building wheels for collected packages: betterproto, evdev, PyExecJS, stringcase
+  Building wheel for betterproto (pyproject.toml): started
+  Building wheel for betterproto (pyproject.toml): finished with status 'done'
+  Created wheel for betterproto: filename=betterproto-1.2.5-py3-none-any.whl size=22054 sha256=876ce362a0b39d506ef1ec7f3b5c26ffeee7908af3d400904025065972df87ff
+  Stored in directory: /home/jules/.cache/pip/wheels/3f/00/7f/f11c3d3cfd50d910f0edb985199fa3a6a9755bc753c231f0f7
+  Building wheel for evdev (pyproject.toml): started
+  Building wheel for evdev (pyproject.toml): finished with status 'done'
+  Created wheel for evdev: filename=evdev-1.9.3-cp312-cp312-linux_x86_64.whl size=115086 sha256=1436cc7654d0434fe87411c9892899b1d71463a4eec7ddaa596353d74842a8f0
+  Stored in directory: /home/jules/.cache/pip/wheels/76/fc/3d/3eed8d918241316fdd8512e3328a1906138f58304b790b135f
+  Building wheel for PyExecJS (pyproject.toml): started
+  Building wheel for PyExecJS (pyproject.toml): finished with status 'done'
+  Created wheel for PyExecJS: filename=pyexecjs-1.5.1-py3-none-any.whl size=14649 sha256=965da5bc313c2bdec6f02e24f765224ba6c819d626710ae2c1a7e77dae58fb50
+  Stored in directory: /home/jules/.cache/pip/wheels/95/1c/16/774a935204aacf741cea3deae76c535050d19727c72613d80f
+  Building wheel for stringcase (pyproject.toml): started
+  Building wheel for stringcase (pyproject.toml): finished with status 'done'
+  Created wheel for stringcase: filename=stringcase-1.2.0-py3-none-any.whl size=3635 sha256=ce0d7becc587f9747dd92a66cabca4de3039fdaad0f202917b65effdd46f1797
+  Stored in directory: /home/jules/.cache/pip/wheels/37/76/84/09143757ac9846675769f3649fc2aa936ec40255783a23ba52
+Successfully built betterproto evdev PyExecJS stringcase
+Installing collected packages: stringcase, opencc-python-reimplemented, docx2txt, brotli, zipp, wassima, tqdm, termcolor, soupsieve, socksio, six, shapely, sentencepiece, scipy, safetensors, regex, qh3, pyparsing, pycparser, pyclipper, psutil, ppft, pox, polars-runtime-32, pillow-jxl-plugin, piexif, opencv-python, multidict, lxml, kiwisolver, json5, jh2, hyperframe, hpack, hf-xet, hf_transfer, h11, fonttools, evdev, einops, dill, cycler, ctranslate2, contourpy, anyio, urllib3-future, python-xlib, python-docx, python-dateutil, PyExecJS, polars, multiprocess, importlib_metadata, huggingface-hub, httpcore, h2, gguf, cffi, beautifulsoup4, tokenizers, pynput, pathos, niquests, matplotlib, httpx, grpclib, cryptography, bs4, translators, transformers, diffusers, betterproto, ultralytics-thop, ultralytics
+
+Successfully installed PyExecJS-1.5.1 anyio-4.13.0 beautifulsoup4-4.14.3 betterproto-1.2.5 brotli-1.2.0 bs4-0.0.2 cffi-2.0.0 contourpy-1.3.3 cryptography-48.0.0 ctranslate2-4.7.1 cycler-0.12.1 diffusers-0.38.0 dill-0.4.1 docx2txt-0.9 einops-0.8.2 evdev-1.9.3 fonttools-4.62.1 gguf-0.19.0 grpclib-0.4.9 h11-0.16.0 h2-4.3.0 hf-xet-1.5.0 hf_transfer-0.1.9 hpack-4.1.0 httpcore-1.0.9 httpx-0.28.1 huggingface-hub-0.36.2 hyperframe-6.1.0 importlib_metadata-9.0.0 jh2-5.0.11 json5-0.14.0 kiwisolver-1.5.0 lxml-6.1.0 matplotlib-3.10.9 multidict-6.7.1 multiprocess-0.70.19 niquests-3.18.8 opencc-python-reimplemented-0.1.7 opencv-python-4.13.0.92 pathos-0.3.5 piexif-1.1.3 pillow-jxl-plugin-1.3.7 polars-1.40.1 polars-runtime-32-1.40.1 pox-0.3.7 ppft-1.7.8 psutil-7.2.2 pyclipper-1.4.0 pycparser-3.0 pynput-1.8.1 pyparsing-3.3.2 python-dateutil-2.9.0.post0 python-docx-1.2.0 python-xlib-0.33 qh3-1.8.1 regex-2026.5.9 safetensors-0.8.0rc0 scipy-1.17.1 sentencepiece-0.2.1 shapely-2.1.2 six-1.17.0 socksio-1.0.0 soupsieve-2.8.3 stringcase-1.2.0 termcolor-3.3.0 tokenizers-0.22.2 tqdm-4.67.3 transformers-4.57.6 translators-5.9.5 ultralytics-8.4.48 ultralytics-thop-2.0.19 urllib3-future-2.20.902 wassima-2.1.0 zipp-3.23.1
