@@ -912,18 +912,6 @@ ClickableLabel#ReplaceAllBtn {
     min-height: 24px;
 }
 
-ClickableLabel#SalaDict {
-    image: url(icons/saladict.png);
-    max-width: 24px;
-    height: 24px;
-}
-
-ClickableLabel#SearchInternet {
-    image: url(icons/search.svg);
-    max-width: 24px;
-    height: 24px;
-}
-
 TitleBarToolBtn {
     padding-left: 4px;
     padding-right: 4px;

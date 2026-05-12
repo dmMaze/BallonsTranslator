@@ -98,7 +98,6 @@ USE_PYSIDE6 = False
 ON_MACOS = sys.platform == 'darwin'
 ON_WINDOWS = sys.platform == 'win32'
 HEADLESS = False
-HEADLESS_CONTINUOUS = False
 DEBUG = False
 args = None
 
@@ -111,7 +110,12 @@ CACHE_UPDATED = False
 check_local_file_hash = True
 
 FONT_FAMILIES: set = None
-CUSTOM_FONTS = []
+CUSTOM_FONT_FAMILIES = []          # 去重后的自定义字体家族名
+ALL_FONT_FAMILIES = []             # 系统+自定义，去重合并，按字母排序
+FONT_STYLES = {}                   # 所有字体的样式映射 { FamilyName: [Style1, Style2...] }
+FONT_FAMILY_ALIAS = {}             # 规范名 -> [原始家族名列表] (用于问题4的归并)
+FONT_VARIABLE_AXES = {}            # { FamilyName: { 'wght': (min, max, default) } } 
+VIRTUAL_FONT_STYLES = {}           # { FamilyName: set("Bold", "Light", ...) } 记录哪些样式是虚拟生成的
 pbar = {}
 runtime_widget_set = set()
 

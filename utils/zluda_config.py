@@ -1,4 +1,7 @@
-import torch
+try:
+    import torch
+except ImportError:
+    torch = None
 
 
 # 检测是否包含 ZLUDA 标记
@@ -8,6 +11,8 @@ def zluda_available(device_name):
 
 # 关闭 ZLUDA Cudnn 支持 防止错误
 def enable_zluda_config():
+    if torch is None:
+        return
     if hasattr(torch, 'cuda') and torch.cuda.is_available():
         device_name = torch.cuda.get_device_name(0)
         print('Device name: ', device_name)

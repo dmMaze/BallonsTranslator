@@ -1,6 +1,9 @@
-from transformers import AutoModelForCausalLM, AutoProcessor
+try:
+    from transformers import AutoModelForCausalLM, AutoProcessor
+    import torch
+except ImportError:
+    raise ImportError("PyTorch or transformers not available")
 import numpy as np
-import torch
 from typing import List
 
 from .base import OCRBase, register_OCR, DEFAULT_DEVICE, DEVICE_SELECTOR, TextBlock

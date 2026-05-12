@@ -220,420 +220,280 @@ class PatchmatchInpainter(InpainterBase):
         return True
 
 
-import torch
-from utils.imgproc_utils import resize_keepasp
-from .aot import AOTGenerator, load_aot_model
+try:
+    import torch
+except ImportError:
+    torch = None
+if torch is not None:
+    from utils.imgproc_utils import resize_keepasp
+    from .aot import AOTGenerator, load_aot_model
 
 
-@register_inpainter('aot')
-class AOTInpainter(InpainterBase):
+    @register_inpainter('aot')
+    class AOTInpainter(InpainterBase):
 
-    params = {
-        'inpaint_size': {
-            'type': 'selector',
-            'options': [
-                1024, 
-                2048
-            ], 
-            'value': 2048
-        }, 
-        'device': DEVICE_SELECTOR(),
-        'description': 'manga-image-translator inpainter'
-    }
+        params = {
+            'inpaint_size': {
+                'type': 'selector',
+                'options': [
+                    1024, 
+                    2048
+                ], 
+                'value': 2048
+            }, 
+            'device': DEVICE_SELECTOR(),
+            'description': 'manga-image-translator inpainter'
+        }
 
-    device = DEFAULT_DEVICE
-    inpaint_size = 2048
-    model: AOTGenerator = None
-    _load_model_keys = {'model'}
+        device = DEFAULT_DEVICE
+        inpaint_size = 2048
+        model: AOTGenerator = None
+        _load_model_keys = {'model'}
 
-    download_file_list = [{
-            'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting.ckpt',
-            'sha256_pre_calculated': '878d541c68648969bc1b042a6e997f3a58e49b6c07c5636ad55130736977149f',
-            'files': 'data/models/aot_inpainter.ckpt',
-    }]
+        download_file_list = [{
+                'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting.ckpt',
+                'sha256_pre_calculated': '878d541c68648969bc1b042a6e997f3a58e49b6c07c5636ad55130736977149f',
+                'files': 'data/models/aot_inpainter.ckpt',
+        }]
 
-    def __init__(self, **params) -> None:
-        super().__init__(**params)
-        self.device = self.params['device']['value']
-        self.inpaint_size = int(self.params['inpaint_size']['value'])
-        self.model: AOTGenerator = None
-        
-    def _load_model(self):
-        AOTMODEL_PATH = 'data/models/aot_inpainter.ckpt'
-        self.model = load_aot_model(AOTMODEL_PATH, self.device)
-
-    def moveToDevice(self, device: str, precision: str = None):
-        self.model.to(device)
-        self.device = device
-
-    def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
-
-        img_original = np.copy(img)
-        mask_original = np.copy(mask)
-        mask_original[mask_original < 127] = 0
-        mask_original[mask_original >= 127] = 1
-        mask_original = mask_original[:, :, None]
-
-        new_shape = self.inpaint_size if max(img.shape[0: 2]) > self.inpaint_size else None
-
-        img = resize_keepasp(img, new_shape, stride=None)
-        mask = resize_keepasp(mask, new_shape, stride=None)
-
-        im_h, im_w = img.shape[:2]
-        pad_bottom = 128 - im_h if im_h < 128 else 0
-        pad_right = 128 - im_w if im_w < 128 else 0
-        mask = cv2.copyMakeBorder(mask, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
-        img = cv2.copyMakeBorder(img, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
-
-        img_torch = torch.from_numpy(img).permute(2, 0, 1).unsqueeze_(0).float() / 127.5 - 1.0
-        mask_torch = torch.from_numpy(mask).unsqueeze_(0).unsqueeze_(0).float() / 255.0
-        mask_torch[mask_torch < 0.5] = 0
-        mask_torch[mask_torch >= 0.5] = 1
-
-        if self.device != 'cpu':
-            img_torch = img_torch.to(self.device)
-            mask_torch = mask_torch.to(self.device)
-        img_torch *= (1 - mask_torch)
-        return img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right
-
-    @torch.no_grad()
-    def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
-
-        im_h, im_w = img.shape[:2]
-        img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
-        img_inpainted_torch = self.model(img_torch, mask_torch)
-        img_inpainted = ((img_inpainted_torch.cpu().squeeze_(0).permute(1, 2, 0).numpy() + 1.0) * 127.5)
-        img_inpainted = (np.clip(np.round(img_inpainted), 0, 255)).astype(np.uint8)
-        if pad_bottom > 0:
-            img_inpainted = img_inpainted[:-pad_bottom]
-        if pad_right > 0:
-            img_inpainted = img_inpainted[:, :-pad_right]
-        new_shape = img_inpainted.shape[:2]
-        if new_shape[0] != im_h or new_shape[1] != im_w :
-            img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation = cv2.INTER_LINEAR)
-        img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
-        
-        return img_inpainted
-
-    def updateParam(self, param_key: str, param_content):
-        super().updateParam(param_key, param_content)
-
-        if param_key == 'device':
-            param_device = self.params['device']['value']
-            if self.model is not None:
-                self.model.to(param_device)
-            self.device = param_device
-
-        elif param_key == 'inpaint_size':
+        def __init__(self, **params) -> None:
+            super().__init__(**params)
+            self.device = self.params['device']['value']
             self.inpaint_size = int(self.params['inpaint_size']['value'])
-
-
-from .lama import LamaFourier, load_lama_mpe
-
-@register_inpainter('lama_mpe')
-class LamaInpainterMPE(InpainterBase):
-
-    params = {
-        'inpaint_size': {
-            'type': 'selector',
-            'options': [
-                1024, 
-                2048
-            ], 
-            'value': 2048
-        },
-        'device': DEVICE_SELECTOR(not_supported=['privateuseone'])
-    }
-
-    download_file_list = [{
-            'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting_lama_mpe.ckpt',
-            'sha256_pre_calculated': 'd625aa1b3e0d0408acfd6928aa84f005867aa8dbb9162480346a4e20660786cc',
-            'files': 'data/models/lama_mpe.ckpt',
-    }]
-    _load_model_keys = {'model'}
-
-    def __init__(self, **params) -> None:
-        super().__init__(**params)
-        self.device = self.params['device']['value']
-        self.inpaint_size = int(self.params['inpaint_size']['value'])
-        self.precision = 'fp32'
-        self.model: LamaFourier = None
-
-    def _load_model(self):
-        self.model = load_lama_mpe(r'data/models/lama_mpe.ckpt', self.device)
-
-    def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
-
-        img_original = np.copy(img)
-        mask_original = np.copy(mask)
-        mask_original[mask_original < 127] = 0
-        mask_original[mask_original >= 127] = 1
-        mask_original = mask_original[:, :, None]
-
-        new_shape = self.inpaint_size if max(img.shape[0: 2]) > self.inpaint_size else None
-        # high resolution input could produce cloudy artifacts
-        img = resize_keepasp(img, new_shape, stride=64)
-        mask = resize_keepasp(mask, new_shape, stride=64)
-
-        im_h, im_w = img.shape[:2]
-        longer = max(im_h, im_w)
-        pad_bottom = longer - im_h if im_h < longer else 0
-        pad_right = longer - im_w if im_w < longer else 0
-        mask = cv2.copyMakeBorder(mask, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
-        img = cv2.copyMakeBorder(img, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
-
-        img_torch = torch.from_numpy(img).permute(2, 0, 1).unsqueeze_(0).float() / 255.0
-        mask_torch = torch.from_numpy(mask).unsqueeze_(0).unsqueeze_(0).float() / 255.0
-        mask_torch[mask_torch < 0.5] = 0
-        mask_torch[mask_torch >= 0.5] = 1
-        rel_pos, _, direct = self.model.load_masked_position_encoding(mask_torch[0][0].numpy())
-        rel_pos = torch.LongTensor(rel_pos).unsqueeze_(0)
-        direct = torch.LongTensor(direct).unsqueeze_(0)
-
-        if self.device != 'cpu':
-            img_torch = img_torch.to(self.device)
-            mask_torch = mask_torch.to(self.device)
-            rel_pos = rel_pos.to(self.device)
-            direct = direct.to(self.device)
-        img_torch *= (1 - mask_torch)
-        return img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right
-
-    @torch.no_grad()
-    def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
-
-        im_h, im_w = img.shape[:2]
-        img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
+            self.model: AOTGenerator = None
         
-        precision = TORCH_DTYPE_MAP[self.precision]
-        if self.device in {'cuda'}:
-            try:
-                with torch.autocast(device_type=self.device, dtype=precision):
-                    img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
-            except Exception as e:
-                self.logger.error(e)
-                self.logger.error(f'{precision} inference is not supported for this device, use fp32 instead.')
-                img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
-        else:
-            img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+        def _load_model(self):
+            AOTMODEL_PATH = 'data/models/aot_inpainter.ckpt'
+            self.model = load_aot_model(AOTMODEL_PATH, self.device)
 
-        img_inpainted = (img_inpainted_torch.to(device='cpu', dtype=torch.float32).squeeze_(0).permute(1, 2, 0).numpy() * 255)
-        img_inpainted = (np.clip(np.round(img_inpainted), 0, 255)).astype(np.uint8)
-        if pad_bottom > 0:
-            img_inpainted = img_inpainted[:-pad_bottom]
-        if pad_right > 0:
-            img_inpainted = img_inpainted[:, :-pad_right]
-        new_shape = img_inpainted.shape[:2]
-        if new_shape[0] != im_h or new_shape[1] != im_w :
-            img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation = cv2.INTER_LINEAR)
-        img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
+        def moveToDevice(self, device: str, precision: str = None):
+            self.model.to(device)
+            self.device = device
+
+        def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+
+            img_original = np.copy(img)
+            mask_original = np.copy(mask)
+            mask_original[mask_original < 127] = 0
+            mask_original[mask_original >= 127] = 1
+            mask_original = mask_original[:, :, None]
+
+            new_shape = self.inpaint_size if max(img.shape[0: 2]) > self.inpaint_size else None
+
+            img = resize_keepasp(img, new_shape, stride=None)
+            mask = resize_keepasp(mask, new_shape, stride=None)
+
+            im_h, im_w = img.shape[:2]
+            pad_bottom = 128 - im_h if im_h < 128 else 0
+            pad_right = 128 - im_w if im_w < 128 else 0
+            mask = cv2.copyMakeBorder(mask, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
+            img = cv2.copyMakeBorder(img, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
+
+            img_torch = torch.from_numpy(img).permute(2, 0, 1).unsqueeze_(0).float() / 127.5 - 1.0
+            mask_torch = torch.from_numpy(mask).unsqueeze_(0).unsqueeze_(0).float() / 255.0
+            mask_torch[mask_torch < 0.5] = 0
+            mask_torch[mask_torch >= 0.5] = 1
+
+            if self.device != 'cpu':
+                img_torch = img_torch.to(self.device)
+                mask_torch = mask_torch.to(self.device)
+            img_torch *= (1 - mask_torch)
+            return img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right
+
+        @torch.no_grad()
+        def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+
+            im_h, im_w = img.shape[:2]
+            img_torch, mask_torch, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
+            img_inpainted_torch = self.model(img_torch, mask_torch)
+            img_inpainted = ((img_inpainted_torch.cpu().squeeze_(0).permute(1, 2, 0).numpy() + 1.0) * 127.5)
+            img_inpainted = (np.clip(np.round(img_inpainted), 0, 255)).astype(np.uint8)
+            if pad_bottom > 0:
+                img_inpainted = img_inpainted[:-pad_bottom]
+            if pad_right > 0:
+                img_inpainted = img_inpainted[:, :-pad_right]
+            new_shape = img_inpainted.shape[:2]
+            if new_shape[0] != im_h or new_shape[1] != im_w :
+                img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation = cv2.INTER_LINEAR)
+            img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
         
-        return img_inpainted
+            return img_inpainted
 
-    def updateParam(self, param_key: str, param_content):
-        super().updateParam(param_key, param_content)
+        def updateParam(self, param_key: str, param_content):
+            super().updateParam(param_key, param_content)
 
-        if param_key == 'device':
-            param_device = self.params['device']['value']
-            if self.model is not None:
-                self.model.to(param_device)
-            self.device = param_device
-
-        elif param_key == 'inpaint_size':
-            self.inpaint_size = int(self.params['inpaint_size']['value'])
-
-        elif param_key == 'precision':
-            precision = self.params['precision']['value']
-            self.precision = precision
-
-    def moveToDevice(self, device: str, precision: str = None):
-        self.model.to(device)
-        self.device = device
-        if precision is not None:
-            self.precision = precision
-
-@register_inpainter('lama_large_512px')
-class LamaLarge(LamaInpainterMPE):
-
-    params = {
-        'inpaint_size': {
-            'type': 'selector',
-            'options': [
-                512,
-                768,
-                1024,
-                1536, 
-                2048
-            ], 
-            'value': 1536,
-        },
-        'device': DEVICE_SELECTOR(not_supported=['privateuseone']),
-        'precision': {
-            'type': 'selector',
-            'options': [
-                'fp32',
-                'bf16'
-            ], 
-            'value': 'bf16' if BF16_SUPPORTED == 'cuda' else 'fp32'
-        }, 
-    }
-
-    download_file_list = [{
-            'url': 'https://huggingface.co/dreMaz/AnimeMangaInpainting/resolve/main/lama_large_512px.ckpt',
-            'sha256_pre_calculated': '11d30fbb3000fb2eceae318b75d9ced9229d99ae990a7f8b3ac35c8d31f2c935',
-            'files': 'data/models/lama_large_512px.ckpt',
-    }]
-
-    def __init__(self, **params) -> None:
-        super().__init__(**params)
-        self.precision = self.params['precision']['value']
-
-    def _load_model(self):
-        device = self.params['device']['value']
-        precision = self.params['precision']['value']
-
-        self.model = load_lama_mpe(r'data/models/lama_large_512px.ckpt', device='cpu', use_mpe=False, large_arch=True)
-        self.moveToDevice(device, precision=precision)
-
-
-
-FLUX_MODEL_MAPPER = {
-    '4b-Q4_K_M': 'black-forest-labs/FLUX.2-klein-4B'
-}
-
-@register_inpainter('flux2-klein')
-class Flux2Klein(InpainterBase):
-
-    params = {
-        'model': {
-            'type': 'selector',
-            'options': [
-                '4b-Q4_K_M', 
-            ], 
-            'value': '4b-Q4_K_M'
-        },
-        'max_resolution': {
-            'type': 'selector',
-            'options': [
-                512,
-                768,
-                1024,
-                1280,
-                1536,
-                2048
-            ], 
-            'value': 1024
-        }, 
-        'device': DEVICE_SELECTOR(),
-        'step': 8
-    }
-    check_need_inpaint = False
-    inpaint_by_block = False
-
-    download_file_list = [
-            {
-                'url': 'https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/main/transformer/config.json',
-                'files': 'data/models/flux-2-klein-4b/transformer/config.json',
-            },
-            # {
-            #     'url': 'https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/main/transformer/diffusion_pytorch_model.safetensors',
-            #     'files': 'data/models/flux-2-klein-4b/transformer/diffusion_pytorch_model.safetensors',
-            #     'sha256_pre_calculated': '9f29f9edcfdae452a653ffb51a534ca4decd389952c225724ff3b94042612a6e'
-            # },
-            {
-                'url': 'https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q4_K_M.gguf',
-                'files': 'data/models/flux-2-klein-4b-Q4_K_M.gguf',
-                'sha256_pre_calculated': '0b25d143c8469b342bc5af3bce92b783bf6b0636d285f7b2f75e38af63af9a15'
-            },
-            {
-                'url': 'https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/main/vae/config.json',
-                'files': 'data/models/flux-2-vae/config.json',
-            },
-            {
-                'url': 'https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/main/vae/diffusion_pytorch_model.safetensors',
-                'files': 'data/models/flux-2-vae/diffusion_pytorch_model.safetensors',
-                'sha256_pre_calculated': 'ca70d2202afe6415bdbcb8793ba8cd99fd159cfe6192381504d6c4d3036e0f04'
-            },
-            {
-                'url': 'https://huggingface.co/dreMaz/flux2-klein-inpaint/resolve/main/flux2_inpaint_prompt.safetensors',
-                'files': 'data/models/flux2_inpaint_prompt.safetensors',
-                'sha256_pre_calculated': '7d7b19ec266581cb1faa51ad92f49a302932b0c589feae633f97da2d925cb6a4'
-            }
-        ]
-
-    _load_model_keys = {'pipeline'}
-
-    def __init__(self, **params) -> None:
-        super().__init__(**params)
-
-    def _load_model(self):
-        
-        from modules.inpaint.flux_inpaint_pipeline import Flux2KleinInpaintPipeline, Flux2Transformer2DModel, AutoencoderKLFlux2
-        from safetensors.torch import load_file
-        from diffusers import GGUFQuantizationConfig
-
-        model_type = self.get_param_value('model')
-        source = FLUX_MODEL_MAPPER[model_type]
-
-        # transformer = Flux2Transformer2DModel.from_pretrained(f'data/models/flux-2-klein-{model_type}/transformer')
-
-        transformer = Flux2Transformer2DModel.from_single_file(
-            "data/models/flux-2-klein-4b-Q4_K_M.gguf",
-            quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-            torch_dtype=torch.bfloat16,
-            config='data/models/flux-2-klein-4b/transformer/config.json'
-        )
-        self.prompt_embeds = load_file('data/models/flux2_inpaint_prompt.safetensors')['prompt_embeds'].to(dtype=torch.bfloat16, device=self.get_param_value('device'))
-
-        vae = AutoencoderKLFlux2.from_pretrained(f'data/models/flux-2-vae').to(device=self.get_param_value('device'), dtype=torch.bfloat16)
-        pipeline = Flux2KleinInpaintPipeline.from_pretrained(
-            pretrained_model_name_or_path=source,
-            text_encoder=None,
-            tokenizer=None,
-            vae=vae,
-            transformer=transformer
-        )
-        self.pipeline = pipeline.to(device=self.get_param_value('device'), )
-
-
-    def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
-
-        max_resolution = self.get_param_value('max_resolution')
-        div = 16
-        mask_original = (mask > 127)[..., None].astype(np.uint8)
-        img_original = img.copy()
-
-        input_sz = img.shape[:2]
-
-        h, w = input_sz
-        th, tw = h, w
-        resize_ratio = max_resolution / max(th, tw)
-        if resize_ratio < 1:
-            th, tw = int(round(resize_ratio * th)), int(round(resize_ratio * tw))
-        th = int(round(th / div)) * div
-        tw = int(round(tw / div)) * div
-        img = smart_resize(img, (th, tw))
-        mask = smart_resize(mask, (th, tw))
-
-        rst = self.pipeline(
-            image=img,
-            mask=mask,
-            prompt_embeds=self.prompt_embeds,
-            height=img.shape[0],
-            width=img.shape[1],
-            num_inference_steps=self.get_param_value('step'),
-            guidance_scale=1, return_dict=False, output_type='numpy'
-        )
-        img_inpainted = (np.round(rst[0] * 255)).astype(np.uint8)
-        img_inpainted = smart_resize(img_inpainted, img_original.shape[:2])
-        img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
-        
-        return img_inpainted
-    
-
-    def updateParam(self, param_key: str, param_content):
-        super().updateParam(param_key, param_content)
-
-        if hasattr(self, 'pipeline'):
             if param_key == 'device':
-                param_device = self.get_param_value('device')
-                self.pipeline.to(device=param_device)
+                param_device = self.params['device']['value']
+                if self.model is not None:
+                    self.model.to(param_device)
+                self.device = param_device
+
+            elif param_key == 'inpaint_size':
+                self.inpaint_size = int(self.params['inpaint_size']['value'])
+
+
+    from .lama import LamaFourier, load_lama_mpe
+
+    @register_inpainter('lama_mpe')
+    class LamaInpainterMPE(InpainterBase):
+
+        params = {
+            'inpaint_size': {
+                'type': 'selector',
+                'options': [
+                    1024, 
+                    2048
+                ], 
+                'value': 2048
+            },
+            'device': DEVICE_SELECTOR(not_supported=['privateuseone'])
+        }
+
+        download_file_list = [{
+                'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting_lama_mpe.ckpt',
+                'sha256_pre_calculated': 'd625aa1b3e0d0408acfd6928aa84f005867aa8dbb9162480346a4e20660786cc',
+                'files': 'data/models/lama_mpe.ckpt',
+        }]
+        _load_model_keys = {'model'}
+
+        def __init__(self, **params) -> None:
+            super().__init__(**params)
+            self.device = self.params['device']['value']
+            self.inpaint_size = int(self.params['inpaint_size']['value'])
+            self.precision = 'fp32'
+            self.model: LamaFourier = None
+
+        def _load_model(self):
+            self.model = load_lama_mpe(r'data/models/lama_mpe.ckpt', self.device)
+
+        def inpaint_preprocess(self, img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+
+            img_original = np.copy(img)
+            mask_original = np.copy(mask)
+            mask_original[mask_original < 127] = 0
+            mask_original[mask_original >= 127] = 1
+            mask_original = mask_original[:, :, None]
+
+            new_shape = self.inpaint_size if max(img.shape[0: 2]) > self.inpaint_size else None
+            # high resolution input could produce cloudy artifacts
+            img = resize_keepasp(img, new_shape, stride=64)
+            mask = resize_keepasp(mask, new_shape, stride=64)
+
+            im_h, im_w = img.shape[:2]
+            longer = max(im_h, im_w)
+            pad_bottom = longer - im_h if im_h < longer else 0
+            pad_right = longer - im_w if im_w < longer else 0
+            mask = cv2.copyMakeBorder(mask, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
+            img = cv2.copyMakeBorder(img, 0, pad_bottom, 0, pad_right, cv2.BORDER_REFLECT)
+
+            img_torch = torch.from_numpy(img).permute(2, 0, 1).unsqueeze_(0).float() / 255.0
+            mask_torch = torch.from_numpy(mask).unsqueeze_(0).unsqueeze_(0).float() / 255.0
+            mask_torch[mask_torch < 0.5] = 0
+            mask_torch[mask_torch >= 0.5] = 1
+            rel_pos, _, direct = self.model.load_masked_position_encoding(mask_torch[0][0].numpy())
+            rel_pos = torch.LongTensor(rel_pos).unsqueeze_(0)
+            direct = torch.LongTensor(direct).unsqueeze_(0)
+
+            if self.device != 'cpu':
+                img_torch = img_torch.to(self.device)
+                mask_torch = mask_torch.to(self.device)
+                rel_pos = rel_pos.to(self.device)
+                direct = direct.to(self.device)
+            img_torch *= (1 - mask_torch)
+            return img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right
+
+        @torch.no_grad()
+        def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+
+            im_h, im_w = img.shape[:2]
+            img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
+        
+            precision = TORCH_DTYPE_MAP[self.precision]
+            if self.device in {'cuda'}:
+                try:
+                    with torch.autocast(device_type=self.device, dtype=precision):
+                        img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+                except Exception as e:
+                    self.logger.error(e)
+                    self.logger.error(f'{precision} inference is not supported for this device, use fp32 instead.')
+                    img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+            else:
+                img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+
+            img_inpainted = (img_inpainted_torch.to(device='cpu', dtype=torch.float32).squeeze_(0).permute(1, 2, 0).numpy() * 255)
+            img_inpainted = (np.clip(np.round(img_inpainted), 0, 255)).astype(np.uint8)
+            if pad_bottom > 0:
+                img_inpainted = img_inpainted[:-pad_bottom]
+            if pad_right > 0:
+                img_inpainted = img_inpainted[:, :-pad_right]
+            new_shape = img_inpainted.shape[:2]
+            if new_shape[0] != im_h or new_shape[1] != im_w :
+                img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation = cv2.INTER_LINEAR)
+            img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
+        
+            return img_inpainted
+
+        def updateParam(self, param_key: str, param_content):
+            super().updateParam(param_key, param_content)
+
+            if param_key == 'device':
+                param_device = self.params['device']['value']
+                if self.model is not None:
+                    self.model.to(param_device)
+                self.device = param_device
+
+            elif param_key == 'inpaint_size':
+                self.inpaint_size = int(self.params['inpaint_size']['value'])
+
+            elif param_key == 'precision':
+                precision = self.params['precision']['value']
+                self.precision = precision
+
+        def moveToDevice(self, device: str, precision: str = None):
+            self.model.to(device)
+            self.device = device
+            if precision is not None:
+                self.precision = precision
+
+    @register_inpainter('lama_large_512px')
+    class LamaLarge(LamaInpainterMPE):
+
+        params = {
+            'inpaint_size': {
+                'type': 'selector',
+                'options': [
+                    512,
+                    768,
+                    1024,
+                    1536, 
+                    2048
+                ], 
+                'value': 1536,
+            },
+            'device': DEVICE_SELECTOR(not_supported=['privateuseone']),
+            'precision': {
+                'type': 'selector',
+                'options': [
+                    'fp32',
+                    'bf16'
+                ], 
+                'value': 'bf16' if BF16_SUPPORTED == 'cuda' else 'fp32'
+            }, 
+        }
+
+        download_file_list = [{
+                'url': 'https://huggingface.co/dreMaz/AnimeMangaInpainting/resolve/main/lama_large_512px.ckpt',
+                'sha256_pre_calculated': '11d30fbb3000fb2eceae318b75d9ced9229d99ae990a7f8b3ac35c8d31f2c935',
+                'files': 'data/models/lama_large_512px.ckpt',
+        }]
+
+        def __init__(self, **params) -> None:
+            super().__init__(**params)
+            self.precision = self.params['precision']['value']
+
+        def _load_model(self):
+            device = self.params['device']['value']
+            precision = self.params['precision']['value']
+
+            self.model = load_lama_mpe(r'data/models/lama_large_512px.ckpt', device='cpu', use_mpe=False, large_arch=True)
+            self.moveToDevice(device, precision=precision)

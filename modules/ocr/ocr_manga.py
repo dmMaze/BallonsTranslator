@@ -1,9 +1,12 @@
 # modified from https://github.com/kha-white/manga-ocr/blob/master/manga_ocr/ocr.py
 import re
 import jaconv
-from transformers import AutoFeatureExtractor, AutoTokenizer, VisionEncoderDecoderModel
+try:
+    from transformers import AutoFeatureExtractor, AutoTokenizer, VisionEncoderDecoderModel
+    import torch
+except ImportError:
+    raise ImportError("PyTorch or transformers not available")
 import numpy as np
-import torch
 from typing import List
 
 from .base import OCRBase, register_OCR, DEFAULT_DEVICE, DEVICE_SELECTOR, TextBlock

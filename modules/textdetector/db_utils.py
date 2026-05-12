@@ -3,7 +3,10 @@ import numpy as np
 import pyclipper
 from shapely.geometry import Polygon
 from collections import namedtuple
-import torch
+try:
+    import torch
+except ImportError:
+    raise ImportError("PyTorch not available")
 import warnings
 warnings.filterwarnings('ignore')
 

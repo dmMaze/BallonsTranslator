@@ -25,7 +25,7 @@ from utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
-from .textedit_area import SourceTextEdit, SelectTextMiniMenu, TransTextEdit
+from .textedit_area import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
@@ -57,7 +57,7 @@ class PageListView(QListWidget):
 
         return super().contextMenuEvent(e)
 
-mainwindow_cls = Widget if (shared.HEADLESS or shared.HEADLESS_CONTINUOUS) else FramelessWindow
+mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
 class MainWindow(mainwindow_cls):
 
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
@@ -102,7 +102,7 @@ class MainWindow(mainwindow_cls):
                 if osp.exists(proj_dir):
                     self.OpenProj(proj_dir)
 
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             self.run_batch(**exec_args)
 
         if shared.ON_MACOS:
@@ -239,10 +239,6 @@ class MainWindow(mainwindow_cls):
 
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
-
-        self.selectext_minimenu = self.st_manager.selectext_minimenu = SelectTextMiniMenu(self.app, self)
-        self.selectext_minimenu.block_current_editor.connect(self.st_manager.on_block_current_editor)
-        self.selectext_minimenu.hide()
 
         mainVBoxLayout = QVBoxLayout(self)
         mainVBoxLayout.addWidget(self.titleBar)
@@ -389,9 +385,15 @@ class MainWindow(mainwindow_cls):
         self.configPanel.save_config.connect(self.save_config)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
         self.configPanel.show_only_custom_font.connect(self.on_show_only_custom_font)
+        # 无论配置如何，都先确保字体列表已初始化
         if pcfg.let_show_only_custom_fonts_flag:
             self.on_show_only_custom_font(True)
-
+        else:
+            # 即使不开启"仅自定义字体"，也要确保列表已填充
+            familybox = self.textPanel.formatpanel.familybox
+            if familybox.count() == 0 and shared.ALL_FONT_FAMILIES:
+                familybox.update_font_list(shared.ALL_FONT_FAMILIES)
+                
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
             if textblock_mode:
@@ -454,7 +456,7 @@ class MainWindow(mainwindow_cls):
         else:
             self.openJsonProj(proj_path)
         
-        if pcfg.let_textstyle_indep_flag and not (shared.HEADLESS or shared.HEADLESS_CONTINUOUS):
+        if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
             self.load_textstyle_from_proj_dir(from_proj=True)
 
     def load_textstyle_from_proj_dir(self, from_proj=False):
@@ -471,10 +473,19 @@ class MainWindow(mainwindow_cls):
 
     def on_show_only_custom_font(self, only_custom: bool):
         if only_custom:
-            font_list = shared.CUSTOM_FONTS
+            font_list = shared.CUSTOM_FONT_FAMILIES
         else:
-            font_list = shared.FONT_FAMILIES
-        self.textPanel.formatpanel.familybox.update_font_list(font_list)
+            font_list = shared.ALL_FONT_FAMILIES
+            
+        familybox = self.textPanel.formatpanel.familybox
+        current_family = familybox.currentText()
+        familybox.update_font_list(font_list)
+        
+        # 恢复选中状态并触发 Style 更新
+        if current_family in font_list:
+            familybox.setCurrentText(current_family)
+        elif len(font_list) > 0:
+            familybox.setCurrentIndex(0)
 
     def openDir(self, directory: str):
         try:
@@ -996,26 +1007,19 @@ class MainWindow(mainwindow_cls):
         if self.canvas.text_change_unsaved():
             self.st_manager.updateTextBlkList()
 
-    # 20260418 全部替换并重新渲染 会导致图片切换不保存图片的bug
     def on_req_move_page(self, page_name: str, force_save=False):
         ori_save = self.save_on_page_changed
         self.save_on_page_changed = False
         current_img = self.imgtrans_proj.current_img
-
         if current_img == page_name and not force_save:
-            # 修复 Bug：提前返回时必须恢复自动保存的开关状态
-            self.save_on_page_changed = ori_save 
             return
-
         if current_img not in self.global_search_widget.page_set:
             if self.canvas.projstate_unsaved: 
                 self.saveCurrentPage()
         else:
             self.saveCurrentPage(save_rst_only=True)
-
         self.pageList.setCurrentRow(self.imgtrans_proj.pagename2idx(page_name))
         self.save_on_page_changed = ori_save
-    # 20260418 全部替换并重新渲染 会导致图片切换不保存图片的bug end
 
     def on_search_result_item_clicked(self, pagename: str, blk_idx: int, is_src: bool, start: int, end: int):
         idx = self.imgtrans_proj.pagename2idx(pagename)
@@ -1279,13 +1283,13 @@ class MainWindow(mainwindow_cls):
         self.backup_blkstyles.clear()
         self._run_imgtrans_wo_textstyle_update = False
         self.postprocess_mt_toggle = True
-        if pcfg.module.empty_runcache and not (shared.HEADLESS or shared.HEADLESS_CONTINUOUS):
+        if pcfg.module.empty_runcache and not shared.HEADLESS:
             self.module_manager.unload_all_models()
         if shared.args.export_translation_txt:
             self.on_export_txt('translation')
         if shared.args.export_source_txt:
             self.on_export_txt('source')
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             self.run_next_dir()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
@@ -1763,20 +1767,9 @@ class MainWindow(mainwindow_cls):
         if len(self.exec_dirs) == 0:
             while self.imsave_thread.isRunning():
                 time.sleep(0.1)
-            if shared.HEADLESS_CONTINUOUS:
-                LOGGER.info(f'finished translating all dirs, please enter next dirs to translate (separated by comma). enter "exit" to quit app.')
-                new_exec_dirs = input()
-                if new_exec_dirs.strip().lower() == 'exit':
-                    LOGGER.info(f'exiting app...')
-                    self.app.quit()
-                    return  
-                else:
-                    self.run_batch(new_exec_dirs)
-                    return;
-            else:
-                LOGGER.info(f'finished translating all dirs, quit app...')
-                self.app.quit()
-                return
+            LOGGER.info(f'finished translating all dirs, quit app...')
+            self.app.quit()
+            return
         d = self.exec_dirs.pop(0)
         
         LOGGER.info(f'translating {d} ...')

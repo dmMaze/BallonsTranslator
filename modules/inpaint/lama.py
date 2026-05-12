@@ -1,8 +1,10 @@
 
-
-import torch
-import torch.nn as nn
-from torch import Tensor
+try:
+    import torch
+    import torch.nn as nn
+    from torch import Tensor
+except ImportError:
+    raise ImportError("PyTorch not available")
 import numpy as np
 import cv2
 

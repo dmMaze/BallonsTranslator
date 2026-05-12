@@ -1,6 +1,9 @@
-import torch
+try:
+    import torch
+    import torch.nn as nn
+except ImportError:
+    raise ImportError("PyTorch not available")
 import cv2
-import torch.nn as nn
 
 from ..yolov5.yolo import load_yolov5_ckpt
 from ..yolov5.yolov5_utils import fuse_conv_and_bn

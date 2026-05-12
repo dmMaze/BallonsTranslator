@@ -10,9 +10,12 @@ import cv2
 import numpy as np
 import einops
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+except ImportError:
+    raise ImportError("PyTorch not available")
 
 from .mit48px_ctc import AvgMeter, chunks, TextBlock
 

@@ -13,8 +13,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 import requests
-import torch
-import torch.nn as nn
+try:
+    import torch
+    import torch.nn as nn
+except ImportError:
+    raise ImportError("PyTorch not available")
 from PIL import Image
 
 from .yolov5_utils import make_divisible, initialize_weights, check_anchor_order, fuse_conv_and_bn

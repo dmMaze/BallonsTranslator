@@ -4,7 +4,10 @@ import os.path as osp
 from tqdm import tqdm
 import numpy as np
 import cv2
-import torch
+try:
+    import torch
+except ImportError:
+    raise ImportError("PyTorch not available")
 from pathlib import Path
 import einops
 

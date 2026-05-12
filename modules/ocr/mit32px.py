@@ -1,9 +1,12 @@
 # modified from https://github.com/zyddnys/manga-image-translator/blob/main/ocr/model_32px.py
 
 from collections import defaultdict
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+except ImportError:
+    raise ImportError("PyTorch not available")
 
 import cv2
 import math

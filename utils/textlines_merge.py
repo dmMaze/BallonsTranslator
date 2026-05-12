@@ -310,7 +310,7 @@ def sort_pnts(pts: np.ndarray):
     if inner_prod < 0:
         long_side_vecs[0] = -long_side_vecs[0]
     struc_vec = np.abs(long_side_vecs.mean(axis=0))
-    is_vertical = struc_vec[0] * 1.2 <= struc_vec[1]
+    is_vertical = bool(struc_vec[0] * 1.2 <= struc_vec[1])
     if len(set(pairwise_vec_norm_sorted[4: 12])) == 1:  # is square
         is_vertical = False
 

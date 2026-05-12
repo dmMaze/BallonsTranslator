@@ -2,9 +2,10 @@ import copy
 import sys
 from typing import List
 
-from qtpy.QtWidgets import QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QLabel, QGroupBox, QCheckBox, QSlider
+from qtpy.QtWidgets import QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QComboBox, QApplication, QPushButton, QLabel, QGroupBox, QCheckBox, QSlider, QStyledItemDelegate
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent
+from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent, QFont
+
 
 from utils import shared
 from utils import config as C
@@ -206,36 +207,51 @@ class FontSizeBox(QFrame):
                 self.param_changed.emit('rel_font_size', raito)
                 self.fcombobox.setCurrentText(str(newsize)+"+")
     
+class FontItemDelegate(QStyledItemDelegate):
+    """用于在字体下拉框中用对应的字体渲染预览"""
+    def paint(self, painter, option, index):
+        font_family = index.data(Qt.DisplayRole)
+        if isinstance(font_family, str):
+            # 将选项的字体替换为当前条目对应的字体家族
+            option.font = QFont(font_family, option.font.pointSize())
+        super().paint(painter, option, index)
 
-class FontFamilyComboBox(QFontComboBox):
+class FontFamilyComboBox(QComboBox):  # 改为继承 QComboBox
     param_changed = Signal(str, object)
     def __init__(self, emit_if_focused=True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.currentFontChanged.connect(self.on_fontfamily_changed)
+        self.currentTextChanged.connect(self.on_fontfamily_changed)
         self.lineedit = lineedit = LineEdit(parent=self)
         lineedit.return_pressed.connect(self.on_return_pressed)
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
         self.return_pressed = False
+        self.setItemDelegate(FontItemDelegate())
         
     def apply_fontfamily(self):
-        ffamily = self.currentFont().family()
-        if ffamily in shared.FONT_FAMILIES:
+        ffamily = self.currentText()
+        # ===== 新增：处理归并映射 =====
+        # 如果用户选择的是归并后的规范名，但 Qt 内部用的是原始名，
+        # 需要确保能找到对应的样式
+        from utils import shared
+        if ffamily not in shared.ALL_FONT_FAMILIES and ffamily in shared.CUSTOM_FONT_FAMILIES:
+            # 归并后的名字可能不在 Qt 的 families 列表中，但样式映射已建立
             self.param_changed.emit('font_family', ffamily)
-
+            return
+        # ===== 新增结束 =====
+        if ffamily in shared.ALL_FONT_FAMILIES:
+            self.param_changed.emit('font_family', ffamily)
     def update_font_list(self, font_list):
-        self.currentFontChanged.disconnect(self.on_fontfamily_changed)
-        current_font = self.currentFont().family()
+        self.currentTextChanged.disconnect(self.on_fontfamily_changed)
+        current_font = self.currentText()
         self.clear()
         self.addItems(font_list)
-        self.addItems([current_font])
-        self.setCurrentText(current_font)
-        self.currentFontChanged.connect(self.on_fontfamily_changed)
-
+        if current_font in font_list:
+            self.setCurrentText(current_font)
+        self.currentTextChanged.connect(self.on_fontfamily_changed)
     def on_return_pressed(self):
         self.return_pressed = True
         self.apply_fontfamily()
-
     def on_fontfamily_changed(self):
         if self.return_pressed:
             self.return_pressed = False
@@ -262,6 +278,14 @@ class FontFormatPanel(Widget):
         self.familybox.setToolTip(self.tr("Font Family"))
         self.familybox.param_changed.connect(self.on_param_changed)
         self.familybox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        self.stylebox = QComboBox()
+        self.stylebox.setObjectName("FontStyleBox")
+        self.stylebox.setToolTip(self.tr("Font Style"))
+        self.stylebox.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.stylebox.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.stylebox.setMaximumWidth(110)  # 限制最大宽度，防止挤占字体框
+        self.stylebox.currentTextChanged.connect(self.on_fontstyle_changed)
 
         self.fontsizebox = FontSizeBox(self)
         self.fontsizebox.setToolTip(self.tr("Font Size"))
@@ -367,6 +391,8 @@ class FontFormatPanel(Widget):
         color_label.apply_color.connect(self.on_apply_color)
         
         self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
+        self.familybox.currentTextChanged.connect(self.on_familybox_changed)
+        self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
         self.sourceBtn = TextCheckerLabel(self.tr("Source"))
         self.transBtn = TextCheckerLabel(self.tr("Translation"))
 
@@ -377,13 +403,18 @@ class FontFormatPanel(Widget):
         vl0.addWidget(self.textadvancedfmt_panel.view_widget)
         vl0.setSpacing(0)
         vl0.setContentsMargins(0, 0, 0, 0)
-        hl1 = QHBoxLayout()
-        hl1.addWidget(self.familybox)
-        hl1.addWidget(self.fontsizebox)
-        hl1.addWidget(self.lineSpacingLabel)
-        hl1.addWidget(self.lineSpacingBox)
-        hl1.setSpacing(4)
-        hl1.setContentsMargins(0, 12, 0, 0)
+        hl1_font = QHBoxLayout()
+        hl1_font.addWidget(self.familybox, 4)   # 字体框占绝大部分伸缩空间
+        hl1_font.addWidget(self.stylebox)       # 字重框按内容自适应
+        hl1_font.setSpacing(4)
+        hl1_font.setContentsMargins(0, 12, 0, 0)
+        hl1_size = QHBoxLayout()
+        hl1_size.addWidget(self.fontsizebox)
+        hl1_size.addWidget(self.lineSpacingLabel)
+        hl1_size.addWidget(self.lineSpacingBox)
+        hl1_size.addStretch()  # 防止控件被水平拉伸分散，保持紧凑靠左
+        hl1_size.setSpacing(4)
+        hl1_size.setContentsMargins(0, 2, 0, 0)
         hl2 = QHBoxLayout()
         hl2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl2.addWidget(self.colorPicker)
@@ -410,7 +441,8 @@ class FontFormatPanel(Widget):
         hl4.setSpacing(0)
 
         self.vlayout.addLayout(vl0)
-        self.vlayout.addLayout(hl1)
+        self.vlayout.addLayout(hl1_font)   # 字体家族+样式行
+        self.vlayout.addLayout(hl1_size)   # 字号+行距行
         self.vlayout.addLayout(hl2)
         self.vlayout.addLayout(hl3)
         self.vlayout.addLayout(hl4)
@@ -419,6 +451,9 @@ class FontFormatPanel(Widget):
 
         self.focusOnColorDialog = False
         C.active_format = self.global_format
+
+        if shared.ALL_FONT_FAMILIES:
+            self.familybox.addItems(shared.ALL_FONT_FAMILIES)
 
     def global_mode(self):
         return id(C.active_format) == id(self.global_format)
@@ -473,6 +508,8 @@ class FontFormatPanel(Widget):
     def set_active_format(self, font_format: FontFormat, multi_size=False):
         C.active_format = font_format
         self.familybox.blockSignals(True)
+        self.stylebox.blockSignals(True)  # 新增
+        
         font_size = round(font_format.font_size, 1)
         if int(font_size) == font_size:
             font_size = str(int(font_size))
@@ -482,6 +519,17 @@ class FontFormatPanel(Widget):
             font_size += "+"
         self.fontsizebox.fcombobox.setCurrentText(font_size)
         self.familybox.setCurrentText(font_format.font_family)
+        
+        # 【新增】回显 Style
+        styles = shared.FONT_STYLES.get(font_format.font_family, [])
+        self.stylebox.clear()
+        self.stylebox.addItems(styles)
+        if font_format._style_name and font_format._style_name in styles:
+            self.stylebox.setCurrentText(font_format._style_name)
+        else:
+            idx = self.stylebox.findText("Regular")
+            if idx < 0 and len(styles) > 0: idx = 0
+            if idx >= 0: self.stylebox.setCurrentIndex(idx)
         self.colorPicker.setPickerColor(font_format.foreground_color())
         self.strokeColorPicker.setPickerColor(font_format.stroke_color())
         self.strokeWidthBox.setValue(font_format.stroke_width)
@@ -494,6 +542,7 @@ class FontFormatPanel(Widget):
         self.alignBtnGroup.setAlignment(font_format.alignment)
         
         self.familybox.blockSignals(False)
+        self.stylebox.blockSignals(False)  # 新增
         self.textadvancedfmt_panel.set_active_format(font_format)
 
     def set_globalfmt_title(self):
@@ -528,6 +577,41 @@ class FontFormatPanel(Widget):
     def on_active_stylename_edited(self):
         if self.global_mode():
             self.set_globalfmt_title()
+
+    def on_familybox_changed(self, family: str):
+        """当家族名改变时，更新样式下拉框"""
+        self.stylebox.blockSignals(True)
+        self.stylebox.clear()
+        styles = shared.FONT_STYLES.get(family, [])
+        self.stylebox.addItems(styles)
+        
+        # 尝试默认选中 Regular
+        idx = self.stylebox.findText("Regular")
+        if idx < 0 and len(styles) > 0:
+            idx = 0
+        if idx >= 0:
+            self.stylebox.setCurrentIndex(idx)
+        self.stylebox.blockSignals(False)
+        
+        # 触发格式更新
+        self.apply_font_change()
+    def on_fontstyle_changed(self, style: str):
+        """当样式改变时，触发格式更新"""
+        self.apply_font_change()
+    def apply_font_change(self):
+        """统一的格式应用入口，确保 Family 和 Style 同步发射"""
+        family = self.familybox.currentText()
+        style = self.stylebox.currentText()
+
+        if family not in shared.ALL_FONT_FAMILIES:
+            return
+
+        # Set _style_name directly on the active format first
+        act_ffmt = self.global_format if self.global_mode() else C.active_format
+        if act_ffmt is not None:
+            act_ffmt._style_name = style
+        # Then update font_family (setFontFamily reads _style_name)
+        self.on_param_changed('font_family', family)
 
     def set_textblk_item(self, textblk_item: TextBlkItem = None, multi_select:bool=False):
         if textblk_item is None:

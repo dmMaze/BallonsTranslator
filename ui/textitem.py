@@ -644,6 +644,8 @@ class TextBlkItem(QGraphicsTextItem):
         font.setPointSizeF(ffmat.size_pt)
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.NoSubpixelAntialias)
+        if ffmat._style_name:
+            font.setStyleName(ffmat._style_name)
 
         fweight = ffmat.font_weight
         if fweight is  None:
@@ -762,23 +764,59 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.endEditBlock()
         self.is_formatting = False
 
-    def setFontFamily(self, value: str, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
-        cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
-        self.layout.relayout_on_changed = False
-        self._doc_set_font_family(value, cursor)
-        self.layout.relayout_on_changed = True
-        self.layout.reLayoutEverything()
-        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+    def setFontFamily(self, value: str, style_name: str = "", repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        self.repainting = True
+        cursor = self.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        self._doc_set_font_family(value, style_name, cursor)
+        self.repainting = False
+        self.update()
+        self.fontformat.font_family = value
+        if style_name:
+            self.fontformat._style_name = style_name
 
-    def _doc_set_font_family(self, value: str, cursor: QTextCursor):
-        doc = self.document()
+    def _doc_set_font_family(self, value: str, style_name: str, cursor: QTextCursor):
+        from utils import shared
+        
+        actual_family = value
+        actual_style = style_name
+        is_merged_family = False  # 标记是否回退到了带字重后缀的原始家族名
+        
+        # 处理归并后的家族名，映射回 Qt 能识别的原始名
+        if value in shared.FONT_FAMILY_ALIAS:
+            raw_list = shared.FONT_FAMILY_ALIAS[value]
+            matched_raw = None
+            
+            # 精确匹配：选择 Bold 时，优先找名为 "XXX Bold" 的原始家族
+            if style_name:
+                for raw_fam in raw_list:
+                    if raw_fam.endswith(f" {style_name}"):
+                        matched_raw = raw_fam
+                        break
+            
+            # 常规匹配：选择 Regular 时，优先找没有字重后缀的原始家族
+            if matched_raw is None and style_name in ("Regular", "Normal", ""):
+                for raw_fam in raw_list:
+                    if raw_fam == value or not any(raw_fam.endswith(f" {s}") for s in 
+                        ["Thin", "Light", "Bold", "Black", "Italic", "Oblique", "Medium", "SemiBold", "DemiBold", "Heavy", "ExtraLight", "ExtraBold"]):
+                        matched_raw = raw_fam
+                        break
+            
+            # 兜底：使用列表中的第一个
+            if matched_raw is None and raw_list:
+                matched_raw = raw_list[0]
+                
+            if matched_raw is not None:
+                actual_family = matched_raw
+                if actual_family != value:
+                    is_merged_family = True
+        doc = self.document()  # <--- 修复 UnboundLocalError：补回这行关键代码
         lastpos = doc.rootFrame().lastPosition()
         if cursor.selectionStart() == 0 and \
             cursor.selectionEnd() == lastpos:
             font = doc.defaultFont()
-            font.setFamily(value)
+            font.setFamily(actual_family)
             doc.setDefaultFont(font)
-
         sel_start = cursor.selectionStart()
         sel_end = cursor.selectionEnd()
         block = doc.firstBlock()
@@ -795,11 +833,48 @@ class TextBlkItem(QGraphicsTextItem):
                     cfmt = fragment.charFormat()
                     under_line = cfmt.fontUnderline()
                     cfont = cfmt.font()
-                    font = QFont(value, cfont.pointSize(), cfont.weight(), cfont.italic())
+                    
+                    font = QFont(actual_family, cfont.pointSize(), cfont.weight(), cfont.italic())
                     font.setPointSizeF(cfont.pointSizeF())
-                    font.setBold(font.bold())
+                    
+                    # 样式名到 Qt Weight 枚举的映射
+                    _style_to_qt_weight = {
+                        "Thin": QFont.Weight.Thin, "ExtraLight": QFont.Weight.ExtraLight,
+                        "UltraLight": QFont.Weight.ExtraLight, "Light": QFont.Weight.Light,
+                        "Regular": QFont.Weight.Normal, "Normal": QFont.Weight.Normal,
+                        "Book": QFont.Weight.Normal, "Medium": QFont.Weight.Medium,
+                        "SemiBold": QFont.Weight.DemiBold, "DemiBold": QFont.Weight.DemiBold,
+                        "Bold": QFont.Weight.Bold, "ExtraBold": QFont.Weight.ExtraBold,
+                        "UltraBold": QFont.Weight.ExtraBold, "Black": QFont.Weight.Black,
+                        "Heavy": QFont.Weight.Black
+                    }
+                    
+                    # 决定传给 Qt 的最终 StyleName
+                    final_style_name = actual_style
+                    
+                    if is_merged_family:
+                        # 情况A：归并字体(如"尚古圆体 Bold")，Family已包含字重
+                        # 此时 setStyleName 必须为空或 "Regular"，否则 Qt 会找不到实例
+                        final_style_name = ""
+                    else:
+                        # 判断是否为 VF 字体的虚拟样式
+                        is_virtual = actual_style in shared.VIRTUAL_FONT_STYLES.get(actual_family, set())
+                        if is_virtual:
+                            # 情况B：VF字体的虚拟样式(如思源黑体+Bold)，Qt中没有这个实例
+                            final_style_name = ""
+                            
+                    font.setStyleName(final_style_name)
+                    
+                    # 驱动数值字重（对 VF 字体和中间字重至关重要）
+                    if actual_style in _style_to_qt_weight:
+                        font.setWeight(_style_to_qt_weight[actual_style])
+                        # 根据字重设置 Bold 状态，防止被默认逻辑覆盖
+                        font.setBold(actual_style in ("Bold", "ExtraBold", "UltraBold", "Black", "Heavy", "SemiBold", "DemiBold", "Medium"))
+                    
                     font.setWordSpacing(cfont.wordSpacing())
                     font.setLetterSpacing(cfont.letterSpacingType(), cfont.letterSpacing())
+                
+                    cfmt.setFont(font)
                     cfmt.setFont(font)
                     cfmt.setFontUnderline(under_line)
                     cursor.setPosition(pos1)
@@ -807,9 +882,8 @@ class TextBlkItem(QGraphicsTextItem):
                     cursor.setCharFormat(cfmt)
                 it += 1
             block = block.next()
-
         cfmt = cursor.charFormat()
-        cfmt.setFontFamily(value)
+        cfmt.setFontFamily(actual_family)
         self.set_cursor_cfmt(cursor, cfmt)
 
     def setFontWeight(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):

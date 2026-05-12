@@ -255,58 +255,78 @@ class BaseModule:
     def flush(self, param_key: str):
         return None
 
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-import torch
-
+TORCH_AVAILABLE = False
+torch = None
 DEFAULT_DEVICE = 'cpu'
 AVAILABLE_DEVICES = ['cpu']
-if hasattr(torch, 'cuda') and torch.cuda.is_available():
-    DEFAULT_DEVICE = 'cuda'
-    AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
-if hasattr(torch, 'xpu')  and torch.xpu.is_available():
-    DEFAULT_DEVICE = 'xpu' if torch.xpu.is_available() else 'cpu'
-    AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
-if hasattr(torch, 'backends') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-    DEFAULT_DEVICE = 'mps'
-    AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
-
-try: 
-    import torch_directml
-    if hasattr(torch, 'privateuseone') and torch_directml.device_count() > 0:
-        torch.dml = torch_directml
-        DEFAULT_DEVICE = f'privateuseone:{torch.dml.default_device()}'
-        AVAILABLE_DEVICES += [f"privateuseone:{d}" for d in range(torch.dml.device_count())]
-except:
-    # directml is not supported
-    pass
 BF16_SUPPORTED = False
-if DEFAULT_DEVICE == 'cuda' and torch.cuda.is_bf16_supported() or DEFAULT_DEVICE == 'xpu' and torch.xpu.is_bf16_supported():
-    BF16_SUPPORTED = True
-if DEFAULT_DEVICE == 'mps':
-    BF16_SUPPORTED = True
+TORCH_DTYPE_MAP = {}
+
+try:
+    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+    import torch
+    TORCH_AVAILABLE = True
+
+    DEFAULT_DEVICE = 'cpu'
+    AVAILABLE_DEVICES = ['cpu']
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        DEFAULT_DEVICE = 'cuda'
+        AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
+    if hasattr(torch, 'xpu')  and torch.xpu.is_available():
+        DEFAULT_DEVICE = 'xpu' if torch.xpu.is_available() else 'cpu'
+        AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
+    if hasattr(torch, 'backends') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        DEFAULT_DEVICE = 'mps'
+        AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
+
+    try:
+        import torch_directml
+        if hasattr(torch, 'privateuseone') and torch_directml.device_count() > 0:
+            torch.dml = torch_directml
+            DEFAULT_DEVICE = f'privateuseone:{torch.dml.default_device()}'
+            AVAILABLE_DEVICES += [f"privateuseone:{d}" for d in range(torch.dml.device_count())]
+    except:
+        pass
+
+    BF16_SUPPORTED = False
+    if DEFAULT_DEVICE == 'cuda' and torch.cuda.is_bf16_supported() or DEFAULT_DEVICE == 'xpu' and torch.xpu.is_bf16_supported():
+        BF16_SUPPORTED = True
+    if DEFAULT_DEVICE == 'mps':
+        BF16_SUPPORTED = True
+
+    TORCH_DTYPE_MAP = {
+        'fp32': torch.float32,
+        'fp16': torch.float16,
+        'bf16': torch.bfloat16,
+    }
+except ImportError:
+    pass
+
 
 def is_nvidia():
-    if DEFAULT_DEVICE == 'cuda':
+    if TORCH_AVAILABLE and DEFAULT_DEVICE == 'cuda':
         if torch.version.cuda:
             return True
     return False
 
+
 def is_intel():
-    if DEFAULT_DEVICE == 'xpu':
+    if TORCH_AVAILABLE and DEFAULT_DEVICE == 'xpu':
         if torch.version.xpu:
             return True
     return False
 
+
 def soft_empty_cache():
     gc.collect()
-    if DEFAULT_DEVICE == 'cuda':
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-    elif DEFAULT_DEVICE == 'xpu':
-       torch.xpu.empty_cache()
-       # torch.xpu.ipc_collect()
-    elif DEFAULT_DEVICE == 'mps':
-        torch.mps.empty_cache()
+    if TORCH_AVAILABLE:
+        if DEFAULT_DEVICE == 'cuda':
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        elif DEFAULT_DEVICE == 'xpu':
+           torch.xpu.empty_cache()
+        elif DEFAULT_DEVICE == 'mps':
+            torch.mps.empty_cache()
 
 
 def DEVICE_SELECTOR(not_supported:list[str]=[]): return deepcopy(
@@ -316,12 +336,6 @@ def DEVICE_SELECTOR(not_supported:list[str]=[]): return deepcopy(
         'value': DEFAULT_DEVICE if not any(DEFAULT_DEVICE in device for device in not_supported) else 'cpu'
     }
 )
-
-TORCH_DTYPE_MAP = {
-    'fp32': torch.float32,
-    'fp16': torch.float16,
-    'bf16': torch.bfloat16,
-}
 
 MODULE_SCRIPTS = {
     'translator': {'module_dir': 'modules/translators', 'module_pattern': r'trans_(.*?).py'},

@@ -74,8 +74,9 @@ def font_formating(push_undostack: bool = False, is_property = True):
 @font_formating()
 def ffmt_change_font_family(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
+    style_name = act_ffmt._style_name or ""
     for blkitem, value in zip(blkitems, values):
-        blkitem.setFontFamily(value, **set_kwargs)
+        blkitem.setFontFamily(value, style_name=style_name, **set_kwargs)
 
 @font_formating()
 def ffmt_change_italic(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):

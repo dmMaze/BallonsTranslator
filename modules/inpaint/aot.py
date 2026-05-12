@@ -1,13 +1,12 @@
 from typing import List, Optional
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+except ImportError:
+    raise ImportError("PyTorch not available")
 import numpy as np
 import cv2
-from typing import List, Optional
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 from utils.imgproc_utils import resize_keepasp
 

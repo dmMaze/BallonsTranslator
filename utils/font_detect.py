@@ -2,12 +2,15 @@ import os
 import hashlib
 import logging
 import sys
-import torch
-
 from typing import Tuple
 from typing import Dict
 
 logger = logging.getLogger(__name__)
+
+try:
+    import torch
+except ImportError:
+    torch = None
 
 try:
     import torch.nn as nn
@@ -15,7 +18,6 @@ try:
     from PIL import Image
     from torchvision import transforms
 except Exception as e:
-    torch = None
     nn = None
     models = None
     Image = None

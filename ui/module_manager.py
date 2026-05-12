@@ -51,9 +51,18 @@ class ModuleThread(QThread):
     def _set_module(self, module_name: str):
         old_module = self.module
         try:
+            if module_name not in self.module_register.module_dict:
+                available = list(self.module_register.module_dict.keys())
+                if available:
+                    fallback = available[0]
+                    LOGGER.warning(f"Module '{module_name}' not available, falling back to '{fallback}'")
+                    module_name = fallback
+                else:
+                    LOGGER.warning(f"No modules available for '{self.module_key}', skipping.")
+                    return
             module: Union[TextDetectorBase, BaseTranslator, InpainterBase, OCRBase] \
                 = self.module_register.module_dict[module_name]
-            params = cfg_module.get_params(self.module_key)[module_name]
+            params = cfg_module.get_params(self.module_key).get(module_name)
             if params is not None:
                 self.module = module(**params)
             else:

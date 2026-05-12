@@ -1,8 +1,13 @@
 from packaging.version import parse as package_version_parse
 
+try:
+    from .common import *
+except NameError as e:
+    if 'torch' in str(e):
+        raise ImportError("PyTorch not available")
+    raise
 from .yolov5_utils import scale_img
 from copy import deepcopy
-from .common import *
 
 class Detect(nn.Module):
     stride = None  # strides computed during build
