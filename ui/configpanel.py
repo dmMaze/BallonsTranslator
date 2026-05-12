@@ -97,13 +97,20 @@ class ConfigSubBlock(Widget):
         self.name = name
         if name is not None:
             textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
+            if discription is not None:
+                textlabel.setToolTip(discription)
             self.name_label = textlabel
             layout.addWidget(textlabel)
         if discription is not None:
-            layout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT-2))
+            description_label = ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT-2)
+            description_label.setWordWrap(True)
+            description_label.setToolTip(discription)
+            layout.addWidget(description_label)
         if insert_stretch:
             layout.insertStretch(-1)
         if isinstance(widget, QWidget):
+            if discription is not None and not widget.toolTip():
+                widget.setToolTip(discription)
             layout.addWidget(widget)
         else:
             layout.addLayout(widget)
@@ -141,6 +148,7 @@ def checkbox_with_label(name: str, discription: str = None, target_block: QWidge
         font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
         checkbox.setFont(font)
         checkbox.setText(discription)
+        checkbox.setToolTip(discription)
         vertical_layout = True
     else:
         vertical_layout = False
@@ -382,6 +390,7 @@ class ConfigPanel(Widget):
         self.unload_model_btn = QPushButton(parent=self)
         self.unload_model_btn.setFixedWidth(500)
         self.unload_model_btn.setText(self.tr('Unload All Models'))
+        self.unload_model_btn.setToolTip(self.tr('Immediately unload loaded detection, OCR, inpaint, and translation models from memory.'))
         self.unload_model_btn.clicked.connect(self.unload_models)
         msublock.layout().addWidget(self.unload_model_btn)
 
@@ -404,6 +413,7 @@ class ConfigPanel(Widget):
 
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
+        self.open_on_startup_checker.setToolTip(self.tr('Open the most recently used project automatically when the application starts.'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
         generalConfigPanel.addTextLabel(label_typesetting)
@@ -418,32 +428,56 @@ class ConfigPanel(Widget):
         b = generalConfigPanel.addBlockWidget(global_fntfmt_widget)
         b.layout().setContentsMargins(0, 0, 0, 0)
         b.setContentsMargins(0, 0, 0, 0)
-        self.let_fntsize_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Size'), parent=self, insert_stretch=True)
+        self.let_fntsize_combox, sublock = combobox_with_label(
+            [dec_program_str, use_global_str], self.tr('Font Size'),
+            discription=self.tr('Choose whether translated text keeps the detected size or always uses the global font size.'),
+            parent=self, insert_stretch=True)
         global_fntfmt_layout.addWidget(sublock, 0, 0)
 
         self.let_fntsize_combox.activated.connect(self.on_fntsize_flag_changed)
-        self.let_fntstroke_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Stroke Size'), parent=self, insert_stretch=True)
+        self.let_fntstroke_combox, sublock = combobox_with_label(
+            [dec_program_str, use_global_str], self.tr('Stroke Size'),
+            discription=self.tr('Choose whether stroke width is detected per region or taken from the global text style.'),
+            parent=self, insert_stretch=True)
         self.let_fntstroke_combox.activated.connect(self.on_fntstroke_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 0, 1)
         
-        self.let_fntcolor_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Color'), parent=self, insert_stretch=True)
+        self.let_fntcolor_combox, sublock = combobox_with_label(
+            [dec_program_str, use_global_str], self.tr('Font Color'),
+            discription=self.tr('Choose whether text color is detected from the image or forced to the global color.'),
+            parent=self, insert_stretch=True)
         self.let_fntcolor_combox.activated.connect(self.on_fontcolor_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 1, 0)
-        self.let_fnt_scolor_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Stroke Color'), parent=self, insert_stretch=True)
+        self.let_fnt_scolor_combox, sublock = combobox_with_label(
+            [dec_program_str, use_global_str], self.tr('Stroke Color'),
+            discription=self.tr('Choose whether stroke color is detected from the image or forced to the global stroke color.'),
+            parent=self, insert_stretch=True)
         self.let_fnt_scolor_combox.activated.connect(self.on_font_scolor_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 1, 1)
 
-        self.let_effect_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Effect'), parent=self, insert_stretch=True)
+        self.let_effect_combox, sublock = combobox_with_label(
+            [dec_program_str, use_global_str], self.tr('Effect'),
+            discription=self.tr('Choose whether text effects are detected per region or forced to the global effect settings.'),
+            parent=self, insert_stretch=True)
         self.let_effect_combox.activated.connect(self.on_effect_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 2, 0)
-        self.let_alignment_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Alignment'), parent=self, insert_stretch=True)
+        self.let_alignment_combox, sublock = combobox_with_label(
+            [dec_program_str, use_global_str], self.tr('Alignment'),
+            discription=self.tr('Choose whether paragraph alignment is detected per region or forced to the global alignment.'),
+            parent=self, insert_stretch=True)
         self.let_alignment_combox.activated.connect(self.on_alignment_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 2, 1)
 
-        self.let_writing_mode_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Writing-mode'), parent=self, insert_stretch=True)
+        self.let_writing_mode_combox, sublock = combobox_with_label(
+            [dec_program_str, use_global_str], self.tr('Writing-mode'),
+            discription=self.tr('Choose whether horizontal or vertical writing direction is detected per region or forced globally.'),
+            parent=self, insert_stretch=True)
         self.let_writing_mode_combox.activated.connect(self.on_writing_mode_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 3, 0)
-        self.let_family_combox, sublock = combobox_with_label([self.tr('Keep existing'), self.tr('Always use global setting')], self.tr('Font Family'), parent=self, insert_stretch=True)
+        self.let_family_combox, sublock = combobox_with_label(
+            [self.tr('Keep existing'), self.tr('Always use global setting')], self.tr('Font Family'),
+            discription=self.tr('Choose whether existing region fonts are preserved or replaced by the global font family.'),
+            parent=self, insert_stretch=True)
         self.let_family_combox.activated.connect(self.on_family_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 3, 1)
 
@@ -464,12 +498,21 @@ class ConfigPanel(Widget):
                 self.tr('Vertical then Horizontal'),
                 self.tr('Horizontal then Vertical'),
             ],
-            self.tr('Post-pipeline merge mode'))
+            self.tr('Post-pipeline merge mode'),
+            discription=self.tr('Direction used when automatically merging translated text boxes after the pipeline finishes.'))
         self.post_merge_mode_combobox.activated.connect(self.on_post_merge_mode_changed)
-        self.post_merge_vgap_edit, _ = generalConfigPanel.addLineEdit(self.tr('Post-merge vertical gap'))
-        self.post_merge_hgap_edit, _ = generalConfigPanel.addLineEdit(self.tr('Post-merge horizontal gap'))
-        self.post_merge_woverlap_edit, _ = generalConfigPanel.addLineEdit(self.tr('Post-merge horizontal overlap %'))
-        self.post_merge_hoverlap_edit, _ = generalConfigPanel.addLineEdit(self.tr('Post-merge vertical overlap %'))
+        self.post_merge_vgap_edit, _ = generalConfigPanel.addLineEdit(
+            self.tr('Post-merge vertical gap'),
+            discription=self.tr('Maximum pixel distance between stacked boxes for automatic vertical merging.'))
+        self.post_merge_hgap_edit, _ = generalConfigPanel.addLineEdit(
+            self.tr('Post-merge horizontal gap'),
+            discription=self.tr('Maximum pixel distance between side-by-side boxes for automatic horizontal merging.'))
+        self.post_merge_woverlap_edit, _ = generalConfigPanel.addLineEdit(
+            self.tr('Post-merge horizontal overlap %'),
+            discription=self.tr('Minimum horizontal overlap required when merging boxes above or below each other.'))
+        self.post_merge_hoverlap_edit, _ = generalConfigPanel.addLineEdit(
+            self.tr('Post-merge vertical overlap %'),
+            discription=self.tr('Minimum vertical overlap required when merging boxes next to each other.'))
         for editor in [
             self.post_merge_vgap_edit,
             self.post_merge_hgap_edit,

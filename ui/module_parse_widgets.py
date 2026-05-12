@@ -87,6 +87,7 @@ class ParamCheckerBox(QWidget):
         self.param_key = param_key
         self.checker = QCheckBox()
         name_label = ParamNameLabel(param_key)
+        self.name_label = name_label
         hlayout = QHBoxLayout(self)
         hlayout.addWidget(name_label)
         hlayout.addWidget(self.checker)
@@ -150,6 +151,7 @@ class ParamWidget(QWidget):
             if param_key == 'description' or param_key.startswith('__'):
                 continue
             display_param_name = param_key
+            description = None
 
             require_label = True
             is_str = isinstance(params[param_key], str)
@@ -173,6 +175,7 @@ class ParamWidget(QWidget):
             elif isinstance(params[param_key], dict):
                 param_dict = params[param_key]
                 display_param_name = get_param_display_name(param_key, param_dict)
+                description = param_dict.get('description')
                 value = params[param_key]['value']
                 param_widget = None  # Ensure initialization
                 param_type = param_dict['type'] if 'type' in param_dict else 'line_editor'
@@ -222,12 +225,14 @@ class ParamWidget(QWidget):
 
                 if param_widget is not None:
                     param_widget.paramwidget_edited.connect(self.on_paramwidget_edited)
-                    if 'description' in param_dict:
-                        param_widget.setToolTip(param_dict['description'])
+                    if description:
+                        param_widget.setToolTip(description)
 
             widget_idx = 0
             if require_label:
                 param_label = ParamNameLabel(display_param_name)
+                if description:
+                    param_label.setToolTip(description)
                 param_layout.addWidget(param_label, ii, 0)
                 widget_idx = 1
             if param_widget is not None:
@@ -290,6 +295,8 @@ class ModuleConfigParseWidget(QWidget):
         p_layout = QHBoxLayout()
         p_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.module_label = ParamNameLabel(module_name)
+        self.module_label.setToolTip(self.tr('Select which module implementation is used for this step.'))
+        self.module_combobox.setToolTip(self.tr('Select which module implementation is used for this step.'))
         p_layout.addWidget(self.module_label)
         p_layout.addWidget(self.module_combobox)
         p_layout.addStretch(-1)
@@ -377,16 +384,23 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
     
         self.source_combobox = ConfigComboBox(scrollWidget=scrollWidget)
         self.target_combobox = ConfigComboBox(scrollWidget=scrollWidget)
+        self.source_combobox.setToolTip(self.tr('Language expected in the detected source text.'))
+        self.target_combobox.setToolTip(self.tr('Language used for translated output.'))
         self.replacePreMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation source text"), self)
+        self.replacePreMTkeywordBtn.setToolTip(self.tr("Configure replacements that run before machine translation reads the source text."))
         self.replacePreMTkeywordBtn.clicked.connect(self.show_pre_MT_keyword_window)
         self.replacePreMTkeywordBtn.setFixedWidth(500)
         self.replaceMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation"), self)
+        self.replaceMTkeywordBtn.setToolTip(self.tr("Configure replacements that run on machine translation output."))
         self.replaceMTkeywordBtn.clicked.connect(self.show_MT_keyword_window)
         self.replaceMTkeywordBtn.setFixedWidth(500)
         self.replaceOCRkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for source text"), self)
+        self.replaceOCRkeywordBtn.setToolTip(self.tr("Configure replacements that run on OCR/source text before translation."))
         self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
         self.replaceOCRkeywordBtn.setFixedWidth(500)
         self.translateByTextblockBox = ParamCheckerBox(self.tr('Translate each text block individually'))
+        self.translateByTextblockBox.setToolTip(self.tr('Translate every detected text block as a separate request instead of batching them together.'))
+        self.translateByTextblockBox.name_label.setToolTip(self.translateByTextblockBox.toolTip())
 
         st_layout = QHBoxLayout()
         st_layout.setSpacing(15)
@@ -427,6 +441,8 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         self.inpainter_changed = self.module_changed
         self.setInpainter = self.setModule
         self.needInpaintChecker = ParamCheckerBox(self.tr('Let the program decide whether it is necessary to use the selected inpaint method.'))
+        self.needInpaintChecker.setToolTip(self.tr('When enabled, the app decides per region whether inpainting is needed before rendering translated text.'))
+        self.needInpaintChecker.name_label.setToolTip(self.needInpaintChecker.toolTip())
         self.vlayout.addWidget(self.needInpaintChecker)
 
     def showEvent(self, e) -> None:
@@ -443,6 +459,7 @@ class TextDetectConfigPanel(ModuleConfigParseWidget):
         self.detector_changed = self.module_changed
         self.setDetector = self.setModule
         self.keep_existing_checker = QCheckBox(text=self.tr('Keep Existing Lines'))
+        self.keep_existing_checker.setToolTip(self.tr('Keep manually edited or existing text lines instead of replacing them during detection.'))
         self.p_layout.insertWidget(2, self.keep_existing_checker)
         
 
@@ -452,10 +469,12 @@ class OCRConfigPanel(ModuleConfigParseWidget):
         self.ocr_changed = self.module_changed
         self.setOCR = self.setModule
         self.restoreEmptyOCRChecker = QCheckBox(self.tr("Delete and restore region where OCR return empty string."), self)
+        self.restoreEmptyOCRChecker.setToolTip(self.tr("Remove OCR regions that return empty text and restore the underlying image area."))
         self.restoreEmptyOCRChecker.clicked.connect(self.on_restore_empty_ocr)
         self.vlayout.addWidget(self.restoreEmptyOCRChecker)
         # 字体检测选项
         self.fontDetectChecker = QCheckBox(self.tr("Font Detection"), self)
+        self.fontDetectChecker.setToolTip(self.tr("Try to detect font properties from the source image for each OCR region."))
         self.fontDetectChecker.setChecked(pcfg.module.ocr_font_detect)
         self.fontDetectChecker.clicked.connect(self.on_fontdetect_changed)
         self.vlayout.addWidget(self.fontDetectChecker)
