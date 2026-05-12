@@ -9,6 +9,8 @@ from platform import platform
 
 BRANCH = 'dev'
 VERSION = '1.4.0'
+FORK_REPO_URL = os.environ.get('BALLOONTRANS_UPDATE_REPO', 'https://github.com/CoSciBlog/BallonsTranslator-vibe.git')
+UPDATE_BRANCH = os.environ.get('BALLOONTRANS_UPDATE_BRANCH', BRANCH)
 
 python = sys.executable
 git = os.environ.get('GIT', "git")
@@ -162,12 +164,13 @@ def main():
             print('Checking for updates...')
             try:
                 current_commit = commit_hash()
-                run(f"{git} fetch origin {BRANCH}", desc="Fetching updates from git...", errdesc="Failed to fetch updates.")
-                latest_commit = run(f"{git} rev-parse origin/{BRANCH}").strip()
+                run(f"{git} remote set-url origin {FORK_REPO_URL}", desc="Configuring update repository...", errdesc="Failed to configure update repository.")
+                run(f"{git} fetch origin {UPDATE_BRANCH}", desc="Fetching updates from BallonsTranslator-vibe fork...", errdesc="Failed to fetch updates.")
+                latest_commit = run(f"{git} rev-parse origin/{UPDATE_BRANCH}").strip()
 
                 if current_commit != latest_commit:
                     print("New updates found. Updating repository...")
-                    run(f"{git} pull origin {BRANCH}", desc="Updating repository...", errdesc="Failed to update repository.")
+                    run(f"{git} pull --ff-only origin {UPDATE_BRANCH}", desc="Updating repository...", errdesc="Failed to update repository.")
                     print("Repository updated. Restarting to apply updates...")
                     restart()
                     return

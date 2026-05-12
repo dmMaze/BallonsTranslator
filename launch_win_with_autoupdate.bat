@@ -1,63 +1,60 @@
-@REM dependencies\libraries\py310\python.exe F:\repos\BallonsTranslator\ballontranslator
-@REM @echo %PATH%
-
-cd %~dp0
-
 @echo off
+cd /d "%~dp0"
 
-:: Set the path for PaddleOCR and PyTorch libraries
-set "PADDLE_PATH=%~dp0ballontrans_pylibs_win\Lib\site-packages\torch\lib"
-set "PATH=%PADDLE_PATH%;%PATH%"
-
-@REM if not defined PYTHON (set PATH=pylibs;pylibs\Scripts;%%PATH%%
-set PATH=ballontrans_pylibs_win;ballontrans_pylibs_win\Scripts;PortableGit\cmd;%PATH%
-set PYTHON=python.exe
-
-set ERROR_REPORTING=FALSE
+set "VENV_DIR=%~dp0env"
+set "PYTHON=%VENV_DIR%\Scripts\python.exe"
+set "PADDLE_PATH=%VENV_DIR%\Lib\site-packages\torch\lib"
+set "PATH=%PADDLE_PATH%;%VENV_DIR%\Scripts;PortableGit\cmd;%PATH%"
+set "ERROR_REPORTING=FALSE"
+set "BALLOONTRANS_UPDATE_REPO=https://github.com/CoSciBlog/BallonsTranslator-vibe.git"
+set "BALLOONTRANS_UPDATE_BRANCH=dev"
 
 mkdir tmp 2>NUL
 
-%PYTHON% -c "" >tmp/stdout.txt 2>tmp/stderr.txt
-if %ERRORLEVEL% == 0 goto :check_pip
-echo Couldn't launch python
+if exist "%PYTHON%" goto :check_pip
+
+echo Creating Python virtual environment in "%VENV_DIR%"...
+python -m venv "%VENV_DIR%" >tmp\stdout.txt 2>tmp\stderr.txt
+if %ERRORLEVEL% == 0 goto :install_requirements
+echo Couldn't create Python virtual environment
 goto :show_stdout_stderr
 
 :check_pip
-%PYTHON% -mpip --help >tmp/stdout.txt 2>tmp/stderr.txt
+"%PYTHON%" -m pip --help >tmp\stdout.txt 2>tmp\stderr.txt
 if %ERRORLEVEL% == 0 goto :launch
-if "%PIP_INSTALLER_LOCATION%" == "" goto :show_stdout_stderr
-%PYTHON% "%PIP_INSTALLER_LOCATION%" >tmp/stdout.txt 2>tmp/stderr.txt
-if %ERRORLEVEL% == 0 goto :launch
-echo Couldn't install pip
+echo Couldn't launch pip from virtual environment
 goto :show_stdout_stderr
 
+:install_requirements
+"%PYTHON%" -m pip install --upgrade pip wheel setuptools >tmp\stdout.txt 2>tmp\stderr.txt
+if not %ERRORLEVEL% == 0 goto :show_stdout_stderr
+"%PYTHON%" -m pip install -r requirements.txt >tmp\stdout.txt 2>tmp\stderr.txt
+if not %ERRORLEVEL% == 0 goto :show_stdout_stderr
+goto :launch
 
 :launch
-%PYTHON% launch.py --update  %*
+"%PYTHON%" launch.py --update %*
 pause
 exit /b
 
-
 :show_stdout_stderr
-
 echo.
 echo exit code: %errorlevel%
 
-for /f %%i in ("tmp\stdout.txt") do set size=%%~zi
-if %size% equ 0 goto :show_stderr
+for %%i in (tmp\stdout.txt) do set size=%%~zi
+if "%size%"=="0" goto :show_stderr
 echo.
 echo stdout:
 type tmp\stdout.txt
 
 :show_stderr
-for /f %%i in ("tmp\stderr.txt") do set size=%%~zi
-if %size% equ 0 goto :show_stderr
+for %%i in (tmp\stderr.txt) do set size=%%~zi
+if "%size%"=="0" goto :endofscript
 echo.
 echo stderr:
 type tmp\stderr.txt
 
 :endofscript
-
 echo.
 echo Launch unsuccessful. Exiting.
 pause

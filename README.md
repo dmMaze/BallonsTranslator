@@ -4,6 +4,59 @@
 # BallonTranslator
 简体中文 | [English](/README_EN.md) | [pt-BR](doc/README_PT-BR.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md) | [Tiếng Việt](doc/README_VI.md) | [한국어](doc/README_KO.md) | [Español](doc/README_ES.md) | [Français](doc/README_FR.md)
 
+## Pinokio launcher
+
+This fork includes Pinokio launcher scripts in the project root.
+
+```bash
+# Install dependencies into the project venv at ./env
+install.js
+
+# Start BallonsTranslator through the same venv
+start.js
+
+# Update from the BallonsTranslator-vibe fork, then refresh dependencies
+update.js
+
+# Remove the project venv so it can be recreated
+reset.js
+```
+
+The launcher update flow tracks `https://github.com/CoSciBlog/BallonsTranslator-vibe.git` on the `dev` branch. The Windows batch launchers also create and reuse the same `env` virtual environment instead of the old bundled `ballontrans_pylibs_win` runtime.
+
+### Programmatic use
+
+BallonsTranslator does not expose a built-in HTTP API, so `curl` is not applicable unless a separate wrapper server is added. Use the CLI/headless entry point for automation:
+
+```bash
+python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]"
+```
+
+```python
+import subprocess
+
+subprocess.run([
+    "python",
+    "launch.py",
+    "--headless",
+    "--exec_dirs",
+    "[DIR_1],[DIR_2]"
+], check=True)
+```
+
+```javascript
+const { spawnSync } = require("node:child_process")
+
+const result = spawnSync("python", [
+  "launch.py",
+  "--headless",
+  "--exec_dirs",
+  "[DIR_1],[DIR_2]"
+], { stdio: "inherit" })
+
+process.exit(result.status ?? 1)
+```
+
 深度学习辅助漫画翻译工具，支持一键机翻和简单的图像/文本编辑  
 
 AI 魔改版 [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton/BallonsTranslator-Pro) 新增了许多特性，本项目主要贡献者未参与开发，使用需风险自负。

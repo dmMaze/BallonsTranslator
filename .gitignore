@@ -41,6 +41,8 @@ localtmp*
 *.onnx
 *.7z
 venv
+env
+.venv
 pip
 .DS_Store
 *.dic

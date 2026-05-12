@@ -1,0 +1,6 @@
+{
+  "title": "BallonsTranslator Vibe",
+  "description": "AI-assisted comic and manga image translator with OCR, inpainting, text detection, and translation tools.",
+  "icon": "icons/bottombar_translate.svg",
+  "version": "7.0"
+}
