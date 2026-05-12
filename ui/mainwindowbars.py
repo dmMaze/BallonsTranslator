@@ -271,6 +271,14 @@ class TitleBar(Widget):
     display_lang_changed = Signal(str)
     enable_module = Signal(int, bool)
 
+    RUN_PRESETS = {
+        'full': (True, True, True, True),
+        'text_detection': (True, False, False, False),
+        'ocr': (False, True, False, False),
+        'translation': (False, False, True, False),
+        'inpainting': (False, False, False, True),
+    }
+
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
         self.mainwindow : QMainWindow = parent
@@ -394,11 +402,33 @@ class TitleBar(Widget):
             sa.setChecked(pcfg.module.stage_enabled(idx))
             sa.triggered.connect(self.stageEnableStateChanged)
 
+        presetFullRunAction = QAction(self.tr('Preset: Full Run'), self)
+        presetTextDetectionAction = QAction(self.tr('Preset: Text Detection'), self)
+        presetOcrAction = QAction(self.tr('Preset: OCR'), self)
+        presetTranslationAction = QAction(self.tr('Preset: Translation'), self)
+        presetInpaintingAction = QAction(self.tr('Preset: Inpainting'), self)
+        self.runPresetActions = {
+            presetFullRunAction: 'full',
+            presetTextDetectionAction: 'text_detection',
+            presetOcrAction: 'ocr',
+            presetTranslationAction: 'translation',
+            presetInpaintingAction: 'inpainting',
+        }
+        presetFullRunAction.setToolTip(self.tr('Enable text detection, OCR, translation, and inpainting.'))
+        presetTextDetectionAction.setToolTip(self.tr('Enable only text detection. OCR, translation, and inpainting are disabled.'))
+        presetOcrAction.setToolTip(self.tr('Enable only OCR for existing text regions.'))
+        presetTranslationAction.setToolTip(self.tr('Enable only translation for existing source text.'))
+        presetInpaintingAction.setToolTip(self.tr('Enable only inpainting for existing regions.'))
+        for action in self.runPresetActions:
+            action.triggered.connect(self.runPresetTriggered)
+
         runAction = QAction(self.tr('Run'), self)
         runWoUpdateTextStyle = QAction(self.tr('Run without updating text style'), self)
         translatePageAction = QAction(self.tr('Translate Page'), self)
         runMenu = QMenu(self.runToolBtn)
         runMenu.addActions(stageActions)
+        runMenu.addSeparator()
+        runMenu.addActions(list(self.runPresetActions.keys()))
         runMenu.addSeparator()
         runMenu.addActions([runAction, runWoUpdateTextStyle, translatePageAction])
         self.runToolBtn.setMenu(runMenu)
@@ -460,6 +490,19 @@ class TitleBar(Widget):
         idx= self.stageActions.index(sender)
         checked = sender.isChecked()
         self.enable_module.emit(idx, checked)
+
+    def setRunPreset(self, preset_key: str):
+        states = self.RUN_PRESETS[preset_key]
+        for idx, checked in enumerate(states):
+            action = self.stageActions[idx]
+            action.blockSignals(True)
+            action.setChecked(checked)
+            action.blockSignals(False)
+            self.enable_module.emit(idx, checked)
+
+    def runPresetTriggered(self):
+        preset_key = self.runPresetActions[self.sender()]
+        self.setRunPreset(preset_key)
 
     def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
         super().mouseDoubleClickEvent(e)
