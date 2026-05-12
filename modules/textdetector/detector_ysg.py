@@ -13,6 +13,8 @@ from utils.proj_imgtrans import ProjImgTrans
 
 MODEL_DIR = 'data/models'
 CKPT_LIST = []
+DEFAULT_CKPT = 'data/models/ysgyolo_1.2_OS1.0.pt'
+SUPPORTED_CKPT_EXTS = ('.pt', '.ckpt', '.pth', '.safetensors')
 
 def update_ckpt_list():
     if not osp.exists(MODEL_DIR):
@@ -20,8 +22,14 @@ def update_ckpt_list():
     global CKPT_LIST
     CKPT_LIST.clear()
     for p in os.listdir(MODEL_DIR):
-        if p.startswith('ysgyolo') or p.startswith('ultralyticsyolo'):
+        lower_name = p.lower()
+        if lower_name.endswith(SUPPORTED_CKPT_EXTS) and (
+            lower_name.startswith('ysgyolo') or
+            lower_name.startswith('ultralyticsyolo') or
+            'rtdetr' in lower_name
+        ):
             CKPT_LIST.append(osp.join(MODEL_DIR, p).replace('\\', '/'))
+    CKPT_LIST.sort()
 
 
 update_ckpt_list()
@@ -32,38 +40,38 @@ class YSGYoloDetector(TextDetectorBase):
         'model path': {
             'type': 'selector',
             'options': CKPT_LIST,
-            'value': 'data/models/ysgyolo_1.2_OS1.0.pt',
+            'value': DEFAULT_CKPT,
             'editable': True,
             'flush_btn': True,
             'path_selector': True,
             'path_filter': '*.pt *.ckpt *.pth *.safetensors',
             'size': 'median',
-            'display_name': '模型路径'
+            'display_name': 'Model Path'
         },
         'merge text lines': {
-            'display_name': '合并文本行', 'type': 'checkbox', 'value': True
+            'display_name': 'Merge Text Lines', 'type': 'checkbox', 'value': True
         },
         'confidence threshold': {
-            'display_name': '置信度阈值', 'type': 'line_editor', 'value': 0.3
+            'display_name': 'Confidence Threshold', 'type': 'line_editor', 'value': 0.3
         },
         'IoU threshold': {
-            'display_name': 'IoU阈值', 'type': 'line_editor', 'value': 0.5
+            'display_name': 'IoU Threshold', 'type': 'line_editor', 'value': 0.5
         },
         'font size multiplier': {
-            'display_name': '字号乘数', 'type': 'line_editor', 'value': 1.
+            'display_name': 'Font Size Multiplier', 'type': 'line_editor', 'value': 1.
         },
         'font size max': {
-            'display_name': '最大字号', 'type': 'line_editor', 'value': -1
+            'display_name': 'Maximum Font Size', 'type': 'line_editor', 'value': -1
         },
         'font size min': {
-            'display_name': '最小字号', 'type': 'line_editor', 'value': -1
+            'display_name': 'Minimum Font Size', 'type': 'line_editor', 'value': -1
         },
         'detect size': {
-            'display_name': '检测尺寸', 'type': 'line_editor', 'value': 1024
+            'display_name': 'Detection Size', 'type': 'line_editor', 'value': 1024
         },
         'device': {
             **DEVICE_SELECTOR(),
-            'display_name': '设备'
+            'display_name': 'Device'
         },
         'label': {
             'value': {
@@ -75,13 +83,13 @@ class YSGYoloDetector(TextDetectorBase):
                 'other': True
             },
             'type': 'check_group',
-            'display_name': '标签'
+            'display_name': 'Labels'
         },
         'source text is vertical': {
-            'display_name': '竖排文本', 'type': 'checkbox', 'value': True
+            'display_name': 'Source Text is Vertical', 'type': 'checkbox', 'value': True
         },
         'mask dilate size': {
-            'display_name': '掩码扩张尺寸', 'type': 'line_editor', 'value': 2
+            'display_name': 'Mask Dilation Size', 'type': 'line_editor', 'value': 2
         }
     }
 
@@ -115,7 +123,7 @@ class YSGYoloDetector(TextDetectorBase):
 
     @property
     def is_ysg(self):
-        return osp.basename(self.get_param_value('model path').startswith('ysg'))
+        return osp.basename(self.get_param_value('model path')).lower().startswith('ysg')
 
     def _detect(self, img: np.ndarray, proj: ProjImgTrans = None) -> Tuple[np.ndarray, List[TextBlock]]:
         result = self.model.predict(

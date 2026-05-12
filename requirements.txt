@@ -9,7 +9,7 @@ urllib3
 jaconv
 torch
 torchvision
-transformers==4.57.6
+transformers>=4.57.6,<6
 mecab-python3; sys_platform == 'darwin'
 fugashi
 unidic_lite
@@ -32,7 +32,7 @@ pynput
 ordered-set
 opencc-python-reimplemented
 requests
-ultralytics>=8.4.14
+ultralytics>=8.4.41
 beautifulsoup4
 colorama
 openai>=2.8.1
@@ -54,6 +54,6 @@ pyobjc-framework-coreml; sys_platform == 'darwin'
 pyobjc-framework-quartz; sys_platform == 'darwin'
 pyobjc-framework-vision; sys_platform == 'darwin'
 betterproto
-diffusers>=0.37.1
+diffusers>=0.38.0
 gguf>=0.10.0
 hf_transfer

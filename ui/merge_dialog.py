@@ -3,16 +3,14 @@ from qtpy.QtCore import Signal, Qt
 from qtpy.QtWidgets import QSizePolicy
 
 class MergeDialog(QDialog):
-    # 定义信号：当用户点击运行按钮时发出
-    run_current_clicked = Signal()  # 对当前文件运行
-    run_all_clicked = Signal()  # 对所有文件运行
-    
+    run_current_clicked = Signal()
+    run_all_clicked = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("区域合并工具设置")
+        self.setWindowTitle(self.tr("Region Merge Tool Settings"))
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
         self.adjustSize()
-        # 设置窗口标志：移除帮助按钮,添加最小化按钮
         self.setWindowFlags(
             Qt.Window |
             Qt.WindowMinimizeButtonHint |
@@ -26,21 +24,21 @@ class MergeDialog(QDialog):
 
         # --- Mappings for translation ---
         self.merge_mode_map = {
-            "垂直合并": "VERTICAL",
-            "水平合并": "HORIZONTAL",
-            "先垂直后水平": "VERTICAL_THEN_HORIZONTAL",
-            "先水平后垂直": "HORIZONTAL_THEN_VERTICAL",
-            "无": "NONE",
+            self.tr("Vertical Merge"): "VERTICAL",
+            self.tr("Horizontal Merge"): "HORIZONTAL",
+            self.tr("Vertical then Horizontal"): "VERTICAL_THEN_HORIZONTAL",
+            self.tr("Horizontal then Vertical"): "HORIZONTAL_THEN_VERTICAL",
+            self.tr("None"): "NONE",
         }
         self.label_strategy_map = {
-            "优先使用较短的标签": "PREFER_SHORTER",
-            "使用第一个框的标签": "FIRST",
-            "组合标签 (label1+label2)": "COMBINE",
-            "优先使用非默认标签": "PREFER_NON_DEFAULT",
+            self.tr("Prefer Shorter Label"): "PREFER_SHORTER",
+            self.tr("Use First Box Label"): "FIRST",
+            self.tr("Combine Labels (label1+label2)"): "COMBINE",
+            self.tr("Prefer Non-default Label"): "PREFER_NON_DEFAULT",
         }
 
         # --- Main Settings --- #
-        main_group = QGroupBox("主要设置")
+        main_group = QGroupBox(self.tr("Main Settings"))
         main_layout = QFormLayout(main_group)
         main_layout.setSpacing(4)
         main_layout.setContentsMargins(8, 6, 8, 6)
@@ -48,30 +46,30 @@ class MergeDialog(QDialog):
         self.merge_mode = QComboBox()
         for text, data in self.merge_mode_map.items():
             self.merge_mode.addItem(text, userData=data)
-        main_layout.addRow("合并模式:", self.merge_mode)
+        main_layout.addRow(self.tr("Merge Mode:"), self.merge_mode)
         self.layout.addWidget(main_group)
 
         # --- Text Reading Order Settings ---
-        reading_order_group = QGroupBox("文本合并顺序 (按标签)")
+        reading_order_group = QGroupBox(self.tr("Text Merge Order (by Label)"))
         reading_order_layout = QFormLayout(reading_order_group)
         reading_order_layout.setSpacing(4)
         reading_order_layout.setContentsMargins(8, 6, 8, 6)
-        
+
         self.ltr_labels_edit = QLineEdit()
-        self.ltr_labels_edit.setPlaceholderText("标签1,标签2,...")
+        self.ltr_labels_edit.setPlaceholderText(self.tr("label1,label2,..."))
         self.rtl_labels_edit = QLineEdit()
         self.rtl_labels_edit.setText("balloon,qipao,shuqing")
         self.ttb_labels_edit = QLineEdit()
         self.ttb_labels_edit.setText("changfangtiao,hengxie")
 
-        reading_order_layout.addRow("从左到右 (LTR) 标签:", self.ltr_labels_edit)
-        reading_order_layout.addRow("从右到左 (RTL) 标签:", self.rtl_labels_edit)
-        reading_order_layout.addRow("从上到下 (TTB) 标签:", self.ttb_labels_edit)
-        
+        reading_order_layout.addRow(self.tr("Left-to-right (LTR) Labels:"), self.ltr_labels_edit)
+        reading_order_layout.addRow(self.tr("Right-to-left (RTL) Labels:"), self.rtl_labels_edit)
+        reading_order_layout.addRow(self.tr("Top-to-bottom (TTB) Labels:"), self.ttb_labels_edit)
+
         self.layout.addWidget(reading_order_group)
 
         # --- Labeling Rules --- #
-        label_group = QGroupBox("标签合并规则")
+        label_group = QGroupBox(self.tr("Label Merge Rules"))
         label_layout = QFormLayout(label_group)
         label_layout.setSpacing(4)
         label_layout.setContentsMargins(8, 6, 8, 6)
@@ -79,27 +77,25 @@ class MergeDialog(QDialog):
         self.label_merge_strategy = QComboBox()
         for text, data in self.label_strategy_map.items():
             self.label_merge_strategy.addItem(text, userData=data)
-        label_layout.addRow("标签合并策略:", self.label_merge_strategy)
+        label_layout.addRow(self.tr("Label Merge Strategy:"), self.label_merge_strategy)
 
-        # 黑名单启用复选框
-        self.enable_exclude_labels = QCheckBox("启用排除合并的标签 (黑名单)")
-        self.enable_exclude_labels.setChecked(True)  # 默认启用
+        self.enable_exclude_labels = QCheckBox(self.tr("Enable labels excluded from merging (blacklist)"))
+        self.enable_exclude_labels.setChecked(True)
         label_layout.addRow(self.enable_exclude_labels)
-        
+
         self.exclude_labels = QLineEdit()
-        self.exclude_labels.setText("other")  # 默认填入other
-        self.exclude_labels.setPlaceholderText("例如: label1,label2")
-        label_layout.addRow("黑名单标签:", self.exclude_labels)
-        
-        # 连接复选框信号，控制输入框的启用状态
+        self.exclude_labels.setText("other")
+        self.exclude_labels.setPlaceholderText(self.tr("Example: label1,label2"))
+        label_layout.addRow(self.tr("Blacklisted Labels:"), self.exclude_labels)
+
         self.enable_exclude_labels.toggled.connect(self.exclude_labels.setEnabled)
-        
-        self.require_same_label = QCheckBox("要求标签完全相同才合并")
+
+        self.require_same_label = QCheckBox(self.tr("Require exactly matching labels to merge"))
         label_layout.addRow(self.require_same_label)
 
-        self.use_specific_groups = QCheckBox("仅在特定标签组内合并")
+        self.use_specific_groups = QCheckBox(self.tr("Merge only within specific label groups"))
         self.specific_groups_edit = QPlainTextEdit()
-        self.specific_groups_edit.setPlaceholderText("每行一个分组, 组内标签用逗号分隔\n例如:\nballoon,balloon2\nqipao,qipao2")
+        self.specific_groups_edit.setPlaceholderText(self.tr("One group per line, labels separated by commas\nExample:\nballoon,balloon2\nqipao,qipao2"))
         self.specific_groups_edit.setPlainText("balloon\nqipao\nshuqing\nchangfangtiao\nhengxie")
         self.specific_groups_edit.setMinimumHeight(100)
         self.specific_groups_edit.setMaximumHeight(120)
@@ -113,7 +109,7 @@ class MergeDialog(QDialog):
         self.layout.addWidget(label_group)
 
         # --- Geometric Rules ---
-        geo_group = QGroupBox("几何合并参数")
+        geo_group = QGroupBox(self.tr("Geometric Merge Parameters"))
         geo_layout = QFormLayout(geo_group)
         geo_layout.setSpacing(4)
         geo_layout.setContentsMargins(8, 6, 8, 6)
@@ -126,7 +122,7 @@ class MergeDialog(QDialog):
         self.min_width_overlap_ratio.setRange(0, 100)
         self.min_width_overlap_ratio.setValue(90)
         self.min_width_overlap_ratio.setSuffix(" %")
-        
+
         # Horizontal merge parameters
         self.max_horizontal_gap = QSpinBox()
         self.max_horizontal_gap.setRange(0, 1000)
@@ -137,76 +133,70 @@ class MergeDialog(QDialog):
         self.min_height_overlap_ratio.setSuffix(" %")
 
         # Add separator and widgets to layout
-        geo_layout.addRow(QLabel("<b>垂直合并 (上下)</b>"))
-        geo_layout.addRow("最大垂直间隙 (像素):", self.max_vertical_gap)
-        geo_layout.addRow("最小水平重叠比例:", self.min_width_overlap_ratio)
-        geo_layout.addRow(QLabel("<b>水平合并 (左右)</b>"))
-        geo_layout.addRow("最大水平间隙 (像素):", self.max_horizontal_gap)
-        geo_layout.addRow("最小垂直重叠比例:", self.min_height_overlap_ratio)
+        geo_layout.addRow(QLabel(self.tr("<b>Vertical Merge (up/down)</b>")))
+        geo_layout.addRow(self.tr("Maximum Vertical Gap (pixels):"), self.max_vertical_gap)
+        geo_layout.addRow(self.tr("Minimum Horizontal Overlap Ratio:"), self.min_width_overlap_ratio)
+        geo_layout.addRow(QLabel(self.tr("<b>Horizontal Merge (left/right)</b>")))
+        geo_layout.addRow(self.tr("Maximum Horizontal Gap (pixels):"), self.max_horizontal_gap)
+        geo_layout.addRow(self.tr("Minimum Vertical Overlap Ratio:"), self.min_height_overlap_ratio)
 
         self.layout.addWidget(geo_group)
 
         # --- Advanced Options --- #
-        advanced_group = QGroupBox("高级选项")
+        advanced_group = QGroupBox(self.tr("Advanced Options"))
         advanced_layout = QVBoxLayout(advanced_group)
         advanced_layout.setSpacing(4)
         advanced_layout.setContentsMargins(8, 6, 8, 6)
-        self.allow_negative_gap = QCheckBox("允许负间隙 (即允许框本身有重叠)")
+        self.allow_negative_gap = QCheckBox(self.tr("Allow negative gaps (overlapping boxes)"))
         self.allow_negative_gap.setChecked(True)
         advanced_layout.addWidget(self.allow_negative_gap)
 
         self.layout.addWidget(advanced_group)
 
         # --- Merge Result Type --- #
-        result_type_group = QGroupBox("合并结果类型")
+        result_type_group = QGroupBox(self.tr("Merge Result Type"))
         result_type_layout = QVBoxLayout(result_type_group)
         result_type_layout.setSpacing(4)
         result_type_layout.setContentsMargins(8, 6, 8, 6)
-        
+
         self.output_type_group = QButtonGroup(self)
-        self.radio_output_rectangle = QRadioButton("合并水平矩形")
-        self.radio_output_rotation = QRadioButton("合并旋转矩形")
-        
+        self.radio_output_rectangle = QRadioButton(self.tr("Merge as Axis-aligned Rectangle"))
+        self.radio_output_rotation = QRadioButton(self.tr("Merge as Rotated Rectangle"))
+
         self.radio_output_rectangle.setChecked(True) # Default to rectangle
-        
+
         self.output_type_group.addButton(self.radio_output_rectangle, 1)
         self.output_type_group.addButton(self.radio_output_rotation, 2)
-        
+
         result_type_layout.addWidget(self.radio_output_rectangle)
         result_type_layout.addWidget(self.radio_output_rotation)
-        
+
         self.layout.addWidget(result_type_group)
 
         # --- Buttons --- #
         button_layout = QHBoxLayout()
-        self.run_current_button = QPushButton("对当前文件运行")
-        self.run_all_button = QPushButton("对所有文件运行")
-        self.cancel_button = QPushButton("取消")
-        
+        self.run_current_button = QPushButton(self.tr("Run on Current File"))
+        self.run_all_button = QPushButton(self.tr("Run on All Files"))
+        self.cancel_button = QPushButton(self.tr("Cancel"))
+
         button_layout.addWidget(self.run_current_button)
         button_layout.addWidget(self.run_all_button)
         button_layout.addWidget(self.cancel_button)
         button_layout.addStretch()
-        
-        # 连接按钮信号
+
         self.run_current_button.clicked.connect(self.on_run_current)
         self.run_all_button.clicked.connect(self.on_run_all)
         self.cancel_button.clicked.connect(self.reject)
-        
+
         self.layout.addLayout(button_layout)
 
     def on_run_current(self):
-        """对当前文件运行合并"""
         self.run_current_clicked.emit()
-        # 不关闭对话框，让用户可以继续调整参数
 
     def on_run_all(self):
-        """对所有文件运行合并"""
         self.run_all_clicked.emit()
-        # 不关闭对话框，让用户可以继续调整参数
 
     def get_config(self):
-        """获取用户配置的合并参数"""
         config = {}
         config["MERGE_MODE"] = self.merge_mode.currentData()
         # Set a default reading direction, as the UI for a global default has been removed.
@@ -223,7 +213,6 @@ class MergeDialog(QDialog):
             per_label_directions[label] = 'TTB'
         config["PER_LABEL_DIRECTIONS"] = per_label_directions
 
-        # 只有当黑名单启用时才使用排除标签
         if self.enable_exclude_labels.isChecked():
             excluded = self.exclude_labels.text().strip()
             config["LABELS_TO_EXCLUDE_FROM_MERGE"] = set(l.strip() for l in excluded.split(",") if l.strip())

@@ -1,0 +1,210 @@
+import json
+from copy import deepcopy
+from typing import Dict, List
+
+import requests
+
+from .base import register_translator
+from .trans_google import GoogleTranslateProviderPython, ProviderError
+from .trans_llm_api import LLM_API_Translator
+
+
+DEEPL_FREE_API_URL = "https://api-free.deepl.com/v2/translate"
+DEEPL_API_URL = "https://api.deepl.com/v2/translate"
+
+
+@register_translator("Two-Step Translator")
+class TwoStepTranslator(LLM_API_Translator):
+    concate_text = False
+    cht_require_convert = True
+
+    params: Dict = {
+        "first step translator": {
+            "type": "selector",
+            "options": ["google", "DeepL Free", "DeepL"],
+            "value": "google",
+            "description": "Machine translator used for the first draft before LLM refinement.",
+        },
+        "deepl api key": {
+            "value": "",
+            "description": "DeepL or DeepL Free API key used when the first step translator is DeepL.",
+        },
+        "fallback to first step": {
+            "type": "checkbox",
+            "value": True,
+            "description": "Return the first-step machine translation if the LLM refinement fails.",
+        },
+        **deepcopy(LLM_API_Translator.params),
+    }
+    params["provider"]["value"] = "Ollama"
+    params["model"]["value"] = "OLLAMA: qwen3"
+    params["endpoint"]["value"] = "http://localhost:11434/v1"
+    params["system_prompt"][
+        "value"
+    ] = (
+        "You are a translation editor. Improve draft machine translations by "
+        "checking meaning, terminology, tone, fluency, punctuation, and line "
+        "count. Return strictly valid JSON with one key 'translations', a list "
+        "of objects with 'id' and 'translation'. Do not include explanations."
+    )
+
+    def _setup_translator(self):
+        super()._setup_translator()
+        self.google_translator = GoogleTranslateProviderPython()
+
+    @property
+    def first_step_translator(self) -> str:
+        return self.get_param_value("first step translator")
+
+    @property
+    def deepl_api_key(self) -> str:
+        return self.get_param_value("deepl api key")
+
+    @property
+    def fallback_to_first_step(self) -> bool:
+        return bool(self.get_param_value("fallback to first step"))
+
+    def _google_lang_map(self) -> Dict[str, str]:
+        return {
+            "Auto": "auto",
+            "\u7b80\u4f53\u4e2d\u6587": "zh-CN",
+            "\u7e41\u9ad4\u4e2d\u6587": "zh-TW",
+            "\u65e5\u672c\u8a9e": "ja",
+            "English": "en",
+            "\ud55c\uad6d\uc5b4": "ko",
+            "Ti\u1ebfng Vi\u1ec7t": "vi",
+            "\u010de\u0161tina": "cs",
+            "Nederlands": "nl",
+            "Fran\u00e7ais": "fr",
+            "Deutsch": "de",
+            "magyar nyelv": "hu",
+            "Italiano": "it",
+            "Polski": "pl",
+            "Portugu\u00eas": "pt",
+            "limba rom\u00e2n\u0103": "ro",
+            "\u0440\u0443\u0441\u0441\u043a\u0438\u0439 \u044f\u0437\u044b\u043a": "ru",
+            "Espa\u00f1ol": "es",
+            "T\u00fcrk dili": "tr",
+            "\u0443\u043a\u0440\u0430\u0457\u0301\u043d\u0441\u044c\u043a\u0430 \u043c\u043e\u0301\u0432\u0430": "uk",
+            "Thai": "th",
+            "Arabic": "ar",
+            "Hindi": "hi",
+            "Malayalam": "ml",
+            "Tamil": "ta",
+        }
+
+    def _deepl_lang_map(self) -> Dict[str, str]:
+        return {
+            "Auto": "",
+            "\u7b80\u4f53\u4e2d\u6587": "ZH",
+            "\u65e5\u672c\u8a9e": "JA",
+            "English": "EN-US",
+            "Fran\u00e7ais": "FR",
+            "Deutsch": "DE",
+            "Italiano": "IT",
+            "Portugu\u00eas": "PT-PT",
+            "Brazilian Portuguese": "PT-BR",
+            "\u0440\u0443\u0441\u0441\u043a\u0438\u0439 \u044f\u0437\u044b\u043a": "RU",
+            "Espa\u00f1ol": "ES",
+            "Nederlands": "NL",
+            "Polski": "PL",
+            "\u010de\u0161tina": "CS",
+            "\ud55c\uad6d\uc5b4": "KO",
+            "Arabic": "AR",
+        }
+
+    def _translate_with_google(self, src_list: List[str]) -> List[str]:
+        lang_map = self._google_lang_map()
+        response = self.google_translator.translate(
+            src_list,
+            source_language=lang_map.get(self.lang_source, "auto"),
+            target_language=lang_map.get(self.lang_target, "en"),
+        )
+        translations = response.get("translations", []) if response else []
+        if len(translations) == len(src_list):
+            return translations
+        return [""] * len(src_list)
+
+    def _translate_with_deepl(self, src_list: List[str], free: bool) -> List[str]:
+        if not self.deepl_api_key:
+            self.logger.error("DeepL first-step translation requires a DeepL API key.")
+            return [""] * len(src_list)
+
+        lang_map = self._deepl_lang_map()
+        target_lang = lang_map.get(self.lang_target, "EN-US")
+        source_lang = lang_map.get(self.lang_source, "")
+        data = [("auth_key", self.deepl_api_key), ("target_lang", target_lang)]
+        if source_lang:
+            data.append(("source_lang", source_lang))
+        for text in src_list:
+            data.append(("text", text))
+
+        url = DEEPL_FREE_API_URL if free else DEEPL_API_URL
+        try:
+            response = requests.post(url, data=data, timeout=30)
+            response.raise_for_status()
+            payload = response.json()
+            translations = [
+                item.get("text", "") for item in payload.get("translations", [])
+            ]
+            if len(translations) == len(src_list):
+                return translations
+        except Exception as e:
+            self.logger.error(f"DeepL first-step translation failed: {e}")
+        return [""] * len(src_list)
+
+    def _first_step_translate(self, src_list: List[str]) -> List[str]:
+        provider = self.first_step_translator
+        try:
+            if provider == "google":
+                return self._translate_with_google(src_list)
+            if provider == "DeepL Free":
+                return self._translate_with_deepl(src_list, free=True)
+            if provider == "DeepL":
+                return self._translate_with_deepl(src_list, free=False)
+        except ProviderError as e:
+            self.logger.error(f"First-step translator provider error: {e}")
+        except Exception as e:
+            self.logger.error(f"First-step translation failed: {e}")
+        return [""] * len(src_list)
+
+    def _assemble_refinement_prompt(
+        self, src_list: List[str], draft_list: List[str], to_lang: str
+    ) -> str:
+        from_lang = self.lang_map.get(self.lang_source, self.lang_source)
+        items = [
+            {"id": i + 1, "source": source, "draft_translation": draft}
+            for i, (source, draft) in enumerate(zip(src_list, draft_list))
+        ]
+        return (
+            f"Improve the draft translations from {from_lang} to {to_lang}. "
+            "Use the source text as the authority and preserve each id exactly. "
+            "Return only JSON in the required schema.\n\n"
+            f"INPUT:\n{json.dumps(items, ensure_ascii=False, indent=2)}"
+        )
+
+    def _translate(self, src_list: List[str]) -> List[str]:
+        if not src_list:
+            return []
+
+        draft_list = self._first_step_translate(src_list)
+        to_lang = self.lang_map.get(self.lang_target, self.lang_target)
+        prompt = self._assemble_refinement_prompt(src_list, draft_list, to_lang)
+
+        try:
+            parsed_response = self._request_translation(prompt, is_reflection=True)
+            if parsed_response and len(parsed_response.translations) == len(src_list):
+                translations_by_id = {
+                    item.id: item.translation for item in parsed_response.translations
+                }
+                return [
+                    translations_by_id.get(i, draft_list[i - 1])
+                    for i in range(1, len(src_list) + 1)
+                ]
+            self.logger.error("LLM refinement returned an invalid translation count.")
+        except Exception as e:
+            self.logger.error(f"LLM refinement failed: {type(e).__name__}: {e}")
+
+        if self.fallback_to_first_step:
+            return draft_list
+        return [""] * len(src_list)

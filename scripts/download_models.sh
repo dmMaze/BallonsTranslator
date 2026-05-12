@@ -9,8 +9,8 @@ pushd $(dirname "$0") &> /dev/null
 set -e 
 
 PWD="$(pwd)"
-MODELS_DIR="$PWD/../../data/models"
-LIBS_DIR="$PWD/../../data/libs"
+MODELS_DIR="$PWD/../data/models"
+LIBS_DIR="$PWD/../data/libs"
 
 echo $PWD
 echo $MODELS_DIR
@@ -39,6 +39,18 @@ wget -c "https://github.com/zyddnys/manga-image-translator/releases/download/bet
 
 # Manga OCR
 git lfs install; git clone "https://huggingface.co/kha-white/manga-ocr-base"
+
+# PaddleOCR-VL Manga OCR
+if command -v huggingface-cli >/dev/null 2>&1; then
+  huggingface-cli download jzhang533/PaddleOCR-VL-For-Manga --local-dir PaddleOCR-VL-For-Manga
+fi
+
+# YSG YOLO detector checkpoints are optional and can be large. Download them when
+# huggingface-cli is available; otherwise follow the README link and place the
+# selected *.pt file in data/models manually.
+if command -v huggingface-cli >/dev/null 2>&1; then
+  huggingface-cli download YSGforMTL/YSGYoloDetector --local-dir .
+fi
 
 mkdir -p $LIBS_DIR
 echo $LIBS_DIR

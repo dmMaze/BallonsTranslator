@@ -838,7 +838,6 @@ class MainWindow(mainwindow_cls):
         self.ocrSubWidget.show()
 
     def on_open_merge_tool(self):
-        """打开区域合并工具对话框"""
         if not hasattr(self, 'merge_dialog') or self.merge_dialog is None:
             from .merge_dialog import MergeDialog
             from qtpy.QtCore import QThread
@@ -856,43 +855,38 @@ class MainWindow(mainwindow_cls):
             self.merge_dialog.show()
 
     def run_merge_task(self, on_current=False):
-        """执行区域合并任务"""
         from utils import merger
         from qtpy.QtWidgets import QMessageBox
         
         if self.imgtrans_proj.is_empty:
-            QMessageBox.warning(self, "警告", "请先打开一个项目")
+            QMessageBox.warning(self, self.tr("Warning"), self.tr("Please open a project first."))
             return
         
         config = self.merge_dialog.get_config()
         
         if on_current:
-            # 对当前文件运行 - 直接在内存中操作，不读写文件
             from utils.textblock import TextBlock
             
             current_img = self.imgtrans_proj.current_img
             if not current_img:
-                QMessageBox.warning(self, "警告", "没有当前文件")
+                QMessageBox.warning(self, self.tr("Warning"), self.tr("No current file."))
                 return
             
-            # 直接从内存获取当前页面的文本框
             if current_img not in self.imgtrans_proj.pages:
-                QMessageBox.warning(self, "警告", "当前页面数据不存在")
+                QMessageBox.warning(self, self.tr("Warning"), self.tr("Current page data does not exist."))
                 return
             
             textblocks = self.imgtrans_proj.pages[current_img]
             if not textblocks:
-                QMessageBox.warning(self, "提示", "当前页面没有文本框")
+                QMessageBox.warning(self, self.tr("Notice"), self.tr("The current page has no text boxes."))
                 return
             
-            # 将 TextBlock 对象转换为字典格式（merger 需要字典）
             initial_shapes = [blk.to_dict() for blk in textblocks]
             
             initial_count = len(initial_shapes)
             mode = config.get("MERGE_MODE", "NONE")
             total_merged = 0
             
-            # 在内存中执行合并
             if mode == "VERTICAL":
                 final_shapes, count = merger.perform_merge(initial_shapes, "VERTICAL", config)
                 total_merged += count
@@ -911,72 +905,70 @@ class MainWindow(mainwindow_cls):
                 final_shapes = initial_shapes
             
             if total_merged > 0:
-                # 将字典转回 TextBlock 对象并更新内存
                 self.imgtrans_proj.pages[current_img] = [TextBlock(**blk_dict) for blk_dict in final_shapes]
-                # 刷新画布
                 self.canvas.updateCanvas()
                 self.st_manager.updateSceneTextitems()
                 final_count = len(final_shapes)
-                QMessageBox.information(self, "成功", f"合并完成: 框数 {initial_count} -> {final_count} (减少了 {initial_count - final_count} 个)")
+                QMessageBox.information(
+                    self,
+                    self.tr("Success"),
+                    self.tr("Merge complete: box count {initial} -> {final} ({reduced} fewer)").format(
+                        initial=initial_count,
+                        final=final_count,
+                        reduced=initial_count - final_count,
+                    )
+                )
             else:
-                # 提供更详细的提示
                 labels = set(s.get('label', '') for s in initial_shapes)
-                detail_msg = f"未发生任何合并。\n共有 {initial_count} 个文本框。\n标签类型: {', '.join(labels) or '无'}\n\n"
-                detail_msg += "建议：\n"
-                detail_msg += "1. 尝试增大最大间隙值（如 100-200）\n"
-                detail_msg += "2. 降低最小重叠比例（如 50-70%）\n"
-                detail_msg += "3. 取消勾选'启用排除合并的标签'\n"
-                detail_msg += "4. 检查标签是否在黑名单中"
-                QMessageBox.warning(self, "提示", detail_msg)
+                detail_msg = self.tr(
+                    "No merge was performed.\n"
+                    "There are {count} text boxes.\n"
+                    "Label types: {labels}\n\n"
+                    "Suggestions:\n"
+                    "1. Try increasing the maximum gap value (for example 100-200).\n"
+                    "2. Lower the minimum overlap ratio (for example 50-70%).\n"
+                    "3. Disable 'Enable labels excluded from merging'.\n"
+                    "4. Check whether the labels are blacklisted."
+                ).format(count=initial_count, labels=', '.join(labels) or self.tr('none'))
+                QMessageBox.warning(self, self.tr("Notice"), detail_msg)
         else:
-            # 对所有文件运行
             img_list = list(self.imgtrans_proj.pages.keys())
             if not img_list:
-                QMessageBox.warning(self, "警告", "项目中没有图片")
+                QMessageBox.warning(self, self.tr("Warning"), self.tr("The project has no images."))
                 return
             
-            # 使用项目的 JSON 文件路径
             json_path = self.imgtrans_proj.proj_path
             if not json_path or not osp.exists(json_path):
-                QMessageBox.warning(self, "警告", f"找不到项目 JSON 文件: {json_path}")
+                QMessageBox.warning(self, self.tr("Warning"), self.tr("Project JSON file not found: {path}").format(path=json_path))
                 return
             
-            # 使用后台线程执行合并
             self.run_merge_all_async(json_path, img_list, config)
     
     def run_merge_all_async(self, json_path, img_list, config):
-        """异步执行所有文件的合并"""
         from .io_thread import MergeThread
         
-        # 创建合并线程（如果不存在）
         if not hasattr(self, 'merge_thread'):
             self.merge_thread = MergeThread()
             self.merge_thread.progress_changed.connect(self.on_merge_progress)
             self.merge_thread.merge_finished.connect(self.on_merge_finished)
             self.merge_thread.progress_bar.stop_clicked.connect(self.on_merge_stop)
         
-        # 启动合并
         if self.merge_thread.runMerge(json_path, img_list, config):
-            # 显示进度对话框
             self.merge_thread.progress_bar.zero_progress()
             self.merge_thread.progress_bar.show()
     
     def on_merge_progress(self, current, total):
-        """合并进度更新"""
         progress = int(current / total * 100)
         self.merge_thread.progress_bar.updateTaskProgress(progress, f' {current}/{total}')
     
     def on_merge_stop(self):
-        """停止合并"""
         if hasattr(self, 'merge_thread'):
             self.merge_thread.requestStop()
             self.merge_thread.progress_bar.hide()
     
     def on_merge_finished(self, success_count, fail_count):
-        """合并完成"""
         self.merge_thread.progress_bar.hide()
         
-        # 重新加载整个项目
         try:
             json_path = self.imgtrans_proj.proj_path
             current_img = self.imgtrans_proj.current_img
@@ -988,9 +980,16 @@ class MainWindow(mainwindow_cls):
         except:
             pass
         
-        # 显示结果
         total = success_count + fail_count
-        QMessageBox.information(self, "完成", f"区域合并完成\n成功: {success_count}/{total}\n失败: {fail_count}/{total}")
+        QMessageBox.information(
+            self,
+            self.tr("Complete"),
+            self.tr("Region merge complete\nSucceeded: {success}/{total}\nFailed: {failed}/{total}").format(
+                success=success_count,
+                failed=fail_count,
+                total=total,
+            )
+        )
 
     def on_req_update_pagetext(self):
         if self.canvas.text_change_unsaved():

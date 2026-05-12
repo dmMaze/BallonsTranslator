@@ -37,6 +37,12 @@ class ModuleConfig(Config):
     translate_source: str = '日本語'
     translate_target: str = '简体中文'
     translate_by_textblock: bool = False
+    post_merge_textboxes: bool = False
+    post_merge_mode: str = 'VERTICAL_THEN_HORIZONTAL'
+    post_merge_max_vertical_gap: int = 30
+    post_merge_max_horizontal_gap: int = 30
+    post_merge_min_width_overlap_ratio: int = 50
+    post_merge_min_height_overlap_ratio: int = 50
 
     check_need_inpaint: bool = True
     load_model_on_demand: bool = False

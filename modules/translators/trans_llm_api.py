@@ -54,6 +54,9 @@ class LLM_API_Translator(BaseTranslator):
             "type": "selector",
             "options": [
                 "OAI: gpt-4o",
+                "OAI: gpt-4.1",
+                "OAI: gpt-4.1-mini",
+                "OAI: o4-mini",
                 "OAI: gpt-4-turbo",
                 "OAI: gpt-3.5-turbo",
                 "GGL: gemini-1.5-pro-latest",
@@ -62,11 +65,17 @@ class LLM_API_Translator(BaseTranslator):
                 "XAI: grok-4",
                 "XAI: grok-3",
                 "XAI: grok-3-mini",
+                "OR: qwen/qwen3-235b-a22b",
+                "OR: qwen/qwen3-32b",
+                "OR: google/gemma-3-27b-it",
+                "OR: (override model field)",
                 "LLMS: (override model field)",
+                "OLLAMA: qwen3",
+                "OLLAMA: gemma3",
                 "OLLAMA: (override model field)",
             ],
             "value": "OAI: gpt-4o",
-            "description": "Select a model that supports JSON Mode for structured output.",
+            "description": "Select a model that supports structured JSON output, or use the override field for newer model IDs.",
         },
         "override model": {
             "value": "",
@@ -96,6 +105,27 @@ class LLM_API_Translator(BaseTranslator):
         "max tokens": {
             "value": 4096,
             "description": "Maximum tokens for the response.",
+        },
+        "reasoning": {
+            "type": "checkbox",
+            "value": False,
+            "description": "Enable provider-specific reasoning controls for models that support thinking or reasoning.",
+        },
+        "reasoning level": {
+            "type": "selector",
+            "options": ["low", "medium", "high"],
+            "value": "medium",
+            "description": "Reasoning effort used when reasoning is enabled.",
+        },
+        "reflection": {
+            "type": "checkbox",
+            "value": False,
+            "description": "Run a second API call after translation so the model can review, score, and revise the result.",
+        },
+        "reflection prompt": {
+            "type": "editor",
+            "value": "Review the draft translation against the original source text. Check meaning, terminology, tone, fluency, punctuation, and whether the number of translated items matches the input. Revise only where the translation can be improved. Return only the final improved JSON object in the required schema.",
+            "description": "Instructions used for the optional reflection/revision API call.",
         },
         "temperature": {
             "value": 0.1,
@@ -260,6 +290,23 @@ class LLM_API_Translator(BaseTranslator):
         return int(self.get_param_value("max tokens"))
 
     @property
+    def reasoning_enabled(self) -> bool:
+        return bool(self.get_param_value("reasoning"))
+
+    @property
+    def reasoning_level(self) -> str:
+        level = str(self.get_param_value("reasoning level") or "medium").lower()
+        return level if level in {"low", "medium", "high"} else "medium"
+
+    @property
+    def reflection_enabled(self) -> bool:
+        return bool(self.get_param_value("reflection"))
+
+    @property
+    def reflection_prompt(self) -> str:
+        return self.get_param_value("reflection prompt")
+
+    @property
     def retry_attempts(self) -> int:
         return int(self.get_param_value("retry attempts"))
 
@@ -310,6 +357,99 @@ class LLM_API_Translator(BaseTranslator):
         )
 
         yield prompt, len(queries)
+
+    def _system_prompt_with_reasoning_policy(self) -> str:
+        prompt = self.system_prompt
+        if self.reasoning_enabled:
+            policy = (
+                f"Use {self.reasoning_level} reasoning effort internally if the "
+                "selected model supports it. Do not include reasoning, analysis, "
+                "chain-of-thought, or <think> blocks in the final response; output "
+                "only the requested JSON object."
+            )
+        else:
+            policy = (
+                "Do not include reasoning, analysis, chain-of-thought, or <think> "
+                "blocks in the response; output only the requested JSON object."
+            )
+        return f"{prompt}\n\n{policy}"
+
+    def _build_reasoning_extra_body(self) -> Dict:
+        if not self.reasoning_enabled:
+            return {}
+
+        level = self.reasoning_level
+        provider = self.provider
+        if provider == "OpenRouter":
+            return {"reasoning": {"effort": level}}
+        if provider in ["LLM Studio", "Ollama"]:
+            return {"reasoning": {"effort": level}, "think": True}
+        if provider in ["Google", "Grok"]:
+            return {"reasoning_effort": level}
+        return {}
+
+    def _strip_reasoning_markup(self, content: str) -> str:
+        cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(
+            r"```(?:json)?\s*(\{.*?\})\s*```",
+            lambda match: match.group(1),
+            cleaned,
+            flags=re.DOTALL,
+        )
+        return cleaned.strip()
+
+    def _build_reflection_prompt(
+        self, original_prompt: str, draft_response: TranslationResponse
+    ) -> str:
+        draft_json = draft_response.model_dump_json(indent=2)
+        return (
+            f"{self.reflection_prompt}\n\n"
+            "ORIGINAL TRANSLATION TASK:\n"
+            f"{original_prompt}\n\n"
+            "DRAFT TRANSLATION JSON:\n"
+            f"{draft_json}\n\n"
+            "Return the reviewed and improved translation as JSON with the same "
+            "'translations' list and the same numeric ids."
+        )
+
+    def _record_usage(self, completion):
+        if hasattr(completion, "usage") and completion.usage:
+            self.token_count += completion.usage.total_tokens
+            self.token_count_last = completion.usage.total_tokens
+        else:
+            self.token_count_last = 0
+
+    def _create_completion(self, api_args: Dict):
+        try:
+            return self.client.chat.completions.create(**api_args)
+        except openai.BadRequestError as e:
+            retry_args = dict(api_args)
+            changed = False
+
+            if "max_tokens" in retry_args:
+                retry_args["max_completion_tokens"] = retry_args.pop("max_tokens")
+                changed = True
+
+            for key in [
+                "temperature",
+                "top_p",
+                "frequency_penalty",
+                "presence_penalty",
+            ]:
+                if key in retry_args:
+                    retry_args.pop(key)
+                    changed = True
+
+            if not changed:
+                raise
+
+            self.logger.warning(
+                "Request was rejected by the provider. Retrying with reasoning-model compatible arguments."
+            )
+            try:
+                return self.client.chat.completions.create(**retry_args)
+            except Exception:
+                raise e
 
     def _respect_delay(self):
         current_time = time.time()
@@ -390,9 +530,11 @@ class LLM_API_Translator(BaseTranslator):
         self.logger.error("All available API keys are currently rate-limited.")
         return None
 
-    def _request_translation(self, prompt: str) -> Optional[TranslationResponse]:
+    def _request_translation(
+        self, prompt: str, is_reflection: bool = False
+    ) -> Optional[TranslationResponse]:
         current_api_key = self._select_api_key()
-        
+
         if not current_api_key:
             if self.provider in ["LLM Studio", "Ollama"]:
                 current_api_key = "dummy-key"
@@ -414,7 +556,7 @@ class LLM_API_Translator(BaseTranslator):
             model_name = model_name.split(": ", 1)[1]
 
         messages = [
-            {"role": "system", "content": self.system_prompt},
+            {"role": "system", "content": self._system_prompt_with_reasoning_policy()},
             {"role": "user", "content": prompt},
         ]
 
@@ -439,9 +581,15 @@ class LLM_API_Translator(BaseTranslator):
         if self.provider == "OpenAI":
             api_args["frequency_penalty"] = self.frequency_penalty
             api_args["presence_penalty"] = self.presence_penalty
+            if self.reasoning_enabled:
+                api_args["reasoning_effort"] = self.reasoning_level
+
+        extra_body = self._build_reasoning_extra_body()
+        if extra_body:
+            api_args["extra_body"] = extra_body
 
         try:
-            completion = self.client.chat.completions.create(**api_args)
+            completion = self._create_completion(api_args)
         except Exception as e:
             self.logger.error(f"API request failed: {e}")
             raise
@@ -452,7 +600,7 @@ class LLM_API_Translator(BaseTranslator):
             and completion.choices[0].message.content
         ):
             raw_content = completion.choices[0].message.content
-            json_to_parse = raw_content.strip()
+            json_to_parse = self._strip_reasoning_markup(raw_content)
 
             match = re.search(
                 r"```(?:json)?\s*(\{.*?\})\s*```", json_to_parse, re.DOTALL
@@ -513,11 +661,23 @@ class LLM_API_Translator(BaseTranslator):
             self.logger.warning("No valid message content in API response.")
             return None
 
-        if hasattr(completion, "usage") and completion.usage:
-            self.token_count += completion.usage.total_tokens
-            self.token_count_last = completion.usage.total_tokens
-        else:
-            self.token_count_last = 0
+        self._record_usage(completion)
+
+        if self.reflection_enabled and not is_reflection:
+            reflection_prompt = self._build_reflection_prompt(prompt, validated_response)
+            try:
+                reflected_response = self._request_translation(
+                    reflection_prompt, is_reflection=True
+                )
+                if reflected_response and reflected_response.translations:
+                    self.logger.info(
+                        "Reflection pass completed and returned revised translations."
+                    )
+                    return reflected_response
+            except Exception as e:
+                self.logger.warning(
+                    f"Reflection pass failed; using initial translation. {type(e).__name__}: {e}"
+                )
 
         return validated_response
 
@@ -616,4 +776,4 @@ class LLM_API_Translator(BaseTranslator):
 
         if param_key in ["proxy", "multiple_keys", "apikey", "provider", "endpoint"]:
             self.client = None
-            
+

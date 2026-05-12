@@ -176,12 +176,11 @@ class ImportDocThread(ImgTransProjFileIOThread):
     
 
 class MergeThread(ThreadBase):
-    """区域合并后台线程"""
-    progress_changed = Signal(int, int)  # (当前进度, 总数)
-    merge_finished = Signal(int, int)  # (成功数, 失败数)
+    progress_changed = Signal(int, int)
+    merge_finished = Signal(int, int)
     
     _thread_exception_type = 'MergeThread'
-    _thread_error_msg = '区域合并失败'
+    _thread_error_msg = 'Region merge failed.'
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -189,10 +188,9 @@ class MergeThread(ThreadBase):
         self.img_list = []
         self.config = None
         self.stop_requested = False
-        self.progress_bar = ProgressMessageBox('区域合并: ')
+        self.progress_bar = ProgressMessageBox(self.tr('Region Merge: '))
     
     def runMerge(self, json_path: str, img_list: list, config: dict):
-        """启动合并任务"""
         if self.isRunning():
             return False
         self.json_path = json_path
@@ -204,11 +202,9 @@ class MergeThread(ThreadBase):
         return True
     
     def requestStop(self):
-        """请求停止"""
         self.stop_requested = True
     
     def _run_merge(self):
-        """执行合并任务 - 优化版：只读写一次JSON文件"""
         from utils import merger
         import json
         import copy
@@ -217,41 +213,39 @@ class MergeThread(ThreadBase):
         fail_count = 0
         total = len(self.img_list)
         
-        # 一次性读取JSON文件
         try:
             with open(self.json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
         except Exception as e:
-            LOGGER.error(f'读取JSON文件失败: {e}')
+            LOGGER.error(f'Failed to read JSON file: {e}')
             self.merge_finished.emit(0, total)
             return
         
         if 'pages' not in data:
-            LOGGER.error('不是 BallonsTranslator 格式的 JSON 文件')
+            LOGGER.error('JSON file is not in BallonsTranslator format')
             self.merge_finished.emit(0, total)
             return
         
         mode = self.config.get("MERGE_MODE", "NONE")
         modified = False
         
-        # 在内存中处理所有图片
-        failed_images = []  # 记录失败的图片
+        failed_images = []
         
         for i, img_name in enumerate(self.img_list):
             if self.stop_requested:
-                LOGGER.info('区域合并被用户停止')
+                LOGGER.info('Region merge stopped by user')
                 break
             
             if img_name not in data['pages']:
                 fail_count += 1
-                failed_images.append((img_name, "在JSON中找不到该图片"))
+                failed_images.append((img_name, "Image not found in JSON"))
                 self.progress_changed.emit(i + 1, total)
                 continue
             
             initial_shapes = data['pages'][img_name]
             if not initial_shapes:
                 fail_count += 1
-                failed_images.append((img_name, "没有文本框"))
+                failed_images.append((img_name, "No text boxes"))
                 self.progress_changed.emit(i + 1, total)
                 continue
             
@@ -282,33 +276,30 @@ class MergeThread(ThreadBase):
                     success_count += 1
                 else:
                     fail_count += 1
-                    # 分析失败原因
                     labels = set(s.get('label', '') for s in initial_shapes)
-                    reason = f"无可合并的框 (共{initial_count}个框, 标签: {', '.join(labels) or '无'})"
+                    reason = f"No mergeable boxes ({initial_count} boxes, labels: {', '.join(labels) or 'none'})"
                     failed_images.append((img_name, reason))
                     
             except Exception as e:
-                LOGGER.error(f'合并 {img_name} 失败: {e}')
+                LOGGER.error(f'Failed to merge {img_name}: {e}')
                 fail_count += 1
-                failed_images.append((img_name, f"异常: {e}"))
+                failed_images.append((img_name, f"Exception: {e}"))
             
             self.progress_changed.emit(i + 1, total)
         
-        # 打印失败的图片列表
         if failed_images:
             print(f"\n{'='*60}")
-            print(f"区域合并失败列表 (共 {len(failed_images)} 个):")
+            print(f"Region merge failure list ({len(failed_images)} total):")
             print(f"{'='*60}")
             for img_name, reason in failed_images:
                 print(f"  {img_name}: {reason}")
             print(f"{'='*60}\n")
         
-        # 一次性写入JSON文件
         if modified and not self.stop_requested:
             try:
                 with open(self.json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
             except Exception as e:
-                LOGGER.error(f'写入JSON文件失败: {e}')
+                LOGGER.error(f'Failed to write JSON file: {e}')
         
         self.merge_finished.emit(success_count, fail_count)

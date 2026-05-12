@@ -368,12 +368,10 @@ class TitleBar(Widget):
         self.prevpage_trigger = prevPageAction.triggered
         self.nextpage_trigger = nextPageAction.triggered
 
-        # 工具菜单
         self.toolsToolBtn = TitleBarToolBtn(self)
         self.toolsToolBtn.setText(self.tr('Tools'))
         
-        # 区域合并工具
-        mergeToolAction = QAction('区域合并工具', self)
+        mergeToolAction = QAction(self.tr('Region Merge Tool'), self)
         mergeToolAction.setShortcut(QKeySequence('Ctrl+Shift+M'))
         self.merge_tool_trigger = mergeToolAction.triggered
         
@@ -386,7 +384,7 @@ class TitleBar(Widget):
         self.runToolBtn.setText(self.tr('Run'))
 
         self.stageActions = stageActions = [
-            QAction(self.tr('Enable Text Dection'), self),
+            QAction(self.tr('Enable Text Detection'), self),
             QAction(self.tr('Enable OCR'), self),
             QAction(self.tr('Enable Translation'), self),
             QAction(self.tr('Enable Inpainting'), self)
@@ -397,8 +395,8 @@ class TitleBar(Widget):
             sa.triggered.connect(self.stageEnableStateChanged)
 
         runAction = QAction(self.tr('Run'), self)
-        runWoUpdateTextStyle = QAction(self.tr('Run without update textstyle'), self)
-        translatePageAction = QAction(self.tr('Translate page'), self)
+        runWoUpdateTextStyle = QAction(self.tr('Run without updating text style'), self)
+        translatePageAction = QAction(self.tr('Translate Page'), self)
         runMenu = QMenu(self.runToolBtn)
         runMenu.addActions(stageActions)
         runMenu.addSeparator()

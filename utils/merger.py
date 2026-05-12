@@ -336,12 +336,18 @@ def perform_merge(shapes, mode, config):
 
             # 合并文本内容 - BallonsTranslator 使用 text 字段（数组）
             final_description = ""
+            final_translation = ""
             for s in group_shapes:
                 text = s.get('text', [])
                 if isinstance(text, list):
                     text = ''.join(text)
                 if text:
                     final_description += str(text).strip()
+                translation = s.get('translation', '')
+                if translation:
+                    if final_translation:
+                        final_translation += '\n'
+                    final_translation += str(translation).strip()
             
             # 获取所有点 - 从 lines 或 xyxy
             all_points = []
@@ -362,6 +368,8 @@ def perform_merge(shapes, mode, config):
             
             # BallonsTranslator 使用 text 字段（数组格式）
             merged_shape['text'] = [final_description] if final_description else []
+            merged_shape['translation'] = final_translation
+            merged_shape['rich_text'] = ''
 
             # 计算合并后的边界框
             x_coords = [p[0] for p in all_points]

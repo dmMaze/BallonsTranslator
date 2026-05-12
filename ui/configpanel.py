@@ -453,6 +453,31 @@ class ConfigPanel(Widget):
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region.'))
 
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
+        self.post_merge_checker, _ = generalConfigPanel.addCheckBox(
+            self.tr('Merge nearby text boxes after pipeline'),
+            discription=self.tr('After translation, merge nearby text boxes using the Region Merge Tool rules to reduce overlapping rendered text.'))
+        self.post_merge_checker.stateChanged.connect(self.on_post_merge_changed)
+        self.post_merge_mode_combobox, _ = generalConfigPanel.addCombobox(
+            [
+                self.tr('Vertical Merge'),
+                self.tr('Horizontal Merge'),
+                self.tr('Vertical then Horizontal'),
+                self.tr('Horizontal then Vertical'),
+            ],
+            self.tr('Post-pipeline merge mode'))
+        self.post_merge_mode_combobox.activated.connect(self.on_post_merge_mode_changed)
+        self.post_merge_vgap_edit, _ = generalConfigPanel.addLineEdit(self.tr('Post-merge vertical gap'))
+        self.post_merge_hgap_edit, _ = generalConfigPanel.addLineEdit(self.tr('Post-merge horizontal gap'))
+        self.post_merge_woverlap_edit, _ = generalConfigPanel.addLineEdit(self.tr('Post-merge horizontal overlap %'))
+        self.post_merge_hoverlap_edit, _ = generalConfigPanel.addLineEdit(self.tr('Post-merge vertical overlap %'))
+        for editor in [
+            self.post_merge_vgap_edit,
+            self.post_merge_hgap_edit,
+            self.post_merge_woverlap_edit,
+            self.post_merge_hoverlap_edit,
+        ]:
+            editor.setValidator(CustomIntValidator(0, 1000, 4))
+            editor.editingFinished.connect(self.on_post_merge_numeric_changed)
         self.let_uppercase_checker, _ = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
 
@@ -546,6 +571,31 @@ class ConfigPanel(Widget):
     def on_autolayout_changed(self):
         pcfg.let_autolayout_flag = self.let_autolayout_checker.isChecked()
 
+    def on_post_merge_changed(self):
+        pcfg.module.post_merge_textboxes = self.post_merge_checker.isChecked()
+
+    def on_post_merge_mode_changed(self):
+        mode_map = {
+            0: 'VERTICAL',
+            1: 'HORIZONTAL',
+            2: 'VERTICAL_THEN_HORIZONTAL',
+            3: 'HORIZONTAL_THEN_VERTICAL',
+        }
+        pcfg.module.post_merge_mode = mode_map.get(self.post_merge_mode_combobox.currentIndex(), 'VERTICAL_THEN_HORIZONTAL')
+
+    def on_post_merge_numeric_changed(self):
+        def read_int(editor: QLineEdit, default: int) -> int:
+            text = editor.text().strip()
+            if not text.isnumeric():
+                editor.setText(str(default))
+                return default
+            return int(text)
+
+        pcfg.module.post_merge_max_vertical_gap = read_int(self.post_merge_vgap_edit, 30)
+        pcfg.module.post_merge_max_horizontal_gap = read_int(self.post_merge_hgap_edit, 30)
+        pcfg.module.post_merge_min_width_overlap_ratio = read_int(self.post_merge_woverlap_edit, 50)
+        pcfg.module.post_merge_min_height_overlap_ratio = read_int(self.post_merge_hoverlap_edit, 50)
+
     def on_uppercase_changed(self):
         pcfg.let_uppercase_flag = self.let_uppercase_checker.isChecked()
 
@@ -636,6 +686,14 @@ class ConfigPanel(Widget):
         self.let_family_combox.setCurrentIndex(pcfg.let_family_flag)
         self.let_writing_mode_combox.setCurrentIndex(pcfg.let_writing_mode_flag)
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
+        self.post_merge_checker.setChecked(pcfg.module.post_merge_textboxes)
+        post_merge_modes = ['VERTICAL', 'HORIZONTAL', 'VERTICAL_THEN_HORIZONTAL', 'HORIZONTAL_THEN_VERTICAL']
+        if pcfg.module.post_merge_mode in post_merge_modes:
+            self.post_merge_mode_combobox.setCurrentIndex(post_merge_modes.index(pcfg.module.post_merge_mode))
+        self.post_merge_vgap_edit.setText(str(pcfg.module.post_merge_max_vertical_gap))
+        self.post_merge_hgap_edit.setText(str(pcfg.module.post_merge_max_horizontal_gap))
+        self.post_merge_woverlap_edit.setText(str(pcfg.module.post_merge_min_width_overlap_ratio))
+        self.post_merge_hoverlap_edit.setText(str(pcfg.module.post_merge_min_height_overlap_ratio))
         self.selectext_minimenu_checker.setChecked(pcfg.textselect_mini_menu)
         self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
         self.let_textstyle_indep_checker.setChecked(pcfg.let_textstyle_indep_flag)

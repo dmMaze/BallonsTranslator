@@ -628,6 +628,8 @@ class ModuleManager(QObject):
         self.imgtrans_proj = imgtrans_proj
         self.check_inpaint_fin_timer = QTimer(self)
         self.check_inpaint_fin_timer.timeout.connect(self.check_inpaint_th_finished)
+        self.pipeline_pages_to_process = None
+        self.post_pipeline_merge_done = False
 
     def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox, ocr_postprocess: Callable = None, translate_preprocess: Callable = None, translate_postprocess: Callable = None):
         self.textdetect_thread = TextDetectThread()
@@ -748,6 +750,8 @@ class ModuleManager(QObject):
             self.progress_msgbox.hide()
             return
         self.last_finished_index = -1
+        self.pipeline_pages_to_process = pages_to_process
+        self.post_pipeline_merge_done = False
         self.terminateRunningThread()
         
         if cfg_module.all_stages_disabled() and self.imgtrans_proj is not None and self.imgtrans_proj.num_pages > 0:
@@ -865,8 +869,96 @@ class ModuleManager(QObject):
             return True
         return False
 
+    def _post_pipeline_merge_config(self) -> Dict:
+        return {
+            "MERGE_MODE": pcfg.module.post_merge_mode,
+            "READING_DIRECTION": "LTR",
+            "PER_LABEL_DIRECTIONS": {},
+            "LABELS_TO_EXCLUDE_FROM_MERGE": set(),
+            "LABEL_MERGE_STRATEGY": "PREFER_SHORTER",
+            "REQUIRE_SAME_LABEL": False,
+            "USE_SPECIFIC_MERGE_GROUPS": False,
+            "SPECIFIC_MERGE_GROUPS": [],
+            "VERTICAL_MERGE_PARAMS": {
+                "max_vertical_gap": pcfg.module.post_merge_max_vertical_gap,
+                "min_width_overlap_ratio": pcfg.module.post_merge_min_width_overlap_ratio,
+                "overlap_epsilon": 1e-6,
+            },
+            "HORIZONTAL_MERGE_PARAMS": {
+                "max_horizontal_gap": pcfg.module.post_merge_max_horizontal_gap,
+                "min_height_overlap_ratio": pcfg.module.post_merge_min_height_overlap_ratio,
+                "overlap_epsilon": 1e-6,
+            },
+            "ADVANCED_MERGE_OPTIONS": {
+                "allow_negative_gap": True,
+                "debug_mode": False,
+            },
+            "OUTPUT_SHAPE_TYPE": "rectangle",
+        }
+
+    def _merge_shapes_by_mode(self, shapes: List[dict], config: Dict):
+        from utils import merger
+
+        mode = config.get("MERGE_MODE", "NONE")
+        total_merged = 0
+        if mode == "VERTICAL":
+            final_shapes, total_merged = merger.perform_merge(shapes, "VERTICAL", config)
+        elif mode == "HORIZONTAL":
+            final_shapes, total_merged = merger.perform_merge(shapes, "HORIZONTAL", config)
+        elif mode == "VERTICAL_THEN_HORIZONTAL":
+            temp, count1 = merger.perform_merge(shapes, "VERTICAL", config)
+            final_shapes, count2 = merger.perform_merge(temp, "HORIZONTAL", config)
+            total_merged = count1 + count2
+        elif mode == "HORIZONTAL_THEN_VERTICAL":
+            temp, count1 = merger.perform_merge(shapes, "HORIZONTAL", config)
+            final_shapes, count2 = merger.perform_merge(temp, "VERTICAL", config)
+            total_merged = count1 + count2
+        else:
+            final_shapes = shapes
+        return final_shapes, total_merged
+
+    def apply_post_pipeline_textbox_merge(self):
+        if self.post_pipeline_merge_done or not pcfg.module.post_merge_textboxes:
+            return
+
+        self.post_pipeline_merge_done = True
+        all_pages = list(self.imgtrans_proj.pages.keys())
+        if self.pipeline_pages_to_process:
+            page_names = [name for name in self.pipeline_pages_to_process if name in self.imgtrans_proj.pages]
+        else:
+            page_names = all_pages
+
+        if not page_names:
+            return
+
+        config = self._post_pipeline_merge_config()
+        changed_page_indices = []
+        total_merged = 0
+        for page_name in page_names:
+            blocks = self.imgtrans_proj.pages.get(page_name, [])
+            if len(blocks) < 2:
+                continue
+
+            try:
+                shapes = [blk.to_dict(deep_copy=True) for blk in blocks]
+                final_shapes, merged_count = self._merge_shapes_by_mode(shapes, config)
+                if merged_count > 0:
+                    self.imgtrans_proj.pages[page_name] = [
+                        TextBlock(**shape) for shape in final_shapes
+                    ]
+                    total_merged += merged_count
+                    changed_page_indices.append(all_pages.index(page_name))
+            except Exception as e:
+                LOGGER.error(f'Post-pipeline text box merge failed for {page_name}: {e}')
+
+        if total_merged > 0:
+            LOGGER.info(f'Post-pipeline text box merge reduced {total_merged} boxes.')
+            for page_index in changed_page_indices:
+                self.page_trans_finished.emit(page_index)
+
     def finishImgtransPipeline(self):
         if self.proj_finished():
+            self.apply_post_pipeline_textbox_merge()
             self.progress_msgbox.hide()
             self.imgtrans_pipeline_finished.emit()
     
