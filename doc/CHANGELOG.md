@@ -1,6 +1,11 @@
 # Changelogs
 
 ### 2026-05-13
+[v1.4.0-vibe.6] manga_ocr Transformers compatibility
+1. Switched `manga_ocr` from `AutoFeatureExtractor` to `AutoImageProcessor` so the local `data/models/manga-ocr-base` vision model loads under current Transformers releases.
+2. Updated the README OCR notes to explain the `Unrecognized feature extractor` failure and the supported image processor path.
+3. Bumped the fork runtime version string to `1.4.0-vibe.6`.
+
 [v1.4.0-vibe.5] LLM glossary generation and refinement
 1. Added persistent glossary settings to `LLM_API_Translator` for names, places, characters, organizations, titles, and recurring terms.
 2. Added automatic glossary extraction after each LLM translation batch so new source/target term pairs can be collected while translating.

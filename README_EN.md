@@ -7,7 +7,7 @@
 # BallonsTranslator Vibe Fork
 English | [README mirror](/README.md) | [pt-BR](doc/README_PT-BR.md) | [Russian](doc/README_RU.md) | [Japanese](doc/README_JA.md) | [Indonesian](doc/README_ID.md) | [Vietnamese](doc/README_VI.md) | [Korean](doc/README_KO.md) | [Spanish](doc/README_ES.md) | [French](doc/README_FR.md)
 
-Fork release: `1.4.0-vibe.1`  
+Fork release: `1.4.0-vibe.6`  
 Upstream base: `BallonsTranslator 1.4.0`  
 Update source: `https://github.com/CoSciBlog/BallonsTranslator-vibe.git` (`dev`)
 
@@ -23,6 +23,7 @@ This repository is a Codex-expanded fork. It keeps the original desktop workflow
 - Introduced a fork-aware application version scheme so this build is distinguishable from upstream releases: `1.4.0-vibe.1`.
 - Replaced the mixed-language root `README.md` with the English documentation and refreshed the English README for this fork.
 - Documented that translated output and some documentation assets are machine-translated and should be disclosed as such when redistributed.
+- Fixed `manga_ocr` startup with current Transformers releases by using the image processor API required by the local `manga-ocr-base` vision model.
 
 ## Features
 
@@ -63,6 +64,10 @@ reset.js
 ```
 
 The launcher update flow tracks `https://github.com/CoSciBlog/BallonsTranslator-vibe.git` on the `dev` branch. The Windows batch launchers also create and reuse the same `env` virtual environment instead of the old bundled `ballontrans_pylibs_win` runtime.
+
+## OCR notes
+
+`manga_ocr` uses the local model in `data/models/manga-ocr-base`. Current Transformers versions load this vision model through `AutoImageProcessor`; older `AutoFeatureExtractor` loading can fail with `Unrecognized feature extractor` even when `preprocessor_config.json` is present.
 
 ## Programmatic use
 
