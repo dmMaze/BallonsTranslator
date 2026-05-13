@@ -1,6 +1,7 @@
 import json
+import threading
 from copy import deepcopy
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import requests
 
@@ -34,6 +35,16 @@ class TwoStepTranslator(LLM_API_Translator):
             "value": True,
             "description": "Return the first-step machine translation if the LLM refinement fails.",
         },
+        "parallel first step during pipeline": {
+            "type": "checkbox",
+            "value": False,
+            "description": "During full RUN, start the Google/DeepL draft translation in the background as soon as OCR finishes for a page. The LLM refinement still waits until detection, OCR, and inpainting are done.",
+        },
+        "unload vision models before llm": {
+            "type": "checkbox",
+            "value": True,
+            "description": "When parallel first-step translation is enabled, unload text detection, OCR, and inpainting models before the final Ollama/LLM refinement step to free RAM/VRAM.",
+        },
         **deepcopy(LLM_API_Translator.params),
     }
     params["provider"]["value"] = "Ollama"
@@ -51,6 +62,8 @@ class TwoStepTranslator(LLM_API_Translator):
     def _setup_translator(self):
         super()._setup_translator()
         self.google_translator = GoogleTranslateProviderPython()
+        self._draft_cache: Dict[Tuple[str, str, str, Tuple[str, ...]], List[str]] = {}
+        self._draft_cache_lock = threading.RLock()
 
     @property
     def first_step_translator(self) -> str:
@@ -63,6 +76,28 @@ class TwoStepTranslator(LLM_API_Translator):
     @property
     def fallback_to_first_step(self) -> bool:
         return bool(self.get_param_value("fallback to first step"))
+
+    @property
+    def parallel_first_step_during_pipeline(self) -> bool:
+        return bool(self.get_param_value("parallel first step during pipeline"))
+
+    @property
+    def unload_vision_models_before_llm(self) -> bool:
+        return bool(self.get_param_value("unload vision models before llm"))
+
+    def pipeline_pretranslation_enabled(self) -> bool:
+        return self.parallel_first_step_during_pipeline
+
+    def should_unload_before_llm_refinement(self) -> bool:
+        return self.unload_vision_models_before_llm
+
+    def _draft_cache_key(self, src_list: List[str]) -> Tuple[str, str, str, Tuple[str, ...]]:
+        return (
+            self.lang_source,
+            self.lang_target,
+            self.first_step_translator,
+            tuple(src_list),
+        )
 
     def _google_lang_map(self) -> Dict[str, str]:
         return {
@@ -154,19 +189,61 @@ class TwoStepTranslator(LLM_API_Translator):
         return [""] * len(src_list)
 
     def _first_step_translate(self, src_list: List[str]) -> List[str]:
+        cache_key = self._draft_cache_key(src_list)
+        with self._draft_cache_lock:
+            cached = self._draft_cache.get(cache_key)
+            if cached is not None:
+                return list(cached)
+
         provider = self.first_step_translator
         try:
             if provider == "google":
-                return self._translate_with_google(src_list)
+                draft_list = self._translate_with_google(src_list)
+                with self._draft_cache_lock:
+                    self._draft_cache[cache_key] = list(draft_list)
+                return draft_list
             if provider == "DeepL Free":
-                return self._translate_with_deepl(src_list, free=True)
+                draft_list = self._translate_with_deepl(src_list, free=True)
+                with self._draft_cache_lock:
+                    self._draft_cache[cache_key] = list(draft_list)
+                return draft_list
             if provider == "DeepL":
-                return self._translate_with_deepl(src_list, free=False)
+                draft_list = self._translate_with_deepl(src_list, free=False)
+                with self._draft_cache_lock:
+                    self._draft_cache[cache_key] = list(draft_list)
+                return draft_list
         except ProviderError as e:
             self.logger.error(f"First-step translator provider error: {e}")
         except Exception as e:
             self.logger.error(f"First-step translation failed: {e}")
         return [""] * len(src_list)
+
+    def _pipeline_source_texts(self, textblk_lst) -> List[str]:
+        text_list = []
+        translations = []
+        for blk in textblk_lst:
+            text = blk.get_text()
+            if text.strip() != "":
+                text_list.append(text)
+            translations.append(text)
+
+        for callback in self._preprocess_hooks.values():
+            callback(
+                translations=translations,
+                textblocks=textblk_lst,
+                translator=self,
+                source_text=text_list,
+            )
+        return text_list
+
+    def pretranslate_textblk_lst(self, textblk_lst) -> None:
+        src_list = self._pipeline_source_texts(textblk_lst)
+        if not src_list:
+            return
+        self._first_step_translate(src_list)
+        self.logger.info(
+            f"Prepared first-step {self.first_step_translator} draft for {len(src_list)} text blocks."
+        )
 
     def _assemble_refinement_prompt(
         self, src_list: List[str], draft_list: List[str], to_lang: str

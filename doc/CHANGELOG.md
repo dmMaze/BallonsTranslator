@@ -1,6 +1,12 @@
 # Changelogs
 
 ### 2026-05-13
+[v1.4.0-vibe.3] two-step background pretranslation
+1. Added an optional `parallel first step during pipeline` mode for the `Two-Step Translator`.
+2. When enabled, Google or DeepL draft translations start in the background after OCR finishes for each page while the remaining OCR/inpainting work continues.
+3. The final Ollama/LLM refinement step waits until detection, OCR, and inpainting are complete, then reuses the cached first-step drafts.
+4. Added an optional `unload vision models before llm` setting to free text detection, OCR, and inpainting models from RAM/VRAM before the final local LLM calls.
+
 [v1.4.0-vibe.2] settings export and preset management
 1. Added settings export/import actions in the General settings panel.
 2. Added named settings presets stored under `config/presets`, with UI actions to save, apply, import, and export presets.

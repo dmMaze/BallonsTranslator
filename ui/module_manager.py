@@ -227,6 +227,32 @@ class TranslateThread(ModuleThread):
         self.job = self._run_translate_pipeline
         self.start()
 
+    def runPretranslatePipeline(self, imgtrans_proj: ProjImgTrans):
+        self.initImgtransPipeline(imgtrans_proj)
+        self.job = self._run_pretranslate_pipeline
+        self.start()
+
+    def _run_pretranslate_pipeline(self):
+        if not hasattr(self.translator, 'pretranslate_textblk_lst'):
+            return
+
+        while not self.pipeline_finished():
+            if self.stop_requested:
+                self.module_thread_stopped.emit()
+                self.stop_requested = False
+                break
+
+            if len(self.pipeline_pagekey_queue) == 0:
+                time.sleep(0.1)
+                continue
+
+            page_key = self.pipeline_pagekey_queue.pop(0)
+            try:
+                self.translator.pretranslate_textblk_lst(self.imgtrans_proj.pages[page_key])
+            except Exception as e:
+                LOGGER.warning(f'Background first-step translation failed for {page_key}: {e}')
+            self.finished_counter += 1
+
 
     def _run_translate_pipeline(self):
         delay = self.translator.delay()
@@ -410,13 +436,27 @@ class ImgtransThread(QThread):
         self.translate_thread.num_process_pages = self.num_pages
 
         low_vram_trans = False
+        background_first_step_trans = False
+        unload_before_llm_refinement = False
         if self.translator is not None:
             low_vram_trans = self.translator.low_vram_mode
-            self.parallel_trans = not self.translator.is_computational_intensive() and not low_vram_trans
+            background_first_step_trans = bool(
+                hasattr(self.translator, 'pipeline_pretranslation_enabled')
+                and self.translator.pipeline_pretranslation_enabled()
+            )
+            unload_before_llm_refinement = bool(
+                hasattr(self.translator, 'should_unload_before_llm_refinement')
+                and self.translator.should_unload_before_llm_refinement()
+            )
+            self.parallel_trans = not self.translator.is_computational_intensive() \
+                and not low_vram_trans \
+                and not background_first_step_trans
         else:
             self.parallel_trans = False
         if self.parallel_trans and cfg_module.enable_translate:
             self.translate_thread.runTranslatePipeline(self.imgtrans_proj)
+        elif background_first_step_trans and cfg_module.enable_translate:
+            self.translate_thread.runPretranslatePipeline(self.imgtrans_proj)
 
         for imgname in pages_to_iterate:
             
@@ -505,7 +545,9 @@ class ImgtransThread(QThread):
                 need_save_mask = False
 
             if cfg_module.enable_translate:
-                if self.parallel_trans:
+                if background_first_step_trans:
+                    self.translate_thread.push_pagekey_queue(imgname)
+                elif self.parallel_trans:
                     self.translate_thread.push_pagekey_queue(imgname)
                 elif not low_vram_trans:
                     self.translator.translate_textblk_lst(blk_list)
@@ -530,8 +572,16 @@ class ImgtransThread(QThread):
                 if len(blk_removed) > 0:
                     self.imgtrans_proj.load_mask_by_imgname
         
-        if cfg_module.enable_translate and low_vram_trans:
-            unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
+        if cfg_module.enable_translate and (low_vram_trans or background_first_step_trans):
+            if background_first_step_trans:
+                while self.translate_thread.isRunning():
+                    if self.stop_requested:
+                        self.translate_thread.requestStop()
+                        LOGGER.info('Waiting for background first-step translation to stop')
+                    time.sleep(0.05)
+
+            if low_vram_trans or unload_before_llm_refinement:
+                unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
             for imgname in pages_to_iterate:
                 # 检查是否请求停止
                 if self.stop_requested:
