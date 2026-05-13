@@ -8,7 +8,7 @@ import subprocess
 commit_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('utf-8').strip()  
 
 # 构造带提交哈希值的版本号
-version = "1.4.0.dev." + commit_hash
+version = "1.4.0-vibe.1.dev." + commit_hash
 
 block_cipher = None
 

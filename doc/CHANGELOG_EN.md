@@ -1,5 +1,13 @@
 # Changelogs
 
+### 2026-05-13
+[v1.4.0-vibe.1] fork documentation and release identity refresh
+1. Introduced the fork-aware application version `1.4.0-vibe.1` so this build is clearly distinguishable from upstream `1.4.0`.
+2. Replaced the root `README.md` with the English README and refreshed the English documentation for the fork.
+3. Documented the Pinokio launcher flow, the shared `./env` virtual environment, and the fork update path to `CoSciBlog/BallonsTranslator-vibe` on `dev`.
+4. Recorded that this project is maintained as a Codex-expanded fork with launcher and documentation work layered on top of the upstream desktop app.
+5. Added explicit disclosure that translated output and some documentation assets are machine-translated and should be labeled accordingly when republished.
+
 ### 2023-04-15
 Src download implementation based on gallery-dl (#131) thanks to [ROKOLYT](https://github.com/ROKOLYT)
 
