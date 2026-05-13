@@ -30,6 +30,23 @@ class TranslationResponse(BaseModel):
     )
 
 
+class GlossaryEntry(BaseModel):
+    source: str = Field(..., description="Source term, name, place, or recurring phrase.")
+    target: str = Field(..., description="Preferred translated form.")
+    category: str = Field(
+        default="term",
+        description="Entry type such as character, place, organization, title, or term.",
+    )
+    note: str = Field(default="", description="Short optional usage note.")
+
+
+class GlossaryResponse(BaseModel):
+    entries: List[GlossaryEntry] = Field(
+        default_factory=list,
+        description="Reusable glossary entries extracted from translated text.",
+    )
+
+
 @register_translator("LLM_API_Translator")
 class LLM_API_Translator(BaseTranslator):
     concate_text = False
@@ -126,6 +143,30 @@ class LLM_API_Translator(BaseTranslator):
             "type": "editor",
             "value": "Review the draft translation against the original source text. Check meaning, terminology, tone, fluency, punctuation, and whether the number of translated items matches the input. Revise only where the translation can be improved. Return only the final improved JSON object in the required schema.",
             "description": "Instructions used for the optional reflection/revision API call.",
+        },
+        "use glossary": {
+            "type": "checkbox",
+            "value": True,
+            "description": "Include the glossary in translation prompts so character names, places, organizations, titles, and recurring terms stay consistent.",
+        },
+        "auto build glossary": {
+            "type": "checkbox",
+            "value": True,
+            "description": "After each LLM translation batch, ask the model to extract reusable glossary entries from the source/translation pairs. This improves consistency but adds extra API calls.",
+        },
+        "glossary refinement pass": {
+            "type": "checkbox",
+            "value": True,
+            "description": "Run a second LLM pass after translation to align the translated batch with the current glossary. This can improve names and terminology but adds latency and token cost.",
+        },
+        "glossary max entries": {
+            "value": 200,
+            "description": "Maximum number of glossary entries kept in the translator settings. Higher values preserve more terms but increase prompt size and cost.",
+        },
+        "glossary": {
+            "type": "editor",
+            "value": "",
+            "description": "Persistent glossary used by the translator. Format: source => target [category] # optional note. You can edit it manually; auto build glossary appends or updates entries.",
         },
         "temperature": {
             "value": 0.1,
@@ -307,6 +348,26 @@ class LLM_API_Translator(BaseTranslator):
         return self.get_param_value("reflection prompt")
 
     @property
+    def use_glossary_enabled(self) -> bool:
+        return bool(self.get_param_value("use glossary"))
+
+    @property
+    def auto_build_glossary_enabled(self) -> bool:
+        return bool(self.get_param_value("auto build glossary"))
+
+    @property
+    def glossary_refinement_enabled(self) -> bool:
+        return bool(self.get_param_value("glossary refinement pass"))
+
+    @property
+    def glossary_max_entries(self) -> int:
+        return max(int(self.get_param_value("glossary max entries")), 0)
+
+    @property
+    def glossary_text(self) -> str:
+        return self.get_param_value("glossary") or ""
+
+    @property
     def retry_attempts(self) -> int:
         return int(self.get_param_value("retry attempts"))
 
@@ -349,14 +410,31 @@ class LLM_API_Translator(BaseTranslator):
             {"id": i + 1, "source": query} for i, query in enumerate(queries)
         ]
         input_json_str = json.dumps(input_elements, ensure_ascii=False, indent=2)
+        glossary_section = self._glossary_prompt_section()
 
         prompt = (
             f"Please translate the following text snippets from {from_lang} to {to_lang}. "
             f"The input is provided as a JSON array. Respond with a JSON object in the specified format.\n\n"
+            f"{glossary_section}"
             f"INPUT:\n{input_json_str}"
         )
 
         yield prompt, len(queries)
+
+    def _glossary_prompt_section(self) -> str:
+        if not self.use_glossary_enabled:
+            return ""
+        glossary = self.glossary_text.strip()
+        if not glossary:
+            return ""
+        return (
+            "GLOSSARY:\n"
+            "Use these preferred translations consistently for names, places, "
+            "characters, organizations, titles, and recurring terms. Keep the "
+            "natural grammar of the target language, but do not rename these "
+            "entries unless the source clearly requires it.\n"
+            f"{glossary}\n\n"
+        )
 
     def _system_prompt_with_reasoning_policy(self) -> str:
         prompt = self.system_prompt
@@ -412,12 +490,213 @@ class LLM_API_Translator(BaseTranslator):
             "'translations' list and the same numeric ids."
         )
 
+    def _format_glossary_entry(self, entry: GlossaryEntry) -> str:
+        category = (entry.category or "term").strip()
+        note = (entry.note or "").strip()
+        line = f"{entry.source.strip()} => {entry.target.strip()} [{category}]"
+        if note:
+            line = f"{line} # {note}"
+        return line
+
+    def _parse_glossary_lines(self) -> Dict[str, str]:
+        entries = {}
+        for line in self.glossary_text.splitlines():
+            clean = line.strip()
+            if not clean or clean.startswith("#") or "=>" not in clean:
+                continue
+            source = clean.split("=>", 1)[0].strip()
+            if source:
+                entries[source] = clean
+        return entries
+
+    def _save_glossary_entries(self, entries: List[GlossaryEntry]):
+        if not entries or self.glossary_max_entries == 0:
+            return
+
+        glossary_lines = self._parse_glossary_lines()
+        for entry in entries:
+            source = entry.source.strip()
+            target = entry.target.strip()
+            if not source or not target:
+                continue
+            glossary_lines[source] = self._format_glossary_entry(entry)
+
+        limited_lines = list(glossary_lines.values())[-self.glossary_max_entries :]
+        self.set_param_value("glossary", "\n".join(limited_lines), convert_dtype=False)
+
+    def _build_glossary_extraction_prompt(
+        self, src_list: List[str], translations: List[str], to_lang: str
+    ) -> str:
+        from_lang = self.lang_map.get(self.lang_source, self.lang_source)
+        pairs = [
+            {"id": i + 1, "source": source, "translation": translation}
+            for i, (source, translation) in enumerate(zip(src_list, translations))
+        ]
+        existing_glossary = self.glossary_text.strip() or "(empty)"
+        return (
+            f"Extract a reusable translation glossary from {from_lang} to {to_lang}.\n"
+            "Focus only on stable entries that should stay consistent across pages: "
+            "character names, place names, organizations, titles, named items, "
+            "recurring special terms, honorifics, and catchphrases. Do not add "
+            "generic words or full sentences unless they are fixed terms.\n\n"
+            "Return JSON with key 'entries'. Each entry must contain source, target, "
+            "category, and optional note.\n\n"
+            f"EXISTING GLOSSARY:\n{existing_glossary}\n\n"
+            f"TRANSLATION PAIRS:\n{json.dumps(pairs, ensure_ascii=False, indent=2)}"
+        )
+
+    def _update_glossary_from_batch(
+        self, src_list: List[str], translations: List[str], to_lang: str
+    ):
+        if not self.auto_build_glossary_enabled or not src_list:
+            return
+
+        system_prompt = (
+            "You extract concise translation glossaries. Return only valid JSON "
+            "matching this schema: {'entries': [{'source': str, 'target': str, "
+            "'category': str, 'note': str}]}."
+        )
+        prompt = self._build_glossary_extraction_prompt(src_list, translations, to_lang)
+        try:
+            response = self._request_model_object(prompt, GlossaryResponse, system_prompt)
+            if isinstance(response, GlossaryResponse):
+                self._save_glossary_entries(response.entries)
+                if response.entries:
+                    self.logger.info(
+                        f"Glossary updated with {len(response.entries)} extracted entries."
+                    )
+        except Exception as e:
+            self.logger.warning(
+                f"Glossary extraction failed; continuing without glossary update. {type(e).__name__}: {e}"
+            )
+
+    def _build_glossary_refinement_prompt(
+        self, src_list: List[str], translations: List[str], to_lang: str
+    ) -> str:
+        from_lang = self.lang_map.get(self.lang_source, self.lang_source)
+        items = [
+            {"id": i + 1, "source": source, "translation": translation}
+            for i, (source, translation) in enumerate(zip(src_list, translations))
+        ]
+        return (
+            f"Revise the translations from {from_lang} to {to_lang} using the glossary.\n"
+            "Only change text where the glossary improves consistency for names, "
+            "places, characters, organizations, titles, or recurring terms. Preserve "
+            "meaning, tone, line count, ids, and natural target-language grammar. "
+            "Return only JSON in the required translation schema.\n\n"
+            f"{self._glossary_prompt_section()}"
+            f"TRANSLATIONS TO REVIEW:\n{json.dumps(items, ensure_ascii=False, indent=2)}"
+        )
+
+    def _refine_translations_with_glossary(
+        self, src_list: List[str], translations: List[str], to_lang: str
+    ) -> List[str]:
+        if (
+            not self.glossary_refinement_enabled
+            or not self.use_glossary_enabled
+            or not self.glossary_text.strip()
+            or not src_list
+        ):
+            return translations
+
+        prompt = self._build_glossary_refinement_prompt(src_list, translations, to_lang)
+        try:
+            response = self._request_translation(prompt, is_reflection=True)
+            if response and len(response.translations) == len(src_list):
+                translations_by_id = {
+                    item.id: item.translation for item in response.translations
+                }
+                self.logger.info("Glossary refinement pass completed.")
+                return [
+                    translations_by_id.get(i, translations[i - 1])
+                    for i in range(1, len(src_list) + 1)
+                ]
+            self.logger.warning("Glossary refinement returned an invalid translation count.")
+        except Exception as e:
+            self.logger.warning(
+                f"Glossary refinement failed; using previous translation. {type(e).__name__}: {e}"
+            )
+        return translations
+
     def _record_usage(self, completion):
         if hasattr(completion, "usage") and completion.usage:
             self.token_count += completion.usage.total_tokens
             self.token_count_last = completion.usage.total_tokens
         else:
             self.token_count_last = 0
+
+    def _request_model_object(
+        self, prompt: str, response_model: Type[BaseModel], system_prompt: str
+    ) -> Optional[BaseModel]:
+        current_api_key = self._select_api_key()
+
+        if not current_api_key:
+            if self.provider in ["LLM Studio", "Ollama"]:
+                current_api_key = "dummy-key"
+            else:
+                raise ConnectionError("No available API key found.")
+
+        if self.provider == "LLM Studio" and not self.endpoint:
+            raise ValueError(
+                "Endpoint must be specified when using the LLM Studio provider (e.g., http://localhost:1234/v1)."
+            )
+
+        if not self._initialize_client(current_api_key):
+            raise ConnectionError("Failed to initialize API client.")
+
+        self._respect_delay()
+
+        model_name = self.override_model or self.model
+        if ": " in model_name:
+            model_name = model_name.split(": ", 1)[1]
+
+        api_args = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "max_tokens": self.max_tokens,
+        }
+
+        if self.provider == "LLM Studio":
+            api_args["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"schema": response_model.model_json_schema()},
+            }
+        elif self.provider in ["OpenAI", "Grok", "Google", "OpenRouter", "Ollama"]:
+            api_args["response_format"] = {"type": "json_object"}
+
+        if self.provider == "OpenAI":
+            api_args["frequency_penalty"] = self.frequency_penalty
+            api_args["presence_penalty"] = self.presence_penalty
+            if self.reasoning_enabled:
+                api_args["reasoning_effort"] = self.reasoning_level
+
+        extra_body = self._build_reasoning_extra_body()
+        if extra_body:
+            api_args["extra_body"] = extra_body
+
+        completion = self._create_completion(api_args)
+        self._record_usage(completion)
+
+        if not (
+            completion.choices
+            and completion.choices[0].message
+            and completion.choices[0].message.content
+        ):
+            return None
+
+        raw_content = completion.choices[0].message.content
+        json_to_parse = self._strip_reasoning_markup(raw_content)
+        start = json_to_parse.find("{")
+        end = json_to_parse.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            json_to_parse = json_to_parse[start : end + 1]
+
+        return response_model.model_validate(json.loads(json_to_parse))
 
     def _create_completion(self, api_args: Dict):
         try:
@@ -722,6 +1001,15 @@ class LLM_API_Translator(BaseTranslator):
                     ordered_translations = [
                         translations_dict.get(i, "") for i in range(1, num_src + 1)
                     ]
+                    batch_sources = src_list[
+                        len(translations) : len(translations) + num_src
+                    ]
+                    self._update_glossary_from_batch(
+                        batch_sources, ordered_translations, to_lang
+                    )
+                    ordered_translations = self._refine_translations_with_glossary(
+                        batch_sources, ordered_translations, to_lang
+                    )
 
                     translations.extend(ordered_translations)
                     self.logger.info(

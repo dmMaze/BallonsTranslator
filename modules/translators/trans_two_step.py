@@ -293,6 +293,7 @@ class TwoStepTranslator(LLM_API_Translator):
             f"Improve the draft translations from {from_lang} to {to_lang}. "
             "Use the source text as the authority and preserve each id exactly. "
             "Return only JSON in the required schema.\n\n"
+            f"{self._glossary_prompt_section()}"
             f"INPUT:\n{json.dumps(items, ensure_ascii=False, indent=2)}"
         )
 
@@ -310,10 +311,14 @@ class TwoStepTranslator(LLM_API_Translator):
                 translations_by_id = {
                     item.id: item.translation for item in parsed_response.translations
                 }
-                return [
+                translations = [
                     translations_by_id.get(i, draft_list[i - 1])
                     for i in range(1, len(src_list) + 1)
                 ]
+                self._update_glossary_from_batch(src_list, translations, to_lang)
+                return self._refine_translations_with_glossary(
+                    src_list, translations, to_lang
+                )
             self.logger.error("LLM refinement returned an invalid translation count.")
         except Exception as e:
             self.logger.error(f"LLM refinement failed: {type(e).__name__}: {e}")

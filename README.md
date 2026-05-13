@@ -7,7 +7,7 @@
 # BallonsTranslator Vibe Fork
 English | [README mirror](/README_EN.md) | [pt-BR](doc/README_PT-BR.md) | [Russian](doc/README_RU.md) | [Japanese](doc/README_JA.md) | [Indonesian](doc/README_ID.md) | [Vietnamese](doc/README_VI.md) | [Korean](doc/README_KO.md) | [Spanish](doc/README_ES.md) | [French](doc/README_FR.md)
 
-Fork release: `1.4.0-vibe.4`
+Fork release: `1.4.0-vibe.5`
 Upstream base: `BallonsTranslator 1.4.0`
 Update source: `https://github.com/CoSciBlog/BallonsTranslator-vibe.git` (`dev`)
 
@@ -184,6 +184,18 @@ The final Ollama/LLM refinement still runs only after detection, OCR, and inpain
 The first-step Google/DeepL result is saved per text block as a draft and shown in the text editor sidebar as `First step draft` when available. This makes it possible to compare the raw machine translation with the final LLM-refined result while editing.
 
 Use `first step delay` to throttle the Google/DeepL draft calls. Higher values reduce request bursts and lower the risk of temporary provider blocking, but increase total first-step latency. Set it to `0` when you prefer maximum speed and accept the higher request rate.
+
+## LLM translation glossary
+
+The `LLM_API_Translator` and `Two-Step Translator` include glossary support for names, places, characters, organizations, titles, and recurring terms.
+
+- `glossary` stores persistent entries in the format `source => target [category] # optional note`.
+- `use glossary` injects the glossary into translation prompts so known terms are reused consistently.
+- `auto build glossary` asks the LLM to extract reusable glossary entries from each translated batch and append or update them in the settings.
+- `glossary refinement pass` runs a second LLM pass after translation to align the translated batch with the current glossary.
+- `glossary max entries` limits how many entries are kept so prompts do not grow without bound.
+
+This improves consistency across pages, especially for character names and locations, but it adds extra LLM/API calls and token usage when automatic extraction or the refinement pass is enabled.
 
 ## Headless mode
 

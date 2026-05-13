@@ -1,6 +1,12 @@
 # Changelogs
 
 ### 2026-05-13
+[v1.4.0-vibe.5] LLM glossary generation and refinement
+1. Added persistent glossary settings to `LLM_API_Translator` for names, places, characters, organizations, titles, and recurring terms.
+2. Added automatic glossary extraction after each LLM translation batch so new source/target term pairs can be collected while translating.
+3. Added a glossary refinement pass that reruns a translated batch through the LLM and aligns it with the current glossary.
+4. Wired the glossary support into the `Two-Step Translator` final LLM refinement step.
+
 [v1.4.0-vibe.4] two-step draft sidebar and request delay
 1. Saved the Google/DeepL first-step result on each text block as `translation_draft`.
 2. Added a read-only `First step draft` area to the text editor sidebar so the first-step machine translation can be compared with the final LLM-refined translation.
