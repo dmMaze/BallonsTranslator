@@ -162,6 +162,19 @@ Recommended flow:
 
 The app estimates font size, color, outline, angle, direction, and alignment from the source page. You can override those defaults with global or per-block formatting controls.
 
+## Settings export and presets
+
+This fork adds settings management in `Settings -> General -> Settings presets`.
+
+- `Export current settings` writes the active application configuration to a JSON file.
+- `Import settings file` loads a JSON configuration immediately and updates the active UI/module choices.
+- `Save current as preset` stores the current settings as a named preset under `config/presets`.
+- `Preset` lets you choose from multiple saved presets and `Apply preset` loads the selected one.
+- `Import preset` copies an external preset JSON into the local preset list.
+- `Export selected preset` writes the selected preset to a shareable JSON file.
+
+Settings and presets can include translator endpoints, API keys, prompts, model names, and module options. Treat exported JSON files as sensitive if they contain private credentials.
+
 ## Headless mode
 
 ```bash

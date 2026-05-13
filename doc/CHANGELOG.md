@@ -1,6 +1,12 @@
 # Changelogs
 
 ### 2026-05-13
+[v1.4.0-vibe.2] settings export and preset management
+1. Added settings export/import actions in the General settings panel.
+2. Added named settings presets stored under `config/presets`, with UI actions to save, apply, import, and export presets.
+3. Re-synchronizes active module selectors and runtime module instances after importing settings or applying a preset.
+4. Ignored local preset JSON files in Git because they may contain endpoints, prompts, model names, or API keys.
+
 [v1.4.0-vibe.1] fork documentation and release identity refresh
 1. Introduced the fork-aware application version `1.4.0-vibe.1` so this build is clearly distinguishable from upstream `1.4.0`.
 2. Replaced the root `README.md` with the English README and refreshed the English documentation for the fork.

@@ -1,6 +1,7 @@
 import json, os, traceback
 import os.path as osp
 import copy
+import re
 from typing import Callable
 
 from . import shared
@@ -216,6 +217,7 @@ class ProgramConfig(Config):
 pcfg = ProgramConfig()
 text_styles: List[FontFormat] = []
 active_format: FontFormat = None
+CONFIG_PRESET_DIR = osp.join(shared.PROGRAM_PATH, 'config', 'presets')
 
 def load_textstyle_from(p: str, raise_exception = False):
 
@@ -286,20 +288,80 @@ def json_dump_program_config(obj, **kwargs):
     return json.dumps(obj, default=lambda o: _default(o), ensure_ascii=False, **kwargs)
 
 
-def save_config():
-    global pcfg
+def write_program_config(config: ProgramConfig, path: str) -> bool:
     try:
-        tmp_save_tgt = shared.CONFIG_PATH + '.tmp'
+        target_dir = osp.dirname(path)
+        if target_dir and not osp.exists(target_dir):
+            os.makedirs(target_dir, exist_ok=True)
+        tmp_save_tgt = path + '.tmp'
         with open(tmp_save_tgt, 'w', encoding='utf8') as f:
-            f.write(json_dump_program_config(pcfg))
+            f.write(json_dump_program_config(config, indent=2))
+        os.replace(tmp_save_tgt, path)
+        return True
     except Exception as e:
-        LOGGER.error(f'Failed save config to {tmp_save_tgt}: {e}')
+        LOGGER.error(f'Failed save config to {path}: {e}')
         LOGGER.error(traceback.format_exc())
         return False
-    
-    os.replace(tmp_save_tgt, shared.CONFIG_PATH)
-    LOGGER.info('Config saved')
-    return True
+
+
+def export_program_config(path: str) -> bool:
+    return write_program_config(pcfg, path)
+
+
+def import_program_config(path: str) -> ProgramConfig:
+    return ProgramConfig.load(path)
+
+
+def _safe_preset_name(name: str) -> str:
+    name = re.sub(r'[<>:"/\\\\|?*]+', '_', name.strip())
+    name = re.sub(r'\s+', ' ', name).strip(' .')
+    return name or 'settings-preset'
+
+
+def config_preset_path(name: str) -> str:
+    return osp.join(CONFIG_PRESET_DIR, _safe_preset_name(name) + '.json')
+
+
+def list_config_presets() -> List[str]:
+    if not osp.isdir(CONFIG_PRESET_DIR):
+        return []
+    presets = []
+    for filename in os.listdir(CONFIG_PRESET_DIR):
+        if filename.lower().endswith('.json'):
+            presets.append(osp.splitext(filename)[0])
+    return sorted(presets, key=str.lower)
+
+
+def save_config_preset(name: str) -> str:
+    path = config_preset_path(name)
+    if not write_program_config(pcfg, path):
+        raise RuntimeError(f'Failed to save settings preset to {path}')
+    return path
+
+
+def load_config_preset(name: str) -> ProgramConfig:
+    return import_program_config(config_preset_path(name))
+
+
+def import_config_preset(path: str) -> str:
+    preset = import_program_config(path)
+    name = _safe_preset_name(osp.splitext(osp.basename(path))[0])
+    target = config_preset_path(name)
+    if not write_program_config(preset, target):
+        raise RuntimeError(f'Failed to import settings preset from {path}')
+    return name
+
+
+def export_config_preset(name: str, path: str) -> bool:
+    return write_program_config(load_config_preset(name), path)
+
+
+def save_config():
+    global pcfg
+    if write_program_config(pcfg, shared.CONFIG_PATH):
+        LOGGER.info('Config saved')
+        return True
+    return False
 
 def save_text_styles(raise_exception = False):
     global pcfg, text_styles

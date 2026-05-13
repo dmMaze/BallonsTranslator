@@ -1,11 +1,22 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QPushButton, QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit
+from qtpy.QtWidgets import QPushButton, QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit, QFileDialog, QInputDialog, QMessageBox
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
 from .custom_widget import ConfigComboBox, Widget
-from utils.config import pcfg
+from utils.config import (
+    pcfg,
+    save_config,
+    export_program_config,
+    import_program_config,
+    list_config_presets,
+    save_config_preset,
+    load_config_preset,
+    import_config_preset,
+    export_config_preset,
+    CONFIG_PRESET_DIR,
+)
 from utils import shared as C
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
@@ -346,6 +357,7 @@ class ConfigTable(QTreeView):
 class ConfigPanel(Widget):
 
     save_config = Signal()
+    settings_imported = Signal()
     unload_models = Signal()
     reload_textstyle = Signal(bool)
     show_only_custom_font = Signal(bool)
@@ -367,6 +379,7 @@ class ConfigPanel(Widget):
         label_typesetting = self.tr('Typesetting')
         label_save = self.tr('Save')
         label_saladict = self.tr('SalaDict')
+        label_settings_presets = self.tr('Settings presets')
     
         dltableitem.appendRows([
             TableItem(label_text_det, CONFIG_FONTSIZE_TABLE),
@@ -375,6 +388,7 @@ class ConfigPanel(Widget):
             TableItem(label_translator, CONFIG_FONTSIZE_TABLE),
         ])
         generalTableItem.appendRows([
+            TableItem(label_settings_presets, CONFIG_FONTSIZE_TABLE),
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
             TableItem(label_typesetting, CONFIG_FONTSIZE_TABLE),
             TableItem(label_save, CONFIG_FONTSIZE_TABLE),
@@ -410,6 +424,48 @@ class ConfigPanel(Widget):
         dlConfigPanel.addTextLabel(label_translator)
         self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
         self.trans_sub_block = dlConfigPanel.addBlockWidget(self.trans_config_panel)
+
+        generalConfigPanel.addTextLabel(label_settings_presets)
+        self.settings_preset_combobox, preset_sublock = generalConfigPanel.addCombobox(
+            [],
+            self.tr('Preset'),
+            discription=self.tr('Saved settings snapshots. Applying one replaces the current application settings.'),
+            fix_size=False)
+        self.settings_preset_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+
+        self.settings_apply_preset_btn = QPushButton(self.tr('Apply preset'), self)
+        self.settings_apply_preset_btn.setToolTip(self.tr('Load the selected settings preset into the current session.'))
+        self.settings_save_preset_btn = QPushButton(self.tr('Save current as preset'), self)
+        self.settings_save_preset_btn.setToolTip(self.tr('Save the current settings as a named reusable preset.'))
+        self.settings_import_preset_btn = QPushButton(self.tr('Import preset'), self)
+        self.settings_import_preset_btn.setToolTip(self.tr('Copy a settings preset JSON file into the local preset library.'))
+        self.settings_export_preset_btn = QPushButton(self.tr('Export selected preset'), self)
+        self.settings_export_preset_btn.setToolTip(self.tr('Export the selected preset to a JSON file.'))
+        self.settings_export_current_btn = QPushButton(self.tr('Export current settings'), self)
+        self.settings_export_current_btn.setToolTip(self.tr('Export the current settings directly to a JSON file.'))
+        self.settings_import_current_btn = QPushButton(self.tr('Import settings file'), self)
+        self.settings_import_current_btn.setToolTip(self.tr('Load a settings JSON file immediately without first saving it as a preset.'))
+
+        preset_buttons = QHBoxLayout()
+        for btn in [
+            self.settings_apply_preset_btn,
+            self.settings_save_preset_btn,
+            self.settings_import_preset_btn,
+            self.settings_export_preset_btn,
+            self.settings_export_current_btn,
+            self.settings_import_current_btn,
+        ]:
+            preset_buttons.addWidget(btn)
+        preset_buttons.addStretch(-1)
+        preset_sublock.layout().addLayout(preset_buttons)
+
+        self.settings_apply_preset_btn.clicked.connect(self.on_apply_settings_preset)
+        self.settings_save_preset_btn.clicked.connect(self.on_save_settings_preset)
+        self.settings_import_preset_btn.clicked.connect(self.on_import_settings_preset)
+        self.settings_export_preset_btn.clicked.connect(self.on_export_settings_preset)
+        self.settings_export_current_btn.clicked.connect(self.on_export_current_settings)
+        self.settings_import_current_btn.clicked.connect(self.on_import_current_settings)
+        self.refresh_settings_presets()
 
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
@@ -577,6 +633,94 @@ class ConfigPanel(Widget):
         hlayout.setContentsMargins(0, 0, 0, 0)
 
         self.configTable.expandAll()
+
+    def refresh_settings_presets(self, selected: str = None):
+        current = selected or self.settings_preset_combobox.currentText()
+        self.settings_preset_combobox.blockSignals(True)
+        self.settings_preset_combobox.clear()
+        presets = list_config_presets()
+        self.settings_preset_combobox.addItems(presets)
+        if current in presets:
+            self.settings_preset_combobox.setCurrentText(current)
+        self.settings_preset_combobox.blockSignals(False)
+        has_presets = len(presets) > 0
+        self.settings_apply_preset_btn.setEnabled(has_presets)
+        self.settings_export_preset_btn.setEnabled(has_presets)
+
+    def _apply_imported_config(self, config, source_label: str):
+        pcfg.merge(config)
+        save_config()
+        self.setupConfig()
+        self.settings_imported.emit()
+        QMessageBox.information(self, self.tr('Settings'), self.tr('Settings loaded from ') + source_label)
+
+    def on_apply_settings_preset(self):
+        preset_name = self.settings_preset_combobox.currentText()
+        if not preset_name:
+            return
+        try:
+            self._apply_imported_config(load_config_preset(preset_name), preset_name)
+        except Exception as e:
+            QMessageBox.warning(self, self.tr('Settings'), self.tr('Failed to apply settings preset: ') + str(e))
+
+    def on_save_settings_preset(self):
+        preset_name, ok = QInputDialog.getText(self, self.tr('Save settings preset'), self.tr('Preset name:'))
+        if not ok or not preset_name.strip():
+            return
+        try:
+            preset_path = save_config_preset(preset_name)
+            self.refresh_settings_presets(preset_path.rsplit('\\', 1)[-1].rsplit('/', 1)[-1].rsplit('.', 1)[0])
+            QMessageBox.information(self, self.tr('Settings'), self.tr('Settings preset saved.'))
+        except Exception as e:
+            QMessageBox.warning(self, self.tr('Settings'), self.tr('Failed to save settings preset: ') + str(e))
+
+    def on_import_settings_preset(self):
+        path, _ = QFileDialog.getOpenFileName(self, self.tr('Import settings preset'), CONFIG_PRESET_DIR, self.tr('JSON files (*.json)'))
+        if not path:
+            return
+        try:
+            preset_name = import_config_preset(path)
+            self.refresh_settings_presets(preset_name)
+            QMessageBox.information(self, self.tr('Settings'), self.tr('Settings preset imported.'))
+        except Exception as e:
+            QMessageBox.warning(self, self.tr('Settings'), self.tr('Failed to import settings preset: ') + str(e))
+
+    def on_export_settings_preset(self):
+        preset_name = self.settings_preset_combobox.currentText()
+        if not preset_name:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, self.tr('Export settings preset'), preset_name + '.json', self.tr('JSON files (*.json)'))
+        if not path:
+            return
+        if not path.lower().endswith('.json'):
+            path += '.json'
+        try:
+            if export_config_preset(preset_name, path):
+                QMessageBox.information(self, self.tr('Settings'), self.tr('Settings preset exported.'))
+            else:
+                QMessageBox.warning(self, self.tr('Settings'), self.tr('Failed to export settings preset.'))
+        except Exception as e:
+            QMessageBox.warning(self, self.tr('Settings'), self.tr('Failed to export settings preset: ') + str(e))
+
+    def on_export_current_settings(self):
+        path, _ = QFileDialog.getSaveFileName(self, self.tr('Export current settings'), 'ballonstranslator-settings.json', self.tr('JSON files (*.json)'))
+        if not path:
+            return
+        if not path.lower().endswith('.json'):
+            path += '.json'
+        if export_program_config(path):
+            QMessageBox.information(self, self.tr('Settings'), self.tr('Current settings exported.'))
+        else:
+            QMessageBox.warning(self, self.tr('Settings'), self.tr('Failed to export current settings.'))
+
+    def on_import_current_settings(self):
+        path, _ = QFileDialog.getOpenFileName(self, self.tr('Import settings file'), CONFIG_PRESET_DIR, self.tr('JSON files (*.json)'))
+        if not path:
+            return
+        try:
+            self._apply_imported_config(import_program_config(path), path)
+        except Exception as e:
+            QMessageBox.warning(self, self.tr('Settings'), self.tr('Failed to import settings file: ') + str(e))
 
     def on_load_model_changed(self):
         pcfg.module.load_model_on_demand = self.load_model_checker.isChecked()

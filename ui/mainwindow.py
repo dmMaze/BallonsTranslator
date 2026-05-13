@@ -387,6 +387,7 @@ class MainWindow(mainwindow_cls):
 
         self.configPanel.setupConfig()
         self.configPanel.save_config.connect(self.save_config)
+        self.configPanel.settings_imported.connect(self.on_settings_imported)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
         self.configPanel.show_only_custom_font.connect(self.on_show_only_custom_font)
         if pcfg.let_show_only_custom_fonts_flag:
@@ -595,6 +596,31 @@ class MainWindow(mainwindow_cls):
 
     def save_config(self):
         save_config()
+
+    def on_settings_imported(self):
+        self.leftBar.showPageListLabel.setChecked(pcfg.show_page_list)
+        self.bottomBar.textdet_selector.setVisible(pcfg.module.enable_detect)
+        self.bottomBar.ocr_selector.setVisible(pcfg.module.enable_ocr)
+        self.bottomBar.trans_selector.setVisible(pcfg.module.enable_translate)
+        self.bottomBar.inpaint_selector.setVisible(pcfg.module.enable_inpaint)
+        self.bottomBar.textdet_selector.setSelectedValue(pcfg.module.textdetector)
+        self.bottomBar.ocr_selector.setSelectedValue(pcfg.module.ocr)
+        self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
+        self.bottomBar.trans_selector.blockSignals(True)
+        self.bottomBar.trans_selector.selector.setCurrentText(pcfg.module.translator)
+        self.bottomBar.trans_selector.blockSignals(False)
+        self.module_manager.setTextDetector(pcfg.module.textdetector)
+        self.module_manager.setOCR(pcfg.module.ocr)
+        self.module_manager.setTranslator(pcfg.module.translator)
+        self.module_manager.setInpainter(pcfg.module.inpainter)
+        if pcfg.darkmode != self.titleBar.darkModeAction.isChecked():
+            self.titleBar.darkModeAction.setChecked(pcfg.darkmode)
+            self.resetStyleSheet(reverse_icon=True)
+        self.drawingPanel.set_config(pcfg.drawpanel)
+        self.drawingPanel.maskTransperancySlider.setValue(int(pcfg.mask_transparency * 100))
+        self.bottomBar.originalSlider.setValue(int(pcfg.original_transparency * 100))
+        self.canvas.setOriginalTransparency(pcfg.original_transparency)
+        self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
     def onHideCanvas(self):
         self.canvas.clearToolStates()
