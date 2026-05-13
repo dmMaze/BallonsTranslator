@@ -7,8 +7,8 @@
 # BallonsTranslator Vibe Fork
 English | [README mirror](/README_EN.md) | [pt-BR](doc/README_PT-BR.md) | [Russian](doc/README_RU.md) | [Japanese](doc/README_JA.md) | [Indonesian](doc/README_ID.md) | [Vietnamese](doc/README_VI.md) | [Korean](doc/README_KO.md) | [Spanish](doc/README_ES.md) | [French](doc/README_FR.md)
 
-Fork release: `1.4.0-vibe.1`  
-Upstream base: `BallonsTranslator 1.4.0`  
+Fork release: `1.4.0-vibe.4`
+Upstream base: `BallonsTranslator 1.4.0`
 Update source: `https://github.com/CoSciBlog/BallonsTranslator-vibe.git` (`dev`)
 
 BallonsTranslator is a desktop tool for comic and manga translation with OCR, text detection, inpainting, translation, and interactive text editing.
@@ -180,6 +180,10 @@ Settings and presets can include translator endpoints, API keys, prompts, model 
 The `Two-Step Translator` can now overlap its first machine-translation step with the image pipeline. Enable `parallel first step during pipeline` in the translator settings to start Google or DeepL draft translation as soon as OCR has produced text for a page. While later pages continue through OCR and inpainting, those first-step drafts are cached in the background.
 
 The final Ollama/LLM refinement still runs only after detection, OCR, and inpainting have finished. If `unload vision models before llm` is enabled, text detection, OCR, and inpainting models are unloaded before the final LLM calls, freeing RAM/VRAM for a local Ollama or LLM Studio model. This is useful on single-GPU systems where the vision models and LLM compete for the same memory.
+
+The first-step Google/DeepL result is saved per text block as a draft and shown in the text editor sidebar as `First step draft` when available. This makes it possible to compare the raw machine translation with the final LLM-refined result while editing.
+
+Use `first step delay` to throttle the Google/DeepL draft calls. Higher values reduce request bursts and lower the risk of temporary provider blocking, but increase total first-step latency. Set it to `0` when you prefer maximum speed and accept the higher request rate.
 
 ## Headless mode
 

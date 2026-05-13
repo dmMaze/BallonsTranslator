@@ -35,6 +35,7 @@ class TextBlock:
     merged: bool = False
     text: List = field(default_factory = lambda : [])
     translation: str = ""
+    translation_draft: str = ""
     rich_text: str = ""
     _bounding_rect: List = None
     src_is_vertical: bool = None

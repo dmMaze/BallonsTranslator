@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 from copy import deepcopy
 from typing import Dict, List, Tuple
 
@@ -34,6 +35,10 @@ class TwoStepTranslator(LLM_API_Translator):
             "type": "checkbox",
             "value": True,
             "description": "Return the first-step machine translation if the LLM refinement fails.",
+        },
+        "first step delay": {
+            "value": 0.5,
+            "description": "Seconds to wait after each Google/DeepL first-step request. Increase this to reduce request bursts and lower the risk of temporary provider blocking; set to 0 for maximum speed.",
         },
         "parallel first step during pipeline": {
             "type": "checkbox",
@@ -76,6 +81,13 @@ class TwoStepTranslator(LLM_API_Translator):
     @property
     def fallback_to_first_step(self) -> bool:
         return bool(self.get_param_value("fallback to first step"))
+
+    @property
+    def first_step_delay(self) -> float:
+        try:
+            return max(float(self.get_param_value("first step delay")), 0.0)
+        except Exception:
+            return 0.0
 
     @property
     def parallel_first_step_during_pipeline(self) -> bool:
@@ -196,21 +208,20 @@ class TwoStepTranslator(LLM_API_Translator):
                 return list(cached)
 
         provider = self.first_step_translator
+        draft_list = None
         try:
             if provider == "google":
                 draft_list = self._translate_with_google(src_list)
-                with self._draft_cache_lock:
-                    self._draft_cache[cache_key] = list(draft_list)
-                return draft_list
-            if provider == "DeepL Free":
+            elif provider == "DeepL Free":
                 draft_list = self._translate_with_deepl(src_list, free=True)
-                with self._draft_cache_lock:
-                    self._draft_cache[cache_key] = list(draft_list)
-                return draft_list
-            if provider == "DeepL":
+            elif provider == "DeepL":
                 draft_list = self._translate_with_deepl(src_list, free=False)
+            if draft_list is not None:
                 with self._draft_cache_lock:
                     self._draft_cache[cache_key] = list(draft_list)
+                delay = self.first_step_delay
+                if delay > 0:
+                    time.sleep(delay)
                 return draft_list
         except ProviderError as e:
             self.logger.error(f"First-step translator provider error: {e}")
@@ -218,12 +229,14 @@ class TwoStepTranslator(LLM_API_Translator):
             self.logger.error(f"First-step translation failed: {e}")
         return [""] * len(src_list)
 
-    def _pipeline_source_texts(self, textblk_lst) -> List[str]:
+    def _collect_translation_inputs(self, textblk_lst) -> Tuple[List[int], List[str], List[str]]:
+        non_empty_ids = []
         text_list = []
         translations = []
-        for blk in textblk_lst:
+        for ii, blk in enumerate(textblk_lst):
             text = blk.get_text()
             if text.strip() != "":
+                non_empty_ids.append(ii)
                 text_list.append(text)
             translations.append(text)
 
@@ -234,16 +247,39 @@ class TwoStepTranslator(LLM_API_Translator):
                 translator=self,
                 source_text=text_list,
             )
-        return text_list
+        return non_empty_ids, text_list, translations
 
     def pretranslate_textblk_lst(self, textblk_lst) -> None:
-        src_list = self._pipeline_source_texts(textblk_lst)
+        non_empty_ids, src_list, _ = self._collect_translation_inputs(textblk_lst)
         if not src_list:
             return
-        self._first_step_translate(src_list)
+        draft_list = self._first_step_translate(src_list)
+        for ii, idx in enumerate(non_empty_ids):
+            textblk_lst[idx].translation_draft = draft_list[ii]
         self.logger.info(
             f"Prepared first-step {self.first_step_translator} draft for {len(src_list)} text blocks."
         )
+
+    def translate_textblk_lst(self, textblk_lst: List) -> None:
+        non_empty_ids, text_list, translations = self._collect_translation_inputs(textblk_lst)
+        if text_list:
+            draft_list = self._first_step_translate(text_list)
+            for ii, idx in enumerate(non_empty_ids):
+                textblk_lst[idx].translation_draft = draft_list[ii]
+
+            refined = self.translate(text_list)
+            for ii, idx in enumerate(non_empty_ids):
+                translations[idx] = refined[ii]
+
+        for callback in self._postprocess_hooks.values():
+            callback(
+                translations=translations,
+                textblocks=textblk_lst,
+                translator=self,
+            )
+
+        for tr, blk in zip(translations, textblk_lst):
+            blk.translation = tr
 
     def _assemble_refinement_prompt(
         self, src_list: List[str], draft_list: List[str], to_lang: str

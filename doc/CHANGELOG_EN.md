@@ -1,6 +1,11 @@
 # Changelogs
 
 ### 2026-05-13
+[v1.4.0-vibe.4] two-step draft sidebar and request delay
+1. Saved the Google/DeepL first-step result on each text block as `translation_draft`.
+2. Added a read-only `First step draft` area to the text editor sidebar so the first-step machine translation can be compared with the final LLM-refined translation.
+3. Added a `first step delay` setting to throttle Google/DeepL draft requests and reduce the risk of temporary provider blocking.
+
 [v1.4.0-vibe.1] fork documentation and release identity refresh
 1. Introduced the fork-aware application version `1.4.0-vibe.1` so this build is clearly distinguishable from upstream `1.4.0`.
 2. Replaced the root `README.md` with the English README and refreshed the English documentation for the fork.

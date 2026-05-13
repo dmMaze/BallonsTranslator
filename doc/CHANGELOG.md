@@ -1,6 +1,11 @@
 # Changelogs
 
 ### 2026-05-13
+[v1.4.0-vibe.4] two-step draft sidebar and request delay
+1. Saved the Google/DeepL first-step result on each text block as `translation_draft`.
+2. Added a read-only `First step draft` area to the text editor sidebar so the first-step machine translation can be compared with the final LLM-refined translation.
+3. Added a `first step delay` setting to throttle Google/DeepL draft requests and reduce the risk of temporary provider blocking.
+
 [v1.4.0-vibe.3] two-step background pretranslation
 1. Added an optional `parallel first step during pipeline` mode for the `Two-Step Translator`.
 2. When enabled, Google or DeepL draft translations start in the background after OCR finishes for each page while the remaining OCR/inpainting work continues.

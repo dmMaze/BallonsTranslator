@@ -470,6 +470,7 @@ class SceneTextManager(QObject):
         self.pairwidget_list.append(pair_widget)
         self.textEditList.addPairWidget(pair_widget)
         pair_widget.e_source.setPlainText(blk_item.blk.get_text())
+        pair_widget.setDraftText(getattr(blk_item.blk, 'translation_draft', ''))
         pair_widget.e_source.focus_in.connect(self.on_transwidget_focus_in)
         pair_widget.e_source.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
         pair_widget.e_source.push_undo_stack.connect(self.on_push_edit_stack)
@@ -1092,12 +1093,14 @@ class SceneTextManager(QObject):
                 blk_item.blk.rich_text = ''
                 blk_item.blk.translation = ''
             blk_item.blk.text = [trans_pair.e_source.toPlainText()]
+            blk_item.blk.translation_draft = trans_pair.e_draft.toPlainText()
             blk_item.blk._bounding_rect = blk_item.absBoundingRect()
             blk_item.updateBlkFormat()
             cbl.append(blk_item.blk)
 
     def updateTranslation(self):
         for blk_item, transwidget in zip(self.textblk_item_list, self.pairwidget_list):
+            transwidget.setDraftText(getattr(blk_item.blk, 'translation_draft', ''))
             transwidget.e_trans.setPlainText(blk_item.blk.translation)
             blk_item.setPlainText(blk_item.blk.translation)
         self.canvas.clear_text_stack()

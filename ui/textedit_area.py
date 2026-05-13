@@ -15,6 +15,8 @@ from utils.logger import logger as LOGGER
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
 STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
 STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
+STYLE_DRAFT_LABEL = "color: rgba(180, 200, 220, 80%); font-size: 11px;"
+STYLE_DRAFT_TEXT = "QTextEdit { background-color: rgba(30, 147, 229, 8%); }"
 
 try:
     from pynput.keyboard import Key, Controller
@@ -407,7 +409,15 @@ class TransPairWidget(Widget):
     def __init__(self, textblock: TextBlock = None, idx: int = None, fold: bool = False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.e_source = SourceTextEdit(idx, self, fold)
+        self.e_draft = SourceTextEdit(idx, self, fold)
         self.e_trans = TransTextEdit(idx, self, fold)
+        self.draft_label = QLabel(self.tr("First step draft"), self)
+        self.draft_label.setStyleSheet(STYLE_DRAFT_LABEL)
+        self.draft_label.setToolTip(self.tr("Google/DeepL first-step result before LLM refinement. Use it to compare the raw draft with the final translation."))
+        self.e_draft.setReadOnly(True)
+        self.e_draft.setToolTip(self.tr("Google/DeepL first-step result before LLM refinement. This text is saved with the project and is hidden when no draft exists."))
+        self.e_draft.setPlaceholderText(self.tr("No first-step draft available."))
+        self.e_draft.setStyleSheet(STYLE_DRAFT_TEXT)
         self.idx_label = RowIndexLabel(idx, self)
         self.idx_label.setText(str(idx + 1).zfill(2))   # showed index start from 1!
         self.submmit_idx = self.idx_label.submmit_idx.connect(self.on_idx_edited)
@@ -417,6 +427,8 @@ class TransPairWidget(Widget):
         vlayout = QVBoxLayout()
         vlayout.setAlignment(Qt.AlignTop)
         vlayout.addWidget(self.e_source)
+        vlayout.addWidget(self.draft_label)
+        vlayout.addWidget(self.e_draft)
         vlayout.addWidget(self.e_trans)
         vlayout.addWidget(SeparatorWidget(self))
         spacing = 7
@@ -432,6 +444,16 @@ class TransPairWidget(Widget):
         hlayout.setSpacing(spacing)
 
         self.setAcceptDrops(True)
+        self.setDraftText(getattr(textblock, "translation_draft", "") if textblock is not None else "")
+
+    def setDraftText(self, text: str):
+        text = text or ""
+        self.e_draft.block_all_signals(True)
+        self.e_draft.setPlainText(text)
+        self.e_draft.block_all_signals(False)
+        show = bool(text.strip())
+        self.draft_label.setVisible(show)
+        self.e_draft.setVisible(show)
 
     def on_idx_edited(self, new_idx: int):
         new_idx -= 1
@@ -492,6 +514,7 @@ class TransPairWidget(Widget):
             self.idx = idx
             self.idx_label.setText(str(idx + 1).zfill(2))
             self.e_source.idx = idx
+            self.e_draft.idx = idx
             self.e_trans.idx = idx
 
 
@@ -785,6 +808,7 @@ class TextEditListScrollArea(QScrollArea):
         for pw in self.pairwidget_list:
             pw.e_trans.setFold(fold)
             pw.e_source.setFold(fold)
+            pw.e_draft.setFold(fold)
 
     def setSourceVisible(self, show: bool):
         self.source_visible = show
