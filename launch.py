@@ -56,7 +56,6 @@ IS_WIN7 = "Windows-7" in platform()
 import utils.shared as shared # Earlier import of shared to use default for config_path argument
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--reinstall-torch", action='store_true', help="launch.py argument: install the appropriate version of torch even if you have some version already installed")
 parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
 if IS_WIN7:
     parser.add_argument("--qt-api", default='pyqt5', choices=QT_APIS, help='Set qt api')
@@ -74,7 +73,6 @@ parser.add_argument("--export-source-txt", action='store_true', help='save sourc
 parser.add_argument("--frozen", action='store_true', help='run without checking requirements')
 parser.add_argument("--update", action='store_true', help="Update the repository before launching") # Add argument --update
 parser.add_argument("--config_path", default=shared.CONFIG_PATH, help='Config file to use for translation') # Named config_path to avoid conflict with existing name config
-parser.add_argument('--nightly', action='store_true', help="Enable AMD Nightly ROCm")
 args, _ = parser.parse_known_args()
 
 
@@ -324,39 +322,6 @@ def main():
         ballontrans.resetStyleSheet()
     sys.exit(app.exec())
 
-def is_amd_gpu():
-    try:
-        if sys.platform == 'win32':
-            # Windows: use wmic
-            cmd = 'wmic path win32_VideoController get name'
-            output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
-            return any(keyword in output for keyword in ["AMD", "Radeon"])
-
-        else:
-            return False
-
-    except Exception:
-        return False
-
-def supported_amd_nightly_gpu():
-    try:
-        if sys.platform == 'win32':
-            # Windows: use wmic
-            cmd = 'wmic path win32_VideoController get name'
-            output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
-
-            if any(keyword in output for keyword in
-                   ["RX 7900", "RX 7800", "RX 7700", "RX 7600", "PRO W7900", "PRO W7800", "PRO W7700"]):
-                return "RDNA3"
-            if any(keyword in output for keyword in
-                   ["RX 9070", "RX 9060"]):
-                return "RDNA4"
-        else:
-            return "None"
-
-    except Exception:
-        return "None"
-
 def prepare_environment():
 
     try:
@@ -381,27 +346,6 @@ def prepare_environment():
             if not check_reqs([req]):
                 run_pip(f"install {req}", req)
                 req_updated = True
-
-    if args.reinstall_torch:
-        if is_amd_gpu():
-            print('AMD GPU: Yes')
-            if args.nightly:
-                amd_nightly_gpu = supported_amd_nightly_gpu()
-                if amd_nightly_gpu == "None":
-                    Exception("No AMD Nightly GPU supported")
-                if amd_nightly_gpu == "RDNA3":
-                    torch_command = os.environ.get('TORCH_COMMAND',
-                                                "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
-                if amd_nightly_gpu == "RDNA4":
-                    torch_command = os.environ.get('TORCH_COMMAND',
-                                                "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
-            else:
-                # AMD GPU: Cuda 11.8, Pytorch 2.2.2
-                torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
-        else:
-            torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
-        run(f'"{python}" -m {torch_command}', "Installing torch and torchvision", "Couldn't install torch", live=True)
-        req_updated = True
 
     requirements = [
         req for req in load_req_file(args.requirements)

@@ -33,7 +33,7 @@ goto :show_stdout_stderr
 
 
 :launch
-%PYTHON% launch.py --nightly%*
+%PYTHON% launch.py %*
 pause
 exit /b
 
