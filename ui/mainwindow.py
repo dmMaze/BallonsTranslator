@@ -1674,7 +1674,7 @@ class MainWindow(mainwindow_cls):
 
     def on_darkmode_triggered(self):
         pcfg.darkmode = self.titleBar.darkModeAction.isChecked()
-        self.resetStyleSheet(reverse_icon=True)
+        self.resetStyleSheet()
         self.save_config()
 
     def ocr_postprocess(self, textblocks: List[TextBlock], img, ocr_module=None, **kwargs):

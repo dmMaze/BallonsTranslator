@@ -7,6 +7,7 @@ from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon
 
 from modules.translators import BaseTranslator
 from .custom_widget import Widget, PaintQSlider, SmallComboBox, ConfigClickableLabel
+from .misc import themed_icon_path
 from utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import FramelessMoveResize
 from utils.config import pcfg
@@ -535,7 +536,8 @@ class SmallConfigPutton(QPushButton):
     pass
 
 
-CFG_ICON  = QIcon('icons/leftbar_config_activate.svg')
+def cfg_icon() -> QIcon:
+    return QIcon(themed_icon_path('leftbar_config_activate.svg'))
 
 
 class SelectionWithConfigWidget(Widget):
@@ -567,7 +569,7 @@ class SelectionWithConfigWidget(Widget):
 
     def enterEvent(self, event: QEvent) -> None:
         if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(CFG_ICON)
+            self.cfg_btn.setIcon(cfg_icon())
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
@@ -619,7 +621,7 @@ class TranslatorSelectionWidget(Widget):
 
     def enterEvent(self, event: QEvent) -> None:
         if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(CFG_ICON)
+            self.cfg_btn.setIcon(cfg_icon())
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
