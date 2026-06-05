@@ -399,38 +399,19 @@ def refresh_torch_device_info(raise_missing: bool = False):
     _TORCH_DEVICE_INFO_CHECKED = True
 
 
-def is_nvidia():
-    refresh_torch_device_info()
-    if DEFAULT_DEVICE == 'cuda':
-        torch = require_torch()
-        if torch.version.cuda:
-            return True
-    return False
-
-
-def is_intel():
-    refresh_torch_device_info()
-    if DEFAULT_DEVICE == 'xpu':
-        torch = require_torch()
-        if torch.version.xpu:
-            return True
-    return False
-
-
 def soft_empty_cache():
+    
+    if _TORCH is not None:
+        torch = _TORCH
+        if DEFAULT_DEVICE == 'cuda':
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        elif DEFAULT_DEVICE == 'xpu':
+            torch.xpu.empty_cache()
+            # torch.xpu.ipc_collect()
+        elif DEFAULT_DEVICE == 'mps':
+            torch.mps.empty_cache()
     gc.collect()
-    refresh_torch_device_info()
-    if not torch_available():
-        return
-    torch = require_torch()
-    if DEFAULT_DEVICE == 'cuda':
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-    elif DEFAULT_DEVICE == 'xpu':
-       torch.xpu.empty_cache()
-       # torch.xpu.ipc_collect()
-    elif DEFAULT_DEVICE == 'mps':
-        torch.mps.empty_cache()
 
 
 def DEVICE_SELECTOR(not_supported:list[str]=[]):
@@ -494,19 +475,3 @@ def init_module_registries(target_modules=None):
     # Startup registers lightweight specs; real module imports happen on selection.
     from modules.lazy_registry import init_lazy_module_registries
     init_lazy_module_registries(target_modules)
-
-
-def init_textdetector_registries():
-    init_module_registries('textdetector')
-
-
-def init_inpainter_registries():
-    init_module_registries('inpainter')
-
-
-def init_ocr_registries():
-    init_module_registries('ocr')
-
-
-def init_translator_registries():
-    init_module_registries('translator')

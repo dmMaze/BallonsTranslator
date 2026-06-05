@@ -97,18 +97,6 @@ def ensure_module_files(module_spec_or_class, progress_callback=None, cancel_eve
     return all_successful
 
 
-def download_and_check_module_files(module_class_list: List[BaseModule] = None):
-    if module_class_list is None:
-        module_class_list = []
-        for registered in [INPAINTERS, TEXTDETECTORS, OCR, TRANSLATORS]:
-            for module_key in registered.module_dict.keys():
-                module_class_list.append(registered.get(module_key))
-
-    for module_class in module_class_list:
-        if module_class.download_file_on_load or module_class.download_file_list is None:
-            continue
-        ensure_module_files(module_class)
-
 def prepare_pkuseg(progress_callback=None, cancel_event=None):
     try:
         import pkuseg
@@ -146,14 +134,3 @@ def prepare_pkuseg(progress_callback=None, cancel_event=None):
     p = osp.join(PKUSEG_HOME, 'spacy_ontonotes.zip')
     if not osp.exists(p):
         os.makedirs(p)
-
-
-def prepare_local_files_forall():
-
-    # download files required by detect, ocr, inpaint and translators
-    download_and_check_module_files()
-
-    prepare_pkuseg()
-
-    if shared.CACHE_UPDATED:
-        shared.dump_cache()

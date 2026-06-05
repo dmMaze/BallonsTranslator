@@ -13,7 +13,7 @@ from .custom_widget import ProgressMessageBox, Widget, NoBorderPushBtn
 from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransPairWidget, SourceTextEdit
 from .io_thread import ThreadBase
-from utils import shared as C
+from utils import shared
 from utils.proj_imgtrans import ProjImgTrans
 
 SEARCHRST_FONTSIZE = 10.3
@@ -40,7 +40,7 @@ class HTMLDelegate( QStyledItemDelegate ):
         painter.setClipRect(clip)
         ctx = QAbstractTextDocumentLayout.PaintContext()
         ctx.clip = clip
-        ctx.palette.setColor(QPalette.ColorRole.Text, QColor(*C.FOREGROUND_FONTCOLOR))
+        ctx.palette.setColor(QPalette.ColorRole.Text, QColor(*shared.FOREGROUND_FONTCOLOR))
         self.doc.documentLayout().draw(painter, ctx)
         painter.restore()
         style = QApplication.style() if options.widget is None else options.widget.style()

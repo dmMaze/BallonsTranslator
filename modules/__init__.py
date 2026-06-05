@@ -3,7 +3,7 @@ from .textdetector import TEXTDETECTORS, TextDetectorBase
 from .translators import TRANSLATORS, BaseTranslator
 from .inpaint import INPAINTERS, InpainterBase
 from .base import DEFAULT_DEVICE, GPUINTENSIVE_SET, LOGGER, merge_config_module_params, \
-    init_module_registries, init_textdetector_registries, init_inpainter_registries, init_ocr_registries, init_translator_registries
+    init_module_registries
 
 GET_VALID_TEXTDETECTORS = lambda : list(TEXTDETECTORS.module_dict.keys())
 GET_VALID_TRANSLATORS = lambda : list(TRANSLATORS.module_dict.keys())

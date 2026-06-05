@@ -6,7 +6,7 @@ from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QI
 
 from .custom_widget import ConfigComboBox, Widget
 from utils.config import pcfg
-from utils import shared as C
+from utils import shared
 from utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 
@@ -242,7 +242,7 @@ class ConfigContent(QScrollArea):
         else:
             self.active_label = block.header
         self.active_label.setActiveBackground()
-        if C.USE_PYSIDE6:
+        if shared.USE_PYSIDE6:
             self.ensureWidgetVisible(self.active_label, ymargin=self.active_label.height() * 7)
         else:
             self.ensureWidgetVisible(self.active_label, yMargin=self.active_label.height() * 7)

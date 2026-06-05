@@ -54,9 +54,7 @@ class ModuleThread(QThread):
         # Shared with download helpers so Stop can cancel preparation cooperatively.
         self.cancel_event = threading.Event()
         self.last_set_success = False
-        self.last_set_cancelled = False
         self.last_set_module_name = ''
-        self.last_error: Exception = None
 
     def _emit_prepare_progress(self, payload: dict):
         payload = dict(payload)
@@ -84,8 +82,6 @@ class ModuleThread(QThread):
         old_module = self.module
         self.last_set_module_name = module_name
         self.last_set_success = False
-        self.last_set_cancelled = False
-        self.last_error = None
         self.cancel_event.clear()
         try:
             if old_module is not None and old_module.name == module_name:
@@ -111,12 +107,9 @@ class ModuleThread(QThread):
         except DownloadCancelled as e:
             # Cancellation/failure keeps the previously active module instance.
             self.module = old_module
-            self.last_set_cancelled = True
-            self.last_error = e
             LOGGER.info(f'Cancelled preparing {self.module_key} module {module_name}.')
         except Exception as e:
             self.module = old_module
-            self.last_error = e
             create_error_dialog(e, self._failed_set_module_msg)
         finally:
             self.finish_set_module.emit()
@@ -234,8 +227,6 @@ class TranslateThread(ModuleThread):
         source, target = cfg_module.translate_source, cfg_module.translate_target
         self.last_set_module_name = translator
         self.last_set_success = False
-        self.last_set_cancelled = False
-        self.last_error = None
         self.cancel_event.clear()
         if self.translator is not None:
             if self.translator.name == translator:
@@ -264,12 +255,9 @@ class TranslateThread(ModuleThread):
             self.last_set_success = True
         except DownloadCancelled as e:
             self.translator = old_translator
-            self.last_set_cancelled = True
-            self.last_error = e
             LOGGER.info(f'Cancelled preparing translator {translator}.')
         except Exception as e:
             self.translator = old_translator
-            self.last_error = e
             msg = self.tr('Failed to set translator ') + translator
             create_error_dialog(e, msg, 'FailedSetTranslator')
         finally:

@@ -70,7 +70,7 @@ OPTIONAL_DEPENDENCY_OVERRIDES = {
     ('ocr', 'mit48px'): ['torch'],
 }
 
-INITIALIZED = set()
+INITIALIZED_REGISTRIES = set()
 
 
 def _device_selector(not_supported=None):
@@ -513,36 +513,35 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
     return specs
 
 
-def _module_files(module_type: str) -> List[str]:
-    script = MODULE_SCRIPTS[module_type]
-    module_dir = script['module_dir']
-    pattern = re.compile(script['module_pattern'])
-    files = []
-    if os.path.isdir(module_dir):
-        for name in sorted(os.listdir(module_dir)):
-            if pattern.match(name):
-                files.append(os.path.join(module_dir, name))
-    files.extend(EXTRA_MODULE_FILES.get(module_type, []))
-    return [path for path in files if os.path.exists(path)]
-
-
-def _targets(target_modules=None):
-    if target_modules is None:
-        return list(MODULE_SCRIPTS.keys())
-    if isinstance(target_modules, str):
-        return [target_modules]
-    return list(target_modules)
-
-
 def init_lazy_module_registries(target_modules=None):
     from modules import MODULETYPE_TO_REGISTRIES
 
+    def _module_files(module_type: str) -> List[str]:
+        script = MODULE_SCRIPTS[module_type]
+        module_dir = script['module_dir']
+        pattern = re.compile(script['module_pattern'])
+        files = []
+        if os.path.isdir(module_dir):
+            for name in sorted(os.listdir(module_dir)):
+                if pattern.match(name):
+                    files.append(os.path.join(module_dir, name))
+        files.extend(EXTRA_MODULE_FILES.get(module_type, []))
+        return [path for path in files if os.path.exists(path)]
+
+
+    def _targets(target_modules=None):
+        if target_modules is None:
+            return list(MODULE_SCRIPTS.keys())
+        if isinstance(target_modules, str):
+            return [target_modules]
+        return list(target_modules)
+
     for module_type in _targets(target_modules):
-        if module_type in INITIALIZED:
+        if module_type in INITIALIZED_REGISTRIES:
             continue
         registry = MODULETYPE_TO_REGISTRIES[module_type]
         for path in _module_files(module_type):
             for spec in _scan_file(path, module_type):
                 registry.register_lazy_module(spec)
         # Registry groups are idempotent; re-scanning could overwrite live classes.
-        INITIALIZED.add(module_type)
+        INITIALIZED_REGISTRIES.add(module_type)
