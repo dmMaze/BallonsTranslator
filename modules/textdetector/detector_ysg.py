@@ -2,7 +2,6 @@ import os
 import os.path as osp
 from typing import Tuple, List
 
-import torch
 import numpy as np
 import cv2
 

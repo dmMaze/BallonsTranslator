@@ -176,9 +176,6 @@ def main():
 
     prepare_environment()
 
-    from utils.zluda_config import enable_zluda_config
-    enable_zluda_config()
-
     if args.update:
         if getattr(sys, 'frozen', False):
             print('Running as app, skipping update.')
