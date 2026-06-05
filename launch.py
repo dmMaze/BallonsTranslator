@@ -5,6 +5,7 @@ import os.path as osp
 import os
 import importlib
 import subprocess
+import tempfile
 from platform import platform
 
 BRANCH = 'dev'
@@ -20,6 +21,31 @@ stored_commit_hash = None
 REQ_WIN = [
     'pywin32'
 ]
+
+OPTIONAL_STARTUP_PACKAGES = {
+    # Heavy/module-specific packages are checked when their module is selected.
+    'torch',
+    'torchvision',
+    'torchaudio',
+    'transformers',
+    'diffusers',
+    'ultralytics',
+    'ctranslate2',
+    'sentencepiece',
+    'openai',
+    'deepl',
+    'translators',
+    'gguf',
+    'hf-transfer',
+    'winsdk',
+    'msl-loadlib',
+    'pyobjc-core',
+    'pyobjc-framework-cocoa',
+    'pyobjc-framework-coreml',
+    'pyobjc-framework-quartz',
+    'pyobjc-framework-vision',
+    'betterproto',
+}
 
 PATH_ROOT=Path(__file__).parent
 PATH_FONTS=str(PATH_ROOT/'fonts')
@@ -228,13 +254,6 @@ def main():
     app.setApplicationName('BalloonsTranslator')
     app.setApplicationVersion(VERSION)
 
-    # import msl.loadlib (required by translators/trans_eztrans) before init QApplication
-    # yield QWindowsContext: OleInitialize() failed on py3.10, 
-    from modules.base import init_module_registries
-    from modules.prepare_local_files import prepare_local_files_forall
-    init_module_registries()
-    prepare_local_files_forall()
-
     if not args.headless and not args.headless_continuous:
         ps = QGuiApplication.primaryScreen()
         shared.LDPI = ps.logicalDotsPerInch()
@@ -345,7 +364,9 @@ def prepare_environment():
     except ModuleNotFoundError:
         run_pip(f"install packaging", "install packaging")
 
-    from utils.package import check_req_file, check_reqs
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+    from utils.package import load_req_file, check_reqs
 
     if getattr(sys, 'frozen', False):
         print('Running as app, skip dependency installation')
@@ -361,29 +382,43 @@ def prepare_environment():
                 run_pip(f"install {req}", req)
                 req_updated = True
 
-    if is_amd_gpu():
-        print('AMD GPU: Yes')
-        if args.nightly:
-            amd_nightly_gpu = supported_amd_nightly_gpu()
-            if amd_nightly_gpu == "None":
-                Exception("No AMD Nightly GPU supported")
-            if amd_nightly_gpu == "RDNA3":
-                torch_command = os.environ.get('TORCH_COMMAND',
-                                               "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
-            if amd_nightly_gpu == "RDNA4":
-                torch_command = os.environ.get('TORCH_COMMAND',
-                                               "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
+    if args.reinstall_torch:
+        if is_amd_gpu():
+            print('AMD GPU: Yes')
+            if args.nightly:
+                amd_nightly_gpu = supported_amd_nightly_gpu()
+                if amd_nightly_gpu == "None":
+                    Exception("No AMD Nightly GPU supported")
+                if amd_nightly_gpu == "RDNA3":
+                    torch_command = os.environ.get('TORCH_COMMAND',
+                                                "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
+                if amd_nightly_gpu == "RDNA4":
+                    torch_command = os.environ.get('TORCH_COMMAND',
+                                                "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
+            else:
+                # AMD GPU: Cuda 11.8, Pytorch 2.2.2
+                torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
         else:
-            # AMD GPU: Cuda 11.8, Pytorch 2.2.2
-            torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
-    else:
-        torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
-    if args.reinstall_torch or not is_installed("torch") or not is_installed("torchvision"):
+            torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
         run(f'"{python}" -m {torch_command}', "Installing torch and torchvision", "Couldn't install torch", live=True)
         req_updated = True
 
-    if not check_req_file(args.requirements):
-        run_pip(f"install -r {args.requirements}", "requirements")
+    requirements = [
+        req for req in load_req_file(args.requirements)
+        if canonicalize_name(Requirement(req).name) not in OPTIONAL_STARTUP_PACKAGES
+    ]
+    # Keep the default UI launch path free of torch and other module backends.
+    if not check_reqs(requirements):
+        with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False, encoding='utf8') as req_file:
+            req_file.write('\n'.join(requirements))
+            req_file_path = req_file.name
+        try:
+            run_pip(f"install -r {req_file_path}", "requirements")
+        finally:
+            try:
+                os.remove(req_file_path)
+            except OSError:
+                pass
         req_updated = True
 
     if req_updated:

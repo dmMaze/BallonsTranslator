@@ -18,4 +18,7 @@ MODULETYPE_TO_REGISTRIES = {
     'translator': TRANSLATORS
 }
 
+# Registers static ModuleSpec entries only; concrete module files stay unimported.
+init_module_registries()
+
 # TODO: use manga-image-translator as backend...

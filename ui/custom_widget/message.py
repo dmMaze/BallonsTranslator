@@ -127,10 +127,10 @@ class ProgressMessageBox(QDialog):
     showed = Signal()
     stop_clicked = Signal()
     
-    def __init__(self, task_name: str = None, show_stop_btn: bool = True, *args, **kwargs) -> None:
+    def __init__(self, task_name: str = None, show_stop_btn: bool = False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -142,9 +142,22 @@ class ProgressMessageBox(QDialog):
             self.task_progress_bar = TaskProgressBar(task_name, True)
             layout.addWidget(self.task_progress_bar)
 
+        # Generic progress dialogs stay unchanged unless a caller opts into Stop.
+        self.stop_button = None
+        if show_stop_btn:
+            self.stop_button = QPushButton(self.tr('Stop'), self)
+            self.stop_button.clicked.connect(self.on_stop_clicked)
+            button_layout = QHBoxLayout()
+            button_layout.addStretch()
+            button_layout.addWidget(self.stop_button)
+            button_layout.addStretch()
+            layout.addLayout(button_layout)
+
     def on_stop_clicked(self):
         self.stop_clicked.emit()
-        self.hide()
+        if self.stop_button is not None:
+            self.stop_button.setEnabled(False)
+            self.stop_button.setText(self.tr('trying to stop...'))
 
     def updateTaskProgress(self, value: int, msg: str = ''):
         if self.task_progress_bar is not None:
@@ -157,17 +170,35 @@ class ProgressMessageBox(QDialog):
     def zero_progress(self):
         if self.task_progress_bar is not None:
             self.task_progress_bar.updateProgress(0)
+        if self.stop_button is not None:
+            self.stop_button.setEnabled(True)
+            self.stop_button.setText(self.tr('Stop'))
+
+    def fit_to_content(self):
+        # Stylesheets can change progress-bar height after construction.
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+        self.adjustSize()
+
+    def show_fitted(self):
+        self.fit_to_content()
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def showEvent(self, e: QShowEvent) -> None:
+        result = super().showEvent(e)
         self.showed.emit()
-        return super().showEvent(e)
+        return result
 
 
 class ImgtransProgressMessageBox(ProgressMessageBox):
     stop_clicked = Signal()
     
     def __init__(self, *args, **kwargs) -> None:
-        super().__init__(None, *args, **kwargs)
+        super().__init__(None, False, *args, **kwargs)
         
         self.detect_bar = TaskProgressBar(self.tr('Detecting: '), True, self)
         self.ocr_bar = TaskProgressBar(self.tr('OCR: '), True, self)
@@ -190,6 +221,15 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         layout.addLayout(button_layout)
 
         self.setFixedWidth(self.sizeHint().width())
+
+    def fit_to_content(self):
+        # Hidden stage bars affect height, so recompute before each RUN display.
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+        self.setFixedWidth(self.sizeHint().width())
+        super().fit_to_content()
     
     def on_stop_clicked(self):
         self.stop_clicked.emit()

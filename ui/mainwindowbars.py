@@ -636,14 +636,24 @@ class TranslatorSelectionWidget(Widget):
         super().blockSignals(block)
     
     def finishSetTranslator(self, translator: BaseTranslator):
+        self.setTranslatorMetadata(
+            translator.name,
+            translator.supported_src_list,
+            translator.supported_tgt_list,
+            translator.lang_source,
+            translator.lang_target,
+        )
+
+    def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
+        # Metadata can come from ModuleSpec before the translator is imported.
         self.blockSignals(True)
         self.src_selector.clear()
         self.tgt_selector.clear()
-        self.src_selector.addItems(translator.supported_src_list)
-        self.tgt_selector.addItems(translator.supported_tgt_list)
-        self.selector.setCurrentText(translator.name)
-        self.src_selector.setCurrentText(translator.lang_source)
-        self.tgt_selector.setCurrentText(translator.lang_target)
+        self.src_selector.addItems(supported_src_list)
+        self.tgt_selector.addItems(supported_tgt_list)
+        self.selector.setCurrentText(name)
+        self.src_selector.setCurrentText(lang_source)
+        self.tgt_selector.setCurrentText(lang_target)
         self.blockSignals(False)
 
 

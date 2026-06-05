@@ -1,8 +1,61 @@
 # modified from https://github.com/open-mmlab/mmcv/blob/master/mmcv/utils/registry.py
 
+import importlib
 import inspect
 import warnings
+from copy import deepcopy
+from dataclasses import dataclass, field
 from functools import partial
+from typing import Dict, List
+
+
+class LazyModuleError(Exception):
+    pass
+
+
+@dataclass
+class ModuleSpec:
+    # Static module metadata used by the UI without importing heavy modules.
+    key: str
+    import_path: str
+    class_name: str
+    module_type: str = ''
+    params: Dict = None
+    download_file_list: List = None
+    download_file_on_load: bool = False
+    optional_dependencies: List[str] = field(default_factory=list)
+    supported_src_list: List[str] = None
+    supported_tgt_list: List[str] = None
+    available: bool = True
+    availability_error: str = ''
+    resolved_class: type = None
+
+    def resolve(self):
+        # Import the concrete module only after the user selects it.
+        if self.resolved_class is not None:
+            return self.resolved_class
+        if not self.available:
+            raise LazyModuleError(self.availability_error or f'{self.key} is not available on this platform.')
+        try:
+            module = importlib.import_module(self.import_path)
+            self.resolved_class = getattr(module, self.class_name)
+            setattr(self.resolved_class, '_module_spec', self)
+            return self.resolved_class
+        except ModuleNotFoundError as e:
+            missing = e.name or str(e)
+            raise LazyModuleError(
+                f'Module "{self.key}" requires Python package "{missing}". '
+                f'Install the optional dependency before selecting this module.'
+            ) from e
+        except Exception as e:
+            raise LazyModuleError(f'Failed to import module "{self.key}" from {self.import_path}: {e}') from e
+
+    def params_copy(self):
+        return deepcopy(self.params)
+
+    @property
+    def name(self):
+        return self.key
 
 class Registry:
     """A registry to map strings to classes.
@@ -193,10 +246,70 @@ class Registry:
             module_name = [module_name]
             
         for name in module_name:
+            existing = self._module_dict.get(name)
+            if isinstance(existing, ModuleSpec):
+                # A lazy spec can be replaced by the real class after import.
+                existing.resolved_class = module_class
+                setattr(module_class, '_module_spec', existing)
+                self._module_dict[name] = module_class
+                continue
             if not force and name in self._module_dict:
                 raise KeyError(f'{name} is already registered '
                                f'in {self.name}')
             self._module_dict[name] = module_class
+
+    def register_lazy_module(self, spec: ModuleSpec, force=False):
+        if not isinstance(spec, ModuleSpec):
+            raise TypeError(f'spec must be a ModuleSpec, but got {type(spec)}')
+        existing = self._module_dict.get(spec.key)
+        if not force and existing is not None:
+            if isinstance(existing, ModuleSpec) and existing.import_path == spec.import_path and existing.class_name == spec.class_name:
+                return spec
+            if inspect.isclass(existing) and existing.__name__ == spec.class_name:
+                spec.resolved_class = existing
+                setattr(existing, '_module_spec', spec)
+                return spec
+            raise KeyError(f'{spec.key} is already registered in {self.name}')
+        self._module_dict[spec.key] = spec
+        return spec
+
+    def resolve_module(self, key):
+        module = self.get(key)
+        if isinstance(module, ModuleSpec):
+            # Keep the resolved class cached so later access is normal registry use.
+            resolved = module.resolve()
+            self._module_dict[key] = resolved
+            return resolved
+        return module
+
+    def get_spec(self, key):
+        module = self.get(key)
+        if isinstance(module, ModuleSpec):
+            return module
+        if inspect.isclass(module):
+            spec = getattr(module, '_module_spec', None)
+            if isinstance(spec, ModuleSpec):
+                spec.resolved_class = module
+                return spec
+            return ModuleSpec(
+                key=key,
+                import_path=module.__module__,
+                class_name=module.__name__,
+                params=deepcopy(getattr(module, 'params', None)),
+                download_file_list=deepcopy(getattr(module, 'download_file_list', None)),
+                download_file_on_load=getattr(module, 'download_file_on_load', False),
+                resolved_class=module,
+            )
+        return None
+
+    def module_params(self, key):
+        spec = self.get_spec(key)
+        if spec is not None:
+            return spec.params_copy()
+        module = self.get(key)
+        if module is None:
+            return None
+        return deepcopy(getattr(module, 'params', None))
         
 
     def deprecated_register_module(self, cls=None, force=False):

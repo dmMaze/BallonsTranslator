@@ -1,7 +1,7 @@
 from typing import List, Callable
 
 from modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRANSLATORS, GET_VALID_OCR, \
-    BaseTranslator, DEFAULT_DEVICE, GPUINTENSIVE_SET
+    BaseTranslator
 from utils.logger import logger as LOGGER
 from .custom_widget import ConfigComboBox, ParamComboBox, NoBorderPushBtn, ParamNameLabel
 from utils.shared import CONFIG_COMBOBOX_LONG, size2width, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
@@ -118,6 +118,16 @@ def get_param_display_name(param_key: str, param_dict: dict = None):
     return param_key
 
 
+def ensure_current_device_option(param_dict: dict):
+    not_supported = param_dict.get('__device_not_supported', [])
+    current_value = str(param_dict.get('value', 'cpu'))
+    options = [str(opt) for opt in param_dict.get('options', [])]
+    if current_value not in options and all(device not in current_value for device in not_supported):
+        options.append(current_value)
+    param_dict['options'] = options
+    param_dict['value'] = current_value if current_value in options else 'cpu'
+
+
 class ParamPushButton(QPushButton):
     paramwidget_edited = Signal(str, str)
     def __init__(self, param_key: str, param_dict: dict = None, *args, **kwargs):
@@ -179,6 +189,9 @@ class ParamWidget(QWidget):
                 flush_btn = param_dict.get('flush_btn', False)
                 path_selector = param_dict.get('path_selector', False)
                 param_size = param_dict.get('size', 'short')
+                if param_key == 'device' and param_type == 'selector':
+                    ensure_current_device_option(param_dict)
+                    value = param_dict['value']
                 if param_type == 'selector':
                     if 'url' in param_key:
                         size = size2width('median')
@@ -188,13 +201,6 @@ class ParamWidget(QWidget):
                     param_widget = ParamComboBox(
                         param_key, param_dict['options'], size=size, scrollWidget=scrollWidget, flush_btn=flush_btn, path_selector=path_selector)
 
-                    if param_key == 'device' and DEFAULT_DEVICE == 'cpu':
-                        param_dict['value'] = 'cpu'
-                        for ii, device in enumerate(param_dict['options']):
-                            if device in GPUINTENSIVE_SET:
-                                model = param_widget.model()
-                                item = model.item(ii, 0)
-                                item.setEnabled(False)
                     param_widget.setCurrentText(str(value))
                     param_widget.setEditable(param_dict.get('editable', False))
 
@@ -350,7 +356,7 @@ class ModuleConfigParseWidget(QWidget):
         if module in self.param_widget_map:
             widget: QWidget = self.param_widget_map[module]
             if widget is None:
-                # lazy load widgets
+                # Build parameter widgets only for the selected manifest entry.
                 params = self.module_dict[module]
                 widget = ParamWidget(params, scrollWidget=self)
                 widget.paramwidget_edited.connect(self.paramwidget_edited)
@@ -403,6 +409,15 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.vlayout.addWidget(self.replaceMTkeywordBtn)
 
     def finishSetTranslator(self, translator: BaseTranslator):
+        self.setTranslatorMetadata(
+            translator.name,
+            translator.supported_src_list,
+            translator.supported_tgt_list,
+            translator.lang_source,
+            translator.lang_target,
+        )
+
+    def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
         self.source_combobox.blockSignals(True)
         self.target_combobox.blockSignals(True)
         self.module_combobox.blockSignals(True)
@@ -410,11 +425,11 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.source_combobox.clear()
         self.target_combobox.clear()
 
-        self.source_combobox.addItems(translator.supported_src_list)
-        self.target_combobox.addItems(translator.supported_tgt_list)
-        self.module_combobox.setCurrentText(translator.name)
-        self.source_combobox.setCurrentText(translator.lang_source)
-        self.target_combobox.setCurrentText(translator.lang_target)
+        self.source_combobox.addItems(supported_src_list)
+        self.target_combobox.addItems(supported_tgt_list)
+        self.module_combobox.setCurrentText(name)
+        self.source_combobox.setCurrentText(lang_source)
+        self.target_combobox.setCurrentText(lang_target)
         self.updateModuleParamWidget()
         self.source_combobox.blockSignals(False)
         self.target_combobox.blockSignals(False)

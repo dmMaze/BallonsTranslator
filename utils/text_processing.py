@@ -188,6 +188,9 @@ def seg_ch_pkg(text: str):
 
     global CHSEG
     if CHSEG is None:
+        # Chinese segmentation data is prepared only when segmentation is first used.
+        from modules.prepare_local_files import prepare_pkuseg
+        prepare_pkuseg()
         try:
             import pkuseg
         except:

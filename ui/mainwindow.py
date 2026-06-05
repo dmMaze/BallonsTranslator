@@ -17,7 +17,6 @@ from utils.text_processing import is_cjk, full_len, half_len
 from utils.textblock import TextBlock, TextAlignment
 from utils import shared
 from utils.message import create_error_dialog, create_info_dialog
-from modules.translators.trans_chatgpt import GPTTranslator
 from modules import GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from .misc import parse_stylesheet, set_html_family, QKEY
 from utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from, FontFormat
@@ -114,6 +113,9 @@ class MainWindow(mainwindow_cls):
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
         self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
         self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
+        if hasattr(self, 'module_manager') and self.module_manager.prepare_msgbox is not None:
+            # The prepare dialog is created after startup; keep it on the app theme.
+            self.module_manager.prepare_msgbox.setStyleSheet(styleSheet)
         return super().setStyleSheet(styleSheet)
 
     def setupThread(self):
@@ -268,6 +270,10 @@ class MainWindow(mainwindow_cls):
             self.configPanel.detect_config_panel.setDetector(name)
             self.bottomBar.textdet_selector.setSelectedValue(name)
             LOGGER.info('Text detector set to {}'.format(name))
+        else:
+            name = pcfg.module.textdetector
+            self.configPanel.detect_config_panel.setDetector(name)
+            self.bottomBar.textdet_selector.setSelectedValue(name)
 
     def on_finish_setocr(self):
         module_manager = self.module_manager
@@ -277,6 +283,10 @@ class MainWindow(mainwindow_cls):
             self.configPanel.ocr_config_panel.setOCR(name)
             self.bottomBar.ocr_selector.setSelectedValue(name)
             LOGGER.info('OCR set to {}'.format(name))
+        else:
+            name = pcfg.module.ocr
+            self.configPanel.ocr_config_panel.setOCR(name)
+            self.bottomBar.ocr_selector.setSelectedValue(name)
 
     def on_finish_setinpainter(self):
         module_manager = self.module_manager
@@ -286,6 +296,10 @@ class MainWindow(mainwindow_cls):
             self.configPanel.inpaint_config_panel.setInpainter(name)
             self.bottomBar.inpaint_selector.setSelectedValue(name)
             LOGGER.info('Inpainter set to {}'.format(name))
+        else:
+            name = pcfg.module.inpainter
+            self.configPanel.inpaint_config_panel.setInpainter(name)
+            self.bottomBar.inpaint_selector.setSelectedValue(name)
 
     def on_finish_settranslator(self):
         module_manager = self.module_manager
@@ -297,6 +311,7 @@ class MainWindow(mainwindow_cls):
             self.configPanel.trans_config_panel.finishSetTranslator(translator)
             LOGGER.info('Translator set to {}'.format(name))
         else:
+            self.setTranslatorSelectionFromMetadata(pcfg.module.translator)
             LOGGER.error('invalid translator')
         
     def on_enable_module(self, idx, checked):
@@ -313,6 +328,44 @@ class MainWindow(mainwindow_cls):
             pcfg.module.enable_inpaint = checked
             self.bottomBar.inpaint_selector.setVisible(checked)
         pcfg.module.update_finish_code()
+
+    def setTranslatorSelectionFromMetadata(self, translator: str = None):
+        metadata = self.module_manager.translator_metadata(translator)
+        pcfg.module.translate_source = metadata['lang_source']
+        pcfg.module.translate_target = metadata['lang_target']
+        self.bottomBar.trans_selector.setTranslatorMetadata(
+            metadata['name'],
+            metadata['supported_src_list'],
+            metadata['supported_tgt_list'],
+            metadata['lang_source'],
+            metadata['lang_target'],
+        )
+        self.configPanel.trans_config_panel.setTranslatorMetadata(
+            metadata['name'],
+            metadata['supported_src_list'],
+            metadata['supported_tgt_list'],
+            metadata['lang_source'],
+            metadata['lang_target'],
+        )
+
+    def setInitialModuleSelections(self):
+        # Populate selectors/config from manifest metadata without importing modules.
+        def valid_or_first(value, valid_values):
+            if not valid_values:
+                return value
+            return value if value in valid_values else valid_values[0]
+
+        pcfg.module.textdetector = valid_or_first(pcfg.module.textdetector, GET_VALID_TEXTDETECTORS())
+        pcfg.module.ocr = valid_or_first(pcfg.module.ocr, GET_VALID_OCR())
+        pcfg.module.inpainter = valid_or_first(pcfg.module.inpainter, GET_VALID_INPAINTERS())
+        pcfg.module.translator = valid_or_first(pcfg.module.translator, GET_VALID_TRANSLATORS())
+        self.configPanel.detect_config_panel.setDetector(pcfg.module.textdetector)
+        self.bottomBar.textdet_selector.setSelectedValue(pcfg.module.textdetector)
+        self.configPanel.ocr_config_panel.setOCR(pcfg.module.ocr)
+        self.bottomBar.ocr_selector.setSelectedValue(pcfg.module.ocr)
+        self.configPanel.inpaint_config_panel.setInpainter(pcfg.module.inpainter)
+        self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
+        self.setTranslatorSelectionFromMetadata(pcfg.module.translator)
 
     def setupConfig(self):
 
@@ -361,18 +414,17 @@ class MainWindow(mainwindow_cls):
         module_manager.finish_translate_page.connect(self.finishTranslatePage)
         module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         module_manager.page_trans_finished.connect(self.on_pagtrans_finished)
-        module_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox, self.ocr_postprocess, self.translate_preprocess, self.translate_postprocess)
+        module_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox, self.ocr_postprocess, self.translate_preprocess, self.translate_postprocess, parent_widget=self)
         module_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
+        # Preparation and RUN dialogs share placement so the first RUN is stable.
+        module_manager.prepare_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         module_manager.blktrans_pipeline_finished.connect(self.on_blktrans_finished)
         module_manager.imgtrans_thread.post_process_mask = self.drawingPanel.rectPanel.post_process_mask
         module_manager.inpaint_thread.finish_set_module.connect(self.on_finish_setinpainter)
         module_manager.translate_thread.finish_set_module.connect(self.on_finish_settranslator)
         module_manager.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
         module_manager.ocr_thread.finish_set_module.connect(self.on_finish_setocr)
-        module_manager.setTextDetector()
-        module_manager.setOCR()
-        module_manager.setTranslator()
-        module_manager.setInpainter()
+        self.setInitialModuleSelections()
 
         self.leftBar.run_imgtrans_clicked.connect(self.run_imgtrans)
 
@@ -1423,11 +1475,17 @@ class MainWindow(mainwindow_cls):
         self.canvas.push_undo_command(RunBlkTransCommand(self.canvas, blkitem_list, pairw_list, mode))
 
     def on_imgtrans_progressbox_showed(self):
-        msg_size = self.module_manager.progress_msgbox.size()
+        # Handles both the preparation dialog and the RUN progress dialog.
+        msgbox = self.sender()
+        if msgbox is None or not hasattr(msgbox, 'size'):
+            msgbox = self.module_manager.progress_msgbox
+        if hasattr(msgbox, 'fit_to_content'):
+            msgbox.fit_to_content()
+        msg_size = msgbox.size()
         size = self.size()
         p = self.mapToGlobal(QPoint(size.width() - msg_size.width(),
                                     size.height() - msg_size.height()))
-        self.module_manager.progress_msgbox.move(p)
+        msgbox.move(p)
 
     def on_closebtn_clicked(self):
         if self.imsave_thread.isRunning():
@@ -1718,7 +1776,7 @@ class MainWindow(mainwindow_cls):
         if len(blks) == 0:
             return
         
-        if isinstance(self.module_manager.translator, GPTTranslator):
+        if self.module_manager.translator is not None and self.module_manager.translator.name == 'ChatGPT':
             src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText() for blk in blks]
             src_txt = ''
             for (prompt, num_src) in self.module_manager.translator._assemble_prompts(src_list, max_tokens=4294967295):

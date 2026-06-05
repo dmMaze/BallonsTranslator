@@ -37,20 +37,21 @@ Important areas:
 - Preserve localization. New visible UI strings should use Qt translation patterns already used in the surrounding code.
 - Prefer incremental delivery. Large features should be split into domain/config, pipeline, UI, and persistence changes where practical.
 
-## New Feature Rules
+## Code Comment Rules
 
-- Start with the existing architecture. Prefer extending `ui/`, `modules/`, `utils/config.py`, and `utils/proj_imgtrans.py` patterns before introducing new frameworks or global services.
-- Keep features behind explicit config, UI controls, or module parameters when behavior may surprise existing users.
-- Preserve project JSON compatibility. If a feature adds saved fields, provide defaults for old projects and avoid breaking older project files.
-- For new automation modules, use the existing registry pattern and stable module keys. Do not rename existing keys without compatibility aliases.
-- Keep UI work responsive. Long-running OCR, translation, inpainting, IO, downloads, and model loading must not block the Qt main thread.
-- Respect headless mode. If a feature affects the translation pipeline, make sure it works or safely no-ops under `--headless`.
-- Avoid mandatory new dependencies. Optional integrations should fail gracefully with a clear error or setup message.
-- Keep model/download behavior explicit. Do not download large files or contact online services without an existing module/config path or user action.
-- Add focused tests or import checks for non-UI logic. For UI-heavy changes, document the manual verification performed.
-- Keep user data safe. Do not overwrite source images, existing translations, masks, or project JSON without following existing save/backup behavior.
-- Preserve localization. New visible UI strings should use Qt translation patterns already used in the surrounding code.
-- Prefer incremental delivery. Large features should be split into domain/config, pipeline, UI, and persistence changes where practical.
+- Add the minimum comments needed to make code review efficient.
+- Comment non-obvious intent, invariants, compatibility constraints, and failure modes.
+- For Qt threading, signals, model loading, project JSON compatibility, and file IO, add short comments when the ordering or side effect is important.
+- Prefer comments that explain why code is structured a certain way, not what each line does.
+- Do not add boilerplate comments, redundant docstrings, or comments that merely repeat function or variable names.
+- When refactoring complex logic, add a brief comment before the extracted block if it preserves a subtle behavior from the old implementation.
+
+## Done Criteria For Features
+
+- Existing workflows still run.
+- New behavior is configurable or clearly discoverable.
+- Old projects load without errors.
+- Relevant checks were run, or limitations are stated.
 
 ## Verification
 

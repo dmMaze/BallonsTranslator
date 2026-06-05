@@ -210,6 +210,7 @@ class ProgramConfig(Config):
 pcfg = ProgramConfig()
 text_styles: List[FontFormat] = []
 active_format: FontFormat = None
+config_created_on_load = False
 
 def load_textstyle_from(p: str, raise_exception = False):
 
@@ -239,6 +240,8 @@ def load_textstyle_from(p: str, raise_exception = False):
     pcfg.text_styles_path = p
 
 def load_config(config_path: str = shared.CONFIG_PATH):
+    global config_created_on_load
+    config_created_on_load = False
     if config_path != shared.CONFIG_PATH:
         shared.CONFIG_PATH = config_path
         LOGGER.info(f'Using specified config file at {shared.CONFIG_PATH}')
@@ -250,9 +253,11 @@ def load_config(config_path: str = shared.CONFIG_PATH):
             LOGGER.exception(e)
             LOGGER.warning("Failed to load config file, using default config")
             config = ProgramConfig()
+            config_created_on_load = True
     else:
         LOGGER.info(f'{shared.CONFIG_PATH} does not exist, new config file will be created.')
         config = ProgramConfig()
+        config_created_on_load = True
     
     global pcfg
     pcfg.merge(config)

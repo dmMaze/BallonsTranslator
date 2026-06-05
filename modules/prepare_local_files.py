@@ -1,11 +1,106 @@
 from typing import Union, List
+import importlib.util
 import os.path as osp
 import os
 
 from . import INPAINTERS, TEXTDETECTORS, OCR, TRANSLATORS
 from .base import BaseModule, LOGGER
 import utils.shared as shared
-from utils.download_util import download_and_check_files
+from utils.download_util import DownloadCancelled, download_and_check_files
+from utils.registry import ModuleSpec
+
+
+IMPORT_NAME_ALIASES = {
+    'PIL': 'PIL',
+    'Vision': 'Vision',
+    'objc': 'objc',
+}
+
+
+class MissingOptionalDependency(ModuleNotFoundError):
+    pass
+
+
+def _spec_from_module(module_spec_or_class) -> ModuleSpec:
+    if isinstance(module_spec_or_class, ModuleSpec):
+        return module_spec_or_class
+    module_class = module_spec_or_class
+    spec = getattr(module_class, '_module_spec', None)
+    if isinstance(spec, ModuleSpec):
+        return spec
+    return ModuleSpec(
+        key=getattr(module_class, 'name', getattr(module_class, '__name__', '')),
+        import_path=getattr(module_class, '__module__', ''),
+        class_name=getattr(module_class, '__name__', ''),
+        params=getattr(module_class, 'params', None),
+        download_file_list=getattr(module_class, 'download_file_list', None),
+        download_file_on_load=getattr(module_class, 'download_file_on_load', False),
+        optional_dependencies=getattr(module_class, 'optional_dependencies', []),
+        resolved_class=module_class,
+    )
+
+
+def _dedupe(seq):
+    out = []
+    for item in seq or []:
+        if item and item not in out:
+            out.append(item)
+    return out
+
+
+def missing_optional_dependencies(module_spec_or_class) -> List[str]:
+    spec = _spec_from_module(module_spec_or_class)
+    missing = []
+    for dep in _dedupe(spec.optional_dependencies):
+        # Check importability before resolving the lazy class, so failures are clear.
+        import_name = IMPORT_NAME_ALIASES.get(dep, dep)
+        try:
+            found = importlib.util.find_spec(import_name) is not None
+        except (ImportError, ModuleNotFoundError, ValueError):
+            found = False
+        if not found:
+            missing.append(dep)
+    return missing
+
+
+def check_optional_dependencies(module_spec_or_class):
+    missing = missing_optional_dependencies(module_spec_or_class)
+    if missing:
+        spec = _spec_from_module(module_spec_or_class)
+        deps = ', '.join(missing)
+        raise MissingOptionalDependency(
+            f'Module "{spec.key}" requires optional Python package(s): {deps}. '
+            f'Install them or select a module that does not require them.'
+        )
+
+
+def ensure_module_files(module_spec_or_class, progress_callback=None, cancel_event=None):
+    # Called from the selected module thread before importing or instantiating it.
+    spec = _spec_from_module(module_spec_or_class)
+    check_optional_dependencies(spec)
+    if spec.download_file_list is None:
+        return True
+
+    all_successful = True
+    for download_kwargs in spec.download_file_list:
+        if cancel_event is not None and cancel_event.is_set():
+            raise DownloadCancelled('Module preparation cancelled by user.')
+        if progress_callback is not None:
+            progress_callback({'event': 'module_file_group', 'module': spec.key})
+        # Download helpers write temp files first, so cancelled downloads stay retryable.
+        all_successful = download_and_check_files(
+            **download_kwargs,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+        )
+        if not all_successful:
+            LOGGER.error(f'Please save these files manually to sepcified path and retry, otherwise {spec.key} will be unavailable.')
+            return False
+
+    if shared.CACHE_UPDATED:
+        shared.dump_cache()
+
+    return all_successful
 
 
 def download_and_check_module_files(module_class_list: List[BaseModule] = None):
@@ -18,13 +113,9 @@ def download_and_check_module_files(module_class_list: List[BaseModule] = None):
     for module_class in module_class_list:
         if module_class.download_file_on_load or module_class.download_file_list is None:
             continue
-        for download_kwargs in module_class.download_file_list:
-            all_successful = download_and_check_files(**download_kwargs)
-            if all_successful:
-                continue
-            LOGGER.error(f'Please save these files manually to sepcified path and restart the application, otherwise {module_class} will be unavailable.')
+        ensure_module_files(module_class)
 
-def prepare_pkuseg():
+def prepare_pkuseg(progress_callback=None, cancel_event=None):
     try:
         import pkuseg
     except:
@@ -47,7 +138,7 @@ def prepare_pkuseg():
         },
     ]
     for files_download_kwargs in flist:
-        download_and_check_files(**files_download_kwargs)
+        download_and_check_files(**files_download_kwargs, progress_callback=progress_callback, cancel_event=cancel_event)
 
     PKUSEG_HOME = osp.join(shared.PROGRAM_PATH, 'data/models/pkuseg')
     pkuseg.config.pkuseg_home = PKUSEG_HOME
@@ -72,5 +163,3 @@ def prepare_local_files_forall():
 
     if shared.CACHE_UPDATED:
         shared.dump_cache()
-
-
