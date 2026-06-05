@@ -309,7 +309,7 @@ def zluda_available(device_name):
 
 def enable_zluda_config():
 
-    torch = require_torch()
+    import torch
 
     if hasattr(torch, 'cuda') and torch.cuda.is_available():
         device_name = torch.cuda.get_device_name(0)

@@ -40,18 +40,12 @@ def _spec_from_module(module_spec_or_class) -> ModuleSpec:
     )
 
 
-def _dedupe(seq):
-    out = []
-    for item in seq or []:
-        if item and item not in out:
-            out.append(item)
-    return out
-
-
 def missing_optional_dependencies(module_spec_or_class) -> List[str]:
     spec = _spec_from_module(module_spec_or_class)
     missing = []
-    for dep in _dedupe(spec.optional_dependencies):
+    optional_dependencies = spec.optional_dependencies if spec.optional_dependencies is not None else []
+    optional_dependencies = list(dict.fromkeys(optional_dependencies))
+    for dep in optional_dependencies:
         # Check importability before resolving the lazy class, so failures are clear.
         import_name = IMPORT_NAME_ALIASES.get(dep, dep)
         try:
