@@ -1,4 +1,3 @@
-import time
 import threading
 from typing import Union, List, Callable
 import os.path as osp
@@ -50,7 +49,7 @@ class ModuleThread(QThread):
         self.finished_counter = 0
         self.num_process_pages = 0
         self.imgtrans_proj: ProjImgTrans = None
-        self.stop_requested = False
+        self.pipeline_stop_event = None
         # Shared with download helpers so Stop can cancel preparation cooperatively.
         self.cancel_event = threading.Event()
         self.last_set_success = False
@@ -121,19 +120,16 @@ class ModuleThread(QThread):
             return True
         return False
 
-    def initImgtransPipeline(self, proj: ProjImgTrans):
+    def initImgtransPipeline(self, proj: ProjImgTrans, stop_event: threading.Event = None):
         if self.isRunning():
             self.terminate()
         self.imgtrans_proj = proj
         self.finished_counter = 0
         self.pipeline_pagekey_queue.clear()
+        self.pipeline_stop_event = stop_event
 
-    def requestStop(self):
-        self.stop_requested = True
-
-    def requestCancel(self):
+    def requestCancelModuleInit(self):
         self.cancel_event.set()
-        self.stop_requested = True
 
     def run(self):
         if self.job is not None:
@@ -284,23 +280,23 @@ class TranslateThread(ModuleThread):
     def push_pagekey_queue(self, page_key: str):
         self.pipeline_pagekey_queue.append(page_key)
 
-    def runTranslatePipeline(self, imgtrans_proj: ProjImgTrans):
-        self.initImgtransPipeline(imgtrans_proj)
+    def runTranslatePipeline(self, imgtrans_proj: ProjImgTrans, stop_event: threading.Event):
+        self.initImgtransPipeline(imgtrans_proj, stop_event)
         self.job = self._run_translate_pipeline
         self.start()
 
 
     def _run_translate_pipeline(self):
         delay = self.translator.delay()
+        stop_event = self.pipeline_stop_event or threading.Event()
 
         while not self.pipeline_finished():
-            if self.stop_requested:
+            if stop_event.is_set():
                 self.module_thread_stopped.emit()
-                self.stop_requested = False
                 break
 
             if len(self.pipeline_pagekey_queue) == 0:
-                time.sleep(0.1)
+                stop_event.wait(0.1)
                 continue
             
             page_key = self.pipeline_pagekey_queue.pop(0)
@@ -328,7 +324,7 @@ class TranslateThread(ModuleThread):
             self.progress_changed.emit(self.finished_counter)
 
             if not self.pipeline_finished() and delay > 0:
-                time.sleep(delay)
+                stop_event.wait(delay)
 
 
 class ImgtransThread(QThread):
@@ -359,20 +355,30 @@ class ImgtransThread(QThread):
         self.ocr_thread = ocr_thread
         self.translate_thread = translate_thread
         self.translate_thread.module_thread_stopped.connect(self.on_module_thread_stopped)
+        self.translate_thread.finished.connect(self.on_module_thread_stopped)
         self.inpaint_thread = inpaint_thread
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
-        self.stop_requested = False
+        self.stop_event = threading.Event()
+        self._pipeline_stop_emitted = False
         self.pages_to_process = None  # 需要处理的页面列表（用于继续运行模式）
 
     def on_module_thread_stopped(self):
-        while True:
-            # might freeze UI
-            if self.translate_thread.isRunning() or self.inpaint_thread.isRunning() or self.ocr_thread.isRunning() or self.textdetect_thread.isRunning():
-                time.sleep(0.05)
-                continue
-            break
+        self._emit_pipeline_stopped_if_ready(imgtrans_running=self.isRunning())
 
+    def isStopRequested(self):
+        return self.stop_event.is_set()
+
+    def clearStopRequest(self):
+        self.stop_event.clear()
+        self._pipeline_stop_emitted = False
+
+    def _emit_pipeline_stopped_if_ready(self, imgtrans_running: bool):
+        if not self.isStopRequested() or self._pipeline_stop_emitted:
+            return
+        if imgtrans_running or self.translate_thread.isRunning():
+            return
+        self._pipeline_stop_emitted = True
         self.pipeline_stopped.emit()
 
     @property
@@ -395,7 +401,7 @@ class ImgtransThread(QThread):
         self.imgtrans_proj = imgtrans_proj
         self.pages_to_process = pages_to_process  # 保存需要处理的页面列表
         self.num_pages = len(self.imgtrans_proj.pages)
-        self.stop_requested = False
+        self.clearStopRequest()
         # 创建处理索引到实际页面索引的映射
         self.process_idx_to_page_idx = {}
         self.job = self._imgtrans_pipeline
@@ -403,13 +409,10 @@ class ImgtransThread(QThread):
     
     def requestStop(self):
         """请求停止当前任务"""
-        if self.isRunning():
-            self.stop_requested = True
-        # 同时停止翻译线程
-        if self.translate_thread.isRunning():
-            self.translate_thread.requestStop()
+        self.stop_event.set()
 
     def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
+        self.clearStopRequest()
         self.job = lambda : self._blktrans_pipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask)
         self.start()
 
@@ -478,12 +481,12 @@ class ImgtransThread(QThread):
         else:
             self.parallel_trans = False
         if self.parallel_trans and cfg_module.enable_translate:
-            self.translate_thread.runTranslatePipeline(self.imgtrans_proj)
+            self.translate_thread.runTranslatePipeline(self.imgtrans_proj, self.stop_event)
 
         for imgname in pages_to_iterate:
             
             # 检查是否请求停止
-            if self.stop_requested:
+            if self.isStopRequested():
                 LOGGER.info('Image translation pipeline stopped by user')
                 break
                 
@@ -596,7 +599,7 @@ class ImgtransThread(QThread):
             unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
             for imgname in pages_to_iterate:
                 # 检查是否请求停止
-                if self.stop_requested:
+                if self.isStopRequested():
                     LOGGER.info('Translation stopped by user')
                     break
                     
@@ -606,8 +609,7 @@ class ImgtransThread(QThread):
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_TRANSLATE)
                 self.update_translate_progress.emit(self.translate_counter)
 
-        if self.stop_requested and (not cfg_module.enable_translate or not self.parallel_trans):
-            self.pipeline_stopped.emit()
+        self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
 
     def detect_finished(self) -> bool:
         if self.imgtrans_proj is None:
@@ -862,7 +864,7 @@ class ModuleManager(QObject):
 
     def cancelModulePreparation(self):
         if self._preparing_thread is not None:
-            self._preparing_thread.requestCancel()
+            self._preparing_thread.requestCancelModuleInit()
 
     def on_module_prepare_progress(self, payload: dict):
         # Download callbacks report bytes; imports/model-loads report coarse stages.
@@ -1153,7 +1155,7 @@ class ModuleManager(QObject):
             translator = cfg_module.translator
         if self.translate_thread.isRunning():
             LOGGER.warning('Cancelling a running translation/module preparation thread.')
-            self.translate_thread.requestCancel()
+            self.translate_thread.requestCancelModuleInit()
             return
         self._show_prepare_dialog(self.translate_thread, translator)
         self.translate_thread.setTranslator(translator)
@@ -1167,7 +1169,7 @@ class ModuleManager(QObject):
             inpainter =cfg_module.inpainter
         
         if self.inpaint_thread.isRunning():
-            self.inpaint_thread.requestCancel()
+            self.inpaint_thread.requestCancelModuleInit()
             return
 
         self._show_prepare_dialog(self.inpaint_thread, inpainter)
@@ -1178,7 +1180,7 @@ class ModuleManager(QObject):
             textdetector = cfg_module.textdetector
         if self.textdetect_thread.isRunning():
             LOGGER.warning('Cancelling a running text detection/module preparation thread.')
-            self.textdetect_thread.requestCancel()
+            self.textdetect_thread.requestCancelModuleInit()
             return
         self._show_prepare_dialog(self.textdetect_thread, textdetector)
         self.textdetect_thread.setTextDetector(textdetector)
@@ -1188,7 +1190,7 @@ class ModuleManager(QObject):
             ocr = cfg_module.ocr
         if self.ocr_thread.isRunning():
             LOGGER.warning('Cancelling a running OCR/module preparation thread.')
-            self.ocr_thread.requestCancel()
+            self.ocr_thread.requestCancelModuleInit()
             return
         self._show_prepare_dialog(self.ocr_thread, ocr)
         self.ocr_thread.setOCR(ocr)
