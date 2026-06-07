@@ -141,6 +141,8 @@ class BaseTranslator(BaseModule):
     def translate(self, text: Union[str, List]) -> Union[str, List]:
         if text_is_empty(text):
             return text
+        if not self.all_model_loaded():
+            self.load_model()
 
         is_list = isinstance(text, List)
         concate_text = is_list and self.concate_text and not self.translate_by_textblock

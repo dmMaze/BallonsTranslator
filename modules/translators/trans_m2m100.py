@@ -8,11 +8,13 @@ CT_MODEL_PATH = 'data/models/m2m100-1.2B-ctranslate2'
 class M2M100Translator(BaseTranslator):
 
     concate_text = False
+    _load_model_keys = {'translator', 'tokenizer'}
     params: Dict = {
         'device': DEVICE_SELECTOR()
     }
 
     def _setup_translator(self):
+        self.device = self.params['device']['value']
         self.lang_map['Afrikaans'] = 'af'
         self.lang_map['Albanian'] = 'sq'
         self.lang_map['Amharic'] = 'am'
@@ -113,9 +115,30 @@ class M2M100Translator(BaseTranslator):
         self.lang_map['Yiddish'] = 'yi'
         self.lang_map['Yoruba'] = 'yo'
         self.lang_map['Zulu'] = 'zu'
-        
-        self.translator = ctranslate2.Translator(CT_MODEL_PATH, device=self.params['device']['value'])
-        self.tokenizer = transformers.AutoTokenizer.from_pretrained(CT_MODEL_PATH, clean_up_tokenization_spaces=True)
+        self.translator = None
+        self.tokenizer = None
+        self._load_model()
+
+    def _load_model(self):
+        if self.translator is None:
+            self.translator = ctranslate2.Translator(CT_MODEL_PATH, device=self.device)
+        if self.tokenizer is None:
+            self.tokenizer = transformers.AutoTokenizer.from_pretrained(CT_MODEL_PATH, clean_up_tokenization_spaces=True)
+
+    def moveToDevice(self, device: str, precision: str = None):
+        if self.device == device and self.translator is not None:
+            return
+
+        old_translator = self.translator
+        # CTranslate2 binds a Translator to its initial execution device, so a
+        # device change needs a new runtime object. Keep the tokenizer in memory.
+        new_translator = ctranslate2.Translator(CT_MODEL_PATH, device=device)
+        self.translator = new_translator
+        self.device = device
+        if old_translator is not None:
+            if hasattr(old_translator, 'unload_model'):
+                old_translator.unload_model()
+            del old_translator
 
     def _translate(self, src_list: List[str]) -> List[str]:
         self.tokenizer.src_lang = self.lang_map[self.lang_source]
@@ -131,9 +154,7 @@ class M2M100Translator(BaseTranslator):
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
         if param_key == 'device':
-            if hasattr(self, 'translator'):
-                delattr(self, 'translator')
-            self.translator = ctranslate2.Translator(CT_MODEL_PATH, device=self.params['device']['value'])
+            self.moveToDevice(self.params['device']['value'])
     @property
     def supported_tgt_list(self) -> List[str]:
         return ['Afrikaans', 'Amharic', 'Arabic', 'Asturian', 'Azerbaijani', 'Bashkir', 'Belarusian', 'Bulgarian', 'Bengali', 'Breton', 'Bosnian', 'Catalan', 'Cebuano', 'Czech', 'Welsh', 'Danish', 'German', 'Greeek', 'English', 'Spanish', 'Estonian', 'Persian', 'Fulah', 'Finnish', 'French', 'Western Frisian', 'Irish', 'Gaelic', 'Galician', 'Gujarati', 'Hausa', 'Hebrew', 'Hindi', 'Croatian', 'Haitian', 'Hungarian', 'Armenian', 'Indonesian', 'Igbo', 'Iloko', 'Icelandic', 'Italian', 'Japanese', 'Javanese', 'Georgian', 'Kazakh', 'Central Khmer', 'Kannada', 'Korean', 'Luxembourgish', 'Ganda', 'Lingala', 'Lao', 'Lithuanian', 'Latvian', 'Malagasy', 'Macedonian', 'Malayalam', 'Mongolian', 'Marathi', 'Malay', 'Burmese', 'Nepali', 'Dutch', 'Norwegian', 'Northern Sotho', 'Occitan (post 1500)', 'Oriya', 'Panjabi', 'Polish', 'Pushto', 'Portuguese', 'Romanian', 'Russian', 'Sindhi', 'Sinhala', 'Slovak', 'Slovenian', 'Somali', 'Albanian', 'Serbian', 'Swati', 'Sundanese', 'Swedish', 'Swahili', 'Tamil', 'Thai', 'Tagalog', 'Tswana', 'Turkish', 'Ukrainian', 'Urdu', 'Uzbek', 'Vietnamese', 'Wolof', 'Xhosa', 'Yiddish', 'Yoruba', 'Chinese', 'Zulu']

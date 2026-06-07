@@ -7,6 +7,7 @@ from collections import OrderedDict
 import re
 import importlib
 import importlib.util
+import traceback
 
 from utils.logger import logger as LOGGER
 from utils import shared
@@ -135,6 +136,17 @@ def merge_config_module_params(
     return config_params
 
 
+def _try_unload_nested_model(model):
+    if not hasattr(model, 'unload_model'):
+        return
+    try:
+        model.unload_model(empty_cache=False)
+    except TypeError:
+        # Third-party runtimes such as CTranslate2 expose unload_model(), but
+        # do not accept this project's empty_cache keyword.
+        model.unload_model()
+
+
 def standardize_module_params(params):
     if params is None:
         return
@@ -244,10 +256,9 @@ class BaseModule:
                 if hasattr(self, k):
                     model = getattr(self, k)
                     if model is not None:
-                        if hasattr(model, 'unload_model'):
-                            model.unload_model(empty_cache=False)
-                        del model
+                        _try_unload_nested_model(model)
                         setattr(self, k, None)
+                        del model
                         model_deleted = True
     
         if empty_cache and model_deleted:
@@ -400,18 +411,29 @@ def refresh_torch_device_info(raise_missing: bool = False):
 
 
 def soft_empty_cache():
-    
+    gc.collect()
+
     if _TORCH is not None:
         torch = _TORCH
         if DEFAULT_DEVICE == 'cuda':
+            try:
+                torch.cuda.synchronize()
+            except Exception:
+                LOGGER.debug('Failed to clear CUDA library workspaces.')
+                LOGGER.debug(traceback.format_exc())
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
         elif DEFAULT_DEVICE == 'xpu':
             torch.xpu.empty_cache()
-            # torch.xpu.ipc_collect()
         elif DEFAULT_DEVICE == 'mps':
             torch.mps.empty_cache()
-    gc.collect()
+    try:
+        if os.name == 'posix':
+            import ctypes
+            ctypes.CDLL(None).malloc_trim(0)
+    except Exception:
+        pass
+
 
 
 def DEVICE_SELECTOR(not_supported:list[str]=[]):

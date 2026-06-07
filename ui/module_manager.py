@@ -101,6 +101,7 @@ class ModuleThread(QThread):
                 if self.cancel_event.is_set():
                     raise DownloadCancelled('Module preparation cancelled by user.')
             if old_module is not None:
+                old_module.unload_model(empty_cache=True)
                 del old_module
             self.last_set_success = True
         except DownloadCancelled as e:
@@ -248,6 +249,9 @@ class TranslateThread(ModuleThread):
             cfg_module.translate_source = self.translator.lang_source
             cfg_module.translate_target = self.translator.lang_target
             cfg_module.translator = self.translator.name
+            if old_translator is not None:
+                old_translator.unload_model(empty_cache=True)
+                del old_translator
             self.last_set_success = True
         except DownloadCancelled as e:
             self.translator = old_translator
@@ -666,7 +670,8 @@ def unload_modules(self, module_names):
     for module in module_names:
         module: BaseModule = getattr(self, module)
         if module is not None:
-            model_deleted = model_deleted or module.unload_model()
+            module_deleted = module.unload_model()
+            model_deleted = model_deleted or module_deleted
     if model_deleted:
         soft_empty_cache()
 
@@ -928,7 +933,7 @@ class ModuleManager(QObject):
                 on_failure()
 
     def unload_all_models(self):
-        unload_modules(self, {'textdetector', 'inpainter', 'ocr', 'translator'})
+        unload_modules(self, ('textdetector', 'inpainter', 'ocr', 'translator'))
 
     @property
     def translator(self) -> BaseTranslator:
