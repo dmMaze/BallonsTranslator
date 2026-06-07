@@ -57,3 +57,4 @@ betterproto
 diffusers>=0.37.1
 gguf>=0.10.0
 hf_transfer
+networkx

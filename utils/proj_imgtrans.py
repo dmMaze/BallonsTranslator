@@ -12,7 +12,18 @@ from .io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
 from .textblock import TextBlock, FontFormat
 from .config import pcfg, RunStatus
 from . import shared
-from .exceptions import ImgnameNotInProjectException, ProjectLoadFailureException, ProjectDirNotExistException, ProjectNotSupportedException
+
+class ProjectDirNotExistException(Exception):
+    pass
+
+class ProjectLoadFailureException(Exception):
+    pass
+
+class ProjectNotSupportedException(Exception):
+    pass
+
+class ImgnameNotInProjectException(Exception):
+    pass
 
 
 def get_last_modified_file(file_prefix, exts, ext_fallback=None):

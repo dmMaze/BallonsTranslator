@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import os
 import hashlib
 import logging
 import sys
-import torch
 
 from typing import Tuple
 from typing import Dict
@@ -10,6 +11,8 @@ from typing import Dict
 logger = logging.getLogger(__name__)
 
 try:
+    # Font detection is optional; importing this module must not require torch.
+    import torch
     import torch.nn as nn
     from torchvision import models
     from PIL import Image

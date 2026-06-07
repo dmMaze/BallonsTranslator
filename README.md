@@ -2,7 +2,7 @@
 > **如打算公开分享本工具的机翻结果，且没有有经验的译者进行过完整的翻译或校对，请在显眼位置注明机翻。**
 
 # BallonTranslator
-简体中文 | [English](/README_EN.md) | [pt-BR](doc/README_PT-BR.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md) | [Tiếng Việt](doc/README_VI.md) | [한국어](doc/README_KO.md) | [Español](doc/README_ES.md) | [Français](doc/README_FR.md)
+简体中文 | [English](/README_EN.md)
 
 深度学习辅助漫画翻译工具，支持一键机翻和简单的图像/文本编辑  
 
@@ -224,30 +224,3 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 
 5. 启动程序并设置 OCR 和文本检测 为 Cuda **(图像修复请继续使用 CPU)**
 6. 运行 OCR 并等待 ZLUDA 编译 PTX 文件 **(首次编译大概需要 5-10 分钟，取决于 CPU 性能)**,**下次运行无需编译**
-
-### 原生方案 (ROCm in Windows)
-
-**警告:**
-需要 Python 3.12 和 HIP SDK 6.4 以及 AMD 2026.1.1 驱动，需要重新安装依赖库。
-
-2026年AMD终于在 2026.1.1 驱动下正式支持 ROCm 在 windows系统下工作了。不幸的是AMD官方发布的新的 Pytorch 三件套需要 Python 3.12 版本。
-所以如果想使用原生 AI 加速，需要卸载项目内建的 Python 3.10 并移除 3.10 版本的库。重新安装内嵌 Python 3.12 并重新安装相关依赖库。
-
-**优点:**
-无需额外安装，开箱即用。（并不是）且图像修复工具可以正常使用 CUDA 加速。
-
-**缺点:**
-对显卡限制大，对 Python 版本也有要求。
-
-**安装步骤:**
-
-1. 检查显卡是否在 AMD 显卡驱动 AI 套件支持范围内。
-2. 确保 HIP SDK 为 6.4.x, Python 相关依赖库已经更新为 3.12 版本。
-3. 使用 [launch_win_amd_nightly.bat](launch_win_amd_nightly.bat) 启动程序。
-4. 检查 OCR 和文本检测、图像修复设置是否为 CUDA。
-
-**注意事项**
-launch_win_amd_nightly.bat 为了保证最大兼容性，默认下载并使用的是 Rocm6.4 的 Pytorch 三件套，如果需要 ROCm7，需要手动更新对应版本的 Pytorch。
-并且需要额外安装 ROCm7 自身的三个SDK库。
- 
-</details>

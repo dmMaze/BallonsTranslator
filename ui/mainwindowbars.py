@@ -7,11 +7,12 @@ from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon
 
 from modules.translators import BaseTranslator
 from .custom_widget import Widget, PaintQSlider, SmallComboBox, ConfigClickableLabel
+from .misc import themed_icon_path
 from utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import FramelessMoveResize
 from utils.config import pcfg
-from utils import shared as C
-if C.FLAG_QT6:
+from utils import shared
+if shared.FLAG_QT6:
     from qtpy.QtGui import QAction
 else:
     from qtpy.QtWidgets import QAction
@@ -320,7 +321,7 @@ class TitleBar(Widget):
         self.lang_ac_group = lang_ac_group = QActionGroup(self)
         lang_ac_group.setExclusive(True)
         lang_actions = []
-        for lang, lang_code in C.DISPLAY_LANGUAGE_MAP.items():
+        for lang, lang_code in shared.DISPLAY_LANGUAGE_MAP.items():
             la = QAction(lang, self)
             if lang_code == pcfg.display_lang:
                 la.setChecked(True)
@@ -410,7 +411,7 @@ class TitleBar(Widget):
         self.translate_page_trigger = translatePageAction.triggered
 
         self.iconLabel = QLabel(self)
-        if not C.ON_MACOS:
+        if not shared.ON_MACOS:
             self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
         else:
             self.iconLabel.setFixedWidth(LEFTBAR_WIDTH + 8)
@@ -432,7 +433,7 @@ class TitleBar(Widget):
         hlayout.addStretch()
         hlayout.setContentsMargins(0, 0, 0, 0)
 
-        if not C.ON_MACOS:
+        if not shared.ON_MACOS:
             self.minBtn = QPushButton()
             self.minBtn.setObjectName('minBtn')
             self.minBtn.clicked.connect(self.onMinBtnClicked)
@@ -451,7 +452,7 @@ class TitleBar(Widget):
 
     def eventFilter(self, obj, e):
         if obj == self.mainwindow:
-            if e.type() == QEvent.Type.WindowStateChange and not C.ON_MACOS:
+            if e.type() == QEvent.Type.WindowStateChange and not shared.ON_MACOS:
                 self.maxBtn.setChecked(self.mainwindow.isMaximized())
                 return False
 
@@ -475,11 +476,11 @@ class TitleBar(Widget):
 
     def on_displaylang_triggered(self):
         ac = self.lang_ac_group.checkedAction()
-        self.display_lang_changed.emit(C.DISPLAY_LANGUAGE_MAP[ac.text()])
+        self.display_lang_changed.emit(shared.DISPLAY_LANGUAGE_MAP[ac.text()])
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
 
-        if C.FLAG_QT6:
+        if shared.FLAG_QT6:
             g_pos = event.globalPosition().toPoint()
         else:
             g_pos = event.globalPos()
@@ -498,7 +499,7 @@ class TitleBar(Widget):
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self.mPos is not None:
-            if C.FLAG_QT6:
+            if shared.FLAG_QT6:
                 g_pos = event.globalPosition().toPoint()
             else:
                 g_pos = event.globalPos()
@@ -535,7 +536,8 @@ class SmallConfigPutton(QPushButton):
     pass
 
 
-CFG_ICON  = QIcon('icons/leftbar_config_activate.svg')
+def cfg_icon() -> QIcon:
+    return QIcon(themed_icon_path('leftbar_config_activate.svg'))
 
 
 class SelectionWithConfigWidget(Widget):
@@ -567,7 +569,7 @@ class SelectionWithConfigWidget(Widget):
 
     def enterEvent(self, event: QEvent) -> None:
         if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(CFG_ICON)
+            self.cfg_btn.setIcon(cfg_icon())
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
@@ -619,7 +621,7 @@ class TranslatorSelectionWidget(Widget):
 
     def enterEvent(self, event: QEvent) -> None:
         if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(CFG_ICON)
+            self.cfg_btn.setIcon(cfg_icon())
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
@@ -634,14 +636,24 @@ class TranslatorSelectionWidget(Widget):
         super().blockSignals(block)
     
     def finishSetTranslator(self, translator: BaseTranslator):
+        self.setTranslatorMetadata(
+            translator.name,
+            translator.supported_src_list,
+            translator.supported_tgt_list,
+            translator.lang_source,
+            translator.lang_target,
+        )
+
+    def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
+        # Metadata can come from ModuleSpec before the translator is imported.
         self.blockSignals(True)
         self.src_selector.clear()
         self.tgt_selector.clear()
-        self.src_selector.addItems(translator.supported_src_list)
-        self.tgt_selector.addItems(translator.supported_tgt_list)
-        self.selector.setCurrentText(translator.name)
-        self.src_selector.setCurrentText(translator.lang_source)
-        self.tgt_selector.setCurrentText(translator.lang_target)
+        self.src_selector.addItems(supported_src_list)
+        self.tgt_selector.addItems(supported_tgt_list)
+        self.selector.setCurrentText(name)
+        self.src_selector.setCurrentText(lang_source)
+        self.tgt_selector.setCurrentText(lang_target)
         self.blockSignals(False)
 
 

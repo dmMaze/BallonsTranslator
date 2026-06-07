@@ -25,6 +25,30 @@ shutil.register_unpack_format('7zip', ['.7z'], unpack_7zarchive)
 
 READ_DATA_CHUNK = 128 * 1024
 
+
+class DownloadCancelled(Exception):
+    pass
+
+
+def _cancel_requested(cancel_event=None):
+    # QThread callers pass a threading.Event so downloads can stop cooperatively.
+    return cancel_event is not None and cancel_event.is_set()
+
+
+def _raise_if_cancelled(cancel_event=None):
+    if _cancel_requested(cancel_event):
+        raise DownloadCancelled('Download cancelled by user.')
+
+
+def _notify_progress(progress_callback=None, **payload):
+    if progress_callback is not None:
+        progress_callback(payload)
+
+
+def _partial_path(dst: str) -> str:
+    # Never download directly over an existing valid model file.
+    return dst + "." + uuid.uuid4().hex + ".partial"
+
 def calculate_sha256(filename):
     hash_sha256 = hashlib.sha256()
     blksize = 1024 * 1024
@@ -53,7 +77,7 @@ def sizeof_fmt(size, suffix='B'):
     return f'{size:3.1f} Y{suffix}'
 
 
-def download_file_from_google_drive(file_id, save_path):
+def download_file_from_google_drive(file_id, save_path, progress_callback=None, cancel_event=None):
     """Download files from google drive.
 
     Ref:
@@ -81,7 +105,16 @@ def download_file_from_google_drive(file_id, save_path):
     else:
         file_size = None
 
-    save_response_content(response, save_path, file_size)
+    save_path = os.path.expanduser(save_path)
+    tmp_dst = save_path + "." + uuid.uuid4().hex + ".partial"
+    try:
+        # Only move into place after the complete file was written.
+        save_response_content(response, tmp_dst, file_size, progress_callback=progress_callback, cancel_event=cancel_event)
+        _raise_if_cancelled(cancel_event)
+        shutil.move(tmp_dst, save_path)
+    finally:
+        if os.path.exists(tmp_dst):
+            os.remove(tmp_dst)
 
 
 def get_confirm_token(response):
@@ -91,7 +124,7 @@ def get_confirm_token(response):
     return None
 
 
-def save_response_content(response, destination, file_size=None, chunk_size=32768):
+def save_response_content(response, destination, file_size=None, chunk_size=32768, progress_callback=None, cancel_event=None):
     if file_size is not None:
         pbar = tqdm(total=math.ceil(file_size / chunk_size), unit='chunk')
 
@@ -102,12 +135,20 @@ def save_response_content(response, destination, file_size=None, chunk_size=3276
     with open(destination, 'wb') as f:
         downloaded_size = 0
         for chunk in response.iter_content(chunk_size):
-            downloaded_size += chunk_size
+            _raise_if_cancelled(cancel_event)
+            downloaded_size += len(chunk)
             if pbar is not None:
                 pbar.update(1)
                 pbar.set_description(f'Download {sizeof_fmt(downloaded_size)} / {readable_file_size}')
             if chunk:  # filter out keep-alive new chunks
                 f.write(chunk)
+                _notify_progress(
+                    progress_callback,
+                    event='file_progress',
+                    downloaded=min(downloaded_size, file_size or downloaded_size),
+                    total=file_size,
+                    path=destination,
+                )
         if pbar is not None:
             pbar.close()
 
@@ -115,7 +156,9 @@ def download_url_to_file(
     url: str,
     dst: str,
     hash_prefix: Optional[str] = None,
-    progress: bool = True
+    progress: bool = True,
+    progress_callback=None,
+    cancel_event=None,
 ) -> None:
     r"""Download object at the given URL to a local path.
 
@@ -136,39 +179,44 @@ def download_url_to_file(
         ... )
 
     """
+    _raise_if_cancelled(cancel_event)
     original_ctx = ssl._create_default_https_context
     ssl._create_default_https_context = ssl._create_unverified_context  # https://stackoverflow.com/questions/50236117/scraping-ssl-certificate-verify-failed-error-for-http-en-wikipedia-org
-
-    file_size = None
-    req = Request(url, headers={"User-Agent": "torch.hub"})
-    u = urlopen(req)
-    meta = u.info()
-    if hasattr(meta, "getheaders"):
-        content_length = meta.getheaders("Content-Length")
-    else:
-        content_length = meta.get_all("Content-Length")
-    if content_length is not None and len(content_length) > 0:
-        file_size = int(content_length[0])
-
-    # We deliberately save it in a temp file and move it after
-    # download is complete. This prevents a local working checkpoint
-    # being overridden by a broken download.
-    # We deliberately do not use NamedTemporaryFile to avoid restrictive
-    # file permissions being applied to the downloaded file.
-    dst = os.path.expanduser(dst)
-    for _ in range(tempfile.TMP_MAX):
-        tmp_dst = dst + "." + uuid.uuid4().hex + ".partial"
-        try:
-            f = open(tmp_dst, "w+b")
-        except FileExistsError:
-            continue
-        break
-    else:
-        raise FileExistsError(errno.EEXIST, "No usable temporary file name found")
-
+    u = None
+    f = None
+    tmp_dst = None
     try:
+        file_size = None
+        req = Request(url, headers={"User-Agent": "torch.hub"})
+        u = urlopen(req)
+        meta = u.info()
+        if hasattr(meta, "getheaders"):
+            content_length = meta.getheaders("Content-Length")
+        else:
+            content_length = meta.get_all("Content-Length")
+        if content_length is not None and len(content_length) > 0:
+            file_size = int(content_length[0])
+
+        # We deliberately save it in a temp file and move it after
+        # download is complete. This prevents a local working checkpoint
+        # being overridden by a broken download.
+        # We deliberately do not use NamedTemporaryFile to avoid restrictive
+        # file permissions being applied to the downloaded file.
+        dst = os.path.expanduser(dst)
+        for _ in range(tempfile.TMP_MAX):
+            tmp_dst = _partial_path(dst)
+            try:
+                f = open(tmp_dst, "w+b")
+            except FileExistsError:
+                continue
+            break
+        else:
+            raise FileExistsError(errno.EEXIST, "No usable temporary file name found")
+
+        _notify_progress(progress_callback, event='file_start', path=dst, url=url, total=file_size, downloaded=0)
         if hash_prefix is not None:
             sha256 = hashlib.sha256()
+        downloaded_size = 0
         with tqdm(
             total=file_size,
             disable=not progress,
@@ -177,27 +225,48 @@ def download_url_to_file(
             unit_divisor=1024,
         ) as pbar:
             while True:
+                _raise_if_cancelled(cancel_event)
                 buffer = u.read(READ_DATA_CHUNK)
                 if len(buffer) == 0:
                     break
                 f.write(buffer)  # type: ignore[possibly-undefined]
                 if hash_prefix is not None:
                     sha256.update(buffer)  # type: ignore[possibly-undefined]
+                downloaded_size += len(buffer)
                 pbar.update(len(buffer))
+                _notify_progress(
+                    progress_callback,
+                    event='file_progress',
+                    path=dst,
+                    url=url,
+                    downloaded=downloaded_size,
+                    total=file_size,
+                )
 
         f.close()
-        ssl._create_default_https_context = original_ctx
         if hash_prefix is not None:
             digest = sha256.hexdigest()  # type: ignore[possibly-undefined]
             if digest[: len(hash_prefix)] != hash_prefix:
                 raise RuntimeError(
                     f'invalid hash value (expected "{hash_prefix}", got "{digest}")'
                 )
+        _raise_if_cancelled(cancel_event)
         shutil.move(f.name, dst)
+        _notify_progress(progress_callback, event='file_done', path=dst, url=url, downloaded=file_size, total=file_size)
     finally:
-        f.close()
-        if os.path.exists(f.name):
-            os.remove(f.name)
+        ssl._create_default_https_context = original_ctx
+        if u is not None:
+            try:
+                u.close()
+            except Exception:
+                pass
+        if f is not None:
+            try:
+                f.close()
+            except Exception:
+                pass
+            if os.path.exists(f.name):
+                os.remove(f.name)
 
 
 def check_local_file(local_file: str, sha256_precal: str = None, cache_hash: bool = False):
@@ -250,11 +319,14 @@ def try_download_files(url: str,
                         concatenate_url_filename: int = 0,
                         cache_hash: bool = False,
                         download_method: str = '',
-                        gdrive_file_id: str = None):
-    
+                        gdrive_file_id: str = None,
+                        progress_callback=None,
+                        cancel_event=None):
+    # Existing valid files are left untouched; invalid/missing files are retried.
     all_successful = True
     
     for file, savep, sha256_precal in zip(files, save_files, sha256_pre_calculated):
+        _raise_if_cancelled(cancel_event)
         save_dir = osp.dirname(savep)
         if not osp.exists(save_dir):
             os.makedirs(save_dir)
@@ -274,18 +346,22 @@ def try_download_files(url: str,
             else:
                 download_url = url
 
+            _notify_progress(progress_callback, event='file_check', file=file, path=savep, url=download_url)
             if gdrive_file_id is not None:
-                download_file_from_google_drive(gdrive_file_id, savep)
+                download_file_from_google_drive(gdrive_file_id, savep, progress_callback=progress_callback, cancel_event=cancel_event)
             else:
                 LOGGER.info(f'downloading {savep} from {download_url} ...')
-                download_url_to_file(download_url, savep)
+                download_url_to_file(download_url, savep, progress_callback=progress_callback, cancel_event=cancel_event)
             file_exists, valid_hash, sha256_calculated = check_local_file(savep, sha256_precal, cache_hash=cache_hash)
             if not file_exists:
                 raise Exception(f'Some how the downloaded {savep} doesnt exists.')
             elif not valid_hash:
                 raise Exception(f'Mismatch between newly downloaded {savep} and pre-calculated hash: "{sha256_calculated}" <-> "{sha256_precal.lower()}"')
 
-        except:
+        except DownloadCancelled:
+            LOGGER.info(f'Download cancelled while downloading {file} from {download_url}')
+            raise
+        except Exception:
             err_msg = traceback.format_exc()
             all_successful = False
             LOGGER.error(err_msg)
@@ -303,7 +379,9 @@ def download_and_check_files(url: str,
                         archive_sha256_pre_calculated: Union[str, List] = None,
                         save_dir: str = None,
                         download_method: str = 'torch_hub',
-                        gdrive_file_id: str = None):
+                        gdrive_file_id: str = None,
+                        progress_callback=None,
+                        cancel_event=None):
         
     def _wrap_up_checkinputs(files: Union[str, List], save_files: Union[str, List] = None, sha256_pre_calculated: Union[str, List] = None, save_dir: str = None):
         '''
@@ -342,9 +420,21 @@ def download_and_check_files(url: str,
     files, save_files, sha256_pre_calculated = _wrap_up_checkinputs(files, save_files, sha256_pre_calculated, save_dir)
 
     if archived_files is None:
-        return try_download_files(url, files, save_files, sha256_pre_calculated, concatenate_url_filename, cache_hash=True, download_method=download_method, gdrive_file_id=gdrive_file_id)
+        return try_download_files(
+            url,
+            files,
+            save_files,
+            sha256_pre_calculated,
+            concatenate_url_filename,
+            cache_hash=True,
+            download_method=download_method,
+            gdrive_file_id=gdrive_file_id,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+        )
 
     # handle archived
+    _raise_if_cancelled(cancel_event)
     if _all_valid(save_files, sha256_pre_calculated):
         return [], None
     
@@ -354,36 +444,73 @@ def download_and_check_files(url: str,
     # download archive files
     tmp_downloaded_archives = [osp.join(shared.cache_dir, archive_name) for archive_name in archived_files]
     _, _, archive_sha256_pre_calculated = _wrap_up_checkinputs(archived_files, tmp_downloaded_archives, archive_sha256_pre_calculated)
-    archive_downloaded = try_download_files(url, archived_files, tmp_downloaded_archives, archive_sha256_pre_calculated, concatenate_url_filename, cache_hash=False, download_method=download_method, gdrive_file_id=gdrive_file_id)
+    archive_downloaded = try_download_files(
+        url,
+        archived_files,
+        tmp_downloaded_archives,
+        archive_sha256_pre_calculated,
+        concatenate_url_filename,
+        cache_hash=False,
+        download_method=download_method,
+        gdrive_file_id=gdrive_file_id,
+        progress_callback=progress_callback,
+        cancel_event=cancel_event,
+    )
     if not archive_downloaded:
         return False
     
     # extract archived
+    _raise_if_cancelled(cancel_event)
     archivep = tmp_downloaded_archives[0] # todo: support multi-volume
     extract_dir = osp.join(shared.cache_dir, 'tmp_extract')
+    if osp.exists(extract_dir):
+        shutil.rmtree(extract_dir)
     os.makedirs(extract_dir, exist_ok=True)
     LOGGER.info(f'Extracting {archivep} ...')
-    shutil.unpack_archive(archivep, extract_dir)
+    _notify_progress(progress_callback, event='archive_extract', path=archivep, total=None, downloaded=None)
+    try:
+        shutil.unpack_archive(archivep, extract_dir)
+    except Exception:
+        if osp.exists(extract_dir):
+            shutil.rmtree(extract_dir)
+        raise
 
     all_valid = True
-    for file, savep, sha256_precal in zip(files, save_files, sha256_pre_calculated):
-        unarchived = osp.join(extract_dir, file)
-        save_dir = osp.dirname(savep)
-        if not osp.exists(save_dir):
-            os.makedirs(save_dir)
-        shutil.move(unarchived, savep)
-        file_exists, valid_hash, sha256_calculated = check_local_file(savep, sha256_precal, cache_hash=True)
-        if not file_exists:
-            LOGGER.error(f'The unarchived file {savep} doesnt exists.')
-            all_valid = False
-        elif not valid_hash:
-            LOGGER.error(f'Mismatch between the unarchived {savep} and pre-calculated hash: "{sha256_calculated}" <-> "{sha256_precal.lower()}"')
-            all_valid = False
+    try:
+        for file, savep, sha256_precal in zip(files, save_files, sha256_pre_calculated):
+            _raise_if_cancelled(cancel_event)
+            file_exists, valid_hash, _ = check_local_file(savep, sha256_precal, cache_hash=True)
+            if file_exists and valid_hash:
+                continue
+            unarchived = osp.join(extract_dir, file)
+            save_dir = osp.dirname(savep)
+            if not osp.exists(save_dir):
+                os.makedirs(save_dir)
+            tmp_savep = _partial_path(savep)
+            _notify_progress(progress_callback, event='archive_move', path=savep, file=file)
+            try:
+                # Extracted files are also staged before replacing the target.
+                shutil.move(unarchived, tmp_savep)
+                os.replace(tmp_savep, savep)
+            finally:
+                if osp.exists(tmp_savep):
+                    os.remove(tmp_savep)
+            file_exists, valid_hash, sha256_calculated = check_local_file(savep, sha256_precal, cache_hash=True)
+            if not file_exists:
+                LOGGER.error(f'The unarchived file {savep} doesnt exists.')
+                all_valid = False
+            elif not valid_hash:
+                LOGGER.error(f'Mismatch between the unarchived {savep} and pre-calculated hash: "{sha256_calculated}" <-> "{sha256_precal.lower()}"')
+                all_valid = False
+    except DownloadCancelled:
+        raise
+    finally:
+        shutil.rmtree(extract_dir)
 
     if all_valid:
         # clean archive files
-        shutil.rmtree(extract_dir)
         for p in tmp_downloaded_archives:
-            os.remove(p)
+            if osp.exists(p):
+                os.remove(p)
 
     return all_valid

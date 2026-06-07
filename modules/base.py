@@ -6,6 +6,8 @@ from copy import deepcopy
 from collections import OrderedDict
 import re
 import importlib
+import importlib.util
+import traceback
 
 from utils.logger import logger as LOGGER
 from utils import shared
@@ -97,14 +99,52 @@ def patch_module_params(cfg_param, module_params, module_name: str = ''):
     return cfg_param
 
 
-def merge_config_module_params(config_params: Dict, module_keys: List, get_module: Callable) -> Dict:
+def refresh_runtime_device_defaults(module_params: Dict):
+    if module_params is None:
+        return
+    device_param = module_params.get('device')
+    if not isinstance(device_param, dict) or device_param.get('type') != 'selector':
+        return
+    not_supported = device_param.get('__device_not_supported', [])
+    # Fresh config generation is allowed to probe torch so CUDA can be the initial default.
+    selector = DEVICE_SELECTOR(not_supported=not_supported)
+    device_param['options'] = selector['options']
+    device_param['value'] = selector['value']
+
+
+def merge_config_module_params(
+    config_params: Dict,
+    module_keys: List,
+    get_module: Callable,
+    resolve_runtime_device_defaults: bool = False,
+) -> Dict:
     for module_key in module_keys:
-        module_params = get_module(module_key).params
+        module = get_module(module_key)
+        # module may be a ModuleSpec, so config panels can load without imports.
+        if hasattr(module, 'params_copy'):
+            module_params = module.params_copy()
+        else:
+            module_params = deepcopy(getattr(module, 'params', None))
+        if resolve_runtime_device_defaults:
+            refresh_runtime_device_defaults(module_params)
         if module_key not in config_params or config_params[module_key] is None:
             config_params[module_key] = module_params
+        elif module_params is None:
+            continue
         else:
             patch_module_params(config_params[module_key], module_params, module_key)
     return config_params
+
+
+def _try_unload_nested_model(model):
+    if not hasattr(model, 'unload_model'):
+        return
+    try:
+        model.unload_model(empty_cache=False)
+    except TypeError:
+        # Third-party runtimes such as CTranslate2 expose unload_model(), but
+        # do not accept this project's empty_cache keyword.
+        model.unload_model()
 
 
 def standardize_module_params(params):
@@ -216,10 +256,9 @@ class BaseModule:
                 if hasattr(self, k):
                     model = getattr(self, k)
                     if model is not None:
-                        if hasattr(model, 'unload_model'):
-                            model.unload_model(empty_cache=False)
-                        del model
+                        _try_unload_nested_model(model)
                         setattr(self, k, None)
+                        del model
                         model_deleted = True
     
         if empty_cache and model_deleted:
@@ -230,8 +269,10 @@ class BaseModule:
     def load_model(self):
         # TODO: check and download files & inform UIs
         aquire_model_loading_lock()
-        self._load_model()
-        release_model_loading_lock()
+        try:
+            self._load_model()
+        finally:
+            release_model_loading_lock()
         return
 
     def _load_model(self):
@@ -256,72 +297,169 @@ class BaseModule:
         return None
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-import torch
 
 DEFAULT_DEVICE = 'cpu'
 AVAILABLE_DEVICES = ['cpu']
-if hasattr(torch, 'cuda') and torch.cuda.is_available():
-    DEFAULT_DEVICE = 'cuda'
-    AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
-if hasattr(torch, 'xpu')  and torch.xpu.is_available():
-    DEFAULT_DEVICE = 'xpu' if torch.xpu.is_available() else 'cpu'
-    AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
-if hasattr(torch, 'backends') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-    DEFAULT_DEVICE = 'mps'
-    AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
-
-try: 
-    import torch_directml
-    if hasattr(torch, 'privateuseone') and torch_directml.device_count() > 0:
-        torch.dml = torch_directml
-        DEFAULT_DEVICE = f'privateuseone:{torch.dml.default_device()}'
-        AVAILABLE_DEVICES += [f"privateuseone:{d}" for d in range(torch.dml.device_count())]
-except:
-    # directml is not supported
-    pass
 BF16_SUPPORTED = False
-if DEFAULT_DEVICE == 'cuda' and torch.cuda.is_bf16_supported() or DEFAULT_DEVICE == 'xpu' and torch.xpu.is_bf16_supported():
-    BF16_SUPPORTED = True
-if DEFAULT_DEVICE == 'mps':
-    BF16_SUPPORTED = True
+# Torch stays optional for UI startup; selected modules call require_torch().
+_TORCH = None
+_TORCH_CHECKED = False
+_TORCH_DEVICE_INFO_CHECKED = False
 
-def is_nvidia():
-    if DEFAULT_DEVICE == 'cuda':
-        if torch.version.cuda:
-            return True
-    return False
 
-def is_intel():
-    if DEFAULT_DEVICE == 'xpu':
-        if torch.version.xpu:
-            return True
-    return False
+def torch_available() -> bool:
+    try:
+        return importlib.util.find_spec('torch') is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
+
+
+def zluda_available(device_name):
+    return "[ZLUDA]" in device_name
+
+
+def enable_zluda_config():
+
+    import torch
+
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        device_name = torch.cuda.get_device_name(0)
+        print('Device name: ', device_name)
+        print('Cuda is available: ', torch.cuda.is_available())
+        print('Cuda version: ', torch.version.cuda)
+        print('ZLUDA is available: ', zluda_available(device_name))
+
+        if zluda_available(device_name):
+            torch.backends.cudnn.enabled = False
+            cuda_attr = torch.backends.cuda
+            if hasattr(cuda_attr, 'enable_flash_sdp'):
+                torch.backends.cuda.enable_flash_sdp(False)
+                print('Cuda enable flash sdp: ', False)
+            if hasattr(cuda_attr, 'enable_math_sdp'):
+                torch.backends.cuda.enable_math_sdp(True)
+                print('Cuda enable math sdp: ', True)
+            if hasattr(cuda_attr, 'enable_mem_efficient_sdp'):
+                torch.backends.cuda.enable_mem_efficient_sdp(False)
+                print('Cuda enable mem efficient sdp: ', False)
+            if hasattr(cuda_attr, 'enable_cudnn_sdp'):
+                torch.backends.cuda.enable_cudnn_sdp(False)
+                print('Cuda enable cudnn sdp: ', False)
+
+
+def require_torch():
+    global _TORCH, _TORCH_CHECKED
+    if _TORCH is not None:
+        return _TORCH
+    try:
+        import torch
+        enable_zluda_config()
+    except ModuleNotFoundError as e:
+        _TORCH_CHECKED = True
+        raise ModuleNotFoundError(
+            'PyTorch is required by the selected module but is not installed. '
+            'Install torch/torchvision or select a module that does not require PyTorch.'
+        ) from e
+    _TORCH = torch
+    _TORCH_CHECKED = True
+    return _TORCH
+
+
+def refresh_torch_device_info(raise_missing: bool = False):
+    global DEFAULT_DEVICE, AVAILABLE_DEVICES, BF16_SUPPORTED, _TORCH_DEVICE_INFO_CHECKED
+    if _TORCH_DEVICE_INFO_CHECKED:
+        return
+    # Device probing must not import torch during startup unless requested.
+    if not raise_missing and not torch_available():
+        _TORCH_DEVICE_INFO_CHECKED = True
+        return
+
+    try:
+        torch = require_torch()
+    except ModuleNotFoundError:
+        if raise_missing:
+            raise
+        _TORCH_DEVICE_INFO_CHECKED = True
+        return
+
+    DEFAULT_DEVICE = 'cpu'
+    AVAILABLE_DEVICES = ['cpu']
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        DEFAULT_DEVICE = 'cuda'
+        AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
+    if hasattr(torch, 'xpu') and torch.xpu.is_available():
+        DEFAULT_DEVICE = 'xpu'
+        AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
+    if hasattr(torch, 'backends') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        DEFAULT_DEVICE = 'mps'
+        AVAILABLE_DEVICES.append(DEFAULT_DEVICE)
+
+    try:
+        import torch_directml
+        if hasattr(torch, 'privateuseone') and torch_directml.device_count() > 0:
+            torch.dml = torch_directml
+            DEFAULT_DEVICE = f'privateuseone:{torch.dml.default_device()}'
+            AVAILABLE_DEVICES += [f"privateuseone:{d}" for d in range(torch.dml.device_count())]
+    except Exception:
+        pass
+
+    BF16_SUPPORTED = False
+    if DEFAULT_DEVICE == 'cuda' and torch.cuda.is_bf16_supported() or DEFAULT_DEVICE == 'xpu' and torch.xpu.is_bf16_supported():
+        BF16_SUPPORTED = True
+    if DEFAULT_DEVICE == 'mps':
+        BF16_SUPPORTED = True
+    _TORCH_DEVICE_INFO_CHECKED = True
+
 
 def soft_empty_cache():
     gc.collect()
-    if DEFAULT_DEVICE == 'cuda':
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-    elif DEFAULT_DEVICE == 'xpu':
-       torch.xpu.empty_cache()
-       # torch.xpu.ipc_collect()
-    elif DEFAULT_DEVICE == 'mps':
-        torch.mps.empty_cache()
+
+    if _TORCH is not None:
+        torch = _TORCH
+        if DEFAULT_DEVICE == 'cuda':
+            try:
+                torch.cuda.synchronize()
+            except Exception:
+                LOGGER.debug('Failed to clear CUDA library workspaces.')
+                LOGGER.debug(traceback.format_exc())
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        elif DEFAULT_DEVICE == 'xpu':
+            torch.xpu.empty_cache()
+        elif DEFAULT_DEVICE == 'mps':
+            torch.mps.empty_cache()
+    try:
+        if os.name == 'posix':
+            import ctypes
+            ctypes.CDLL(None).malloc_trim(0)
+    except Exception:
+        pass
 
 
-def DEVICE_SELECTOR(not_supported:list[str]=[]): return deepcopy(
-    {
-        'type': 'selector',
-        'options': [opt for opt in AVAILABLE_DEVICES if all(device not in opt for device in not_supported)],
-        'value': DEFAULT_DEVICE if not any(DEFAULT_DEVICE in device for device in not_supported) else 'cpu'
+
+def DEVICE_SELECTOR(not_supported:list[str]=[]):
+    refresh_torch_device_info()
+    return deepcopy(
+        {
+            'type': 'selector',
+            'options': [opt for opt in AVAILABLE_DEVICES if all(device not in opt for device in not_supported)],
+            'value': DEFAULT_DEVICE if not any(DEFAULT_DEVICE in device for device in not_supported) else 'cpu'
+        }
+    )
+
+
+class _TorchDTypeMap:
+    _names = {
+        'fp32': 'float32',
+        'fp16': 'float16',
+        'bf16': 'bfloat16',
     }
-)
 
-TORCH_DTYPE_MAP = {
-    'fp32': torch.float32,
-    'fp16': torch.float16,
-    'bf16': torch.bfloat16,
-}
+    def __getitem__(self, key):
+        torch = require_torch()
+        return getattr(torch, self._names[key])
+
+
+TORCH_DTYPE_MAP = _TorchDTypeMap()
 
 MODULE_SCRIPTS = {
     'translator': {'module_dir': 'modules/translators', 'module_pattern': r'trans_(.*?).py'},
@@ -330,7 +468,8 @@ MODULE_SCRIPTS = {
     'ocr': {'module_dir': 'modules/ocr', 'module_pattern': r'ocr_(.*?).py'},
 }
     
-def init_module_registries(target_modules=None):
+def import_module_registries(target_modules=None):
+    # Eager import path kept for explicit compatibility/debug use only.
     def _load_module(module_dir: str, module_pattern: str):
         modules = os.listdir(module_dir)
         pattern = re.compile(module_pattern)
@@ -354,18 +493,7 @@ def init_module_registries(target_modules=None):
         _load_module(**MODULE_SCRIPTS[k])
 
 
-def init_textdetector_registries():
-    init_module_registries('textdetector')
-
-
-def init_inpainter_registries():
-    init_module_registries('inpainter')
-
-
-def init_ocr_registries():
-    init_module_registries('ocr')
-
-
-def init_translator_registries():
-    init_module_registries('translator')
-
+def init_module_registries(target_modules=None):
+    # Startup registers lightweight specs; real module imports happen on selection.
+    from modules.lazy_registry import init_lazy_module_registries
+    init_lazy_module_registries(target_modules)

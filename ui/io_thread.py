@@ -189,7 +189,7 @@ class MergeThread(ThreadBase):
         self.img_list = []
         self.config = None
         self.stop_requested = False
-        self.progress_bar = ProgressMessageBox('区域合并: ')
+        self.progress_bar = ProgressMessageBox('区域合并: ', show_stop_btn=True)
     
     def runMerge(self, json_path: str, img_list: list, config: dict):
         """启动合并任务"""

@@ -3,7 +3,7 @@ from qtpy.QtCore import  Qt, QPropertyAnimation, QRect, QRectF, Signal, QPoint, 
 from qtpy.QtGui import QFontMetrics, QMouseEvent, QPainter, QFontMetrics, QColor
 
 from .helper import isDarkTheme, themeColor
-from utils import shared as C
+from utils import shared
 
 
 def slider_subcontrol_rect(r: QRect, widget: QWidget):
@@ -170,7 +170,7 @@ class Slider(QSlider):
             value = self.value()
             value_str = str(value)
                 
-            painter.setPen(QColor(*C.SLIDERHANDLE_COLOR,255))
+            painter.setPen(QColor(*shared.SLIDERHANDLE_COLOR,255))
             font = painter.font()
             font.setPointSizeF(8)
             fm = QFontMetrics(font)

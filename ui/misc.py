@@ -5,7 +5,8 @@ import os.path as osp
 from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
 from qtpy.QtCore import Qt, QPointF
 
-from utils import shared as C
+from utils.config import pcfg
+from utils import shared
 from utils.structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
 
 
@@ -153,27 +154,8 @@ def doc_replace_no_shift(doc: QTextDocument, span_list: List, target: str):
 def hex2rgb(h: str):  # rgb order (PIL)
     return tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
 
-def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
-    if reverse_icon:
-        dark2light = True if theme == 'eva-light' else False
-        reverse_icon_color(dark2light)
-    with open(C.STYLESHEET_PATH, "r", encoding='utf-8') as f:
-        stylesheet = f.read()
-    with open(C.THEME_PATH, 'r', encoding='utf8') as f:
-        theme_dict: Dict = json.loads(f.read())
-    if not theme or theme not in theme_dict:
-        tgt_theme: Dict = theme_dict[list(theme_dict.keys())[0]]
-    else:
-        tgt_theme: Dict = theme_dict[theme]
-
-    C.FOREGROUND_FONTCOLOR = hex2rgb(tgt_theme['@qwidgetForegroundColor'])
-    C.SLIDERHANDLE_COLOR = hex2rgb(tgt_theme['@sliderHandleColor'])
-    for key, val in tgt_theme.items():
-        stylesheet = stylesheet.replace(key, val)
-    return stylesheet
-
-
 ICON_DIR = 'icons'
+THEMED_ICON_CACHE_DIR = osp.join(shared.cache_dir, 'icons')
 
 LIGHTFILL_ACTIVE = "fill=\"#697187\""
 LIGHTFILL = "fill=\"#b3b6bf\""
@@ -183,6 +165,86 @@ DARKFILL = "fill=\"#697186\""
 ICONREVERSE_DICT_LIGHT2DARK = {LIGHTFILL_ACTIVE: DARKFILL_ACTIVE, LIGHTFILL: DARKFILL}
 ICONREVERSE_DICT_DARK2LIGHT = {DARKFILL_ACTIVE: LIGHTFILL_ACTIVE, DARKFILL: LIGHTFILL}
 ICON_LIST = []
+THEMED_ICON_LIST = []
+THEMED_ICON_READY = set()
+STYLESHEET_SVG_ICON_PATTERN = re.compile(r'url\((["\']?)icons/([^)"\']+\.svg)\1\)')
+
+def _default_theme() -> str:
+    return 'eva-dark' if pcfg.darkmode else 'eva-light'
+
+def _resolve_theme(theme: str = None) -> str:
+    return theme or _default_theme()
+
+def _themed_icon_cache_dir(theme: str) -> str:
+    return osp.join(THEMED_ICON_CACHE_DIR, theme)
+
+def _list_svg_icons() -> List[str]:
+    global THEMED_ICON_LIST
+    if not THEMED_ICON_LIST:
+        icon_dir = osp.join(shared.PROGRAM_PATH, ICON_DIR)
+        for filename in os.listdir(icon_dir):
+            file_suffix = Path(filename).suffix
+            if file_suffix.lower() == '.svg':
+                THEMED_ICON_LIST.append(filename)
+    return THEMED_ICON_LIST
+
+def ensure_themed_icons(theme: str):
+    theme = _resolve_theme(theme)
+    if theme in THEMED_ICON_READY:
+        return
+
+    cache_dir = _themed_icon_cache_dir(theme)
+    os.makedirs(cache_dir, exist_ok=True)
+
+    if theme == 'eva-dark':
+        pattern = re.compile(re.escape(LIGHTFILL) + '|' + re.escape(LIGHTFILL_ACTIVE))
+        rep_dict = ICONREVERSE_DICT_LIGHT2DARK
+    else:
+        pattern = re.compile(re.escape(DARKFILL) + '|' + re.escape(DARKFILL_ACTIVE))
+        rep_dict = ICONREVERSE_DICT_DARK2LIGHT
+
+    icon_dir = osp.join(shared.PROGRAM_PATH, ICON_DIR)
+    for filename in _list_svg_icons():
+        src_path = osp.join(icon_dir, filename)
+        cache_path = osp.join(cache_dir, filename)
+        with open(src_path, "r", encoding="utf-8") as f:
+            svg_content = pattern.sub(lambda m: rep_dict[m.group()], f.read())
+        if osp.exists(cache_path):
+            with open(cache_path, "r", encoding="utf-8") as f:
+                if f.read() == svg_content:
+                    continue
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(svg_content)
+    THEMED_ICON_READY.add(theme)
+
+def themed_icon_path(filename: str, theme: str = None) -> str:
+    theme = _resolve_theme(theme)
+    ensure_themed_icons(theme)
+    return osp.join(_themed_icon_cache_dir(theme), filename)
+
+def themed_icon_url(filename: str, theme: str = None) -> str:
+    return '"' + Path(themed_icon_path(filename, theme)).as_posix().replace('"', '\\"') + '"'
+
+def _replace_stylesheet_icon_url(matched, theme: str) -> str:
+    return f'url({themed_icon_url(matched.group(2), theme)})'
+
+def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
+    with open(shared.STYLESHEET_PATH, "r", encoding='utf-8') as f:
+        stylesheet = f.read()
+    with open(shared.THEME_PATH, 'r', encoding='utf8') as f:
+        theme_dict: Dict = json.loads(f.read())
+    if not theme or theme not in theme_dict:
+        theme = list(theme_dict.keys())[0]
+    tgt_theme: Dict = theme_dict[theme]
+
+    ensure_themed_icons(theme)
+    stylesheet = STYLESHEET_SVG_ICON_PATTERN.sub(lambda m: _replace_stylesheet_icon_url(m, theme), stylesheet)
+
+    shared.FOREGROUND_FONTCOLOR = hex2rgb(tgt_theme['@qwidgetForegroundColor'])
+    shared.SLIDERHANDLE_COLOR = hex2rgb(tgt_theme['@sliderHandleColor'])
+    for key, val in tgt_theme.items():
+        stylesheet = stylesheet.replace(key, val)
+    return stylesheet
 
 def reverse_icon_color(dark2light: bool = False):
     global ICON_LIST

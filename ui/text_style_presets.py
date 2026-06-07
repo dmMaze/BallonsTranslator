@@ -9,6 +9,7 @@ from utils.fontformat import FontFormat
 from utils.config import save_text_styles, text_styles
 from utils import config as C
 from .custom_widget import PanelArea, Widget, FlowLayout
+from .misc import themed_icon_url
 
 
 class ArrowLeftButton(QPushButton):
@@ -232,7 +233,7 @@ class TextStyleLabel(Widget):
     def enterEvent(self, event) -> None:
         self.setHoverEffect(True)
         self.leftstack.setCurrentIndex(1)
-        self.delete_btn.setStyleSheet("image: url(icons/titlebar_close.svg); border: none")
+        self.delete_btn.setStyleSheet(f"image: url({themed_icon_url('titlebar_close.svg')}); border: none")
         return super().enterEvent(event)
     
     def leaveEvent(self, event) -> None:

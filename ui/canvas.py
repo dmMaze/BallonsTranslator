@@ -17,7 +17,7 @@ from .texteditshapecontrol import TextBlkShapeControl
 from .custom_widget import ScrollBar, FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
-from utils import shared as C
+from utils import shared
 from utils.config import pcfg
 from utils.proj_imgtrans import ProjImgTrans
 
@@ -214,7 +214,7 @@ class Canvas(QGraphicsScene):
         self.gv.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.context_menu_requested.connect(self.on_create_contextmenu)
         
-        if not C.FLAG_QT6:
+        if not shared.FLAG_QT6:
             # mitigate https://bugreports.qt.io/browse/QTBUG-93417
             # produce blurred result, saving imgs remain unaffected
             self.gv.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -286,7 +286,7 @@ class Canvas(QGraphicsScene):
         self.drop_folder: str = None
         self.block_selection_signal = False
         
-        im_rect = QRectF(0, 0, C.SCREEN_W, C.SCREEN_H)
+        im_rect = QRectF(0, 0, shared.SCREEN_W, shared.SCREEN_H)
         self.baseLayer.setRect(im_rect)
 
         self.textlayer_trans_slider: QSlider = None
@@ -582,7 +582,7 @@ class Canvas(QGraphicsScene):
             self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, event.scenePos()).normalized())
             sel_path = QPainterPath(self.rubber_band_origin)
             sel_path.addRect(self.rubber_band.geometry())
-            if C.FLAG_QT6:
+            if shared.FLAG_QT6:
                 self.setSelectionArea(sel_path, deviceTransform=self.gv.viewportTransform())
             else:
                 self.setSelectionArea(sel_path, Qt.ItemSelectionMode.IntersectsItemBoundingRect, self.gv.viewportTransform())

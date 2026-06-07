@@ -1,9 +1,10 @@
 from qtpy.QtWidgets import QPushButton, QHBoxLayout, QLabel, QGroupBox, QScrollArea, QVBoxLayout, QSizePolicy
-from qtpy.QtCore import  Qt, Signal
+from qtpy.QtCore import  Qt, Signal, QEvent
 from qtpy.QtGui import QFontMetrics, QFontMetrics, QIcon, QMouseEvent
 
 from .scrollbar import ScrollBar
 from .widget import Widget
+from ..misc import themed_icon_path
 from utils import shared
 from utils.config import pcfg
 
@@ -11,16 +12,16 @@ CHEVRON_SIZE = 20
 CHEVRON_SIZE_SMALL = 14
 
 def chevron_down():
-    return QIcon(r'icons/chevron-down.svg').pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
+    return QIcon(themed_icon_path('chevron-down.svg')).pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
 
 def chevron_right():
-    return QIcon(r'icons/chevron-right.svg').pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
+    return QIcon(themed_icon_path('chevron-right.svg')).pixmap(CHEVRON_SIZE, CHEVRON_SIZE, mode=QIcon.Mode.Normal)
 
 def chevron_down_small():
-    return QIcon(r'icons/chevron-down.svg').pixmap(CHEVRON_SIZE_SMALL, CHEVRON_SIZE_SMALL, mode=QIcon.Mode.Normal)
+    return QIcon(themed_icon_path('chevron-down.svg')).pixmap(CHEVRON_SIZE_SMALL, CHEVRON_SIZE_SMALL, mode=QIcon.Mode.Normal)
 
 def chevron_right_small():
-    return QIcon(r'icons/chevron-right.svg').pixmap(CHEVRON_SIZE_SMALL, CHEVRON_SIZE_SMALL, mode=QIcon.Mode.Normal)
+    return QIcon(themed_icon_path('chevron-right.svg')).pixmap(CHEVRON_SIZE_SMALL, CHEVRON_SIZE_SMALL, mode=QIcon.Mode.Normal)
 
 
 
@@ -89,6 +90,11 @@ class ExpandLabel(Widget):
             self.arrowlabel.setPixmap(chevron_down())
         else:
             self.arrowlabel.setPixmap(chevron_right())
+
+    def changeEvent(self, event: QEvent) -> None:
+        if event.type() == QEvent.Type.StyleChange:
+            self.setExpand(self.expanded)
+        return super().changeEvent(event)
 
     def mousePressEvent(self, e: QMouseEvent) -> None:
         if e.button() == Qt.MouseButton.LeftButton:
