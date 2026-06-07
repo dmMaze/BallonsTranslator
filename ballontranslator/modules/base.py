@@ -107,10 +107,10 @@ def refresh_runtime_device_defaults(module_params: Dict):
     if not isinstance(device_param, dict) or device_param.get('type') != 'selector':
         return
     not_supported = device_param.get('__device_not_supported', [])
-    # Fresh config generation is allowed to probe torch so CUDA can be the initial default.
     selector = DEVICE_SELECTOR(not_supported=not_supported)
     device_param['options'] = selector['options']
     device_param['value'] = selector['value']
+    device_param['__device_not_supported'] = selector['__device_not_supported']
 
 
 def merge_config_module_params(
@@ -126,7 +126,11 @@ def merge_config_module_params(
             module_params = module.params_copy()
         else:
             module_params = deepcopy(getattr(module, 'params', None))
-        if resolve_runtime_device_defaults:
+        if resolve_runtime_device_defaults or (
+            module_params is not None
+            and isinstance(module_params.get('device'), dict)
+            and module_params['device'].get('type') == 'selector'
+        ):
             refresh_runtime_device_defaults(module_params)
         if module_key not in config_params or config_params[module_key] is None:
             config_params[module_key] = module_params
@@ -437,13 +441,18 @@ def soft_empty_cache():
 
 
 
-def DEVICE_SELECTOR(not_supported:list[str]=[]):
+def DEVICE_SELECTOR(not_supported: list[str] = None):
     refresh_torch_device_info()
+    if not_supported is None:
+        not_supported = []
+    options = [opt for opt in AVAILABLE_DEVICES if all(device not in opt for device in not_supported)]
+    value = DEFAULT_DEVICE if DEFAULT_DEVICE in options else 'cpu'
     return deepcopy(
         {
             'type': 'selector',
-            'options': [opt for opt in AVAILABLE_DEVICES if all(device not in opt for device in not_supported)],
-            'value': DEFAULT_DEVICE if not any(DEFAULT_DEVICE in device for device in not_supported) else 'cpu'
+            'options': options,
+            'value': value,
+            '__device_not_supported': list(not_supported),
         }
     )
 
