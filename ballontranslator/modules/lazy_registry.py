@@ -521,7 +521,7 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
 
 
 def init_lazy_module_registries(target_modules=None):
-    from ballontranslator.modules import MODULETYPE_TO_REGISTRIES
+    from . import MODULETYPE_TO_REGISTRIES
 
     def _module_files(module_type: str) -> List[str]:
         script = MODULE_SCRIPTS[module_type]

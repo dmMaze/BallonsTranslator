@@ -11,7 +11,6 @@ data/testpacks
 config/textstyles
 release
 libs
-icons
 .btrans_cache
 .codex
 .agents
