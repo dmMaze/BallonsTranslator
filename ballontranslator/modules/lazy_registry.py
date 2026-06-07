@@ -1,4 +1,5 @@
 import ast
+import importlib.metadata
 import os
 import platform
 import re
@@ -75,14 +76,56 @@ OPTIONAL_DEPENDENCY_OVERRIDES = {
 INITIALIZED_REGISTRIES = set()
 
 
+def _package_version(package_name):
+    try:
+        return importlib.metadata.version(package_name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def _torch_package_backend():
+    version = _package_version('torch')
+    if version is None:
+        return None
+    if sys.platform == 'darwin':
+        return 'mps'
+    if '+' not in version:
+        return None
+    local_version = version.split('+', 1)[1].lower()
+    if local_version.startswith(('cu', 'rocm')):
+        return 'cuda'
+    if local_version.startswith('xpu'):
+        return 'xpu'
+    return None
+
+
+def _candidate_device_options():
+    options = ['cpu']
+    backend = _torch_package_backend()
+    if backend is not None:
+        options.append(backend)
+    return options
+
+
+def _preferred_device_value(options):
+    preferred = ['mps'] if sys.platform == 'darwin' else ['cuda', 'xpu']
+    for device in preferred:
+        if device in options:
+            return device
+    if 'cpu' in options:
+        return 'cpu'
+    return options[0] if options else 'cpu'
+
+
 def _device_selector(not_supported=None):
     if not_supported is None:
         not_supported = []
-    options = ['cpu']
+    options = _candidate_device_options()
+    options = [opt for opt in options if all(device not in opt for device in not_supported)]
     return {
         'type': 'selector',
-        'options': [opt for opt in options if all(device not in opt for device in not_supported)],
-        'value': 'cpu',
+        'options': options,
+        'value': _preferred_device_value(options),
         '__device_not_supported': not_supported,
     }
 

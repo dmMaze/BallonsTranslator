@@ -100,24 +100,40 @@ def patch_module_params(cfg_param, module_params, module_name: str = ''):
     return cfg_param
 
 
-def refresh_runtime_device_defaults(module_params: Dict):
-    if module_params is None:
-        return
-    device_param = module_params.get('device')
-    if not isinstance(device_param, dict) or device_param.get('type') != 'selector':
-        return
+def is_device_selector_param(param):
+    return isinstance(param, dict) and param.get('type') == 'selector'
+
+
+def _device_allowed_by_filter(value, not_supported):
+    return all(device not in str(value) for device in not_supported)
+
+
+def _device_options_with_current(device_param: Dict):
     not_supported = device_param.get('__device_not_supported', [])
-    selector = DEVICE_SELECTOR(not_supported=not_supported)
-    device_param['options'] = selector['options']
-    device_param['value'] = selector['value']
-    device_param['__device_not_supported'] = selector['__device_not_supported']
+    current_value = str(device_param.get('value', 'cpu'))
+    options = [str(opt) for opt in device_param.get('options', [])]
+    if 'cpu' not in options:
+        options.insert(0, 'cpu')
+    if current_value not in options and _device_allowed_by_filter(current_value, not_supported):
+        options.append(current_value)
+    device_param['options'] = options
+    device_param['value'] = current_value if current_value in options else 'cpu'
+
+
+def normalize_device_selector_options(module_params: Dict):
+    if module_params is None:
+        return False
+    device_param = module_params.get('device')
+    if not is_device_selector_param(device_param):
+        return False
+    _device_options_with_current(device_param)
+    return True
 
 
 def merge_config_module_params(
     config_params: Dict,
     module_keys: List,
     get_module: Callable,
-    resolve_runtime_device_defaults: bool = False,
 ) -> Dict:
     for module_key in module_keys:
         module = get_module(module_key)
@@ -126,18 +142,14 @@ def merge_config_module_params(
             module_params = module.params_copy()
         else:
             module_params = deepcopy(getattr(module, 'params', None))
-        if resolve_runtime_device_defaults or (
-            module_params is not None
-            and isinstance(module_params.get('device'), dict)
-            and module_params['device'].get('type') == 'selector'
-        ):
-            refresh_runtime_device_defaults(module_params)
+        normalize_device_selector_options(module_params)
         if module_key not in config_params or config_params[module_key] is None:
             config_params[module_key] = module_params
         elif module_params is None:
             continue
         else:
             patch_module_params(config_params[module_key], module_params, module_key)
+            normalize_device_selector_options(config_params[module_key])
     return config_params
 
 
