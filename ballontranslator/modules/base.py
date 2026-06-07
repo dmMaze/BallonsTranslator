@@ -169,6 +169,7 @@ class BaseModule:
 
     download_file_list: List = None
     download_file_on_load = False
+    dependencies: List[str] = []
 
     _load_model_keys: set = None
 

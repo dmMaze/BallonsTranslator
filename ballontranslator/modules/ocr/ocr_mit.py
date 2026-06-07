@@ -15,6 +15,8 @@ mit_params = {
     'description': 'OCRMIT32px'
 }
 
+MIT_DEPENDENCIES = ['torch', 'einops']
+
 class MITModels(OCRBase):
 
     _line_only = True
@@ -46,6 +48,8 @@ from .mit32px import OCR32pxModel
 @register_OCR('mit32px')
 class OCRMIT32px(MITModels):
 
+    dependencies = MIT_DEPENDENCIES
+
     params = deepcopy(mit_params)
     download_file_list = [{
         'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/ocr.zip',
@@ -63,6 +67,8 @@ class OCRMIT32px(MITModels):
 from .mit48px_ctc import OCR48pxCTC
 @register_OCR('mit48px_ctc')
 class OCRMIT48pxCTC(MITModels):
+
+    dependencies = MIT_DEPENDENCIES
 
     params = deepcopy(mit_params)
     download_file_list = [{
@@ -82,6 +88,8 @@ from .mit48px import Model48pxOCR
 OCR48PXMODEL_PATH = r'data/models/ocr_ar_48px.ckpt'
 @register_OCR('mit48px')
 class OCRMIT48px(MITModels):
+
+    dependencies = MIT_DEPENDENCIES
 
     params = deepcopy(mit_params)
     download_file_list = [{

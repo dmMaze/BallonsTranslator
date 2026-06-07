@@ -1,60 +1,34 @@
-# To install pytorch cuda (gpu) version, please look https://pytorch.org/
+# Core dependencies required to launch the UI and shared image/project logic.
+# Concrete module backends are installed on demand by the in-app package manager.
 
 PyQt6-Qt6>=6.6.2 ; python_version > "3.8"
 PyQt6>=6.6.1 ; python_version > "3.8"
 PyQt5-Qt5>=5.15.2 ; python_version <= "3.8"
 PyQt5>=5.15.10 ; python_version <= "3.8"
+qtpy
+packaging
 numpy
-urllib3
-jaconv
-torch
-torchvision
-transformers==4.57.6
-mecab-python3; sys_platform == 'darwin'
-fugashi
-unidic_lite
-tqdm
 opencv-python>=4.8.1.78; sys_platform == 'win32' or sys_platform == 'linux'
+pillow-jxl-plugin>=1.3.4
+requests
+tqdm
+py7zr
 shapely
 pyclipper
-einops
-termcolor
-bs4
-deepl>=1.16.0
-qtpy
-spacy-pkuseg
-sentencepiece
-ctranslate2
+networkx
 python-docx
 docx2txt
 piexif
-pynput
+natsort
 ordered-set
 opencc-python-reimplemented
-requests
-ultralytics>=8.4.14
-beautifulsoup4
+termcolor
 colorama
-openai>=2.8.1
-pyyaml
-natsort
-py7zr
-multivolumefile
-httpx[socks,brotli]
-translators==5.9.5
-json5
-pillow-jxl-plugin>=1.3.4
+spacy-pkuseg
+pynput
 pywin32; sys_platform == 'win32'
-winsdk; sys_platform == 'win32'
 brotlicffi; sys_platform == 'win32'
-msl-loadlib; sys_platform == 'win32'
 pyobjc-core; sys_platform == 'darwin'
 pyobjc-framework-cocoa; sys_platform == 'darwin'
 pyobjc-framework-coreml; sys_platform == 'darwin'
 pyobjc-framework-quartz; sys_platform == 'darwin'
-pyobjc-framework-vision; sys_platform == 'darwin'
-betterproto
-diffusers>=0.37.1
-gguf>=0.10.0
-hf_transfer
-networkx

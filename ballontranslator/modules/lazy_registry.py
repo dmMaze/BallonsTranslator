@@ -57,21 +57,6 @@ BASE_TRANSLATOR_LANGS = [
     'Tamil',
 ]
 
-OPTIONAL_DEPENDENCY_OVERRIDES = {
-    # Keep optional dependency checks explicit when imports do not tell the full story.
-    ('inpainter', 'opencv-tela'): [],
-    ('inpainter', 'patchmatch'): [],
-    ('inpainter', 'aot'): ['torch'],
-    ('inpainter', 'lama_mpe'): ['torch'],
-    ('inpainter', 'lama_large_512px'): ['torch'],
-    ('inpainter', 'flux2-klein'): ['torch', 'diffusers', 'safetensors', 'transformers', 'gguf'],
-    ('textdetector', 'ctd'): ['torch', 'torchvision'],
-    ('textdetector', 'ysgyolo'): ['torch', 'ultralytics'],
-    ('ocr', 'mit32px'): ['torch'],
-    ('ocr', 'mit48px_ctc'): ['torch'],
-    ('ocr', 'mit48px'): ['torch'],
-}
-
 INITIALIZED_REGISTRIES = set()
 
 
@@ -362,7 +347,7 @@ def _collect_class_attrs(class_node: ast.ClassDef, env: Dict[str, Any]) -> Dict[
                 value = evaluator.eval(value_node)
                 if value is not UNKNOWN:
                     class_env[name] = value
-                    if name in {'params', 'download_file_list', 'download_file_on_load'}:
+                    if name in {'params', 'download_file_list', 'download_file_on_load', 'dependencies'}:
                         attrs[name] = value
             elif isinstance(node, ast.If):
                 cond = evaluator.eval(node.test)
@@ -434,33 +419,12 @@ def _collect_translator_langs(class_node: ast.ClassDef, env: Dict[str, Any]):
     return src, tgt
 
 
-def _collect_optional_imports(tree: ast.AST):
-    names = []
-    optional_roots = {
-        'torch', 'torchvision', 'transformers', 'diffusers', 'safetensors',
-        'ultralytics', 'paddleocr', 'paddle', 'ctranslate2', 'sentencepiece',
-        'msl', 'winsdk', 'Vision', 'objc', 'openai', 'deepl', 'translators',
-    }
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                root = alias.name.split('.')[0]
-                if root in optional_roots and root not in names:
-                    names.append(root)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            root = node.module.split('.')[0]
-            if root in optional_roots and root not in names:
-                names.append(root)
-    return names
-
-
 def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
     # Scan decorators/classes without executing top-level imports or model code.
     with open(path, 'r', encoding='utf8') as f:
         source = f.read()
     tree = ast.parse(source, filename=path)
     module_path = _module_name_from_path(path)
-    optional_imports = _collect_optional_imports(tree)
     specs = []
     env = {
         'sys': sys,
@@ -488,10 +452,6 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
                 src = tgt = None
                 if module_type == 'translator':
                     src, tgt = _collect_translator_langs(node, env)
-                optional_dependencies = OPTIONAL_DEPENDENCY_OVERRIDES.get(
-                    (module_type, key),
-                    optional_imports,
-                )
                 specs.append(ModuleSpec(
                     key=key,
                     import_path=module_path,
@@ -500,7 +460,7 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
                     params=attrs.get('params'),
                     download_file_list=attrs.get('download_file_list'),
                     download_file_on_load=attrs.get('download_file_on_load', False),
-                    optional_dependencies=optional_dependencies,
+                    dependencies=deepcopy(attrs.get('dependencies', [])),
                     supported_src_list=src,
                     supported_tgt_list=tgt,
                 ))

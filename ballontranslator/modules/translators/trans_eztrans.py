@@ -25,6 +25,8 @@ if shared.ON_WINDOWS:
 
     @register_translator('ezTrans')
     class ezTransTranslator(BaseTranslator):
+        dependencies = ['msl-loadlib']
+
         concate_text = True
 
         params: Dict = {

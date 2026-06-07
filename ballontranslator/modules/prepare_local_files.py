@@ -1,27 +1,46 @@
-from typing import Union, List
-import importlib.util
+from typing import List
 import os.path as osp
 import os
 
-from . import INPAINTERS, TEXTDETECTORS, OCR, TRANSLATORS
-from .base import BaseModule, LOGGER
+from .base import LOGGER
 import ballontranslator.utils.shared as shared
 from ballontranslator.utils.download_util import DownloadCancelled, download_and_check_files
+from ballontranslator.utils.py_package_manager import MissingRequirement, PyPackageManager
 from ballontranslator.utils.registry import ModuleSpec
+from .package_import_names import PACKAGE_IMPORT_NAMES
 
 
-IMPORT_NAME_ALIASES = {
-    'PIL': 'PIL',
-    'Vision': 'Vision',
-    'objc': 'objc',
-}
+class MissingDependency(ModuleNotFoundError):
+    """Raised when a module's declared Python dependencies are missing.
 
+    >>> spec = ModuleSpec(key='mit48px', import_path='pkg.mod', class_name='OCR')
+    >>> missing = [MissingRequirement('torch', 'torch', ['torch'])]
+    >>> err = MissingDependency(spec, missing)
+    >>> err.requirements
+    ['torch']
+    """
 
-class MissingOptionalDependency(ModuleNotFoundError):
-    pass
+    def __init__(self, spec: ModuleSpec, missing: List[MissingRequirement]):
+        self.spec = spec
+        self.missing = missing
+        self.requirements = [item.requirement for item in missing]
+        deps = ', '.join(self.requirements)
+        super().__init__(
+            f'Module "{spec.key}" requires Python package(s): {deps}. '
+            f'Install them or select a module that does not require them.'
+        )
 
 
 def _spec_from_module(module_spec_or_class) -> ModuleSpec:
+    """Normalize either a ``ModuleSpec`` or loaded class into a ``ModuleSpec``.
+
+    >>> class DemoModule:
+    ...     name = 'demo'
+    ...     dependencies = ['torch']
+    >>> _spec_from_module(DemoModule).dependencies
+    ['torch']
+    """
+
     if isinstance(module_spec_or_class, ModuleSpec):
         return module_spec_or_class
     module_class = module_spec_or_class
@@ -35,43 +54,39 @@ def _spec_from_module(module_spec_or_class) -> ModuleSpec:
         params=getattr(module_class, 'params', None),
         download_file_list=getattr(module_class, 'download_file_list', None),
         download_file_on_load=getattr(module_class, 'download_file_on_load', False),
-        optional_dependencies=getattr(module_class, 'optional_dependencies', []),
+        dependencies=getattr(module_class, 'dependencies', []),
         resolved_class=module_class,
     )
 
 
-def missing_optional_dependencies(module_spec_or_class) -> List[str]:
+def _missing_module_requirements(module_spec_or_class) -> List[MissingRequirement]:
+    """Check a module spec's declared dependencies with ``PyPackageManager``.
+
+    >>> spec = ModuleSpec(key='demo', import_path='pkg.mod', class_name='Demo', dependencies=[])
+    >>> _missing_module_requirements(spec)
+    []
+    """
+
     spec = _spec_from_module(module_spec_or_class)
-    missing = []
-    optional_dependencies = spec.optional_dependencies if spec.optional_dependencies is not None else []
-    optional_dependencies = list(dict.fromkeys(optional_dependencies))
-    for dep in optional_dependencies:
-        # Check importability before resolving the lazy class, so failures are clear.
-        import_name = IMPORT_NAME_ALIASES.get(dep, dep)
-        try:
-            found = importlib.util.find_spec(import_name) is not None
-        except (ImportError, ModuleNotFoundError, ValueError):
-            found = False
-        if not found:
-            missing.append(dep)
-    return missing
-
-
-def check_optional_dependencies(module_spec_or_class):
-    missing = missing_optional_dependencies(module_spec_or_class)
-    if missing:
-        spec = _spec_from_module(module_spec_or_class)
-        deps = ', '.join(missing)
-        raise MissingOptionalDependency(
-            f'Module "{spec.key}" requires optional Python package(s): {deps}. '
-            f'Install them or select a module that does not require them.'
-        )
+    dependencies = spec.dependencies if spec.dependencies is not None else []
+    dependencies = list(dict.fromkeys(dependencies))
+    package_manager = PyPackageManager(package_import_names=PACKAGE_IMPORT_NAMES)
+    return package_manager.missing_requirements(dependencies)
 
 
 def ensure_module_files(module_spec_or_class, progress_callback=None, cancel_event=None):
+    """Preflight dependencies and model files before importing a module.
+
+    >>> spec = ModuleSpec(key='demo', import_path='pkg.mod', class_name='Demo')
+    >>> ensure_module_files(spec)
+    True
+    """
+
     # Called from the selected module thread before importing or instantiating it.
     spec = _spec_from_module(module_spec_or_class)
-    check_optional_dependencies(spec)
+    missing = _missing_module_requirements(spec)
+    if missing:
+        raise MissingDependency(spec, missing)
     if spec.download_file_list is None:
         return True
 
