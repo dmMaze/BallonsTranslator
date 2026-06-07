@@ -24,8 +24,8 @@ except Exception as e:
     Image = None
     transforms = None
 
-from ballontranslator.utils import shared
-from ballontranslator.utils import download_util
+from . import shared
+from . import download_util
 
 MODEL_REL_PATH = os.path.join('data', 'models', 'YuzuMarker.FontDetection', 'name=4x-epoch=18-step=368676.ckpt')
 MODEL_URL = 'https://huggingface.co/gyrojeff/YuzuMarker.FontDetection/resolve/main/name=4x-epoch=18-step=368676.ckpt'

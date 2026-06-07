@@ -5,8 +5,6 @@ import json
 import sys
 from pathlib import Path
 
-ICON_PATH = 'icons/icon.icns'
-
 def _resolve_program_path() -> str:
     env_root = os.environ.get('BALLOONTRANS_APP_ROOT')
     candidates = []
@@ -16,7 +14,9 @@ def _resolve_program_path() -> str:
     candidates.extend(Path(__file__).resolve().parents)
 
     for candidate in candidates:
-        if all((candidate / name).exists() for name in ('config', 'data', 'icons', 'translate')):
+        has_app_dirs = all((candidate / name).exists() for name in ('config', 'data'))
+        has_resources = (candidate / 'resources' / 'icons').exists() and (candidate / 'resources' / 'translate').exists()
+        if has_app_dirs and has_resources:
             return str(candidate.resolve())
 
     # Package layout fallback: ballontranslator/utils/shared.py -> repo root.
@@ -24,6 +24,9 @@ def _resolve_program_path() -> str:
 
 
 PROGRAM_PATH = _resolve_program_path()
+RESOURCE_DIR = osp.join(PROGRAM_PATH, 'resources')
+ICON_DIR = osp.join(RESOURCE_DIR, 'icons')
+ICON_PATH = osp.join(ICON_DIR, 'icon.icns')
 LOGGING_PATH = osp.join(PROGRAM_PATH, 'logs')
 
 LIBS_PATH = osp.join(PROGRAM_PATH, 'data/libs')
@@ -90,7 +93,7 @@ FOREGROUND_FONTCOLOR = (93,93,95)
 
 MAX_NUM_LOG = 7
 
-TRANSLATE_DIR = osp.join(PROGRAM_PATH, 'translate')
+TRANSLATE_DIR = osp.join(RESOURCE_DIR, 'translate')
 DISPLAY_LANGUAGE_MAP = {
     "English": "English",
     "简体中文": "zh_CN",

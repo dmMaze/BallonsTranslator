@@ -510,5 +510,5 @@ def import_module_registries(target_modules=None):
 
 def init_module_registries(target_modules=None):
     # Startup registers lightweight specs; real module imports happen on selection.
-    from ballontranslator.modules.lazy_registry import init_lazy_module_registries
+    from .lazy_registry import init_lazy_module_registries
     init_lazy_module_registries(target_modules)

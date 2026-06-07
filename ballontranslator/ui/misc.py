@@ -154,7 +154,6 @@ def doc_replace_no_shift(doc: QTextDocument, span_list: List, target: str):
 def hex2rgb(h: str):  # rgb order (PIL)
     return tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
 
-ICON_DIR = 'icons'
 THEMED_ICON_CACHE_DIR = osp.join(shared.cache_dir, 'icons')
 
 LIGHTFILL_ACTIVE = "fill=\"#697187\""
@@ -167,7 +166,7 @@ ICONREVERSE_DICT_DARK2LIGHT = {DARKFILL_ACTIVE: LIGHTFILL_ACTIVE, DARKFILL: LIGH
 ICON_LIST = []
 THEMED_ICON_LIST = []
 THEMED_ICON_READY = set()
-STYLESHEET_SVG_ICON_PATTERN = re.compile(r'url\((["\']?)icons/([^)"\']+\.svg)\1\)')
+STYLESHEET_ICON_PATTERN = re.compile(r'url\((["\']?)(?:resources/)?icons/([^)"\']+)\1\)')
 
 def _default_theme() -> str:
     return 'eva-dark' if pcfg.darkmode else 'eva-light'
@@ -181,7 +180,7 @@ def _themed_icon_cache_dir(theme: str) -> str:
 def _list_svg_icons() -> List[str]:
     global THEMED_ICON_LIST
     if not THEMED_ICON_LIST:
-        icon_dir = osp.join(shared.PROGRAM_PATH, ICON_DIR)
+        icon_dir = shared.ICON_DIR
         for filename in os.listdir(icon_dir):
             file_suffix = Path(filename).suffix
             if file_suffix.lower() == '.svg':
@@ -203,7 +202,7 @@ def ensure_themed_icons(theme: str):
         pattern = re.compile(re.escape(DARKFILL) + '|' + re.escape(DARKFILL_ACTIVE))
         rep_dict = ICONREVERSE_DICT_DARK2LIGHT
 
-    icon_dir = osp.join(shared.PROGRAM_PATH, ICON_DIR)
+    icon_dir = shared.ICON_DIR
     for filename in _list_svg_icons():
         src_path = osp.join(icon_dir, filename)
         cache_path = osp.join(cache_dir, filename)
@@ -225,8 +224,14 @@ def themed_icon_path(filename: str, theme: str = None) -> str:
 def themed_icon_url(filename: str, theme: str = None) -> str:
     return '"' + Path(themed_icon_path(filename, theme)).as_posix().replace('"', '\\"') + '"'
 
+def icon_url(filename: str) -> str:
+    return '"' + Path(osp.join(shared.ICON_DIR, filename)).as_posix().replace('"', '\\"') + '"'
+
 def _replace_stylesheet_icon_url(matched, theme: str) -> str:
-    return f'url({themed_icon_url(matched.group(2), theme)})'
+    filename = matched.group(2)
+    if Path(filename).suffix.lower() == '.svg':
+        return f'url({themed_icon_url(filename, theme)})'
+    return f'url({icon_url(filename)})'
 
 def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
     with open(shared.STYLESHEET_PATH, "r", encoding='utf-8') as f:
@@ -238,7 +243,7 @@ def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
     tgt_theme: Dict = theme_dict[theme]
 
     ensure_themed_icons(theme)
-    stylesheet = STYLESHEET_SVG_ICON_PATTERN.sub(lambda m: _replace_stylesheet_icon_url(m, theme), stylesheet)
+    stylesheet = STYLESHEET_ICON_PATTERN.sub(lambda m: _replace_stylesheet_icon_url(m, theme), stylesheet)
 
     shared.FOREGROUND_FONTCOLOR = hex2rgb(tgt_theme['@qwidgetForegroundColor'])
     shared.SLIDERHANDLE_COLOR = hex2rgb(tgt_theme['@sliderHandleColor'])
@@ -249,12 +254,12 @@ def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
 def reverse_icon_color(dark2light: bool = False):
     global ICON_LIST
     if not ICON_LIST:
-        for filename in os.listdir(ICON_DIR):
+        for filename in os.listdir(shared.ICON_DIR):
             file_suffix = Path(filename).suffix
             if file_suffix.lower() != '.svg':
                 continue
             else:
-                ICON_LIST.append(osp.join(ICON_DIR, filename))
+                ICON_LIST.append(osp.join(shared.ICON_DIR, filename))
 
     if dark2light:
         pattern = re.compile(re.escape(DARKFILL) + '|' + re.escape(DARKFILL_ACTIVE))

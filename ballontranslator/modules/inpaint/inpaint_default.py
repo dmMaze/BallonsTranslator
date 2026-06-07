@@ -415,7 +415,7 @@ class Flux2Klein(InpainterBase):
 
     def _load_model(self):
         
-        from ballontranslator.modules.inpaint.flux_inpaint_pipeline import Flux2KleinInpaintPipeline, Flux2Transformer2DModel, AutoencoderKLFlux2
+        from .flux_inpaint_pipeline import Flux2KleinInpaintPipeline, Flux2Transformer2DModel, AutoencoderKLFlux2
         from safetensors.torch import load_file
         from diffusers import GGUFQuantizationConfig
 
