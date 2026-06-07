@@ -11,7 +11,7 @@ if __name__ == '__main__':
     translate_path = osp.join(translate_dir, SYSLANG+'.ts')
 
     cmd = 'pylupdate5 -verbose '+ \
-          ' '.join(glob(osp.join(program_dir, 'ui/*.py'))) + \
+          ' '.join(glob(osp.join(program_dir, 'ballontranslator/ui/*.py'))) + \
           ' -ts ' + translate_path
     
     print('target language: ', SYSLANG)

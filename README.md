@@ -48,10 +48,10 @@ AI 魔改版 [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
 # 启动程序
-$ python3 launch.py
+$ python3 -m ballontranslator
 
 # 更新程序
-python3 launch.py --update
+python3 -m ballontranslator --update
 ```
 
 第一次运行会自动安装 torch 等依赖项并下载所需模型和文件，如果模型下载失败，需要手动从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 data 文件夹(或者报错里提到缺失的文件)，并保存到源码目录下的对应位置。
@@ -122,7 +122,7 @@ OCR并翻译选中文本框
 
 ## 命令行模式 (无GUI)
 ``` python
-python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
+python -m ballontranslator --headless --exec_dirs "[DIR_1],[DIR_2]..."
 ```
 所有设置 (如检测模型, 原语言目标语言等) 会从 config/config.json 导入。  
 如果渲染字体大小不对, 通过 ```--ldpi ``` 指定 Logical DPI 大小, 通常为 96 和 72。
