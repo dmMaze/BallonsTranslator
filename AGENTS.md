@@ -5,26 +5,26 @@
 BallonsTranslator is a PyQt/qtpy desktop app for comic image translation.
 
 Important areas:
-- `launch.py`: startup, dependency checks, Qt setup, headless mode.
-- `ui/`: Qt UI, canvas, panels, module manager, worker threads.
-- `modules/`: pluggable detector/OCR/translator/inpainter implementations.
-- `utils/proj_imgtrans.py`: project persistence and image/textblock state.
-- `utils/textblock.py`: central TextBlock domain object.
-- `utils/config.py`: persistent config and module settings.
+- `ballontranslator/launch.py`: startup, dependency checks, Qt setup, headless mode.
+- `ballontranslator/ui/`: Qt UI, canvas, panels, module manager, worker threads.
+- `ballontranslator/modules/`: pluggable detector/OCR/translator/inpainter implementations.
+- `ballontranslator/utils/proj_imgtrans.py`: project persistence and image/textblock state.
+- `ballontranslator/utils/textblock.py`: central TextBlock domain object.
+- `ballontranslator/utils/config.py`: persistent config and module settings.
 
 ## Refactoring Rules
 
 - Preserve behavior unless explicitly asked to change it.
 - Prefer small, reviewable refactors over broad rewrites.
 - Do not change public project JSON shape without migration/backward compatibility.
-- Be careful with Qt signal/thread behavior in `ui/module_manager.py`.
+- Be careful with Qt signal/thread behavior in `ballontranslator/ui/module_manager.py`.
 - Do not rename registered module keys unless compatibility aliases are added.
 - Keep model-loading lazy/eager behavior intact.
 - Avoid adding dependencies unless approved.
 
 ## New Feature Rules
 
-- Start with the existing architecture. Prefer extending `ui/`, `modules/`, `utils/config.py`, and `utils/proj_imgtrans.py` patterns before introducing new frameworks or global services.
+- Start with the existing architecture. Prefer extending `ballontranslator/ui/`, `ballontranslator/modules/`, `ballontranslator/utils/config.py`, and `ballontranslator/utils/proj_imgtrans.py` patterns before introducing new frameworks or global services.
 - Keep features behind explicit config, UI controls, or module parameters when behavior may surprise existing users.
 - Preserve project JSON compatibility. If a feature adds saved fields, provide defaults for old projects and avoid breaking older project files.
 - For new automation modules, use the existing registry pattern and stable module keys. Do not rename existing keys without compatibility aliases.

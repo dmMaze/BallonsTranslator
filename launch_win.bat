@@ -33,7 +33,7 @@ goto :show_stdout_stderr
 
 
 :launch
-%PYTHON% launch.py  %*
+%PYTHON% -m ballontranslator  %*
 pause
 exit /b
 
