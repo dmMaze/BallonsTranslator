@@ -86,6 +86,7 @@ class MainWindow(mainwindow_cls):
 
         self.setupThread()
         self.setupUi()
+        self.validateModuleSelections()
         self.setupConfig()
         self.setupShortcuts()
         self.setupRegisterWidget()
@@ -262,57 +263,14 @@ class MainWindow(mainwindow_cls):
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
         self.resetStyleSheet()
 
-    def on_finish_setdetector(self):
-        module_manager = self.module_manager
-        if module_manager.textdetector is not None:
-            name = module_manager.textdetector.name
-            pcfg.module.textdetector = name
-            self.configPanel.detect_config_panel.setDetector(name)
-            self.bottomBar.textdet_selector.setSelectedValue(name)
-            LOGGER.info('Text detector set to {}'.format(name))
-        else:
-            name = pcfg.module.textdetector
-            self.configPanel.detect_config_panel.setDetector(name)
-            self.bottomBar.textdet_selector.setSelectedValue(name)
-
-    def on_finish_setocr(self):
-        module_manager = self.module_manager
-        if module_manager.ocr is not None:
-            name = module_manager.ocr.name
-            pcfg.module.ocr = name
-            self.configPanel.ocr_config_panel.setOCR(name)
-            self.bottomBar.ocr_selector.setSelectedValue(name)
-            LOGGER.info('OCR set to {}'.format(name))
-        else:
-            name = pcfg.module.ocr
-            self.configPanel.ocr_config_panel.setOCR(name)
-            self.bottomBar.ocr_selector.setSelectedValue(name)
-
-    def on_finish_setinpainter(self):
-        module_manager = self.module_manager
-        if module_manager.inpainter is not None:
-            name = module_manager.inpainter.name
-            pcfg.module.inpainter = name
-            self.configPanel.inpaint_config_panel.setInpainter(name)
-            self.bottomBar.inpaint_selector.setSelectedValue(name)
-            LOGGER.info('Inpainter set to {}'.format(name))
-        else:
-            name = pcfg.module.inpainter
-            self.configPanel.inpaint_config_panel.setInpainter(name)
-            self.bottomBar.inpaint_selector.setSelectedValue(name)
-
     def on_finish_settranslator(self):
         module_manager = self.module_manager
         translator = module_manager.translator
         if translator is not None:
             name = translator.name
             pcfg.module.translator = name
-            self.bottomBar.trans_selector.finishSetTranslator(translator)
-            self.configPanel.trans_config_panel.finishSetTranslator(translator)
+            self.setTranslatorSelectionFromMetadata(name)
             LOGGER.info('Translator set to {}'.format(name))
-        else:
-            self.setTranslatorSelectionFromMetadata(pcfg.module.translator)
-            LOGGER.error('invalid translator')
         
     def on_enable_module(self, idx, checked):
         if idx == 0:
@@ -348,8 +306,20 @@ class MainWindow(mainwindow_cls):
             metadata['lang_target'],
         )
 
-    def setInitialModuleSelections(self):
-        # Populate selectors/config from manifest metadata without importing modules.
+    def on_module_selection_changed(self, module_key: str, module_name: str):
+        if module_key == 'translator':
+            self.setTranslatorSelectionFromMetadata(module_name)
+        elif module_key == 'textdetector':
+            self.configPanel.detect_config_panel.setDetector(module_name)
+            self.bottomBar.textdet_selector.setSelectedValue(module_name)
+        elif module_key == 'ocr':
+            self.configPanel.ocr_config_panel.setOCR(module_name)
+            self.bottomBar.ocr_selector.setSelectedValue(module_name)
+        elif module_key == 'inpainter':
+            self.configPanel.inpaint_config_panel.setInpainter(module_name)
+            self.bottomBar.inpaint_selector.setSelectedValue(module_name)
+
+    def validateModuleSelections(self):
         def valid_or_first(value, valid_values):
             if not valid_values:
                 return value
@@ -359,13 +329,6 @@ class MainWindow(mainwindow_cls):
         pcfg.module.ocr = valid_or_first(pcfg.module.ocr, GET_VALID_OCR())
         pcfg.module.inpainter = valid_or_first(pcfg.module.inpainter, GET_VALID_INPAINTERS())
         pcfg.module.translator = valid_or_first(pcfg.module.translator, GET_VALID_TRANSLATORS())
-        self.configPanel.detect_config_panel.setDetector(pcfg.module.textdetector)
-        self.bottomBar.textdet_selector.setSelectedValue(pcfg.module.textdetector)
-        self.configPanel.ocr_config_panel.setOCR(pcfg.module.ocr)
-        self.bottomBar.ocr_selector.setSelectedValue(pcfg.module.ocr)
-        self.configPanel.inpaint_config_panel.setInpainter(pcfg.module.inpainter)
-        self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
-        self.setTranslatorSelectionFromMetadata(pcfg.module.translator)
 
     def setupConfig(self):
 
@@ -373,8 +336,27 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.trans_selector.selector.addItems(GET_VALID_TRANSLATORS())
         self.bottomBar.ocr_selector.selector.addItems(GET_VALID_OCR())
         self.bottomBar.textdet_selector.selector.addItems(GET_VALID_TEXTDETECTORS())
-        self.bottomBar.textdet_selector.selector.currentTextChanged.connect(self.on_textdet_changed)
         self.bottomBar.inpaint_selector.selector.addItems(GET_VALID_INPAINTERS())
+
+        self.bottomBar.textdet_selector.setSelectedValue(pcfg.module.textdetector)
+        self.bottomBar.ocr_selector.setSelectedValue(pcfg.module.ocr)
+        self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
+
+        self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
+        module_manager.finish_translate_page.connect(self.finishTranslatePage)
+        module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
+        module_manager.page_trans_finished.connect(self.on_pagtrans_finished)
+        module_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox, self.ocr_postprocess, self.translate_preprocess, self.translate_postprocess, parent_widget=self)
+        module_manager.module_selection_changed.connect(self.on_module_selection_changed)
+        module_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
+        # Preparation and RUN dialogs share placement so the first RUN is stable.
+        module_manager.prepare_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
+        module_manager.blktrans_pipeline_finished.connect(self.on_blktrans_finished)
+        module_manager.imgtrans_thread.post_process_mask = self.drawingPanel.rectPanel.post_process_mask
+        module_manager.translate_thread.finish_set_module.connect(self.on_finish_settranslator)
+        self.setTranslatorSelectionFromMetadata(pcfg.module.translator)
+
+        self.bottomBar.textdet_selector.selector.currentTextChanged.connect(self.on_textdet_changed)
         self.bottomBar.inpaint_selector.selector.currentTextChanged.connect(self.on_inpaint_changed)
         self.bottomBar.trans_selector.cfg_clicked.connect(self.to_trans_config)
         self.bottomBar.trans_selector.selector.currentTextChanged.connect(self.on_trans_changed)
@@ -409,22 +391,6 @@ class MainWindow(mainwindow_cls):
         self.fold_textarea(pcfg.fold_textarea)
         self.show_trans_text(pcfg.show_trans_text)
         self.show_source_text(pcfg.show_source_text)
-
-        self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
-        module_manager.finish_translate_page.connect(self.finishTranslatePage)
-        module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
-        module_manager.page_trans_finished.connect(self.on_pagtrans_finished)
-        module_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox, self.ocr_postprocess, self.translate_preprocess, self.translate_postprocess, parent_widget=self)
-        module_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
-        # Preparation and RUN dialogs share placement so the first RUN is stable.
-        module_manager.prepare_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
-        module_manager.blktrans_pipeline_finished.connect(self.on_blktrans_finished)
-        module_manager.imgtrans_thread.post_process_mask = self.drawingPanel.rectPanel.post_process_mask
-        module_manager.inpaint_thread.finish_set_module.connect(self.on_finish_setinpainter)
-        module_manager.translate_thread.finish_set_module.connect(self.on_finish_settranslator)
-        module_manager.textdetect_thread.finish_set_module.connect(self.on_finish_setdetector)
-        module_manager.ocr_thread.finish_set_module.connect(self.on_finish_setocr)
-        self.setInitialModuleSelections()
 
         self.leftBar.run_imgtrans_clicked.connect(self.run_imgtrans)
 
@@ -1245,7 +1211,7 @@ class MainWindow(mainwindow_cls):
         sender = self.sender()
         text = sender.currentText()
         translator = self.module_manager.translator
-        if translator is not None:
+        if translator is not None and translator.name == pcfg.module.translator:
             translator.set_source(text)
         pcfg.module.translate_source = text
         combobox = self.configPanel.trans_config_panel.source_combobox
@@ -1263,7 +1229,7 @@ class MainWindow(mainwindow_cls):
         sender = self.sender()
         text = sender.currentText()
         translator = self.module_manager.translator
-        if translator is not None:
+        if translator is not None and translator.name == pcfg.module.translator:
             translator.set_target(text)
         pcfg.module.translate_target = text
         combobox = self.configPanel.trans_config_panel.target_combobox

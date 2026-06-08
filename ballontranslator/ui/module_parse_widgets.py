@@ -1,7 +1,6 @@
 from typing import List, Callable
 
-from ballontranslator.modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRANSLATORS, GET_VALID_OCR, \
-    BaseTranslator
+from ballontranslator.modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from ballontranslator.utils.logger import logger as LOGGER
 from .custom_widget import ConfigComboBox, ParamComboBox, NoBorderPushBtn, ParamNameLabel
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, size2width, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
@@ -311,7 +310,7 @@ class ModuleConfigParseWidget(QWidget):
         self.visibleWidget: QWidget = None
         self.module_dict: dict = {}
 
-    def addModulesParamWidgets(self, module_dict: dict):
+    def addModulesParamWidgets(self, module_dict: dict, selected_module: str = None):
         invalid_module_keys = []
         valid_modulekeys = self.get_valid_module_keys()
 
@@ -340,7 +339,9 @@ class ModuleConfigParseWidget(QWidget):
 
         num_widgets_after = len(self.param_widget_map)
         if num_widgets_before == 0 and num_widgets_after > 0:
-            self.on_module_changed()
+            if selected_module in self.module_dict:
+                self.module_combobox.setCurrentText(selected_module)
+            self.updateModuleParamWidget()
             self.module_combobox.currentTextChanged.connect(self.on_module_changed)
 
     def setModule(self, module: str):
@@ -407,15 +408,6 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.vlayout.addWidget(self.replaceOCRkeywordBtn)
         self.vlayout.addWidget(self.replacePreMTkeywordBtn)
         self.vlayout.addWidget(self.replaceMTkeywordBtn)
-
-    def finishSetTranslator(self, translator: BaseTranslator):
-        self.setTranslatorMetadata(
-            translator.name,
-            translator.supported_src_list,
-            translator.supported_tgt_list,
-            translator.lang_source,
-            translator.lang_target,
-        )
 
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
         self.source_combobox.blockSignals(True)

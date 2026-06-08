@@ -96,8 +96,17 @@ class ModuleThread(QThread):
             raise KeyError(f'Failed to resolve {self.module_key} module: {module_name}')
         return module_class
 
+    def _discard_module_instance(self, module):
+        if module is None:
+            return
+        try:
+            module.unload_model(empty_cache=True)
+        except Exception as e:
+            LOGGER.warning(f'Failed to unload {self.module_key} module after failed preparation: {e}')
+
     def _set_module(self, module_name: str):
         old_module = self.module
+        new_module = None
         self.last_set_module_name = module_name
         self.last_set_success = False
         self.last_error = None
@@ -111,30 +120,38 @@ class ModuleThread(QThread):
             params = cfg_module.get_params(self.module_key).get(module_name)
             self._emit_prepare_progress({'event': 'instantiating', 'message': self.tr('Creating module')})
             if params is not None:
-                self.module = module(**params)
+                new_module = module(**params)
             else:
-                self.module = module()
+                new_module = module()
             if self.cancel_event.is_set():
                 raise DownloadCancelled('Module preparation cancelled by user.')
             self._emit_prepare_progress({'event': 'loading_model', 'message': self.tr('Loading model')})
-            self.module.load_model()
+            new_module.load_model()
             if self.cancel_event.is_set():
                 raise DownloadCancelled('Module preparation cancelled by user.')
             if old_module is not None:
                 old_module.unload_model(empty_cache=True)
-                del old_module
+                old_module = None
+            self.module = new_module
+            new_module = None
             self.last_set_success = True
         except DownloadCancelled as e:
-            # Cancellation/failure keeps the previously active module instance.
-            self.module = old_module
+            # Failed preparation should leave the user-selected module unresolved, not fall back.
+            self.module = None
+            self._discard_module_instance(new_module)
+            self._discard_module_instance(old_module)
             self.last_error = e
             LOGGER.info(f'Cancelled preparing {self.module_key} module {module_name}.')
         except MissingDependency as e:
-            self.module = old_module
+            self.module = None
+            self._discard_module_instance(new_module)
+            self._discard_module_instance(old_module)
             self.last_error = e
             self.last_missing_requirements = e.requirements
         except Exception as e:
-            self.module = old_module
+            self.module = None
+            self._discard_module_instance(new_module)
+            self._discard_module_instance(old_module)
             missing = self._missing_requirements_from_exception(module_name, e)
             if missing:
                 self.last_error = e
@@ -351,6 +368,7 @@ class TranslateThread(ModuleThread):
     def _set_translator(self, translator: str):
         
         old_translator = self.translator
+        new_translator = None
         source, target = cfg_module.translate_source, cfg_module.translate_target
         self.last_set_module_name = translator
         self.last_set_success = False
@@ -368,32 +386,40 @@ class TranslateThread(ModuleThread):
             translator_module: BaseTranslator = self._prepare_module_class(translator)
             self._emit_prepare_progress({'event': 'instantiating', 'message': self.tr('Creating module')})
             if params is not None:
-                self.translator = translator_module(source, target, raise_unsupported_lang=False, **params)
+                new_translator = translator_module(source, target, raise_unsupported_lang=False, **params)
             else:
-                self.translator = translator_module(source, target, raise_unsupported_lang=False)
+                new_translator = translator_module(source, target, raise_unsupported_lang=False)
             if self.cancel_event.is_set():
                 raise DownloadCancelled('Module preparation cancelled by user.')
             self._emit_prepare_progress({'event': 'loading_model', 'message': self.tr('Loading model')})
-            self.translator.load_model()
+            new_translator.load_model()
             if self.cancel_event.is_set():
                 raise DownloadCancelled('Module preparation cancelled by user.')
-            cfg_module.translate_source = self.translator.lang_source
-            cfg_module.translate_target = self.translator.lang_target
-            cfg_module.translator = self.translator.name
+            cfg_module.translate_source = new_translator.lang_source
+            cfg_module.translate_target = new_translator.lang_target
+            cfg_module.translator = new_translator.name
             if old_translator is not None:
                 old_translator.unload_model(empty_cache=True)
-                del old_translator
+                old_translator = None
+            self.translator = new_translator
+            new_translator = None
             self.last_set_success = True
         except DownloadCancelled as e:
-            self.translator = old_translator
+            self.translator = None
+            self._discard_module_instance(new_translator)
+            self._discard_module_instance(old_translator)
             self.last_error = e
             LOGGER.info(f'Cancelled preparing translator {translator}.')
         except MissingDependency as e:
-            self.translator = old_translator
+            self.translator = None
+            self._discard_module_instance(new_translator)
+            self._discard_module_instance(old_translator)
             self.last_error = e
             self.last_missing_requirements = e.requirements
         except Exception as e:
-            self.translator = old_translator
+            self.translator = None
+            self._discard_module_instance(new_translator)
+            self._discard_module_instance(old_translator)
             missing = self._missing_requirements_from_exception(translator, e)
             if missing:
                 self.last_error = e
@@ -850,6 +876,7 @@ class ModuleManager(QObject):
     imgtrans_pipeline_finished = Signal()
     blktrans_pipeline_finished = Signal(int, list)
     page_trans_finished = Signal(int)
+    module_selection_changed = Signal(str, str)
 
     run_canvas_inpaint = False
     is_waiting_th = False
@@ -912,8 +939,8 @@ class ModuleManager(QObject):
         self.translator_panel = translator_panel = config_panel.trans_config_panel        
         translator_params = merge_config_module_params(
             cfg_module.translator_params, GET_VALID_TRANSLATORS(), TRANSLATORS.get)
-        translator_panel.addModulesParamWidgets(translator_params)
-        translator_panel.translator_changed.connect(self.setTranslator)
+        translator_panel.addModulesParamWidgets(translator_params, cfg_module.translator)
+        translator_panel.translator_changed.connect(self.selectTranslator)
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
         translator_panel.translateByTextblockBox.checker_changed.connect(self.on_translatebyblock_checker_changed)
         translator_panel.translateByTextblockBox.checker.setChecked(cfg_module.translate_by_textblock)
@@ -925,25 +952,25 @@ class ModuleManager(QObject):
         self.inpaint_panel = inpainter_panel = config_panel.inpaint_config_panel
         inpainter_params = merge_config_module_params(
             cfg_module.inpainter_params, GET_VALID_INPAINTERS(), INPAINTERS.get)
-        inpainter_panel.addModulesParamWidgets(inpainter_params)
+        inpainter_panel.addModulesParamWidgets(inpainter_params, cfg_module.inpainter)
         inpainter_panel.paramwidget_edited.connect(self.on_inpainterparam_edited)
-        inpainter_panel.inpainter_changed.connect(self.setInpainter)
+        inpainter_panel.inpainter_changed.connect(self.selectInpainter)
         inpainter_panel.needInpaintChecker.checker_changed.connect(self.on_inpainter_checker_changed)
         inpainter_panel.needInpaintChecker.checker.setChecked(cfg_module.check_need_inpaint)
 
         self.textdetect_panel = textdetector_panel = config_panel.detect_config_panel
         textdetector_params = merge_config_module_params(
             cfg_module.textdetector_params, GET_VALID_TEXTDETECTORS(), TEXTDETECTORS.get)
-        textdetector_panel.addModulesParamWidgets(textdetector_params)
+        textdetector_panel.addModulesParamWidgets(textdetector_params, cfg_module.textdetector)
         textdetector_panel.paramwidget_edited.connect(self.on_textdetectorparam_edited)
-        textdetector_panel.detector_changed.connect(self.setTextDetector)
+        textdetector_panel.detector_changed.connect(self.selectTextDetector)
 
         self.ocr_panel = ocr_panel = config_panel.ocr_config_panel
         ocr_params = merge_config_module_params(
             cfg_module.ocr_params, GET_VALID_OCR(), OCR.get)
-        ocr_panel.addModulesParamWidgets(ocr_params)
+        ocr_panel.addModulesParamWidgets(ocr_params, cfg_module.ocr)
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
-        ocr_panel.ocr_changed.connect(self.setOCR)
+        ocr_panel.ocr_changed.connect(self.selectOCR)
         OCRBase.register_postprocess_hooks(ocr_postprocess)
 
         config_panel.unload_models.connect(self.unload_all_models)
@@ -1625,6 +1652,28 @@ class ModuleManager(QObject):
         # 线程完成了，直接关闭窗口
         self.progress_msgbox.hide()
         self.imgtrans_pipeline_finished.emit()
+
+    def _select_module(self, module_key: str, module_name: str, valid_modules: List[str]):
+        if module_name is None:
+            module_name = getattr(cfg_module, module_key)
+        if module_name not in valid_modules:
+            LOGGER.warning(f'Ignoring invalid {module_key} module selection: {module_name}')
+            return
+
+        setattr(cfg_module, module_key, module_name)
+        self.module_selection_changed.emit(module_key, module_name)
+
+    def selectTranslator(self, translator: str = None):
+        self._select_module('translator', translator, GET_VALID_TRANSLATORS())
+
+    def selectInpainter(self, inpainter: str = None):
+        self._select_module('inpainter', inpainter, GET_VALID_INPAINTERS())
+
+    def selectTextDetector(self, textdetector: str = None):
+        self._select_module('textdetector', textdetector, GET_VALID_TEXTDETECTORS())
+
+    def selectOCR(self, ocr: str = None):
+        self._select_module('ocr', ocr, GET_VALID_OCR())
 
     def setTranslator(self, translator: str = None):
         if translator is None:

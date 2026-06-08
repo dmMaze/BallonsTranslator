@@ -5,7 +5,6 @@ from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, Q
 from qtpy.QtCore import Qt, Signal, QPoint, QEvent, QSize
 from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon
 
-from ballontranslator.modules.translators import BaseTranslator
 from .custom_widget import Widget, PaintQSlider, SmallComboBox, ConfigClickableLabel
 from .misc import themed_icon_path
 from ballontranslator.utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
@@ -635,15 +634,6 @@ class TranslatorSelectionWidget(Widget):
         self.selector.blockSignals(block)
         super().blockSignals(block)
     
-    def finishSetTranslator(self, translator: BaseTranslator):
-        self.setTranslatorMetadata(
-            translator.name,
-            translator.supported_src_list,
-            translator.supported_tgt_list,
-            translator.lang_source,
-            translator.lang_target,
-        )
-
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
         # Metadata can come from ModuleSpec before the translator is imported.
         self.blockSignals(True)
