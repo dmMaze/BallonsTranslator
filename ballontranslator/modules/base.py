@@ -121,6 +121,21 @@ def _device_options_with_current(device_param: Dict):
 
 
 def normalize_device_selector_options(module_params: Dict):
+    """Keep device selector params usable when loaded from older configs.
+
+    Example:
+        >>> params = {'device': {
+        ...     'type': 'selector',
+        ...     'options': [],
+        ...     'value': 'privateuseone:0',
+        ...     '__device_not_supported': ['cuda'],
+        ... }}
+        >>> normalize_device_selector_options(params)
+        True
+        >>> params['device']['options']
+        ['cpu', 'privateuseone:0']
+    """
+
     if module_params is None:
         return False
     device_param = module_params.get('device')
@@ -135,6 +150,19 @@ def merge_config_module_params(
     module_keys: List,
     get_module: Callable,
 ) -> Dict:
+    """Merge saved config with module defaults from classes or lazy specs.
+
+    Example:
+        >>> class LazySpec:
+        ...     def params_copy(self):
+        ...         return {'device': {'type': 'selector', 'options': [], 'value': 'cpu'}}
+        >>> config = {}
+        >>> merge_config_module_params(config, ['demo'], lambda key: LazySpec()) is config
+        True
+        >>> config['demo']['device']['options']
+        ['cpu']
+    """
+
     for module_key in module_keys:
         module = get_module(module_key)
         # module may be a ModuleSpec, so config panels can load without imports.
@@ -176,6 +204,25 @@ def standardize_module_params(params):
 
 
 class BaseModule:
+    """Base class for lazily loaded module implementations.
+
+    Subclasses list heavy attributes in ``_load_model_keys`` so the shared
+    loader/unloader can tell whether a model is resident.
+
+    Example:
+        >>> class DemoModule(BaseModule):
+        ...     _load_model_keys = {'model'}
+        ...     def _load_model(self):
+        ...         self.model = object()
+        >>> demo = DemoModule()
+        >>> demo.all_model_loaded()
+        False
+        >>> demo.load_model()
+        >>> demo.all_model_loaded()
+        True
+        >>> demo.unload_model()
+        True
+    """
 
     params: Dict = None
     logger = LOGGER

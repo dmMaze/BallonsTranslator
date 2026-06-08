@@ -32,6 +32,17 @@ cfg_module = pcfg.module
 
 
 class ModuleThread(QThread):
+    """Worker thread that prepares and swaps one lazily selected module.
+
+    Dependency checks, file preparation, imports, and optional model loading
+    happen here so the active module remains usable if preparation is cancelled.
+
+    Example:
+        >>> thread = ModuleThread('ocr', registry)  # doctest: +SKIP
+        >>> thread.requestCancelModuleInit()  # doctest: +SKIP
+        >>> thread.cancel_event.is_set()  # doctest: +SKIP
+        True
+    """
 
     finish_set_module = Signal()
     module_prepare_progress = Signal(dict)

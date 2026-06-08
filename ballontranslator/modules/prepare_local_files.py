@@ -22,6 +22,16 @@ class MissingOptionalDependency(ModuleNotFoundError):
 
 
 def _spec_from_module(module_spec_or_class) -> ModuleSpec:
+    """Return a ModuleSpec for either a lazy spec or a resolved class.
+
+    Example:
+        >>> class DemoModule:
+        ...     name = 'demo'
+        ...     params = {'device': {'value': 'cpu'}}
+        >>> _spec_from_module(DemoModule).key
+        'demo'
+    """
+
     if isinstance(module_spec_or_class, ModuleSpec):
         return module_spec_or_class
     module_class = module_spec_or_class
@@ -41,6 +51,19 @@ def _spec_from_module(module_spec_or_class) -> ModuleSpec:
 
 
 def missing_optional_dependencies(module_spec_or_class) -> List[str]:
+    """List optional dependencies that are unavailable before module import.
+
+    Example:
+        >>> spec = ModuleSpec(
+        ...     key='demo',
+        ...     import_path='demo.module',
+        ...     class_name='Demo',
+        ...     optional_dependencies=['definitely_missing_ballonstranslator_pkg'],
+        ... )
+        >>> missing_optional_dependencies(spec)
+        ['definitely_missing_ballonstranslator_pkg']
+    """
+
     spec = _spec_from_module(module_spec_or_class)
     missing = []
     optional_dependencies = spec.optional_dependencies if spec.optional_dependencies is not None else []
@@ -69,6 +92,14 @@ def check_optional_dependencies(module_spec_or_class):
 
 
 def ensure_module_files(module_spec_or_class, progress_callback=None, cancel_event=None):
+    """Prepare optional dependencies and declared files before module import.
+
+    Example:
+        >>> spec = ModuleSpec(key='demo', import_path='demo.module', class_name='Demo')
+        >>> ensure_module_files(spec)
+        True
+    """
+
     # Called from the selected module thread before importing or instantiating it.
     spec = _spec_from_module(module_spec_or_class)
     check_optional_dependencies(spec)
