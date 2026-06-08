@@ -1105,7 +1105,7 @@ class ModuleManager(QObject):
             self._install_batch_missing_packages(queue, requirements, on_success, on_failure)
             return
 
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             LOGGER.error(f'Selected modules require package(s):\n{missing_text}')
             if on_failure is not None:
                 on_failure()
@@ -1175,7 +1175,7 @@ class ModuleManager(QObject):
         self.package_install_thread.installPackages(requirements)
 
     def _show_package_install_dialog(self, requirements: List[str]):
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             LOGGER.info(f'Installing package(s): {", ".join(requirements)}')
             return
         self.prepare_msgbox.zero_progress()
@@ -1188,7 +1188,7 @@ class ModuleManager(QObject):
         self.prepare_msgbox.show_fitted()
 
     def on_batch_package_install_finished(self):
-        if not (shared.HEADLESS or shared.HEADLESS_CONTINUOUS):
+        if not shared.HEADLESS:
             self.prepare_msgbox.done(0)
 
         queue = self._pending_batch_package_queue
@@ -1199,7 +1199,7 @@ class ModuleManager(QObject):
         self._pending_batch_package_failure = None
 
         if self.package_install_thread.last_success:
-            if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+            if shared.HEADLESS:
                 self._begin_prepare_queue(queue, on_success, on_failure)
             else:
                 QTimer.singleShot(0, lambda: self._begin_prepare_queue(queue, on_success, on_failure))
@@ -1216,7 +1216,7 @@ class ModuleManager(QObject):
 
     def _show_prepare_dialog(self, thread: ModuleThread, module_name: str):
         self._preparing_thread = thread
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             LOGGER.info(f'Preparing {thread.module_key} module: {module_name}')
             return
         # Match the RUN progress widget geometry/style for first-run preparation.
@@ -1263,7 +1263,7 @@ class ModuleManager(QObject):
         if not message:
             message = path or module_name
 
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             if event in {'checking_dependencies', 'file_start', 'archive_extract', 'installing_packages', 'package_output', 'importing', 'loading_model'}:
                 LOGGER.info(f'{message}: {event}')
             return
@@ -1272,7 +1272,7 @@ class ModuleManager(QObject):
 
     def on_module_prepare_finished(self, thread: ModuleThread):
         if self._preparing_thread is thread:
-            if not (shared.HEADLESS or shared.HEADLESS_CONTINUOUS):
+            if not shared.HEADLESS:
                 self.prepare_msgbox.done(0)
             self._preparing_thread = None
 
@@ -1286,7 +1286,7 @@ class ModuleManager(QObject):
             return
 
         if thread.last_set_success:
-            if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+            if shared.HEADLESS:
                 self._continue_pending_prepare()
             else:
                 # Let Qt finish closing the prepare dialog before showing RUN progress.
@@ -1321,7 +1321,7 @@ class ModuleManager(QObject):
             self._install_missing_packages_and_retry(thread, requirements, retry_key)
             return True
 
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             LOGGER.error(
                 f'Module {thread.last_set_module_name} requires package(s): '
                 f'{", ".join(requirements)}'
@@ -1487,7 +1487,7 @@ class ModuleManager(QObject):
         self._prepare_modules_then(
             required_modules,
             lambda: self._startImgtransPipeline(pages_to_process),
-            on_failure=lambda: self.imgtrans_pipeline_finished.emit() if (shared.HEADLESS or shared.HEADLESS_CONTINUOUS) else None,
+            on_failure=lambda: self.imgtrans_pipeline_finished.emit() if shared.HEADLESS else None,
         )
 
     def _startImgtransPipeline(self, pages_to_process=None):

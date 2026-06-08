@@ -63,7 +63,7 @@ class MacMoveResize:
 
     @classmethod
     def toggleMaxState(cls, window):
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             return
         if window.isMaximized():
             window.showNormal()

@@ -56,7 +56,7 @@ class PageListView(QListWidget):
 
         return super().contextMenuEvent(e)
 
-mainwindow_cls = Widget if (shared.HEADLESS or shared.HEADLESS_CONTINUOUS) else FramelessWindow
+mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
 class MainWindow(mainwindow_cls):
 
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
@@ -101,7 +101,7 @@ class MainWindow(mainwindow_cls):
                 if osp.exists(proj_dir):
                     self.OpenProj(proj_dir)
 
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             self.run_batch(**exec_args)
 
         if shared.ON_MACOS:
@@ -506,7 +506,7 @@ class MainWindow(mainwindow_cls):
         else:
             self.openJsonProj(proj_path)
         
-        if pcfg.let_textstyle_indep_flag and not (shared.HEADLESS or shared.HEADLESS_CONTINUOUS):
+        if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
             self.load_textstyle_from_proj_dir(from_proj=True)
 
     def load_textstyle_from_proj_dir(self, from_proj=False):
@@ -1331,13 +1331,13 @@ class MainWindow(mainwindow_cls):
         self.backup_blkstyles.clear()
         self._run_imgtrans_wo_textstyle_update = False
         self.postprocess_mt_toggle = True
-        if pcfg.module.empty_runcache and not (shared.HEADLESS or shared.HEADLESS_CONTINUOUS):
+        if pcfg.module.empty_runcache and not shared.HEADLESS:
             self.module_manager.unload_all_models()
         if shared.args.export_translation_txt:
             self.on_export_txt('translation')
         if shared.args.export_source_txt:
             self.on_export_txt('source')
-        if shared.HEADLESS or shared.HEADLESS_CONTINUOUS:
+        if shared.HEADLESS:
             self.run_next_dir()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
@@ -1821,20 +1821,14 @@ class MainWindow(mainwindow_cls):
         if len(self.exec_dirs) == 0:
             while self.imsave_thread.isRunning():
                 time.sleep(0.1)
-            if shared.HEADLESS_CONTINUOUS:
-                LOGGER.info(f'finished translating all dirs, please enter next dirs to translate (separated by comma). enter "exit" to quit app.')
-                new_exec_dirs = input()
-                if new_exec_dirs.strip().lower() == 'exit':
-                    LOGGER.info(f'exiting app...')
-                    self.app.quit()
-                    return  
-                else:
-                    self.run_batch(new_exec_dirs)
-                    return;
-            else:
-                LOGGER.info(f'finished translating all dirs, quit app...')
+            LOGGER.info(f'finished translating all dirs, please enter next dirs to translate (separated by comma). enter "exit" to quit app.')
+            new_exec_dirs = input()
+            if new_exec_dirs.strip().lower() == 'exit':
+                LOGGER.info(f'exiting app...')
                 self.app.quit()
                 return
+            self.run_batch(new_exec_dirs)
+            return
         d = self.exec_dirs.pop(0)
         
         LOGGER.info(f'translating {d} ...')
