@@ -469,7 +469,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         non_bracket_br = cfmt.punc_actual_rect(line, char, cache=True, space_shift=space_shift)
                         yoff = -non_bracket_br[1] - non_bracket_br[3]
                         if char in PUNSET_BRACKETL:
-                            xoff = 0
+                            if ii == 0:
+                                xoff = -non_bracket_br[0]
+                            else:
+                                xoff = 0
                         else:
                             xoff = -non_bracket_br[0]
 
@@ -713,7 +716,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
             end_char = char_idx + text_len >= blk_text_len
-            
+
+            is_first_lbracket = False
+            # _lbracket_shift = 0
+
             if char_idx + text_len > blk_text_len:
                 ypos = ypos_list[-1] if len(ypos_list) > 0 else 0
                 blk_line_spaces.append([0, 0, [ypos], char_idx])
@@ -740,6 +746,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 tbr_h = cfmt.tbr.height() + let_sp_offset
                 char = blk_text[char_idx]
+                is_first_lbracket = char_idx - num_lspaces == 0 and char in PUNSET_BRACKETL
+                if is_first_lbracket:
+                    _lbracket_shift = -cfmt.punc_actual_rect(line, char, cache=True, space_shift=space_shift)[0]
 
                 if char in PUNSET_VERNEEDROTATE:
                     tbr, br = cfmt.punc_rect(char)
@@ -775,6 +784,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     self.draw_shifted = max(self.draw_shifted, shifted)
 
             char_yoffset_lst = [line_y_offset]
+            if is_first_lbracket:
+                char_yoffset_lst[0] += _lbracket_shift
             for _ in range(num_lspaces):
                 char_yoffset_lst.append(min(available_height - tbr_h, char_yoffset_lst[-1] + space_w))
             blk_line_spaces.append([num_rspaces, num_lspaces, char_yoffset_lst, char_idx - num_lspaces])
