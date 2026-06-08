@@ -16,8 +16,6 @@ def load_ctd_model(model_path, device, detect_size=1024) -> CTDModel:
 @register_textdetectors('ctd')
 class ComicTextDetector(TextDetectorBase):
 
-    dependencies = ['torch', 'torchvision', 'einops']
-
     params = {
         'detect_size': {
             'type': 'selector',

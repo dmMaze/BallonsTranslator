@@ -43,7 +43,7 @@ class ModuleSpec:
     params: Dict = None
     download_file_list: List = None
     download_file_on_load: bool = False
-    dependencies: List[str] = field(default_factory=list)
+    optional_dependencies: List[str] = field(default_factory=list)
     supported_src_list: List[str] = None
     supported_tgt_list: List[str] = None
     available: bool = True
@@ -65,7 +65,7 @@ class ModuleSpec:
             missing = e.name or str(e)
             raise LazyModuleError(
                 f'Module "{self.key}" requires Python package "{missing}". '
-                f'Install the dependency before selecting this module.'
+                f'Install the optional dependency before selecting this module.'
             ) from e
         except Exception as e:
             raise LazyModuleError(f'Failed to import module "{self.key}" from {self.import_path}: {e}') from e
@@ -318,7 +318,6 @@ class Registry:
                 params=deepcopy(getattr(module, 'params', None)),
                 download_file_list=deepcopy(getattr(module, 'download_file_list', None)),
                 download_file_on_load=getattr(module, 'download_file_on_load', False),
-                dependencies=deepcopy(getattr(module, 'dependencies', [])),
                 resolved_class=module,
             )
         return None

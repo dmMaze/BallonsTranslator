@@ -38,7 +38,7 @@ Important areas:
 - Prefer incremental delivery. Large features should be split into domain/config, pipeline, UI, and persistence changes where practical.
 
 ## Code Comment Rules
-- Include a standard Python >>> doctest snippet in the docstring of core classes and complex functions.
+
 - Add the minimum comments needed to make code review efficient.
 - Comment non-obvious intent, invariants, compatibility constraints, and failure modes.
 - For Qt threading, signals, model loading, project JSON compatibility, and file IO, add short comments when the ordering or side effect is important.

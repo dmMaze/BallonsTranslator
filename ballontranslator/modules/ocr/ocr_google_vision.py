@@ -16,8 +16,6 @@ httpx_logger.setLevel(logging.WARNING)
 
 @register_OCR('google_vision')
 class OCRGoogleVisionAPI(OCRBase):
-    dependencies = ['httpx[socks,brotli]']
-
     params = {
         'api_key': '',
         'language_hints': {
@@ -274,4 +272,4 @@ class OCRGoogleVisionAPI(OCRBase):
                 param_content = 1.0
         super().updateParam(param_key, param_content)
         if param_key == 'proxy':
-            self.proxy_url = param_content
+            self.proxy_url = param_content 

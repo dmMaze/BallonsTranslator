@@ -3,15 +3,49 @@ import sys
 import argparse
 import os.path as osp
 import os
+import importlib
 import subprocess
+import tempfile
 from platform import platform
 
 BRANCH = 'dev'
 VERSION = '1.4.0'
 
+python = sys.executable
 git = os.environ.get('GIT', "git")
+skip_install = False
+index_url = os.environ.get('INDEX_URL', "")
 QT_APIS = ['pyqt6', 'pyside6', 'pyqt5', 'pyside2']
 stored_commit_hash = None
+
+REQ_WIN = [
+    'pywin32'
+]
+
+OPTIONAL_STARTUP_PACKAGES = {
+    # Heavy/module-specific packages are checked when their module is selected.
+    'torch',
+    'torchvision',
+    'torchaudio',
+    'transformers',
+    'diffusers',
+    'ultralytics',
+    'ctranslate2',
+    'sentencepiece',
+    'openai',
+    'deepl',
+    'translators',
+    'gguf',
+    'hf-transfer',
+    'winsdk',
+    'msl-loadlib',
+    'pyobjc-core',
+    'pyobjc-framework-cocoa',
+    'pyobjc-framework-coreml',
+    'pyobjc-framework-quartz',
+    'pyobjc-framework-vision',
+    'betterproto',
+}
 
 FONT_EXTS = {'.ttf','.otf','.ttc','.pfb'}
 
@@ -30,15 +64,26 @@ else:
     parser.add_argument("--qt-api", default='pyqt6', choices=QT_APIS, help='Set qt api')
 parser.add_argument("--debug", action='store_true')
 parser.add_argument("--system_hf_cache", action='store_true', help="use system huggingface cache directory instead of ./data/models")
+parser.add_argument("--requirements", default='requirements.txt')
 parser.add_argument("--headless", action='store_true', help='run without GUI')
 parser.add_argument("--headless_continuous", action='store_true', help='like headless but will not exit after finishing translation, prompts the user for new exec_dirs until user exits the program')
 parser.add_argument("--exec_dirs", default='', help='translation queue (project directories) separated by comma')
 parser.add_argument("--ldpi", default=None, type=float, help='logical dots perinch')
 parser.add_argument("--export-translation-txt", action='store_true', help='save translation to txt file once RUN completed')
 parser.add_argument("--export-source-txt", action='store_true', help='save source to txt file once RUN completed')
+parser.add_argument("--frozen", action='store_true', help='run without checking requirements')
 parser.add_argument("--update", action='store_true', help="Update the repository before launching") # Add argument --update
 parser.add_argument("--config_path", default=shared.CONFIG_PATH, help='Config file to use for translation') # Named config_path to avoid conflict with existing name config
 args, _ = parser.parse_known_args()
+
+
+def is_installed(package):
+    try:
+        spec = importlib.util.find_spec(package)
+    except ModuleNotFoundError:
+        return False
+
+    return spec is not None
 
 
 def run(command, desc=None, errdesc=None, custom_env=None, live=False):
@@ -69,6 +114,14 @@ stderr: {result.stderr.decode(encoding="utf8", errors="ignore") if len(result.st
     return result.stdout.decode(encoding="utf8", errors="ignore")
 
 
+def run_pip(args, desc=None):
+    if skip_install:
+        return
+
+    index_url_line = f' --index-url {index_url}' if index_url != '' else ''
+    return run(f'"{python}" -m pip {args} --prefer-binary{index_url_line} --disable-pip-version-check --no-warn-script-location', desc=f"Installing {desc}", errdesc=f"Couldn't install {desc}", live=True)
+
+
 def commit_hash():
     global stored_commit_hash
 
@@ -91,14 +144,7 @@ def restart():
     print('restarting...\n')
     if BT:
         BT.close()
-    argv = list(sys.argv)
-    try:
-        main_path = Path(__file__).resolve().parents[0] / '__main__.py'
-        if Path(argv[0]).resolve() == main_path:
-            argv = ['-m', 'ballontranslator', *argv[1:]]
-    except Exception:
-        pass
-    os.execv(sys.executable, [sys.executable] + argv)
+    os.execv(sys.executable, ['python'] + sys.argv)
 
 
 def setup_locks():
@@ -129,11 +175,7 @@ def main():
     if not args.system_hf_cache:
         os.environ['HF_HOME'] = osp.join(APP_DIR, 'data/models')
 
-    from ballontranslator.utils.core_requirements import ensure_core_requirements
-    if ensure_core_requirements(APP_DIR):
-        print('Core requirements updated. Restarting...')
-        restart()
-        return
+    prepare_environment()
 
     if args.update:
         if getattr(sys, 'frozen', False):
@@ -277,6 +319,56 @@ def main():
         ballontrans.show()
         ballontrans.resetStyleSheet()
     sys.exit(app.exec())
+
+def prepare_environment():
+
+    try:
+        import packaging
+    except ModuleNotFoundError:
+        run_pip(f"install packaging", "install packaging")
+
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+    from ballontranslator.utils.package import load_req_file, check_reqs
+
+    if getattr(sys, 'frozen', False):
+        print('Running as app, skip dependency installation')
+        return
+
+    if args.frozen:
+        return
+
+    req_updated = False
+    if sys.platform == 'win32':
+        for req in REQ_WIN:
+            if not check_reqs([req]):
+                run_pip(f"install {req}", req)
+                req_updated = True
+
+    requirements = [
+        req for req in load_req_file(args.requirements)
+        if canonicalize_name(Requirement(req).name) not in OPTIONAL_STARTUP_PACKAGES
+    ]
+    # Keep the default UI launch path free of torch and other module backends.
+    if not check_reqs(requirements):
+        with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False, encoding='utf8') as req_file:
+            req_file.write('\n'.join(requirements))
+            req_file_path = req_file.name
+        try:
+            run_pip(f"install -r {req_file_path}", "requirements")
+        finally:
+            try:
+                os.remove(req_file_path)
+            except OSError:
+                pass
+        req_updated = True
+
+    if req_updated:
+        import site
+        importlib.reload(site)
+
+
+
 
 
 if __name__ == '__main__':

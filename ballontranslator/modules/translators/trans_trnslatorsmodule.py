@@ -7,8 +7,6 @@ import translators as ts
 
 @register_translator('TranslatorsPack')
 class GeneralTranslator(BaseTranslator):
-    dependencies = ['translators==5.9.5']
-
     def __init__(self, lang_source, lang_target, *args, **kwargs):
         self.lang_source = lang_source
         self.lang_target = lang_target

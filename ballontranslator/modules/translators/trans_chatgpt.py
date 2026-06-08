@@ -20,8 +20,6 @@ class InvalidNumTranslations(Exception):
 
 @register_translator('ChatGPT')
 class GPTTranslator(BaseTranslator):
-    dependencies = ['openai>=2.8.1', 'pyyaml']
-
     concate_text = False
     cht_require_convert = True
     params: Dict = {

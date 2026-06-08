@@ -27,8 +27,6 @@ update_ckpt_list()
 
 @register_textdetectors('ysgyolo')
 class YSGYoloDetector(TextDetectorBase):
-    dependencies = ['torch', 'ultralytics>=8.4.14']
-
     params = {
         'model path': {
             'type': 'selector',

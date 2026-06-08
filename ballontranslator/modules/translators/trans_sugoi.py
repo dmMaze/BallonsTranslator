@@ -6,8 +6,6 @@ SUGOIMODEL_TOKENIZATOR_PATH = SUGOIMODEL_TRANSLATOR_DIRPATH + "spm.ja.nopretok.m
 @register_translator('Sugoi')
 class SugoiTranslator(BaseTranslator):
 
-    dependencies = ['ctranslate2', 'sentencepiece']
-
     concate_text = False
     params: Dict = {
         'device': DEVICE_SELECTOR()

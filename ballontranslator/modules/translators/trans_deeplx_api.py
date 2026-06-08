@@ -4,8 +4,6 @@ import httpx
 @register_translator('DeepLX API')
 class DeepLTranslatorv2(BaseTranslator):
 
-    dependencies = ['httpx[socks,brotli]']
-
     concate_text = False
     params: Dict = {
         'api_url': '',  # EndPoint will be provided by the user

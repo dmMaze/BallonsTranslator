@@ -10,8 +10,6 @@ MODEL_PATH = 'data/models/PaddleOCR-VL-For-Manga'
 
 @register_OCR('PaddleOCRVLManga')
 class PaddleOCRVLManga(OCRBase):
-    dependencies = ['torch', 'transformers==4.57.6']
-
     params = {
         'device': DEVICE_SELECTOR(),
         "max_new_tokens": {
@@ -143,4 +141,5 @@ class PaddleOCRVLManga(OCRBase):
         device = self.params['device']['value']
         if self.device != device and self.model is not None:
             self.model.to(device)
+
 

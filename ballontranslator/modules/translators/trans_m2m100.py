@@ -7,8 +7,6 @@ CT_MODEL_PATH = 'data/models/m2m100-1.2B-ctranslate2'
 @register_translator('m2m100')
 class M2M100Translator(BaseTranslator):
 
-    dependencies = ['ctranslate2', 'sentencepiece', 'transformers==4.57.6']
-
     concate_text = False
     _load_model_keys = {'translator', 'tokenizer'}
     params: Dict = {

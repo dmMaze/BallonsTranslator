@@ -14,8 +14,6 @@ from .base import register_OCR, OCRBase, TextBlock
 
 @register_OCR("llm_ocr")
 class LLM_OCR(OCRBase):
-    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]']
-
     lang_map = {
         "Auto Detect": None,
         "Afrikaans": "af",
@@ -496,3 +494,4 @@ class LLM_OCR(OCRBase):
             self.request_count_minute = 0
             self.minute_start_time = time.time()
             self.last_request_time = 0
+            

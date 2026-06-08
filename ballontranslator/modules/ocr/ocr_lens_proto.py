@@ -151,8 +151,6 @@ class OCRLensAPI_exp(OCRBase):
     Requires 'betterproto', 'requests', and 'lens_betterproto.py'.
     """
 
-    dependencies = ['betterproto']
-
     params = {
         "delay": 1.5,
         "newline_handling": {

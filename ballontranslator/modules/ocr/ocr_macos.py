@@ -95,8 +95,6 @@ if platform.system() == 'Darwin' and platform.mac_ver()[0] >= '10.15':
     if len(macos_ocr_supported_languages) > 0:
         @register_OCR('macos_ocr')
         class OCRApple(OCRBase):
-            dependencies = ['pyobjc-framework-vision']
-
             params = {
                 'language': {
                     'type':'selector',
