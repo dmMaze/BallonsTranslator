@@ -1,4 +1,5 @@
 import ast
+import importlib.metadata
 import os
 import platform
 import re
@@ -60,20 +61,75 @@ BASE_TRANSLATOR_LANGS = [
 INITIALIZED_REGISTRIES = set()
 
 
+def _package_version(package_name):
+    try:
+        return importlib.metadata.version(package_name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def _torch_package_backend():
+    version = _package_version('torch')
+    if version is None:
+        return None
+    if sys.platform == 'darwin':
+        return 'mps'
+    if '+' not in version:
+        return None
+    local_version = version.split('+', 1)[1].lower()
+    if local_version.startswith(('cu', 'rocm')):
+        return 'cuda'
+    if local_version.startswith('xpu'):
+        return 'xpu'
+    return None
+
+
+def _candidate_device_options():
+    options = ['cpu']
+    backend = _torch_package_backend()
+    if backend is not None:
+        options.append(backend)
+    return options
+
+
+def _preferred_device_value(options):
+    preferred = ['mps'] if sys.platform == 'darwin' else ['cuda', 'xpu']
+    for device in preferred:
+        if device in options:
+            return device
+    if 'cpu' in options:
+        return 'cpu'
+    return options[0] if options else 'cpu'
+
+
 def _device_selector(not_supported=None):
     if not_supported is None:
         not_supported = []
-    options = ['cpu']
+    options = _candidate_device_options()
+    options = [opt for opt in options if all(device not in opt for device in not_supported)]
     return {
         'type': 'selector',
-        'options': [opt for opt in options if all(device not in opt for device in not_supported)],
-        'value': 'cpu',
+        'options': options,
+        'value': _preferred_device_value(options),
         '__device_not_supported': not_supported,
     }
 
 
 class SafeEval:
-    # Small evaluator for literal module metadata; unknown expressions are ignored.
+    """Evaluate the small literal subset needed for lazy module metadata.
+
+    Unknown or unsafe expressions return ``UNKNOWN`` so the lazy scanner can
+    keep building specs without importing the module being scanned.
+
+    Example:
+        >>> expr = ast.parse('base + 3', mode='eval').body
+        >>> SafeEval({'base': 2}).eval(expr)
+        5
+        >>> unknown = ast.parse('load_model()', mode='eval').body
+        >>> SafeEval({}).eval(unknown) is UNKNOWN
+        True
+    """
+
     def __init__(self, env: Dict[str, Any]):
         self.env = env
 
@@ -336,6 +392,14 @@ def _walk_assignments(stmts: Iterable[ast.stmt], env: Dict[str, Any]):
 
 
 def _collect_class_attrs(class_node: ast.ClassDef, env: Dict[str, Any]) -> Dict[str, Any]:
+    """Collect class-level metadata without executing the class body.
+
+    Example:
+        >>> node = ast.parse('class Demo:\\n    params = {"device": "cpu"}\\n').body[0]
+        >>> _collect_class_attrs(node, {})['params']
+        {'device': 'cpu'}
+    """
+
     attrs = {}
     class_env = env.copy()
 
@@ -373,6 +437,20 @@ def _return_list(func_node: ast.FunctionDef, env: Dict[str, Any]):
 
 
 def _collect_translator_langs(class_node: ast.ClassDef, env: Dict[str, Any]):
+    """Infer translator language lists from simple class metadata and setup code.
+
+    Example:
+        >>> source = '''
+        ... class Demo:
+        ...     cht_require_convert = True
+        ...     def _setup_translator(self):
+        ...         self.lang_map["简体中文"] = "zh"
+        ... '''
+        >>> node = ast.parse(source).body[0]
+        >>> _collect_translator_langs(node, {})[1]
+        ['简体中文', '繁體中文']
+    """
+
     langs = []
     src = tgt = None
     cht_require_convert = False
@@ -420,6 +498,26 @@ def _collect_translator_langs(class_node: ast.ClassDef, env: Dict[str, Any]):
 
 
 def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
+    """Build lazy module specs from decorators and class attributes in one file.
+
+    Example:
+        >>> import tempfile
+        >>> source = '''
+        ... @register_translator("demo")
+        ... class DemoTranslator:
+        ...     params = {"device": DEVICE_SELECTOR(not_supported=["cuda", "xpu", "mps"])}
+        ... '''
+        >>> with tempfile.NamedTemporaryFile('w', suffix='.py', delete=False) as f:
+        ...     _ = f.write(source)
+        ...     path = f.name
+        >>> specs = _scan_file(path, 'translator')
+        >>> os.unlink(path)
+        >>> specs[0].key, specs[0].class_name
+        ('demo', 'DemoTranslator')
+        >>> specs[0].params['device']['value']
+        'cpu'
+    """
+
     # Scan decorators/classes without executing top-level imports or model code.
     with open(path, 'r', encoding='utf8') as f:
         source = f.read()
@@ -481,6 +579,14 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
 
 
 def init_lazy_module_registries(target_modules=None):
+    """Register lightweight module specs while leaving real imports deferred.
+
+    Example:
+        >>> init_lazy_module_registries('ocr')  # doctest: +SKIP
+        >>> OCR.get_spec('mit48px').resolved_class is None  # doctest: +SKIP
+        True
+    """
+
     from . import MODULETYPE_TO_REGISTRIES
 
     def _module_files(module_type: str) -> List[str]:

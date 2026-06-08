@@ -15,7 +15,27 @@ class LazyModuleError(Exception):
 
 @dataclass
 class ModuleSpec:
-    # Static module metadata used by the UI without importing heavy modules.
+    """Static module metadata used by the UI before importing heavy modules.
+
+    Example:
+        >>> class DemoModule:
+        ...     pass
+        >>> spec = ModuleSpec(
+        ...     key='demo',
+        ...     import_path='unused',
+        ...     class_name='DemoModule',
+        ...     params={'device': {'value': 'cpu'}},
+        ...     resolved_class=DemoModule,
+        ... )
+        >>> spec.resolve() is DemoModule
+        True
+        >>> copied = spec.params_copy()
+        >>> copied == spec.params
+        True
+        >>> copied is spec.params
+        False
+    """
+
     key: str
     import_path: str
     class_name: str

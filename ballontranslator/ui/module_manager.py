@@ -38,6 +38,17 @@ cfg_module = pcfg.module
 
 
 class ModuleThread(QThread):
+    """Worker thread that prepares and swaps one lazily selected module.
+
+    Dependency checks, file preparation, imports, and optional model loading
+    happen here so the active module remains usable if preparation is cancelled.
+
+    Example:
+        >>> thread = ModuleThread('ocr', registry)  # doctest: +SKIP
+        >>> thread.requestCancelModuleInit()  # doctest: +SKIP
+        >>> thread.cancel_event.is_set()  # doctest: +SKIP
+        True
+    """
 
     finish_set_module = Signal()
     module_prepare_progress = Signal(dict)
@@ -901,11 +912,8 @@ class ModuleManager(QObject):
         self.imgtrans_thread.pipeline_stopped.connect(self.on_imgtrans_thread_stopped)
 
         self.translator_panel = translator_panel = config_panel.trans_config_panel        
-        resolve_device_defaults = program_config.config_created_on_load
-
         translator_params = merge_config_module_params(
-            cfg_module.translator_params, GET_VALID_TRANSLATORS(), TRANSLATORS.get,
-            resolve_runtime_device_defaults=resolve_device_defaults)
+            cfg_module.translator_params, GET_VALID_TRANSLATORS(), TRANSLATORS.get)
         translator_panel.addModulesParamWidgets(translator_params)
         translator_panel.translator_changed.connect(self.setTranslator)
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
@@ -918,8 +926,7 @@ class ModuleManager(QObject):
 
         self.inpaint_panel = inpainter_panel = config_panel.inpaint_config_panel
         inpainter_params = merge_config_module_params(
-            cfg_module.inpainter_params, GET_VALID_INPAINTERS(), INPAINTERS.get,
-            resolve_runtime_device_defaults=resolve_device_defaults)
+            cfg_module.inpainter_params, GET_VALID_INPAINTERS(), INPAINTERS.get)
         inpainter_panel.addModulesParamWidgets(inpainter_params)
         inpainter_panel.paramwidget_edited.connect(self.on_inpainterparam_edited)
         inpainter_panel.inpainter_changed.connect(self.setInpainter)
@@ -928,16 +935,14 @@ class ModuleManager(QObject):
 
         self.textdetect_panel = textdetector_panel = config_panel.detect_config_panel
         textdetector_params = merge_config_module_params(
-            cfg_module.textdetector_params, GET_VALID_TEXTDETECTORS(), TEXTDETECTORS.get,
-            resolve_runtime_device_defaults=resolve_device_defaults)
+            cfg_module.textdetector_params, GET_VALID_TEXTDETECTORS(), TEXTDETECTORS.get)
         textdetector_panel.addModulesParamWidgets(textdetector_params)
         textdetector_panel.paramwidget_edited.connect(self.on_textdetectorparam_edited)
         textdetector_panel.detector_changed.connect(self.setTextDetector)
 
         self.ocr_panel = ocr_panel = config_panel.ocr_config_panel
         ocr_params = merge_config_module_params(
-            cfg_module.ocr_params, GET_VALID_OCR(), OCR.get,
-            resolve_runtime_device_defaults=resolve_device_defaults)
+            cfg_module.ocr_params, GET_VALID_OCR(), OCR.get)
         ocr_panel.addModulesParamWidgets(ocr_params)
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.setOCR)

@@ -75,11 +75,12 @@ def _missing_module_requirements(module_spec_or_class) -> List[MissingRequiremen
 
 
 def ensure_module_files(module_spec_or_class, progress_callback=None, cancel_event=None):
-    """Preflight dependencies and model files before importing a module.
+    """Prepare optional dependencies and declared files before module import.
 
-    >>> spec = ModuleSpec(key='demo', import_path='pkg.mod', class_name='Demo')
-    >>> ensure_module_files(spec)
-    True
+    Example:
+        >>> spec = ModuleSpec(key='demo', import_path='demo.module', class_name='Demo')
+        >>> ensure_module_files(spec)
+        True
     """
 
     # Called from the selected module thread before importing or instantiating it.

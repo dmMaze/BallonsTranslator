@@ -100,25 +100,69 @@ def patch_module_params(cfg_param, module_params, module_name: str = ''):
     return cfg_param
 
 
-def refresh_runtime_device_defaults(module_params: Dict):
-    if module_params is None:
-        return
-    device_param = module_params.get('device')
-    if not isinstance(device_param, dict) or device_param.get('type') != 'selector':
-        return
+def is_device_selector_param(param):
+    return isinstance(param, dict) and param.get('type') == 'selector'
+
+
+def _device_allowed_by_filter(value, not_supported):
+    return all(device not in str(value) for device in not_supported)
+
+
+def _device_options_with_current(device_param: Dict):
     not_supported = device_param.get('__device_not_supported', [])
-    # Fresh config generation is allowed to probe torch so CUDA can be the initial default.
-    selector = DEVICE_SELECTOR(not_supported=not_supported)
-    device_param['options'] = selector['options']
-    device_param['value'] = selector['value']
+    current_value = str(device_param.get('value', 'cpu'))
+    options = [str(opt) for opt in device_param.get('options', [])]
+    if 'cpu' not in options:
+        options.insert(0, 'cpu')
+    if current_value not in options and _device_allowed_by_filter(current_value, not_supported):
+        options.append(current_value)
+    device_param['options'] = options
+    device_param['value'] = current_value if current_value in options else 'cpu'
+
+
+def normalize_device_selector_options(module_params: Dict):
+    """Keep device selector params usable when loaded from older configs.
+
+    Example:
+        >>> params = {'device': {
+        ...     'type': 'selector',
+        ...     'options': [],
+        ...     'value': 'privateuseone:0',
+        ...     '__device_not_supported': ['cuda'],
+        ... }}
+        >>> normalize_device_selector_options(params)
+        True
+        >>> params['device']['options']
+        ['cpu', 'privateuseone:0']
+    """
+
+    if module_params is None:
+        return False
+    device_param = module_params.get('device')
+    if not is_device_selector_param(device_param):
+        return False
+    _device_options_with_current(device_param)
+    return True
 
 
 def merge_config_module_params(
     config_params: Dict,
     module_keys: List,
     get_module: Callable,
-    resolve_runtime_device_defaults: bool = False,
 ) -> Dict:
+    """Merge saved config with module defaults from classes or lazy specs.
+
+    Example:
+        >>> class LazySpec:
+        ...     def params_copy(self):
+        ...         return {'device': {'type': 'selector', 'options': [], 'value': 'cpu'}}
+        >>> config = {}
+        >>> merge_config_module_params(config, ['demo'], lambda key: LazySpec()) is config
+        True
+        >>> config['demo']['device']['options']
+        ['cpu']
+    """
+
     for module_key in module_keys:
         module = get_module(module_key)
         # module may be a ModuleSpec, so config panels can load without imports.
@@ -126,14 +170,14 @@ def merge_config_module_params(
             module_params = module.params_copy()
         else:
             module_params = deepcopy(getattr(module, 'params', None))
-        if resolve_runtime_device_defaults:
-            refresh_runtime_device_defaults(module_params)
+        normalize_device_selector_options(module_params)
         if module_key not in config_params or config_params[module_key] is None:
             config_params[module_key] = module_params
         elif module_params is None:
             continue
         else:
             patch_module_params(config_params[module_key], module_params, module_key)
+            normalize_device_selector_options(config_params[module_key])
     return config_params
 
 
@@ -160,6 +204,25 @@ def standardize_module_params(params):
 
 
 class BaseModule:
+    """Base class for lazily loaded module implementations.
+
+    Subclasses list heavy attributes in ``_load_model_keys`` so the shared
+    loader/unloader can tell whether a model is resident.
+
+    Example:
+        >>> class DemoModule(BaseModule):
+        ...     _load_model_keys = {'model'}
+        ...     def _load_model(self):
+        ...         self.model = object()
+        >>> demo = DemoModule()
+        >>> demo.all_model_loaded()
+        False
+        >>> demo.load_model()
+        >>> demo.all_model_loaded()
+        True
+        >>> demo.unload_model()
+        True
+    """
 
     params: Dict = None
     logger = LOGGER
@@ -438,13 +501,18 @@ def soft_empty_cache():
 
 
 
-def DEVICE_SELECTOR(not_supported:list[str]=[]):
+def DEVICE_SELECTOR(not_supported: list[str] = None):
     refresh_torch_device_info()
+    if not_supported is None:
+        not_supported = []
+    options = [opt for opt in AVAILABLE_DEVICES if all(device not in opt for device in not_supported)]
+    value = DEFAULT_DEVICE if DEFAULT_DEVICE in options else 'cpu'
     return deepcopy(
         {
             'type': 'selector',
-            'options': [opt for opt in AVAILABLE_DEVICES if all(device not in opt for device in not_supported)],
-            'value': DEFAULT_DEVICE if not any(DEFAULT_DEVICE in device for device in not_supported) else 'cpu'
+            'options': options,
+            'value': value,
+            '__device_not_supported': list(not_supported),
         }
     )
 
