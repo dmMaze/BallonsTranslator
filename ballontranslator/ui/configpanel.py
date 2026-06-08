@@ -379,9 +379,6 @@ class ConfigPanel(Widget):
             TableItem(label_saladict, CONFIG_FONTSIZE_TABLE),
         ])
         
-        self.load_model_checker, msublock = checkbox_with_label(self.tr('Load models on demand'), discription=self.tr('Load models on demand to save memory.'))
-        self.load_model_checker.stateChanged.connect(self.on_load_model_changed)
-        dlConfigPanel.vlayout.addWidget(msublock)
         self.empty_runcache_checker, empty_runcache_subblock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
         dlConfigPanel.vlayout.addWidget(empty_runcache_subblock)
         self.empty_runcache_checker.stateChanged.connect(self.on_runcache_changed)
@@ -532,9 +529,6 @@ class ConfigPanel(Widget):
 
         self.configTable.expandAll()
 
-    def on_load_model_changed(self):
-        pcfg.module.load_model_on_demand = self.load_model_checker.isChecked()
-
     def on_runcache_changed(self):
         pcfg.module.empty_runcache = self.empty_runcache_checker.isChecked()
 
@@ -670,7 +664,6 @@ class ConfigPanel(Widget):
         self.rst_imgformat_combobox.setCurrentText(pcfg.imgsave_ext.replace('.', '').upper())
         self.intermediate_imgformat_combobox.setCurrentText(pcfg.intermediate_imgsave_ext.replace('.', '').upper())
         self.rst_imgquality_edit.setText(str(pcfg.imgsave_quality))
-        self.load_model_checker.setChecked(pcfg.module.load_model_on_demand)
         self.empty_runcache_checker.setChecked(pcfg.module.empty_runcache)
         self.package_auto_install_checker.setChecked(pcfg.package_manager.auto_install_missing_packages)
         self.let_show_only_custom_fonts.setChecked(pcfg.let_show_only_custom_fonts_flag)

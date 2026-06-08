@@ -39,7 +39,6 @@ class ModuleConfig(Config):
     translate_by_textblock: bool = False
 
     check_need_inpaint: bool = True
-    load_model_on_demand: bool = False
     empty_runcache: bool = False
     finish_code: int = 15
 

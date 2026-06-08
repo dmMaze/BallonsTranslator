@@ -169,16 +169,6 @@
         <translation>SalaDict</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="376" />
-        <source>Load models on demand</source>
-        <translation>Charger les modèles à la demande</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="376" />
-        <source>Load models on demand to save memory.</source>
-        <translation>Chargez les modèles à la demande pour économiser de la mémoire.</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="379" />
         <source>Empty cache after RUN</source>
         <translation>Vider le cache après l'exécution</translation>

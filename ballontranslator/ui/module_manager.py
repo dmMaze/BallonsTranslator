@@ -40,8 +40,8 @@ cfg_module = pcfg.module
 class ModuleThread(QThread):
     """Worker thread that prepares and swaps one lazily selected module.
 
-    Dependency checks, file preparation, imports, and optional model loading
-    happen here so the active module remains usable if preparation is cancelled.
+    Dependency checks, file preparation, imports, and model loading happen here
+    so the active module remains usable if preparation is cancelled.
 
     Example:
         >>> thread = ModuleThread('ocr', registry)  # doctest: +SKIP
@@ -116,11 +116,10 @@ class ModuleThread(QThread):
                 self.module = module()
             if self.cancel_event.is_set():
                 raise DownloadCancelled('Module preparation cancelled by user.')
-            if not pcfg.module.load_model_on_demand:
-                self._emit_prepare_progress({'event': 'loading_model', 'message': self.tr('Loading model')})
-                self.module.load_model()
-                if self.cancel_event.is_set():
-                    raise DownloadCancelled('Module preparation cancelled by user.')
+            self._emit_prepare_progress({'event': 'loading_model', 'message': self.tr('Loading model')})
+            self.module.load_model()
+            if self.cancel_event.is_set():
+                raise DownloadCancelled('Module preparation cancelled by user.')
             if old_module is not None:
                 old_module.unload_model(empty_cache=True)
                 del old_module
@@ -374,11 +373,10 @@ class TranslateThread(ModuleThread):
                 self.translator = translator_module(source, target, raise_unsupported_lang=False)
             if self.cancel_event.is_set():
                 raise DownloadCancelled('Module preparation cancelled by user.')
-            if not pcfg.module.load_model_on_demand:
-                self._emit_prepare_progress({'event': 'loading_model', 'message': self.tr('Loading model')})
-                self.translator.load_model()
-                if self.cancel_event.is_set():
-                    raise DownloadCancelled('Module preparation cancelled by user.')
+            self._emit_prepare_progress({'event': 'loading_model', 'message': self.tr('Loading model')})
+            self.translator.load_model()
+            if self.cancel_event.is_set():
+                raise DownloadCancelled('Module preparation cancelled by user.')
             cfg_module.translate_source = self.translator.lang_source
             cfg_module.translate_target = self.translator.lang_target
             cfg_module.translator = self.translator.name

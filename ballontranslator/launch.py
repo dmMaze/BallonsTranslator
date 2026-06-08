@@ -172,7 +172,6 @@ def main():
     config = program_config.pcfg
 
     if args.headless:
-        config.module.load_model_on_demand = True
         config.module.empty_runcache = False
 
     if sys.platform == 'win32':

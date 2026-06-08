@@ -170,16 +170,6 @@
         <translation>SalaDict</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="376"/>
-        <source>Load models on demand</source>
-        <translation>Modellek betöltése szükség szerint</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="376"/>
-        <source>Load models on demand to save memory.</source>
-        <translation>Modellek betöltése szükség szerint csökkenti a memória igényt</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="379"/>
         <source>Empty cache after RUN</source>
         <translation>FUTTATÁS után cache törlése</translation>

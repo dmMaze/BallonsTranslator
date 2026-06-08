@@ -385,16 +385,6 @@
         <translation>书写方向</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="376"/>
-        <source>Load models on demand</source>
-        <translation>按需加载模型</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="376"/>
-        <source>Load models on demand to save memory.</source>
-        <translation>按需加载模型以节省内存</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="379"/>
         <source>Empty cache after RUN</source>
         <translation>RUN后清空缓存</translation>

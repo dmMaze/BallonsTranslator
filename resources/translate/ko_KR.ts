@@ -175,16 +175,6 @@
         <translation>SalaDict(확장)</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="376"/>
-        <source>Load models on demand</source>
-        <translation>필요할 때만 모델로드</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="376"/>
-        <source>Load models on demand to save memory.</source>
-        <translation>메모리를 절약하기 위해 필요할 때만 모델을 로드</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="379"/>
         <source>Empty cache after RUN</source>
         <translation>실행 후 캐시 삭제</translation>

@@ -89,11 +89,7 @@ class ComicTextDetector(TextDetectorBase):
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
         device = self.device
-        if self.model is not None:
+        if param_key == 'device' and self.all_model_loaded():
             if self.model.device != device:
-                self.model.device = device
-                if device != 'cpu':
-                    self.model.load_model(CTD_TORCH_PATH)
-                else:
-                    self.model.load_model(CTD_ONNX_PATH)
-            self.model.detect_size = self.detect_size
+                self.unload_model()
+                self.load_model()
