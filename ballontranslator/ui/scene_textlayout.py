@@ -92,6 +92,20 @@ def punc_actual_rect_cached(cached_args: LruIgnoreArg, char: str, family: str, s
     return punc_actual_rect(cached_args.line, family, size, weight, italic, stroke_width, h, w, cached_args.space_shift)
 
 
+def _block_cursor_position(block: QTextBlock, cursor_position: int) -> int:
+    layout = block.layout()
+    if cursor_position < -1:
+        if not layout.preeditAreaText():
+            return -1
+        # Qt encodes IME preedit cursor positions as -(preeditCursor + 2).
+        return layout.preeditAreaPosition() - (cursor_position + 2)
+
+    block_position = block.position()
+    if block_position <= cursor_position < block_position + block.length():
+        return cursor_position - block_position
+    return -1
+
+
 class CharFontFormat:
     def __init__(self, fcmt: QTextCharFormat) -> None:
         font = fcmt.font()
@@ -407,6 +421,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._draw_offset.clear()
         doc = self.document()
         block = doc.firstBlock()
+
         while block.isValid():
             blk_no = block.blockNumber()
             _draw_offsets = []
@@ -484,16 +499,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         tbr, br = cfmt.punc_rect(char)
                         yoff += (tbr.height() + cfmt.font_metrics.descent() - act_rect[3]) / 2
 
-                # else:
-                #     empty_spacing = num_lspaces * cfmt.space_width
-                #     if TEXTLAYOUT_QTVERSION:
-                #         xshift = max(line.naturalTextWidth() - cfmt.br.width(), 0)
-                #     else:
-                #         xshift = empty_spacing
-                        
-                #     xoff = -xshift
-                #     yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - line.ascent()) + empty_spacing
-
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
 
@@ -510,7 +515,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             has_selection = True
             selection = context_sel[0]
 
-
+        fm = None
         while block.isValid():
             blk_no = block.blockNumber()
             blpos, bllen = block.position(), block.length()
@@ -521,7 +526,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
 
-            if context.cursorPosition >= blpos and context.cursorPosition < blpos + bllen:
+            if _block_cursor_position(block, context.cursorPosition) >= 0:
                 cursor_block = block
 
             for ii in range(layout.lineCount()):
@@ -576,36 +581,34 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             bllen = block.length()
             blk_no = block.blockNumber()
             layout = block.layout()
-            if context.cursorPosition < -1:
-                cpos = layout.preeditAreaPosition() - (cpos + 2)
-            else:
-                cpos = context.cursorPosition - blpos
+            cpos = _block_cursor_position(block, context.cursorPosition)
 
-            line = layout.lineForTextPosition(cpos)
-            if line.isValid():
-                
-                pos = line.position()                
-                x, y = pos.x(), pos.y()
-                if line.textLength() == 0:
-                    fm = QFontMetricsF(block.charFormat().font())
-                else:
-                    num_rspaces, num_lspaces, char_yoffset_lst, line_pos = self.line_spaces_lst[blk_no][line.lineNumber()]
-                    yidx = cpos - line_pos
-                    if yidx >= 0 < len(char_yoffset_lst):
-                        y = char_yoffset_lst[yidx]
+            if cpos >= 0:
+                line = layout.lineForTextPosition(cpos)
+                if line.isValid():
 
-                painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
-                painter.fillRect(QRectF(x, y, fm.height(), 2), painter.pen().brush())
-                if self.has_selection == has_selection:
-                    if C.USE_PYSIDE6:
-                        self.update.emit()
+                    pos = line.position()
+                    x, y = pos.x(), pos.y()
+                    if line.textLength() == 0 or fm is None:
+                        fm = QFontMetricsF(block.charFormat().font())
                     else:
-                        self.update.emit(QRectF(x, y, fm.height(), 2))
-                else:
-                    if C.USE_PYSIDE6:
-                        self.update.emit()
+                        num_rspaces, num_lspaces, char_yoffset_lst, line_pos = self.line_spaces_lst[blk_no][line.lineNumber()]
+                        yidx = cpos - line_pos
+                        if yidx >= 0 and y < len(char_yoffset_lst):
+                            y = char_yoffset_lst[yidx]
+
+                    painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
+                    painter.fillRect(QRectF(x, y, fm.height(), 2), painter.pen().brush())
+                    if self.has_selection == has_selection:
+                        if C.USE_PYSIDE6:
+                            self.update.emit()
+                        else:
+                            self.update.emit(QRectF(x, y, fm.height(), 2))
                     else:
-                        self.update.emit(QRectF(0, 0, self.max_width, self.max_height))
+                        if C.USE_PYSIDE6:
+                            self.update.emit()
+                        else:
+                            self.update.emit(QRectF(0, 0, self.max_width, self.max_height))
             self.has_selection = has_selection  # update this flag when drawing the cursor
         painter.restore()
 
@@ -737,6 +740,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 tbr_h = cfmt.tbr.height() + let_sp_offset
                 char = blk_text[char_idx]
+
                 if char in PUNSET_VERNEEDROTATE:
                     tbr, br = cfmt.punc_rect(char)
                     single_char_h = tbr.width()
@@ -1041,7 +1045,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             blpos = block.position()
             layout = block.layout()
             bllen = block.length()
-            if context.cursorPosition >= blpos and context.cursorPosition < blpos + bllen:
+            if _block_cursor_position(block, context.cursorPosition) >= 0:
                 cursor_block = block
             layout = block.layout()
             blpos = block.position()
@@ -1079,9 +1083,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             blpos = block.position()
             bllen = block.length()
             layout = block.layout()
-            if context.cursorPosition < -1:
-                cpos = layout.preeditAreaPosition() - (cpos + 2)
-            else:
-                cpos = context.cursorPosition - blpos
-            layout.drawCursor(painter, QPointF(0, 0), cpos, 1)
+            cpos = _block_cursor_position(block, context.cursorPosition)
+            if cpos >= 0:
+                layout.drawCursor(painter, QPointF(0, 0), cpos, 1)
         painter.restore()
