@@ -32,6 +32,8 @@ class TranslationResponse(BaseModel):
 
 @register_translator("LLM_API_Translator")
 class LLM_API_Translator(BaseTranslator):
+    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]']
+
     concate_text = False
     cht_require_convert = True
     params: Dict = {
@@ -616,4 +618,3 @@ class LLM_API_Translator(BaseTranslator):
 
         if param_key in ["proxy", "multiple_keys", "apikey", "provider", "endpoint"]:
             self.client = None
-            

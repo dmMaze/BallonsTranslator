@@ -5,6 +5,8 @@ import deepl
 @register_translator('DeepL')
 class DeeplTranslator(BaseTranslator):
 
+    dependencies = ['deepl>=1.16.0']
+
     concate_text = False
     cht_require_convert = True
     params: Dict = {

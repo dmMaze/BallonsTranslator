@@ -10,6 +10,8 @@ from ..base import DEFAULT_DEVICE, DEVICE_SELECTOR, TORCH_DTYPE_MAP, BF16_SUPPOR
 from ..textdetector import TextBlock
 from .base import InpainterBase, register_inpainter
 
+TORCH_DEPENDENCIES = ['torch']
+
 try:
     # OpenCV/PatchMatch inpainters can be imported without torch installed.
     import torch
@@ -80,6 +82,8 @@ class PatchmatchInpainter(InpainterBase):
 
 @register_inpainter('aot')
 class AOTInpainter(InpainterBase):
+
+    dependencies = TORCH_DEPENDENCIES
 
     params = {
         'inpaint_size': {
@@ -184,6 +188,8 @@ class AOTInpainter(InpainterBase):
 
 @register_inpainter('lama_mpe')
 class LamaInpainterMPE(InpainterBase):
+
+    dependencies = TORCH_DEPENDENCIES
 
     params = {
         'inpaint_size': {
@@ -307,6 +313,8 @@ class LamaInpainterMPE(InpainterBase):
 @register_inpainter('lama_large_512px')
 class LamaLarge(LamaInpainterMPE):
 
+    dependencies = TORCH_DEPENDENCIES
+
     params = {
         'inpaint_size': {
             'type': 'selector',
@@ -355,6 +363,14 @@ FLUX_MODEL_MAPPER = {
 
 @register_inpainter('flux2-klein')
 class Flux2Klein(InpainterBase):
+
+    dependencies = [
+        'torch',
+        'diffusers>=0.37.1',
+        'safetensors',
+        'transformers==4.57.6',
+        'gguf>=0.10.0',
+    ]
 
     params = {
         'model': {

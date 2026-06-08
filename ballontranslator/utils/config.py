@@ -111,9 +111,17 @@ class DrawPanelConfig(Config):
     recttool_dilate_ksize: int = 0
 
 @nested_dataclass
+class PackageManagerConfig(Config):
+    auto_install_missing_packages: bool = False
+    show_missing_package_prompts: bool = True
+    installer_backend: str = 'auto'
+    extra_install_args: str = ''
+
+@nested_dataclass
 class ProgramConfig(Config):
 
     module: ModuleConfig = field(default_factory=lambda: ModuleConfig())
+    package_manager: PackageManagerConfig = field(default_factory=lambda: PackageManagerConfig())
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
     recent_proj_list: List = field(default_factory=lambda: list())

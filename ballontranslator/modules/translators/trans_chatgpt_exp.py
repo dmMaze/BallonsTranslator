@@ -16,6 +16,8 @@ class InvalidNumTranslations(Exception):
 
 @register_translator('ChatGPT_exp')
 class GPTTranslatorExp(BaseTranslator):
+    dependencies = ['openai>=2.8.1']
+
     concate_text = False
     cht_require_convert = True
     params: Dict = {

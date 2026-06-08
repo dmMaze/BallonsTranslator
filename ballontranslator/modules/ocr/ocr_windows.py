@@ -41,6 +41,8 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
             languages_tag = [lang.language_tag for lang in winocr_available_recognizer_languages]
             @register_OCR('windows_ocr')
             class OCRWindows(OCRBase):
+                dependencies = ['winsdk']
+
                 params = {
                     'language': {
                         'type':'selector',
@@ -83,4 +85,3 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
     except Exception as e:
         LOGGER.error(f'Failed to initialize windows OCR:')
         LOGGER.error(e)
-

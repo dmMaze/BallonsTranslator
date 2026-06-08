@@ -319,7 +319,12 @@ class ConfigTable(QTreeView):
         super().selectionChanged(selected, deselected)
 
     def setCurrentItem(self, idx0, idx1):
-        index = self.tm.item(idx0, 0).child(idx1).index()
+        item = self.tm.item(idx0, 0)
+        if idx1 >= 0:
+            item = item.child(idx1)
+        if item is None:
+            return
+        index = item.index()
         self.setCurrentIndex(index)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -339,6 +344,7 @@ class ConfigPanel(Widget):
 
     save_config = Signal()
     unload_models = Signal()
+    prepare_selected_modules = Signal()
     reload_textstyle = Signal(bool)
     show_only_custom_font = Signal(bool)
 
@@ -376,14 +382,30 @@ class ConfigPanel(Widget):
         self.load_model_checker, msublock = checkbox_with_label(self.tr('Load models on demand'), discription=self.tr('Load models on demand to save memory.'))
         self.load_model_checker.stateChanged.connect(self.on_load_model_changed)
         dlConfigPanel.vlayout.addWidget(msublock)
-        self.empty_runcache_checker, msublock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
-        dlConfigPanel.vlayout.addWidget(msublock)
+        self.empty_runcache_checker, empty_runcache_subblock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
+        dlConfigPanel.vlayout.addWidget(empty_runcache_subblock)
         self.empty_runcache_checker.stateChanged.connect(self.on_runcache_changed)
+        self.package_auto_install_checker, msublock = checkbox_with_label(
+            self.tr('Auto install missing packages'),
+            discription=self.tr('Install missing Python packages automatically when a selected module requires them.'),
+        )
+        self.package_auto_install_checker.stateChanged.connect(self.on_package_auto_install_changed)
+        dlConfigPanel.vlayout.addWidget(msublock)
+        module_actions = QWidget()
+        module_actions_layout = QHBoxLayout(module_actions)
+        module_actions_layout.setContentsMargins(0, 0, 0, 0)
+        module_actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.prepare_modules_btn = QPushButton(parent=self)
+        self.prepare_modules_btn.setFixedWidth(240)
+        self.prepare_modules_btn.setText(self.tr('Prepare Selected Modules'))
+        self.prepare_modules_btn.clicked.connect(self.prepare_selected_modules)
+        module_actions_layout.addWidget(self.prepare_modules_btn)
         self.unload_model_btn = QPushButton(parent=self)
-        self.unload_model_btn.setFixedWidth(500)
+        self.unload_model_btn.setFixedWidth(240)
         self.unload_model_btn.setText(self.tr('Unload All Models'))
         self.unload_model_btn.clicked.connect(self.unload_models)
-        msublock.layout().addWidget(self.unload_model_btn)
+        module_actions_layout.addWidget(self.unload_model_btn)
+        dlConfigPanel.addBlockWidget(module_actions)
 
         dlConfigPanel.addTextLabel(label_text_det)
         self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'), scrollWidget=self)
@@ -516,6 +538,9 @@ class ConfigPanel(Widget):
     def on_runcache_changed(self):
         pcfg.module.empty_runcache = self.empty_runcache_checker.isChecked()
 
+    def on_package_auto_install_changed(self):
+        pcfg.package_manager.auto_install_missing_packages = self.package_auto_install_checker.isChecked()
+
     def on_keepline_clicked(self):
         pcfg.module.keep_exist_textlines = self.detect_config_panel.keep_existing_checker.isChecked()
 
@@ -647,6 +672,7 @@ class ConfigPanel(Widget):
         self.rst_imgquality_edit.setText(str(pcfg.imgsave_quality))
         self.load_model_checker.setChecked(pcfg.module.load_model_on_demand)
         self.empty_runcache_checker.setChecked(pcfg.module.empty_runcache)
+        self.package_auto_install_checker.setChecked(pcfg.package_manager.auto_install_missing_packages)
         self.let_show_only_custom_fonts.setChecked(pcfg.let_show_only_custom_fonts_flag)
 
         self.blockSignals(False)
