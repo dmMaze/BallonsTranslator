@@ -49,7 +49,31 @@ class OCRBase(BaseModule):
         return blk_list
 
     def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs) -> None:
-        raise NotImplementedError
+        """Processes a list of text blocks on the image."""
+        im_h, im_w = img.shape[:2]
 
-    def ocr_img(self, img: np.ndarray) -> str:
+        for i, blk in enumerate(blk_list):
+            x1, y1, x2, y2 = blk.xyxy
+            if self.debug_mode > 1:
+                self.logger.debug(
+                    f"Processing block {i+1}/{len(blk_list)}: ({x1, y1, x2, y2})"
+                )
+
+            y1c, y2c = max(0, y1), min(im_h, y2)
+            x1c, x2c = max(0, x1), min(im_w, x2)
+
+            if y1c < y2c and x1c < x2c:
+                try:
+                    cropped_img = img[y1c:y2c, x1c:x2c]
+                    blk.text = self.ocr_img(cropped_img, **kwargs)
+                except Exception as crop_err:
+                    self.logger.error(
+                        f"Error cropping/processing block {i+1}: {crop_err}",
+                        exc_info=self.debug_mode,
+                    )
+                    blk.text = ""
+            else:
+                blk.text = ""
+
+    def ocr_img(self, img: np.ndarray, **kwargs) -> str:
         raise NotImplementedError

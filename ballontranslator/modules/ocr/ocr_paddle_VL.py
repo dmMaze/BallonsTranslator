@@ -44,29 +44,6 @@ class OCRPaddleVL(OCRBase):
         super().__init__(**params)
         self.debug = False
 
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs):
-        """
-        对每个文本块单独裁剪并调用本地 Paddle-VL 服务识别。
-        这样可以与现有的块级工作流兼容（保持 TextBlock API）。
-        """
-        im_h, im_w = img.shape[:2]
-        for blk in blk_list:
-            x1, y1, x2, y2 = blk.xyxy
-            if y2 < im_h and x2 < im_w and x1 >= 0 and y1 >= 0 and x1 < x2 and y1 < y2:
-                try:
-                    crop = img[y1:y2, x1:x2]
-                    blk.text = self.ocr(crop)
-                except Exception as e:
-                    self.logger.exception('Paddle-VL 块级识别失败')
-                    blk.text = ['']
-            else:
-                self.logger.warning('invalid textbbox to target img')
-                blk.text = ['']
-
-    def ocr_img(self, img: np.ndarray) -> str:
-        self.logger.debug(f'ocr_img: {img.shape}')
-        return self.ocr(img)
-
     def _extract_texts_from_pruned(self, pruned: Any) -> List[str]:
         texts: List[str] = []
 
@@ -130,7 +107,7 @@ class OCRPaddleVL(OCRBase):
         except Exception:
             return md
 
-    def ocr(self, img: np.ndarray) -> str:
+    def ocr_img(self, img: np.ndarray, **kwargs) -> str:
         """
         将图片（单张或块）以 Base64 发送到本地 Paddle-VL 服务的 `/layout-parsing`。
         优先使用返回的 Markdown 文本；若无，则尝试从 prunedResult 中抽取文本。

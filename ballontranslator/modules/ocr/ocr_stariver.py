@@ -107,21 +107,8 @@ class OCRStariver(OCRBase):
 
         return token
 
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs):
+    def ocr_img(self, img: np.ndarray, **kwargs) -> str:
         self.update_token_if_needed() # 在向服务器发送请求前尝试更新 Token
-        im_h, im_w = img.shape[:2]
-        for blk in blk_list:
-            x1, y1, x2, y2 = blk.xyxy
-            if y2 < im_h and x2 < im_w and \
-                    x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2:
-                blk.text = self.ocr(img[y1:y2, x1:x2])
-            else:
-                self.logger.warning('invalid textbbox to target img')
-                blk.text = ['']
-
-    def ocr_img(self, img: np.ndarray) -> str:
-        self.update_token_if_needed() # 在向服务器发送请求前尝试更新 Token
-        self.logger.debug(f'ocr_img: {img.shape}')
         return self.ocr(img)
 
     def ocr(self, img: np.ndarray) -> str:

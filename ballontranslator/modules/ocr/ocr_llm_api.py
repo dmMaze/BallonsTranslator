@@ -404,7 +404,11 @@ class LLM_OCR(OCRBase):
         self.logger.error("All API keys are rate-limited.")
         return None
 
-    def ocr(self, img_base64: str, prompt_override: str = None) -> str:
+    def ocr_img(self, img: np.ndarray, *, prompt: str = None, **kwargs) -> str:
+        _, buffer = cv2.imencode(".jpg", img)
+        img_base64 = base64.b64encode(buffer).decode("utf-8")
+        prompt_override = prompt
+
         api_key_to_use = self._select_api_key()
         
         if not api_key_to_use:
@@ -469,24 +473,6 @@ class LLM_OCR(OCRBase):
             self.logger.error(f"OCR error: {e}")
             return f"[ERROR: {type(e).__name__}]"
 
-    def _ocr_blk_list(
-        self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs
-    ):
-        im_h, im_w = img.shape[:2]
-        for blk in blk_list:
-            x1, y1, x2, y2 = blk.xyxy
-            if 0 <= x1 < x2 <= im_w and 0 <= y1 < y2 <= im_h:
-                cropped_img = img[y1:y2, x1:x2]
-                _, buffer = cv2.imencode(".jpg", cropped_img)
-                img_base64 = base64.b64encode(buffer).decode("utf-8")
-                blk.text = self.ocr(img_base64, prompt_override=kwargs.get("prompt"))
-            else:
-                blk.text = ""
-
-    def ocr_img(self, img: np.ndarray, prompt: str = "") -> str:
-        _, buffer = cv2.imencode(".jpg", img)
-        img_base64 = base64.b64encode(buffer).decode("utf-8")
-        return self.ocr(img_base64, prompt_override=prompt)
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)

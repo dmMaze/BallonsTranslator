@@ -62,19 +62,8 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
                     tag_name = languages_tag[languages_display_name.index(language)]
                     return tag_name
 
-                def ocr_img(self, img: np.ndarray) -> str:
-                    self.engine(img)
-
-                def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs) -> None:
-                    im_h, im_w = img.shape[:2]
-                    for blk in blk_list:
-                        x1, y1, x2, y2 = blk.xyxy
-                        if y2 < im_h and x2 < im_w and \
-                            x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
-                            blk.text = self.engine(img[y1:y2, x1:x2])
-                        else:
-                            self.logger.warning('invalid textbbox to target img')
-                            blk.text = ['']
+                def ocr_img(self, img: np.ndarray, **kwargs) -> str:
+                    return self.engine(img)
                 
                 def updateParam(self, param_key: str, param_content):
                     super().updateParam(param_key, param_content)

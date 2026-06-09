@@ -609,30 +609,4 @@ class OCR32pxModel:
                     [br, bg, bb]
                 )
             chunck_idx += N
-
-    @torch.no_grad()
-    def ocr_img(self, img: np.ndarray) -> str:
-        im_h, im_w = img.shape[:2]
-        img = cv2.resize(img, (int(im_w * 32 / im_h), 32))
-        widths = [img.shape[1]]
-        img = (torch.from_numpy(img[np.newaxis, ...]).float() - 127.5) / 127.5
-        img = einops.rearrange(img, 'N H W C -> N C H W')
-        if self.device != 'cpu':
-            images = images.to(self.device)
-        ret = self.net.infer_beam_batch(img, widths, beams_k = 5, max_seq_length = 255)
-        for i, (pred_chars_index, prob, fr, fg, fb, br, bg, bb) in enumerate(ret) :
-            if prob < 0.5 :
-                continue
-            seq = []
-            for chid in pred_chars_index :
-                ch = self.net.dictionary[chid]
-                if ch == '<S>' :
-                    continue
-                if ch == '</S>' :
-                    break
-                if ch == '<SP>' :
-                    ch = ' '
-                seq.append(ch)
-            txt = ''.join(seq)
-            return txt
         

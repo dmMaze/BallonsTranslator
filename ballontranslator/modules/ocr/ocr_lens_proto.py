@@ -458,7 +458,7 @@ class OCRLensAPI_exp(OCRBase):
 
         return response_proto
 
-    def ocr(self, img: np.ndarray) -> str:
+    def ocr_img(self, img: np.ndarray, **kwargs) -> str:
         """Main OCR method for a single image (numpy array)."""
         if self.debug_mode > 1:
             self.logger.debug(
@@ -506,52 +506,6 @@ class OCRLensAPI_exp(OCRBase):
             return ""
 
         return str(full_text) if full_text is not None else ""
-
-    def ocr_img(self, img: np.ndarray) -> str:
-        if self.debug_mode > 1:
-            self.logger.debug(f"ocr_img shape: {img.shape}")
-        return self.ocr(img)
-
-    def _ocr_blk_list(
-        self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs
-    ):
-        """Processes a list of text blocks on the image."""
-        im_h, im_w = img.shape[:2]
-        if self.debug_mode:
-            self.logger.debug(
-                f"Image size: {im_h}x{im_w}. Processing {len(blk_list)} blocks."
-            )
-        for i, blk in enumerate(blk_list):
-            x1, y1, x2, y2 = blk.xyxy
-            if self.debug_mode > 1:
-                self.logger.debug(
-                    f"Processing block {i+1}/{len(blk_list)}: ({x1, y1, x2, y2})"
-                )
-
-            y1c, y2c = max(0, y1), min(im_h, y2)
-            x1c, x2c = max(0, x1), min(im_w, x2)
-
-            if y1c < y2c and x1c < x2c:
-                try:
-                    cropped_img = img[y1c:y2c, x1c:x2c]
-                    if cropped_img.size > 0:
-                        blk.text = self.ocr(cropped_img)
-                    else:
-                        if self.debug_mode:
-                            self.logger.warning(f"Empty cropped image for block {i+1}.")
-                        blk.text = ""
-                except Exception as crop_err:
-                    self.logger.error(
-                        f"Error cropping/processing block {i+1}: {crop_err}",
-                        exc_info=self.debug_mode,
-                    )
-                    blk.text = ""
-            else:
-                if self.debug_mode:
-                    self.logger.warning(
-                        f"Invalid/zero-area bbox {blk.xyxy} (clamped: {x1c,y1c,x2c,y2c})"
-                    )
-                blk.text = ""
 
     def _apply_no_uppercase(self, text: str) -> str:
         """Applies lowercase except for first letter of sentences."""

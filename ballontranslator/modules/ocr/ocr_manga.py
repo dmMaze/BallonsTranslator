@@ -68,21 +68,8 @@ class MangaOCR(OCRBase):
         if self.model is None:
             self.model = MangaOcr(device=self.device)
 
-    def ocr_img(self, img: np.ndarray) -> str:
+    def ocr_img(self, img: np.ndarray, **kwargs) -> str:
         return self.model(img)
-
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs):
-        im_h, im_w = img.shape[:2]
-        for blk in blk_list:
-            x1, y1, x2, y2 = blk.xyxy
-            if y2 < im_h and x2 < im_w and \
-                x1 > 0 and y1 > 0 and x1 < x2 and y1 < y2: 
-                # Extract region and convert RGBA to RGB if necessary for model input
-                region = img[y1:y2, x1:x2]
-                blk.text = self.model(region)
-            else:
-                self.logger.warning('invalid textbbox to target img')
-                blk.text = ['']
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
