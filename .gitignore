@@ -11,8 +11,9 @@ data/testpacks
 config/textstyles
 release
 libs
-icons
 .btrans_cache
+.codex
+.agents
 
 tmp.py
 dummy_scripts.py

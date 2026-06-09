@@ -2,9 +2,11 @@
 > **If you're sharing the translated result publicly and no experienced human translator participated in a throughout translating or proofreading, please mark it as machine translation somewhere clear to see.**
 
 # BallonTranslator
-[简体中文](/README.md) | English | [pt-BR](doc/README_PT-BR.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md) | [Tiếng Việt](doc/README_VI.md) | [한국어](doc/README_KO.md) | [Español](doc/README_ES.md) | [Français](doc/README_FR.md)
+[简体中文](/README.md) | English
 
-Yet another computer-aided comic/manga translation tool powered by deep learning.
+Yet another computer-aided comic/manga translation tool powered by deep learning.  
+
+The AI Modified [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton/BallonsTranslator-Pro) Version has added many new features. The main contributors of this project did not participate in its development; use at your own risk.
 
 <img src="doc/src/ui0.jpg" div align=center>
 
@@ -45,10 +47,10 @@ Install [Python](https://www.python.org/downloads/release/python-31011) **<= 3.1
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
 # Launch app
-$ python3 launch.py
+$ python3 -m ballontranslator
 
 # Update app
-$ python3 launch.py --update
+$ python3 -m ballontranslator --update
 ```
 
 Note the first time you launch it will install the required libraries and download models automatically. If the downloads fail, you will need to download the **data** folder (or missing files mentioned in the terminal) from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and save it to the corresponding path in source code folder.
@@ -120,7 +122,7 @@ OCR & Translate Selected Area
 
 ## Headless mode (Run without GUI)
 ``` python
-python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
+python -m ballontranslator --headless --exec_dirs "[DIR_1],[DIR_2]..."
 ```
 Note the configuration (source language, target language, inpaint model, etc) will load from config/config.json.  
 If the rendered font size is not right, specify logical DPI manually via ```--ldpi ```, typical values are 96 and 72.

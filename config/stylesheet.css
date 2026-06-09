@@ -101,7 +101,7 @@ QComboBox::hover {
 }
 
 QComboBox::down-arrow {
-    image: url(icons/combobox_arrow.svg);
+    image: url(resources/icons/combobox_arrow.svg);
     width: 11px;
     height: 11px;
     padding-right: 13px;
@@ -134,7 +134,7 @@ SizeComboBox::hover {
 }
 
 SizeComboBox::down-arrow {
-    image: url(icons/combobox_arrow.svg);
+    image: url(resources/icons/combobox_arrow.svg);
     width: 24px;
     height: 11px;
     padding-right: 11px;
@@ -155,7 +155,7 @@ SmallSizeControlLabel {
 }
 
 QLabel#lineSpacingLabel {
-    image: url(icons/fontfmt_linespacing.svg);
+    image: url(resources/icons/fontfmt_linespacing.svg);
     max-width: 25px;
     max-height: 25px;
     min-width: 25px;
@@ -176,7 +176,7 @@ QGroupBox::title {
 }
 
 QLabel#letterSpacingLabel {
-    image: url(icons/fontfmt_letterspacing.svg);
+    image: url(resources/icons/fontfmt_letterspacing.svg);
     max-width: 28px;
     max-height: 28px;
     min-width: 28px;
@@ -225,11 +225,11 @@ AlignmentChecker#AlignLeftChecker::indicator {
     border-right: none;
     min-width: 36px;
     max-width: 36px;
-    image: url(icons/fontfmt_alignl.svg);
+    image: url(resources/icons/fontfmt_alignl.svg);
 }
 
 AlignmentChecker#AlignLeftChecker::indicator:checked {
-    image: url(icons/fontfmt_alignl_activate.svg);
+    image: url(resources/icons/fontfmt_alignl_activate.svg);
 }
 
 AlignmentChecker#AlignCenterChecker::indicator {
@@ -237,22 +237,22 @@ AlignmentChecker#AlignCenterChecker::indicator {
     border-left: none;
     min-width: 36px;
     max-width: 36px;
-    image: url(icons/fontfmt_alignc.svg);
+    image: url(resources/icons/fontfmt_alignc.svg);
 }
 
 AlignmentChecker#AlignCenterChecker::indicator:checked {
-    image: url(icons/fontfmt_alignc_activate.svg);
+    image: url(resources/icons/fontfmt_alignc_activate.svg);
 }
 
 AlignmentChecker#AlignRightChecker::indicator {
     border-left: none;
     min-width: 35px;
     max-width: 35px;
-    image: url(icons/fontfmt_alignr.svg);
+    image: url(resources/icons/fontfmt_alignr.svg);
 }
 
 AlignmentChecker#AlignRightChecker::indicator:checked {
-    image: url(icons/fontfmt_alignr_activate.svg);
+    image: url(resources/icons/fontfmt_alignr_activate.svg);
 }
 
 QFontChecker {
@@ -275,35 +275,35 @@ QFontChecker::indicator::checked {
 }
 
 QFontChecker#FontBoldChecker::indicator {
-    image: url(icons/fontfmt_bold.svg);
+    image: url(resources/icons/fontfmt_bold.svg);
 }
 
 QFontChecker#FontBoldChecker::indicator:checked {
-    image: url(icons/fontfmt_bold_activate.svg);
+    image: url(resources/icons/fontfmt_bold_activate.svg);
 }
 
 QFontChecker#FontItalicChecker::indicator {
-    image: url(icons/fontfmt_italic.svg);
+    image: url(resources/icons/fontfmt_italic.svg);
 }
 
 QFontChecker#FontItalicChecker::indicator:checked {
-    image: url(icons/fontfmt_italic_activate.svg);
+    image: url(resources/icons/fontfmt_italic_activate.svg);
 }
 
 QFontChecker#FontUnderlineChecker::indicator {
-    image: url(icons/fontfmt_underline.svg);
+    image: url(resources/icons/fontfmt_underline.svg);
 }
 
 QFontChecker#FontUnderlineChecker::indicator:checked {
-    image: url(icons/fontfmt_underline_activate.svg);
+    image: url(resources/icons/fontfmt_underline_activate.svg);
 }
 
 QFontChecker#FontVerticalChecker::indicator {
-    image: url(icons/fontfmt_vertical.svg);
+    image: url(resources/icons/fontfmt_vertical.svg);
 }
 
 QFontChecker#FontVerticalChecker::indicator:checked {
-    image: url(icons/fontfmt_vertical_activate.svg);
+    image: url(resources/icons/fontfmt_vertical_activate.svg);
 }
 
 TextEditListScrollArea {
@@ -400,7 +400,7 @@ QPushButton#minBtn {
     padding-bottom: 5px;
     padding-left: 16px;
     padding-right: 16px;
-    image: url(icons/titlebar_min.svg);
+    image: url(resources/icons/titlebar_min.svg);
 }
 
 QPushButton#minBtn::hover {
@@ -425,7 +425,7 @@ QCheckBox#maxBtn::indicator{
     padding-bottom: 5px;
     padding-left: 16px;
     padding-right: 16px;
-    image: url(icons/titlebar_max.svg);
+    image: url(resources/icons/titlebar_max.svg);
 }
 
 QCheckBox#maxBtn::indicator:hover
@@ -434,7 +434,7 @@ QCheckBox#maxBtn::indicator:hover
 }
 QCheckBox#maxBtn::indicator:checked
 {
-    image: url(icons/titlebar_windowmode.svg);
+    image: url(resources/icons/titlebar_windowmode.svg);
 }
 
 QPushButton#closeBtn {
@@ -447,12 +447,12 @@ QPushButton#closeBtn {
     padding-bottom: 7px;
     padding-left: 16px;
     padding-right: 16px;
-    image: url(icons/titlebar_close.svg);
+    image: url(resources/icons/titlebar_close.svg);
 }
 
 QPushButton#closeBtn::hover {
     background-color: #E81123;
-    image: url(icons/titlebar_close_activate.svg);
+    image: url(resources/icons/titlebar_close_activate.svg);
 }
 
 TextCheckerLabel::hover {
@@ -466,11 +466,11 @@ QCheckBox#TransChecker::indicator {
     padding-bottom: 3px;
     height: 27px;
     width: 27px;
-    image: url(icons/bottombar_translate.svg);
+    image: url(resources/icons/bottombar_translate.svg);
 }
 
 QCheckBox#TransChecker::indicator:checked {
-    image: url(icons/bottombar_translate_activate.svg);
+    image: url(resources/icons/bottombar_translate_activate.svg);
 }
 
 QCheckBox#TransChecker::indicator:hover {
@@ -484,11 +484,11 @@ QCheckBox#PaintChecker::indicator {
     /* padding-bottom: 4px; */
     height: 33px;
     width: 33px;
-    image: url(icons/bottombar_paintmode.svg);
+    image: url(resources/icons/bottombar_paintmode.svg);
 }
 
 QCheckBox#PaintChecker::indicator:checked {
-    image: url(icons/bottombar_paintmode_activate.svg);
+    image: url(resources/icons/bottombar_paintmode_activate.svg);
 }
 
 QCheckBox#PaintChecker::indicator:hover {
@@ -502,11 +502,11 @@ QCheckBox#TexteditChecker::indicator {
     padding-bottom: 3px;
     height: 28px;
     width: 28px;
-    image: url(icons/bottombar_textedit.svg);
+    image: url(resources/icons/bottombar_textedit.svg);
 }
 
 QCheckBox#TexteditChecker::indicator:checked {
-    image: url(icons/bottombar_textedit_activate.svg);
+    image: url(resources/icons/bottombar_textedit_activate.svg);
 }
 
 QCheckBox#TexteditChecker::indicator:hover {
@@ -520,7 +520,7 @@ QCheckBox#TextblockChecker::indicator{
     padding-bottom: 3px;
     height: 28px;
     width: 28px;
-    image: url(icons/bottombar_textblock.svg);
+    image: url(resources/icons/bottombar_textblock.svg);
 }
 
 QCheckBox#TextblockChecker::indicator:hover {
@@ -528,22 +528,22 @@ QCheckBox#TextblockChecker::indicator:hover {
 }
 
 QCheckBox#TextblockChecker::indicator:checked{
-    image: url(icons/bottombar_textblock_activate.svg);
+    image: url(resources/icons/bottombar_textblock_activate.svg);
 }
 
 OpenBtn {
     border-style: none;
-    image: url(icons/openbtn.svg);
+    image: url(resources/icons/openbtn.svg);
     background-color: @widgetBackgroundColor;
 
 }
 
 OpenBtn::hover {
-    image: url(icons/openbtn_activate.svg);
+    image: url(resources/icons/openbtn_activate.svg);
 }
 
 OpenBtn::pressed {
-    image: url(icons/openbtn_activate.svg);
+    image: url(resources/icons/openbtn_activate.svg);
 }
 
 QProgressBar {
@@ -557,63 +557,63 @@ QProgressBar {
 ShowPageListChecker::indicator{
     height: 27px;
     width: 27px;
-    image: url(icons/showpagelist.svg);
+    image: url(resources/icons/showpagelist.svg);
 }
 
 ShowPageListChecker::indicator:hover
 {
-    image: url(icons/showpagelist_activate.svg);
+    image: url(resources/icons/showpagelist_activate.svg);
 }
 ShowPageListChecker::indicator:checked
 {
-    image: url(icons/showpagelist_activate.svg);
+    image: url(resources/icons/showpagelist_activate.svg);
 }
 
 QCheckBox#GlobalSearchChecker::indicator{
     height: 28px;
     width: 28px;
-    image: url(icons/search.svg);
+    image: url(resources/icons/search.svg);
 }
 
 QCheckBox#GlobalSearchChecker::indicator:hover
 {
-    image: url(icons/search_activate.svg);
+    image: url(resources/icons/search_activate.svg);
 }
 QCheckBox#GlobalSearchChecker::indicator:checked
 {
-    image: url(icons/search_activate.svg);
+    image: url(resources/icons/search_activate.svg);
 }
 
 
 StateChecker#ImgTransChecker::indicator{
     height: 27px;
     width: 27px;
-    image: url(icons/leftbar_imgtrans.svg);
+    image: url(resources/icons/leftbar_imgtrans.svg);
 }
 
 StateChecker#ImgTransChecker::indicator:hover
 {
-    image: url(icons/leftbar_imgtrans_activate.svg);
+    image: url(resources/icons/leftbar_imgtrans_activate.svg);
 }
 StateChecker#ImgTransChecker::indicator:checked
 {
-    image: url(icons/leftbar_imgtrans_activate.svg);
+    image: url(resources/icons/leftbar_imgtrans_activate.svg);
     color: red;
 }
 
 StateChecker#ConfigChecker::indicator{
     height: 27px;
     width: 27px;
-    image: url(icons/leftbar_config.svg);
+    image: url(resources/icons/leftbar_config.svg);
 }
 
 StateChecker#ConfigChecker::indicator:hover
 {
-    image: url(icons/leftbar_config_activate.svg);
+    image: url(resources/icons/leftbar_config_activate.svg);
 }
 StateChecker#ConfigChecker::indicator:checked
 {
-    image: url(icons/leftbar_config_activate.svg);
+    image: url(resources/icons/leftbar_config_activate.svg);
 }
 
 QProgressBar::chunk {
@@ -703,10 +703,10 @@ QScrollBar::add-line {
 
 
 .IncrementalBtn#FsizeIncrementUp {
-    border-image: url(icons/incre_up.svg) 0 0 0 0 stretch stretch;
+    border-image: url(resources/icons/incre_up.svg) 0 0 0 0 stretch stretch;
 }
 .IncrementalBtn#FsizeIncrementDown {
-    border-image: url(icons/incre_down.svg) 0 0 0 0 stretch stretch;
+    border-image: url(resources/icons/incre_down.svg) 0 0 0 0 stretch stretch;
 }
 
 .FadeLabel {
@@ -767,52 +767,52 @@ DrawToolCheckBox::indicator:checked {
 
 DrawToolCheckBox#DrawHandTool::indicator {
     
-    image: url(icons/drawingtools_hand.svg);
+    image: url(resources/icons/drawingtools_hand.svg);
 }
 
 DrawToolCheckBox#DrawHandTool::indicator:hover {
-    image: url(icons/drawingtools_hand_activate.svg);
+    image: url(resources/icons/drawingtools_hand_activate.svg);
 }
 
 DrawToolCheckBox#DrawHandTool::indicator:checked {
     
-    image: url(icons/drawingtools_hand.svg);
+    image: url(resources/icons/drawingtools_hand.svg);
 }
 
 DrawToolCheckBox#DrawInpaintTool::indicator {
-    image: url(icons/drawingtools_inpaint.svg);
+    image: url(resources/icons/drawingtools_inpaint.svg);
 }
 
 DrawToolCheckBox#DrawInpaintTool::indicator:hover {
-    image: url(icons/drawingtools_inpaint_activate.svg);
+    image: url(resources/icons/drawingtools_inpaint_activate.svg);
 }
 
 DrawToolCheckBox#DrawInpaintTool::indicator:checked {
-    image: url(icons/drawingtools_inpaint.svg);
+    image: url(resources/icons/drawingtools_inpaint.svg);
 }
 
 DrawToolCheckBox#DrawPenTool::indicator {
-    image: url(icons/drawingtools_pen.svg);
+    image: url(resources/icons/drawingtools_pen.svg);
 }
 
 DrawToolCheckBox#DrawPenTool::indicator:hover {
-    image: url(icons/drawingtools_pen_activate.svg);
+    image: url(resources/icons/drawingtools_pen_activate.svg);
 }
 
 DrawToolCheckBox#DrawPenTool::indicator:checked {
-    image: url(icons/drawingtools_pen.svg);
+    image: url(resources/icons/drawingtools_pen.svg);
 }
 
 DrawToolCheckBox#DrawRectTool::indicator {
-    image: url(icons/bottombar_textblock_activate.svg);
+    image: url(resources/icons/bottombar_textblock_activate.svg);
 }
 
 DrawToolCheckBox#DrawRectTool::indicator:hover {
-    image: url(icons/bottombar_textblock.svg);
+    image: url(resources/icons/bottombar_textblock.svg);
 }
 
 DrawToolCheckBox#DrawRectTool::indicator:checked {
-    image: url(icons/bottombar_textblock_activate.svg);
+    image: url(resources/icons/bottombar_textblock_activate.svg);
 }
 
 GlobalSearchWidget {
@@ -838,18 +838,18 @@ PresetListWidget {
 }
 
 ClickableLabel#PrevMatchBtn {
-    image: url(icons/arrow-up.svg);
+    image: url(resources/icons/arrow-up.svg);
     min-width: 24px;
 }
 
 ClickableLabel#NextMatchBtn {
-    image: url(icons/arrow-down.svg);
+    image: url(resources/icons/arrow-down.svg);
     min-width: 24px;
 }
 
 
 ClickableLabel#SearchCloseBtn {
-    image: url(icons/chrome-close.svg);
+    image: url(resources/icons/chrome-close.svg);
     min-width: 24px;
 }
 
@@ -857,7 +857,7 @@ QCheckBox#CaseSensitiveToggle::indicator {
     height: 24px;
     width: 24px;
     padding-top: 3px;
-    image: url(icons/case-sensitive.svg);
+    image: url(resources/icons/case-sensitive.svg);
 }
 
 QCheckBox#CaseSensitiveToggle::indicator:hover {
@@ -865,17 +865,17 @@ QCheckBox#CaseSensitiveToggle::indicator:hover {
 }
 
 QCheckBox#CaseSensitiveToggle::indicator:checked {
-    image: url(icons/case-sensitive_activated.svg);
+    image: url(resources/icons/case-sensitive_activated.svg);
 }
 
 QCheckBox#WholeWordToggle::indicator {
     height: 24px;
     width: 24px;
-    image: url(icons/whole-word.svg);
+    image: url(resources/icons/whole-word.svg);
 }
 
 QCheckBox#WholeWordToggle::indicator:checked {
-    image: url(icons/whole-word_activate.svg);
+    image: url(resources/icons/whole-word_activate.svg);
 }
 
 QCheckBox#WholeWordToggle::indicator:hover {
@@ -885,11 +885,11 @@ QCheckBox#WholeWordToggle::indicator:hover {
 QCheckBox#RegexToggle::indicator {
     height: 24px;
     width: 24px;
-    image: url(icons/regex.svg);
+    image: url(resources/icons/regex.svg);
 }
 
 QCheckBox#RegexToggle::indicator:checked {
-    image: url(icons/regex_activate.svg);
+    image: url(resources/icons/regex_activate.svg);
 }
 
 QCheckBox#RegexToggle::indicator:hover {
@@ -901,25 +901,25 @@ SearchEditor {
 }
 
 ClickableLabel#ReplaceBtn {
-    image: url(icons/replace.svg);
+    image: url(resources/icons/replace.svg);
     min-width: 24px;
     min-height: 24px;
 }
 
 ClickableLabel#ReplaceAllBtn {
-    image: url(icons/replace-all.svg);
+    image: url(resources/icons/replace-all.svg);
     min-width: 24px;
     min-height: 24px;
 }
 
 ClickableLabel#SalaDict {
-    image: url(icons/saladict.png);
+    image: url(resources/icons/saladict.png);
     max-width: 24px;
     height: 24px;
 }
 
 ClickableLabel#SearchInternet {
-    image: url(icons/search.svg);
+    image: url(resources/icons/search.svg);
     max-width: 24px;
     height: 24px;
 }
@@ -962,11 +962,11 @@ TextAreaStyleButton {
 }
 
 TextAreaStyleButton#NewTextStyleButton {
-    image: url(icons/add.svg);
+    image: url(resources/icons/add.svg);
 }
 
 TextAreaStyleButton#ClearTextStyleButton {
-    image: url(icons/titlebar_close.svg);
+    image: url(resources/icons/titlebar_close.svg);
 }
 
 TextAreaStyleButton#ClearTextStyleButton::hover {
@@ -983,7 +983,7 @@ HidePanelButton {
     padding: 3px;
     border: none;
     background-color: @widgetBackgroundColor;
-    image: url(icons/titlebar_close.svg);
+    image: url(resources/icons/titlebar_close.svg);
 }
 
 HidePanelButton::hover {
@@ -1056,14 +1056,14 @@ SmallSizeComboBox {
 }
 
 ArrowLeftButton {
-    image: url(icons/arrow-left.svg);
+    image: url(resources/icons/arrow-left.svg);
     border: none;
     background-color: rgba(0, 0, 0, 0);
     border-radius: 7px;
 }
 
 ArrowRightButton {
-    image: url(icons/arrow-right.svg);
+    image: url(resources/icons/arrow-right.svg);
     border: none;
     background-color: rgba(0, 0, 0, 0);
     border-radius: 7px;

@@ -34,8 +34,8 @@ goto :show_stdout_stderr
 
 
 :launch
-::%PYTHON% launch.py  %*
-%PYTHON% launch.py  %* -platform windows:fontengine=gdi
+::%PYTHON% -m ballontranslator  %*
+%PYTHON% -m ballontranslator  %* -platform windows:fontengine=gdi
 pause
 exit /b
 
