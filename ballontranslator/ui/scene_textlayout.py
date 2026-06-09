@@ -597,7 +597,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     else:
                         num_rspaces, num_lspaces, char_yoffset_lst, line_pos = self.line_spaces_lst[blk_no][line.lineNumber()]
                         yidx = cpos - line_pos
-                        if yidx >= 0 and y < len(char_yoffset_lst):
+                        if yidx >= 0 and yidx < len(char_yoffset_lst):
                             y = char_yoffset_lst[yidx]
 
                     painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
