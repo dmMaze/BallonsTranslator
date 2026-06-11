@@ -128,6 +128,12 @@ class SafeEval:
         >>> unknown = ast.parse('load_model()', mode='eval').body
         >>> SafeEval({}).eval(unknown) is UNKNOWN
         True
+        >>> expr = ast.parse('list(lang_map.keys())', mode='eval').body
+        >>> SafeEval({'lang_map': {'Japanese': 'ja'}}).eval(expr)
+        ['Japanese']
+        >>> expr = ast.parse('lang_map.items()', mode='eval').body
+        >>> SafeEval({'lang_map': {'Japanese': 'ja'}}).eval(expr)
+        [('Japanese', 'ja')]
     """
 
     def __init__(self, env: Dict[str, Any]):
@@ -306,6 +312,19 @@ class SafeEval:
         func_name = _call_name(node.func)
         args = [self.visit(arg) for arg in node.args]
         if any(arg is UNKNOWN for arg in args):
+            return UNKNOWN
+
+        if isinstance(node.func, ast.Attribute) and not args and not node.keywords:
+            value = self.visit(node.func.value)
+            if value is UNKNOWN:
+                return UNKNOWN
+            if isinstance(value, dict):
+                if node.func.attr == 'keys':
+                    return list(value.keys())
+                if node.func.attr == 'values':
+                    return list(value.values())
+                if node.func.attr == 'items':
+                    return list(value.items())
             return UNKNOWN
 
         if func_name == 'DEVICE_SELECTOR':
@@ -516,6 +535,25 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
         ('demo', 'DemoTranslator')
         >>> specs[0].params['device']['value']
         'cpu'
+        >>> source = '''
+        ... @register_OCR("llm_style")
+        ... class LLMStyleOCR:
+        ...     lang_map = {"Japanese": "ja"}
+        ...     popular_models = ["OAI: gpt-4o"]
+        ...     params = {
+        ...         "language": {"type": "selector", "options": list(lang_map.keys()), "value": "Japanese"},
+        ...         "model": {"type": "selector", "options": popular_models + ["custom"], "value": "OAI: gpt-4o"},
+        ...     }
+        ... '''
+        >>> with tempfile.NamedTemporaryFile('w', suffix='.py', delete=False) as f:
+        ...     _ = f.write(source)
+        ...     path = f.name
+        >>> specs = _scan_file(path, 'ocr')
+        >>> os.unlink(path)
+        >>> specs[0].params['language']['options']
+        ['Japanese']
+        >>> specs[0].params['model']['options']
+        ['OAI: gpt-4o', 'custom']
     """
 
     # Scan decorators/classes without executing top-level imports or model code.
