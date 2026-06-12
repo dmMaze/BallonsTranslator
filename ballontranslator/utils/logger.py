@@ -91,6 +91,24 @@ def setup_logging(logfile_dir: str, max_num_logs=14):
     )
     fh.setLevel(logging.DEBUG)
     logger.addHandler(fh)
+    _enable_faulthandler(fh, logfilep)
+
+
+def _enable_faulthandler(file_handler: logging.FileHandler, logfile_path: str):
+    try:
+        import faulthandler
+    except ImportError:
+        return
+
+    try:
+        if faulthandler.is_enabled():
+            faulthandler.disable()
+        # faulthandler writes directly to the file stream on native crashes,
+        # bypassing logging formatters but staying in the same timestamped log.
+        faulthandler.enable(file=file_handler.stream, all_threads=True)
+        logger.info(f'Native crash traces enabled in log file: {logfile_path}')
+    except Exception as e:
+        logger.warning(f'Failed to enable native crash traces: {e}')
 
 
 logging.setLoggerClass(ColoredLogger)

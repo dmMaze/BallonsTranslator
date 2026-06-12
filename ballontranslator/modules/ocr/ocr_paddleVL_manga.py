@@ -1,4 +1,8 @@
-from transformers import AutoModelForCausalLM, AutoProcessor
+import importlib.util
+import json
+from pathlib import Path
+
+from transformers import AutoImageProcessor, AutoModelForCausalLM, LlamaTokenizerFast
 import numpy as np
 import torch
 from typing import List
@@ -6,11 +10,12 @@ from typing import List
 from .base import OCRBase, register_OCR, DEFAULT_DEVICE, DEVICE_SELECTOR, TextBlock
 
 MODEL_PATH = 'data/models/PaddleOCR-VL-For-Manga'
+MODEL_DIR = Path(MODEL_PATH)
 
 
 @register_OCR('PaddleOCRVLManga')
 class PaddleOCRVLManga(OCRBase):
-    dependencies = ['torch', 'transformers==4.57.6']
+    dependencies = ['torch', 'torchvision', 'transformers==4.57.6']
 
     params = {
         'device': DEVICE_SELECTOR(),
@@ -114,9 +119,7 @@ class PaddleOCRVLManga(OCRBase):
                 dtype=torch.float16 if self.device == "cuda" else torch.float32
             ).to(self.device).eval()
 
-            processor = AutoProcessor.from_pretrained(
-                MODEL_PATH, trust_remote_code=True, use_fast=True
-            )
+            processor = _load_processor_without_sentencepiece()
 
             # Set pad_token_id to avoid warning during generation
             if model.generation_config.pad_token_id is None:
@@ -131,3 +134,77 @@ class PaddleOCRVLManga(OCRBase):
         if self.device != device and self.model is not None:
             self.model.to(device)
 
+
+def _read_model_json(filename: str):
+    return json.loads((MODEL_DIR / filename).read_text(encoding='utf-8'))
+
+
+def _load_processor_class():
+    module_path = MODEL_DIR / 'processing_paddleocr_vl.py'
+    spec = importlib.util.spec_from_file_location('paddleocr_vl_processing', module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.PaddleOCRVLProcessor
+
+
+def _load_processor_without_sentencepiece():
+    """Build the PaddleOCR-VL processor without loading ``tokenizer.model``.
+
+    The bundled ``tokenizer.json`` contains the fast tokenizer state, so this
+    avoids SentencePiece's native ``LoadFromFile`` path while preserving the
+    local processor/tokenizer config.
+
+    Example:
+        >>> kwargs = _tokenizer_kwargs_from_config({'unk_token': '<unk>'})
+        >>> kwargs['unk_token']
+        '<unk>'
+    """
+
+    tokenizer_config = _read_model_json('tokenizer_config.json')
+    tokenizer = LlamaTokenizerFast(
+        tokenizer_file=str(MODEL_DIR / 'tokenizer.json'),
+        **_tokenizer_kwargs_from_config(tokenizer_config),
+    )
+    image_processor = AutoImageProcessor.from_pretrained(
+        MODEL_PATH,
+        trust_remote_code=True,
+        use_fast=False,
+    )
+    chat_template = (MODEL_DIR / 'chat_template.jinja').read_text(encoding='utf-8')
+    return _load_processor_class()(
+        image_processor=image_processor,
+        tokenizer=tokenizer,
+        chat_template=chat_template,
+    )
+
+
+def _tokenizer_kwargs_from_config(tokenizer_config: dict) -> dict:
+    """Return tokenizer init kwargs preserved from ``tokenizer_config.json``.
+
+    Example:
+        >>> _tokenizer_kwargs_from_config({'add_bos_token': False})['add_bos_token']
+        False
+    """
+
+    passthrough_keys = (
+        'unk_token',
+        'bos_token',
+        'eos_token',
+        'pad_token',
+        'sep_token',
+        'cls_token',
+        'mask_token',
+        'additional_special_tokens',
+        'add_bos_token',
+        'add_eos_token',
+        'legacy',
+        'model_max_length',
+        'clean_up_tokenization_spaces',
+        'spaces_between_special_tokens',
+        'use_default_system_prompt',
+    )
+    return {
+        key: tokenizer_config[key]
+        for key in passthrough_keys
+        if key in tokenizer_config and tokenizer_config[key] is not None
+    }
