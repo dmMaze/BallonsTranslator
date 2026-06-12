@@ -37,6 +37,7 @@ If you don't want to install Python and Git by yourself and have access to the I
 Download BallonsTranslator_dev_src_with_gitpython.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip it and run launch_win.bat.   
 Run scripts/local_gitpull.bat to get the latest update.
 Note these provided packages cannot run on Windows 7, Win 7 users need to install [Python 3.8](https://www.python.org/downloads/release/python-3810/) and run the source code.
+When running from source on Windows, PyTorch/deep learning modules may require the [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [official download notes](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Install or update it if you see errors involving `msvcp140.dll`, `c10.dll`, or `[WinError 1114]`.
 
 ## Run the source code
 

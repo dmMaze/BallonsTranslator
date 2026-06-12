@@ -108,6 +108,38 @@ def setup_locks():
     RUNTIME_LOCKS['model_loading'] = QMutex()
 
 
+def preload_msvc_runtime():
+    """Best-effort preload of the MSVC runtime before Qt alters DLL lookup.
+
+    PyQt6 registers its bundled Qt bin directory with ``AddDllDirectory`` on
+    import. On Windows this can make later PyTorch DLL initialization resolve
+    ``msvcp140.dll`` from PyQt6's older bundled copy instead of the system
+    runtime, so this must run before any ``qtpy``/``PyQt6`` import.
+
+    >>> preload_msvc_runtime() in (True, False)
+    True
+    """
+
+    if sys.platform != 'win32':
+        return False
+
+    import ctypes
+
+    loaded = False
+    for dll_name in ('vcruntime140.dll', 'msvcp140.dll', 'vcruntime140_1.dll'):
+        try:
+            ctypes.CDLL(dll_name)
+            loaded = True
+        except OSError:
+            if dll_name == 'msvcp140.dll':
+                print(
+                    'Microsoft Visual C++ Redistributable is not installed or '
+                    'is not visible to this process. Deep learning modules may '
+                    'fail to load until the x64 VC runtime is installed.'
+                )
+    return loaded
+
+
 def main():
 
     if args.debug:
@@ -129,6 +161,8 @@ def main():
 
     if not args.system_hf_cache:
         os.environ['HF_HOME'] = osp.join(APP_DIR, 'data/models')
+
+    preload_msvc_runtime()
 
     from ballontranslator.utils.core_requirements import ensure_core_requirements
     if ensure_core_requirements(APP_DIR):

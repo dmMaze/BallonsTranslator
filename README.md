@@ -36,9 +36,10 @@
 
 ## Windows
 如果用 Windows 而且不想自己手动配置环境，而且能正常访问互联网:  
-从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 BallonsTranslator_dev_src_with_gitpython.7z，解压并运行 launch_win.bat 启动程序。如果无法自动下载库和模型，手动下载 data 和 ballontrans_pylibs_win.7z 并解压到程序目录下。  
-运行 scripts/local_gitpull.bat 获取更新。 
+从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 BallonsTranslator_dev_src_with_gitpython.7z，解压并运行 launch_win.bat 启动程序。如果无法自动下载库和模型，手动下载 data 和 ballontrans_pylibs_win.7z 并解压到程序目录下。 
+运行 scripts/local_gitpull.bat 获取更新。
 注意这些打包版无法在 Windows 7 上运行，win 7 用户需要自行安装 [Python 3.8](https://www.python.org/downloads/release/python-3810/) 运行源码。
+如果在 Windows 上运行源码并使用 PyTorch/深度学习模块时遇到 `msvcp140.dll`、`c10.dll` 或 `[WinError 1114]` 相关错误，请安装或更新 [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe)（Visual Studio 2015-2022；[官方下载说明](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)）。
 
 ## 运行源码
 
