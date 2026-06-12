@@ -6,7 +6,7 @@ import re
 import sys
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ballontranslator.utils.registry import ModuleSpec
 
@@ -113,6 +113,30 @@ def _device_selector(not_supported=None):
         'value': _preferred_device_value(options),
         '__device_not_supported': not_supported,
     }
+
+
+def _find_model_paths(model_dir, prefixes):
+    """Return local model paths for selector metadata without importing modules.
+
+    Example:
+        >>> with tempfile.TemporaryDirectory() as tmp:
+        ...     _ = Path(tmp, 'ysgyolo_demo.pt').write_text('')
+        ...     _ = Path(tmp, 'other.pt').write_text('')
+        ...     _find_model_paths(tmp, ('ysgyolo',))  # doctest: +ELLIPSIS
+        ['...ysgyolo_demo.pt']
+    """
+
+    if isinstance(prefixes, str):
+        prefixes = (prefixes,)
+    try:
+        names = sorted(os.listdir(model_dir))
+    except OSError:
+        return []
+    return [
+        os.path.join(model_dir, name).replace('\\', '/')
+        for name in names
+        if name.startswith(tuple(prefixes))
+    ]
 
 
 class SafeEval:
@@ -314,6 +338,13 @@ class SafeEval:
         if any(arg is UNKNOWN for arg in args):
             return UNKNOWN
 
+        if func_name == 'platform.system':
+            return platform.system()
+        if func_name == 'platform.mac_ver':
+            return platform.mac_ver()
+        if func_name == 'platform.version':
+            return platform.version()
+
         if isinstance(node.func, ast.Attribute) and not args and not node.keywords:
             value = self.visit(node.func.value)
             if value is UNKNOWN:
@@ -349,14 +380,10 @@ class SafeEval:
             return int(args[0])
         if func_name == 'float' and len(args) == 1:
             return float(args[0])
-        if func_name == 'platform.system':
-            return platform.system()
-        if func_name == 'platform.mac_ver':
-            return platform.mac_ver()
-        if func_name == 'platform.version':
-            return platform.version()
         if func_name in {'os.path.join', 'osp.join'}:
             return os.path.join(*args)
+        if func_name == 'find_model_paths' and len(args) == 2:
+            return _find_model_paths(*args)
         return UNKNOWN
 
 
@@ -420,6 +447,7 @@ def _collect_class_attrs(class_node: ast.ClassDef, env: Dict[str, Any]) -> Dict[
     """
 
     attrs = {}
+    warnings = []
     class_env = env.copy()
 
     def walk(stmts):
@@ -432,6 +460,8 @@ def _collect_class_attrs(class_node: ast.ClassDef, env: Dict[str, Any]) -> Dict[
                     class_env[name] = value
                     if name in {'params', 'download_file_list', 'download_file_on_load', 'dependencies'}:
                         attrs[name] = value
+                elif name in {'params', 'download_file_list', 'download_file_on_load', 'dependencies'}:
+                    warnings.append(f'{class_node.name}.{name} could not be evaluated lazily')
             elif isinstance(node, ast.If):
                 cond = evaluator.eval(node.test)
                 if cond is True:
@@ -442,6 +472,8 @@ def _collect_class_attrs(class_node: ast.ClassDef, env: Dict[str, Any]) -> Dict[
                     walk(node.body)
                     walk(node.orelse)
     walk(class_node.body)
+    if warnings:
+        attrs['__metadata_warnings'] = warnings
     return attrs
 
 
@@ -455,7 +487,36 @@ def _return_list(func_node: ast.FunctionDef, env: Dict[str, Any]):
     return None
 
 
-def _collect_translator_langs(class_node: ast.ClassDef, env: Dict[str, Any]):
+def _is_self_lang_map(node):
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == 'lang_map'
+        and isinstance(node.value, ast.Name)
+        and node.value.id == 'self'
+    )
+
+
+def _lang_map_subscript_key(target, evaluator):
+    if not isinstance(target, ast.Subscript):
+        return UNKNOWN
+    if not _is_self_lang_map(target.value):
+        return UNKNOWN
+    return evaluator.eval(target.slice)
+
+
+def _is_self_lang_map_assign(target):
+    return _is_self_lang_map(target)
+
+
+def _append_lang_if_supported(langs: List[str], key, value) -> bool:
+    if isinstance(key, str) and value not in {'', None, UNKNOWN}:
+        if key not in langs:
+            langs.append(key)
+        return True
+    return False
+
+
+def _collect_translator_langs(class_node: ast.ClassDef, env: Dict[str, Any]) -> Tuple[Optional[List[str]], Optional[List[str]], List[str]]:
     """Infer translator language lists from simple class metadata and setup code.
 
     Example:
@@ -464,14 +525,16 @@ def _collect_translator_langs(class_node: ast.ClassDef, env: Dict[str, Any]):
         ...     cht_require_convert = True
         ...     def _setup_translator(self):
         ...         self.lang_map["简体中文"] = "zh"
+        ...         self.lang_map.update({"English": "en"})
         ... '''
         >>> node = ast.parse(source).body[0]
         >>> _collect_translator_langs(node, {})[1]
-        ['简体中文', '繁體中文']
+        ['简体中文', 'English', '繁體中文']
     """
 
     langs = []
     src = tgt = None
+    warnings = []
     cht_require_convert = False
     evaluator = SafeEval(env)
 
@@ -491,19 +554,47 @@ def _collect_translator_langs(class_node: ast.ClassDef, env: Dict[str, Any]):
                     tgt = value
             if node.name == '_setup_translator':
                 for child in ast.walk(node):
-                    if not isinstance(child, ast.Assign) or len(child.targets) != 1:
-                        continue
-                    target = child.targets[0]
-                    if not isinstance(target, ast.Subscript):
-                        continue
-                    if not isinstance(target.value, ast.Attribute):
-                        continue
-                    if target.value.attr != 'lang_map':
-                        continue
-                    key = evaluator.eval(target.slice)
-                    value = evaluator.eval(child.value)
-                    if isinstance(key, str) and value not in {'', None, UNKNOWN} and key not in langs:
-                        langs.append(key)
+                    if isinstance(child, ast.Assign) and len(child.targets) == 1:
+                        target = child.targets[0]
+                        if _is_self_lang_map_assign(target):
+                            mapping = evaluator.eval(child.value)
+                            if not isinstance(mapping, dict):
+                                warnings.append(f'{class_node.name} has unsupported lazy lang_map assignment')
+                                continue
+                            supported_items = [
+                                (key, value)
+                                for key, value in mapping.items()
+                                if _append_lang_if_supported(langs, key, value)
+                            ]
+                            if len(supported_items) != len(mapping):
+                                warnings.append(f'{class_node.name} has unsupported lazy lang_map values')
+                            continue
+                        key = _lang_map_subscript_key(target, evaluator)
+                        if key is UNKNOWN:
+                            continue
+                        value = evaluator.eval(child.value)
+                        if not _append_lang_if_supported(langs, key, value):
+                            warnings.append(f'{class_node.name} has unsupported lazy lang_map assignment')
+                    elif isinstance(child, ast.Expr) and isinstance(child.value, ast.Call):
+                        call = child.value
+                        if not isinstance(call.func, ast.Attribute) or call.func.attr != 'update':
+                            continue
+                        if not _is_self_lang_map(call.func.value):
+                            continue
+                        if len(call.args) != 1 or call.keywords:
+                            warnings.append(f'{class_node.name} has unsupported lazy lang_map.update call')
+                            continue
+                        mapping = evaluator.eval(call.args[0])
+                        if not isinstance(mapping, dict):
+                            warnings.append(f'{class_node.name} has unsupported lazy lang_map.update call')
+                            continue
+                        supported_items = [
+                            (key, value)
+                            for key, value in mapping.items()
+                            if _append_lang_if_supported(langs, key, value)
+                        ]
+                        if len(supported_items) != len(mapping):
+                            warnings.append(f'{class_node.name} has unsupported lazy lang_map.update values')
 
     if class_node.name in {'TransNone', 'TransSource'}:
         langs = BASE_TRANSLATOR_LANGS.copy()
@@ -513,7 +604,42 @@ def _collect_translator_langs(class_node: ast.ClassDef, env: Dict[str, Any]):
         src = langs or None
     if tgt is None:
         tgt = langs or None
-    return src, tgt
+    if not langs and src is None and tgt is None:
+        warnings.append(f'{class_node.name} has no lazy translator language metadata')
+    return src, tgt, warnings
+
+
+def validate_lazy_module_specs(specs: Iterable[ModuleSpec]) -> List[str]:
+    """Return lazy metadata issues that would make selection-time UI stale.
+
+    Example:
+        >>> spec = ModuleSpec(key='demo', import_path='demo', class_name='Demo', module_type='translator')
+        >>> validate_lazy_module_specs([spec])
+        ['demo: translator has no lazy supported language metadata']
+    """
+
+    warnings = []
+    for spec in specs:
+        for warning in spec.metadata_warnings:
+            warnings.append(f'{spec.key}: {warning}')
+        if spec.module_type == 'translator':
+            if not spec.supported_src_list or not spec.supported_tgt_list:
+                warnings.append(f'{spec.key}: translator has no lazy supported language metadata')
+        if not spec.params:
+            continue
+        for param_key, param in spec.params.items():
+            if not isinstance(param, dict) or param.get('type') != 'selector':
+                continue
+            options = param.get('options')
+            if options is UNKNOWN:
+                warnings.append(f'{spec.key}.{param_key}: selector options could not be evaluated lazily')
+                continue
+            if options:
+                continue
+            has_editable_fallback = param.get('editable', False) and param.get('value') not in {'', None}
+            if not has_editable_fallback:
+                warnings.append(f'{spec.key}.{param_key}: selector has no lazy options or editable fallback')
+    return warnings
 
 
 def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
@@ -586,8 +712,10 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
                     continue
                 attrs = _collect_class_attrs(node, env)
                 src = tgt = None
+                metadata_warnings = attrs.get('__metadata_warnings', []).copy()
                 if module_type == 'translator':
-                    src, tgt = _collect_translator_langs(node, env)
+                    src, tgt, lang_warnings = _collect_translator_langs(node, env)
+                    metadata_warnings.extend(lang_warnings)
                 specs.append(ModuleSpec(
                     key=key,
                     import_path=module_path,
@@ -599,6 +727,7 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
                     dependencies=deepcopy(attrs.get('dependencies', [])),
                     supported_src_list=src,
                     supported_tgt_list=tgt,
+                    metadata_warnings=metadata_warnings,
                 ))
             elif isinstance(node, ast.If):
                 cond = evaluator.eval(node.test)

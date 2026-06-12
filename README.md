@@ -6,7 +6,8 @@
 
 深度学习辅助漫画翻译工具，支持一键机翻和简单的图像/文本编辑  
 
-AI 魔改版 [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton/BallonsTranslator-Pro) 新增了许多特性，本项目主要贡献者未参与开发，使用需风险自负。
+交流反馈 QQ 群：719881337  
+
 
 <img src="doc/src/ui0.jpg" div align=center>
 

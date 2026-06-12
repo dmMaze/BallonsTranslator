@@ -200,8 +200,8 @@ class ParamWidget(QWidget):
                     param_widget = ParamComboBox(
                         param_key, param_dict['options'], size=size, scrollWidget=scrollWidget, flush_btn=flush_btn, path_selector=path_selector)
 
-                    param_widget.setCurrentText(str(value))
                     param_widget.setEditable(param_dict.get('editable', False))
+                    param_widget.setCurrentText(str(value))
 
                 elif param_type == 'editor':
                     param_widget = ParamEditor(param_key)

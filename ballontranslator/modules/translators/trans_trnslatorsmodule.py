@@ -5,6 +5,17 @@ os.environ['translators_default_region'] = os.environ.get('translators_default_r
 
 import translators as ts
 
+TRANSLATORS_POOL = [
+    'alibaba', 'apertium', 'argos', 'baidu', 'bing',
+    'caiyun', 'cloudTranslation', 'deepl', 'elia', 'google',
+    'hujiang', 'iciba', 'iflytek', 'iflyrec', 'itranslate',
+    'judic', 'languageWire', 'lingvanex', 'niutrans', 'mglip',
+    'mirai', 'modernMt', 'myMemory', 'papago', 'qqFanyi',
+    'qqTranSmart', 'reverso', 'sogou', 'sysTran', 'tilde',
+    'translateCom', 'translateMe', 'utibet', 'volcEngine', 'yandex',
+    'yeekit', 'youdao',
+]
+
 @register_translator('TranslatorsPack')
 class GeneralTranslator(BaseTranslator):
     dependencies = ['translators==5.9.5']
@@ -51,12 +62,12 @@ class GeneralTranslator(BaseTranslator):
         self.lang_map['Tamil'] = 'ta'
         self.lang_map['Hindi'] = 'hi'
 
-    translator_options = ts.translators_pool
+    translator_options = TRANSLATORS_POOL
 
     params: Dict = {
         'translator provider': {
             'type': 'selector',
-            'options': ts.translators_pool,
+            'options': TRANSLATORS_POOL,
             'value': 'bing'  
         },
         'sleep_seconds': 0  

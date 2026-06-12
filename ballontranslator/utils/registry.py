@@ -49,6 +49,7 @@ class ModuleSpec:
     available: bool = True
     availability_error: str = ''
     resolved_class: type = None
+    metadata_warnings: List[str] = field(default_factory=list)
 
     def resolve(self):
         # Import the concrete module only after the user selects it.
@@ -319,6 +320,7 @@ class Registry:
                 download_file_list=deepcopy(getattr(module, 'download_file_list', None)),
                 download_file_on_load=getattr(module, 'download_file_on_load', False),
                 dependencies=deepcopy(getattr(module, 'dependencies', [])),
+                metadata_warnings=[],
                 resolved_class=module,
             )
         return None

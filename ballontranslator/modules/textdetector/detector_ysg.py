@@ -11,16 +11,24 @@ from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 MODEL_DIR = 'data/models'
-CKPT_LIST = []
+YSGYOLO_MODEL_PREFIXES = ('ysgyolo', 'ultralyticsyolo')
+
+def find_model_paths(model_dir, prefixes):
+    if not osp.exists(model_dir):
+        return []
+    return [
+        osp.join(model_dir, p).replace('\\', '/')
+        for p in sorted(os.listdir(model_dir))
+        if p.startswith(prefixes)
+    ]
+
+
+CKPT_LIST = find_model_paths(MODEL_DIR, YSGYOLO_MODEL_PREFIXES)
+
 
 def update_ckpt_list():
-    if not osp.exists(MODEL_DIR):
-        return
-    global CKPT_LIST
-    CKPT_LIST.clear()
-    for p in os.listdir(MODEL_DIR):
-        if p.startswith('ysgyolo') or p.startswith('ultralyticsyolo'):
-            CKPT_LIST.append(osp.join(MODEL_DIR, p).replace('\\', '/'))
+    CKPT_LIST[:] = find_model_paths(MODEL_DIR, YSGYOLO_MODEL_PREFIXES)
+    return CKPT_LIST
 
 
 update_ckpt_list()

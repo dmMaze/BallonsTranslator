@@ -20,6 +20,7 @@ Important areas:
 - Be careful with Qt signal/thread behavior in `ballontranslator/ui/module_manager.py`.
 - Do not rename registered module keys unless compatibility aliases are added.
 - Keep model-loading lazy/eager behavior intact.
+- Keep module selection lazy/config-only. Data needed by the config UI before module initialization must come from lazy metadata or `SafeEval`-compatible pure helpers, not from `__init__`, `_setup_*`, `update_*`, `flush`, model loading, downloads, or network calls.
 - Avoid adding dependencies unless approved.
 
 ## New Feature Rules
