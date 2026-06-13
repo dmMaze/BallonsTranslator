@@ -9,7 +9,7 @@ import cv2
 
 from tqdm import tqdm
 from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
-from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
+from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QTimer
 from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard, QImage
 
 from ballontranslator.utils.logger import logger as LOGGER
@@ -29,6 +29,7 @@ from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
+from .update_thread import UpdateCheckThread
 from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .textedit_commands import GlobalRepalceAllCommand
@@ -36,7 +37,7 @@ from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
 from . import shared_widget as SW
-from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox
+from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox, ProgressMessageBox
 
 class PageListView(QListWidget):
 
@@ -110,10 +111,16 @@ class MainWindow(mainwindow_cls):
             self.hideSystemTitleBar()
             self.showMaximized()
 
+        if not shared.HEADLESS and pcfg.check_update_on_startup:
+            # Defer startup update checks until the event loop can paint progress.
+            QTimer.singleShot(500, lambda: self.check_for_updates(manual=False))
+
     def setStyleSheet(self, styleSheet: str) -> None:
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
         self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
         self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
+        if hasattr(self, 'update_progress_msgbox'):
+            self.update_progress_msgbox.setStyleSheet(styleSheet)
         if hasattr(self, 'module_manager') and self.module_manager.prepare_msgbox is not None:
             # The prepare dialog is created after startup; keep it on the app theme.
             self.module_manager.prepare_msgbox.setStyleSheet(styleSheet)
@@ -125,6 +132,11 @@ class MainWindow(mainwindow_cls):
         self.export_doc_thread.fin_io.connect(self.on_fin_export_doc)
         self.import_doc_thread = ImportDocThread(self)
         self.import_doc_thread.fin_io.connect(self.on_fin_import_doc)
+        self.update_thread = UpdateCheckThread()
+        self.update_thread.progress_changed.connect(self.on_update_progress_changed)
+        self.update_thread.update_finished.connect(self.on_update_finished)
+        self.update_thread.update_failed.connect(self.on_update_failed)
+        self.update_progress_msgbox = ProgressMessageBox(self.tr('Checking update: '), False, self)
 
     def resetStyleSheet(self, reverse_icon: bool = False):
         theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
@@ -404,6 +416,7 @@ class MainWindow(mainwindow_cls):
 
         self.configPanel.setupConfig()
         self.configPanel.save_config.connect(self.save_config)
+        self.configPanel.check_update.connect(self.check_for_updates)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
         self.configPanel.show_only_custom_font.connect(self.on_show_only_custom_font)
         if pcfg.let_show_only_custom_fonts_flag:
@@ -461,6 +474,64 @@ class MainWindow(mainwindow_cls):
 
     def setupConfigUI(self):
         self.centralStackWidget.setCurrentIndex(1)
+
+    def check_for_updates(self, manual: bool = True):
+        if self.update_thread.isRunning():
+            if manual:
+                create_info_dialog(self.tr('Update check is already running.'))
+            return
+        self._manual_update_check = manual
+        self.update_progress_msgbox.zero_progress()
+        self.update_progress_msgbox.setTaskName(self.tr('Checking update: '))
+        self.update_progress_msgbox.updateTaskProgress(0, self.tr('GitHub releases'))
+        self.update_progress_msgbox.show_fitted()
+        self.update_thread.start()
+
+    def on_update_progress_changed(self, payload: dict):
+        progress = payload.get('progress', 0)
+        message = payload.get('message', '')
+        event = payload.get('event', '')
+        task_names = {
+            'query_release': self.tr('Checking update: '),
+            'compare_versions': self.tr('Checking update: '),
+            'download_start': self.tr('Downloading update: '),
+            'download_progress': self.tr('Downloading update: '),
+            'download_done': self.tr('Downloading update: '),
+            'backup_source': self.tr('Backing up source: '),
+            'backup_skip': self.tr('Backing up source: '),
+            'git_safety': self.tr('Saving local changes: '),
+            'extract_source': self.tr('Installing update: '),
+            'replace_source': self.tr('Installing update: '),
+            'done': self.tr('Installing update: '),
+        }
+        self.update_progress_msgbox.setTaskName(task_names.get(event, self.tr('Updating: ')))
+        self.update_progress_msgbox.updateTaskProgress(progress, message)
+
+    def on_update_finished(self, result):
+        self.update_progress_msgbox.done(0)
+        if result.status == 'up_to_date':
+            create_info_dialog(
+                self.tr('Already up-to-date.') + f'\n{result.current_version}'
+            )
+            return
+
+        message = (
+            self.tr('Update installed. Restart BallonsTranslator to use the new version.')
+            + f'\n{result.current_version} -> {result.latest_version}'
+        )
+        if result.backup_path:
+            message += '\n' + self.tr('Backup: ') + result.backup_path
+        if result.git_message:
+            message += '\n' + result.git_message
+        create_info_dialog(message)
+
+    def on_update_failed(self, error_msg: str, detail_traceback: str):
+        self.update_progress_msgbox.done(0)
+        self.on_create_errdialog(
+            error_msg + '\n' + self.tr('Failed to check for updates.'),
+            detail_traceback,
+            '',
+        )
 
     def set_display_lang(self, lang: str):
         self.retranslateUI()
