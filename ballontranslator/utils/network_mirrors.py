@@ -227,6 +227,8 @@ def _has_mainland_china_locale(locale_names: Iterable[str]) -> bool:
             return True
         if lower == 'zh_cn' or lower.endswith('_cn') or '_cn_' in lower:
             return True
+        if 'Chinese (Simplified)_China'.lower() in lower:
+            return True
     return False
 
 
@@ -239,7 +241,7 @@ def _has_mainland_china_timezone(timezone_names: Iterable[str]) -> bool:
             return True
         if normalized.endswith('/asia/shanghai') or 'zoneinfo/asia/shanghai' in normalized:
             return True
-        if 'china standard time' in normalized:
+        if 'china standard time' in normalized or '中国标准时间' in normalized or '中国夏令时' in normalized:
             return True
     return False
 
