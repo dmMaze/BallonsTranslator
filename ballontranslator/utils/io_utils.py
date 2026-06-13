@@ -163,6 +163,9 @@ def imread(imgpath, read_type=cv2.IMREAD_COLOR, max_retry_limit=5, retry_interva
                 img = img.convert('RGB')
             elif img.mode == 'P':
                 img = img.convert('RGBA')
+            elif img.mode == 'LA':
+                # grayscale + alpha (2-channel) isn't handled below; promote to RGBA
+                img = img.convert('RGBA')
             if read_type == cv2.IMREAD_GRAYSCALE:
                 img = img.convert('L')
             img = np.array(img)
