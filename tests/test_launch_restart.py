@@ -1,4 +1,7 @@
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -18,6 +21,16 @@ class LaunchRestartTests(unittest.TestCase):
             execv.call_args.args[1],
             [sys.executable, '-m', 'ballontranslator', '--debug'],
         )
+
+    def test_core_requirements_env_uses_saved_pypi_mirror(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, 'config.json')
+            with open(config_path, 'w', encoding='utf8') as f:
+                json.dump({'mirrors': {'pypi': 'https://example.invalid/simple'}}, f)
+
+            env = launch.core_requirements_env(config_path)
+
+        self.assertEqual(env['INDEX_URL'], 'https://example.invalid/simple')
 
 
 if __name__ == '__main__':

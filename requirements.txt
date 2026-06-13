@@ -22,7 +22,6 @@ piexif
 natsort
 ordered-set
 opencc-python-reimplemented
-termcolor
 colorama
 spacy-pkuseg
 pywin32; sys_platform == 'win32'

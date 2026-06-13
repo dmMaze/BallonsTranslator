@@ -6,6 +6,13 @@ from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QI
 
 from .custom_widget import ConfigComboBox, Widget
 from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.network_mirrors import (
+    HUGGINGFACE_MIRROR_OPTIONS,
+    PYPI_MIRROR_OPTIONS,
+    display_options,
+    mirror_from_display,
+    mirror_to_display,
+)
 from ballontranslator.utils import shared
 from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
@@ -361,7 +368,7 @@ class ConfigPanel(Widget):
         label_text_ocr = self.tr('OCR')
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
-        label_startup = self.tr('Startup')
+        label_startup = self.tr('Startup & Updates')
         label_typesetting = self.tr('Typesetting')
         label_save = self.tr('Save')
     
@@ -422,6 +429,21 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
+        none_label = self.tr('None')
+        self.huggingface_mirror_combobox, _ = generalConfigPanel.addCombobox(
+            display_options(HUGGINGFACE_MIRROR_OPTIONS, none_label=none_label),
+            self.tr('Huggingface Mirrors'),
+            fix_size=False,
+        )
+        self.huggingface_mirror_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.huggingface_mirror_combobox.currentTextChanged.connect(self.on_huggingface_mirror_changed)
+        self.pypi_mirror_combobox, _ = generalConfigPanel.addCombobox(
+            display_options(PYPI_MIRROR_OPTIONS, none_label=none_label),
+            self.tr('PyPI Mirrors'),
+            fix_size=False,
+        )
+        self.pypi_mirror_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.pypi_mirror_combobox.currentTextChanged.connect(self.on_pypi_mirror_changed)
 
         generalConfigPanel.addTextLabel(label_typesetting)
         dec_program_str = self.tr('decide by program')
@@ -541,6 +563,18 @@ class ConfigPanel(Widget):
     def on_open_onstartup_changed(self):
         pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
 
+    def on_huggingface_mirror_changed(self):
+        pcfg.mirrors.huggingface = mirror_from_display(
+            self.huggingface_mirror_combobox.currentText(),
+            none_label=self.tr('None'),
+        )
+
+    def on_pypi_mirror_changed(self):
+        pcfg.mirrors.pypi = mirror_from_display(
+            self.pypi_mirror_combobox.currentText(),
+            none_label=self.tr('None'),
+        )
+
     def on_fntsize_flag_changed(self):
         pcfg.let_fntsize_flag = self.let_fntsize_combox.currentIndex()
 
@@ -624,6 +658,14 @@ class ConfigPanel(Widget):
 
         if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
+        self.huggingface_mirror_combobox.setCurrentText(mirror_to_display(
+            pcfg.mirrors.huggingface,
+            none_label=self.tr('None'),
+        ))
+        self.pypi_mirror_combobox.setCurrentText(mirror_to_display(
+            pcfg.mirrors.pypi,
+            none_label=self.tr('None'),
+        ))
 
         self.detect_config_panel.keep_existing_checker.setChecked(pcfg.module.keep_exist_textlines)
         self.let_effect_combox.setCurrentIndex(pcfg.let_fnteffect_flag)

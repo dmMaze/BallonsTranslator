@@ -84,13 +84,18 @@ class CoreRequirementsTests(unittest.TestCase):
             return_value=['qtpy: missing'],
         ), mock.patch(
             'ballontranslator.utils.package_installer.subprocess.Popen',
-        ) as popen, mock.patch('ballontranslator.utils.core_requirements._drop_probe_modules'):
+        ) as popen, mock.patch(
+            'ballontranslator.utils.package_installer.LOGGER.info',
+        ) as log_info, mock.patch('ballontranslator.utils.core_requirements._drop_probe_modules'):
             popen.return_value = FakeProcess()
             core_requirements.ensure_core_requirements(repo_root='/tmp/repo', env=env)
 
         command = popen.call_args.args[0]
         self.assertIn('--index-url', command)
         self.assertIn('https://example.invalid/simple', command)
+        log_info.assert_any_call(
+            'Using PyPI package mirror for package install: https://example.invalid/simple'
+        )
 
 
 if __name__ == '__main__':
