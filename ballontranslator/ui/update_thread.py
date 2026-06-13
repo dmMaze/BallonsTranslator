@@ -12,10 +12,26 @@ class UpdateCheckThread(QThread):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.release_info = None
+        self.current_version = None
+
+    def checkLatest(self) -> None:
+        self.release_info = None
+        self.current_version = None
+        self.start()
+
+    def applyUpdate(self, release_info, current_version: str) -> None:
+        self.release_info = release_info
+        self.current_version = current_version
+        self.start()
 
     def run(self) -> None:
         try:
             updater = BallonsTranslatorUpdater(progress_callback=self.progress_changed.emit)
-            self.update_finished.emit(updater.check_and_update())
+            if self.release_info is None:
+                result = updater.check_latest_release()
+            else:
+                result = updater.apply_update(self.release_info, self.current_version)
+            self.update_finished.emit(result)
         except Exception as e:
             self.update_failed.emit(str(e), traceback.format_exc())

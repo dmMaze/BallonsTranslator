@@ -138,7 +138,7 @@ class ProgramConfig(Config):
     mask_transparency: float = 0.
     original_transparency: float = 0.
     open_recent_on_startup: bool = True 
-    check_update_on_startup: bool = False
+    check_update_on_startup: bool = True
 
     let_fntsize_flag: int = 0
     let_fntstroke_flag: int = 0

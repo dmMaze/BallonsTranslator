@@ -8,7 +8,7 @@ import time
 import cv2
 
 from tqdm import tqdm
-from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
+from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit, QDialog, QLabel, QPushButton
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QTimer
 from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard, QImage
 
@@ -136,7 +136,8 @@ class MainWindow(mainwindow_cls):
         self.update_thread.progress_changed.connect(self.on_update_progress_changed)
         self.update_thread.update_finished.connect(self.on_update_finished)
         self.update_thread.update_failed.connect(self.on_update_failed)
-        self.update_progress_msgbox = ProgressMessageBox(self.tr('Checking update: '), False, self)
+        self.update_progress_msgbox = ProgressMessageBox(self.tr('Updating: '), False, self)
+        self._update_progress_visible = False
 
     def resetStyleSheet(self, reverse_icon: bool = False):
         theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
@@ -481,19 +482,29 @@ class MainWindow(mainwindow_cls):
                 create_info_dialog(self.tr('Update check is already running.'))
             return
         self._manual_update_check = manual
+        self.configPanel.setUpdateChecking(True)
+        self.configPanel.setLatestVersion(self.tr('Checking...'))
+        self.update_thread.checkLatest()
+
+    def apply_confirmed_update(self, release_info, current_version: str):
+        if self.update_thread.isRunning():
+            create_info_dialog(self.tr('Update check is already running.'))
+            return
+        self.configPanel.setUpdateChecking(True)
         self.update_progress_msgbox.zero_progress()
-        self.update_progress_msgbox.setTaskName(self.tr('Checking update: '))
-        self.update_progress_msgbox.updateTaskProgress(0, self.tr('GitHub releases'))
+        self.update_progress_msgbox.setTaskName(self.tr('Downloading update: '))
+        self.update_progress_msgbox.updateTaskProgress(0, release_info.version)
         self.update_progress_msgbox.show_fitted()
-        self.update_thread.start()
+        self._update_progress_visible = True
+        self.update_thread.applyUpdate(release_info, current_version)
 
     def on_update_progress_changed(self, payload: dict):
+        if not self._update_progress_visible:
+            return
         progress = payload.get('progress', 0)
         message = payload.get('message', '')
         event = payload.get('event', '')
         task_names = {
-            'query_release': self.tr('Checking update: '),
-            'compare_versions': self.tr('Checking update: '),
             'download_start': self.tr('Downloading update: '),
             'download_progress': self.tr('Downloading update: '),
             'download_done': self.tr('Downloading update: '),
@@ -508,7 +519,21 @@ class MainWindow(mainwindow_cls):
         self.update_progress_msgbox.updateTaskProgress(progress, message)
 
     def on_update_finished(self, result):
-        self.update_progress_msgbox.done(0)
+        if self._update_progress_visible:
+            self.update_progress_msgbox.done(0)
+            self._update_progress_visible = False
+        self.configPanel.setUpdateChecking(False)
+        if result.latest_version:
+            self.configPanel.setLatestVersion(result.latest_version)
+
+        if result.status == 'available':
+            if self.confirm_update_release(result):
+                QTimer.singleShot(
+                    0,
+                    lambda info=result.release_info, current=result.current_version: self.apply_confirmed_update(info, current),
+                )
+            return
+
         if result.status == 'up_to_date':
             create_info_dialog(
                 self.tr('Already up-to-date.') + f'\n{result.current_version}'
@@ -524,14 +549,76 @@ class MainWindow(mainwindow_cls):
         if result.git_message:
             message += '\n' + result.git_message
         create_info_dialog(message)
+        self.ask_restart_after_update()
 
     def on_update_failed(self, error_msg: str, detail_traceback: str):
-        self.update_progress_msgbox.done(0)
+        if self._update_progress_visible:
+            self.update_progress_msgbox.done(0)
+            self._update_progress_visible = False
+        self.configPanel.setUpdateChecking(False)
         self.on_create_errdialog(
             error_msg + '\n' + self.tr('Failed to check for updates.'),
             detail_traceback,
             '',
         )
+
+    def confirm_update_release(self, result) -> bool:
+        release_info = result.release_info
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr('Update Available'))
+        layout = QVBoxLayout(dialog)
+
+        title_label = QLabel(
+            self.tr('A new version is available.')
+            + f'\n{result.current_version} -> {result.latest_version}',
+            dialog,
+        )
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+
+        info_lines = []
+        if release_info.name:
+            info_lines.append(release_info.name)
+        if release_info.published_at:
+            info_lines.append(self.tr('Published: ') + release_info.published_at)
+        if release_info.html_url:
+            info_lines.append(release_info.html_url)
+        if info_lines:
+            meta_label = QLabel('\n'.join(info_lines), dialog)
+            meta_label.setWordWrap(True)
+            meta_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            meta_label.setOpenExternalLinks(True)
+            layout.addWidget(meta_label)
+
+        release_notes = QPlainTextEdit(dialog)
+        release_notes.setReadOnly(True)
+        release_notes.setPlainText(release_info.body or self.tr('No release notes.'))
+        release_notes.setMinimumSize(620, 320)
+        layout.addWidget(release_notes)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        update_btn = QPushButton(self.tr('Update'), dialog)
+        cancel_btn = QPushButton(self.tr('Cancel'), dialog)
+        update_btn.clicked.connect(dialog.accept)
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(update_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+
+        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
+        return dialog.exec() == accepted
+
+    def ask_restart_after_update(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle(self.tr('Restart Required'))
+        question_icon = getattr(getattr(QMessageBox, 'Icon', QMessageBox), 'Question')
+        msg.setIcon(question_icon)
+        msg.setText(self.tr('Restart to apply updates?'))
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+        if msg.exec() == QMessageBox.StandardButton.Yes:
+            self.restart_signal.emit()
 
     def set_display_lang(self, lang: str):
         self.retranslateUI()

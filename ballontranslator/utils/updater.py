@@ -25,6 +25,9 @@ class ReleaseInfo:
     version: str
     html_url: str
     zip_url: str
+    name: str = ''
+    body: str = ''
+    published_at: str = ''
 
 
 @dataclass
@@ -36,6 +39,7 @@ class UpdateResult:
     zip_path: str = ''
     backup_path: str = ''
     git_message: str = ''
+    release_info: Optional[ReleaseInfo] = None
 
 
 def normalize_version_tag(version: str) -> str:
@@ -90,9 +94,9 @@ def is_remote_newer(local_version: str, remote_version: str) -> bool:
 def release_info_from_api_payload(payload: dict) -> ReleaseInfo:
     """Build release metadata from the GitHub release API response.
 
-    >>> info = release_info_from_api_payload({'tag_name': 'v1.4.1', 'html_url': 'u', 'zipball_url': 'z'})
-    >>> (info.version, info.zip_url)
-    ('1.4.1', 'z')
+    >>> info = release_info_from_api_payload({'tag_name': 'v1.4.1', 'html_url': 'u', 'zipball_url': 'z', 'body': 'notes'})
+    >>> (info.version, info.zip_url, info.body)
+    ('1.4.1', 'z', 'notes')
     """
 
     tag_name = payload.get('tag_name') or ''
@@ -105,6 +109,9 @@ def release_info_from_api_payload(payload: dict) -> ReleaseInfo:
         version=normalize_version_tag(tag_name),
         html_url=html_url,
         zip_url=zip_url,
+        name=payload.get('name') or tag_name,
+        body=payload.get('body') or '',
+        published_at=payload.get('published_at') or '',
     )
 
 
@@ -127,6 +134,20 @@ class BallonsTranslatorUpdater:
         self.progress_callback = progress_callback
 
     def check_and_update(self) -> UpdateResult:
+        result = self.check_latest_release()
+        if result.status != 'available' or result.release_info is None:
+            return result
+
+        return self.apply_update(result.release_info, result.current_version)
+
+    def check_latest_release(self) -> UpdateResult:
+        """Check for a newer release without modifying local files.
+
+        >>> updater = BallonsTranslatorUpdater(program_path='/tmp/app', cache_dir='/tmp/cache')
+        >>> isinstance(updater.program_path, Path)
+        True
+        """
+
         current_version = get_current_version(str(self.program_path))
         release_info = self.query_latest_release()
         self._notify('compare_versions', 15, f'{current_version} -> {release_info.version}')
@@ -137,8 +158,20 @@ class BallonsTranslatorUpdater:
                 current_version=current_version,
                 latest_version=release_info.version,
                 release_url=release_info.html_url,
+                release_info=release_info,
             )
 
+        LOGGER.info(f'BallonsTranslator update available: {current_version} -> {release_info.version}')
+        return UpdateResult(
+            status='available',
+            current_version=current_version,
+            latest_version=release_info.version,
+            release_url=release_info.html_url,
+            release_info=release_info,
+        )
+
+    def apply_update(self, release_info: ReleaseInfo, current_version: str = None) -> UpdateResult:
+        current_version = current_version or get_current_version(str(self.program_path))
         zip_path = self.download_source_zip(release_info)
         backup_path = self.backup_source(current_version)
         git_message = self.prepare_git_worktree(release_info.version)
@@ -152,6 +185,7 @@ class BallonsTranslatorUpdater:
             zip_path=str(zip_path),
             backup_path=str(backup_path),
             git_message=git_message,
+            release_info=release_info,
         )
 
     def query_latest_release(self) -> ReleaseInfo:
