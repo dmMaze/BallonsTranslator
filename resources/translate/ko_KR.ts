@@ -170,11 +170,6 @@
         <translation>저장</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="361"/>
-        <source>SalaDict</source>
-        <translation>SalaDict(확장)</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="379"/>
         <source>Empty cache after RUN</source>
         <translation>실행 후 캐시 삭제</translation>
@@ -298,11 +293,6 @@
         <location filename="../ui/configpanel.py" line="470"/>
         <source>Quality</source>
         <translation>품질</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="477"/>
-        <source>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md&quot;&gt;Installation guide&lt;/a&gt;</source>
-        <translation>&lt;a href = &quot;https://github.com/dmmaze/ballonstranslator/tree/master/doc/saladict.md&quot;&gt; 설치 안내서 &lt;/a&gt;</translation>
     </message>
     <message>
         <location filename="../ui/configpanel.py" line="481"/>
@@ -1095,11 +1085,6 @@ All existing translation results will be cleared!</source>
         <location filename="../ui/textedit_area.py" line="30"/>
         <source>Search selected text on Internet</source>
         <translation>인터넷에서 선택한 텍스트 검색</translation>
-    </message>
-    <message>
-        <location filename="../ui/textedit_area.py" line="36"/>
-        <source>Look up selected text in SalaDict, see installation guide in configpanel</source>
-        <translation>SalaDict에서 선택된 텍스트를 찾기, 설정에 설치 안내서를 참조하십시오.</translation>
     </message>
 </context>
 <context>

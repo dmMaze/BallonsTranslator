@@ -993,11 +993,6 @@ class SceneTextManager(QObject):
                 self.selectext_minimenu.move(self.mainwindow.mapFromGlobal(pos))
                 self.selectext_minimenu.selected_text = selected_text
 
-    def on_block_current_editor(self, block: bool):
-        w: SourceTextEdit = self.app.focusWidget()
-        if isinstance(w, SourceTextEdit) or isinstance(w, TextBlkItem):
-            w.block_all_input = block
-
     def on_pairw_focusout(self, idx: int):
         if self.selectext_minimenu.isVisible():
             self.selectext_minimenu.hide()
@@ -1135,4 +1130,3 @@ def get_text_size(fm: QFontMetricsF, text: str) -> Tuple[int, int]:
     
 def get_words_length_list(fm: QFontMetricsF, words: List[str]) -> List[int]:
     return [int(np.ceil(fm.horizontalAdvance(word))) for word in words]
-

@@ -25,7 +25,6 @@ opencc-python-reimplemented
 termcolor
 colorama
 spacy-pkuseg
-pynput
 pywin32; sys_platform == 'win32'
 brotlicffi; sys_platform == 'win32'
 pyobjc-core; sys_platform == 'darwin'

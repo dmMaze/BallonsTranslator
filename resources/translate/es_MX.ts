@@ -165,11 +165,6 @@
         <translation>Guardar</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="361"/>
-        <source>SalaDict</source>
-        <translation>SalaDict</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="379"/>
         <source>Empty cache after RUN</source>
         <translation>Vaciar caché después de EJECUTAR</translation>
@@ -293,11 +288,6 @@
         <location filename="../ui/configpanel.py" line="471"/>
         <source>Quality</source>
         <translation>Calidad</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="478"/>
-        <source>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md&quot;&gt;Installation guide&lt;/a&gt;</source>
-        <translation>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/blob/dev/doc/saladict_es.md&quot;&gt;Guía de instalación&lt;/a&gt;</translation>
     </message>
     <message>
         <location filename="../ui/configpanel.py" line="482"/>
@@ -1022,11 +1012,6 @@ All existing translation results will be cleared!</source>
         <location filename="../ui/textedit_area.py" line="30"/>
         <source>Search selected text on Internet</source>
         <translation>Buscar el texto seleccionado en Internet</translation>
-    </message>
-    <message>
-        <location filename="../ui/textedit_area.py" line="36"/>
-        <source>Look up selected text in SalaDict, see installation guide in configpanel</source>
-        <translation>Buscar texto seleccionado en SalaDict, ver guía de instalación en configpanel</translation>
     </message>
 </context>
 <context>
