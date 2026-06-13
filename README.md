@@ -182,7 +182,6 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
 * 电脑带 Nvidia 显卡或 Apple silicon 默认启用 GPU 加速
 * 感谢 [bropines](https://github.com/bropines) 提供俄语翻译
 * 第三方输入法可能会造成右侧编辑框显示 bug，见[#76](https://github.com/dmMaze/BallonsTranslator/issues/76)，暂时不打算修
-* 选中文本迷你菜单支持*聚合词典专业划词翻译*[沙拉查词](https://saladict.crimx.com): [安装说明](doc/saladict_chs.md)
 <details>
   <summary><i>启用 AMD ROCm 显卡加速方法</i></summary>
 

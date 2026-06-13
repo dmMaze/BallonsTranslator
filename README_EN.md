@@ -170,7 +170,6 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
 
 ## FAQ & Misc
 * If your computer has an Nvidia GPU or Apple silicon, the program will enable hardware acceleration. 
-* Add support for [saladict](https://saladict.crimx.com) (*All-in-one professional pop-up dictionary and page translator*) in the mini menu on text selection. [Installation guide](doc/saladict.md)
 * Accelarate performance if you have a [NVIDIA's CUDA](https://pytorch.org/docs/stable/notes/cuda.html) or [AMD's ROCm](https://pytorch.org/docs/stable/notes/hip.html) device as most modules uses [PyTorch](https://pytorch.org/get-started/locally/).
 * Fonts are from your system's fonts.
 * Thanks to [bropines](https://github.com/bropines) for the Russian localization.

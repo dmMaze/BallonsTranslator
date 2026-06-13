@@ -35,53 +35,10 @@ parser.add_argument("--exec_dirs", default='', help='translation queue (project 
 parser.add_argument("--ldpi", default=None, type=float, help='logical dots perinch')
 parser.add_argument("--export-translation-txt", action='store_true', help='save translation to txt file once RUN completed')
 parser.add_argument("--export-source-txt", action='store_true', help='save source to txt file once RUN completed')
-parser.add_argument("--update", action='store_true', help="Update the repository before launching") # Add argument --update
 parser.add_argument("--config_path", default=shared.CONFIG_PATH, help='Config file to use for translation') # Named config_path to avoid conflict with existing name config
 if "--headless_continuous" in sys.argv[1:]:
     parser.error("--headless_continuous has been renamed to --headless")
 args, _ = parser.parse_known_args()
-
-
-def run(command, desc=None, errdesc=None, custom_env=None, live=False):
-    if desc is not None:
-        print(desc)
-
-    if live:
-        result = subprocess.run(command, shell=True, env=os.environ if custom_env is None else custom_env)
-        if result.returncode != 0:
-            raise RuntimeError(f"""{errdesc or 'Error running command'}.
-Command: {command}
-Error code: {result.returncode}""")
-
-        return ""
-
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, env=os.environ if custom_env is None else custom_env)
-
-    if result.returncode != 0:
-
-        message = f"""{errdesc or 'Error running command'}.
-Command: {command}
-Error code: {result.returncode}
-stdout: {result.stdout.decode(encoding="utf8", errors="ignore") if len(result.stdout)>0 else '<empty>'}
-stderr: {result.stderr.decode(encoding="utf8", errors="ignore") if len(result.stderr)>0 else '<empty>'}
-"""
-        raise RuntimeError(message)
-
-    return result.stdout.decode(encoding="utf8", errors="ignore")
-
-
-def commit_hash():
-    global stored_commit_hash
-
-    if stored_commit_hash is not None:
-        return stored_commit_hash
-
-    try:
-        stored_commit_hash = run(f"{git} rev-parse HEAD").strip()
-    except Exception:
-        stored_commit_hash = "<none>"
-
-    return stored_commit_hash
 
 
 BT = None
@@ -140,6 +97,96 @@ def preload_msvc_runtime():
     return loaded
 
 
+def core_requirements_env(config_path: str) -> dict:
+    """Return the environment used by launch-time core dependency repair.
+
+    >>> env = core_requirements_env('/path/that/does/not/exist')
+    >>> isinstance(env, dict)
+    True
+    """
+
+    from ballontranslator.utils.network_mirrors import (
+        installer_env_with_pypi_mirror,
+        read_saved_pypi_mirror,
+    )
+
+    return installer_env_with_pypi_mirror(os.environ.copy(), read_saved_pypi_mirror(config_path))
+
+
+def setup_network_mirrors(config, config_path: str, qt_locale_name: str, program_config_module, logger) -> list:
+    """Backfill and apply network mirror settings after config loading.
+
+    >>> class Mirrors:
+    ...     huggingface = None
+    ...     pypi = None
+    >>> class Config:
+    ...     mirrors = Mirrors()
+    >>> class ProgramConfig:
+    ...     @staticmethod
+    ...     def save_config():
+    ...         return True
+    >>> setup_network_mirrors(Config(), '/path/that/does/not/exist', 'en_US', ProgramConfig, logger=None)
+    []
+    """
+
+    from ballontranslator.utils.network_mirrors import (
+        backfill_missing_mirror_defaults,
+        collect_system_locale_names,
+        collect_system_timezone_names,
+        missing_mirror_fields,
+        normalize_mirror_value,
+        should_use_china_mirrors,
+    )
+
+    def log_info(message: str):
+        if logger is not None:
+            logger.info(message)
+
+    missing_mirrors = missing_mirror_fields(config_path)
+    locale_names = collect_system_locale_names(qt_locale_name)
+    timezone_names = collect_system_timezone_names()
+    log_info(
+        'Checking network mirror defaults. Missing mirror fields: '
+        f'{", ".join(sorted(missing_mirrors)) if missing_mirrors else "none"}'
+    )
+    if missing_mirrors:
+        use_china_mirrors = should_use_china_mirrors(locale_names, timezone_names)
+        log_info(f'Network mirror heuristic locale hints: {locale_names}')
+        log_info(f'Network mirror heuristic timezone hints: {timezone_names}')
+        log_info(
+            'Network mirror heuristic result: '
+            f'{"mainland China detected" if use_china_mirrors else "mainland China not detected"}'
+        )
+    else:
+        log_info('Network mirror config fields are present; skipping automatic mirror selection.')
+
+    updated_mirrors = backfill_missing_mirror_defaults(
+        config.mirrors,
+        missing_mirrors,
+        locale_names=locale_names,
+        timezone_names=timezone_names,
+    )
+    if updated_mirrors:
+        log_info(f'Automatically selected network mirrors for: {", ".join(updated_mirrors)}')
+    elif missing_mirrors:
+        log_info('No network mirrors were selected automatically.')
+    if missing_mirrors:
+        program_config_module.save_config()
+
+    huggingface_mirror = normalize_mirror_value(config.mirrors.huggingface)
+    if huggingface_mirror:
+        os.environ['HF_ENDPOINT'] = huggingface_mirror
+        log_info(f'Using Hugging Face mirror endpoint: {huggingface_mirror}')
+    else:
+        log_info('Hugging Face mirror endpoint: none')
+    pypi_mirror = normalize_mirror_value(config.mirrors.pypi)
+    if pypi_mirror:
+        log_info(f'Using PyPI package mirror: {pypi_mirror}')
+    else:
+        log_info('PyPI package mirror: none')
+    return updated_mirrors
+
+
 def main():
 
     if args.debug:
@@ -151,13 +198,10 @@ def main():
     APP_DIR = shared.PROGRAM_PATH
     os.chdir(APP_DIR)
 
-    commit = commit_hash()
-
     print('Python version: ', sys.version)
     print('Python executable: ', sys.executable)
     print(f'Version: {VERSION}')
     print(f'Branch: {BRANCH}')
-    print(f"Commit hash: {commit}")
 
     if not args.system_hf_cache:
         os.environ['HF_HOME'] = osp.join(APP_DIR, 'data/models')
@@ -165,39 +209,17 @@ def main():
     preload_msvc_runtime()
 
     from ballontranslator.utils.core_requirements import ensure_core_requirements
-    if ensure_core_requirements(APP_DIR):
+    if ensure_core_requirements(APP_DIR, env=core_requirements_env(args.config_path)):
         print('Core requirements updated. Restarting...')
         restart()
         return
-
-    if args.update:
-        if getattr(sys, 'frozen', False):
-            print('Running as app, skipping update.')
-        else:
-            print('Checking for updates...')
-            try:
-                current_commit = commit_hash()
-                run(f"{git} fetch origin {BRANCH}", desc="Fetching updates from git...", errdesc="Failed to fetch updates.")
-                latest_commit = run(f"{git} rev-parse origin/{BRANCH}").strip()
-
-                if current_commit != latest_commit:
-                    print("New updates found. Updating repository...")
-                    run(f"{git} pull origin {BRANCH}", desc="Updating repository...", errdesc="Failed to update repository.")
-                    print("Repository updated. Restarting to apply updates...")
-                    restart()
-                    return
-                else:
-                    print("No updates found.")
-            except Exception as e:
-                print(f"Update check failed: {e}")
-                print("Continuing with the current version.")
-
 
     from ballontranslator.utils.logger import setup_logging, logger as LOGGER
     from ballontranslator.utils.io_utils import find_all_files_recursive
     from ballontranslator.utils import config as program_config
 
     from qtpy.QtCore import QTranslator, QLocale, Qt
+    setup_logging(shared.LOGGING_PATH)
     shared.args = args
     shared.DEFAULT_DISPLAY_LANG = QLocale.system().name().replace('en_CN', 'zh_CN')
     shared.HEADLESS = args.headless
@@ -207,6 +229,14 @@ def main():
 
     if args.headless:
         config.module.empty_runcache = False
+
+    updated_mirrors = setup_network_mirrors(
+        config,
+        args.config_path,
+        QLocale.system().name(),
+        program_config,
+        LOGGER,
+    )
 
     if sys.platform == 'win32':
         import ctypes
@@ -231,8 +261,6 @@ def main():
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     os.chdir(shared.PROGRAM_PATH)
-
-    setup_logging(shared.LOGGING_PATH)
 
     app_args = sys.argv
     if args.headless:
@@ -296,6 +324,7 @@ def main():
     setup_locks()
 
     from ballontranslator.ui.mainwindow import MainWindow
+    from ballontranslator.utils.message import create_info_dialog
     ballontrans = MainWindow(app, config, open_dir=args.proj_dir, **vars(args))
     global BT
     BT = ballontrans
@@ -309,6 +338,11 @@ def main():
         ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
         ballontrans.show()
         ballontrans.resetStyleSheet()
+    if updated_mirrors:
+        create_info_dialog(QApplication.translate(
+            'NetworkMirrors',
+            'Network mirrors were selected automatically for better access to dependencies and model downloads.',
+        ))
     sys.exit(app.exec())
 
 

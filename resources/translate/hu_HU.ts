@@ -165,11 +165,6 @@
         <translation>Mentés</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="361"/>
-        <source>SalaDict</source>
-        <translation>SalaDict</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="379"/>
         <source>Empty cache after RUN</source>
         <translation>FUTTATÁS után cache törlése</translation>
@@ -293,11 +288,6 @@
         <location filename="../ui/configpanel.py" line="471"/>
         <source>Quality</source>
         <translation>Minőség</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="478"/>
-        <source>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md&quot;&gt;Installation guide&lt;/a&gt;</source>
-        <translation>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/blob/dev/doc/saladict_es.md&quot;&gt;Guía de instalación&lt;/a&gt;</translation>
     </message>
     <message>
         <location filename="../ui/configpanel.py" line="482"/>
@@ -1021,11 +1011,6 @@ Minden eddigi fordítás elveszik!</translation>
         <location filename="../ui/textedit_area.py" line="30"/>
         <source>Search selected text on Internet</source>
         <translation>Kijelölt szöveg keresése az Interneten</translation>
-    </message>
-    <message>
-        <location filename="../ui/textedit_area.py" line="36"/>
-        <source>Look up selected text in SalaDict, see installation guide in configpanel</source>
-        <translation>Kijelölt szöveg keresése a SalaDict-ben, lásd telepítési útmutató a beállításoknál</translation>
     </message>
 </context>
 <context>

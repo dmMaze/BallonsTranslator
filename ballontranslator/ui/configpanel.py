@@ -1,11 +1,18 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QPushButton, QKeySequenceEdit, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit
+from qtpy.QtWidgets import QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
 from .custom_widget import ConfigComboBox, Widget
 from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.network_mirrors import (
+    HUGGINGFACE_MIRROR_OPTIONS,
+    PYPI_MIRROR_OPTIONS,
+    display_options,
+    mirror_from_display,
+    mirror_to_display,
+)
 from ballontranslator.utils import shared
 from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
@@ -361,10 +368,9 @@ class ConfigPanel(Widget):
         label_text_ocr = self.tr('OCR')
         label_inpaint = self.tr('Inpaint')
         label_translator = self.tr('Translator')
-        label_startup = self.tr('Startup')
+        label_startup = self.tr('Startup & Updates')
         label_typesetting = self.tr('Typesetting')
         label_save = self.tr('Save')
-        label_saladict = self.tr('SalaDict')
     
         dltableitem.appendRows([
             TableItem(label_text_det, CONFIG_FONTSIZE_TABLE),
@@ -376,7 +382,6 @@ class ConfigPanel(Widget):
             TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
             TableItem(label_typesetting, CONFIG_FONTSIZE_TABLE),
             TableItem(label_save, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_saladict, CONFIG_FONTSIZE_TABLE),
         ])
         
         self.empty_runcache_checker, empty_runcache_subblock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
@@ -424,6 +429,21 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
+        none_label = self.tr('None')
+        self.huggingface_mirror_combobox, _ = generalConfigPanel.addCombobox(
+            display_options(HUGGINGFACE_MIRROR_OPTIONS, none_label=none_label),
+            self.tr('Huggingface Mirrors'),
+            fix_size=False,
+        )
+        self.huggingface_mirror_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.huggingface_mirror_combobox.currentTextChanged.connect(self.on_huggingface_mirror_changed)
+        self.pypi_mirror_combobox, _ = generalConfigPanel.addCombobox(
+            display_options(PYPI_MIRROR_OPTIONS, none_label=none_label),
+            self.tr('PyPI Mirrors'),
+            fix_size=False,
+        )
+        self.pypi_mirror_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.pypi_mirror_combobox.currentTextChanged.connect(self.on_pypi_mirror_changed)
 
         generalConfigPanel.addTextLabel(label_typesetting)
         dec_program_str = self.tr('decide by program')
@@ -496,21 +516,8 @@ class ConfigPanel(Widget):
         self.intermediate_imgformat_combobox, intermediate_imsave_sublock = generalConfigPanel.addCombobox(['PNG', 'JXL'], self.tr('Intermediate image format'))
         self.intermediate_imgformat_combobox.activated.connect(self.on_intermediate_imgformat_changed)
 
-        generalConfigPanel.addTextLabel(label_saladict)
-
-        sublock = ConfigSubBlock(ConfigTextLabel(self.tr("<a href=\"https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md\">Installation guide</a>"), CONFIG_FONTSIZE_CONTENT - 2), vertical_layout=False)
-        sublock.layout().insertStretch(-1)
-        generalConfigPanel.addSublock(sublock)
-
         self.selectext_minimenu_checker, _ = generalConfigPanel.addCheckBox(self.tr('Show mini menu when selecting text.'))
         self.selectext_minimenu_checker.stateChanged.connect(self.on_selectext_minimenu_changed)
-        self.saladict_shortcut = QKeySequenceEdit("ALT+W", self)
-        self.saladict_shortcut.keySequenceChanged.connect(self.on_saladict_shortcut_changed)
-        self.saladict_shortcut.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
-
-        sublock = ConfigSubBlock(self.saladict_shortcut, self.tr("Shortcut"), vertical_layout=False)
-        sublock.layout().insertStretch(-1)
-        generalConfigPanel.addSublock(sublock)
         self.searchurl_combobox, _ = generalConfigPanel.addCombobox(["https://www.google.com/search?q=", "https://www.bing.com/search?q=", "https://duckduckgo.com/?q=", "https://yandex.com/search/?text=", "http://www.baidu.com/s?wd=", "https://search.yahoo.com/search;?p=", "https://www.urbandictionary.com/define.php?term="], self.tr("Search Engines"), fix_size=False)
         self.searchurl_combobox.setEditable(True)
         self.searchurl_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
@@ -556,6 +563,18 @@ class ConfigPanel(Widget):
     def on_open_onstartup_changed(self):
         pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
 
+    def on_huggingface_mirror_changed(self):
+        pcfg.mirrors.huggingface = mirror_from_display(
+            self.huggingface_mirror_combobox.currentText(),
+            none_label=self.tr('None'),
+        )
+
+    def on_pypi_mirror_changed(self):
+        pcfg.mirrors.pypi = mirror_from_display(
+            self.pypi_mirror_combobox.currentText(),
+            none_label=self.tr('None'),
+        )
+
     def on_fntsize_flag_changed(self):
         pcfg.let_fntsize_flag = self.let_fntsize_combox.currentIndex()
 
@@ -583,11 +602,6 @@ class ConfigPanel(Widget):
 
     def on_selectext_minimenu_changed(self):
         pcfg.textselect_mini_menu = self.selectext_minimenu_checker.isChecked()
-
-    def on_saladict_shortcut_changed(self):
-        kstr = self.saladict_shortcut.keySequence().toString()
-        if kstr:
-            pcfg.saladict_shortcut = self.saladict_shortcut.keySequence().toString()
 
     def on_searchurl_changed(self):
         url = self.searchurl_combobox.currentText()
@@ -644,6 +658,14 @@ class ConfigPanel(Widget):
 
         if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
+        self.huggingface_mirror_combobox.setCurrentText(mirror_to_display(
+            pcfg.mirrors.huggingface,
+            none_label=self.tr('None'),
+        ))
+        self.pypi_mirror_combobox.setCurrentText(mirror_to_display(
+            pcfg.mirrors.pypi,
+            none_label=self.tr('None'),
+        ))
 
         self.detect_config_panel.keep_existing_checker.setChecked(pcfg.module.keep_exist_textlines)
         self.let_effect_combox.setCurrentIndex(pcfg.let_fnteffect_flag)
@@ -658,7 +680,6 @@ class ConfigPanel(Widget):
         self.selectext_minimenu_checker.setChecked(pcfg.textselect_mini_menu)
         self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
         self.let_textstyle_indep_checker.setChecked(pcfg.let_textstyle_indep_flag)
-        self.saladict_shortcut.setKeySequence(pcfg.saladict_shortcut)
         self.searchurl_combobox.setCurrentText(pcfg.search_url)
         self.ocr_config_panel.restoreEmptyOCRChecker.setChecked(pcfg.restore_ocr_empty)
         self.rst_imgformat_combobox.setCurrentText(pcfg.imgsave_ext.replace('.', '').upper())

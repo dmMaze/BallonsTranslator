@@ -19,6 +19,7 @@ from py7zr import pack_7zarchive, unpack_7zarchive
 
 from . import shared
 from .logger import logger as LOGGER
+from .network_mirrors import rewrite_huggingface_url
 
 shutil.register_archive_format('7zip', pack_7zarchive, description='7zip archive')
 shutil.register_unpack_format('7zip', ['.7z'], unpack_7zarchive)
@@ -43,6 +44,21 @@ def _raise_if_cancelled(cancel_event=None):
 def _notify_progress(progress_callback=None, **payload):
     if progress_callback is not None:
         progress_callback(payload)
+
+
+def _configured_huggingface_mirror():
+    try:
+        from ballontranslator.utils.config import pcfg
+    except Exception:
+        return None
+    return getattr(getattr(pcfg, 'mirrors', None), 'huggingface', None)
+
+
+def _rewrite_configured_url(url: str, log_mirror: bool = False) -> str:
+    rewritten_url = rewrite_huggingface_url(url, _configured_huggingface_mirror())
+    if log_mirror and rewritten_url != url:
+        LOGGER.info(f'Using Hugging Face mirror for model download: {url} -> {rewritten_url}')
+    return rewritten_url
 
 
 def _partial_path(dst: str) -> str:
@@ -180,6 +196,7 @@ def download_url_to_file(
 
     """
     _raise_if_cancelled(cancel_event)
+    url = _rewrite_configured_url(url, log_mirror=True)
     original_ctx = ssl._create_default_https_context
     ssl._create_default_https_context = ssl._create_unverified_context  # https://stackoverflow.com/questions/50236117/scraping-ssl-certificate-verify-failed-error-for-http-en-wikipedia-org
     u = None
@@ -346,6 +363,7 @@ def try_download_files(url: str,
             else:
                 download_url = url
 
+            download_url = _rewrite_configured_url(download_url, log_mirror=True)
             _notify_progress(progress_callback, event='file_check', file=file, path=savep, url=download_url)
             if gdrive_file_id is not None:
                 download_file_from_google_drive(gdrive_file_id, savep, progress_callback=progress_callback, cancel_event=cancel_event)

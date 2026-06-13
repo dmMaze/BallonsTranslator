@@ -243,8 +243,7 @@ class MainWindow(mainwindow_cls):
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
 
-        self.selectext_minimenu = self.st_manager.selectext_minimenu = SelectTextMiniMenu(self.app, self)
-        self.selectext_minimenu.block_current_editor.connect(self.st_manager.on_block_current_editor)
+        self.selectext_minimenu = self.st_manager.selectext_minimenu = SelectTextMiniMenu(self)
         self.selectext_minimenu.hide()
 
         mainVBoxLayout = QVBoxLayout(self)

@@ -2,45 +2,29 @@ from typing import List, Union
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QSizePolicy, QLabel, QLineEdit
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
-from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap, QKeySequence
+from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
 import webbrowser
 import numpy as np
 
 from .custom_widget import ScrollBar, Widget, SeparatorWidget, ClickableLabel
 from .textitem import TextBlock
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.logger import logger as LOGGER
 
 
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
 STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
 STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
 
-try:
-    from pynput.keyboard import Key, Controller
-    keyboard = Controller()
-except:
-    LOGGER.warning(f'failed to import pynput')
-    keyboard = None
-
 class SelectTextMiniMenu(Widget):
 
-    block_current_editor = Signal(bool)
-
-    def __init__(self, app: QApplication, parent=None, *args, **kwargs) -> None:
+    def __init__(self, parent=None, *args, **kwargs) -> None:
         super().__init__(parent=parent, *args, **kwargs)
-        self.app = app
         self.search_internet_btn = ClickableLabel(parent=self)
         self.search_internet_btn.setObjectName("SearchInternet")
         self.search_internet_btn.setToolTip(self.tr("Search selected text on Internet"))
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.search_internet_btn.clicked.connect(self.on_search_internet)
-        self.saladict_btn = ClickableLabel(parent=self)
-        self.saladict_btn.setObjectName("SalaDict")
-        self.saladict_btn.clicked.connect(self.on_saladict)
-        self.saladict_btn.setToolTip(self.tr("Look up selected text in SalaDict, see installation guide in configpanel"))
         layout = QHBoxLayout(self)
-        layout.addWidget(self.saladict_btn)
         layout.addWidget(self.search_internet_btn)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -50,15 +34,6 @@ class SelectTextMiniMenu(Widget):
     def on_search_internet(self):
         browser = webbrowser.get()
         browser.open_new(pcfg.search_url + self.selected_text)
-        self.hide()
-
-    def on_saladict(self):
-        if keyboard is not None:
-            self.app.clipboard().setText(self.selected_text)
-            self.block_current_editor.emit(True)
-            keyboard.press(pcfg.saladict_shortcut)
-            keyboard.release(pcfg.saladict_shortcut)
-            self.block_current_editor.emit(False)
         self.hide()
 
 
@@ -99,7 +74,6 @@ class SourceTextEdit(QTextEdit):
         self.cursorPositionChanged.connect(self.on_cursorpos_changed)
 
         self.cursor_coord = None
-        self.block_all_input = False
         self.in_acts = False
 
         self.min_height = 45
@@ -257,10 +231,6 @@ class SourceTextEdit(QTextEdit):
         super().inputMethodEvent(e)
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
-        if self.block_all_input:
-            e.setAccepted(True)
-            return
-
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()

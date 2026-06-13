@@ -8,6 +8,8 @@ import sys
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Tuple
 
+from ballontranslator.utils.logger import logger as LOGGER
+
 
 BACKENDS = ('auto', 'pip', 'uv', 'conda-pip')
 ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
@@ -126,23 +128,27 @@ def install(
     ['python', '-m', 'pip', 'install']
     """
 
+    install_env = env or os.environ.copy()
     command = build_install_command(
         requirements=requirements,
         requirements_file=requirements_file,
         backend=backend,
         extra_args=extra_args,
-        env=env,
+        env=install_env,
     )
+    index_url = install_env.get('INDEX_URL')
+    if index_url:
+        LOGGER.info(f'Using PyPI package mirror for package install: {index_url}')
     if _can_stream_with_pty():
         try:
-            returncode, output = _run_with_pty(command, env=env, progress_callback=progress_callback)
+            returncode, output = _run_with_pty(command, env=install_env, progress_callback=progress_callback)
         except Exception as e:
             return InstallResult(False, command, error=str(e), returncode=-1)
     else:
         try:
             process = subprocess.Popen(
                 command,
-                env=env or os.environ.copy(),
+                env=install_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,

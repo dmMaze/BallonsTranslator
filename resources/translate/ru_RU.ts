@@ -171,11 +171,6 @@
         <translation>Работа с текстом</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="292"/>
-        <source>SalaDict</source>
-        <translation>SalaDict</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="308"/>
         <source>Detector</source>
         <translation>Детектор</translation>
@@ -244,11 +239,6 @@
         <location filename="../ui/configpanel.py" line="353"/>
         <source>To uppercase</source>
         <translation>Начинать с большой буквы</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="358"/>
-        <source>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md&quot;&gt;Installation guide&lt;/a&gt;</source>
-        <translation>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md&quot;&gt;Инструкция установки&lt;/a&gt;</translation>
     </message>
     <message>
         <location filename="../ui/configpanel.py" line="362"/>
@@ -968,11 +958,6 @@
         <location filename="../ui/textedit_area.py" line="24"/>
         <source>Search selected text on Internet</source>
         <translation>Поиск выбранного текста в Интернете</translation>
-    </message>
-    <message>
-        <location filename="../ui/textedit_area.py" line="29"/>
-        <source>Look up selected text in SalaDict, see installation guide in configpanel</source>
-        <translation>Просмотр выделенного текста в SalaDict, см. руководство по установке в configpanel</translation>
     </message>
 </context>
 <context>

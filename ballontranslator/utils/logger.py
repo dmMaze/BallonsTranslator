@@ -3,12 +3,6 @@ import logging
 import os
 import os.path as osp
 from glob import glob
-import termcolor
-
-
-if os.name == "nt":  # Windows
-    import colorama
-    colorama.init()
 
 
 COLORS = {
@@ -18,6 +12,43 @@ COLORS = {
     "CRITICAL": "red",
     "ERROR": "red",
 }
+ANSI_CODES = {
+    'grey': 30,
+    'red': 31,
+    'green': 32,
+    'yellow': 33,
+    'blue': 34,
+    'magenta': 35,
+    'cyan': 36,
+    'white': 37,
+}
+ANSI_ATTRS = {
+    'bold': 1,
+}
+
+
+def _colored(text, color=None, attrs=None):
+    """Return text wrapped in ANSI SGR escapes.
+
+    This mirrors the small ANSI coloring subset used by the logger.
+
+    >>> _colored('ok', color='red', attrs=['bold'])
+    '\\x1b[1;31mok\\x1b[0m'
+    >>> _colored('ok', color=None, attrs=None)
+    'ok'
+    """
+
+    codes = []
+    for attr in attrs or ():
+        code = ANSI_ATTRS.get(attr)
+        if code is not None:
+            codes.append(str(code))
+    code = ANSI_CODES.get(color)
+    if code is not None:
+        codes.append(str(code))
+    if not codes:
+        return str(text)
+    return f'\033[{";".join(codes)}m{text}\033[0m'
 
 
 class ColoredFormatter(logging.Formatter):
@@ -30,7 +61,7 @@ class ColoredFormatter(logging.Formatter):
         if self.use_color and levelname in COLORS:
 
             def colored(text):
-                return termcolor.colored(
+                return _colored(
                     text,
                     color=COLORS[levelname],
                     attrs={"bold": True},
@@ -40,11 +71,11 @@ class ColoredFormatter(logging.Formatter):
             record.message2 = colored(record.getMessage())
 
             asctime2 = datetime.datetime.fromtimestamp(record.created)
-            record.asctime2 = termcolor.colored(asctime2, color="green")
+            record.asctime2 = _colored(asctime2, color="green")
 
-            record.module2 = termcolor.colored(record.module, color="cyan")
-            record.funcName2 = termcolor.colored(record.funcName, color="cyan")
-            record.lineno2 = termcolor.colored(record.lineno, color="cyan")
+            record.module2 = _colored(record.module, color="cyan")
+            record.funcName2 = _colored(record.funcName, color="cyan")
+            record.lineno2 = _colored(record.lineno, color="cyan")
         return logging.Formatter.format(self, record)
 
 FORMAT = (

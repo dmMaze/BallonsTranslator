@@ -280,16 +280,6 @@
         <translation type="obsolete">特效</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="361"/>
-        <source>SalaDict</source>
-        <translation>沙拉查词</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="478"/>
-        <source>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict.md&quot;&gt;Installation guide&lt;/a&gt;</source>
-        <translation>&lt;a href=&quot;https://github.com/dmMaze/BallonsTranslator/tree/master/doc/saladict_chs.md&quot;&gt;安装说明&lt;/a&gt;</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="482"/>
         <source>Show mini menu when selecting text.</source>
         <translation>选择文本时显示迷你菜单</translation>
@@ -1328,11 +1318,6 @@ All existing translation results will be cleared!</source>
         <location filename="../ui/textedit_area.py" line="30"/>
         <source>Search selected text on Internet</source>
         <translation>在互联网搜索选中文本</translation>
-    </message>
-    <message>
-        <location filename="../ui/textedit_area.py" line="36"/>
-        <source>Look up selected text in SalaDict, see installation guide in configpanel</source>
-        <translation>沙拉查词查询选中文本，在设置面板查看安装说明</translation>
     </message>
 </context>
 <context>

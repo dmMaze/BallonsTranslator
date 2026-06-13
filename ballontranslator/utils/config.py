@@ -1,7 +1,7 @@
 import json, os, traceback
 import os.path as osp
 import copy
-from typing import Callable
+from typing import Callable, Optional
 
 from . import shared
 from .fontformat import FontFormat
@@ -57,7 +57,9 @@ class ModuleConfig(Config):
                     continue
                 if pk.startswith('__'):
                     continue
-                if isinstance(pv, dict):
+                if isinstance(pv, dict) and 'value' in pv:
+                    # UI param metadata stores the saved value under "value";
+                    # plain dict params are already the user's persisted value.
                     pv = pv['value']
                 saving_module_params[pk] = pv
         return sd
@@ -116,10 +118,16 @@ class PackageManagerConfig(Config):
     extra_install_args: str = ''
 
 @nested_dataclass
+class NetworkMirrorsConfig(Config):
+    huggingface: Optional[str] = None
+    pypi: Optional[str] = None
+
+@nested_dataclass
 class ProgramConfig(Config):
 
     module: ModuleConfig = field(default_factory=lambda: ModuleConfig())
     package_manager: PackageManagerConfig = field(default_factory=lambda: PackageManagerConfig())
+    mirrors: NetworkMirrorsConfig = field(default_factory=lambda: NetworkMirrorsConfig())
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
     recent_proj_list: List = field(default_factory=lambda: list())
@@ -159,7 +167,6 @@ class ProgramConfig(Config):
     fold_textarea: bool = False
     show_source_text: bool = True
     show_trans_text: bool = True
-    saladict_shortcut: str = "Alt+S"
     search_url: str = "https://www.google.com/search?q="
     ocr_sublist: List = field(default_factory=lambda: list())
     restore_ocr_empty: bool = False
