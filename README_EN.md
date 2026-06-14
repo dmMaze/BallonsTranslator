@@ -48,9 +48,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 If you have already cloned the repository, you can simply double-click the **`scripts/install.bat`** file inside your cloned folder to set up the environment locally. Once completed, run `launch_win.bat` in the root folder to start the application.
 
 **Method B (Download Pre-configured Package)**:
-Download BallonsTranslator_dev_src_with_gitpython.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip it and run launch_win.bat.   
-Run scripts/local_gitpull.bat to get the latest update.
-Note these provided packages cannot run on Windows 7, Win 7 users need to install [Python 3.8](https://www.python.org/downloads/release/python-3810/) and run the source code.  
+Download the latest `Ballonstranslator_win_minium.zip` from [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), extract it to any folder, and double-click `launch_win.bat` to launch the application.
+(Note: Pre-packaged builds do not support Windows 7; Windows 7 users must install [Python 3.8](https://www.python.org/downloads/release/python-3810/) manually and run from source).
+
 When running from source on Windows, PyTorch/deep learning modules may require the [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [official download notes](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Install or update it if you see errors involving `msvcp140.dll`, `c10.dll`, or `[WinError 1114]`.
 
 ## macOS / Linux
@@ -63,10 +63,9 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install
 
 If `curl` is not available, download the script with `wget -O ...` instead:
 
-
 Run the installer in the directory where you want the `BallonsTranslator` folder created. The app launches automatically after installation; later, use `cd BallonsTranslator && ./launch.sh` to start it again.
 
-Note the first time you launch it will install the required libraries and download models automatically. If the downloads fail, you will need to download the **data** folder (or missing files mentioned in the terminal) from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and save it to the corresponding path in source code folder.
+Note the first time you launch it will install the required libraries and download models automatically. If the downloads fail, please check your network/proxy, or place the required model files into the `data` directory manually.
 
 ## Build macOS application (compatible with both intel and apple silicon chips)
 [Reference](doc/macOS_app.md)  
