@@ -53,7 +53,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 **方式 B（下载免配置压缩包）**：
 从 [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases) 下载最新的 `Ballonstranslator_win_minium.zip`，解压到任意文件夹并双击运行 `launch_win.bat` 即可启动程序。
 （注意：编译打包版不支持 Windows 7，Windows 7 用户需要自行安装 [Python 3.8](https://www.python.org/downloads/release/python-3810/) 运行源码）。
-
 如果在 Windows 上运行源码并使用 PyTorch/深度学习模块时遇到 `msvcp140.dll`、`c10.dll` 或 `[WinError 1114]` 相关错误，请安装或更新 [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe)（Visual Studio 2015-2022；[官方下载说明](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)）。
 
 ## macOS / Linux
@@ -61,7 +60,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 Unix 安装脚本会下载最新 dev 分支源码压缩包；如果系统里没有 `uv`，会为当前用户安装 `uv`；随后创建名为 `.venv` 的 Python 3.12 虚拟环境并安装启动所需的核心依赖。
 
 ```bash
-curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install.sh && chmod +x install.sh && ./install.sh
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
 如果系统没有 `curl`，也可以用 `wget -O ...` 下载脚本：
@@ -70,9 +69,7 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install
 
 启动程序会检查核心依赖；选择需要额外库的模块时，程序会提示安装缺失的可选依赖（也可在设置中启用自动安装）。如果模型下载失败，请检查网络代理，或者手动在 `data` 目录下放置所需的模型文件。
 
-## 构建 macOS 应用(适用 apple silicon 芯片)
-[参考](doc/macOS_app_CN.md)  
-可能会有各种问题，目前还是推荐跑源码
+软件已内置更新检查，详见设置->启动与更新。  
 
 ## 一键翻译
 **建议在命令行终端下运行程序**，首次运行请先配置好源语言/目标语言，打开一个带图片的文件夹，点击 Run 等待翻译完成  

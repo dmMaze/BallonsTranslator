@@ -6,8 +6,6 @@
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.  
 
-The AI Modified [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton/BallonsTranslator-Pro) Version has added many new features. The main contributors of this project did not participate in its development; use at your own risk.
-
 <img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
@@ -50,7 +48,6 @@ If you have already cloned the repository, you can simply double-click the **`sc
 **Method B (Download Pre-configured Package)**:
 Download the latest `Ballonstranslator_win_minium.zip` from [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), extract it to any folder, and double-click `launch_win.bat` to launch the application.
 (Note: Pre-packaged builds do not support Windows 7; Windows 7 users must install [Python 3.8](https://www.python.org/downloads/release/python-3810/) manually and run from source).
-
 When running from source on Windows, PyTorch/deep learning modules may require the [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [official download notes](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Install or update it if you see errors involving `msvcp140.dll`, `c10.dll`, or `[WinError 1114]`.
 
 ## macOS / Linux
@@ -58,7 +55,7 @@ When running from source on Windows, PyTorch/deep learning modules may require t
 The Unix installer downloads the latest dev source archive, installs `uv` for the current user if it is not already available, creates a Python 3.12 virtual environment named `.venv`, and installs the core requirements.
 
 ```bash
-curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install.sh && chmod +x install.sh && ./install.sh
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
 If `curl` is not available, download the script with `wget -O ...` instead:
@@ -67,9 +64,8 @@ Run the installer in the directory where you want the `BallonsTranslator` folder
 
 Note the first time you launch it will install the required libraries and download models automatically. If the downloads fail, please check your network/proxy, or place the required model files into the `data` directory manually.
 
-## Build macOS application (compatible with both intel and apple silicon chips)
-[Reference](doc/macOS_app.md)  
-Some issues may occur, running the source code directly is the recommended way for now.
+The software has built-in update checking; see Config pannel -> Startup & Update for details.
+
 
 # Usage
 
