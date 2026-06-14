@@ -39,23 +39,20 @@
 如果用 Windows 而且不想自己手动配置环境，而且能正常访问互联网:  
 从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 BallonsTranslator_dev_src_with_gitpython.7z，解压并运行 launch_win.bat 启动程序。如果无法自动下载库和模型，手动下载 data 和 ballontrans_pylibs_win.7z 并解压到程序目录下。 
 运行 scripts/local_gitpull.bat 获取更新。
-注意这些打包版无法在 Windows 7 上运行，win 7 用户需要自行安装 [Python 3.8](https://www.python.org/downloads/release/python-3810/) 运行源码。
+注意这些打包版无法在 Windows 7 上运行，win 7 用户需要自行安装 [Python 3.8](https://www.python.org/downloads/release/python-3810/) 运行源码。  
 如果在 Windows 上运行源码并使用 PyTorch/深度学习模块时遇到 `msvcp140.dll`、`c10.dll` 或 `[WinError 1114]` 相关错误，请安装或更新 [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe)（Visual Studio 2015-2022；[官方下载说明](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)）。
 
-## 运行源码
+## macOS / Linux
 
-安装 [Python](https://www.python.org/downloads/release/python-31011) **<= 3.12** (别用微软应用商店版) 和 [Git](https://git-scm.com/downloads)
+Unix 安装脚本会下载最新 dev 分支源码压缩包；如果系统里没有 `uv`，会为当前用户安装 `uv`；随后创建名为 `.venv` 的 Python 3.12 虚拟环境并安装启动所需的核心依赖。
 
 ```bash
-# 克隆仓库
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
-
-# 启动程序（会自动检查并安装启动所需的核心依赖）
-$ python3 -m ballontranslator
-
-# 更新程序
-python3 -m ballontranslator --update
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install.sh && chmod +x install.sh && ./install.sh
 ```
+
+如果系统没有 `curl`，也可以用 `wget -O ...` 下载脚本：
+
+请在希望创建 `BallonsTranslator` 文件夹的目录运行安装脚本。安装完成后会自动启动程序；之后可运行 `cd BallonsTranslator && ./launch.sh` 再次启动。
 
 启动程序会检查核心依赖；选择需要额外库的模块时，程序会提示安装缺失的可选依赖（也可在设置中启用自动安装）。如果模型下载失败，需要手动从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 data 文件夹(或者报错里提到缺失的文件)，并保存到源码目录下的对应位置。
 
