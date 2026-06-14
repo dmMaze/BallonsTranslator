@@ -34,6 +34,20 @@ preview
 
 ## On Windows
 If you don't want to install Python and Git by yourself and have access to the Internet:  
+
+**Method A (One-Click Local Environment Setup)**:
+If you have cloned the source code, you can download and configure Python and the `uv` environment locally by running the following command in PowerShell (no manual package installation required):
+```powershell
+irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
+```
+Or run the following command in the Command Prompt (`cmd.exe`):
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
+```
+This automatically sets up the local `ballontrans_pylibs_win` folder in your project root.
+Alternatively, you can simply double-click the **`scripts/install.bat`** file in your cloned repository to perform the same setup. Once completed, run `launch_win.bat` in the root folder to start the application.
+
+**Method B (Download Pre-configured Package)**:
 Download BallonsTranslator_dev_src_with_gitpython.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip it and run launch_win.bat.   
 Run scripts/local_gitpull.bat to get the latest update.
 Note these provided packages cannot run on Windows 7, Win 7 users need to install [Python 3.8](https://www.python.org/downloads/release/python-3810/) and run the source code.  

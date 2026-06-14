@@ -1,7 +1,9 @@
 $ErrorActionPreference = "Stop"
 $PythonVersion = "3.12.10"
 $ProjectRoot = $PSScriptRoot
-if (-not $ProjectRoot) {
+if ($ProjectRoot) {
+    $ProjectRoot = Split-Path $ProjectRoot -Parent
+} else {
     $ProjectRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(".")
 }
 $PyLibsDir = Join-Path $ProjectRoot "ballontrans_pylibs_win"
