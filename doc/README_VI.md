@@ -42,105 +42,26 @@ Hoặc chạy lệnh sau trong Command Prompt (`cmd.exe`):
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
 
-Nếu bạn đã sao chép (clone) kho lưu trữ, bạn chỉ cần nhấp đúp vào tệp **`scripts/install.bat`** bên trong thư mục đã sao chép của mình để thiết lập môi trường cục bộ. Sau khi hoàn tất, chạy `launch_win.bat` trong thư mục gốc để khởi động ứng dụng.
-
 **Phương pháp B (Tải xuống gói cấu hình sẵn)**:
 Tải xuống tệp `Ballonstranslator_win_minium.zip` mới nhất từ [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), giải nén vào bất kỳ thư mục nào và nhấp đúp vào `launch_win.bat` để khởi động ứng dụng.
-*(Lưu ý: Các bản dựng được đóng gói sãn không hỗ trợ Windows 7; người dùng Windows 7 phải cài đặt [Python 3.8](https://www.python.org/downloads/release/python-3810/) thủ công và chạy từ mã nguồn).*
-## Chạy mã nguồn (từ github)
+Gói này không hỗ trợ Windows 7; người dùng Windows 7 phải cài đặt [Python 3.8](https://www.python.org/downloads/release/python-3810/) thủ công và chạy từ mã nguồn.
 
-*Phù hợp cho mấy bạn sài linux như tui hehe.*
+Các mô-đun PyTorch/deep learning có thể cần [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [ghi chú tải xuống chính thức](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Hãy cài đặt hoặc cập nhật nếu bạn thấy lỗi liên quan đến `msvcp140.dll`, `c10.dll` hoặc `[WinError 1114]`.
 
-Cài [Python](https://www.python.org/downloads/release/python-31011) **<= 3.12** (Đừng cóa mà sài cái bản có sẵn trên Microsoft Store) và [Git](https://git-scm.com/downloads).
+## macOS / Linux
+
 
 ```bash
-# Clone this repo
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
-
-# Launch the app
-$ python3 launch.py
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-**Lưu ý:** Lần đầu tiên khởi chạy, app sẽ tự động cài đặt các thư viện và tải xuống các models. Nếu tải xuống không thành công, bạn sẽ cần tải xuống thư mục **data** (hoặc các tệp bị thiếu được báo lỗi trong terminal) từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) hoặc [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) rùi lưu nó ở đường dẫn tương ứng trong thư mục mã nguồn.
+Nếu không có `curl`, hãy tải script bằng `wget -O ...`.
 
-## Chạy ứng dụng trên MacOS (tương thích với cả chip Intel và Apple Silicon)
-<i>Lưu ý MacOS cũng có thể chạy cách bên trên nếu cách này không hoạt động.</i>  
+Chạy trình cài đặt trong thư mục nơi bạn muốn tạo thư mục `BallonsTranslator`. Ứng dụng sẽ tự khởi động sau khi cài đặt; những lần sau dùng `cd BallonsTranslator && ./launch.sh` để mở lại.
 
-![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
+Ứng dụng kiểm tra các phụ thuộc cốt lõi khi khởi động. Khi bạn chọn một mô-đun cần thư viện bổ sung, ứng dụng sẽ nhắc cài các phụ thuộc tùy chọn còn thiếu (bạn cũng có thể bật tự động cài đặt trong phần cài đặt). Nếu tải model thất bại, hãy kiểm tra mạng/proxy, hoặc tải các model cần thiết từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) hoặc [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) rồi đặt thủ công vào thư mục `data`.
 
-#### 1. Chuẩn bị
--   Tải libs và models từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA") hoặc [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
-
-
-<img width="1268" alt="截屏2023-09-08 13 44 55_7g32SMgxIf" src="https://github.com/dmMaze/BallonsTranslator/assets/134026642/40fbb9b8-a788-4a6e-8e69-0248abaee21a">
-
--  Chuyển tất cả các tài nguyên đã tải xuống vào thư mục ```data``` (chưa có thì tự tạo nhá), cấu trúc cây thư mục cuối cùng sẽ trông như nè:
-
-```
-data
-├── libs
-│   └── patchmatch_inpaint.dll
-└── models
-    ├── aot_inpainter.ckpt
-    ├── comictextdetector.pt
-    ├── comictextdetector.pt.onnx
-    ├── lama_mpe.ckpt
-    ├── manga-ocr-base
-    │   ├── README.md
-    │   ├── config.json
-    │   ├── preprocessor_config.json
-    │   ├── pytorch_model.bin
-    │   ├── special_tokens_map.json
-    │   ├── tokenizer_config.json
-    │   └── vocab.txt
-    ├── mit32px_ocr.ckpt
-    ├── mit48pxctc_ocr.ckpt
-    └── pkuseg
-        ├── postag
-        │   ├── features.pkl
-        │   └── weights.npz
-        ├── postag.zip
-        └── spacy_ontonotes
-            ├── features.msgpack
-            └── weights.npz
-
-7 directories, 23 files
-```
-
--  Cài đặt pyenv command line tool để quản lý các phiên bản Python. Nên cài qua Homebrew.
-```
-# Install via Homebrew
-brew install pyenv
-
-# Install via official script
-curl https://pyenv.run | bash
-
-# Set shell environment after install
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
-echo 'eval "$(pyenv init -)"' >> ~/.zshrc
-```
-
-
-#### 2. Chạy ứng dụng
-```
-# Enter the `data` working directory
-cd data
-
-# Clone the `dev` branch of the repo
-git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
-
-# Enter the `BallonsTranslator` working directory
-cd BallonsTranslator
-
-# Run the build script, will ask for password at pyinstaller step, enter password and press enter
-sh scripts/build-macos-app.sh
-```
-> 📌 Ứng dụng được build ra file chạy ở đường dẫn ```./data/BallonsTranslator/dist/BallonsTranslator.app```, kéo cái ```BallonsTranslator.app``` vô thư mục macOS application để cài đặt. Sẵn sàng sử dụng lun mà không cần cấu hình thêm cho Python.
-
-</details>
-
-Để sài Sugoi translator(Japanese-English only), tải [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), chuyển "sugoi_translator" vào ```BallonsTranslator/ballontranslator/data/models```.
+Phần mềm có kiểm tra cập nhật tích hợp; xem Config panel -> Startup & Update để biết chi tiết.
 
 # Cách sử dụng
 
@@ -152,6 +73,7 @@ sh scripts/build-macos-app.sh
 - Nhấp vào nút `Run` và chờ quá trình hoàn thành.
 
 Các định dạng phông chữ như kích thước và màu phông chữ được xác định tự động bởi chương trình, bạn có thể xác định trước các định dạng đó bằng cách thay đổi tùy chọn tương ứng từ "decide by program" sang "use global setting" trong Bảng cấu hình (Config Panel) -> Lettering. (Global setting, cấu hình toàn bộ, là những định dạng được hiển thị ở bảng định dạng phía bên phải màn hình, khi bạn đang không chỉnh sửa bất kỳ văn bản nào trong textblock).
+<img src="https://github.com/user-attachments/assets/fb8a8b2c-54e4-4579-8319-42a172296c80">
 
 ## Chỉnh sửa hình ảnh
 

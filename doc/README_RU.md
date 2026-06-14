@@ -43,27 +43,26 @@ irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/insta
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
 
-Если вы уже клонировали репозиторий, вы можете просто дважды кликнуть по файлу **`scripts/install.bat`** внутри папки с исходным кодом, чтобы настроить локальное окружение. После завершения запустите `launch_win.bat` в корневой папке для старта программы.
-
 **Способ Б (Загрузка готовой портативной сборки)**:
 Скачайте актуальный архив `Ballonstranslator_win_minium.zip` со страницы [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), распакуйте его в любую папку и запустите `launch_win.bat`.
-*(Обратите внимание: готовые сборки не поддерживают Windows 7; пользователям Windows 7 необходимо вручную установить [Python 3.8](https://www.python.org/downloads/release/python-3810/) и запускать приложение из исходного кода).*
+Этот пакет не поддерживает Windows 7; пользователям Windows 7 необходимо вручную установить [Python 3.8](https://www.python.org/downloads/release/python-3810/) и запускать приложение из исходного кода.
 
-При запуске исходного кода на Windows модули глубокого обучения PyTorch могут потребовать установки [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [официальное руководство](https://learn.microsoft.com/ru-ru/cpp/windows/latest-supported-vc-redist)). Установите или обновите его, если сталкиваетесь с ошибками, связанными с `msvcp140.dll`, `c10.dll` или `[WinError 1114]`.
+Модули PyTorch/deep learning могут потребовать установки [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [официальное руководство](https://learn.microsoft.com/ru-ru/cpp/windows/latest-supported-vc-redist)). Установите или обновите его, если видите ошибки, связанные с `msvcp140.dll`, `c10.dll` или `[WinError 1114]`.
 
 ## macOS / Linux
 
-Скрипт установки для Unix-систем загружает архив последней dev-версии, при необходимости устанавливает `uv` для текущего пользователя, создает виртуальное окружение Python 3.12 с именем `.venv` и устанавливает ключевые зависимости.
 
 ```bash
-curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install.sh && chmod +x install.sh && ./install.sh
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
 Если `curl` недоступен, вы можете использовать `wget -O ...`:
 
 Запускайте скрипт в папке, где вы хотите создать рабочую директорию `BallonsTranslator`. Программа запустится автоматически после установки; для последующих запусков используйте `cd BallonsTranslator && ./launch.sh`.
 
-При первом запуске программа проверит наличие библиотек и автоматически скачает необходимые модели. Если автоматическая загрузка моделей не удалась, проверьте настройки сети/прокси или вручную поместите файлы моделей в папку `data`. 
+При запуске приложение проверяет основные зависимости. Когда вы выбираете модуль, которому нужны дополнительные библиотеки, приложение предложит установить отсутствующие опциональные зависимости (автоустановку также можно включить в настройках). Если загрузка моделей не удалась, проверьте сеть/прокси или скачайте нужные модели с [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) или [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) и вручную поместите их в папку `data`.
+
+В программе есть встроенная проверка обновлений; подробности см. в панели конфигурации -> Startup & Update.
 
 # Использование
 
@@ -74,6 +73,7 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install
 - Нажмите кнопку `Run` и дождитесь завершения процесса.
 
 Форматы шрифта, такие как размер и цвет, определяются программой автоматически в этом процессе. Вы можете предопределить эти форматы, изменив соответствующие опции с "decide by program" на "use global setting" в панели конфигурации->Typesetting. (глобальные настройки - это те форматы, которые отображаются на правой панели форматирования шрифта, когда вы не редактируете ни один текстовый блок на сцене)
+<img src="https://github.com/user-attachments/assets/fb8a8b2c-54e4-4579-8319-42a172296c80">
 
 ## Редактирование изображений
 

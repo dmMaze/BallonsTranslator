@@ -40,36 +40,26 @@ Atau jalankan perintah berikut di Command Prompt klasik (`cmd.exe`):
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
 
-Jika Anda sudah mengkloning repositori, Anda cukup mengklik dua kali file **`scripts/install.bat`** di dalam folder hasil kloning Anda untuk menyiapkan lingkungan secara lokal. Setelah selesai, jalankan `launch_win.bat` di folder root untuk memulai aplikasi.
-
 **Metode B (Unduh Paket Pra-konfigurasi)**:
 Unduh file `Ballonstranslator_win_minium.zip` terbaru dari [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), ekstrak ke folder mana pun, dan klik dua kali `launch_win.bat` untuk meluncurkan aplikasi.
-*(Catatan: Paket pra-konfigurasi tidak mendukung Windows 7; pengguna Windows 7 harus menginstal [Python 3.8](https://www.python.org/downloads/release/python-3810/) secara manual dan menjalankannya dari kode sumber).*
+Paket ini tidak mendukung Windows 7; pengguna Windows 7 harus menginstal [Python 3.8](https://www.python.org/downloads/release/python-3810/) secara manual dan menjalankannya dari kode sumber.
 
-## Jalankan kode sumber
+Modul PyTorch/deep learning mungkin memerlukan [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [catatan unduhan resmi](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Instal atau perbarui jika Anda melihat error yang melibatkan `msvcp140.dll`, `c10.dll`, atau `[WinError 1114]`.
 
-```bash
-# Clone repo ini
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
+## macOS / Linux
 
-# Instal dependensi
-$ pip install -r requirements.txt
-```
-
-Instal pytorch-cuda untuk dapat akselerasi GPU jika Anda memiliki GPU NVIDIA:
 
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-Jalankan aplikasi dengan:
-```bash
-python ballontranslator
-```
+Jika `curl` tidak tersedia, unduh script dengan `wget -O ...` sebagai gantinya.
 
-*Catatan: Saat pertama kali dijalankan, program akan mengunduh model secara otomatis. Jika pengunduhan gagal, silakan periksa proxy jaringan Anda, atau tempatkan file model yang diperlukan ke dalam direktori `data` secara manual.*
+Jalankan installer di direktori tempat Anda ingin folder `BallonsTranslator` dibuat. Aplikasi akan berjalan otomatis setelah instalasi; selanjutnya gunakan `cd BallonsTranslator && ./launch.sh` untuk memulainya lagi.
 
-Untuk menggunakan Sugoi translator (hanya bahasa Jepang-Inggris), unduh [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), pindahkan "sugoi_translator" ke dalam BallonsTranslator/ballontranslator/data/models.
+Aplikasi memeriksa dependensi inti saat startup. Saat Anda memilih modul yang memerlukan pustaka tambahan, aplikasi akan meminta Anda memasang dependensi opsional yang hilang (Anda juga dapat mengaktifkan pemasangan otomatis di pengaturan). Jika pengunduhan model gagal, periksa jaringan/proxy Anda, atau unduh model yang diperlukan dari [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) atau [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) lalu letakkan secara manual di direktori `data`.
+
+Perangkat lunak memiliki pemeriksaan pembaruan bawaan; lihat Panel konfigurasi -> Startup & Update untuk detailnya.
 
 # Penggunaan
 **Disarankan untuk menjalankan program di terminal jika program ini crash dan tidak meninggalkan informasi, lihat gif berikut ini**
@@ -81,6 +71,7 @@ Untuk menggunakan Sugoi translator (hanya bahasa Jepang-Inggris), unduh [offline
 
 
 Format font seperti ukuran font dan warna ditentukan oleh program secara otomatis dalam proses ini, Anda dapat menentukan format tersebut sebelum memulai proses dengan mengubah opsi yang sesuai dari "decide by program" menjadi "use global setting" di panel konfigurasi->Lettering. (pengaturan global adalah format yang ditampilkan oleh panel format font yang tepat ketika Anda tidak mengedit blok teks apa pun di adegan)
+<img src="https://github.com/user-attachments/assets/fb8a8b2c-54e4-4579-8319-42a172296c80">
 
 ## Image editing
 

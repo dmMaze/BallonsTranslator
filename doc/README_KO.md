@@ -45,102 +45,25 @@ irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/insta
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
 
-이미 리포지토리(저장소)를 클론했다면, 클론한 폴더 내의 **`scripts/install.bat`** 파일을 더블 클릭하기만 하면 로컬 환경이 구성됩니다. 완료 후 루트 폴더의 `launch_win.bat`를 실행하여 애플리케이션을 시작합니다.
-
 **방법 B (사전 구성된 패키지 다운로드)**:
 [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases)에서 최신 `Ballonstranslator_win_minium.zip`을 다운로드하고, 원하는 폴더에 압축을 푼 후 `launch_win.bat`를 더블 클릭하여 실행합니다.
-*(참고: 사전 패키징된 빌드는 Windows 7을 지원하지 않습니다. Windows 7 사용자는 [Python 3.8](https://www.python.org/downloads/release/python-3810/)을 수동으로 설치하고 소스 코드에서 실행해야 합니다).*
-## 소스 코드를 실행
+이 패키지는 Windows 7을 지원하지 않습니다. Windows 7 사용자는 [Python 3.8](https://www.python.org/downloads/release/python-3810/)을 수동으로 설치하고 소스 코드에서 실행해야 합니다.
 
-[Python] 설치 (https://www.python.org/downloads/release/python-31011) **<= 3.12** (Microsoft 스토어에서 설치 한 것을 사용하지 마세요) 및 [Git](https://git-scm.com/downloads).
+PyTorch/deep learning 모듈에는 [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe)(Visual Studio 2015-2022; [공식 다운로드 참고 사항](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist))가 필요할 수 있습니다. `msvcp140.dll`, `c10.dll` 또는 `[WinError 1114]` 관련 오류가 보이면 설치하거나 업데이트하세요.
+## macOS / Linux
+
 
 ```bash
-# 이 레포 복사
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
-
-# 앱 실행
-$ python3 launch.py
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-처음 시작하면 필요한 라이브러리 및 모델을 자동으로 다운로드 하여 설치합니다. 다운로드가 실패한 경우, 다음 링크에서 **data** 폴더(또는 터미널에 표기된 누락된 파일)를 다운로드해야 합니다. [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 또는 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 그리고 해당되는 소스코드 폴더에 저장하세요.
+`curl`을 사용할 수 없으면 대신 `wget -O ...`로 스크립트를 다운로드하세요.
 
-## macOS 애플리케이션 빌드 (Intel 및 Apple 실리콘 칩 모두 호환)
-<i>Note macOS는 작동하지 않을 경우 소스 코드를 실행할 수 있습니다.</i>
+`BallonsTranslator` 폴더를 만들 디렉터리에서 설치 프로그램을 실행하세요. 설치 후 앱이 자동으로 시작됩니다. 이후에는 `cd BallonsTranslator && ./launch.sh`를 사용해 다시 실행할 수 있습니다.
 
-![녹화화면2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
+앱은 시작 시 핵심 의존성을 확인합니다. 추가 라이브러리가 필요한 모듈을 선택하면 누락된 선택 의존성 설치를 안내합니다(설정에서 자동 설치도 활성화할 수 있습니다). 모델 다운로드가 실패하면 네트워크/프록시를 확인하거나 필요한 모델을 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 또는 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)에서 다운로드한 뒤 `data` 디렉터리에 수동으로 넣어 주세요.
 
-#### 1. 준비
--   다음 링크에서 라이브러리 및 모델을 다운로드 합니다. [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA") 또는 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
-
-
-<img width="1268" alt="截屏2023-09-08 13 44 55_7g32SMgxIf" src="https://github.com/dmMaze/BallonsTranslator/assets/134026642/40fbb9b8-a788-4a6e-8e69-0248abaee21a">
-
--  다운로드한 모든 리소스를 data 폴더에 넣습니다. 최종 디렉터리 트리 구조는 다음과 같습니다:
-
-```
-data
-├── libs
-│   └── patchmatch_inpaint.dll
-└── models
-    ├── aot_inpainter.ckpt
-    ├── comictextdetector.pt
-    ├── comictextdetector.pt.onnx
-    ├── lama_mpe.ckpt
-    ├── manga-ocr-base
-    │   ├── README.md
-    │   ├── config.json
-    │   ├── preprocessor_config.json
-    │   ├── pytorch_model.bin
-    │   ├── special_tokens_map.json
-    │   ├── tokenizer_config.json
-    │   └── vocab.txt
-    ├── mit32px_ocr.ckpt
-    ├── mit48pxctc_ocr.ckpt
-    └── pkuseg
-        ├── postag
-        │   ├── features.pkl
-        │   └── weights.npz
-        ├── postag.zip
-        └── spacy_ontonotes
-            ├── features.msgpack
-            └── weights.npz
-
-7 디렉토리, 23 파일
-```
-
--  파이썬 버전들을 관리하기 위해 pyenv 명령줄 도구를 설치합니다. 홈브류를 통해 설치하는 것을 추천합니다.
-```
-# 홈브류를 통해 설치합니다.
-brew install pyenv
-
-# 공식 스크립트를 통해 설치합니다.
-curl https://pyenv.run | bash
-
-# 설치 후 셀 환경변수를 설정합니다.
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
-echo 'eval "$(pyenv init -)"' >> ~/.zshrc
-```
-
-
-#### 2、응용 프로그램 빌드
-```
-# 작업 경로인 `data` 입력
-cd data
-
-# 레포의 `dev` 브렌치를 복제합니다
-git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
-
-# 작업 경로인 `BallonsTranslator` 를 입력합니다
-cd BallonsTranslator
-
-# 빌드 스크립트를 실행하면, pyinstaller 단계에서 비밀번호를 물어봅니다. 비밀번호를 입력하고 엔터를 누릅니다.
-sh scripts/build-macos-app.sh
-```
-> 📌패키지 응용 프로그램은 ./data/BallonsTranslator/dist/BallonsTranslator.app 에 있으며, macOS 애플리케이션 폴더에 앱을 드래그하여 설치합니다. 추가 Python config 없이  사용할 수 있습니다.
-
-
-</details> 
+소프트웨어에는 업데이트 확인 기능이 내장되어 있습니다. 자세한 내용은 설정 패널 -> Startup & Update를 참조하세요.
 
 # 사용법
 

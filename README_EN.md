@@ -31,7 +31,6 @@ preview
 # Installation
 
 ## On Windows
-If you don't want to install Python and Git by yourself and have access to the Internet:  
 
 **Method A (One-Click Local Environment Setup, requires PowerShell)**:
 The script will automatically create a `BallonsTranslator` folder in your current directory, download the latest source code, configure the Python 3.12 environment, install all core dependencies, and launch the application (requires PowerShell to be enabled and not disabled by system policy):
@@ -43,28 +42,27 @@ Or run the following command in the Command Prompt (`cmd.exe`):
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
 
-If you have already cloned the repository, you can simply double-click the **`scripts/install.bat`** file inside your cloned folder to set up the environment locally. Once completed, run `launch_win.bat` in the root folder to start the application.
 
 **Method B (Download Pre-configured Package)**:
 Download the latest `Ballonstranslator_win_minium.zip` from [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), extract it to any folder, and double-click `launch_win.bat` to launch the application.
-(Note: Pre-packaged builds do not support Windows 7; Windows 7 users must install [Python 3.8](https://www.python.org/downloads/release/python-3810/) manually and run from source).
-When running from source on Windows, PyTorch/deep learning modules may require the [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [official download notes](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Install or update it if you see errors involving `msvcp140.dll`, `c10.dll`, or `[WinError 1114]`.
+This package does not support Windows 7; Windows 7 users must install [Python 3.8](https://www.python.org/downloads/release/python-3810/) manually and run from source.
+
+PyTorch/deep learning modules may require the [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [official download notes](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Install or update it if you see errors involving `msvcp140.dll`, `c10.dll`, or `[WinError 1114]`.
 
 ## macOS / Linux
 
-The Unix installer downloads the latest dev source archive, installs `uv` for the current user if it is not already available, creates a Python 3.12 virtual environment named `.venv`, and installs the core requirements.
 
 ```bash
 curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-If `curl` is not available, download the script with `wget -O ...` instead:
+If `curl` is not available, download the script with `wget -O ...` instead.
 
 Run the installer in the directory where you want the `BallonsTranslator` folder created. The app launches automatically after installation; later, use `cd BallonsTranslator && ./launch.sh` to start it again.
 
-Note the first time you launch it will install the required libraries and download models automatically. If the downloads fail, please check your network/proxy, or place the required model files into the `data` directory manually.
+The app checks core dependencies at startup. When you select a module that needs extra libraries, the app will prompt you to install the missing optional dependencies (you can also enable automatic installation in Settings). If model downloads fail, check your network/proxy, or download the required models from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and place them manually in the `data` directory.
 
-The software has built-in update checking; see Config pannel -> Startup & Update for details.
+The software has built-in update checking; see Config panel -> Startup & Update for details.
 
 
 # Usage

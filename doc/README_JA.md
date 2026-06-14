@@ -37,36 +37,26 @@ irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/insta
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
 
-既にリポジトリをクローンしている場合は、クローンしたフォルダ内にある **`scripts/install.bat`** ファイルをダブルクリックするだけで、ローカル環境を構築できます。完了後、ルートフォルダの `launch_win.bat` を実行してアプリケーションを起動します。
-
 **方法 B (事前構成済みパッケージのダウンロード)**:
 [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases) から最新の `Ballonstranslator_win_minium.zip` をダウンロードし、任意のフォルダに展開して `launch_win.bat` をダブルクリックして起動します。
-*(注意: 事前パッケージされたビルドは Windows 7 をサポートしていません。Windows 7 のユーザーは手動で [Python 3.8](https://www.python.org/downloads/release/python-3810/) をインストールし、ソースコードから実行する必要があります)。*
+このパッケージは Windows 7 をサポートしていません。Windows 7 のユーザーは手動で [Python 3.8](https://www.python.org/downloads/release/python-3810/) をインストールし、ソースコードから実行する必要があります。
 
-## ソースコードの実行
+PyTorch/deep learning モジュールには [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [公式ダウンロードノート](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)) が必要になる場合があります。`msvcp140.dll`、`c10.dll`、`[WinError 1114]` に関するエラーが表示された場合は、インストールまたは更新してください。
 
-```bash
-# このリポジトリのクローン
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
+## macOS / Linux
 
-# 依存関係のインストール
-$ pip install -r requirements.txt
-```
-
-NVIDIA GPUをお持ちの場合、GPUアクセラレーションを有効にするためにpytorch-cudaをインストールします：
 
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-アプリケーションの起動：
-```bash
-python ballontranslator
-```
+`curl` が使用できない場合は、代わりに `wget -O ...` でスクリプトをダウンロードしてください。
 
-*注意：初回起動時に必要なライブラリやモデルが自動的にインストールされます。ダウンロードに失敗した場合は、ネットワークプロキシを確認するか、必要なモデルファイルを手動で `data` ディレクトリに配置してください。*
+`BallonsTranslator` フォルダを作成したいディレクトリでインストーラーを実行してください。インストール後にアプリは自動的に起動します。次回以降は `cd BallonsTranslator && ./launch.sh` で再起動できます。
 
-Sugoi Translator（日英のみ）を使用するには、[オフラインモデル](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm)をダウンロードし、"sugoi_translator"をBallonsTranslator/ballontranslator/data/modelsに移動してください。
+アプリは起動時にコア依存関係を確認します。追加ライブラリが必要なモジュールを選択すると、不足している任意依存関係のインストールを促します（設定で自動インストールを有効にすることもできます）。モデルのダウンロードに失敗した場合は、ネットワークやプロキシを確認するか、必要なモデルを [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) または [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) からダウンロードして、手動で `data` ディレクトリに配置してください。
+
+ソフトウェアには更新チェック機能が組み込まれています。詳細は設定パネル -> Startup & Update を参照してください。
 
 ## 完全自動翻訳
 **万が一、プログラムがクラッシュして情報が残らなかった場合に備えて、以下のgifを参考に、ターミナルで実行することをお勧めします。**また、初回実行時に希望するトランスレータを選択し、ソース言語とターゲット言語を設定してください。翻訳が必要な画像が入ったフォルダを開き、
@@ -75,6 +65,7 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 
 このとき、フォントサイズや色などのフォントフォーマットはプログラムによって自動的に決定されますが、panel->Letteringで、対応するオプションを"decide by program"から"use global setting"に変更すれば、これらのフォーマットを事前に決定できます（グローバル設定とは、シーン内の
 テキストブロックを編集していないときに右フォントフォーマットパネルで表示されるフォーマットのことです）。
+<img src="https://github.com/user-attachments/assets/fb8a8b2c-54e4-4579-8319-42a172296c80">
 
 ## 画像編集
 
@@ -102,6 +93,11 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 <img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 テキストの一括書式設定と自動レイアウト
+</p>
+
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
+<p align=center>
+選択範囲の OCR と翻訳
 </p>
 
 ## ショートカット

@@ -51,106 +51,26 @@ Ou exécutez la commande suivante dans l'invite de commande classique (`cmd.exe`
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
 
-Si vous avez déjà cloné le dépôt, vous pouvez simplement double-cliquer sur le fichier **`scripts/install.bat`** dans votre dossier cloné pour configurer l'environnement localement. Une fois terminé, lancez `launch_win.bat` dans le dossier racine pour démarrer l'application.
-
 **Méthode B (Télécharger le paquet préconfiguré)** :
 Téléchargez la dernière version de `Ballonstranslator_win_minium.zip` depuis [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), extrayez-la dans n'importe quel dossier et double-cliquez sur `launch_win.bat` pour démarrer l'application.
-*(Note : Les builds pré-packagés ne supportent pas Windows 7 ; les utilisateurs de Windows 7 doivent installer [Python 3.8](https://www.python.org/downloads/release/python-3810/) manuellement et exécuter à partir du code source).*
-## Exécuter le code source
+Ce paquet ne prend pas en charge Windows 7 ; les utilisateurs de Windows 7 doivent installer [Python 3.8](https://www.python.org/downloads/release/python-3810/) manuellement et exécuter depuis le code source.
 
-Installez [Python](https://www.python.org/downloads/release/python-31011) **<= 3.12** (ne pas utiliser celui du Microsoft Store) et [Git](https://git-scm.com/downloads).
+Les modules PyTorch/deep learning peuvent nécessiter [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022 ; [notes officielles de téléchargement](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Installez-le ou mettez-le à jour si vous voyez des erreurs liées à `msvcp140.dll`, `c10.dll` ou `[WinError 1114]`.
+
+## macOS / Linux
+
 
 ```bash
-# Clonez ce dépôt
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
-
-# Lancez l'application
-$ python3 launch.py
-
-# Mettre à jour l'application
-$ python3 launch.py --update
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-Lors du premier lancement, le programme installera automatiquement les bibliothèques requises et téléchargera les modèles. Si les téléchargements échouent, il faudra récupérer le dossier **data** (ou les fichiers manquants indiqués dans le terminal) depuis [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) ou [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) et les placer au bon endroit dans le dossier du code source.
+Si `curl` n'est pas disponible, téléchargez plutôt le script avec `wget -O ...`.
 
-## Construire l'application macOS (compatible Intel et puces Apple Silicon)
-[Reference](../doc/macOS_app.md)  
-Quelques problèmes peuvent survenir, exécuter directement le code source est pour l’instant recommandé.
+Lancez l'installateur dans le répertoire où vous souhaitez créer le dossier `BallonsTranslator`. L'application démarre automatiquement après l'installation ; ensuite, utilisez `cd BallonsTranslator && ./launch.sh` pour la relancer.
 
-<i>Remarque : macOS peut également exécuter le code source si l'application ne fonctionne pas.</i>
+L'application vérifie les dépendances principales au démarrage. Lorsque vous sélectionnez un module qui nécessite des bibliothèques supplémentaires, l'application vous proposera d'installer les dépendances optionnelles manquantes (vous pouvez aussi activer l'installation automatique dans les paramètres). Si le téléchargement des modèles échoue, vérifiez votre réseau/proxy, ou téléchargez les modèles requis depuis [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) ou [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) et placez-les manuellement dans le dossier `data`.
 
-![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
-
-#### 1. Préparation
--   Téléchargez les bibliothèques et les modèles depuis [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA") ou [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
-
-
-<img width="1268" alt="截屏2023-09-08 13 44 55_7g32SMgxIf" src="https://github.com/dmMaze/BallonsTranslator/assets/134026642/40fbb9b8-a788-4a6e-8e69-0248abaee21a">
-
--  Placez toutes les ressources téléchargées dans un dossier nommé data. L'arborescence finale des dossiers doit ressembler à ceci :
-
-```
-data
-├── libs
-│   └── patchmatch_inpaint.dll
-└── models
-    ├── aot_inpainter.ckpt
-    ├── comictextdetector.pt
-    ├── comictextdetector.pt.onnx
-    ├── lama_mpe.ckpt
-    ├── manga-ocr-base
-    │   ├── README.md
-    │   ├── config.json
-    │   ├── preprocessor_config.json
-    │   ├── pytorch_model.bin
-    │   ├── special_tokens_map.json
-    │   ├── tokenizer_config.json
-    │   └── vocab.txt
-    ├── mit32px_ocr.ckpt
-    ├── mit48pxctc_ocr.ckpt
-    └── pkuseg
-        ├── postag
-        │   ├── features.pkl
-        │   └── weights.npz
-        ├── postag.zip
-        └── spacy_ontonotes
-            ├── features.msgpack
-            └── weights.npz
-
-7 dossiers, 23 fichiers
-```
-
--  Installez l’outil en ligne de commande pyenv pour gérer les versions de Python. Il est recommandé de l’installer via Homebrew.
-```
-# Installation via Homebrew
-brew install pyenv
-
-# Installation via le script officiel
-curl https://pyenv.run | bash
-
-# Configuration de l'environnement shell après installation
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
-echo 'eval "$(pyenv init -)"' >> ~/.zshrc
-```
-
-
-#### 2、Construire l'application
-```
-# Se placer dans le répertoire de travail `data`
-cd data
-
-# Cloner la branche `dev` du dépôt
-git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
-
-# Entrer dans le répertoire `BallonsTranslator`
-cd BallonsTranslator
-
-# Lancer le script de construction, demandera le mot de passe lors de l'étape pyinstaller, entrez le mot de passe et validez
-sh scripts/build-macos-app.sh
-```
-> 📌L'application empaquetée se trouve dans ./data/BallonsTranslator/dist/BallonsTranslator.app. Glissez l'application dans le dossier Applications de macOS pour l’installer. Prête à l’emploi sans configuration Python supplémentaire.
-</details> 
+Le logiciel dispose d'une vérification intégrée des mises à jour ; consultez le panneau de configuration -> Démarrage et mise à jour pour plus de détails.
 
 # Utilisation
 
@@ -161,6 +81,7 @@ sh scripts/build-macos-app.sh
 - Cliquez sur le bouton `Run` et attendez la fin du processus.
 
 Les formats de police, tels que la taille et la couleur, sont déterminés automatiquement par le programme au cours de ce processus. Vous pouvez prédéfinir ces formats en modifiant les options correspondantes de « Déterminer par programme » à « Utiliser les paramètres globaux » dans le panneau de configuration -> Composition typographique. (Les paramètres globaux sont les formats affichés dans le panneau de format de police de droite lorsque vous ne modifiez aucun bloc de texte dans la scène.)
+<img src="https://github.com/user-attachments/assets/fb8a8b2c-54e4-4579-8319-42a172296c80">
 
 ## Édition d’image
 
