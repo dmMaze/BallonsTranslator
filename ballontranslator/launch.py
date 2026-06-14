@@ -3,6 +3,7 @@ import sys
 import argparse
 import os.path as osp
 import os
+import shutil
 import subprocess
 from platform import platform
 
@@ -62,6 +63,36 @@ def setup_locks():
     from ballontranslator.utils.lock import RUNTIME_LOCKS
     from qtpy.QtCore import QMutex
     RUNTIME_LOCKS['model_loading'] = QMutex()
+
+
+def ensure_resource_theme_files(program_path: str = None, logger=None) -> list:
+    """Copy moved stylesheet/theme files from the old config location if needed.
+
+    >>> ensure_resource_theme_files('/path/that/does/not/exist')
+    []
+    """
+
+    root = Path(program_path or shared.PROGRAM_PATH)
+    copied = []
+    for filename in ('stylesheet.css', 'themes.json'):
+        target_path = root / 'resources' / filename
+        if target_path.exists():
+            continue
+
+        source_path = root / 'config' / filename
+        if not source_path.exists():
+            continue
+
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+            copied.append(filename)
+            if logger is not None:
+                logger.info(f'Copied missing resource file from old config path: {filename}')
+        except OSError as e:
+            if logger is not None:
+                logger.warning(f'Failed to copy missing resource file {filename}: {e}')
+    return copied
 
 
 def preload_msvc_runtime():
@@ -218,6 +249,7 @@ def main():
 
     from qtpy.QtCore import QTranslator, QLocale, Qt
     setup_logging(shared.LOGGING_PATH)
+    ensure_resource_theme_files(APP_DIR, LOGGER)
     shared.args = args
     shared.DEFAULT_DISPLAY_LANG = QLocale.system().name().replace('en_CN', 'zh_CN')
     shared.HEADLESS = args.headless
