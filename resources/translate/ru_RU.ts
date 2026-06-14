@@ -891,7 +891,7 @@
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="144" />
         <source>Run</source>
-        <translation>Начать перевод</translation>
+        <translation>RUN</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="241" />
