@@ -6,8 +6,6 @@
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.  
 
-The AI Modified [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton/BallonsTranslator-Pro) Version has added many new features. The main contributors of this project did not participate in its development; use at your own risk.
-
 <img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
@@ -33,9 +31,8 @@ preview
 # Installation
 
 ## On Windows
-If you don't want to install Python and Git by yourself and have access to the Internet:  
-Download BallonsTranslator_dev_src_with_gitpython.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip it and run launch_win.bat.   
-Run scripts/local_gitpull.bat to get the latest update.
+If you use Windows and have access to the Internet:  
+Download Ballonstranslator_win_minium.zip from the release page, unzip it, and run launch_win.bat.  
 Note these provided packages cannot run on Windows 7, Win 7 users need to install [Python 3.8](https://www.python.org/downloads/release/python-3810/) and run the source code.  
 When running from source on Windows, PyTorch/deep learning modules may require the [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [official download notes](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Install or update it if you see errors involving `msvcp140.dll`, `c10.dll`, or `[WinError 1114]`.
 
@@ -44,7 +41,7 @@ When running from source on Windows, PyTorch/deep learning modules may require t
 The Unix installer downloads the latest dev source archive, installs `uv` for the current user if it is not already available, creates a Python 3.12 virtual environment named `.venv`, and installs the core requirements.
 
 ```bash
-curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install.sh && chmod +x install.sh && ./install.sh
+curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
 If `curl` is not available, download the script with `wget -O ...` instead:
@@ -52,11 +49,10 @@ If `curl` is not available, download the script with `wget -O ...` instead:
 
 Run the installer in the directory where you want the `BallonsTranslator` folder created. The app launches automatically after installation; later, use `cd BallonsTranslator && ./launch.sh` to start it again.
 
-Note the first time you launch it will install the required libraries and download models automatically. If the downloads fail, you will need to download the **data** folder (or missing files mentioned in the terminal) from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and save it to the corresponding path in source code folder.
+The launcher checks core dependencies. When you select modules that need extra libraries, the app will prompt you to install the missing optional dependencies, or you can enable automatic installation in settings. If model downloads fail, download the **data** folder (or the missing files mentioned in the error) from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and save it to the corresponding path in the source code folder.  
 
-## Build macOS application (compatible with both intel and apple silicon chips)
-[Reference](doc/macOS_app.md)  
-Some issues may occur, running the source code directly is the recommended way for now.
+The software has built-in update checking; see Config pannel -> Startup & Update for details.
+
 
 # Usage
 

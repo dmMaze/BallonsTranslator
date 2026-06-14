@@ -46,7 +46,7 @@ ACTIVATE_SCRIPT="${VENV_DIR}/bin/activate"
 
 cd "$APP_DIR"
 
-PYTHON=$(find_python) || fail "Missing ${VENV_DIR} and no python executable was found. Run ./install.sh first."
+PYTHON=$(find_python) || fail "Missing ${VENV_DIR} and no python executable was found. Run the macOS/Linux install command from README first."
 
 if [ "$PYTHON" = "$VENV_PYTHON" ] && [ -f "$ACTIVATE_SCRIPT" ]; then
     # Keep subprocess behavior consistent with a normal user-activated venv.
