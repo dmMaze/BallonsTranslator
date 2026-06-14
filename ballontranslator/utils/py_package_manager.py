@@ -8,6 +8,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from ballontranslator.utils import package_installer
 from ballontranslator.utils.package_installer import InstallResult
+from ballontranslator.utils.torch_install_helper import TORCH_FAMILY_PACKAGES, prepare_torch_install_request
 
 try:
     import importlib.metadata as importlib_metadata
@@ -121,16 +122,37 @@ class PyPackageManager:
         """Build an install command for this manager's backend.
 
         >>> manager = PyPackageManager(backend='pip')
-        >>> manager.build_install_command(['torch', 'torch']).count('torch')
+        >>> manager.build_install_command(['einops']).count('einops')
         1
         """
 
-        reqs = [str(Requirement(req)) for req in dict.fromkeys(requirements) if req]
+        return self.build_install_commands(requirements)[0]
+
+    def build_install_commands(self, requirements: Iterable[str]) -> List[List[str]]:
+        """Build install command(s), splitting torch CUDA wheels when needed.
+
+        >>> manager = PyPackageManager(backend='pip')
+        >>> len(manager.build_install_commands(['einops']))
+        1
+        """
+
+        requests = self._prepare_install_requests(requirements)
+        return [
+            package_installer.build_install_command(
+                requirements=request.requirements,
+                backend=request.backend or self.backend,
+                extra_args=self.extra_args,
+                env=request.env,
+            )
+            for request in requests
+        ]
+
+    def _build_command_for_request(self, request) -> List[str]:
         return package_installer.build_install_command(
-            requirements=reqs,
-            backend=self.backend,
+            requirements=request.requirements,
+            backend=request.backend or self.backend,
             extra_args=self.extra_args,
-            env=self.env,
+            env=request.env,
         )
 
     def install(
@@ -138,22 +160,69 @@ class PyPackageManager:
         requirements: Iterable[str],
         progress_callback: Optional[Callable[[dict], None]] = None,
     ) -> InstallResult:
-        command = self.build_install_command(requirements)
+        requests = self._prepare_install_requests(requirements)
+        commands = [self._build_command_for_request(request) for request in requests]
         if progress_callback is not None:
-            progress_callback({'event': 'installing_packages', 'message': shlex.join(command)})
-        return package_installer.install(
-            requirements=[str(Requirement(req)) for req in dict.fromkeys(requirements) if req],
-            backend=self.backend,
-            extra_args=self.extra_args,
-            env=self.env,
-            progress_callback=progress_callback,
-        )
+            progress_callback({
+                'event': 'installing_packages',
+                'message': '\n'.join(shlex.join(command) for command in commands),
+            })
+        final_result = None
+        for request in requests:
+            result = package_installer.install(
+                requirements=request.requirements,
+                backend=request.backend or self.backend,
+                extra_args=self.extra_args,
+                env=request.env,
+                progress_callback=progress_callback,
+            )
+            final_result = result
+            if not result.ok:
+                return result
+        return final_result or InstallResult(True, [])
 
     def resolve_backend(self) -> str:
         return package_installer.resolve_backend(self.backend, env=self.env)
 
     def preview_command(self, requirements: Iterable[str]) -> str:
-        return shlex.join(self.build_install_command(requirements))
+        return '\n'.join(shlex.join(command) for command in self.build_install_commands(requirements))
+
+    def _prepare_install_requests(self, requirements: Iterable[str]):
+        request = prepare_torch_install_request(
+            requirements=[str(Requirement(req)) for req in dict.fromkeys(requirements) if req],
+            env=self.env,
+        )
+        if request.profile is None:
+            return [request]
+        torch_requirements, other_requirements = self._split_torch_family_requirements(request.requirements)
+        requests = []
+        if torch_requirements:
+            requests.append(type(request)(
+                requirements=torch_requirements,
+                env=request.env,
+                profile=request.profile,
+                backend=request.backend,
+            ))
+        if other_requirements:
+            # Non-torch packages must resolve against the user's normal package
+            # source; the PyTorch CUDA wheel index does not host packages like einops.
+            requests.append(type(request)(
+                requirements=other_requirements,
+                env=dict(self.env),
+            ))
+        return requests
+
+    @staticmethod
+    def _split_torch_family_requirements(requirements: Iterable[str]):
+        torch_requirements = []
+        other_requirements = []
+        for requirement in requirements:
+            package_name = canonicalize_name(Requirement(requirement).name)
+            if package_name in TORCH_FAMILY_PACKAGES:
+                torch_requirements.append(requirement)
+            else:
+                other_requirements.append(requirement)
+        return torch_requirements, other_requirements
 
     def _requirement_satisfied(self, req: Requirement) -> bool:
         try:

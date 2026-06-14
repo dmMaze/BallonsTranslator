@@ -80,7 +80,9 @@ def build_install_command(
     extra = shlex.split(extra_args or '')
     env = env or os.environ
     index_url = env.get('INDEX_URL')
-    index_args = ['--index-url', index_url] if index_url else []
+    index_args = ['-i', index_url] if index_url else []
+    find_links = env.get('FIND_LINKS')
+    find_links_args = ['-f', find_links] if find_links else []
     python_executable = python_executable or sys.executable
     python_prefix = python_prefix or sys.prefix
     resolved_backend = resolve_backend(backend, env=env)
@@ -88,13 +90,13 @@ def build_install_command(
     if resolved_backend == 'uv':
         return [
             'uv', 'pip', 'install', '--python', python_executable,
-            *reqs, *index_args, *extra,
+            *reqs, *find_links_args, *index_args, *extra,
         ]
     if resolved_backend == 'conda-pip':
         return [
             'conda', 'run', '-p', python_prefix,
             python_executable, '-m', 'pip', 'install',
-            *reqs, *index_args, *extra,
+            *reqs, *find_links_args, *index_args, *extra,
         ]
     return [
         python_executable,
@@ -105,6 +107,7 @@ def build_install_command(
         '--prefer-binary',
         '--disable-pip-version-check',
         '--no-warn-script-location',
+        *find_links_args,
         *index_args,
         *extra,
     ]
@@ -136,6 +139,8 @@ def install(
         extra_args=extra_args,
         env=install_env,
     )
+    resolved_backend = resolve_backend(backend, env=install_env)
+    LOGGER.info(f'Using Python package installer backend: {resolved_backend}')
     index_url = install_env.get('INDEX_URL')
     if index_url:
         LOGGER.info(f'Using PyPI package mirror for package install: {index_url}')
@@ -152,6 +157,8 @@ def install(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 shell=False,
                 bufsize=1,
             )
@@ -215,7 +222,7 @@ def _run_with_pty(
                     break
                 text = chunk.decode(errors='replace')
                 captured.append(text)
-                print(text, end='', flush=True)
+                _print_stream_text(text)
                 _feed_progress_text(text, pending, progress_callback)
             elif process.poll() is not None:
                 break
@@ -239,7 +246,7 @@ def _stream_process_output(
                 break
             continue
         captured.append(chunk)
-        print(chunk, end='', flush=True)
+        _print_stream_text(chunk)
         _feed_progress_text(chunk, pending, progress_callback)
     _emit_progress_message(pending, progress_callback)
     return ''.join(captured)
@@ -266,6 +273,15 @@ def _feed_progress_text(
             pending.append(char)
             if len(pending) >= 200:
                 _emit_progress_message(pending, progress_callback)
+
+
+def _print_stream_text(text: str):
+    try:
+        print(text, end='', flush=True)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, 'encoding', None) or 'utf-8'
+        safe_text = text.encode(encoding, errors='replace').decode(encoding, errors='replace')
+        print(safe_text, end='', flush=True)
 
 
 def _emit_progress_message(
