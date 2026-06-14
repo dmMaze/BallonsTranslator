@@ -1,0 +1,39 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        python_version: ['3.12.10']
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Run PowerShell Build Script
+        shell: powershell
+        run: |
+          powershell -File scripts/build_win_minimal.ps1 -PythonVersion "${{ matrix.python_version }}" -UseLocalSource
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ballonstranslator_win_minium_py${{ matrix.python_version }}
+          path: Ballonstranslator_win_minium.zip
+          if-no-files-found: error
+
+      - name: Create Release and Upload Asset
+        if: ${{ github.ref_type == 'tag' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Ballonstranslator_win_minium.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

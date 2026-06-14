@@ -2,7 +2,7 @@
 > **If you're sharing the translated result publicly and no experienced human translator participated in a throughout translating or proofreading, please mark it as machine translation somewhere clear to see.**
 
 # BallonTranslator
-[简体中文](/README.md) | English
+[简体中文](/README.md) | English | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
 
 Yet another computer-aided comic/manga translation tool powered by deep learning.  
 
@@ -31,9 +31,23 @@ preview
 # Installation
 
 ## On Windows
-If you use Windows and have access to the Internet:  
-Download Ballonstranslator_win_minium.zip from the release page, unzip it, and run launch_win.bat.  
-Note these provided packages cannot run on Windows 7, Win 7 users need to install [Python 3.8](https://www.python.org/downloads/release/python-3810/) and run the source code.  
+If you don't want to install Python and Git by yourself and have access to the Internet:  
+
+**Method A (One-Click Local Environment Setup, requires PowerShell)**:
+The script will automatically create a `BallonsTranslator` folder in your current directory, download the latest source code, configure the Python 3.12 environment, install all core dependencies, and launch the application (requires PowerShell to be enabled and not disabled by system policy):
+```powershell
+irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
+```
+Or run the following command in the Command Prompt (`cmd.exe`):
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
+```
+
+If you have already cloned the repository, you can simply double-click the **`scripts/install.bat`** file inside your cloned folder to set up the environment locally. Once completed, run `launch_win.bat` in the root folder to start the application.
+
+**Method B (Download Pre-configured Package)**:
+Download the latest `Ballonstranslator_win_minium.zip` from [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), extract it to any folder, and double-click `launch_win.bat` to launch the application.
+(Note: Pre-packaged builds do not support Windows 7; Windows 7 users must install [Python 3.8](https://www.python.org/downloads/release/python-3810/) manually and run from source).
 When running from source on Windows, PyTorch/deep learning modules may require the [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [official download notes](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Install or update it if you see errors involving `msvcp140.dll`, `c10.dll`, or `[WinError 1114]`.
 
 ## macOS / Linux
@@ -46,10 +60,9 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts
 
 If `curl` is not available, download the script with `wget -O ...` instead:
 
-
 Run the installer in the directory where you want the `BallonsTranslator` folder created. The app launches automatically after installation; later, use `cd BallonsTranslator && ./launch.sh` to start it again.
 
-The launcher checks core dependencies. When you select modules that need extra libraries, the app will prompt you to install the missing optional dependencies, or you can enable automatic installation in settings. If model downloads fail, download the **data** folder (or the missing files mentioned in the error) from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) and save it to the corresponding path in the source code folder.  
+Note the first time you launch it will install the required libraries and download models automatically. If the downloads fail, please check your network/proxy, or place the required model files into the `data` directory manually.
 
 The software has built-in update checking; see Config pannel -> Startup & Update for details.
 
