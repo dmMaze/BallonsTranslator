@@ -7,7 +7,7 @@
 
 BallonTranslator es otra herramienta asistida por ordenador, basada en el aprendizaje profundo, para traducir cómics/manga.
 
-<img src="../doc/src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
   <strong>Vista previa</strong>
@@ -150,7 +150,7 @@ sh scripts/build-macos-app.sh
 # Utilización
 
 **Se recomienda ejecutar el programa en un terminal en caso de que se produzca un fallo y no se proporcione información, como se muestra en el siguiente gif.**
-<img src="../doc/src/run.gif">  
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">  
 
 - En la primera ejecución, selecciona el traductor y establece los idiomas de origen y destino haciendo clic en el icono de configuración.
 - Abre una carpeta que contenga las imágenes del cómic (manga/manhua/manhwa) que necesites traducir haciendo clic en el icono de la carpeta.
@@ -161,13 +161,13 @@ Los formatos de fuente, como el tamaño y el color, son determinados automática
 ## Edición de imágenes
 
 ### Herramienta para pintar
-<img src="../doc/src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
   <strong>Modo de edición de imágenes, herramienta Inpainting</strong>
 </p>
 
 ### Herramienta rectángulo
-<img src="../doc/src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
   <strong>Herramienta rectángulo</strong>
 </p>
@@ -175,17 +175,17 @@ Los formatos de fuente, como el tamaño y el color, son determinados automática
 Para 'borrar' los resultados de inpainting no deseados, utilice la herramienta inpainting o la herramienta rectángulo con el **botón derecho del ratón** pulsado. El resultado depende de la precisión con la que el algoritmo ("método 1" y "método 2" en el gif) extrae la máscara de texto. El rendimiento puede ser peor con texto y fondos complejos.
 
 ## Edición de texto
-<img src="../doc/src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 <p align = "center">
   <strong>Modo de edición de texto</strong>
 </p>
 
-<img src="../doc/src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
   <strong>Formato de texto por lotes y maquetación automática</strong>
 </p>
 
-<img src="../doc/src/ocrselected.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
 <p align=center>
   <strong>OCR y traducción de áreas seleccionadas</strong>
 </p>
@@ -206,7 +206,7 @@ Para 'borrar' los resultados de inpainting no deseados, utilice la herramienta i
 * Ajuste la sombra y la transparencia del texto en el panel de estilo de texto -> Efecto.
 * ```Alt+Arrow Keys``` o ```Alt+WASD``` (```pageDown``` o ```pageUp``` mientras estás en el modo de edición de texto) para cambiar entre bloques de texto.
 
-<img src="../doc/src/configpanel.png">
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">
 
 ## Modo Headless (ejecución sin interfaz gráfica)
 

@@ -6,7 +6,7 @@
 
 Еще один инструмент для компьютерного перевода комиксов/манги на основе глубокого обучения.
 
-<img src="src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
 предпросмотр
@@ -68,7 +68,7 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install
 # Использование
 
 **Рекомендуется запускать программу в терминале на случай, если она аварийно завершится и не оставит никакой информации, см. следующий gif.**
-<img src="doc/src/run.gif">  
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">  
 - При первом запуске приложения, пожалуйста, выберите переводчик и установите исходный и целевой языки, нажав на значок настроек.
 - Откройте папку, содержащую изображения комикса (манги/маньхуа/манхвы), которые нуждаются в переводе, нажав на значок папки.
 - Нажмите кнопку `Run` и дождитесь завершения процесса.
@@ -78,13 +78,13 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install
 ## Редактирование изображений
 
 ### Инструмент ретуши
-<img src="src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
 Режим редактирования изображения, инструмент ретуши
 </p>
 
 ### Инструмент прямоугольника
-<img src="src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
 Инструмент прямоугольника
 </p>
@@ -93,17 +93,17 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/install
 Результат зависит от того, насколько точно алгоритм ("метод 1" и "метод 2" на gif) извлекает маску текста. Он может работать хуже на сложном тексте и фоне.  
 
 ## Редактирование текста
-<img src="src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 <p align = "center">
 Режим редактирования текста
 </p>
 
-<img src="src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 Пакетное форматирование текста и автоматическая компоновка
 </p>
 
-<img src="src/ocrselected.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
 <p align=center>
 OCR и перевод выбранной области
 </p>
@@ -124,7 +124,7 @@ OCR и перевод выбранной области
 * Установите тень текста и прозрачность на панели стиля текста -> Effect.  
 * ```Alt+Стрелки``` или ```Alt+WASD``` (```pageDown``` или ```pageUp``` в режиме редактирования текста) для переключения между текстовыми блоками.
   
-<img src="src/configpanel.png">
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">
 
 ## Режим без графического интерфейса (Запуск без GUI)
 ``` python

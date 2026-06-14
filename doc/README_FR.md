@@ -6,7 +6,7 @@
 
 BallonTranslator est un autre outil assisté par ordinateur, basé sur l'apprentissage profond (deep learning), permettant de traduire des comics/mangas.
 
-<img src="../doc/src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
 aperçu
@@ -155,7 +155,7 @@ sh scripts/build-macos-app.sh
 # Utilisation
 
 **Il est conseillé de lancer le programme dans un terminal pour voir les messages en cas de plantage, voir le gif suivant.**
-<img src="../doc/src/run.gif">  
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">  
 - La première fois que vous lancez l'application, veuillez sélectionner le traducteur et définir les langues source et cible en cliquant sur l'icône des paramètres.
 - Ouvrez un dossier contenant les images du manga/manhua/manhwa/comic à traduire en cliquant sur l’icône dossier.
 - Cliquez sur le bouton `Run` et attendez la fin du processus.
@@ -165,13 +165,13 @@ Les formats de police, tels que la taille et la couleur, sont déterminés autom
 ## Édition d’image
 
 ### Outil de retouche
-<img src="../doc/src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
 Mode d'édition d'image, outil de retouche
 </p>
 
 ### Outil Rect
-<img src="../doc/src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
 Outil Rect
 </p>
@@ -180,17 +180,17 @@ Pour « effacer » les résultats indésirables de la retouche, utilisez l'outil
 Le résultat dépend de la précision avec laquelle l'algorithme (méthode 1 et méthode 2 dans le gif) extrait le masque de texte. Il peut être moins performant sur des textes et des arrière-plans complexes.  
 
 ## Édition de texte
-<img src="../doc/src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 <p align = "center">
 Mode édition de texte
 </p>
 
-<img src="../doc/src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 Formatage de texte en lot & auto-mise en page
 </p>
 
-<img src="../doc/src/ocrselected.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
 <p align=center>
 OCR & traduction d’une zone sélectionnée
 </p>
@@ -211,7 +211,7 @@ OCR & traduction d’une zone sélectionnée
 * Définissez l'ombre et la transparence du texte dans le panneau Style de texte -> Effet.
 * ```Alt+Touches fléchées``` ou ```Alt+WASD``` (```pageDown``` ou ```pageUp``` en mode édition de texte) pour passer d'un bloc de texte à l'autre.
   
-<img src="../doc/src/configpanel.png">
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">
 
 ## Mode sans interface (exécution sans interface graphique)
 ``` python

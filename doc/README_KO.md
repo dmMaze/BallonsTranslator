@@ -6,7 +6,7 @@
 
 딥러닝으로 구동되는 또 다른 컴퓨터 지원 만화/만화 번역 툴.
 
-<img src="./src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
 미리보기
@@ -145,24 +145,24 @@ sh scripts/build-macos-app.sh
 # 사용법
 
 **충돌시 관련 정보를 남기기 위해 터미널 에서 프로그램을 실행하는 것이 좋습니다. 다음 GIF를 참조하십시오.**
-<img src="./src/run.gif">  
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">  
 - 프로그램을 처음 실행하는 경우, 설정 아이콘을 클릭하여 번역기를 선택하고 소스 및 대상 언어를 설정하십시오.
 - 폴더 아이콘을 클릭하여 번역이 필요한 만화(코믹,망가 등)의 이미지를 포함하는 폴더를 엽니다.
 - '실행`버튼을 클릭하고 프로세스를 완료합니다.
 
 이 과정에서 글꼴 크기 및 색상과 같은 글꼴 형식은 프로그램에 의해 자동으로 결정되며, 설정 패널->글꼴 설정에서 해당 옵션을 “프로그램이 결정”에서 “전역 설정 사용”으로 변경하여 해당 형식을 미리 결정할 수 있습니다. (전역 설정은 장면에서 텍스트 블록을 편집하지 않을 때 오른쪽 글꼴 형식 패널에 표시되는 스타일 입니다.)
-<img src="./src/global_font_format.png">  
+<img src="https://github.com/user-attachments/assets/fb8a8b2c-54e4-4579-8319-42a172296c80">  
 
 ## 이미지 편집
 
 ### 인페인트 도구
-<img src="./src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
 이미지 편집 모드, 인페인팅 도구
 </p>
 
 ### 글상자 도구
-<img src="./src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
 글상자 도구
 </p>
@@ -171,17 +171,17 @@ sh scripts/build-macos-app.sh
 결과는 알고리즘('방법 1' 및 '방법 2'의 GIF)이 텍스트 마스크를 얼마나 정확하게 추출하는지에 따라 달라집니다. 복잡한 텍스트 및 배경에서는 성능이 저하될 수 있습니다.  
 
 ## 텍스트 편집
-<img src="./src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 <p align = "center">
 텍스트 편집 모드
 </p>
 
-<img src="./src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 일괄 텍스트 포맷팅 및 자동 레이아웃
 </p>
 
-<img src="./src/ocrselected.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
 <p align=center>
 선택 영역 OCR 및 번역
 </p>
@@ -202,7 +202,7 @@ sh scripts/build-macos-app.sh
 * 텍스트 스타일 패널 -> 효과에서 텍스트 그림자 및 투명도를 설정합니다.  
 * ```Alt+Arrow Keys``` 및 ```Alt+WASD``` (또는 텍스트 편집 모드에서 ```pageDown``` 및 ```pageUp```) 로 텍스트 블록 사이를 전환합니다.
   
-<img src="./src/configpanel.png">
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">
 
 ## 헤드리스 모드 (GUI 없이 실행)
 ``` python

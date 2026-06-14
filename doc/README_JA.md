@@ -3,7 +3,7 @@
 
 ディープラーニングを活用したマンガ翻訳支援ツール。
 
-<img src="./src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
 プレビュー
@@ -71,7 +71,7 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 ## 完全自動翻訳
 **万が一、プログラムがクラッシュして情報が残らなかった場合に備えて、以下のgifを参考に、ターミナルで実行することをお勧めします。**また、初回実行時に希望するトランスレータを選択し、ソース言語とターゲット言語を設定してください。翻訳が必要な画像が入ったフォルダを開き、
 「実行」ボタンをクリックして処理が完了するのを待ちます。
-<img src="./src/run.gif">
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">
 
 このとき、フォントサイズや色などのフォントフォーマットはプログラムによって自動的に決定されますが、panel->Letteringで、対応するオプションを"decide by program"から"use global setting"に変更すれば、これらのフォーマットを事前に決定できます（グローバル設定とは、シーン内の
 テキストブロックを編集していないときに右フォントフォーマットパネルで表示されるフォーマットのことです）。
@@ -79,13 +79,13 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 ## 画像編集
 
 ### 修復ツール
-<img src="./src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
 画像編集モード、修復ツール
 </p>
 
 ### 長方形ツール
-<img src="./src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
 長方形ツール
 </p>
@@ -94,12 +94,12 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 結果はアルゴリズム(gifの"方法1"と"方法2")がどれだけ正確にテキストマスクを抽出するかに依存します。複雑なテキストと背景の場合、パフォーマンスが低下する可能性があります。
 
 ## テキスト編集
-<img src="./src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 <p align = "center">
 テキスト編集モード
 </p>
 
-<img src="./src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 テキストの一括書式設定と自動レイアウト
 </p>
@@ -114,7 +114,7 @@ Sugoi Translator（日英のみ）を使用するには、[オフラインモデ
 * 設定パネルで自動モジュールのパラメータを設定します。
 * 画像のサイズを変更するには、Ctrl + +/。
 
-<img src="./src/configpanel.png">
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">
 
 
 # Automation modules

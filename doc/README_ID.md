@@ -3,7 +3,7 @@
 
 Sebuah aplikasi penerjemahan komik/manga yang dibantu oleh deep learning.
 
-<img src="./src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
 pratinjau
@@ -73,7 +73,7 @@ Untuk menggunakan Sugoi translator (hanya bahasa Jepang-Inggris), unduh [offline
 
 # Penggunaan
 **Disarankan untuk menjalankan program di terminal jika program ini crash dan tidak meninggalkan informasi, lihat gif berikut ini**
-<img src="./src/run.gif">  
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">  
 
 - Pilih penerjemah yang diinginkan dan atur sumber dan target bahasa. 
  - Buka folder yang berisi gambar manga/manhua/webtoon yang ingin diterjemahkan.
@@ -85,13 +85,13 @@ Format font seperti ukuran font dan warna ditentukan oleh program secara otomati
 ## Image editing
 
 ### inpaint tool
-<img src="./src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
 Mode pengeditan gambar, alat inpainting
 </p>
 
 ### rect tool
-<img src="./src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
 Alat rect
 </p>
@@ -100,17 +100,17 @@ Untuk 'menghapus' hasil inpainting yang tidak diinginkan, gunakan alat inpaintin
 Hasilnya tergantung pada seberapa akurat algoritme ("metode 1" dan "metode 2" dalam gif) mengekstrak mask dari teks. Ini berjalan lebih buruk pada teks & latar belakang yang kompleks.
 
 ## Pengeditan teks
-<img src="./src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 <p align = "center">
 Mode Pengeditan teks
 </p>
 
-<img src="./src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 pemformatan kumpulan tata letak teks secara otomatis
 </p>
 
-<img src="./src/ocrselected.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
 <p align=center>
 pengenalan kata & menerjemahkan area yang dipilih
 </p>
@@ -127,7 +127,7 @@ pengenalan kata & menerjemahkan area yang dipilih
 * ```Ctrl++```/```Ctrl+-``` untuk mengubah ukuran gambar
 * ```Ctrl+G```/```Ctrl+F``` untuk mencari secara global/dalam halaman saat ini.
 
-<img src="./src/configpanel.png">  
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">  
 
 
 # Modul otomasi

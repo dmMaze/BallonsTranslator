@@ -4,7 +4,7 @@
 
 BallonTranslator é mais uma ferramenta auxiliada por computador, alimentada por deep learning, para a tradução de quadrinhos/mangás.
 
-<img src="../doc/src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
 **Pré-Visualização**
@@ -146,7 +146,7 @@ Para usar o Sugoi translator (apenas japonês-inglês), baixe o [modelo offline]
 # Utilização
 
 **É recomendado executar o programa em um terminal caso ocorra alguma falha e não sejam fornecidas informações, como mostrado no gif a seguir.**
-<img src="../doc/src/run.gif">  
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">  
 
 - Na primeira execução, selecione o tradutor e defina os idiomas de origem e destino clicando no ícone de configurações.
 - Abra uma pasta contendo as imagens do quadrinho (mangá/manhua/manhwa) que precisa de tradução clicando no ícone de pasta.
@@ -157,13 +157,13 @@ Os formatos de fonte, como tamanho e cor, são determinados automaticamente pelo
 ## Edição de Imagem
 
 ### Ferramenta de Inpainting
-<img src="../doc/src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
 **Modo de edição de imagem, ferramenta de Inpainting**
 </p>
 
 ### Ferramenta Retângulo
-<img src="../doc/src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
 **Ferramenta Retângulo**
 </p>
@@ -171,17 +171,17 @@ Os formatos de fonte, como tamanho e cor, são determinados automaticamente pelo
 Para 'apagar' resultados indesejados de inpainting, use a ferramenta de inpainting ou a ferramenta retângulo com o **botão direito do mouse** pressionado. O resultado depende da precisão com que o algoritmo ("método 1" e "método 2" no gif) extrai a máscara de texto. O desempenho pode ser pior em textos e fundos complexos.
 
 ## Edição de Texto
-<img src="../doc/src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 <p align = "center">
 **Modo de edição de texto**
 </p>
 
-<img src="../doc/src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 **Formatação de texto em lote e layout automático**
 </p>
 
-<img src="../doc/src/ocrselected.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
 <p align=center>
 **OCR e tradução de área selecionada**
 </p>
@@ -201,7 +201,7 @@ Para 'apagar' resultados indesejados de inpainting, use a ferramenta de inpainti
 * Para edição de texto: negrito - `Ctrl+B`, sublinhado - `Ctrl+U`, itálico - `Ctrl+I`.
 * Defina a sombra e a transparência do texto no painel de estilo de texto -> Efeito.
 
-<img src="../doc/src/configpanel.png">
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">
 
 ## Modo Headless (Executar sem interface gráfica)
 
