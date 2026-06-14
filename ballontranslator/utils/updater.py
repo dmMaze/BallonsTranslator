@@ -309,6 +309,10 @@ class BallonsTranslatorUpdater:
         release_pyproject = release_root / 'pyproject.toml'
         if release_pyproject.exists():
             self._replace_file(release_pyproject, self.program_path / 'pyproject.toml')
+        try:
+            self._cleanup_downloaded_source(zip_path, extract_root)
+        except Exception as e:
+            LOGGER.warning(f'Failed to clean up downloaded update source: {e}')
 
     def _notify(self, event: str, progress: int, message: str = '') -> None:
         LOGGER.info(f'Updater: {event} {message}')
@@ -356,6 +360,13 @@ class BallonsTranslatorUpdater:
             if candidate.is_dir() and (candidate / 'ballontranslator').is_dir():
                 return candidate
         raise RuntimeError('Downloaded source archive does not contain a ballontranslator source directory.')
+
+    def _cleanup_downloaded_source(self, zip_path: Path, extract_root: Path) -> None:
+        for path in (zip_path, extract_root):
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.exists():
+                path.unlink()
 
     def _replace_directory(self, source: Path, target: Path) -> None:
         if not source.is_dir():
