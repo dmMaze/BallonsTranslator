@@ -36,7 +36,7 @@ preview
 If you don't want to install Python and Git by yourself and have access to the Internet:  
 
 **Method A (One-Click Local Environment Setup, requires PowerShell)**:
-If you have cloned the source code, you can download and configure Python and the `uv` environment locally by running the following command in PowerShell (no manual package installation required, requires PowerShell to be enabled and not disabled by system policy):
+The script will automatically create a `BallonsTranslator` folder in your current directory, download the latest source code, configure the Python 3.12 environment, install all core dependencies, and launch the application (requires PowerShell to be enabled and not disabled by system policy):
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```
@@ -44,8 +44,8 @@ Or run the following command in the Command Prompt (`cmd.exe`):
 ```cmd
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
-This automatically sets up the local `ballontrans_pylibs_win` folder in your project root.
-Alternatively, you can simply double-click the **`scripts/install.bat`** file in your cloned repository to perform the same setup. Once completed, run `launch_win.bat` in the root folder to start the application.
+
+If you have already cloned the repository, you can simply double-click the **`scripts/install.bat`** file inside your cloned folder to set up the environment locally. Once completed, run `launch_win.bat` in the root folder to start the application.
 
 **Method B (Download Pre-configured Package)**:
 Download BallonsTranslator_dev_src_with_gitpython.7z from [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip it and run launch_win.bat.   

@@ -39,7 +39,7 @@
 如果用 Windows 而且不想自己手动配置环境，而且能正常访问互联网:  
 
 **方式 A（一键自动配置本地环境，需要系统支持 PowerShell）**：
-如果您克隆了本项目源码，可以通过在 PowerShell 中执行以下命令自动下载并本地配置 Python 和 `uv` 运行环境（无需手动安装任何依赖，系统需启用且未禁用 PowerShell）：
+该脚本会自动在当前目录下创建 `BallonsTranslator` 文件夹，下载最新分支源码，配置 Python 3.12 运行环境并安装所有依赖，随后自动启动程序（系统需启用且未禁用 PowerShell）：
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```
@@ -47,8 +47,8 @@ irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/insta
 ```cmd
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
 ```
-这将在您的项目根目录下自动创建 `ballontrans_pylibs_win` 运行环境。
-另外，您也可以在克隆好的源码中，直接双击运行 **`scripts/install.bat`** 脚本来完成相同的环境配置。完成后，直接双击运行根目录下的 `launch_win.bat` 即可启动程序。
+
+如果您已经克隆了源码，也可以在源码目录内直接双击运行 **`scripts/install.bat`** 脚本来本地配置环境。安装完成后，运行目录下的 `launch_win.bat` 启动程序。
 
 **方式 B（下载免配置压缩包）**：
 从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载 BallonsTranslator_dev_src_with_gitpython.7z，解压并运行 launch_win.bat 启动程序。如果无法自动下载库 and 模型，手动下载 data 和 ballontrans_pylibs_win.7z 并解压到程序目录下。 
