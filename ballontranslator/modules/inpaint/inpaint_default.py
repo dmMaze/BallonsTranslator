@@ -370,7 +370,8 @@ class Flux2Klein(InpainterBase):
         'safetensors',
         'transformers==4.57.6',
         'gguf>=0.10.0',
-        'accelerate>=0.26.0'
+        'accelerate>=0.26.0',
+        'hf_transfer'
     ]
 
     params = {
