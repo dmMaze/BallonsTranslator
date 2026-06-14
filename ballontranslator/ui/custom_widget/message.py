@@ -90,7 +90,7 @@ class TaskProgressBar(Widget):
         layout.addWidget(self.progressbar)
         self.updateProgress(0)
 
-    def updateProgress(self, progress: int, msg: str = ''):
+    def updateProgress(self, progress: int, msg: str = '', verbose_msg: str = None):
         self.progressbar.setValue(progress)
         if self.description:
             msg = self.description + msg
@@ -103,7 +103,9 @@ class TaskProgressBar(Widget):
         self.progressbar.setValue(progress)
 
         if self.verbose:
-            if progress == 0:
+            if verbose_msg is not None:
+                self.verbose_label.setText(verbose_msg)
+            elif progress == 0:
                 self.verbose_label.setText('')
                 self.start_time = time.time()
             elif progress == 100:
@@ -159,9 +161,9 @@ class ProgressMessageBox(QDialog):
             self.stop_button.setEnabled(False)
             self.stop_button.setText(self.tr('trying to stop...'))
 
-    def updateTaskProgress(self, value: int, msg: str = ''):
+    def updateTaskProgress(self, value: int, msg: str = '', verbose_msg: str = None):
         if self.task_progress_bar is not None:
-            self.task_progress_bar.updateProgress(value, msg)
+            self.task_progress_bar.updateProgress(value, msg, verbose_msg)
 
     def setTaskName(self, task_name: str):
         if self.task_progress_bar is not None:

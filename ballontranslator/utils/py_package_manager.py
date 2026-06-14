@@ -147,25 +147,17 @@ class PyPackageManager:
             for request in requests
         ]
 
-    def _build_command_for_request(self, request) -> List[str]:
-        return package_installer.build_install_command(
-            requirements=request.requirements,
-            backend=request.backend or self.backend,
-            extra_args=self.extra_args,
-            env=request.env,
-        )
-
     def install(
         self,
         requirements: Iterable[str],
         progress_callback: Optional[Callable[[dict], None]] = None,
     ) -> InstallResult:
+        requirements = [str(Requirement(req)) for req in dict.fromkeys(requirements) if req]
         requests = self._prepare_install_requests(requirements)
-        commands = [self._build_command_for_request(request) for request in requests]
         if progress_callback is not None:
             progress_callback({
                 'event': 'installing_packages',
-                'message': '\n'.join(shlex.join(command) for command in commands),
+                'message': self._installing_packages_summary(requirements),
             })
         final_result = None
         for request in requests:
@@ -187,11 +179,24 @@ class PyPackageManager:
     def preview_command(self, requirements: Iterable[str]) -> str:
         return '\n'.join(shlex.join(command) for command in self.build_install_commands(requirements))
 
+    @staticmethod
+    def _installing_packages_summary(requirements: Iterable[str]) -> str:
+        """Return a compact package summary for the progress panel.
+
+        >>> PyPackageManager._installing_packages_summary(['torch', 'torchvision'])
+        'torch...'
+        >>> PyPackageManager._installing_packages_summary(['einops'])
+        'einops'
+        """
+
+        reqs = list(dict.fromkeys(requirements))
+        if not reqs:
+            return 'packages'
+        first = Requirement(reqs[0]).name
+        return first + ('...' if len(reqs) > 1 else '')
+
     def _prepare_install_requests(self, requirements: Iterable[str]):
-        request = prepare_torch_install_request(
-            requirements=[str(Requirement(req)) for req in dict.fromkeys(requirements) if req],
-            env=self.env,
-        )
+        request = prepare_torch_install_request(requirements=requirements, env=self.env)
         if request.profile is None:
             return [request]
         torch_requirements, other_requirements = self._split_torch_family_requirements(request.requirements)
