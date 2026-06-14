@@ -16,6 +16,7 @@ from ballontranslator.utils.logger import logger as LOGGER
 BACKENDS = ('auto', 'pip', 'uv', 'conda-pip')
 ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 RAW_PROGRESS_RE = re.compile(r'^Progress\s+(\d+)\s+of\s+(\d+)$')
+_PIP_RAW_PROGRESS_SUPPORT = {}
 
 
 @dataclass
@@ -95,7 +96,6 @@ def build_install_command(
     index_args = ['-i', index_url] if index_url else []
     find_links = env.get('FIND_LINKS')
     find_links_args = ['-f', find_links] if find_links else []
-    progress_args = _pip_progress_args(extra, env)
     python_executable = python_executable or sys.executable
     python_prefix = python_prefix or sys.prefix
     resolved_backend = resolve_backend(backend, env=env)
@@ -105,6 +105,7 @@ def build_install_command(
             'uv', 'pip', 'install', '--python', python_executable,
             *reqs, *find_links_args, *index_args, *extra,
         ]
+    progress_args = _pip_progress_args(extra, env, python_executable)
     if resolved_backend == 'conda-pip':
         return [
             'conda', 'run', '-p', python_prefix,
@@ -127,11 +128,11 @@ def build_install_command(
     ]
 
 
-def _pip_progress_args(extra: List[str], env: dict) -> List[str]:
+def _pip_progress_args(extra: List[str], env: dict, python_executable: str = '') -> List[str]:
     """Return pip progress args suitable for captured subprocess output.
 
-    >>> _pip_progress_args([], {})
-    ['--progress-bar', 'raw']
+    >>> _pip_progress_args([], {}, 'python') # doctest: +ELLIPSIS
+    ['--progress-bar', ...]
     >>> _pip_progress_args(['--progress-bar', 'off'], {})
     []
     """
@@ -143,7 +144,48 @@ def _pip_progress_args(extra: List[str], env: dict) -> List[str]:
             return []
         if arg.startswith('--progress-bar='):
             return []
-    return ['--progress-bar', 'raw']
+    if _pip_supports_raw_progress(python_executable or sys.executable, env):
+        return ['--progress-bar', 'raw']
+    return ['--progress-bar', 'off']
+
+
+def _pip_supports_raw_progress(python_executable: str, env: dict) -> bool:
+    """Return whether this pip accepts ``--progress-bar raw``.
+
+    Older portable Python bundles can include a pip that only accepts ``on`` and
+    ``off``. Probe help text before the install so bootstrapping missing core
+    dependencies does not fail on argument validation.
+
+    >>> _pip_supports_raw_progress('', {})
+    False
+    """
+
+    if not python_executable:
+        return False
+    key = (python_executable, env.get('PATH', ''), env.get('PYTHONPATH', ''))
+    if key in _PIP_RAW_PROGRESS_SUPPORT:
+        return _PIP_RAW_PROGRESS_SUPPORT[key]
+    probe_env = os.environ.copy()
+    probe_env.update(env or {})
+    try:
+        completed = subprocess.run(
+            [python_executable, '-m', 'pip', 'install', '--help'],
+            env=probe_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            shell=False,
+            timeout=10,
+        )
+    except Exception:
+        _PIP_RAW_PROGRESS_SUPPORT[key] = False
+        return False
+    output = completed.stdout or ''
+    supports_raw = completed.returncode == 0 and '--progress-bar' in output and 'raw' in output
+    _PIP_RAW_PROGRESS_SUPPORT[key] = supports_raw
+    return supports_raw
 
 
 def install(
