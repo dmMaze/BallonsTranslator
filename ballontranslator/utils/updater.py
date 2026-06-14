@@ -17,6 +17,7 @@ from .version import get_current_version
 RELEASES_URL = 'https://github.com/dmMaze/BallonsTranslator/releases'
 LATEST_RELEASE_API_URL = 'https://api.github.com/repos/dmMaze/BallonsTranslator/releases/latest'
 UPDATE_BRANCH = 'userspace_update'
+SOURCE_UPDATE_DIRS = ('ballontranslator', 'resources')
 
 
 @dataclass
@@ -246,21 +247,25 @@ class BallonsTranslatorUpdater:
         return zip_path
 
     def backup_source(self, current_version: str) -> Path:
-        backup_path = self.cache_dir / f'ballontranslator_{normalize_version_tag(current_version)}'
+        version_tag = normalize_version_tag(current_version)
+        backup_path = self.cache_dir / f'ballontranslator_{version_tag}'
         if backup_path.exists():
             LOGGER.info(f'Updater source backup already exists: {backup_path}')
             self._notify('backup_skip', 65, backup_path.name)
             return backup_path
 
-        source_path = self.program_path / 'ballontranslator'
-        if not source_path.is_dir():
-            raise RuntimeError(f'Cannot back up missing source directory: {source_path}')
-        self._notify('backup_source', 65, backup_path.name)
-        shutil.copytree(source_path, backup_path)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        backup_path.mkdir()
+        for dirname in SOURCE_UPDATE_DIRS:
+            source_path = self.program_path / dirname
+            if not source_path.is_dir():
+                raise RuntimeError(f'Cannot back up missing source directory: {source_path}')
+            self._notify('backup_source', 65, dirname)
+            shutil.copytree(source_path, backup_path / dirname)
 
         pyproject_path = self.program_path / 'pyproject.toml'
         if pyproject_path.exists():
-            shutil.copy2(pyproject_path, self.cache_dir / f'pyproject_{normalize_version_tag(current_version)}.toml')
+            shutil.copy2(pyproject_path, backup_path / 'pyproject.toml')
         return backup_path
 
     def prepare_git_worktree(self, latest_version: str) -> str:
@@ -298,8 +303,9 @@ class BallonsTranslatorUpdater:
             self._safe_extract(archive, extract_root)
 
         release_root = self._find_release_root(extract_root)
-        self._notify('replace_source', 90, 'ballontranslator')
-        self._replace_directory(release_root / 'ballontranslator', self.program_path / 'ballontranslator')
+        self._notify('replace_source', 90, ', '.join(SOURCE_UPDATE_DIRS))
+        for dirname in SOURCE_UPDATE_DIRS:
+            self._replace_directory(release_root / dirname, self.program_path / dirname)
         release_pyproject = release_root / 'pyproject.toml'
         if release_pyproject.exists():
             self._replace_file(release_pyproject, self.program_path / 'pyproject.toml')

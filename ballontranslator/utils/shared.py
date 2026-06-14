@@ -31,8 +31,8 @@ LOGGING_PATH = osp.join(PROGRAM_PATH, 'logs')
 
 LIBS_PATH = osp.join(PROGRAM_PATH, 'data/libs')
 
-STYLESHEET_PATH = osp.join(PROGRAM_PATH, 'config/stylesheet.css')
-THEME_PATH = osp.join(PROGRAM_PATH, 'config/themes.json')
+STYLESHEET_PATH = osp.join(RESOURCE_DIR, 'stylesheet.css')
+THEME_PATH = osp.join(RESOURCE_DIR, 'themes.json')
 CONFIG_PATH = osp.join(PROGRAM_PATH, 'config/config.json')
 
 DEFAULT_TEXTSTYLE_DIR = osp.join(PROGRAM_PATH, 'config/textstyles')
