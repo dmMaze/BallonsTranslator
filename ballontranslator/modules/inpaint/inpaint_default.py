@@ -370,6 +370,7 @@ class Flux2Klein(InpainterBase):
         'safetensors',
         'transformers==4.57.6',
         'gguf>=0.10.0',
+        'accelerate>=0.26.0'
     ]
 
     params = {
@@ -399,6 +400,14 @@ class Flux2Klein(InpainterBase):
     inpaint_by_block = False
 
     download_file_list = [
+            {
+                'url': 'https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/main/model_index.json',
+                'files': 'data/models/flux-2-klein-4b/model_index.json',
+            },
+            {
+                'url': 'https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/main/scheduler/scheduler_config.json',
+                'files': 'data/models/flux-2-klein-4b/scheduler/scheduler_config.json'
+            },
             {
                 'url': 'https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/main/transformer/config.json',
                 'files': 'data/models/flux-2-klein-4b/transformer/config.json',
@@ -442,17 +451,19 @@ class Flux2Klein(InpainterBase):
             "data/models/flux-2-klein-4b-Q4_K_M.gguf",
             quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
             torch_dtype=torch.bfloat16,
-            config='data/models/flux-2-klein-4b/transformer/config.json'
+            config='data/models/flux-2-klein-4b/transformer/config.json',
+            
         )
         self.prompt_embeds = load_file('data/models/flux2_inpaint_prompt.safetensors')['prompt_embeds'].to(dtype=torch.bfloat16, device=self.get_param_value('device'))
 
         vae = AutoencoderKLFlux2.from_pretrained(f'data/models/flux-2-vae').to(device=self.get_param_value('device'), dtype=torch.bfloat16)
         pipeline = Flux2KleinInpaintPipeline.from_pretrained(
-            pretrained_model_name_or_path=source,
+            pretrained_model_name_or_path='data/models/flux-2-klein-4b',
             text_encoder=None,
             tokenizer=None,
             vae=vae,
-            transformer=transformer
+            transformer=transformer,
+            local_files_only=True
         )
         self.pipeline = pipeline.to(device=self.get_param_value('device'), )
 
