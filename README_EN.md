@@ -8,7 +8,7 @@ Yet another computer-aided comic/manga translation tool powered by deep learning
 
 The AI Modified [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton/BallonsTranslator-Pro) Version has added many new features. The main contributors of this project did not participate in its development; use at your own risk.
 
-<img src="doc/src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
 preview
@@ -63,23 +63,24 @@ Some issues may occur, running the source code directly is the recommended way f
 # Usage
 
 **It is recommended to run the program in a terminal in case it crashed and left no information, see the following gif.**
-<img src="doc/src/run.gif">  
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">
 - The first time you run the application, please select the translator and set the source and target languages by clicking the settings icon.
 - Open a folder containing images of a comic (manga/manhua/manhwa) that need translation by clicking the folder icon.
 - Click the `Run` button and wait for the process to complete.
 
 The font formats such as font size and color are determined by the program automatically in this process, you can predetermine those formats by change corresponding options from "decide by program" to "use global setting" in the config panel->Typesetting. (global settings are those formats shown by the right font format panel when you are not editing any textblock in the scene)
+<img src="https://github.com/user-attachments/assets/fb8a8b2c-54e4-4579-8319-42a172296c80">
 
 ## Image Editing
 
 ### Inpaint Tool
-<img src="doc/src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
 Image Editing Mode, Inpainting Tool
 </p>
 
 ### rect tool
-<img src="doc/src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
 Rect Tool
 </p>
@@ -88,17 +89,17 @@ To 'erase' unwanted inpainted results, use the inpainting tool or rect tool with
 The result depends on how accurately the algorithm ("method 1" and "method 2" in the gif) extracts the text mask. It could perform worse on complex text & background.  
 
 ## Text editing
-<img src="doc/src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 <p align = "center">
 Text Editing Mode
 </p>
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 Batch Text Formatting & Auto Layout
 </p>
 
-<img src="doc/src/ocrselected.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
 <p align=center>
 OCR & Translate Selected Area
 </p>
@@ -119,7 +120,7 @@ OCR & Translate Selected Area
 * Set text shadow and transparency in the text style panel -> Effect.  
 * ```Alt+Arrow Keys``` or ```Alt+WASD``` (```pageDown``` or ```pageUp``` while in text editing mode) to switch between text blocks.
   
-<img src="doc/src/configpanel.png">
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">
 
 ## Headless mode (Run without GUI)
 ``` python

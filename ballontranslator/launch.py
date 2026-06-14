@@ -6,8 +6,6 @@ import os
 import subprocess
 from platform import platform
 
-BRANCH = 'dev'
-VERSION = '1.4.0'
 
 git = os.environ.get('GIT', "git")
 QT_APIS = ['pyqt6', 'pyside6', 'pyqt5', 'pyside2']
@@ -18,6 +16,7 @@ FONT_EXTS = {'.ttf','.otf','.ttc','.pfb'}
 IS_WIN7 = "Windows-7" in platform()
 
 import ballontranslator.utils.shared as shared # Earlier import of shared to use default for config_path argument
+from ballontranslator.utils.version import APP_VERSION
 
 PATH_ROOT = Path(shared.PROGRAM_PATH)
 PATH_FONTS = str(PATH_ROOT / 'fonts')
@@ -200,8 +199,7 @@ def main():
 
     print('Python version: ', sys.version)
     print('Python executable: ', sys.executable)
-    print(f'Version: {VERSION}')
-    print(f'Branch: {BRANCH}')
+    print(f'Version: {APP_VERSION}')
 
     if not args.system_hf_cache:
         os.environ['HF_HOME'] = osp.join(APP_DIR, 'data/models')
@@ -267,7 +265,7 @@ def main():
         app_args = sys.argv + ['-platform', 'offscreen']
     app = QApplication(app_args)
     app.setApplicationName('BalloonsTranslator')
-    app.setApplicationVersion(VERSION)
+    app.setApplicationVersion(APP_VERSION)
 
     if not args.headless:
         ps = QGuiApplication.primaryScreen()

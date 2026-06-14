@@ -8,8 +8,8 @@ import time
 import cv2
 
 from tqdm import tqdm
-from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit
-from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal
+from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit, QDialog, QLabel, QPushButton
+from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QTimer
 from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard, QImage
 
 from ballontranslator.utils.logger import logger as LOGGER
@@ -29,6 +29,7 @@ from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
+from .update_thread import UpdateCheckThread
 from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .textedit_commands import GlobalRepalceAllCommand
@@ -36,7 +37,7 @@ from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
 from . import shared_widget as SW
-from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox
+from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox, ProgressMessageBox
 
 class PageListView(QListWidget):
 
@@ -110,10 +111,16 @@ class MainWindow(mainwindow_cls):
             self.hideSystemTitleBar()
             self.showMaximized()
 
+        if not shared.HEADLESS and pcfg.check_update_on_startup:
+            # Defer startup update checks until the event loop can paint progress.
+            QTimer.singleShot(500, lambda: self.check_for_updates(manual=False))
+
     def setStyleSheet(self, styleSheet: str) -> None:
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
         self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
         self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
+        if hasattr(self, 'update_progress_msgbox'):
+            self.update_progress_msgbox.setStyleSheet(styleSheet)
         if hasattr(self, 'module_manager') and self.module_manager.prepare_msgbox is not None:
             # The prepare dialog is created after startup; keep it on the app theme.
             self.module_manager.prepare_msgbox.setStyleSheet(styleSheet)
@@ -125,6 +132,12 @@ class MainWindow(mainwindow_cls):
         self.export_doc_thread.fin_io.connect(self.on_fin_export_doc)
         self.import_doc_thread = ImportDocThread(self)
         self.import_doc_thread.fin_io.connect(self.on_fin_import_doc)
+        self.update_thread = UpdateCheckThread()
+        self.update_thread.progress_changed.connect(self.on_update_progress_changed)
+        self.update_thread.update_finished.connect(self.on_update_finished)
+        self.update_thread.update_failed.connect(self.on_update_failed)
+        self.update_progress_msgbox = ProgressMessageBox(self.tr('Updating: '), False, self)
+        self._update_progress_visible = False
 
     def resetStyleSheet(self, reverse_icon: bool = False):
         theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
@@ -404,6 +417,7 @@ class MainWindow(mainwindow_cls):
 
         self.configPanel.setupConfig()
         self.configPanel.save_config.connect(self.save_config)
+        self.configPanel.check_update.connect(self.check_for_updates)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
         self.configPanel.show_only_custom_font.connect(self.on_show_only_custom_font)
         if pcfg.let_show_only_custom_fonts_flag:
@@ -461,6 +475,172 @@ class MainWindow(mainwindow_cls):
 
     def setupConfigUI(self):
         self.centralStackWidget.setCurrentIndex(1)
+
+    def check_for_updates(self, manual: bool = True):
+        if self.update_thread.isBusy():
+            LOGGER.info('Ignored update check request because an update check or update is already running.')
+            return
+        self._manual_update_check = manual
+        self.configPanel.setUpdateChecking(True)
+        self.configPanel.setLatestVersion(self.tr('Checking...'))
+        self.update_thread.checkLatest()
+
+    def apply_confirmed_update(self, release_info, current_version: str):
+        if self.update_thread.isBusy():
+            LOGGER.info('Ignored update apply request because an update check or update is already running.')
+            return
+        self.configPanel.setUpdateChecking(True)
+        self.update_progress_msgbox.zero_progress()
+        self.update_progress_msgbox.setTaskName(self.tr('Downloading update: '))
+        self.update_progress_msgbox.updateTaskProgress(0, release_info.version)
+        self.update_progress_msgbox.show_fitted()
+        self._update_progress_visible = True
+        self.update_thread.applyUpdate(release_info, current_version)
+
+    def on_update_progress_changed(self, payload: dict):
+        if not self._update_progress_visible:
+            return
+        progress = payload.get('progress', 0)
+        message = payload.get('message', '')
+        event = payload.get('event', '')
+        task_names = {
+            'download_start': self.tr('Downloading update: '),
+            'download_progress': self.tr('Downloading update: '),
+            'download_done': self.tr('Downloading update: '),
+            'backup_source': self.tr('Backing up source: '),
+            'backup_skip': self.tr('Backing up source: '),
+            'git_safety': self.tr('Saving local changes: '),
+            'extract_source': self.tr('Installing update: '),
+            'replace_source': self.tr('Installing update: '),
+            'done': self.tr('Installing update: '),
+        }
+        self.update_progress_msgbox.setTaskName(task_names.get(event, self.tr('Updating: ')))
+        self.update_progress_msgbox.updateTaskProgress(progress, message)
+
+    def on_update_finished(self, result):
+        if self._update_progress_visible:
+            self.update_progress_msgbox.done(0)
+            self._update_progress_visible = False
+        self.configPanel.setUpdateChecking(False)
+        if result.latest_version:
+            self.configPanel.setLatestVersion(result.latest_version)
+
+        if result.status == 'available':
+            if self.confirm_update_release(result):
+                QTimer.singleShot(
+                    0,
+                    lambda info=result.release_info, current=result.current_version: self.apply_confirmed_update(info, current),
+                )
+            return
+
+        if result.status == 'up_to_date':
+            if self._manual_update_check:
+                create_info_dialog(
+                    self.tr('Already up-to-date.') + f'\n{result.current_version}'
+                )
+            else:
+                LOGGER.info(f'BallonsTranslator is already up-to-date: {result.current_version}')
+            return
+
+        self.show_update_installed_dialog(result)
+
+    def on_update_failed(self, error_msg: str, detail_traceback: str):
+        if self._update_progress_visible:
+            self.update_progress_msgbox.done(0)
+            self._update_progress_visible = False
+        self.configPanel.setUpdateChecking(False)
+        self.on_create_errdialog(
+            error_msg + '\n' + self.tr('Failed to check for updates.'),
+            detail_traceback,
+            '',
+        )
+
+    def confirm_update_release(self, result) -> bool:
+        release_info = result.release_info
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr('Update Available'))
+        layout = QVBoxLayout(dialog)
+
+        title_label = QLabel(
+            self.tr('A new version is available.')
+            + f'\n{result.current_version} -> {result.latest_version}',
+            dialog,
+        )
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+
+        info_lines = []
+        if release_info.name:
+            info_lines.append(release_info.name)
+        if release_info.published_at:
+            info_lines.append(self.tr('Published: ') + release_info.published_at)
+        if release_info.html_url:
+            info_lines.append(release_info.html_url)
+        if info_lines:
+            meta_label = QLabel('\n'.join(info_lines), dialog)
+            meta_label.setWordWrap(True)
+            meta_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            meta_label.setOpenExternalLinks(True)
+            layout.addWidget(meta_label)
+
+        release_notes = QPlainTextEdit(dialog)
+        release_notes.setReadOnly(True)
+        release_notes.setPlainText(release_info.body or self.tr('No release notes.'))
+        release_notes.setMinimumSize(620, 320)
+        layout.addWidget(release_notes)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        update_btn = QPushButton(self.tr('Update'), dialog)
+        cancel_btn = QPushButton(self.tr('Cancel'), dialog)
+        update_btn.clicked.connect(dialog.accept)
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(update_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+
+        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
+        return dialog.exec() == accepted
+
+    def show_update_installed_dialog(self, result):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr('Update Installed'))
+        layout = QVBoxLayout(dialog)
+
+        title_label = QLabel(
+            self.tr('Update installed. Restart BallonsTranslator to use the new version.')
+            + f'\n{result.current_version} -> {result.latest_version}',
+            dialog,
+        )
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+
+        details = []
+        if result.backup_path:
+            details.append(self.tr('Backup: ') + result.backup_path)
+        if result.git_message:
+            details.append(self.tr('If you are not a developer, you can ignore the following git information.'))
+            details.append(result.git_message)
+        if details:
+            detail_text = QPlainTextEdit(dialog)
+            detail_text.setReadOnly(True)
+            detail_text.setPlainText('\n'.join(details))
+            detail_text.setMinimumSize(620, 180)
+            layout.addWidget(detail_text)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        restart_btn = QPushButton(self.tr('Restart Now'), dialog)
+        later_btn = QPushButton(self.tr('Later'), dialog)
+        restart_btn.clicked.connect(dialog.accept)
+        later_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(restart_btn)
+        button_layout.addWidget(later_btn)
+        layout.addLayout(button_layout)
+
+        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
+        if dialog.exec() == accepted:
+            self.restart_signal.emit()
 
     def set_display_lang(self, lang: str):
         self.retranslateUI()

@@ -6,6 +6,7 @@ from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QI
 
 from .custom_widget import ConfigComboBox, Widget
 from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.version import APP_VERSION
 from ballontranslator.utils.network_mirrors import (
     HUGGINGFACE_MIRROR_OPTIONS,
     PYPI_MIRROR_OPTIONS,
@@ -352,6 +353,7 @@ class ConfigPanel(Widget):
     save_config = Signal()
     unload_models = Signal()
     prepare_selected_modules = Signal()
+    check_update = Signal()
     reload_textstyle = Signal(bool)
     show_only_custom_font = Signal(bool)
 
@@ -429,6 +431,34 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
+        update_status_widget = QWidget()
+        update_status_layout = QHBoxLayout(update_status_widget)
+        update_status_layout.setContentsMargins(0, 0, 0, 0)
+        update_status_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.current_version_label = ConfigTextLabel(
+            self.tr('Current version: ') + APP_VERSION,
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        self.latest_version_label = ConfigTextLabel(
+            self.tr('Latest version: ') + self.tr('Not checked'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        self.check_update_btn = QPushButton(parent=self)
+        self.check_update_btn.setFixedWidth(240)
+        self.check_update_btn.setText(self.tr('Check update'))
+        self.check_update_btn.clicked.connect(self.check_update)
+
+        update_status_layout.addWidget(self.check_update_btn)
+        update_status_layout.addSpacing(24)
+        update_status_layout.addWidget(self.current_version_label)
+        update_status_layout.addSpacing(24)
+        update_status_layout.addWidget(self.latest_version_label)
+
+        generalConfigPanel.addBlockWidget(update_status_widget)
+        self.check_update_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Check update on startup'))
+        self.check_update_on_startup_checker.stateChanged.connect(self.on_check_update_onstartup_changed)
         none_label = self.tr('None')
         self.huggingface_mirror_combobox, _ = generalConfigPanel.addCombobox(
             display_options(HUGGINGFACE_MIRROR_OPTIONS, none_label=none_label),
@@ -563,6 +593,15 @@ class ConfigPanel(Widget):
     def on_open_onstartup_changed(self):
         pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
 
+    def on_check_update_onstartup_changed(self):
+        pcfg.check_update_on_startup = self.check_update_on_startup_checker.isChecked()
+
+    def setLatestVersion(self, version: str):
+        self.latest_version_label.setText(self.tr('Latest version: ') + version)
+
+    def setUpdateChecking(self, checking: bool):
+        self.check_update_btn.setEnabled(not checking)
+
     def on_huggingface_mirror_changed(self):
         pcfg.mirrors.huggingface = mirror_from_display(
             self.huggingface_mirror_combobox.currentText(),
@@ -658,6 +697,7 @@ class ConfigPanel(Widget):
 
         if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
+        self.check_update_on_startup_checker.setChecked(pcfg.check_update_on_startup)
         self.huggingface_mirror_combobox.setCurrentText(mirror_to_display(
             pcfg.mirrors.huggingface,
             none_label=self.tr('None'),

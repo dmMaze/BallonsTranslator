@@ -1,3 +1,4 @@
+
 > [!IMPORTANT]  
 > **如打算公开分享本工具的机翻结果，且没有有经验的译者进行过完整的翻译或校对，请在显眼位置注明机翻。**
 
@@ -9,7 +10,7 @@
 交流反馈 QQ 群：719881337  
 
 
-<img src="doc/src/ui0.jpg" div align=center>
+<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
 
 <p align=center>
 界面预览
@@ -64,21 +65,21 @@ python3 -m ballontranslator --update
 
 ## 一键翻译
 **建议在命令行终端下运行程序**，首次运行请先配置好源语言/目标语言，打开一个带图片的文件夹，点击 Run 等待翻译完成  
-<img src="doc/src/run.gif">  
+<img src="https://github.com/user-attachments/assets/ee92fbdc-718c-4e04-a876-0eff3ee2a989">  
 
 一键机翻嵌字格式如大小、颜色等默认是由程序决定的，可以在设置面板->嵌字菜单中改用全局设置。全局字体格式就是未编辑任何文本块时右侧字体面板显示的格式:  
-<img src="doc/src/global_font_format.png"> 
+<img src="https://github.com/user-attachments/assets/fb8a8b2c-54e4-4579-8319-42a172296c80"> 
 
 ## 画板
 
 ## 修复画笔
-<img src="doc/src/imgedit_inpaint.gif">
+<img src="https://github.com/user-attachments/assets/de0bc35d-6651-4f2f-985c-cfe9bfafb124">
 <p align = "center">
 修复画笔
 </p>
 
 ### 矩形工具
-<img src="doc/src/rect_tool.gif">
+<img src="https://github.com/user-attachments/assets/6c47f46f-ffd3-41fd-b667-5442be304c79">
 <p align = "center">
 矩形工具
 </p>
@@ -88,19 +89,19 @@ python3 -m ballontranslator --update
 勾选"自动"拉完框立即修复，否则需要按下"修复"或者空格键才进行修复，或 ```Ctrl+D``` 删除矩形选框。 
 
 ## 文本编辑
-<img src="doc/src/textedit.gif">
+<img src="https://github.com/user-attachments/assets/0f688abe-41f7-416a-85c8-e0dd6968fd00">
 
 
 <p align = "center">
 文本编辑
 </p>
 
-<img src="doc/src/multisel_autolayout.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/6d31c8a5-b909-4339-8036-7fc3ba2f014c" div align=center>
 <p align=center>
 批量文本格式调整及自动排版
 </p>
 
-<img src="doc/src/ocrselected.gif" div align=center>
+<img src="https://github.com/user-attachments/assets/1b76c164-1454-4aa7-b60c-9fbdb0968350" div align=center>
 <p align=center>
 OCR并翻译选中文本框
 </p>
@@ -120,7 +121,7 @@ OCR并翻译选中文本框
 * 字体样式面板-"特效"修改透明度添加阴影
 * ```Alt+Arrow Keys``` 或 ```Alt+WASD``` (正在编辑文本块时 ```pageDown``` 或 ```pageUp```) 在文本块间切换
 
-<img src="doc/src/configpanel.png">  
+<img src="https://github.com/user-attachments/assets/084a250d-6a31-4344-94c0-2a5f4ba64b96">  
 
 ## 命令行模式 (无GUI)
 ``` python
