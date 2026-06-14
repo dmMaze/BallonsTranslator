@@ -431,6 +431,10 @@ class ConfigPanel(Widget):
         generalConfigPanel.addTextLabel(label_startup)
         self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
+
+        self.check_update_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Check update on startup'))
+        self.check_update_on_startup_checker.stateChanged.connect(self.on_check_update_onstartup_changed)
+
         update_status_widget = QWidget()
         update_status_layout = QHBoxLayout(update_status_widget)
         update_status_layout.setContentsMargins(0, 0, 0, 0)
@@ -457,8 +461,7 @@ class ConfigPanel(Widget):
         update_status_layout.addWidget(self.latest_version_label)
 
         generalConfigPanel.addBlockWidget(update_status_widget)
-        self.check_update_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Check update on startup'))
-        self.check_update_on_startup_checker.stateChanged.connect(self.on_check_update_onstartup_changed)
+
         none_label = self.tr('None')
         self.huggingface_mirror_combobox, _ = generalConfigPanel.addCombobox(
             display_options(HUGGINGFACE_MIRROR_OPTIONS, none_label=none_label),
