@@ -7,12 +7,11 @@ from typing import Iterable, Optional, Set
 
 HUGGINGFACE_ORIGIN = 'https://huggingface.co'
 DEFAULT_HUGGINGFACE_MIRROR = 'https://hf-mirror.com'
-DEFAULT_PYPI_MIRROR = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+DEFAULT_PYPI_MIRROR = 'https://mirrors.aliyun.com/pypi/simple'
 HUGGINGFACE_MIRROR_OPTIONS = (None, DEFAULT_HUGGINGFACE_MIRROR)
 PYPI_MIRROR_OPTIONS = (
     None,
     DEFAULT_PYPI_MIRROR,
-    'http://mirrors.aliyun.com/pypi/simple',
 )
 MIRROR_FIELDS = ('huggingface', 'pypi')
 
@@ -53,8 +52,8 @@ def mirror_from_display(value: str, none_label: str = 'None') -> Optional[str]:
 
     >>> mirror_from_display('None') is None
     True
-    >>> mirror_from_display('https://pypi.tuna.tsinghua.edu.cn/simple')
-    'https://pypi.tuna.tsinghua.edu.cn/simple'
+    >>> mirror_from_display('https://mirrors.aliyun.com/pypi/simple')
+    'https://mirrors.aliyun.com/pypi/simple'
     """
 
     if value == none_label:
@@ -199,7 +198,7 @@ def backfill_missing_mirror_defaults(
     >>> backfill_missing_mirror_defaults(mirrors, {'pypi'}, locale_names=['zh_CN'])
     ['pypi']
     >>> mirrors.pypi
-    'https://pypi.tuna.tsinghua.edu.cn/simple'
+    'https://mirrors.aliyun.com/pypi/simple'
     """
 
     missing_fields = set(missing_fields)

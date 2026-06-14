@@ -4,11 +4,14 @@ import os
 import platform
 import re
 import sys
+import tempfile
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ballontranslator.utils.registry import ModuleSpec
+from ballontranslator.utils.torch_install_helper import detect_nvidia_gpus
 
 from .base import MODULE_ROOT, MODULE_SCRIPTS
 
@@ -69,6 +72,8 @@ def _package_version(package_name):
 
 
 def _torch_package_backend():
+    if _nvidia_cuda_available():
+        return 'cuda'
     version = _package_version('torch')
     if version is None:
         return None
@@ -82,6 +87,19 @@ def _torch_package_backend():
     if local_version.startswith('xpu'):
         return 'xpu'
     return None
+
+
+@lru_cache(maxsize=1)
+def _nvidia_cuda_available() -> bool:
+    """Return whether the driver reports NVIDIA GPU availability.
+
+    >>> isinstance(_nvidia_cuda_available(), bool)
+    True
+    """
+
+    if sys.platform not in {'win32', 'linux'}:
+        return False
+    return bool(detect_nvidia_gpus())
 
 
 def _candidate_device_options():

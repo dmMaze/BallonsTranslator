@@ -3,6 +3,7 @@ from typing import Union, List, Callable
 import os.path as osp
 
 import numpy as np
+from packaging.requirements import Requirement
 from qtpy.QtCore import QThread, Signal, QObject, QLocale, QTimer
 from qtpy.QtWidgets import QFileDialog, QMessageBox, QCheckBox
 
@@ -23,7 +24,7 @@ modules.translators.SYSTEM_LANG = QLocale.system().name()
 from ballontranslator.utils.textblock import TextBlock, sort_regions
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
-from ballontranslator.utils.download_util import DownloadCancelled
+from ballontranslator.utils.download_util import DownloadCancelled, sizeof_fmt
 from ballontranslator.modules.prepare_local_files import MissingDependency, ensure_module_files
 from ballontranslator.utils.py_package_manager import (
     MissingModuleRequirements,
@@ -1143,7 +1144,7 @@ class ModuleManager(QObject):
             return
         self.prepare_msgbox.zero_progress()
         self.prepare_msgbox.setTaskName(self.tr('Installing packages: '))
-        self.prepare_msgbox.updateTaskProgress(0, ', '.join(requirements))
+        self.prepare_msgbox.updateTaskProgress(0, self._installing_packages_summary(requirements))
         if self.prepare_msgbox.stop_button is not None:
             self.prepare_msgbox.stop_button.setEnabled(False)
             self.prepare_msgbox.stop_button.setText(self.tr('Installing...'))
@@ -1193,11 +1194,68 @@ class ModuleManager(QObject):
         if self._preparing_thread is not None:
             self._preparing_thread.requestCancelModuleInit()
 
+    @staticmethod
+    def _installing_packages_summary(requirements: List[str]) -> str:
+        """Return a compact install summary for the modal progress panel.
+
+        >>> ModuleManager._installing_packages_summary(['torch', 'torchvision'])
+        'torch...'
+        >>> ModuleManager._installing_packages_summary(['einops'])
+        'einops'
+        """
+
+        reqs = list(dict.fromkeys(requirements))
+        if not reqs:
+            return 'packages'
+        try:
+            first = Requirement(reqs[0]).name
+        except Exception:
+            first = str(reqs[0])
+        return first + ('...' if len(reqs) > 1 else '')
+
+    def _package_download_progress_message(self, payload: dict):
+        """Format installer download progress for the preparation dialog.
+
+        >>> manager = ModuleManager.__new__(ModuleManager)
+        >>> manager._package_download_progress_message({
+        ...     'message': 'Downloading torch.whl',
+        ...     'downloaded': 50,
+        ...     'total': 100,
+        ...     'speed': 25,
+        ...     'eta': 2,
+        ... })
+        ('Downloading torch.whl', '50.0% | 25.0 B/s | ETA 0:00:02')
+        """
+
+        message = payload.get('message') or self.tr('Downloading package')
+        downloaded = payload.get('downloaded') or 0
+        total = payload.get('total')
+        status = []
+        if total:
+            percent = downloaded / total * 100
+            status.append(f'{percent:.1f}%')
+
+        speed = payload.get('speed')
+        if speed:
+            status.append(self.tr('{speed}/s').format(speed=sizeof_fmt(speed)))
+        eta = payload.get('eta')
+        if eta is not None:
+            status.append(self.tr('ETA {eta}').format(eta=self._format_duration(eta)))
+        return message, ' | '.join(status)
+
+    @staticmethod
+    def _format_duration(seconds: int) -> str:
+        seconds = max(int(seconds), 0)
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f'{hours}:{minutes:02d}:{seconds:02d}'
+
     def on_module_prepare_progress(self, payload: dict):
         # Download callbacks report bytes; imports/model-loads report coarse stages.
         event = payload.get('event', '')
         module_name = payload.get('module', '')
         message = payload.get('message', '')
+        verbose_message = None
         path = payload.get('path') or payload.get('file') or ''
         if path:
             path = osp.basename(path)
@@ -1211,6 +1269,7 @@ class ModuleManager(QObject):
             'archive_move': 85,
             'installing_packages': 25,
             'package_output': 25,
+            'package_download_progress': 30,
             'importing': 88,
             'instantiating': 92,
             'loading_model': 96,
@@ -1223,6 +1282,14 @@ class ModuleManager(QObject):
                 progress = max(20, min(74, int(downloaded / total * 54) + 20))
             else:
                 progress = 35
+        elif event == 'package_download_progress':
+            message, verbose_message = self._package_download_progress_message(payload)
+            total = payload.get('total')
+            downloaded = payload.get('downloaded') or 0
+            if total:
+                progress = max(0, min(100, int(downloaded / total * 100)))
+        elif event in {'installing_packages', 'package_output'}:
+            verbose_message = ''
         if not message:
             message = path or module_name
 
@@ -1231,7 +1298,7 @@ class ModuleManager(QObject):
                 LOGGER.info(f'{message}: {event}')
             return
         if self.prepare_msgbox is not None:
-            self.prepare_msgbox.updateTaskProgress(progress, message)
+            self.prepare_msgbox.updateTaskProgress(progress, message, verbose_message)
 
     def on_module_prepare_finished(self, thread: ModuleThread):
         if self._preparing_thread is thread:

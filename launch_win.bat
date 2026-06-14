@@ -6,12 +6,16 @@ cd %~dp0
 @echo off
 
 :: Set the path for PaddleOCR and PyTorch libraries
-set "PADDLE_PATH=%~dp0ballontrans_pylibs_win\Lib\site-packages\torch\lib"
-set "PATH=%PADDLE_PATH%;%PATH%"
 
 @REM if not defined PYTHON (set PATH=pylibs;pylibs\Scripts;%%PATH%%
-set PATH=ballontrans_pylibs_win;ballontrans_pylibs_win\Scripts;PortableGit\cmd;%PATH%
+if exist "python\" (
+    if not exist "ballontrans_pylibs_win\" ren "python" "ballontrans_pylibs_win"
+)
+set PATH=ballontrans_pylibs_win;ballontrans_pylibs_win\Scripts;%PATH%
 set PYTHON=python.exe
+
+@REM use uv if available
+doskey uv=uv.exe $* 
 
 set ERROR_REPORTING=FALSE
 
