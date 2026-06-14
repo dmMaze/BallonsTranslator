@@ -19,6 +19,15 @@ class UpdaterTests(unittest.TestCase):
         self.assertTrue(updater.is_remote_newer('1.4.0', 'v1.4.1'))
         self.assertFalse(updater.is_remote_newer('1.4.1', 'v1.4.1'))
 
+    def test_git_update_message_is_user_facing(self):
+        message = updater.format_git_update_message('userspace_update', local_changes_saved=True, local_branch='dev')
+
+        self.assertIn('Local git changes on branch "dev" were saved before updating.', message)
+        self.assertIn('The update was applied on branch: userspace_update', message)
+        self.assertIn('git switch dev', message)
+        self.assertIn('git stash pop', message)
+        self.assertNotIn('Saved working directory', message)
+
     def test_release_payload_requires_source_zip(self):
         info = updater.release_info_from_api_payload({
             'tag_name': 'v1.4.1',

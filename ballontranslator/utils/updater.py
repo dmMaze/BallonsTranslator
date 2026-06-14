@@ -91,6 +91,35 @@ def is_remote_newer(local_version: str, remote_version: str) -> bool:
         return version_sort_key(remote_version) > version_sort_key(local_version)
 
 
+def format_git_update_message(update_branch: str, local_changes_saved: bool, local_branch: str = '') -> str:
+    """Return the user-facing git safety note for the update dialog.
+
+    >>> print(format_git_update_message('userspace_update', True, 'dev'))
+    Local git changes on branch "dev" were saved before updating.
+    The update was applied on branch: userspace_update
+    To restore your local changes, run:
+    git switch dev
+    git stash pop
+    """
+
+    lines = [
+        f'The update was applied on branch: {update_branch}',
+    ]
+    if local_changes_saved:
+        if local_branch:
+            lines.insert(0, f'Local git changes on branch "{local_branch}" were saved before updating.')
+        else:
+            lines.insert(0, 'Local git changes were saved before updating.')
+        lines.extend([
+            'To restore your local changes, run:',
+            f'git switch {local_branch or update_branch}',
+            'git stash pop',
+        ])
+    else:
+        lines.insert(0, 'A git repository was detected.')
+    return '\n'.join(lines)
+
+
 def release_info_from_api_payload(payload: dict) -> ReleaseInfo:
     """Build release metadata from the GitHub release API response.
 
@@ -239,27 +268,25 @@ class BallonsTranslatorUpdater:
         if not git_dir.exists() or shutil.which('git') is None:
             return ''
 
+        local_branch = self._git(['branch', '--show-current'], check=False).stdout.strip()
         status = self._git(['status', '--porcelain']).stdout.strip()
-        messages = []
+        local_changes_saved = False
         if status:
             self._notify('git_safety', 70, 'Saving local git changes')
             self._git(['add', '-A'])
             stash_message = f'BallonsTranslator updater local changes before {latest_version}'
             stash = self._git(['stash', 'push', '-u', '-m', stash_message]).stdout.strip()
-            messages.append(stash or f'Local changes saved to git stash: {stash_message}')
-            messages.append('Restore those changes with: git stash pop')
-            LOGGER.info(messages[-2])
-            LOGGER.info(messages[-1])
+            local_changes_saved = True
+            LOGGER.info(stash or f'Local changes saved to git stash: {stash_message}')
 
         branch_exists = self._git(['rev-parse', '--verify', UPDATE_BRANCH], check=False).returncode == 0
         if branch_exists:
             self._git(['switch', UPDATE_BRANCH])
         else:
             self._git(['switch', '-c', UPDATE_BRANCH])
-        branch_msg = f'Checked out {UPDATE_BRANCH} before applying updater files.'
-        LOGGER.info(branch_msg)
-        messages.append(branch_msg)
-        return '\n'.join(messages)
+        message = format_git_update_message(UPDATE_BRANCH, local_changes_saved, local_branch)
+        LOGGER.info(message)
+        return message
 
     def install_source_zip(self, zip_path: Path) -> None:
         self._notify('extract_source', 80, zip_path.name)

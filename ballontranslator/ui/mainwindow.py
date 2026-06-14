@@ -542,16 +542,7 @@ class MainWindow(mainwindow_cls):
                 LOGGER.info(f'BallonsTranslator is already up-to-date: {result.current_version}')
             return
 
-        message = (
-            self.tr('Update installed. Restart BallonsTranslator to use the new version.')
-            + f'\n{result.current_version} -> {result.latest_version}'
-        )
-        if result.backup_path:
-            message += '\n' + self.tr('Backup: ') + result.backup_path
-        if result.git_message:
-            message += '\n' + result.git_message
-        create_info_dialog(message)
-        self.ask_restart_after_update()
+        self.show_update_installed_dialog(result)
 
     def on_update_failed(self, error_msg: str, detail_traceback: str):
         if self._update_progress_visible:
@@ -611,15 +602,44 @@ class MainWindow(mainwindow_cls):
         accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
         return dialog.exec() == accepted
 
-    def ask_restart_after_update(self):
-        msg = QMessageBox(self)
-        msg.setWindowTitle(self.tr('Restart Required'))
-        question_icon = getattr(getattr(QMessageBox, 'Icon', QMessageBox), 'Question')
-        msg.setIcon(question_icon)
-        msg.setText(self.tr('Restart to apply updates?'))
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
-        if msg.exec() == QMessageBox.StandardButton.Yes:
+    def show_update_installed_dialog(self, result):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr('Update Installed'))
+        layout = QVBoxLayout(dialog)
+
+        title_label = QLabel(
+            self.tr('Update installed. Restart BallonsTranslator to use the new version.')
+            + f'\n{result.current_version} -> {result.latest_version}',
+            dialog,
+        )
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+
+        details = []
+        if result.backup_path:
+            details.append(self.tr('Backup: ') + result.backup_path)
+        if result.git_message:
+            details.append(self.tr('If you are not a developer, you can ignore the following git information.'))
+            details.append(result.git_message)
+        if details:
+            detail_text = QPlainTextEdit(dialog)
+            detail_text.setReadOnly(True)
+            detail_text.setPlainText('\n'.join(details))
+            detail_text.setMinimumSize(620, 180)
+            layout.addWidget(detail_text)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        restart_btn = QPushButton(self.tr('Restart Now'), dialog)
+        later_btn = QPushButton(self.tr('Later'), dialog)
+        restart_btn.clicked.connect(dialog.accept)
+        later_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(restart_btn)
+        button_layout.addWidget(later_btn)
+        layout.addLayout(button_layout)
+
+        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
+        if dialog.exec() == accepted:
             self.restart_signal.emit()
 
     def set_display_lang(self, lang: str):
