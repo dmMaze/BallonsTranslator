@@ -38,8 +38,8 @@
 ## Windows
 如果用 Windows 而且不想自己手动配置环境，而且能正常访问互联网:  
 
-**方式 A（一键自动配置本地环境）**：
-如果您克隆了本项目源码，可以通过在 PowerShell 中执行以下命令自动下载并本地配置 Python 和 `uv` 运行环境（无需手动安装任何依赖）：
+**方式 A（一键自动配置本地环境，需要系统支持 PowerShell）**：
+如果您克隆了本项目源码，可以通过在 PowerShell 中执行以下命令自动下载并本地配置 Python 和 `uv` 运行环境（无需手动安装任何依赖，系统需启用且未禁用 PowerShell）：
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```

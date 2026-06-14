@@ -35,8 +35,8 @@ preview
 ## On Windows
 If you don't want to install Python and Git by yourself and have access to the Internet:  
 
-**Method A (One-Click Local Environment Setup)**:
-If you have cloned the source code, you can download and configure Python and the `uv` environment locally by running the following command in PowerShell (no manual package installation required):
+**Method A (One-Click Local Environment Setup, requires PowerShell)**:
+If you have cloned the source code, you can download and configure Python and the `uv` environment locally by running the following command in PowerShell (no manual package installation required, requires PowerShell to be enabled and not disabled by system policy):
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```
