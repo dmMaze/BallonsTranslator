@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](/README.md) | [English](/README_EN.md) | [pt-BR](../doc/README_PT-BR.md) | [Русский](../doc/README_RU.md) | [日本語](../doc/README_JA.md) | Indonesia | [Tiếng Việt](../doc/README_VI.md) | [한국어](../doc/README_KO.md) | [Español](../doc/README_ES.md) | [Français](../doc/README_FR.md)
+[简体中文](/README.md) | [English](/README_EN.md) | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
 
 Sebuah aplikasi penerjemahan komik/manga yang dibantu oleh deep learning.
 
@@ -27,7 +27,24 @@ pratinjau
 
 # Instalasi
 
-**Pengguna Windows** dapat unduh Ballonstranslator-x.x.x-core.7z di [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) atau [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) (catatan: Anda juga perlu mengunduh Ballonstranslator-1.3.xx terbaru di rilis GitHub mengekstraknya untuk menimpa **Ballontranslator-1.3.0-core** atau instalasi yang lebih lama agar aplikasi dapat diperbarui.)
+### Di Windows
+Jika Anda tidak ingin menginstal Python dan mengonfigurasi lingkungan secara manual:
+
+**Metode A (Penyiapan Lingkungan Lokal Satu-Klik, memerlukan PowerShell)**:
+Script akan secara otomatis membuat folder `BallonsTranslator` di direktori Anda saat ini, mengunduh kode sumber terbaru, mengonfigurasi lingkungan Python 3.12 yang terisolasi, menginstal semua dependensi inti, dan meluncurkan aplikasi (memerlukan PowerShell diaktifkan di sistem):
+```powershell
+irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
+```
+Atau jalankan perintah berikut di Command Prompt klasik (`cmd.exe`):
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
+```
+
+Jika Anda sudah mengkloning repositori, Anda cukup mengklik dua kali file **`scripts/install.bat`** di dalam folder hasil kloning Anda untuk menyiapkan lingkungan secara lokal. Setelah selesai, jalankan `launch_win.bat` di folder root untuk memulai aplikasi.
+
+**Metode B (Unduh Paket Pra-konfigurasi)**:
+Unduh file `Ballonstranslator_win_minium.zip` terbaru dari [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), ekstrak ke folder mana pun, dan klik dua kali `launch_win.bat` untuk meluncurkan aplikasi.
+*(Catatan: Paket pra-konfigurasi tidak mendukung Windows 7; pengguna Windows 7 harus menginstal [Python 3.8](https://www.python.org/downloads/release/python-3810/) secara manual dan menjalankannya dari kode sumber).*
 
 ## Jalankan kode sumber
 
@@ -35,22 +52,22 @@ pratinjau
 # Clone repo ini
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
-# instal requirements_macOS.txt di macOS
+# Instal dependensi
 $ pip install -r requirements.txt
 ```
 
-Instal pytorch-cuda untuk dapat akselerasi GPU jika Anda memiliki GPU NVIDIA.
+Instal pytorch-cuda untuk dapat akselerasi GPU jika Anda memiliki GPU NVIDIA:
 
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu116
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
-Unduhlah folder **data** dari [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) atau [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) dan pindahkan ke dalam BallonsTranslator/ballontranslator, akhirnya jalankan
+Jalankan aplikasi dengan:
 ```bash
 python ballontranslator
 ```
 
-Untuk pengguna Linux atau MacOS, lihat [script ini](ballontranslator/scripts/download_models.sh) dan jalankan untuk mengunduh semua model
+*Catatan: Saat pertama kali dijalankan, program akan mengunduh model secara otomatis. Jika pengunduhan gagal, silakan periksa proxy jaringan Anda, atau tempatkan file model yang diperlukan ke dalam direktori `data` secara manual.*
 
 Untuk menggunakan Sugoi translator (hanya bahasa Jepang-Inggris), unduh [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), pindahkan "sugoi_translator" ke dalam BallonsTranslator/ballontranslator/data/models.
 

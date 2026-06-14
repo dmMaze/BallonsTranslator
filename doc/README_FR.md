@@ -2,7 +2,7 @@
 > **Si vous partagez publiquement le résultat traduit et qu'aucun traducteur humain expérimenté n'a participé à la traduction ou à la relecture, veuillez indiquer clairement qu'il s'agit d'une traduction automatique.**
 
 # BallonTranslator
-[简体中文](/README.md) | [English](/README_EN.md) | [pt-BR](../doc/README_PT-BR.md) | [Русский](../doc/README_RU.md) | [日本語](../doc/README_JA.md) | [Indonesia](../doc/README_ID.md) | [Tiếng Việt](../doc/README_VI.md) | [한국어](../doc/README_KO.md) | [Español](../doc/README_ES.md) | Français
+[简体中文](/README.md) | [English](/README_EN.md) | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
 
 BallonTranslator est un autre outil assisté par ordinateur, basé sur l'apprentissage profond (deep learning), permettant de traduire des comics/mangas.
 
@@ -37,11 +37,25 @@ Prend en charge l’export/import vers/depuis des documents Word
 # Installation
 
 ## Sous Windows
-Si vous ne souhaitez pas installer Python et Git vous-même et que vous avez accès à Internet :
-Téléchargez BallonsTranslator_dev_src_with_gitpython.7z depuis [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) ou [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), décompressez et lancez launch_win.bat. 
-Exécutez scripts/local_gitpull.bat pour obtenir la dernière mise à jour.
-Notez que ces paquets fournis ne fonctionnent pas sous Windows 7, les utilisateurs de Win7 doivent installer [Python 3.8](https://www.python.org/downloads/release/python-3810/) et exécuter le code source.
 
+### Sur Windows
+Si vous ne souhaitez pas installer Python et configurer l'environnement manuellement :
+
+**Méthode A (Configuration automatique de l'environnement local en un clic, nécessite PowerShell)** :
+Le script créera automatiquement un dossier `BallonsTranslator` dans le répertoire actuel, téléchargera le dernier code source, configurera un environnement isolé Python 3.12, installera toutes les dépendances et lancera l'application (requiert l'activation de PowerShell) :
+```powershell
+irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
+```
+Ou exécutez la commande suivante dans l'invite de commande classique (`cmd.exe`) :
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
+```
+
+Si vous avez déjà cloné le dépôt, vous pouvez simplement double-cliquer sur le fichier **`scripts/install.bat`** dans votre dossier cloné pour configurer l'environnement localement. Une fois terminé, lancez `launch_win.bat` dans le dossier racine pour démarrer l'application.
+
+**Méthode B (Télécharger le paquet préconfiguré)** :
+Téléchargez la dernière version de `Ballonstranslator_win_minium.zip` depuis [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), extrayez-la dans n'importe quel dossier et double-cliquez sur `launch_win.bat` pour démarrer l'application.
+*(Note : Les builds pré-packagés ne supportent pas Windows 7 ; les utilisateurs de Windows 7 doivent installer [Python 3.8](https://www.python.org/downloads/release/python-3810/) manuellement et exécuter à partir du code source).*
 ## Exécuter le code source
 
 Installez [Python](https://www.python.org/downloads/release/python-31011) **<= 3.12** (ne pas utiliser celui du Microsoft Store) et [Git](https://git-scm.com/downloads).

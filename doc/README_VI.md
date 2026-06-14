@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](/README.md) | [English](/README_EN.md) | [pt-BR](../doc/README_PT-BR.md) | [Русский](../doc/README_RU.md) | [日本語](../doc/README_JA.md) | [Indonesia](../doc/README_ID.md) | Tiếng Việt | [한국어](../doc/README_KO.md) | [Español](../doc/README_ES.md) | [Français](../doc/README_FR.md)
+[简体中文](/README.md) | [English](/README_EN.md) | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
 
 Lại thêm một công cụ, phần mềm dịch truyện siu xịn khác có áp dụng ML/AI.
 
@@ -29,9 +29,24 @@ preview
 
 ## Trên Windows
 
-Nếu bạn lười cài Python và Git nhưng vẫn có thể truy cập vào Internet, thì có thể tải BallonsTranslator_dev_src_with_gitpython.7z từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) hoặc nà [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip nó rùi chạy ```launch_win.bat```.
-Chạy file ```scripts/local_gitpull.bat``` để cập nhật bản mới nhất nhoa.
+### Trên Windows
+Nếu bạn không muốn cài đặt Python và cấu hình môi trường thủ công:
 
+**Phương pháp A (Cài đặt môi trường cục bộ bằng một cú nhấp chuột, yêu cầu PowerShell)**:
+Tệp lệnh sẽ tự động tạo thư mục `BallonsTranslator` trong thư mục hiện tại của bạn, tải xuống mã nguồn mới nhất, cấu hình môi trường Python 3.12 độc lập, cài đặt tất cả các phụ thuộc cốt lõi và khởi chạy ứng dụng (yêu cầu PowerShell được kích hoạt và không bị vô hiệu hóa bởi chính sách hệ thống):
+```powershell
+irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
+```
+Hoặc chạy lệnh sau trong Command Prompt (`cmd.exe`):
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
+```
+
+Nếu bạn đã sao chép (clone) kho lưu trữ, bạn chỉ cần nhấp đúp vào tệp **`scripts/install.bat`** bên trong thư mục đã sao chép của mình để thiết lập môi trường cục bộ. Sau khi hoàn tất, chạy `launch_win.bat` trong thư mục gốc để khởi động ứng dụng.
+
+**Phương pháp B (Tải xuống gói cấu hình sẵn)**:
+Tải xuống tệp `Ballonstranslator_win_minium.zip` mới nhất từ [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), giải nén vào bất kỳ thư mục nào và nhấp đúp vào `launch_win.bat` để khởi động ứng dụng.
+*(Lưu ý: Các bản dựng được đóng gói sãn không hỗ trợ Windows 7; người dùng Windows 7 phải cài đặt [Python 3.8](https://www.python.org/downloads/release/python-3810/) thủ công và chạy từ mã nguồn).*
 ## Chạy mã nguồn (từ github)
 
 *Phù hợp cho mấy bạn sài linux như tui hehe.*

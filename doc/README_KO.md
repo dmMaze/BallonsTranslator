@@ -2,7 +2,7 @@
 > **번역 결과물을 공개적으로 공유할 때 숙련된 번역가가 번역이나 교정에 참여하지 않았다면, 기계 번역임을 잘 보이는 곳에 표시해 주세요.**
 
 # BallonTranslator
-[简体中文](/README.md) | [English](/README_EN.md) | [pt-BR](../doc/README_PT-BR.md) | [Русский](../doc/README_RU.md) | [日本語](../doc/README_JA.md) | [Indonesia](../doc/README_ID.md) | [Tiếng Việt](../doc/README_VI.md) | 한국어 | [Español](../doc/README_ES.md) | [Français](../doc/README_FR.md)
+[简体中文](/README.md) | [English](/README_EN.md) | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
 
 딥러닝으로 구동되는 또 다른 컴퓨터 지원 만화/만화 번역 툴.
 
@@ -31,11 +31,25 @@
 # 설치
 
 ## Windows에서
-Python 및 Git을 직접 설치하고 싶지 않으며 인터넷이 가능하다면:
-다음 링크에서 BallonsTranslator_dev_src_with_gitpython.7z 를 다운로드 하세요. [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 그 후 launch_win.bat 를 실행합니다.
-scripts/local_gitpull.bat를 실행하여 최신 업데이트를 받으세요.
-이 제공된 패키지는 Windows 7에서 실행할 수 없습니다. Win 7 사용자는 [Python 3.8](https://www.python.org/downloads/release/python-3810/)를 설치하고 소스 코드를 실행해야합니다.
 
+### Windows의 경우
+Python 설치 및 환경 구성을 수동으로 진행하고 싶지 않은 경우:
+
+**방법 A (원클릭 로컬 환경 설정, PowerShell 필요)**:
+스크립트가 현재 디렉토리에 `BallonsTranslator` 폴더를 자동으로 생성하고, 최신 소스 코드를 다운로드한 다음, 독립된 Python 3.12 환경을 구성하고 모든 핵심 의존성을 설치한 후 애플리케이션을 실행합니다 (시스템에 PowerShell이 활성화되어 있어야 합니다):
+```powershell
+irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
+```
+또는 일반 명령 프롬프트 (`cmd.exe`)에서 다음 명령을 실행합니다:
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
+```
+
+이미 리포지토리(저장소)를 클론했다면, 클론한 폴더 내의 **`scripts/install.bat`** 파일을 더블 클릭하기만 하면 로컬 환경이 구성됩니다. 완료 후 루트 폴더의 `launch_win.bat`를 실행하여 애플리케이션을 시작합니다.
+
+**방법 B (사전 구성된 패키지 다운로드)**:
+[GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases)에서 최신 `Ballonstranslator_win_minium.zip`을 다운로드하고, 원하는 폴더에 압축을 푼 후 `launch_win.bat`를 더블 클릭하여 실행합니다.
+*(참고: 사전 패키징된 빌드는 Windows 7을 지원하지 않습니다. Windows 7 사용자는 [Python 3.8](https://www.python.org/downloads/release/python-3810/)을 수동으로 설치하고 소스 코드에서 실행해야 합니다).*
 ## 소스 코드를 실행
 
 [Python] 설치 (https://www.python.org/downloads/release/python-31011) **<= 3.12** (Microsoft 스토어에서 설치 한 것을 사용하지 마세요) 및 [Git](https://git-scm.com/downloads).

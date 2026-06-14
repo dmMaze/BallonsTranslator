@@ -1,5 +1,5 @@
 # BallonTranslator
-[简体中文](/README.md) | [English](/README_EN.md) | [pt-BR](../doc/README_PT-BR.md) | [Русский](../doc/README_RU.md) | 日本語 | [Indonesia](../doc/README_ID.md) | [Tiếng Việt](../doc/README_VI.md) | [한국어](../doc/README_KO.md) | [Español](../doc/README_ES.md) | [Français](../doc/README_FR.md)
+[简体中文](/README.md) | [English](/README_EN.md) | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
 
 ディープラーニングを活用したマンガ翻訳支援ツール。
 
@@ -22,9 +22,26 @@
 * テキストの編集
   リッチテキストフォーマットをサポートし、翻訳されたテキストはインタラクティブに編集することができます。
 
-# 使用方法
+# インストール
 
-Windowsユーザーは、[腾讯云](https://share.weiyun.com/xoRhz9i4)または[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)(note: you also need to download latest Ballonstranslator-1.3.xx from GitHub release and extract it to overwrite **Ballontranslator-1.3.0-core** or older installation to get the app updated.)
+### Windowsの場合
+Pythonのインストールや環境構築を手動で行いたくない場合：
+
+**方法 A (PowerShellを使用したワンクリック環境構築。PowerShellが必要)**:
+スクリプトは現在のディレクトリに自動的に `BallonsTranslator` フォルダを作成し、最新のソースコードをダウンロードし、Python 3.12 の仮想環境を構築し、必要な依存関係をすべてインストールした上でアプリを起動します（システムで PowerShell が有効になっている必要があります）：
+```powershell
+irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
+```
+または、通常のコマンドプロンプト (`cmd.exe`) で次のコマンドを実行します：
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex"
+```
+
+既にリポジトリをクローンしている場合は、クローンしたフォルダ内にある **`scripts/install.bat`** ファイルをダブルクリックするだけで、ローカル環境を構築できます。完了後、ルートフォルダの `launch_win.bat` を実行してアプリケーションを起動します。
+
+**方法 B (事前構成済みパッケージのダウンロード)**:
+[GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases) から最新の `Ballonstranslator_win_minium.zip` をダウンロードし、任意のフォルダに展開して `launch_win.bat` をダブルクリックして起動します。
+*(注意: 事前パッケージされたビルドは Windows 7 をサポートしていません。Windows 7 のユーザーは手動で [Python 3.8](https://www.python.org/downloads/release/python-3810/) をインストールし、ソースコードから実行する必要があります)。*
 
 ## ソースコードの実行
 
@@ -32,21 +49,22 @@ Windowsユーザーは、[腾讯云](https://share.weiyun.com/xoRhz9i4)または
 # このリポジトリのクローン
 $ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
 
-# macOSの場合、requirements_macOS.txtをインストール
+# 依存関係のインストール
 $ pip install -r requirements.txt
 ```
 
-NVIDIA GPUをお持ちの場合、GPUアクセラレーションを有効にするためにpytorch-cudaをインストールします。
+NVIDIA GPUをお持ちの場合、GPUアクセラレーションを有効にするためにpytorch-cudaをインストールします：
 
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu116
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
-[MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) or [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)  から **data** フォルダをダウンロードし、BallonsTranslator/ballontranslatorに移動して、最後に以下を実行します
+アプリケーションの起動：
 ```bash
 python ballontranslator
 ```
 
+*注意：初回起動時に必要なライブラリやモデルが自動的にインストールされます。ダウンロードに失敗した場合は、ネットワークプロキシを確認するか、必要なモデルファイルを手動で `data` ディレクトリに配置してください。*
 
 Sugoi Translator（日英のみ）を使用するには、[オフラインモデル](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm)をダウンロードし、"sugoi_translator"をBallonsTranslator/ballontranslator/data/modelsに移動してください。
 
