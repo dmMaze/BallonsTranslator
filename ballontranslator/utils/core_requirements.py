@@ -53,6 +53,64 @@ def check_core_imports(probes: Iterable[Tuple[str, Iterable[str]]] = None) -> Li
     return failures
 
 
+def _applicable_requirements(requirements_file: Path) -> List[str]:
+    """Read requirement entries that apply to the current environment.
+
+    >>> import tempfile
+    >>> path = Path(tempfile.gettempdir()) / 'ballontranslator-core-req-doctest.txt'
+    >>> _ = path.write_text('numpy\\npywin32; sys_platform == "never"\\n', encoding='utf8')
+    >>> _applicable_requirements(path)
+    ['numpy']
+    >>> path.unlink()
+    """
+
+    try:
+        from packaging.requirements import InvalidRequirement, Requirement
+    except Exception:
+        return []
+
+    requirements = []
+    if not requirements_file.exists():
+        return requirements
+    for raw_line in requirements_file.read_text(encoding='utf8').splitlines():
+        line = raw_line.split('#', 1)[0].strip()
+        if not line or line.startswith(('-', '--')):
+            continue
+        try:
+            req = Requirement(line)
+        except InvalidRequirement:
+            continue
+        if req.marker and not req.marker.evaluate():
+            continue
+        requirements.append(str(req))
+    return requirements
+
+
+def check_core_requirements_file(requirements_file: Path) -> List[str]:
+    """Return applicable requirements that are not usable in this environment.
+
+    >>> check_core_requirements_file(Path('/path/that/does/not/exist'))
+    []
+    """
+
+    requirements = _applicable_requirements(requirements_file)
+    if not requirements:
+        return []
+    try:
+        from ballontranslator.utils.py_package_manager import PyPackageManager
+    except Exception as e:
+        return [f'{requirements_file}: unable to inspect requirements: {e}']
+    return [
+        _format_missing_requirement(item)
+        for item in PyPackageManager().missing_requirements(requirements)
+    ]
+
+
+def _format_missing_requirement(missing) -> str:
+    imports = ', '.join(missing.import_names) if missing.import_names else 'metadata only'
+    return f'{missing.requirement}: missing package or import ({imports})'
+
+
 def _drop_probe_modules(probes: Iterable[Tuple[str, Iterable[str]]]):
     for module_name, _ in probes:
         root = module_name.split('.', 1)[0]
@@ -112,6 +170,8 @@ def ensure_core_requirements(
     requirements_path = Path(requirements_file) if requirements_file else repo_path / 'requirements.txt'
     probes = tuple(CORE_IMPORT_PROBES) + _platform_import_probes()
     failures = check_core_imports(probes)
+    failures.extend(check_core_requirements_file(requirements_path))
+    failures = list(dict.fromkeys(failures))
     if not force and not failures:
         return False
 

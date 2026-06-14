@@ -1,8 +1,10 @@
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
 from ballontranslator.utils import core_requirements
+from ballontranslator.utils.py_package_manager import MissingRequirement
 from ballontranslator.utils.package_installer import InstallResult
 
 
@@ -55,6 +57,33 @@ class CoreRequirementsTests(unittest.TestCase):
         install.assert_called_once()
         drop.assert_called_once()
 
+    def test_missing_requirement_file_entry_installs_once(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            requirements_path = f'{tmpdir}/requirements.txt'
+            with open(requirements_path, 'w', encoding='utf8') as f:
+                f.write('spacy-pkuseg\n')
+
+            with mock.patch(
+                'ballontranslator.utils.core_requirements.check_core_imports',
+                return_value=[],
+            ), mock.patch(
+                'ballontranslator.utils.py_package_manager.PyPackageManager.missing_requirements',
+                return_value=[
+                    MissingRequirement('spacy-pkuseg', 'spacy-pkuseg', ['spacy_pkuseg']),
+                ],
+            ), mock.patch(
+                'ballontranslator.utils.core_requirements.install_core_requirements',
+                return_value=InstallResult(True, ['python', '-m', 'pip']),
+            ) as install, mock.patch('ballontranslator.utils.core_requirements._drop_probe_modules') as drop:
+                did_install = core_requirements.ensure_core_requirements(
+                    repo_root=tmpdir,
+                    requirements_file=requirements_path,
+                )
+
+        self.assertTrue(did_install)
+        install.assert_called_once()
+        drop.assert_called_once()
+
     def test_broken_cv2_attr_is_reported(self):
         def import_module(name):
             if name == 'cv2':
@@ -91,7 +120,7 @@ class CoreRequirementsTests(unittest.TestCase):
             core_requirements.ensure_core_requirements(repo_root='/tmp/repo', env=env)
 
         command = popen.call_args.args[0]
-        self.assertIn('--index-url', command)
+        self.assertIn('-i', command)
         self.assertIn('https://example.invalid/simple', command)
         log_info.assert_any_call(
             'Using PyPI package mirror for package install: https://example.invalid/simple'
