@@ -2,39 +2,12 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - main
-      - dev
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
-      - dev
   workflow_dispatch:
 
 jobs:
-  check-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      should_build: ${{ steps.filter.outputs.src == 'true' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Check for source changes
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            src:
-              - 'ballontranslator/**'
-              - 'scripts/**'
-              - 'pyproject.toml'
-
   build:
-    needs: check-changes
-    if: ${{ needs.check-changes.outputs.should_build == 'true' }}
     runs-on: windows-latest
     permissions:
       contents: write
