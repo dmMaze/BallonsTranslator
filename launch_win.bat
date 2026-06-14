@@ -8,6 +8,9 @@ cd %~dp0
 :: Set the path for PaddleOCR and PyTorch libraries
 
 @REM if not defined PYTHON (set PATH=pylibs;pylibs\Scripts;%%PATH%%
+if exist "python\" (
+    if not exist "ballontrans_pylibs_win\" ren "python" "ballontrans_pylibs_win"
+)
 set PATH=ballontrans_pylibs_win;ballontrans_pylibs_win\Scripts;%PATH%
 set PYTHON=python.exe
 
