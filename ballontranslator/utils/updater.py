@@ -152,7 +152,6 @@ class BallonsTranslatorUpdater:
         release_info = self.query_latest_release()
         self._notify('compare_versions', 15, f'{current_version} -> {release_info.version}')
         if not is_remote_newer(current_version, release_info.version):
-            LOGGER.info(f'BallonsTranslator is up-to-date: {current_version}')
             return UpdateResult(
                 status='up_to_date',
                 current_version=current_version,

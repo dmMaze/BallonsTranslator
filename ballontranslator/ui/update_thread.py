@@ -14,16 +14,32 @@ class UpdateCheckThread(QThread):
         super().__init__(*args, **kwargs)
         self.release_info = None
         self.current_version = None
+        self._busy = False
+        self.finished.connect(self._clearBusy)
 
-    def checkLatest(self) -> None:
+    def isBusy(self) -> bool:
+        return self._busy or self.isRunning()
+
+    def checkLatest(self) -> bool:
+        if self.isBusy():
+            return False
+        self._busy = True
         self.release_info = None
         self.current_version = None
         self.start()
+        return True
 
-    def applyUpdate(self, release_info, current_version: str) -> None:
+    def applyUpdate(self, release_info, current_version: str) -> bool:
+        if self.isBusy():
+            return False
+        self._busy = True
         self.release_info = release_info
         self.current_version = current_version
         self.start()
+        return True
+
+    def _clearBusy(self) -> None:
+        self._busy = False
 
     def run(self) -> None:
         try:

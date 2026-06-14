@@ -477,9 +477,8 @@ class MainWindow(mainwindow_cls):
         self.centralStackWidget.setCurrentIndex(1)
 
     def check_for_updates(self, manual: bool = True):
-        if self.update_thread.isRunning():
-            if manual:
-                create_info_dialog(self.tr('Update check is already running.'))
+        if self.update_thread.isBusy():
+            LOGGER.info('Ignored update check request because an update check or update is already running.')
             return
         self._manual_update_check = manual
         self.configPanel.setUpdateChecking(True)
@@ -487,8 +486,8 @@ class MainWindow(mainwindow_cls):
         self.update_thread.checkLatest()
 
     def apply_confirmed_update(self, release_info, current_version: str):
-        if self.update_thread.isRunning():
-            create_info_dialog(self.tr('Update check is already running.'))
+        if self.update_thread.isBusy():
+            LOGGER.info('Ignored update apply request because an update check or update is already running.')
             return
         self.configPanel.setUpdateChecking(True)
         self.update_progress_msgbox.zero_progress()
@@ -535,9 +534,12 @@ class MainWindow(mainwindow_cls):
             return
 
         if result.status == 'up_to_date':
-            create_info_dialog(
-                self.tr('Already up-to-date.') + f'\n{result.current_version}'
-            )
+            if self._manual_update_check:
+                create_info_dialog(
+                    self.tr('Already up-to-date.') + f'\n{result.current_version}'
+                )
+            else:
+                LOGGER.info(f'BallonsTranslator is already up-to-date: {result.current_version}')
             return
 
         message = (
