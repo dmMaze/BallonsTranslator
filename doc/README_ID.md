@@ -28,10 +28,9 @@ pratinjau
 # Instalasi
 
 ### Di Windows
-Jika Anda tidak ingin menginstal Python dan mengonfigurasi lingkungan secara manual:
 
 **Metode A (Penyiapan Lingkungan Lokal Satu-Klik, memerlukan PowerShell)**:
-Script akan secara otomatis membuat folder `BallonsTranslator` di direktori Anda saat ini, mengunduh kode sumber terbaru, mengonfigurasi lingkungan Python 3.12 yang terisolasi, menginstal semua dependensi inti, dan meluncurkan aplikasi (memerlukan PowerShell diaktifkan di sistem):
+Script akan memasang `BallonsTranslator` di direktori tempat Anda menjalankannya:
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```
@@ -41,21 +40,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 ```
 
 **Metode B (Unduh Paket Pra-konfigurasi)**:
-Unduh file `Ballonstranslator_win_minium.zip` terbaru dari [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), ekstrak ke folder mana pun, dan klik dua kali `launch_win.bat` untuk meluncurkan aplikasi.
-Paket ini tidak mendukung Windows 7; pengguna Windows 7 harus menginstal [Python 3.8](https://www.python.org/downloads/release/python-3810/) secara manual dan menjalankannya dari kode sumber.
+Unduh `Ballonstranslator_win_minium.zip` dari [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), ekstrak, lalu klik dua kali `launch_win.bat` untuk meluncurkan aplikasi.
 
-Modul PyTorch/deep learning mungkin memerlukan [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [catatan unduhan resmi](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Instal atau perbarui jika Anda melihat error yang melibatkan `msvcp140.dll`, `c10.dll`, atau `[WinError 1114]`.
+Metode ini tidak mendukung Windows 7; pengguna Windows 7 harus menginstal [Python 3.8](https://www.python.org/downloads/release/python-3810/) secara manual dan menjalankannya dari kode sumber.
+
+Jika Anda melihat error yang melibatkan `msvcp140.dll`, `c10.dll`, atau `[WinError 1114]`, instal atau perbarui [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [catatan unduhan resmi](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)).
 
 ## macOS / Linux
 
-
+Script akan memasang `BallonsTranslator` di direktori tempat Anda menjalankannya:
 ```bash
 curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-Jika `curl` tidak tersedia, unduh script dengan `wget -O ...` sebagai gantinya.
-
-Jalankan installer di direktori tempat Anda ingin folder `BallonsTranslator` dibuat. Aplikasi akan berjalan otomatis setelah instalasi; selanjutnya gunakan `cd BallonsTranslator && ./launch.sh` untuk memulainya lagi.
+Jika `curl` tidak tersedia, unduh script dengan `wget -O ...` sebagai gantinya. Aplikasi akan berjalan otomatis setelah instalasi; selanjutnya gunakan `cd BallonsTranslator && ./launch.sh` untuk memulainya lagi.
 
 Aplikasi memeriksa dependensi inti saat startup. Saat Anda memilih modul yang memerlukan pustaka tambahan, aplikasi akan meminta Anda memasang dependensi opsional yang hilang (Anda juga dapat mengaktifkan pemasangan otomatis di pengaturan). Jika pengunduhan model gagal, periksa jaringan/proxy Anda, atau unduh model yang diperlukan dari [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) atau [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) lalu letakkan secara manual di direktori `data`.
 

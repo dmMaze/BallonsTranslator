@@ -32,10 +32,9 @@ BallonTranslator es otra herramienta asistida por ordenador, basada en el aprend
 ## Instalación
 
 ### En Windows
-Si no desea instalar Python y configurar el entorno manualmente:
 
 **Método A (Configuración automática del entorno local en un clic, requiere PowerShell)**:
-El script creará automáticamente una carpeta `BallonsTranslator` en el directorio actual, descargará el código fuente más reciente, configurará un entorno aislado de Python 3.12, instalará todas las dependencias principales e iniciará la aplicación (requiere tener PowerShell habilitado en el sistema):
+El script instalará `BallonsTranslator` en el directorio donde lo ejecute:
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```
@@ -45,21 +44,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 ```
 
 **Método B (Descargar paquete preconfigurado)**:
-Descargue el archivo `Ballonstranslator_win_minium.zip` más reciente desde [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), extráigalo en cualquier carpeta y haga doble clic en `launch_win.bat` para iniciar la aplicación.
-Este paquete no es compatible con Windows 7; los usuarios de Windows 7 deben instalar [Python 3.8](https://www.python.org/downloads/release/python-3810/) manualmente y ejecutar desde el código fuente.
+Descargue `Ballonstranslator_win_minium.zip` desde [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), extráigalo y haga doble clic en `launch_win.bat` para iniciar la aplicación.
 
-Los módulos PyTorch/deep learning pueden requerir [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [notas oficiales de descarga](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Instálelo o actualícelo si ve errores relacionados con `msvcp140.dll`, `c10.dll` o `[WinError 1114]`.
+Estos métodos no son compatibles con Windows 7; los usuarios de Windows 7 deben instalar [Python 3.8](https://www.python.org/downloads/release/python-3810/) manualmente y ejecutar desde el código fuente.
+
+Si ve errores relacionados con `msvcp140.dll`, `c10.dll` o `[WinError 1114]`, instale o actualice [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [notas oficiales de descarga](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)).
 
 ## macOS / Linux
 
-
+El script instalará `BallonsTranslator` en el directorio donde lo ejecute:
 ```bash
 curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-Si `curl` no está disponible, descargue el script con `wget -O ...` en su lugar.
-
-Ejecute el instalador en el directorio donde desea crear la carpeta `BallonsTranslator`. La aplicación se inicia automáticamente después de la instalación; más tarde, use `cd BallonsTranslator && ./launch.sh` para iniciarla de nuevo.
+Si `curl` no está disponible, descargue el script con `wget -O ...` en su lugar. La aplicación se inicia automáticamente después de la instalación; más tarde, use `cd BallonsTranslator && ./launch.sh` para iniciarla de nuevo.
 
 La aplicación comprueba las dependencias principales al iniciar. Cuando seleccione un módulo que necesite bibliotecas adicionales, la aplicación le pedirá instalar las dependencias opcionales que falten (también puede activar la instalación automática en los ajustes). Si falla la descarga de modelos, revise la red/proxy, o descargue los modelos necesarios desde [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) o [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) y colóquelos manualmente en el directorio `data`.
 

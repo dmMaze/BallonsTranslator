@@ -25,10 +25,9 @@
 # インストール
 
 ### Windowsの場合
-Pythonのインストールや環境構築を手動で行いたくない場合：
 
 **方法 A (PowerShellを使用したワンクリック環境構築。PowerShellが必要)**:
-スクリプトは現在のディレクトリに自動的に `BallonsTranslator` フォルダを作成し、最新のソースコードをダウンロードし、Python 3.12 の仮想環境を構築し、必要な依存関係をすべてインストールした上でアプリを起動します（システムで PowerShell が有効になっている必要があります）：
+このスクリプトは、実行したディレクトリに `BallonsTranslator` をインストールします：
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```
@@ -38,21 +37,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 ```
 
 **方法 B (事前構成済みパッケージのダウンロード)**:
-[GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases) から最新の `Ballonstranslator_win_minium.zip` をダウンロードし、任意のフォルダに展開して `launch_win.bat` をダブルクリックして起動します。
-このパッケージは Windows 7 をサポートしていません。Windows 7 のユーザーは手動で [Python 3.8](https://www.python.org/downloads/release/python-3810/) をインストールし、ソースコードから実行する必要があります。
+[GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases) から `Ballonstranslator_win_minium.zip` をダウンロードし、展開して `launch_win.bat` をダブルクリックして起動します。
 
-PyTorch/deep learning モジュールには [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [公式ダウンロードノート](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)) が必要になる場合があります。`msvcp140.dll`、`c10.dll`、`[WinError 1114]` に関するエラーが表示された場合は、インストールまたは更新してください。
+これらの方法は Windows 7 をサポートしていません。Windows 7 のユーザーは手動で [Python 3.8](https://www.python.org/downloads/release/python-3810/) をインストールし、ソースコードから実行する必要があります。
+
+`msvcp140.dll`、`c10.dll`、`[WinError 1114]` に関するエラーが表示された場合は、[Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [公式ダウンロードノート](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)) をインストールまたは更新してください。
 
 ## macOS / Linux
 
-
+このスクリプトは、実行したディレクトリに `BallonsTranslator` をインストールします：
 ```bash
 curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-`curl` が使用できない場合は、代わりに `wget -O ...` でスクリプトをダウンロードしてください。
-
-`BallonsTranslator` フォルダを作成したいディレクトリでインストーラーを実行してください。インストール後にアプリは自動的に起動します。次回以降は `cd BallonsTranslator && ./launch.sh` で再起動できます。
+`curl` が使用できない場合は、代わりに `wget -O ...` でスクリプトをダウンロードしてください。インストール後にアプリは自動的に起動します。次回以降は `cd BallonsTranslator && ./launch.sh` で再起動できます。
 
 アプリは起動時にコア依存関係を確認します。追加ライブラリが必要なモジュールを選択すると、不足している任意依存関係のインストールを促します（設定で自動インストールを有効にすることもできます）。モデルのダウンロードに失敗した場合は、ネットワークやプロキシを確認するか、必要なモデルを [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) または [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) からダウンロードして、手動で `data` ディレクトリに配置してください。
 

@@ -30,10 +30,9 @@ preview
 ## Trên Windows
 
 ### Trên Windows
-Nếu bạn không muốn cài đặt Python và cấu hình môi trường thủ công:
 
 **Phương pháp A (Cài đặt môi trường cục bộ bằng một cú nhấp chuột, yêu cầu PowerShell)**:
-Tệp lệnh sẽ tự động tạo thư mục `BallonsTranslator` trong thư mục hiện tại của bạn, tải xuống mã nguồn mới nhất, cấu hình môi trường Python 3.12 độc lập, cài đặt tất cả các phụ thuộc cốt lõi và khởi chạy ứng dụng (yêu cầu PowerShell được kích hoạt và không bị vô hiệu hóa bởi chính sách hệ thống):
+Tệp lệnh sẽ cài đặt `BallonsTranslator` trong thư mục nơi bạn chạy nó:
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```
@@ -43,21 +42,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 ```
 
 **Phương pháp B (Tải xuống gói cấu hình sẵn)**:
-Tải xuống tệp `Ballonstranslator_win_minium.zip` mới nhất từ [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), giải nén vào bất kỳ thư mục nào và nhấp đúp vào `launch_win.bat` để khởi động ứng dụng.
-Gói này không hỗ trợ Windows 7; người dùng Windows 7 phải cài đặt [Python 3.8](https://www.python.org/downloads/release/python-3810/) thủ công và chạy từ mã nguồn.
+Tải xuống `Ballonstranslator_win_minium.zip` từ [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases), giải nén rồi nhấp đúp vào `launch_win.bat` để khởi động ứng dụng.
 
-Các mô-đun PyTorch/deep learning có thể cần [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [ghi chú tải xuống chính thức](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). Hãy cài đặt hoặc cập nhật nếu bạn thấy lỗi liên quan đến `msvcp140.dll`, `c10.dll` hoặc `[WinError 1114]`.
+Các phương pháp này không hỗ trợ Windows 7; người dùng Windows 7 phải cài đặt [Python 3.8](https://www.python.org/downloads/release/python-3810/) thủ công và chạy từ mã nguồn.
+
+Nếu bạn thấy lỗi liên quan đến `msvcp140.dll`, `c10.dll` hoặc `[WinError 1114]`, hãy cài đặt hoặc cập nhật [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe) (Visual Studio 2015-2022; [ghi chú tải xuống chính thức](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)).
 
 ## macOS / Linux
 
-
+Tệp lệnh sẽ cài đặt `BallonsTranslator` trong thư mục nơi bạn chạy nó:
 ```bash
 curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-Nếu không có `curl`, hãy tải script bằng `wget -O ...`.
-
-Chạy trình cài đặt trong thư mục nơi bạn muốn tạo thư mục `BallonsTranslator`. Ứng dụng sẽ tự khởi động sau khi cài đặt; những lần sau dùng `cd BallonsTranslator && ./launch.sh` để mở lại.
+Nếu không có `curl`, hãy tải script bằng `wget -O ...`. Ứng dụng sẽ tự khởi động sau khi cài đặt; những lần sau dùng `cd BallonsTranslator && ./launch.sh` để mở lại.
 
 Ứng dụng kiểm tra các phụ thuộc cốt lõi khi khởi động. Khi bạn chọn một mô-đun cần thư viện bổ sung, ứng dụng sẽ nhắc cài các phụ thuộc tùy chọn còn thiếu (bạn cũng có thể bật tự động cài đặt trong phần cài đặt). Nếu tải model thất bại, hãy kiểm tra mạng/proxy, hoặc tải các model cần thiết từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) hoặc [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) rồi đặt thủ công vào thư mục `data`.
 

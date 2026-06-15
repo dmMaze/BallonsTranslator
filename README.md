@@ -36,10 +36,9 @@
 # 使用说明
 
 ## Windows
-如果用 Windows 而且不想自己手动配置环境，而且能正常访问互联网:  
 
 **方式 A（一键自动配置本地环境，需要系统支持 PowerShell）**：
-该脚本会自动在当前目录下创建 `BallonsTranslator` 文件夹，下载最新分支源码，配置 Python 3.12 运行环境并安装所有依赖，随后自动启动程序（系统需启用且未禁用 PowerShell）：
+该脚本会在执行目录安装 `BallonsTranslator`：
 ```powershell
 irm https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.ps1 | iex
 ```
@@ -49,22 +48,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 ```
 
 **方式 B（下载免配置压缩包）**：
-从 [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases) 下载最新的 `Ballonstranslator_win_minium.zip`，解压到任意文件夹并双击运行 `launch_win.bat` 即可启动程序。  
-打包版不支持 Windows 7，Windows 7 用户需要自行安装 [Python 3.8](https://www.python.org/downloads/release/python-3810/) 运行源码。 
+从 [GitHub Releases](https://github.com/dmMaze/BallonsTranslator/releases) 下载 `Ballonstranslator_win_minium.zip`，解压并双击运行 `launch_win.bat` 启动程序。  
+  
+以上方式不支持 Windows 7，Windows 7 用户需要自行安装 [Python 3.8](https://www.python.org/downloads/release/python-3810/) 运行源码。 
 
 
-如果在 Windows 上运行并使用 PyTorch/深度学习模块时遇到 `msvcp140.dll`、`c10.dll` 或 `[WinError 1114]` 相关错误，请安装或更新 [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe)（Visual Studio 2015-2022；[官方下载说明](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)）。  
+如果遇到 `msvcp140.dll`、`c10.dll` 或 `[WinError 1114]` 相关错误，请安装或更新 [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe)（Visual Studio 2015-2022；[官方下载说明](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)）。  
 
 ## macOS / Linux
 
-
+该脚本会在执行目录安装 `BallonsTranslator`：
 ```bash
 curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts/install.sh && chmod +x install.sh && ./install.sh
 ```
 
-如果系统没有 `curl`，也可以用 `wget -O ...` 下载脚本。  
-
-请在希望创建 `BallonsTranslator` 文件夹的目录运行安装脚本。安装完成后会自动启动程序；之后可运行 `cd BallonsTranslator && ./launch.sh` 再次启动。
+如果系统没有 `curl`，也可以用 `wget -O ...` 下载脚本。安装完成后会自动启动程序；之后可运行 `cd BallonsTranslator && ./launch.sh` 再次启动。  
 
 启动程序会检查核心依赖；选择需要额外库的模块时，程序会提示安装缺失的可选依赖（也可在设置中启用自动安装）。如果模型下载失败，请检查网络代理，或者从 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 或 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) 下载所需模型后手动放置到 `data` 目录下。
 
