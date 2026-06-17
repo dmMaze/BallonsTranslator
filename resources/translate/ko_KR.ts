@@ -295,19 +295,9 @@
         <translation>품질</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="481"/>
-        <source>Show mini menu when selecting text.</source>
-        <translation>텍스트 선택 시 미니 메뉴 표시</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="487"/>
         <source>Shortcut</source>
         <translation>단축키</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="490"/>
-        <source>Search Engines</source>
-        <translation>검색 엔진</translation>
     </message>
     <message>
         <location filename="../ui/configpanel.py" line="461"/>
@@ -1077,14 +1067,6 @@ All existing translation results will be cleared!</source>
         <location filename="../ui/drawingpanel.py" line="204"/>
         <source>Use Existing Mask</source>
         <translation>기존 마스크 사용</translation>
-    </message>
-</context>
-<context>
-    <name>SelectTextMiniMenu</name>
-    <message>
-        <location filename="../ui/textedit_area.py" line="30"/>
-        <source>Search selected text on Internet</source>
-        <translation>인터넷에서 선택한 텍스트 검색</translation>
     </message>
 </context>
 <context>

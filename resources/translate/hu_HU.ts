@@ -290,19 +290,9 @@
         <translation>Minőség</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="482"/>
-        <source>Show mini menu when selecting text.</source>
-        <translation>Mini menü mutatása szövegkijelölés esetén</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="488"/>
         <source>Shortcut</source>
         <translation>Gyorsbillentyű</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="491"/>
-        <source>Search Engines</source>
-        <translation>Keresőmotorok</translation>
     </message>
 </context>
 <context>
@@ -1003,14 +993,6 @@ Minden eddigi fordítás elveszik!</translation>
         <location filename="../ui/drawingpanel.py" line="224"/>
         <source>Inpainter</source>
         <translation>Belefestő modell</translation>
-    </message>
-</context>
-<context>
-    <name>SelectTextMiniMenu</name>
-    <message>
-        <location filename="../ui/textedit_area.py" line="30"/>
-        <source>Search selected text on Internet</source>
-        <translation>Kijelölt szöveg keresése az Interneten</translation>
     </message>
 </context>
 <context>

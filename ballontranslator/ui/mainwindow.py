@@ -24,7 +24,7 @@ from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
-from .textedit_area import SourceTextEdit, SelectTextMiniMenu, TransTextEdit
+from .textedit_area import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
@@ -255,9 +255,6 @@ class MainWindow(mainwindow_cls):
 
         self.centralStackWidget.addWidget(self.comicTransSplitter)
         self.centralStackWidget.addWidget(self.configPanel)
-
-        self.selectext_minimenu = self.st_manager.selectext_minimenu = SelectTextMiniMenu(self)
-        self.selectext_minimenu.hide()
 
         mainVBoxLayout = QVBoxLayout(self)
         mainVBoxLayout.addWidget(self.titleBar)

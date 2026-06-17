@@ -289,19 +289,9 @@
         <translation>Qualité</translation>
     </message>
     <message>
-        <location filename="../ui/configpanel.py" line="482" />
-        <source>Show mini menu when selecting text.</source>
-        <translation>Afficher le mini menu lors de la sélection du texte.</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="488" />
         <source>Shortcut</source>
         <translation>Raccourci</translation>
-    </message>
-    <message>
-        <location filename="../ui/configpanel.py" line="491" />
-        <source>Search Engines</source>
-        <translation>Moteurs de recherche</translation>
     </message>
 </context>
 <context>
@@ -1001,14 +991,6 @@ Tous les résultats de traduction existants seront effacés !</translation>
         <location filename="../ui/drawingpanel.py" line="224" />
         <source>Inpainter</source>
         <translation>Retoucheur</translation>
-    </message>
-</context>
-<context>
-    <name>SelectTextMiniMenu</name>
-    <message>
-        <location filename="../ui/textedit_area.py" line="30" />
-        <source>Search selected text on Internet</source>
-        <translation>Rechercher le texte sélectionné sur Internet</translation>
     </message>
 </context>
 <context>

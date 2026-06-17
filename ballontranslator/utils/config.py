@@ -164,11 +164,9 @@ class ProgramConfig(Config):
     gsearch_range: int = 0
 
     darkmode: bool = False
-    textselect_mini_menu: bool = True
     fold_textarea: bool = False
     show_source_text: bool = True
     show_trans_text: bool = True
-    search_url: str = "https://www.google.com/search?q="
     ocr_sublist: List = field(default_factory=lambda: list())
     restore_ocr_empty: bool = False
     pre_mt_sublist: List = field(default_factory=lambda: list())

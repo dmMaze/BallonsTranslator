@@ -3,38 +3,15 @@ from typing import List, Union
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QSizePolicy, QLabel, QLineEdit
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
 from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
-import webbrowser
 import numpy as np
 
-from .custom_widget import ScrollBar, Widget, SeparatorWidget, ClickableLabel
+from .custom_widget import ScrollBar, Widget, SeparatorWidget
 from .textitem import TextBlock
-from ballontranslator.utils.config import pcfg
 
 
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
 STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
 STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
-
-class SelectTextMiniMenu(Widget):
-
-    def __init__(self, parent=None, *args, **kwargs) -> None:
-        super().__init__(parent=parent, *args, **kwargs)
-        self.search_internet_btn = ClickableLabel(parent=self)
-        self.search_internet_btn.setObjectName("SearchInternet")
-        self.search_internet_btn.setToolTip(self.tr("Search selected text on Internet"))
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.search_internet_btn.clicked.connect(self.on_search_internet)
-        layout = QHBoxLayout(self)
-        layout.addWidget(self.search_internet_btn)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        self.selected_text = ''
-
-    def on_search_internet(self):
-        browser = webbrowser.get()
-        browser.open_new(pcfg.search_url + self.selected_text)
-        self.hide()
 
 
 class SourceTextEdit(QTextEdit):
@@ -47,7 +24,6 @@ class SourceTextEdit(QTextEdit):
     undo_signal = Signal()
     push_undo_stack = Signal(int)
     text_changed = Signal()
-    show_select_menu = Signal(QPoint, str)
     focus_out = Signal(int)
 
     def __init__(self, idx, parent, fold=False, *args, **kwargs):
@@ -70,10 +46,6 @@ class SourceTextEdit(QTextEdit):
         self.highlighting = False
         self.paste_flag = False
 
-        self.selected_text = ''
-        self.cursorPositionChanged.connect(self.on_cursorpos_changed)
-
-        self.cursor_coord = None
         self.in_acts = False
 
         self.min_height = 45
@@ -100,29 +72,6 @@ class SourceTextEdit(QTextEdit):
         if self.paste_flag or rst == acts[3] or rst == acts[6]:
             self.handle_content_change()
         self.in_acts = False
-
-    def on_cursorpos_changed(self) -> None:
-        cursor = self.textCursor()
-        if cursor.hasSelection():
-            self.selected_text = cursor.selectedText()
-            crect = self.cursorRect()
-            if cursor.selectionStart() == cursor.position():
-                self.cursor_coord = crect.bottomLeft()
-            else:
-                self.cursor_coord = crect.bottomRight()
-        else:
-            if self.cursor_coord is not None:
-                self.show_select_menu.emit(QPoint(), '')
-            self.cursor_coord = None
-
-    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
-        super().mouseReleaseEvent(e)
-        if e.button() == Qt.MouseButton.LeftButton:
-            if self.hasFocus():
-                if self.cursor_coord is not None:
-                    pos = self.mapToGlobal(self.cursor_coord)
-                    sel_text = self.selected_text
-                    self.show_select_menu.emit(pos, sel_text)
 
     def block_all_signals(self, block: bool):
         self.blockSignals(block)

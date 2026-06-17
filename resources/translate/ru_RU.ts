@@ -435,18 +435,8 @@
         <translation>Формат промежуточных изображений</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="552" />
-        <source>Show mini menu when selecting text.</source>
-        <translation>Показывать мини-меню при выделении текста.</translation>
-    </message>
-    <message>
         <source>shortcut</source>
         <translation type="vanished">Гор. Клавиша</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="554" />
-        <source>Search Engines</source>
-        <translation>Поисковые системы</translation>
     </message>
     <message>
         <source>stroke</source>
@@ -1607,14 +1597,6 @@
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="224" />
         <source>Inpainter</source>
         <translation>Клинер</translation>
-    </message>
-</context>
-<context>
-    <name>SelectTextMiniMenu</name>
-    <message>
-        <location filename="../../ballontranslator/ui/textedit_area.py" line="24" />
-        <source>Search selected text on Internet</source>
-        <translation>Поиск выбранного текста в Интернете</translation>
     </message>
 </context>
 <context>

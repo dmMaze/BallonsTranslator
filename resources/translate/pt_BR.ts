@@ -291,19 +291,9 @@
       <translation>Qualidade</translation>
     </message>
     <message>
-      <location filename="..\ui\configpanel.py" line="486"/>
-      <source>Show mini menu when selecting text.</source>
-      <translation>Mostrar mini menu ao selecionar texto.</translation>
-    </message>
-    <message>
       <location filename="..\ui\configpanel.py" line="492"/>
       <source>Shortcut</source>
       <translation>Atalho</translation>
-    </message>
-    <message>
-      <location filename="..\ui\configpanel.py" line="495"/>
-      <source>Search Engines</source>
-      <translation>Motores de Busca</translation>
     </message>
   </context>
   <context>
@@ -941,14 +931,6 @@
       <location filename="..\ui\drawingpanel.py" line="219"/>
       <source>Inpainter</source>
       <translation>Inpainter</translation>
-    </message>
-  </context>
-  <context>
-    <name>SelectTextMiniMenu</name>
-    <message>
-      <location filename="..\ui\textedit_area.py" line="30"/>
-      <source>Search selected text on Internet</source>
-      <translation>Pesquisar texto selecionado na Internet</translation>
     </message>
   </context>
   <context>

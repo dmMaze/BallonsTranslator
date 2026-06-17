@@ -280,19 +280,9 @@
         <translation type="obsolete">特效</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="552"/>
-        <source>Show mini menu when selecting text.</source>
-        <translation>选择文本时显示迷你菜单</translation>
-    </message>
-    <message>
         <location filename="../ui/configpanel.py" line="368"/>
         <source>shortcut</source>
         <translation type="obsolete">快捷键</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="554"/>
-        <source>Search Engines</source>
-        <translation>搜索引擎</translation>
     </message>
     <message>
         <location filename="../ui/configpanel.py" line="337"/>
@@ -1615,14 +1605,6 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="204"/>
         <source>Use Existing Mask</source>
         <translation>使用区域已有掩膜</translation>
-    </message>
-</context>
-<context>
-    <name>SelectTextMiniMenu</name>
-    <message>
-        <location filename="../../ballontranslator/ui/textedit_area.py" line="24"/>
-        <source>Search selected text on Internet</source>
-        <translation>在互联网搜索选中文本</translation>
     </message>
 </context>
 <context>
