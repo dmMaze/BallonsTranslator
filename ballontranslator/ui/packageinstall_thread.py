@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from qtpy.QtCore import QThread, Signal
 
@@ -12,13 +12,22 @@ class PackageInstallThread(QThread):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.requirements = []
+        self.torch_device = None
+        self.torch_cuda_version = None
         self.last_success = False
         self.last_error = None
 
-    def installPackages(self, requirements: List[str]) -> bool:
+    def installPackages(
+        self,
+        requirements: List[str],
+        torch_device: Optional[str] = None,
+        torch_cuda_version: Optional[str] = None,
+    ) -> bool:
         if self.isRunning():
             return False
         self.requirements = list(dict.fromkeys(requirements))
+        self.torch_device = torch_device
+        self.torch_cuda_version = torch_cuda_version
         self.last_success = False
         self.last_error = None
         self.start()
@@ -29,7 +38,12 @@ class PackageInstallThread(QThread):
 
     def run(self):
         self._emit_prepare_progress({'event': 'installing_packages', 'message': self.tr('Installing packages')})
-        result = create_package_manager().install(self.requirements, progress_callback=self._emit_prepare_progress)
+        result = create_package_manager().install(
+            self.requirements,
+            progress_callback=self._emit_prepare_progress,
+            torch_device=self.torch_device,
+            torch_cuda_version=self.torch_cuda_version,
+        )
         self.last_success = result.ok
         if not result.ok:
             self.last_error = RuntimeError(

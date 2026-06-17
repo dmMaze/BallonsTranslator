@@ -8,7 +8,11 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from ballontranslator.utils import package_installer
 from ballontranslator.utils.package_installer import InstallResult
-from ballontranslator.utils.torch_install_helper import TORCH_FAMILY_PACKAGES, prepare_torch_install_request
+from ballontranslator.utils.torch_install_helper import (
+    TORCH_FAMILY_PACKAGES,
+    has_plain_unpinned_torch,
+    prepare_torch_install_request,
+)
 
 try:
     import importlib.metadata as importlib_metadata
@@ -126,7 +130,12 @@ class PyPackageManager:
                 return str(Requirement(requirement))
         return None
 
-    def build_install_command(self, requirements: Iterable[str]) -> List[str]:
+    def build_install_command(
+        self,
+        requirements: Iterable[str],
+        torch_device: Optional[str] = None,
+        torch_cuda_version: Optional[str] = None,
+    ) -> List[str]:
         """Build an install command for this manager's backend.
 
         >>> manager = PyPackageManager(backend='pip')
@@ -134,9 +143,18 @@ class PyPackageManager:
         1
         """
 
-        return self.build_install_commands(requirements)[0]
+        return self.build_install_commands(
+            requirements,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )[0]
 
-    def build_install_commands(self, requirements: Iterable[str]) -> List[List[str]]:
+    def build_install_commands(
+        self,
+        requirements: Iterable[str],
+        torch_device: Optional[str] = None,
+        torch_cuda_version: Optional[str] = None,
+    ) -> List[List[str]]:
         """Build install command(s), splitting torch CUDA wheels when needed.
 
         >>> manager = PyPackageManager(backend='pip')
@@ -144,7 +162,11 @@ class PyPackageManager:
         1
         """
 
-        requests = self._prepare_install_requests(requirements)
+        requests = self._prepare_install_requests(
+            requirements,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
         return [
             package_installer.build_install_command(
                 requirements=request.requirements,
@@ -159,9 +181,15 @@ class PyPackageManager:
         self,
         requirements: Iterable[str],
         progress_callback: Optional[Callable[[dict], None]] = None,
+        torch_device: Optional[str] = None,
+        torch_cuda_version: Optional[str] = None,
     ) -> InstallResult:
         requirements = [str(Requirement(req)) for req in dict.fromkeys(requirements) if req]
-        requests = self._prepare_install_requests(requirements)
+        requests = self._prepare_install_requests(
+            requirements,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
         if progress_callback is not None:
             progress_callback({
                 'event': 'installing_packages',
@@ -184,8 +212,54 @@ class PyPackageManager:
     def resolve_backend(self) -> str:
         return package_installer.resolve_backend(self.backend, env=self.env)
 
-    def preview_command(self, requirements: Iterable[str]) -> str:
-        return '\n'.join(shlex.join(command) for command in self.build_install_commands(requirements))
+    def preview_command(
+        self,
+        requirements: Iterable[str],
+        torch_device: Optional[str] = None,
+        torch_cuda_version: Optional[str] = None,
+    ) -> str:
+        return '\n'.join(
+            shlex.join(command)
+            for command in self.build_install_commands(
+                requirements,
+                torch_device=torch_device,
+                torch_cuda_version=torch_cuda_version,
+            )
+        )
+
+    def torch_install_device(self, requirements: Iterable[str]) -> str:
+        """Return the device selected by torch install probing.
+
+        >>> manager = PyPackageManager(backend='pip', env={'PATH': '/bin'})
+        >>> manager.torch_install_device(['einops'])
+        'cpu'
+        """
+
+        request = prepare_torch_install_request(requirements=requirements, env=self.env)
+        return request.device
+
+    def torch_install_cuda_version(self, requirements: Iterable[str]) -> Optional[str]:
+        """Return the CUDA profile selected by torch install probing.
+
+        >>> manager = PyPackageManager(backend='pip', env={'PATH': '/bin'})
+        >>> manager.torch_install_cuda_version(['einops']) is None
+        True
+        """
+
+        request = prepare_torch_install_request(requirements=requirements, env=self.env)
+        return request.cuda_version
+
+    @staticmethod
+    def needs_torch_install_choice(requirements: Iterable[str]) -> bool:
+        """Return whether a torch install should ask for a device target.
+
+        >>> PyPackageManager.needs_torch_install_choice(['torch'])
+        True
+        >>> PyPackageManager.needs_torch_install_choice(['torch==2.7.1'])
+        False
+        """
+
+        return has_plain_unpinned_torch(requirements)
 
     @staticmethod
     def _installing_packages_summary(requirements: Iterable[str]) -> str:
@@ -203,8 +277,18 @@ class PyPackageManager:
         first = Requirement(reqs[0]).name
         return first + ('...' if len(reqs) > 1 else '')
 
-    def _prepare_install_requests(self, requirements: Iterable[str]):
-        request = prepare_torch_install_request(requirements=requirements, env=self.env)
+    def _prepare_install_requests(
+        self,
+        requirements: Iterable[str],
+        torch_device: Optional[str] = None,
+        torch_cuda_version: Optional[str] = None,
+    ):
+        request = prepare_torch_install_request(
+            requirements=requirements,
+            env=self.env,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
         if request.profile is None:
             return [request]
         torch_requirements, other_requirements = self._split_torch_family_requirements(request.requirements)
