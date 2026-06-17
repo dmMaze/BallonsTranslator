@@ -10,6 +10,7 @@ from qtpy.QtWidgets import QFileDialog, QMessageBox, QCheckBox
 from .funcmaps import get_maskseg_method
 from .packageinstall_thread import PackageInstallThread
 from .package_manager import create_package_manager
+from .torch_install_dialog import confirm_torch_install_device
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.registry import LazyModuleError, Registry
 from ballontranslator.utils.imgproc_utils import enlarge_window, get_block_mask
@@ -186,18 +187,40 @@ class ModuleThread(QThread):
         requirement = create_package_manager().requirement_for_import_name(import_name, dependencies)
         return [requirement] if requirement is not None else []
 
-    def installMissingPackagesAndSetModule(self, module_name: str, requirements: List[str]):
-        self.job = lambda: self._install_missing_then_set(module_name, requirements)
+    def installMissingPackagesAndSetModule(
+        self,
+        module_name: str,
+        requirements: List[str],
+        torch_device: str = None,
+        torch_cuda_version: str = None,
+    ):
+        self.job = lambda: self._install_missing_then_set(
+            module_name,
+            requirements,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
         self.start()
 
-    def _install_missing_then_set(self, module_name: str, requirements: List[str]):
+    def _install_missing_then_set(
+        self,
+        module_name: str,
+        requirements: List[str],
+        torch_device: str = None,
+        torch_cuda_version: str = None,
+    ):
         self.last_set_module_name = module_name
         self.last_set_success = False
         self.last_error = None
         self.last_missing_requirements = []
         self.cancel_event.clear()
         self._emit_prepare_progress({'event': 'installing_packages', 'message': self.tr('Installing packages')})
-        result = create_package_manager().install(requirements, progress_callback=self._emit_prepare_progress)
+        result = create_package_manager().install(
+            requirements,
+            progress_callback=self._emit_prepare_progress,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
         if not result.ok:
             self.last_error = RuntimeError(
                 f'Failed to install package(s): {", ".join(requirements)}\n'
@@ -382,18 +405,40 @@ class TranslateThread(ModuleThread):
         self.job = lambda : self._set_translator(translator)
         self.start()
 
-    def installMissingPackagesAndSetModule(self, translator: str, requirements: List[str]):
-        self.job = lambda: self._install_missing_then_set_translator(translator, requirements)
+    def installMissingPackagesAndSetModule(
+        self,
+        translator: str,
+        requirements: List[str],
+        torch_device: str = None,
+        torch_cuda_version: str = None,
+    ):
+        self.job = lambda: self._install_missing_then_set_translator(
+            translator,
+            requirements,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
         self.start()
 
-    def _install_missing_then_set_translator(self, translator: str, requirements: List[str]):
+    def _install_missing_then_set_translator(
+        self,
+        translator: str,
+        requirements: List[str],
+        torch_device: str = None,
+        torch_cuda_version: str = None,
+    ):
         self.last_set_module_name = translator
         self.last_set_success = False
         self.last_error = None
         self.last_missing_requirements = []
         self.cancel_event.clear()
         self._emit_prepare_progress({'event': 'installing_packages', 'message': self.tr('Installing packages')})
-        result = create_package_manager().install(requirements, progress_callback=self._emit_prepare_progress)
+        result = create_package_manager().install(
+            requirements,
+            progress_callback=self._emit_prepare_progress,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
         if not result.ok:
             self.last_error = RuntimeError(
                 f'Failed to install package(s): {", ".join(requirements)}\n'
@@ -849,9 +894,11 @@ class ModuleManager(QObject):
         self._package_install_retried = set()
         self.package_install_thread: PackageInstallThread = None
         self.config_panel: ConfigPanel = None
+        self.parent_widget = None
 
     def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox, ocr_postprocess: Callable = None, translate_preprocess: Callable = None, translate_postprocess: Callable = None, parent_widget=None):
         self.config_panel = config_panel
+        self.parent_widget = parent_widget
         self.textdetect_thread = TextDetectThread()
 
         self.ocr_thread = OCRThread()
@@ -1132,11 +1179,25 @@ class ModuleManager(QObject):
             if on_failure is not None:
                 on_failure()
             return
+        accepted, torch_device, torch_cuda_version = self._confirm_torch_install_device(requirements)
+        if not accepted:
+            if on_failure is not None:
+                on_failure()
+            return
         self._pending_batch_package_queue = queue
         self._pending_batch_package_success = on_success
         self._pending_batch_package_failure = on_failure
         self._show_package_install_dialog(requirements)
-        self.package_install_thread.installPackages(requirements)
+        self.package_install_thread.installPackages(
+            requirements,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
+
+    def _confirm_torch_install_device(self, requirements: List[str]):
+        if shared.HEADLESS:
+            return True, None, None
+        return confirm_torch_install_device(requirements, parent=self.parent_widget)
 
     def _show_package_install_dialog(self, requirements: List[str]):
         if shared.HEADLESS:
@@ -1385,9 +1446,17 @@ class ModuleManager(QObject):
         return self._install_and_auto_install_checked(msgbox, install_btn, auto_install_checker)
 
     def _install_missing_packages_and_retry(self, thread: ModuleThread, requirements: List[str], retry_key: tuple):
+        accepted, torch_device, torch_cuda_version = self._confirm_torch_install_device(requirements)
+        if not accepted:
+            return
         self._package_install_retried.add(retry_key)
         self._show_prepare_dialog(thread, thread.last_set_module_name)
-        thread.installMissingPackagesAndSetModule(thread.last_set_module_name, requirements)
+        thread.installMissingPackagesAndSetModule(
+            thread.last_set_module_name,
+            requirements,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        )
 
     def _show_module_prepare_failure(self, thread: ModuleThread):
         if thread.last_error is None:
