@@ -114,9 +114,12 @@ class LeftBar(Widget):
         actionImportTranslationTxt = QAction(self.tr("Import translation from TXT/markdown"), self)
         self.import_trans_txt = actionImportTranslationTxt.triggered
 
-        self.recentMenu = QMenu(self.tr("Open Recent"), self)
-        
-        openMenu = QMenu(self)
+        self.openBtn = OpenBtn()
+        self.openBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
+
+        openMenu = QMenu(self.openBtn)
+        # Keep submenu ownership aligned with the visual popup chain for Wayland.
+        self.recentMenu = QMenu(self.tr("Open Recent"), openMenu)
         openMenu.addActions([actionOpenFolder, actionOpenProj])
         openMenu.addMenu(self.recentMenu)
         openMenu.addSeparator()
@@ -130,8 +133,6 @@ class LeftBar(Widget):
             actionExportTranslationMD,
             actionImportTranslationTxt,
         ])
-        self.openBtn = OpenBtn()
-        self.openBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         self.openBtn.setMenu(openMenu)
         self.openBtn.setPopupMode(QToolButton.InstantPopup)
     
@@ -316,7 +317,9 @@ class TitleBar(Widget):
         self.viewToolBtn = TitleBarToolBtn(self)
         self.viewToolBtn.setText(self.tr('View'))
 
-        self.displayLanguageMenu = QMenu(self.tr("Display Language"), self)
+        self.viewMenu = viewMenu = QMenu(self.viewToolBtn)
+        # Keep submenu ownership aligned with the visual popup chain for Wayland.
+        self.displayLanguageMenu = QMenu(self.tr("Display Language"), viewMenu)
         self.lang_ac_group = lang_ac_group = QActionGroup(self)
         lang_ac_group.setExclusive(True)
         lang_actions = []
@@ -339,7 +342,6 @@ class TitleBar(Widget):
         self.darkModeAction = darkModeAction = QAction(self.tr('Dark Mode'), self)
         darkModeAction.setCheckable(True)
 
-        self.viewMenu = viewMenu = QMenu(self.viewToolBtn)
         viewMenu.addMenu(self.displayLanguageMenu)
         viewMenu.addActions([drawBoardAction, texteditAction])
         viewMenu.addSeparator()
