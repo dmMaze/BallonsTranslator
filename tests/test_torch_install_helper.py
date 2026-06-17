@@ -1,6 +1,7 @@
 import unittest
 from unittest import mock
 
+from ballontranslator.utils import shared
 from ballontranslator.utils.py_package_manager import PyPackageManager
 from ballontranslator.utils.torch_install_helper import (
     ALIYUN_PYPI_MIRROR,
@@ -14,6 +15,14 @@ from ballontranslator.utils.torch_install_helper import (
 
 
 class TorchInstallHelperTests(unittest.TestCase):
+
+    def setUp(self):
+        shared.TORCH_INSTALL_PREFERRED_DEVICE = None
+        shared.TORCH_INSTALL_PREFERRED_PROFILE = None
+
+    def tearDown(self):
+        shared.TORCH_INSTALL_PREFERRED_DEVICE = None
+        shared.TORCH_INSTALL_PREFERRED_PROFILE = None
 
     def test_xpu_discovery_routes_plain_torch_to_xpu_index(self):
         request = prepare_torch_install_request(
@@ -113,6 +122,31 @@ class TorchInstallHelperTests(unittest.TestCase):
 
         self.assertEqual(request.env['INDEX_URL'], 'https://download.pytorch.org/whl/xpu')
         self.assertNotIn('FIND_LINKS', request.env)
+
+    def test_auto_detection_caches_preferred_device(self):
+        calls = {'nvidia': 0, 'xpu': 0}
+
+        def detect_nvidia():
+            calls['nvidia'] += 1
+            return []
+
+        def detect_xpu():
+            calls['xpu'] += 1
+            return [IntelXpuInfo('Intel Arc')]
+
+        with mock.patch(
+            'ballontranslator.utils.torch_install_helper.detect_nvidia_gpus',
+            side_effect=detect_nvidia,
+        ), mock.patch(
+            'ballontranslator.utils.torch_install_helper.detect_intel_xpus',
+            side_effect=detect_xpu,
+        ):
+            first = prepare_torch_install_request(['torch'], env={'PATH': '/bin'})
+            second = prepare_torch_install_request(['torch'], env={'PATH': '/bin'})
+
+        self.assertEqual(first.device, 'xpu')
+        self.assertEqual(second.device, 'xpu')
+        self.assertEqual(calls, {'nvidia': 1, 'xpu': 1})
 
     def test_plain_unpinned_torch_requirement_detection(self):
         self.assertTrue(has_plain_unpinned_torch(['torch', 'einops']))

@@ -10,6 +10,8 @@ from typing import Callable, Iterable, List, Optional, Sequence
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
+from ballontranslator.utils import shared
+
 
 TORCH_FAMILY_PACKAGES = {'torch', 'torchvision', 'torchaudio'}
 TORCH_INSTALL_DEVICE_OPTIONS = ('cpu', 'cuda', 'xpu')
@@ -239,6 +241,37 @@ def select_torch_install_profile_for_device(
     if torch_device == 'xpu':
         return INTEL_XPU_PROFILE, 'xpu'
 
+    return _cached_preferred_torch_install_profile(gpu_detector, xpu_detector)
+
+
+def _cached_preferred_torch_install_profile(
+    gpu_detector: Optional[Callable[[], List[NvidiaGpuInfo]]] = None,
+    xpu_detector: Optional[Callable[[], List[IntelXpuInfo]]] = None,
+) -> tuple:
+    """Return the cached automatic torch install target.
+
+    >>> profile, device = _cached_preferred_torch_install_profile(lambda: [], lambda: [])
+    >>> (profile, device)
+    (None, 'cpu')
+    """
+
+    if gpu_detector is not None or xpu_detector is not None:
+        return _detect_preferred_torch_install_profile(gpu_detector, xpu_detector)
+
+    cached_device = shared.TORCH_INSTALL_PREFERRED_DEVICE
+    if cached_device in TORCH_INSTALL_DEVICE_OPTIONS:
+        return shared.TORCH_INSTALL_PREFERRED_PROFILE, cached_device
+
+    profile, device = _detect_preferred_torch_install_profile()
+    shared.TORCH_INSTALL_PREFERRED_DEVICE = device
+    shared.TORCH_INSTALL_PREFERRED_PROFILE = profile
+    return profile, device
+
+
+def _detect_preferred_torch_install_profile(
+    gpu_detector: Optional[Callable[[], List[NvidiaGpuInfo]]] = None,
+    xpu_detector: Optional[Callable[[], List[IntelXpuInfo]]] = None,
+) -> tuple:
     detector = gpu_detector or detect_nvidia_gpus
     profile = select_torch_install_profile(detector())
     if profile is not None:

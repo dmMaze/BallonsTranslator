@@ -69,7 +69,7 @@ class TorchInstallHelperDialog(QDialog):
         target_row.addWidget(device_label)
         target_row.addWidget(self.device_combo, 1)
 
-        self.cuda_label = QLabel(self.tr('CUDA'), self)
+        cuda_label = QLabel(self.tr('CUDA'), self)
         self.cuda_combo = QComboBox(self)
         for cuda_version in TORCH_CUDA_VERSION_OPTIONS:
             label = CUDA_VERSION_LABELS.get(cuda_version, cuda_version)
@@ -78,7 +78,7 @@ class TorchInstallHelperDialog(QDialog):
         if initial_cuda_index < 0:
             initial_cuda_index = self.cuda_combo.findData('cu128')
         self.cuda_combo.setCurrentIndex(max(initial_cuda_index, 0))
-        target_row.addWidget(self.cuda_label)
+        target_row.addWidget(cuda_label)
         target_row.addWidget(self.cuda_combo, 1)
         layout.addLayout(target_row)
 
