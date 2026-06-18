@@ -10,6 +10,7 @@ except:
 from . import shared_widget as SW
 from ballontranslator.utils.fontformat import FontFormat, px2pt
 from .textitem import TextBlkItem
+from .textedit_commands import RotateItemCommand
 
 global_default_set_kwargs = dict(set_selected=False, restore_cursor=False)
 local_default_set_kwargs = dict(set_selected=True, restore_cursor=True)
@@ -170,6 +171,20 @@ def ffmt_change_line_spacing_type(param_name: str, values: float, act_ffmt: Font
     restore_cursor = not is_global
     for blkitem, value in zip(blkitems, values):
         blkitem.setLineSpacingType(value, restore_cursor=restore_cursor)
+
+
+def ffmt_change_angle(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, set_focus: bool = False, **kwargs):
+    if is_global:
+        blkitems = SW.canvas.selected_text_items()
+    elif not isinstance(blkitems, list):
+        blkitems = [blkitems]
+
+    blkitems = [blkitem for blkitem in blkitems if blkitem is not None]
+    if len(blkitems) > 0:
+        SW.canvas.push_undo_command(RotateItemCommand(blkitems, values, SW.canvas.txtblkShapeControl))
+
+    if set_focus and not SW.canvas.hasFocus():
+        SW.canvas.setFocus()
 
 
 @font_formating(push_undostack=True)

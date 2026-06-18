@@ -120,30 +120,35 @@ class ReshapeItemCommand(QUndoCommand):
 
 
 class RotateItemCommand(QUndoCommand):
-    def __init__(self, item: TextBlkItem, new_angle: float, shape_ctrl: TextBlkShapeControl):
+    def __init__(self, item: Union[TextBlkItem, List[TextBlkItem]], new_angle: float = None, shape_ctrl: TextBlkShapeControl = None):
         super(RotateItemCommand, self).__init__()
-        self.item = item
-        self.old_angle = item.rotation()
+        self.items = item if isinstance(item, list) else [item]
+        self.items = [item for item in self.items if item is not None]
+        self.item = self.items[0] if len(self.items) > 0 else None
+        self.old_angles = [item.rotation() for item in self.items]
+        if new_angle is None and self.item is not None:
+            new_angle = self.item.angle
         self.new_angle = new_angle
         self.shape_ctrl = shape_ctrl
 
     def redo(self):
-        self.item.setRotation(self.new_angle)
-        self.item.blk.angle = self.new_angle
-        if self.shape_ctrl.blk_item == self.item and self.shape_ctrl.rotation() != self.new_angle:
-            self.shape_ctrl.setRotation(self.new_angle)
+        for item in self.items:
+            item.setAngle(self.new_angle)
+            if self.shape_ctrl is not None and self.shape_ctrl.blk_item == item and self.shape_ctrl.rotation() != self.new_angle:
+                self.shape_ctrl.setRotation(self.new_angle)
 
     def undo(self):
-        self.item.setRotation(self.old_angle)
-        self.item.blk.angle = self.old_angle
-        if self.shape_ctrl.blk_item == self.item and self.shape_ctrl.rotation() != self.old_angle:
-            self.shape_ctrl.setRotation(self.old_angle)
+        for item, old_angle in zip(self.items, self.old_angles):
+            item.setAngle(old_angle)
+            if self.shape_ctrl is not None and self.shape_ctrl.blk_item == item and self.shape_ctrl.rotation() != old_angle:
+                self.shape_ctrl.setRotation(old_angle)
 
     def mergeWith(self, command: QUndoCommand):
-        item = command.item
-        if self.item != item:
+        if not isinstance(command, RotateItemCommand):
             return False
-        self.new_angle = item.angle
+        if self.items != command.items:
+            return False
+        self.new_angle = command.new_angle
         return True
 
 

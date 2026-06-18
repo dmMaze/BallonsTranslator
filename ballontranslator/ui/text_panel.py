@@ -278,6 +278,11 @@ class FontFormatPanel(Widget):
         self.lineSpacingBox.addItems(["1.0", "1.1", "1.2"])
         self.lineSpacingBox.setToolTip(self.tr("Change line spacing"))
         self.lineSpacingBox.param_changed.connect(self.on_param_changed)
+
+        linesp_hlayout = QHBoxLayout()
+        linesp_hlayout.addWidget(self.lineSpacingLabel)
+        linesp_hlayout.addWidget(self.lineSpacingBox)
+        linesp_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
         
         self.colorPicker = ColorPickerLabel(self, param_name='frgb')
         self.colorPicker.setToolTip(self.tr("Change font color"))
@@ -335,6 +340,23 @@ class FontFormatPanel(Widget):
         lettersp_hlayout.addWidget(self.letterSpacingLabel)
         lettersp_hlayout.addWidget(self.letterSpacingBox)
         lettersp_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
+
+        self.angleBox = SizeComboBox([-180, 180], "angle", self)
+        self.angleBox.addItems(["0", "90", "180", "-90"])
+        self.angleBox.setToolTip(self.tr("Angle"))
+        self.angleBox.setMinimumWidth(int(self.angleBox.height() * 2.5))
+        self.angleBox.param_changed.connect(self.on_param_changed)
+
+        self.angleLabel = SizeControlLabel(self, direction=0, transparent_bg=False)
+        self.angleLabel.setObjectName("fontAngleLabel")
+        self.angleLabel.setToolTip(self.tr("Angle"))
+        self.angleLabel.size_ctrl_changed.connect(self.onAngleCtrlChanged)
+        self.angleLabel.btn_released.connect(lambda : self.on_param_changed('angle', self.angleBox.value()))
+
+        angle_hlayout = QHBoxLayout()
+        angle_hlayout.addWidget(self.angleLabel)
+        angle_hlayout.addWidget(self.angleBox)
+        angle_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
         
         self.global_fontfmt_str = self.tr("Global Font Format")
         self.textstyle_panel = TextStylePresetPanel(
@@ -380,8 +402,7 @@ class FontFormatPanel(Widget):
         hl1 = QHBoxLayout()
         hl1.addWidget(self.familybox)
         hl1.addWidget(self.fontsizebox)
-        hl1.addWidget(self.lineSpacingLabel)
-        hl1.addWidget(self.lineSpacingBox)
+        hl1.addLayout(angle_hlayout)
         hl1.setSpacing(4)
         hl1.setContentsMargins(0, 12, 0, 0)
         hl2 = QHBoxLayout()
@@ -396,6 +417,7 @@ class FontFormatPanel(Widget):
         hl3.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl3.addLayout(stroke_hlayout)
         hl3.addLayout(lettersp_hlayout)
+        hl3.addLayout(linesp_hlayout)
         hl3.setContentsMargins(3, 0, 3, 0)
         hl3.setSpacing(13)
         hl4 = QHBoxLayout()
@@ -470,6 +492,9 @@ class FontFormatPanel(Widget):
             mul = 0.01
         self.lineSpacingBox.setValue(self.lineSpacingBox.value() + delta * mul)
 
+    def onAngleCtrlChanged(self, delta: int):
+        self.angleBox.setValue(round(self.angleBox.value()) + delta)
+
     def set_active_format(self, font_format: FontFormat, multi_size=False):
         C.active_format = font_format
         self.familybox.blockSignals(True)
@@ -487,6 +512,7 @@ class FontFormatPanel(Widget):
         self.strokeWidthBox.setValue(font_format.stroke_width)
         self.lineSpacingBox.setValue(font_format.line_spacing)
         self.letterSpacingBox.setValue(font_format.letter_spacing)
+        self.angleBox.setValue(0 if self.textblk_item is None else self.textblk_item.angle)
         self.verticalChecker.setChecked(font_format.vertical)
         self.formatBtnGroup.boldBtn.setChecked(font_format.bold)
         self.formatBtnGroup.underlineBtn.setChecked(font_format.underline)
