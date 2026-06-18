@@ -2,6 +2,7 @@
     "eva-light": {
         "@borderColor": "#b3b6bf",
         "@qwidgetForegroundColor": "#5d5d5f",
+        "@qwidgetBackgroundColor": "#ebeef5",
         "@widgetBackgroundColor": "#ebeef5",
         "@emptyContentBackgroundColor": "#e1e4eb",
         "@titleBarColor": "#6d6d6f",

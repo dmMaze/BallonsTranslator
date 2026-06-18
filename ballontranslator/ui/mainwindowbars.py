@@ -256,10 +256,10 @@ class LeftBar(Widget):
             self.imgTransChecked.emit()
         elif checker_type == 'config':
             if self.configChecker.isChecked():
-                self.imgTransChecker.setChecked(False)
                 self.configChecked.emit()
-            else:
-                self.imgTransChecker.setChecked(True)
+                self.configChecker.blockSignals(True)
+                self.configChecker.setChecked(False)
+                self.configChecker.blockSignals(False)
                 
 
     def needleftStackWidget(self) -> bool:

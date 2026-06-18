@@ -4,6 +4,8 @@ QWidget {
     background-color: @qwidgetBackgroundColor;
 }
 
+
+
 SeparatorWidget {
     border-color: @borderColor;
 }
@@ -13,31 +15,26 @@ Widget {
 }
 
 
-ConfigTextLabel {
+/* ConfigTextLabel {
     background-color : @emptyContentBackgroundColor;
-}
+} */
 
 CustomGV {
     background-color: @emptyContentBackgroundColor;
-    border-color: @borderColor;
+    border: none;
+    /* border-color: @borderColor;
     border-style: solid;
-    border-width: 1px;
+    border-width: 0px; */
 }
 
 ConfigTable {
     border-color: @borderColor;
     border-style: solid;
     border-width: 1px;
-    background-color: @emptyContentBackgroundColor
+    background-color: @emptyContentBackgroundColor;
+    padding: 6px;
 }
 
-ConfigBlock {
-    background-color: @emptyContentBackgroundColor
-}
-
-ConfigSubBlock {
-    background-color: @emptyContentBackgroundColor
-}
 
 SearchResultTree {
     border-style: none;
@@ -52,9 +49,7 @@ QSplitter::handle:pressed {
     background: rgb(30, 147, 229)
 }
 
-ConfigSubBlock::hover {
-    background-color: rgba(30, 147, 229, 20%);
-}
+
 
 SourceTextEdit {
     font-size: 17px;
@@ -70,9 +65,9 @@ TransTextEdit {
 }
 
 QComboBox {
-    height: 27px;
-    font-size: 14px;
-    padding-left: 8px;
+    height: 25px;
+    font-size: 13px;
+    padding-left: 6px;
     border: 1px solid @borderColor;
     background-color: @transtexteditBackgroundColor;
 }
@@ -80,7 +75,7 @@ QComboBox {
 QLineEdit {
     border: 1px solid @borderColor;
     background-color: @transtexteditBackgroundColor;
-    height: 27px;
+    height: 25px;
 }
 
 QPlainTextEdit {
@@ -313,8 +308,7 @@ TextEditListScrollArea {
 QListWidget {
     background-color: @emptyContentBackgroundColor;
     border-color: @borderColor;
-    border-style: solid;
-    border-width: 1px;
+    border: none;
 }
 
 QAction {
@@ -823,8 +817,7 @@ GlobalSearchWidget {
 
 QScrollArea {
     border-color: @borderColor;
-    border-style: solid;
-    border-width: 1px;
+    border: none;
 }
 
 TextEditListScrollArea {
