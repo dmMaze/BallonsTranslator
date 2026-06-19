@@ -183,6 +183,14 @@ QLabel#letterSpacingLabel {
     min-height: 28px;
 }
 
+QLabel#fontAngleLabel {
+    image: url(resources/icons/rotation.svg);
+    max-width: 25px;
+    max-height: 25px;
+    min-width: 25px;
+    min-height: 25px;
+}
+
 ColorPickerLabel {
     max-height: 25px;
     min-height: 25px;

@@ -5,7 +5,7 @@ from ballontranslator.utils.textblock_mask import canny_flood, connected_canny_f
 
 # Build base function map
 handle_ffmt_change = build_funcmap('ballontranslator.ui.fontformat_commands', 
-                                     list(FontFormat.params().keys()) + ['rel_font_size'], 
+                                     list(FontFormat.params().keys()) + ['rel_font_size', 'angle'], 
                                      'ffmt_change_', verbose=False)
 
 
