@@ -352,6 +352,12 @@ class TextBlkItem(QGraphicsTextItem):
         self.blk.angle = angle
 
     def setVertical(self, vertical: bool):
+
+        is_editing = self.is_editting()
+        if is_editing:
+            cursor = self.textCursor()
+            cursor_pos = (cursor.position(), cursor.anchor().__pos__())
+
         if self.fontformat is not None:
             self.fontformat.vertical = vertical
 
@@ -376,6 +382,15 @@ class TextBlkItem(QGraphicsTextItem):
             layout = VerticalTextDocumentLayout(doc, self.fontformat)
         else:
             layout = HorizontalTextDocumentLayout(doc, self.fontformat)
+            # letter spacing is managed by doc's format
+            cursor = QTextCursor(doc)
+            cursor.joinPreviousEditBlock()
+            char_fmt = QTextCharFormat()
+            char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+            char_fmt.setFontLetterSpacing(self.fontformat.letter_spacing * 100)
+            cursor.select(QTextCursor.SelectionType.Document)
+            self.set_cursor_cfmt(cursor, char_fmt, True)
+            cursor.endEditBlock()
         
         self.layout = layout
         doc.setDocumentLayout(layout)
@@ -387,6 +402,15 @@ class TextBlkItem(QGraphicsTextItem):
             self.setCenterTransform()
             self.repaint_background()
         self.doc_size_changed.emit(self.idx)
+
+        if is_editing:
+            self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+            self.setFocus()
+            cursor = QTextCursor(doc)
+            pos1, pos2 = cursor_pos
+            cursor.setPosition(min(pos1, pos2))
+            cursor.setPosition(max(pos1, pos2), QTextCursor.MoveMode.KeepAnchor)
+            self.setTextCursor(cursor)
 
     def updateUndoSteps(self):
         self.old_undo_steps = self.document().availableUndoSteps()
