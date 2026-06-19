@@ -121,6 +121,8 @@ class MainWindow(mainwindow_cls):
         self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
         if hasattr(self, 'update_progress_msgbox'):
             self.update_progress_msgbox.setStyleSheet(styleSheet)
+        if hasattr(self, 'configPanel'):
+            self.configPanel.setStyleSheet(styleSheet)
         if hasattr(self, 'module_manager') and self.module_manager.prepare_msgbox is not None:
             # The prepare dialog is created after startup; keep it on the app theme.
             self.module_manager.prepare_msgbox.setStyleSheet(styleSheet)
@@ -254,7 +256,6 @@ class MainWindow(mainwindow_cls):
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
 
         self.centralStackWidget.addWidget(self.comicTransSplitter)
-        self.centralStackWidget.addWidget(self.configPanel)
 
         mainVBoxLayout = QVBoxLayout(self)
         mainVBoxLayout.addWidget(self.titleBar)
@@ -471,7 +472,8 @@ class MainWindow(mainwindow_cls):
             self.leftStackWidget.hide()
 
     def setupConfigUI(self):
-        self.centralStackWidget.setCurrentIndex(1)
+        self.centralStackWidget.setCurrentIndex(0)
+        self.configPanel.showConfigDialog('application')
 
     def check_for_updates(self, manual: bool = True):
         if self.update_thread.isBusy():
@@ -1350,19 +1352,15 @@ class MainWindow(mainwindow_cls):
                 editing_textitem.startEdit()
         
     def to_trans_config(self):
-        self.leftBar.configChecker.setChecked(True)
         self.configPanel.focusOnTranslator()
 
     def to_inpaint_config(self):
-        self.leftBar.configChecker.setChecked(True)
         self.configPanel.focusOnInpaint()
 
     def to_ocr_config(self):
-        self.leftBar.configChecker.setChecked(True)
         self.configPanel.focusOnOCR()
 
     def to_detect_config(self):
-        self.leftBar.configChecker.setChecked(True)
         self.configPanel.focusOnDetect()
 
     def on_textdet_changed(self):

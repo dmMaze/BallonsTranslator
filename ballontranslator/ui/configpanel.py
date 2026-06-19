@@ -1,6 +1,6 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit
+from qtpy.QtWidgets import QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
@@ -14,9 +14,22 @@ from ballontranslator.utils.network_mirrors import (
     mirror_from_display,
     mirror_to_display,
 )
-from ballontranslator.utils import shared
-from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_HEADER, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
+from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
+
+LAYOUT_SET_MINIMUM_SIZE = getattr(getattr(QLayout, 'SizeConstraint', QLayout), 'SetMinimumSize')
+PUSHBTN_FIXED_HEIGHT = 32
+SECTION_ALIASES = {
+    'startup': 'application',
+    'save': 'application',
+}
+PRESERVE_ACTIVE_WIDGET_CLASS_NAMES = {
+    'FrameLessMessageBox',
+    'ImgtransProgressMessageBox',
+    'KeywordSubWidget',
+    'MessageBox',
+    'ProgressMessageBox',
+}
 
 class CustomIntValidator(QIntValidator):
 
@@ -88,27 +101,25 @@ class ConfigTextLabel(QLabel):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.setOpenExternalLinks(True)
 
-    def setActiveBackground(self):
-        self.setStyleSheet("background-color:rgba(30, 147, 229, 51);")
-
 
 class ConfigSubBlock(Widget):
-    pressed = Signal(int, int)
-    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, vertical_layout=True, insert_stretch: bool = False, content_margins = (24, 6, 24, 6)) -> None:
+    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, 
+    vertical_layout=True, insert_stretch: bool = False, content_margins = (0, 0, 0, 0), fnt_size=None) -> None:
         super().__init__()
-        self.idx0: int = None
-        self.idx1: int = None
         if vertical_layout:
             layout = QVBoxLayout(self)
         else:
             layout = QHBoxLayout(self)
-        self.name = name
+
+        if fnt_size is None:
+            fnt_size = CONFIG_FONTSIZE_CONTENT
+            if discription is not None:
+                fnt_size = CONFIG_FONTSIZE_CONTENT-2
         if name is not None:
-            textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
-            self.name_label = textlabel
+            textlabel = ConfigTextLabel(name, fnt_size, QFont.Weight.Normal)
             layout.addWidget(textlabel)
         if discription is not None:
-            layout.addWidget(ConfigTextLabel(discription, CONFIG_FONTSIZE_CONTENT-2))
+            layout.addWidget(ConfigTextLabel(discription, fnt_size))
         if insert_stretch:
             layout.insertStretch(-1)
         if isinstance(widget, QWidget):
@@ -118,26 +129,18 @@ class ConfigSubBlock(Widget):
         self.widget = widget
         self.setContentsMargins(*content_margins)
 
-    def setIdx(self, idx0: int, idx1: int) -> None:
-        self.idx0 = idx0
-        self.idx1 = idx1
-
-    def enterEvent(self, e: QEvent) -> None:
-        self.pressed.emit(self.idx0, self.idx1)
-        return super().enterEvent(e)
-    
 
 def combobox_with_label(sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True, parent: QWidget = None, insert_stretch: bool = False) -> Tuple[ConfigComboBox, QWidget]:
     combox = ConfigComboBox(fix_size=fix_size, scrollWidget=parent)
     combox.addItems(sel)
     if target_block is None:
-        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout, insert_stretch=insert_stretch)
+        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout, insert_stretch=insert_stretch, fnt_size=CONFIG_FONTSIZE_TABLE-2)
         sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
-        sublock.layout().setSpacing(20)
+        sublock.layout().setSpacing(12)
         return combox, sublock
     else:
         layout = target_block.layout()
-        layout.addSpacing(20)
+        layout.addSpacing(12)
         layout.addWidget(ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal))
         layout.addWidget(combox)
         return combox, target_block
@@ -163,42 +166,27 @@ def checkbox_with_label(name: str, discription: str = None, target_block: QWidge
 
 
 class ConfigBlock(Widget):
-    sublock_pressed = Signal(int, int)
-
-    def __init__(self, header: str, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.header = ConfigTextLabel(header, CONFIG_FONTSIZE_HEADER)
         self.vlayout = QVBoxLayout(self)
-        self.vlayout.addWidget(self.header)
-        self.setContentsMargins(24, 24, 24, 24)
-        self.label_list = []
-        self.subblock_list = []
-        self.index: int = 0
-
-    def setIndex(self, index: int):
-        self.index = index
+        self.vlayout.setSpacing(0)
+        self.vlayout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
     def addLineEdit(self, name: str = None, discription: str = None, vertical_layout: bool = False):
         le = QLineEdit()
         le.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
-        le.setFixedHeight(45)
+        le.setFixedHeight(30)
         sublock = ConfigSubBlock(le, name, discription, vertical_layout)
         if vertical_layout is False:
             sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         self.addSublock(sublock)
-        sublock.layout().setSpacing(20)
+        sublock.layout().setSpacing(12)
         return le, sublock
-
-    def addTextLabel(self, text: str = None):
-        label = ConfigTextLabel(text, CONFIG_FONTSIZE_HEADER)
-        self.vlayout.addWidget(label)
-        self.label_list.append(label)
 
     def addSublock(self, sublock: ConfigSubBlock):
         self.vlayout.addWidget(sublock)
-        sublock.setIdx(self.index, len(self.label_list)-1)
-        sublock.pressed.connect(lambda idx0, idx1: self.sublock_pressed.emit(idx0, idx1))
-        self.subblock_list.append(sublock)
 
     def addCombobox(self, sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True) -> Tuple[ConfigComboBox, QWidget]:
         combox, sublock = combobox_with_label(sel, name, discription, vertical_layout, target_block, fix_size, parent=self)
@@ -217,58 +205,54 @@ class ConfigBlock(Widget):
             self.addSublock(sublock)
         return checkbox, sublock
 
-    def getSubBlockbyIdx(self, idx: int) -> ConfigSubBlock:
-        return self.subblock_list[idx]
 
-
-class ConfigContent(QScrollArea):
+class ConfigContent(QStackedWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config_block_list: List[ConfigBlock] = []
-        self.scrollContent = Widget()
-        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.setWidget(self.scrollContent)
-        vlayout = QVBoxLayout()
-        vlayout.setContentsMargins(0, 0, 0, 0)
-        vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.scrollContent.setLayout(vlayout)
-        self.setWidgetResizable(True)
         self.setContentsMargins(0, 0, 0, 0)
-        self.vlayout = vlayout
-        self.active_label: ConfigTextLabel = None
+        self.section_index = {}
 
-    def addConfigBlock(self, block: ConfigBlock):
-        self.vlayout.addWidget(block)
+    def addConfigBlock(self, block: ConfigBlock, section_key: str):
+        scroll_area = QScrollArea()
+        scroll_area.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setContentsMargins(0, 0, 0, 0)
+        scroll_content = Widget()
+        scroll_content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        scroll_layout = QHBoxLayout(scroll_content)
+        scroll_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        scroll_layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.addWidget(block, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        scroll_layout.addStretch()
+        scroll_area.setWidget(scroll_content)
+        self.addWidget(scroll_area)
+        self.section_index[section_key] = self.count() - 1
         self.config_block_list.append(block)
 
-    def setActiveLabel(self, idx0: int, idx1: int):
-        if self.active_label is not None:
-            self.deactiveLabel()
-        block = self.config_block_list[idx0]
-        if idx1 >= 0:
-            self.active_label = block.label_list[idx1]
-        else:
-            self.active_label = block.header
-        self.active_label.setActiveBackground()
-        if shared.USE_PYSIDE6:
-            self.ensureWidgetVisible(self.active_label, ymargin=self.active_label.height() * 7)
-        else:
-            self.ensureWidgetVisible(self.active_label, yMargin=self.active_label.height() * 7)
+    def showSection(self, section_key: str):
+        index = self.section_index.get(section_key)
+        if index is not None:
+            self.setCurrentIndex(index)
 
-    def deactiveLabel(self):
-        if self.active_label is not None:
-            self.active_label.setStyleSheet("")
-            self.active_label = None
+    def wheelEvent(self, event) -> None:
+        widget = self.currentWidget()
+        if widget is not None:
+            return widget.wheelEvent(event)
+        return super().wheelEvent(event)
 
 
 class TableItem(QStandardItem):
-    def __init__(self, text, fontsize):
+    def __init__(self, text, fontsize, section_key: str = None):
         super().__init__()
         font = self.font()
         font.setPointSizeF(fontsize)
         self.setFont(font)
         self.setText(text)
         self.setEditable(False)
+        if section_key is not None:
+            self.setData(section_key, Qt.ItemDataRole.UserRole)
 
     def setBold(self, bold: bool):
         font = self.font()
@@ -284,38 +268,42 @@ class TreeModel(QStandardItemModel):
         if role == Qt.ItemDataRole.SizeHintRole:
             size = QSize()
             item = self.itemFromIndex(index)
-            size.setHeight(item.font().pointSize()+20)
+            size.setHeight(item.font().pointSize() + 14)
             return size
         else:
             return super().data(index, role)
 
 
 class ConfigTable(QTreeView):
-    tableitem_pressed = Signal(int, int)
+    section_pressed = Signal(str)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         treeModel = TreeModel()
-        self.tm = treeModel
         self.setModel(treeModel)
         self.selected: TableItem = None
-        self.last_selected: TableItem = None
         self.setHeaderHidden(True)
-        self.setMinimumWidth(260)
+        self.setMinimumWidth(190)
+        self.setMaximumWidth(240)
+        self.section_items = {}
 
     def addHeader(self, header: str) -> TableItem:
         rootNode = self.model().invisibleRootItem()
         ti = TableItem(header, CONFIG_FONTSIZE_TABLE)
+        ti.setSelectable(False)
         rootNode.appendRow(ti)
         return ti
 
+    def addSection(self, parent: TableItem, text: str, section_key: str) -> TableItem:
+        item = TableItem(text, CONFIG_FONTSIZE_TABLE, section_key)
+        parent.appendRow(item)
+        self.section_items[section_key] = item
+        return item
+
     def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
-        dis = deselected.indexes()
         sel = selected.indexes()
         model = self.model()
-        self.last_selected = model.itemFromIndex(dis[0]) \
-            if len(dis) > 0 else None
-        
+
         self.selected = model.itemFromIndex(sel[0]) \
             if len(sel) > 0 else None
         for i in deselected.indexes():
@@ -324,31 +312,25 @@ class ConfigTable(QTreeView):
         index = self.currentIndex()
         if index.isValid():
             self.model().itemFromIndex(index).setBold(True)
+            section_key = self.model().itemFromIndex(index).data(Qt.ItemDataRole.UserRole)
+            if section_key is not None:
+                self.section_pressed.emit(section_key)
         super().selectionChanged(selected, deselected)
 
-    def setCurrentItem(self, idx0, idx1):
-        item = self.tm.item(idx0, 0)
-        if idx1 >= 0:
-            item = item.child(idx1)
-        if item is None:
-            return
-        index = item.index()
-        self.setCurrentIndex(index)
+    def setCurrentSection(self, section_key: str):
+        item = self.section_items.get(section_key)
+        if item is not None and self.currentIndex() != item.index():
+            self.setCurrentIndex(item.index())
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         super().mousePressEvent(event)
         if self.selected is not None:
-            parent = self.selected.parent()
-            if parent is None:
-                idx1 = -1
-                idx0 = self.selected.row()
-            else:
-                idx1 = self.selected.row()
-                idx0 = parent.row()
-            self.tableitem_pressed.emit(idx0, idx1)
+            section_key = self.selected.data(Qt.ItemDataRole.UserRole)
+            if section_key is not None:
+                self.section_pressed.emit(section_key)
 
 
-class ConfigPanel(Widget):
+class ConfigPanel(QDialog):
 
     save_config = Signal()
     unload_models = Signal()
@@ -359,80 +341,81 @@ class ConfigPanel(Widget):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self._outside_click_filter_installed = False
         self.setObjectName("ConfigPanel")
+        self.setWindowTitle(self.tr('Settings'))
+        self.setWindowModality(Qt.WindowModality.NonModal)
+        self.setSizeGripEnabled(True)
+        self.resize(900, 640)
+        self.setMinimumSize(720, 520)
         self.configTable = ConfigTable()
-        self.configTable.tableitem_pressed.connect(self.onTableItemPressed)
+        self.configTable.section_pressed.connect(self.showSection)
         self.configContent = ConfigContent()
-        dlConfigPanel, dltableitem = self.addConfigBlock(self.tr('DL Module'))
-        generalConfigPanel, generalTableItem = self.addConfigBlock(self.tr('General'))
+        moduleTableItem = self.configTable.addHeader(self.tr('Modules'))
+        generalTableItem = self.configTable.addHeader(self.tr('General'))
         
-        label_text_det = self.tr('Text Detection')
+        label_modules = self.tr('Module Actions')
+        label_text_det = self.tr('Detector')
         label_text_ocr = self.tr('OCR')
-        label_inpaint = self.tr('Inpaint')
+        label_inpaint = self.tr('Inpainter')
         label_translator = self.tr('Translator')
-        label_startup = self.tr('Startup & Updates')
+        label_application = self.tr('Application')
         label_typesetting = self.tr('Typesetting')
-        label_save = self.tr('Save')
-    
-        dltableitem.appendRows([
-            TableItem(label_text_det, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_text_ocr, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_inpaint, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_translator, CONFIG_FONTSIZE_TABLE),
-        ])
-        generalTableItem.appendRows([
-            TableItem(label_startup, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_typesetting, CONFIG_FONTSIZE_TABLE),
-            TableItem(label_save, CONFIG_FONTSIZE_TABLE),
-        ])
+
+        moduleConfigPanel = self.addConfigBlock(label_modules, moduleTableItem, 'modules')
+        dlConfigPanel = self.addConfigBlock(label_text_det, moduleTableItem, 'detector')
+        ocrConfigPanel = self.addConfigBlock(label_text_ocr, moduleTableItem, 'ocr')
+        inpaintConfigPanel = self.addConfigBlock(label_inpaint, moduleTableItem, 'inpainter')
+        translatorConfigPanel = self.addConfigBlock(label_translator, moduleTableItem, 'translator')
+        applicationConfigPanel = self.addConfigBlock(label_application, generalTableItem, 'application')
+        typesettingConfigPanel = self.addConfigBlock(label_typesetting, generalTableItem, 'typesetting')
         
         self.empty_runcache_checker, empty_runcache_subblock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
-        dlConfigPanel.vlayout.addWidget(empty_runcache_subblock)
+        moduleConfigPanel.vlayout.addWidget(empty_runcache_subblock)
         self.empty_runcache_checker.stateChanged.connect(self.on_runcache_changed)
         self.package_auto_install_checker, msublock = checkbox_with_label(
             self.tr('Auto install missing packages'),
             discription=self.tr('Install missing Python packages automatically when a selected module requires them.'),
         )
         self.package_auto_install_checker.stateChanged.connect(self.on_package_auto_install_changed)
-        dlConfigPanel.vlayout.addWidget(msublock)
+        moduleConfigPanel.vlayout.addWidget(msublock)
         module_actions = QWidget()
         module_actions_layout = QHBoxLayout(module_actions)
         module_actions_layout.setContentsMargins(0, 0, 0, 0)
         module_actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.prepare_modules_btn = QPushButton(parent=self)
-        self.prepare_modules_btn.setFixedWidth(240)
         self.prepare_modules_btn.setText(self.tr('Prepare Selected Modules'))
         self.prepare_modules_btn.clicked.connect(self.prepare_selected_modules)
+        self.prepare_modules_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
         module_actions_layout.addWidget(self.prepare_modules_btn)
         self.unload_model_btn = QPushButton(parent=self)
-        self.unload_model_btn.setFixedWidth(240)
         self.unload_model_btn.setText(self.tr('Unload All Models'))
         self.unload_model_btn.clicked.connect(self.unload_models)
+        self.unload_model_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
         module_actions_layout.addWidget(self.unload_model_btn)
-        dlConfigPanel.addBlockWidget(module_actions)
+        moduleConfigPanel.addBlockWidget(module_actions)
 
-        dlConfigPanel.addTextLabel(label_text_det)
         self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'), scrollWidget=self)
+        self.detect_config_panel.module_label.hide()
         self.detect_sub_block = dlConfigPanel.addBlockWidget(self.detect_config_panel)
         self.detect_config_panel.keep_existing_checker.clicked.connect(self.on_keepline_clicked)
 
-        dlConfigPanel.addTextLabel(label_text_ocr)
         self.ocr_config_panel = OCRConfigPanel(self.tr('OCR'), scrollWidget=self)
-        self.ocr_sub_block = dlConfigPanel.addBlockWidget(self.ocr_config_panel)
+        self.ocr_config_panel.module_label.hide()
+        self.ocr_sub_block = ocrConfigPanel.addBlockWidget(self.ocr_config_panel)
 
-        dlConfigPanel.addTextLabel(label_inpaint)
         self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'), scrollWidget=self)
-        self.inpaint_sub_block = dlConfigPanel.addBlockWidget(self.inpaint_config_panel)
+        self.inpaint_config_panel.module_label.hide()
+        self.inpaint_sub_block = inpaintConfigPanel.addBlockWidget(self.inpaint_config_panel)
 
-        dlConfigPanel.addTextLabel(label_translator)
         self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
-        self.trans_sub_block = dlConfigPanel.addBlockWidget(self.trans_config_panel)
+        self.trans_config_panel.module_label.hide()
+        self.trans_sub_block = translatorConfigPanel.addBlockWidget(self.trans_config_panel)
 
-        generalConfigPanel.addTextLabel(label_startup)
-        self.open_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
+        self.open_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
-        self.check_update_on_startup_checker, _ = generalConfigPanel.addCheckBox(self.tr('Check update on startup'))
+        self.check_update_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Check update on startup'))
         self.check_update_on_startup_checker.stateChanged.connect(self.on_check_update_onstartup_changed)
 
         update_status_widget = QWidget()
@@ -450,9 +433,9 @@ class ConfigPanel(Widget):
             QFont.Weight.Normal,
         )
         self.check_update_btn = QPushButton(parent=self)
-        self.check_update_btn.setFixedWidth(240)
         self.check_update_btn.setText(self.tr('Check update'))
         self.check_update_btn.clicked.connect(self.check_update)
+        self.check_update_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
 
         update_status_layout.addWidget(self.check_update_btn)
         update_status_layout.addSpacing(24)
@@ -460,34 +443,33 @@ class ConfigPanel(Widget):
         update_status_layout.addSpacing(24)
         update_status_layout.addWidget(self.latest_version_label)
 
-        generalConfigPanel.addBlockWidget(update_status_widget)
+        applicationConfigPanel.addBlockWidget(update_status_widget)
 
         none_label = self.tr('None')
-        self.huggingface_mirror_combobox, _ = generalConfigPanel.addCombobox(
+        self.huggingface_mirror_combobox, _ = applicationConfigPanel.addCombobox(
             display_options(HUGGINGFACE_MIRROR_OPTIONS, none_label=none_label),
             self.tr('Huggingface Mirrors'),
             fix_size=False,
         )
-        self.huggingface_mirror_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.huggingface_mirror_combobox.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
         self.huggingface_mirror_combobox.currentTextChanged.connect(self.on_huggingface_mirror_changed)
-        self.pypi_mirror_combobox, _ = generalConfigPanel.addCombobox(
+        self.pypi_mirror_combobox, _ = applicationConfigPanel.addCombobox(
             display_options(PYPI_MIRROR_OPTIONS, none_label=none_label),
             self.tr('PyPI Mirrors'),
             fix_size=False,
         )
-        self.pypi_mirror_combobox.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.pypi_mirror_combobox.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
         self.pypi_mirror_combobox.currentTextChanged.connect(self.on_pypi_mirror_changed)
 
-        generalConfigPanel.addTextLabel(label_typesetting)
         dec_program_str = self.tr('decide by program')
         use_global_str = self.tr('use global setting')
 
-        global_fntfmt_widget = QWidget()
+        global_fntfmt_widget = Widget()
         global_fntfmt_layout = QGridLayout(global_fntfmt_widget)
         global_fntfmt_layout.setSpacing(0)
         global_fntfmt_widget.setContentsMargins(0, 0, 0, 0)
 
-        b = generalConfigPanel.addBlockWidget(global_fntfmt_widget)
+        b = typesettingConfigPanel.addBlockWidget(global_fntfmt_widget)
         b.layout().setContentsMargins(0, 0, 0, 0)
         b.setContentsMargins(0, 0, 0, 0)
         self.let_fntsize_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Size'), parent=self, insert_stretch=True)
@@ -521,21 +503,20 @@ class ConfigPanel(Widget):
 
         global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
 
-        self.let_autolayout_checker, sublock = generalConfigPanel.addCheckBox(self.tr('Auto layout'), 
+        self.let_autolayout_checker, sublock = typesettingConfigPanel.addCheckBox(self.tr('Auto layout'),
                 discription=self.tr('Split translation into multi-lines according to the extracted balloon region.'))
 
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
-        self.let_uppercase_checker, _ = generalConfigPanel.addCheckBox(self.tr('To uppercase'))
+        self.let_uppercase_checker, _ = typesettingConfigPanel.addCheckBox(self.tr('To uppercase'))
         self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
 
-        self.let_textstyle_indep_checker, _ = generalConfigPanel.addCheckBox(self.tr('Independent text styles for each projects'))
+        self.let_textstyle_indep_checker, _ = typesettingConfigPanel.addCheckBox(self.tr('Independent text styles for each projects'))
         self.let_textstyle_indep_checker.stateChanged.connect(self.on_textstyle_indep_changed)
 
-        self.let_show_only_custom_fonts, sublock = generalConfigPanel.addCheckBox(self.tr("Show only custom fonts"))
+        self.let_show_only_custom_fonts, sublock = typesettingConfigPanel.addCheckBox(self.tr("Show only custom fonts"))
         self.let_show_only_custom_fonts.stateChanged.connect(self.on_show_only_custom_fonts)
 
-        generalConfigPanel.addTextLabel(label_save)
-        self.rst_imgformat_combobox, imsave_sublock = generalConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP', 'JXL'], self.tr('Result image format'))
+        self.rst_imgformat_combobox, imsave_sublock = applicationConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP', 'JXL'], self.tr('Result image format'))
         self.rst_imgformat_combobox.activated.connect(self.on_rst_imgformat_changed)
         self.rst_imgquality_edit = PercentageLineEdit('100')
         self.rst_imgquality_edit.setFixedWidth(CONFIG_COMBOBOX_SHORT)
@@ -546,7 +527,7 @@ class ConfigPanel(Widget):
         sublock.layout().insertStretch(-1)
         imsave_sublock.layout().addWidget(sublock)
 
-        self.intermediate_imgformat_combobox, intermediate_imsave_sublock = generalConfigPanel.addCombobox(['PNG', 'JXL'], self.tr('Intermediate image format'))
+        self.intermediate_imgformat_combobox, intermediate_imsave_sublock = applicationConfigPanel.addCombobox(['PNG', 'JXL'], self.tr('Intermediate image format'))
         self.intermediate_imgformat_combobox.activated.connect(self.on_intermediate_imgformat_changed)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -561,6 +542,7 @@ class ConfigPanel(Widget):
         hlayout.setContentsMargins(0, 0, 0, 0)
 
         self.configTable.expandAll()
+        self.showSection('application')
 
     def on_runcache_changed(self):
         pcfg.module.empty_runcache = self.empty_runcache_checker.isChecked()
@@ -571,20 +553,26 @@ class ConfigPanel(Widget):
     def on_keepline_clicked(self):
         pcfg.module.keep_exist_textlines = self.detect_config_panel.keep_existing_checker.isChecked()
 
-    def addConfigBlock(self, header: str) -> Tuple[ConfigBlock, TableItem]:
-        cb = ConfigBlock(header, parent=self)
-        cb.sublock_pressed.connect(self.onSublockPressed)
-        self.configContent.addConfigBlock(cb)
-        cb.setIndex(len(self.configContent.config_block_list)-1)
-        ti = self.configTable.addHeader(header)
-        return cb, ti
+    def addConfigBlock(self, header: str, parent_item: TableItem, section_key: str) -> ConfigBlock:
+        cb = ConfigBlock(parent=self)
+        self.configContent.addConfigBlock(cb, section_key)
+        self.configTable.addSection(parent_item, header, section_key)
+        return cb
 
-    def onSublockPressed(self, idx0, idx1):
-        self.configTable.setCurrentItem(idx0, idx1)
-        self.configContent.deactiveLabel()
+    def showConfigDialog(self, section_key: str = None):
+        if section_key is not None:
+            self.showSection(section_key)
+        elif self.configContent.currentIndex() < 0:
+            self.showSection('application')
+        self._installOutsideClickFilter()
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
-    def onTableItemPressed(self, idx0, idx1):
-        self.configContent.setActiveLabel(idx0, idx1)
+    def showSection(self, section_key: str):
+        section_key = SECTION_ALIASES.get(section_key, section_key)
+        self.configContent.showSection(section_key)
+        self.configTable.setCurrentSection(section_key)
 
     def on_open_onstartup_changed(self):
         pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
@@ -658,29 +646,82 @@ class ConfigPanel(Widget):
         self.show_only_custom_font.emit(pcfg.let_show_only_custom_fonts_flag)
 
     def focusOnTranslator(self):
-        idx0, idx1 = self.trans_sub_block.idx0, self.trans_sub_block.idx1
-        self.configTable.setCurrentItem(idx0, idx1)
-        self.configTable.tableitem_pressed.emit(idx0, idx1)
+        self.showConfigDialog('translator')
 
     def focusOnInpaint(self):
-        idx0, idx1 = self.inpaint_sub_block.idx0, self.inpaint_sub_block.idx1
-        self.configTable.setCurrentItem(idx0, idx1)
-        self.configTable.tableitem_pressed.emit(idx0, idx1)
+        self.showConfigDialog('inpainter')
 
     def focusOnDetect(self):
-        idx0, idx1 = self.detect_sub_block.idx0, self.detect_sub_block.idx1
-        self.configTable.setCurrentItem(idx0, idx1)
-        self.configTable.tableitem_pressed.emit(idx0, idx1)
+        self.showConfigDialog('detector')
 
     def focusOnOCR(self):
-        idx0, idx1 = self.ocr_sub_block.idx0, self.ocr_sub_block.idx1
-        self.configTable.setCurrentItem(idx0, idx1)
-        self.configTable.tableitem_pressed.emit(idx0, idx1)
+        self.showConfigDialog('ocr')
 
     def hideEvent(self, e) -> None:
+        self._removeOutsideClickFilter()
         self.save_config.emit()
         return super().hideEvent(e)
-        
+
+    def _installOutsideClickFilter(self):
+        if self._outside_click_filter_installed:
+            return
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._outside_click_filter_installed = True
+
+    def _removeOutsideClickFilter(self):
+        if not self._outside_click_filter_installed:
+            return
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+        self._outside_click_filter_installed = False
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.MouseButtonPress and self.isVisible():
+            if (
+                isinstance(watched, QWidget)
+                and QApplication.activePopupWidget() is None
+                and not self._widgetInsidePanel(watched)
+                and not self._activeWidgetInWhitelist()
+            ):
+                self.hide()
+        return super().eventFilter(watched, event)
+
+    def _widgetInsidePanel(self, widget) -> bool:
+        while widget is not None:
+            if widget is self:
+                return True
+            widget = widget.parentWidget()
+        return False
+
+    def _activeWidgetInWhitelist(self) -> bool:
+        return any(
+            self._widgetInWhitelist(widget)
+            for widget in (
+                QApplication.activeWindow(),
+                QApplication.activeModalWidget(),
+                QApplication.focusWidget(),
+            )
+        )
+
+    def _widgetInWhitelist(self, widget) -> bool:
+        while widget is not None:
+            if self._isWhitelistedWidget(widget):
+                return True
+            window = widget.window()
+            if window is not widget and self._isWhitelistedWidget(window):
+                return True
+            widget = widget.parentWidget()
+        return False
+
+    def _isWhitelistedWidget(self, widget) -> bool:
+        return (
+            isinstance(widget, QMessageBox)
+            or widget.__class__.__name__ in PRESERVE_ACTIVE_WIDGET_CLASS_NAMES
+        )
+
     def setupConfig(self):
         self.blockSignals(True)
 

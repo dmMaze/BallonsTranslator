@@ -361,9 +361,9 @@ def main():
     BT.restart_signal.connect(restart)
 
     if not args.headless:
-        if shared.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
-            # https://github.com/dmMaze/BallonsTranslator/issues/220
-            BT.comicTransSplitter.setHandleWidth(7)
+        # if shared.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
+        #     # https://github.com/dmMaze/BallonsTranslator/issues/220
+        BT.comicTransSplitter.setHandleWidth(7)
 
         ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
         ballontrans.show()

@@ -6,9 +6,11 @@ from .custom_widget import ConfigComboBox, ParamComboBox, NoBorderPushBtn, Param
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, size2width, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from ballontranslator.utils.config import pcfg
 
-from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QCheckBox, QLineEdit, QGridLayout, QPushButton
+from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QCheckBox, QLineEdit, QGridLayout, QPushButton, QSizePolicy, QLayout
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QDoubleValidator
+
+LAYOUT_SET_MINIMUM_SIZE = getattr(getattr(QLayout, 'SizeConstraint', QLayout), 'SetMinimumSize')
 
 
 class ParamCheckGroup(QWidget):
@@ -87,8 +89,8 @@ class ParamCheckerBox(QWidget):
         self.checker = QCheckBox()
         name_label = ParamNameLabel(param_key)
         hlayout = QHBoxLayout(self)
-        hlayout.addWidget(name_label)
         hlayout.addWidget(self.checker)
+        hlayout.addWidget(name_label)
         hlayout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.checker.stateChanged.connect(self.on_checker_changed)
 
@@ -144,7 +146,9 @@ class ParamWidget(QWidget):
     paramwidget_edited = Signal(str, dict)
     def __init__(self, params, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
         layout = QHBoxLayout(self)
+        layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
         self.param_layout = param_layout = QGridLayout()
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         param_layout.setContentsMargins(0, 0, 0, 0)
@@ -290,6 +294,8 @@ class ModuleConfigParseWidget(QWidget):
         self.get_valid_module_keys = get_valid_module_keys
         self.module_combobox = ConfigComboBox(scrollWidget=scrollWidget)
         self.params_layout = QHBoxLayout()
+        self.params_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.params_layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
         self.params_layout.setContentsMargins(0, 0, 0, 0)
 
         p_layout = QHBoxLayout()
@@ -301,11 +307,13 @@ class ModuleConfigParseWidget(QWidget):
         self.p_layout = p_layout
 
         layout = QVBoxLayout(self)
+        layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
         self.param_widget_map = {}
         layout.addLayout(p_layout) 
         layout.addLayout(self.params_layout)
-        layout.setSpacing(30)
+        layout.setSpacing(14)
         self.vlayout = layout
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
         self.visibleWidget: QWidget = None
         self.module_dict: dict = {}
@@ -362,7 +370,7 @@ class ModuleConfigParseWidget(QWidget):
                 widget = ParamWidget(params, scrollWidget=self)
                 widget.paramwidget_edited.connect(self.paramwidget_edited)
                 self.param_widget_map[module] = widget
-                self.params_layout.addWidget(widget)
+                self.params_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             else:
                 widget.show()
             self.visibleWidget = widget
@@ -386,13 +394,13 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.target_combobox = ConfigComboBox(scrollWidget=scrollWidget)
         self.replacePreMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation source text"), self)
         self.replacePreMTkeywordBtn.clicked.connect(self.show_pre_MT_keyword_window)
-        self.replacePreMTkeywordBtn.setFixedWidth(500)
+        self.replacePreMTkeywordBtn.setFixedWidth(420)
         self.replaceMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation"), self)
         self.replaceMTkeywordBtn.clicked.connect(self.show_MT_keyword_window)
-        self.replaceMTkeywordBtn.setFixedWidth(500)
+        self.replaceMTkeywordBtn.setFixedWidth(420)
         self.replaceOCRkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for source text"), self)
         self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
-        self.replaceOCRkeywordBtn.setFixedWidth(500)
+        self.replaceOCRkeywordBtn.setFixedWidth(420)
         self.translateByTextblockBox = ParamCheckerBox(self.tr('Translate each text block individually'))
 
         st_layout = QHBoxLayout()

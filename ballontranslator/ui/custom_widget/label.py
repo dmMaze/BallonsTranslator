@@ -106,7 +106,24 @@ class ClickableLabel(QLabel):
     
 
 class ConfigClickableLabel(ClickableLabel):
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._left_button_pressed = False
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._left_button_pressed = True
+            return QLabel.mousePressEvent(self, e)
+        return super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            should_emit = self._left_button_pressed and self.rect().contains(e.pos())
+            self._left_button_pressed = False
+            if should_emit:
+                self.clicked.emit()
+            return QLabel.mouseReleaseEvent(self, e)
+        return super().mouseReleaseEvent(e)
 
     
 class CheckableLabel(QLabel):
