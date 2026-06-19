@@ -37,12 +37,18 @@ class ComicTextDetector(TextDetectorBase):
         'mask dilate size': 2
     }
     _load_model_keys = {'model'}
-    download_file_list = [{
-        'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/',
-        'files': ['data/models/comictextdetector.pt', 'data/models/comictextdetector.pt.onnx'],
-        'sha256_pre_calculated': ['1f90fa60aeeb1eb82e2ac1167a66bf139a8a61b8780acd351ead55268540cccb', '1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f'],
-        'concatenate_url_filename': 2,
-    }]
+    download_file_list = [
+        {
+            'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/comictextdetector.pt',
+            'files': 'data/models/comictextdetector.pt',
+            'sha256_pre_calculated': '1f90fa60aeeb1eb82e2ac1167a66bf139a8a61b8780acd351ead55268540cccb'
+        },
+        {
+            'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/comictextdetector.pt.onnx',
+            'files': 'data/models/comictextdetector.pt.onnx',
+            'sha256_pre_calculated': '1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f'
+        }
+    ]
 
     device = DEFAULT_DEVICE
     detect_size = 1024

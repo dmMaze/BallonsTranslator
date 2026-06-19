@@ -104,7 +104,7 @@ class AOTInpainter(InpainterBase):
     _load_model_keys = {'model'}
 
     download_file_list = [{
-            'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting.ckpt',
+            'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/aot_inpainter.ckpt',
             'sha256_pre_calculated': '878d541c68648969bc1b042a6e997f3a58e49b6c07c5636ad55130736977149f',
             'files': 'data/models/aot_inpainter.ckpt',
     }]
@@ -204,7 +204,7 @@ class LamaInpainterMPE(InpainterBase):
     }
 
     download_file_list = [{
-            'url': 'https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/inpainting_lama_mpe.ckpt',
+            'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/lama_mpe.ckpt',
             'sha256_pre_calculated': 'd625aa1b3e0d0408acfd6928aa84f005867aa8dbb9162480346a4e20660786cc',
             'files': 'data/models/lama_mpe.ckpt',
     }]
