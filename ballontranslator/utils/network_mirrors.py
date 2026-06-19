@@ -1,6 +1,9 @@
 import json
+import locale
 import os
-from typing import Iterable, Optional
+import time
+from typing import Iterable, Optional, Set
+from urllib.request import getproxies
 
 
 HUGGINGFACE_ORIGIN = 'https://huggingface.co'
@@ -11,6 +14,7 @@ PYPI_MIRROR_OPTIONS = (
     None,
     DEFAULT_PYPI_MIRROR,
 )
+MIRROR_FIELDS = ('huggingface', 'pypi')
 
 
 def normalize_mirror_value(value: Optional[str]) -> Optional[str]:
@@ -113,6 +117,135 @@ def read_saved_pypi_mirror(config_path: str) -> Optional[str]:
     return normalize_mirror_value(mirrors.get('pypi'))
 
 
+def missing_mirror_fields(config_path: str) -> Set[str]:
+    """Return mirror fields that were absent from a persisted config.
+
+    Explicit JSON ``null`` values are present fields and should not be
+    overwritten by automatic defaults.
+
+    >>> sorted(_missing_mirror_fields_from_data({}))
+    ['huggingface', 'pypi']
+    >>> _missing_mirror_fields_from_data({'mirrors': {'pypi': None}})
+    {'huggingface'}
+    """
+
+    data = _read_raw_config(config_path)
+    if not isinstance(data, dict):
+        return set(MIRROR_FIELDS)
+    return _missing_mirror_fields_from_data(data)
+
+
+def _missing_mirror_fields_from_data(data: dict) -> Set[str]:
+    mirrors = data.get('mirrors')
+    if not isinstance(mirrors, dict):
+        return set(MIRROR_FIELDS)
+    return {field for field in MIRROR_FIELDS if field not in mirrors}
+
+
+def should_use_china_mirrors(
+    locale_names: Iterable[str] = (),
+    timezone_names: Iterable[str] = (),
+) -> bool:
+    """Return whether local OS hints clearly identify mainland China.
+
+    >>> should_use_china_mirrors(locale_names=['zh_CN'])
+    True
+    >>> should_use_china_mirrors(locale_names=['zh'])
+    False
+    >>> should_use_china_mirrors(timezone_names=['Asia/Shanghai'])
+    True
+    >>> should_use_china_mirrors(timezone_names=['UTC+08:00'])
+    False
+    """
+
+    return _has_mainland_china_locale(locale_names) or _has_mainland_china_timezone(timezone_names)
+
+
+def collect_system_locale_names(qt_locale_name: str = '') -> list:
+    candidates = []
+    candidates.append(qt_locale_name)
+    candidates.extend([
+        os.environ.get('LC_ALL', ''),
+        os.environ.get('LC_MESSAGES', ''),
+        os.environ.get('LANG', ''),
+    ])
+    try:
+        candidates.append(locale.getlocale()[0] or '')
+    except Exception:
+        pass
+    return _unique_nonempty(candidates)
+
+
+def collect_system_timezone_names() -> list:
+    candidates = [os.environ.get('TZ', '')]
+    candidates.extend(name for name in time.tzname if name)
+    candidates.append(_read_etc_timezone())
+    candidates.append(_localtime_zoneinfo_name())
+    return _unique_nonempty(candidates)
+
+
+def backfill_missing_mirror_defaults(
+    mirrors_config,
+    missing_fields: Iterable[str],
+    locale_names: Iterable[str] = (),
+    timezone_names: Iterable[str] = (),
+) -> list:
+    """Set mirror defaults for missing fields when local hints say China.
+
+    >>> class Mirrors:
+    ...     huggingface = None
+    ...     pypi = None
+    >>> mirrors = Mirrors()
+    >>> backfill_missing_mirror_defaults(mirrors, {'pypi'}, locale_names=['zh_CN'])
+    ['pypi']
+    >>> mirrors.pypi
+    'https://mirrors.aliyun.com/pypi/simple'
+    """
+
+    missing_fields = set(missing_fields)
+    if not missing_fields or not should_use_china_mirrors(locale_names, timezone_names):
+        return []
+
+    updated = []
+    if 'huggingface' in missing_fields and getattr(mirrors_config, 'huggingface', None) is None:
+        mirrors_config.huggingface = DEFAULT_HUGGINGFACE_MIRROR
+        updated.append('huggingface')
+    if 'pypi' in missing_fields and getattr(mirrors_config, 'pypi', None) is None:
+        mirrors_config.pypi = DEFAULT_PYPI_MIRROR
+        updated.append('pypi')
+    return updated
+
+
+def _has_mainland_china_locale(locale_names: Iterable[str]) -> bool:
+    for value in locale_names:
+        if not value:
+            continue
+        normalized = str(value).strip().split('.', 1)[0].replace('-', '_')
+        lower = normalized.lower()
+        upper = normalized.upper()
+        if upper == 'CN':
+            return True
+        if lower == 'zh_cn' or lower.endswith('_cn') or '_cn_' in lower:
+            return True
+        if 'Chinese (Simplified)_China'.lower() in lower:
+            return True
+    return False
+
+
+def _has_mainland_china_timezone(timezone_names: Iterable[str]) -> bool:
+    for value in timezone_names:
+        if not value:
+            continue
+        normalized = str(value).strip().lower().replace('\\', '/')
+        if normalized in {'asia/shanghai', 'prc'}:
+            return True
+        if normalized.endswith('/asia/shanghai') or 'zoneinfo/asia/shanghai' in normalized:
+            return True
+        if 'china standard time' in normalized or '中国标准时间' in normalized or '中国夏令时' in normalized:
+            return True
+    return False
+
+
 def _read_raw_config(config_path: str):
     if not config_path or not os.path.exists(config_path):
         return None
@@ -128,3 +261,109 @@ def _read_raw_mirrors(config_path: str):
     if not isinstance(data, dict):
         return None
     return data.get('mirrors')
+
+
+def _read_etc_timezone() -> str:
+    try:
+        with open('/etc/timezone', 'r', encoding='utf8') as f:
+            return f.read().strip()
+    except Exception:
+        return ''
+
+
+def _localtime_zoneinfo_name() -> str:
+    try:
+        path = os.path.realpath('/etc/localtime')
+    except Exception:
+        return ''
+    marker = 'zoneinfo/'
+    if marker not in path:
+        return path
+    return path.split(marker, 1)[1]
+
+
+def _unique_nonempty(values: Iterable[str]) -> list:
+    unique = []
+    for value in values:
+        if not value:
+            continue
+        if value not in unique:
+            unique.append(value)
+    return unique
+
+
+def has_effective_system_proxy() -> bool:
+    proxies = getproxies()
+    return any(key.lower() != 'no' and value for key, value in proxies.items())
+
+
+def auto_fill_network_mirrors(config, config_path: str, qt_locale_name: str, program_config_module, logger) -> list:
+    """Backfill and apply network mirror settings after config loading.
+
+    >>> class Mirrors:
+    ...     huggingface = None
+    ...     pypi = None
+    >>> class Config:
+    ...     mirrors = Mirrors()
+    >>> class ProgramConfig:
+    ...     @staticmethod
+    ...     def save_config():
+    ...         return True
+    >>> auto_fill_network_mirrors(Config(), '/path/that/does/not/exist', 'en_US', ProgramConfig, logger=None)
+    []
+    """
+
+
+    def log_info(message: str):
+        if logger is not None:
+            logger.info(message)
+
+    if has_effective_system_proxy():
+        log_info('System proxy detected; skipping automatic mirror selection.')
+        return []
+
+    missing_mirrors = missing_mirror_fields(config_path)
+
+    if not missing_mirrors:
+        log_info('Network mirror config fields are present; skipping automatic mirror selection.')
+        return []
+
+    locale_names = collect_system_locale_names(qt_locale_name)
+    timezone_names = collect_system_timezone_names()
+    log_info(
+        'Checking network mirror defaults. Missing mirror fields: '
+        f'{", ".join(sorted(missing_mirrors)) if missing_mirrors else "none"}'
+    )
+    use_china_mirrors = should_use_china_mirrors(locale_names, timezone_names)
+    log_info(f'Network mirror heuristic locale hints: {locale_names}')
+    log_info(f'Network mirror heuristic timezone hints: {timezone_names}')
+    log_info(
+        'Network mirror heuristic result: '
+        f'{"mainland China detected" if use_china_mirrors else "mainland China not detected"}'
+    )
+
+    updated_mirrors = backfill_missing_mirror_defaults(
+        config.mirrors,
+        missing_mirrors,
+        locale_names=locale_names,
+        timezone_names=timezone_names,
+    )
+    if updated_mirrors:
+        log_info(f'Automatically selected network mirrors for: {", ".join(updated_mirrors)}')
+    elif missing_mirrors:
+        log_info('No network mirrors were selected automatically.')
+    if missing_mirrors:
+        program_config_module.save_config()
+
+    huggingface_mirror = normalize_mirror_value(config.mirrors.huggingface)
+    if huggingface_mirror:
+        os.environ['HF_ENDPOINT'] = huggingface_mirror
+        log_info(f'Using Hugging Face mirror endpoint: {huggingface_mirror}')
+    else:
+        log_info('Hugging Face mirror endpoint: none')
+    pypi_mirror = normalize_mirror_value(config.mirrors.pypi)
+    if pypi_mirror:
+        log_info(f'Using PyPI package mirror: {pypi_mirror}')
+    else:
+        log_info('PyPI package mirror: none')
+    return updated_mirrors

@@ -172,6 +172,7 @@ def main():
     from ballontranslator.utils.logger import setup_logging, logger as LOGGER
     from ballontranslator.utils.io_utils import find_all_files_recursive
     from ballontranslator.utils import config as program_config
+    from ballontranslator.utils.network_mirrors import auto_fill_network_mirrors
 
     from qtpy.QtCore import QTranslator, QLocale, Qt
     setup_logging(shared.LOGGING_PATH)
@@ -185,6 +186,14 @@ def main():
 
     if args.headless:
         config.module.empty_runcache = False
+
+    updated_mirrors = auto_fill_network_mirrors(
+        config,
+        args.config_path,
+        QLocale.system().name(),
+        program_config,
+        LOGGER,
+    )
 
     if sys.platform == 'win32':
         import ctypes
@@ -272,6 +281,7 @@ def main():
     setup_locks()
 
     from ballontranslator.ui.mainwindow import MainWindow
+    from ballontranslator.utils.message import create_info_dialog
     ballontrans = MainWindow(app, config, open_dir=args.proj_dir, **vars(args))
     global BT
     BT = ballontrans
@@ -285,6 +295,11 @@ def main():
         ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
         ballontrans.show()
         ballontrans.resetStyleSheet()
+    if updated_mirrors:
+        create_info_dialog(QApplication.translate(
+            'NetworkMirrors',
+            'Network mirrors were selected automatically for better access to dependencies and model downloads.',
+        ))
     sys.exit(app.exec())
 
 
