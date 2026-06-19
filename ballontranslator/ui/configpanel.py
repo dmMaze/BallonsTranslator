@@ -1,6 +1,6 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget
+from qtpy.QtWidgets import QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
@@ -22,6 +22,13 @@ PUSHBTN_FIXED_HEIGHT = 32
 SECTION_ALIASES = {
     'startup': 'application',
     'save': 'application',
+}
+PRESERVE_ACTIVE_WIDGET_CLASS_NAMES = {
+    'FrameLessMessageBox',
+    'ImgtransProgressMessageBox',
+    'KeywordSubWidget',
+    'MessageBox',
+    'ProgressMessageBox',
 }
 
 class CustomIntValidator(QIntValidator):
@@ -673,39 +680,14 @@ class ConfigPanel(QDialog):
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.MouseButtonPress and self.isVisible():
-            if not self._clickShouldPreservePanel(watched, event) and not self._eventInsidePanel(watched, event):
+            if (
+                isinstance(watched, QWidget)
+                and QApplication.activePopupWidget() is None
+                and not self._widgetInsidePanel(watched)
+                and not self._activeWidgetInWhitelist()
+            ):
                 self.hide()
         return super().eventFilter(watched, event)
-
-    def _clickShouldPreservePanel(self, watched, event) -> bool:
-        if QApplication.activePopupWidget() is not None:
-            return True
-
-        active_modal = QApplication.activeModalWidget()
-        if active_modal is not None and not self._widgetInsidePanel(active_modal):
-            return True
-
-        event_window = self._eventWindow(watched, event)
-        if isinstance(event_window, QDialog) and not self._widgetInsidePanel(event_window):
-            return True
-
-        active_window = QApplication.activeWindow()
-        if isinstance(active_window, QDialog) and not self._widgetInsidePanel(active_window):
-            return True
-
-        return False
-
-    def _eventWindow(self, watched, event):
-        if isinstance(watched, QWidget):
-            return watched.window()
-
-        global_pos = self._eventGlobalPos(event)
-        if global_pos is None:
-            return None
-        widget = QApplication.widgetAt(global_pos)
-        if widget is not None:
-            return widget.window()
-        return None
 
     def _widgetInsidePanel(self, widget) -> bool:
         while widget is not None:
@@ -714,24 +696,32 @@ class ConfigPanel(QDialog):
             widget = widget.parentWidget()
         return False
 
-    def _eventInsidePanel(self, watched, event) -> bool:
-        widget = watched if isinstance(watched, QWidget) else None
-        if self._widgetInsidePanel(widget):
-            return True
+    def _activeWidgetInWhitelist(self) -> bool:
+        return any(
+            self._widgetInWhitelist(widget)
+            for widget in (
+                QApplication.activeWindow(),
+                QApplication.activeModalWidget(),
+                QApplication.focusWidget(),
+            )
+        )
 
-        global_pos = self._eventGlobalPos(event)
-        if global_pos is None:
-            return True
-        widget = QApplication.widgetAt(global_pos)
-        return self._widgetInsidePanel(widget)
+    def _widgetInWhitelist(self, widget) -> bool:
+        while widget is not None:
+            if self._isWhitelistedWidget(widget):
+                return True
+            window = widget.window()
+            if window is not widget and self._isWhitelistedWidget(window):
+                return True
+            widget = widget.parentWidget()
+        return False
 
-    def _eventGlobalPos(self, event):
-        if hasattr(event, 'globalPosition'):
-            return event.globalPosition().toPoint()
-        if hasattr(event, 'globalPos'):
-            return event.globalPos()
-        return None
-        
+    def _isWhitelistedWidget(self, widget) -> bool:
+        return (
+            isinstance(widget, QMessageBox)
+            or widget.__class__.__name__ in PRESERVE_ACTIVE_WIDGET_CLASS_NAMES
+        )
+
     def setupConfig(self):
         self.blockSignals(True)
 
