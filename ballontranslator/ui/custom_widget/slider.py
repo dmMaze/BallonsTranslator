@@ -2,7 +2,7 @@ from qtpy.QtWidgets import QWidget, QStyle, QSlider, QStyle, QStyleOptionSlider
 from qtpy.QtCore import  Qt, QPropertyAnimation, QRect, QRectF, Signal, QPoint, Property
 from qtpy.QtGui import QFontMetrics, QMouseEvent, QPainter, QFontMetrics, QColor
 
-from .helper import isDarkTheme, themeColor
+from .helper import themeColor, borderColor, widgetBackgroundColor
 from ballontranslator.utils import shared
 
 
@@ -72,12 +72,12 @@ class SliderHandle(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
 
         # draw outer circle
-        isDark = isDarkTheme()
-        painter.setPen(QColor(0, 0, 0, 90 if isDark else 25))
-        painter.setBrush(QColor(69, 69, 69) if isDark else QColor(225, 228, 235))
+        painter.setPen(borderColor())
+        painter.setBrush(widgetBackgroundColor())
         painter.drawEllipse(self.rect().adjusted(1, 1, -1, -1))
 
         # draw innert circle
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(themeColor())
         painter.drawEllipse(QPoint(11, 11), self.radius, self.radius)
 
@@ -150,7 +150,7 @@ class Slider(QSlider):
         painter = QPainter(self)
         painter.setRenderHints(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(255, 255, 255, 115) if isDarkTheme() else QColor(0, 0, 0, 100))
+        painter.setBrush(self.grooveColor())
 
         if self.orientation() == Qt.Orientation.Horizontal:
             self._drawHorizonGroove(painter)
@@ -211,6 +211,9 @@ class Slider(QSlider):
         painter.setBrush(themeColor())
         ah = (self.value() - self.minimum()) / (self.maximum() - self.minimum()) * (h - r*2)
         painter.drawRoundedRect(QRectF(r-2, r, 4, ah), 2, 2)
+
+    def grooveColor(self) -> QColor:
+        return borderColor()
 
     def resizeEvent(self, e):
         self._adjustHandlePos()

@@ -287,13 +287,9 @@ class RowIndexLabel(QStackedWidget):
             return
         if self.text() == idx_str:
             return
-        try:
-            idx = int(idx_str)
-            self.lineedit.setReadOnly(True)
-            self.submmit_idx.emit(idx)
-            
-        except Exception as e:
-            LOGGER.warning(f'Invalid index str: {idx}')
+        idx = int(idx_str)
+        self.lineedit.setReadOnly(True)
+        self.submmit_idx.emit(idx)
 
     def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
         self.startEdit()

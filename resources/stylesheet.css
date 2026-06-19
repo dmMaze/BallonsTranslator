@@ -5,9 +5,9 @@ QWidget {
 }
 
 
-
 SeparatorWidget {
     border-color: @borderColor;
+    color: @borderColor;
 }
 
 Widget {

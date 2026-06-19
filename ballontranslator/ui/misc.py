@@ -247,6 +247,8 @@ def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
 
     shared.FOREGROUND_FONTCOLOR = hex2rgb(tgt_theme['@qwidgetForegroundColor'])
     shared.SLIDERHANDLE_COLOR = hex2rgb(tgt_theme['@sliderHandleColor'])
+    shared.BORDER_COLOR = hex2rgb(tgt_theme['@borderColor'])
+    shared.WIDGET_BACKGROUND_COLOR = hex2rgb(tgt_theme['@widgetBackgroundColor'])
     for key, val in tgt_theme.items():
         stylesheet = stylesheet.replace(key, val)
     return stylesheet
