@@ -1281,14 +1281,6 @@
     </message>
 </context>
 <context>
-    <name>NetworkMirrors</name>
-    <message>
-        <location filename="../../ballontranslator/launch.py" line="340" />
-        <source>Network mirrors were selected automatically for better access to dependencies and model downloads.</source>
-        <translation>Сетевые зеркала были выбраны автоматически для быстрого доступа к зависимостям и загрузкам моделей.</translation>
-    </message>
-</context>
-<context>
     <name>OCRConfigPanel</name>
     <message>
         <source>Keyword substitution for OCR results</source>

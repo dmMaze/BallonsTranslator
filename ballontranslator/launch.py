@@ -143,80 +143,6 @@ def core_requirements_env(config_path: str) -> dict:
     return installer_env_with_pypi_mirror(os.environ.copy(), read_saved_pypi_mirror(config_path))
 
 
-def setup_network_mirrors(config, config_path: str, qt_locale_name: str, program_config_module, logger) -> list:
-    """Backfill and apply network mirror settings after config loading.
-
-    >>> class Mirrors:
-    ...     huggingface = None
-    ...     pypi = None
-    >>> class Config:
-    ...     mirrors = Mirrors()
-    >>> class ProgramConfig:
-    ...     @staticmethod
-    ...     def save_config():
-    ...         return True
-    >>> setup_network_mirrors(Config(), '/path/that/does/not/exist', 'en_US', ProgramConfig, logger=None)
-    []
-    """
-
-    from ballontranslator.utils.network_mirrors import (
-        backfill_missing_mirror_defaults,
-        collect_system_locale_names,
-        collect_system_timezone_names,
-        missing_mirror_fields,
-        normalize_mirror_value,
-        should_use_china_mirrors,
-    )
-
-    def log_info(message: str):
-        if logger is not None:
-            logger.info(message)
-
-    missing_mirrors = missing_mirror_fields(config_path)
-    locale_names = collect_system_locale_names(qt_locale_name)
-    timezone_names = collect_system_timezone_names()
-    log_info(
-        'Checking network mirror defaults. Missing mirror fields: '
-        f'{", ".join(sorted(missing_mirrors)) if missing_mirrors else "none"}'
-    )
-    if missing_mirrors:
-        use_china_mirrors = should_use_china_mirrors(locale_names, timezone_names)
-        log_info(f'Network mirror heuristic locale hints: {locale_names}')
-        log_info(f'Network mirror heuristic timezone hints: {timezone_names}')
-        log_info(
-            'Network mirror heuristic result: '
-            f'{"mainland China detected" if use_china_mirrors else "mainland China not detected"}'
-        )
-    else:
-        log_info('Network mirror config fields are present; skipping automatic mirror selection.')
-
-    updated_mirrors = backfill_missing_mirror_defaults(
-        config.mirrors,
-        missing_mirrors,
-        locale_names=locale_names,
-        timezone_names=timezone_names,
-    )
-    if updated_mirrors:
-        log_info(f'Automatically selected network mirrors for: {", ".join(updated_mirrors)}')
-    elif missing_mirrors:
-        log_info('No network mirrors were selected automatically.')
-    if missing_mirrors:
-        program_config_module.save_config()
-
-    huggingface_mirror = normalize_mirror_value(config.mirrors.huggingface)
-    if huggingface_mirror:
-        os.environ['HF_ENDPOINT'] = huggingface_mirror
-        log_info(f'Using Hugging Face mirror endpoint: {huggingface_mirror}')
-    else:
-        log_info('Hugging Face mirror endpoint: none')
-    pypi_mirror = normalize_mirror_value(config.mirrors.pypi)
-    if pypi_mirror:
-        log_info(f'Using PyPI package mirror: {pypi_mirror}')
-    else:
-        log_info('PyPI package mirror: none')
-    return updated_mirrors
-
-
 def main():
 
     if args.debug:
@@ -259,14 +185,6 @@ def main():
 
     if args.headless:
         config.module.empty_runcache = False
-
-    updated_mirrors = setup_network_mirrors(
-        config,
-        args.config_path,
-        QLocale.system().name(),
-        program_config,
-        LOGGER,
-    )
 
     if sys.platform == 'win32':
         import ctypes
@@ -354,7 +272,6 @@ def main():
     setup_locks()
 
     from ballontranslator.ui.mainwindow import MainWindow
-    from ballontranslator.utils.message import create_info_dialog
     ballontrans = MainWindow(app, config, open_dir=args.proj_dir, **vars(args))
     global BT
     BT = ballontrans
@@ -368,11 +285,6 @@ def main():
         ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
         ballontrans.show()
         ballontrans.resetStyleSheet()
-    if updated_mirrors:
-        create_info_dialog(QApplication.translate(
-            'NetworkMirrors',
-            'Network mirrors were selected automatically for better access to dependencies and model downloads.',
-        ))
     sys.exit(app.exec())
 
 

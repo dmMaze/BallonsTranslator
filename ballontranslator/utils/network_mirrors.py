@@ -1,8 +1,6 @@
 import json
-import locale
 import os
-import time
-from typing import Iterable, Optional, Set
+from typing import Iterable, Optional
 
 
 HUGGINGFACE_ORIGIN = 'https://huggingface.co'
@@ -13,7 +11,6 @@ PYPI_MIRROR_OPTIONS = (
     None,
     DEFAULT_PYPI_MIRROR,
 )
-MIRROR_FIELDS = ('huggingface', 'pypi')
 
 
 def normalize_mirror_value(value: Optional[str]) -> Optional[str]:
@@ -116,135 +113,6 @@ def read_saved_pypi_mirror(config_path: str) -> Optional[str]:
     return normalize_mirror_value(mirrors.get('pypi'))
 
 
-def missing_mirror_fields(config_path: str) -> Set[str]:
-    """Return mirror fields that were absent from a persisted config.
-
-    Explicit JSON ``null`` values are present fields and should not be
-    overwritten by automatic defaults.
-
-    >>> sorted(_missing_mirror_fields_from_data({}))
-    ['huggingface', 'pypi']
-    >>> _missing_mirror_fields_from_data({'mirrors': {'pypi': None}})
-    {'huggingface'}
-    """
-
-    data = _read_raw_config(config_path)
-    if not isinstance(data, dict):
-        return set(MIRROR_FIELDS)
-    return _missing_mirror_fields_from_data(data)
-
-
-def _missing_mirror_fields_from_data(data: dict) -> Set[str]:
-    mirrors = data.get('mirrors')
-    if not isinstance(mirrors, dict):
-        return set(MIRROR_FIELDS)
-    return {field for field in MIRROR_FIELDS if field not in mirrors}
-
-
-def should_use_china_mirrors(
-    locale_names: Iterable[str] = (),
-    timezone_names: Iterable[str] = (),
-) -> bool:
-    """Return whether local OS hints clearly identify mainland China.
-
-    >>> should_use_china_mirrors(locale_names=['zh_CN'])
-    True
-    >>> should_use_china_mirrors(locale_names=['zh'])
-    False
-    >>> should_use_china_mirrors(timezone_names=['Asia/Shanghai'])
-    True
-    >>> should_use_china_mirrors(timezone_names=['UTC+08:00'])
-    False
-    """
-
-    return _has_mainland_china_locale(locale_names) or _has_mainland_china_timezone(timezone_names)
-
-
-def collect_system_locale_names(qt_locale_name: str = '') -> list:
-    candidates = []
-    candidates.append(qt_locale_name)
-    candidates.extend([
-        os.environ.get('LC_ALL', ''),
-        os.environ.get('LC_MESSAGES', ''),
-        os.environ.get('LANG', ''),
-    ])
-    try:
-        candidates.append(locale.getlocale()[0] or '')
-    except Exception:
-        pass
-    return _unique_nonempty(candidates)
-
-
-def collect_system_timezone_names() -> list:
-    candidates = [os.environ.get('TZ', '')]
-    candidates.extend(name for name in time.tzname if name)
-    candidates.append(_read_etc_timezone())
-    candidates.append(_localtime_zoneinfo_name())
-    return _unique_nonempty(candidates)
-
-
-def backfill_missing_mirror_defaults(
-    mirrors_config,
-    missing_fields: Iterable[str],
-    locale_names: Iterable[str] = (),
-    timezone_names: Iterable[str] = (),
-) -> list:
-    """Set mirror defaults for missing fields when local hints say China.
-
-    >>> class Mirrors:
-    ...     huggingface = None
-    ...     pypi = None
-    >>> mirrors = Mirrors()
-    >>> backfill_missing_mirror_defaults(mirrors, {'pypi'}, locale_names=['zh_CN'])
-    ['pypi']
-    >>> mirrors.pypi
-    'https://mirrors.aliyun.com/pypi/simple'
-    """
-
-    missing_fields = set(missing_fields)
-    if not missing_fields or not should_use_china_mirrors(locale_names, timezone_names):
-        return []
-
-    updated = []
-    if 'huggingface' in missing_fields and getattr(mirrors_config, 'huggingface', None) is None:
-        mirrors_config.huggingface = DEFAULT_HUGGINGFACE_MIRROR
-        updated.append('huggingface')
-    if 'pypi' in missing_fields and getattr(mirrors_config, 'pypi', None) is None:
-        mirrors_config.pypi = DEFAULT_PYPI_MIRROR
-        updated.append('pypi')
-    return updated
-
-
-def _has_mainland_china_locale(locale_names: Iterable[str]) -> bool:
-    for value in locale_names:
-        if not value:
-            continue
-        normalized = str(value).strip().split('.', 1)[0].replace('-', '_')
-        lower = normalized.lower()
-        upper = normalized.upper()
-        if upper == 'CN':
-            return True
-        if lower == 'zh_cn' or lower.endswith('_cn') or '_cn_' in lower:
-            return True
-        if 'Chinese (Simplified)_China'.lower() in lower:
-            return True
-    return False
-
-
-def _has_mainland_china_timezone(timezone_names: Iterable[str]) -> bool:
-    for value in timezone_names:
-        if not value:
-            continue
-        normalized = str(value).strip().lower().replace('\\', '/')
-        if normalized in {'asia/shanghai', 'prc'}:
-            return True
-        if normalized.endswith('/asia/shanghai') or 'zoneinfo/asia/shanghai' in normalized:
-            return True
-        if 'china standard time' in normalized or '中国标准时间' in normalized or '中国夏令时' in normalized:
-            return True
-    return False
-
-
 def _read_raw_config(config_path: str):
     if not config_path or not os.path.exists(config_path):
         return None
@@ -260,32 +128,3 @@ def _read_raw_mirrors(config_path: str):
     if not isinstance(data, dict):
         return None
     return data.get('mirrors')
-
-
-def _read_etc_timezone() -> str:
-    try:
-        with open('/etc/timezone', 'r', encoding='utf8') as f:
-            return f.read().strip()
-    except Exception:
-        return ''
-
-
-def _localtime_zoneinfo_name() -> str:
-    try:
-        path = os.path.realpath('/etc/localtime')
-    except Exception:
-        return ''
-    marker = 'zoneinfo/'
-    if marker not in path:
-        return path
-    return path.split(marker, 1)[1]
-
-
-def _unique_nonempty(values: Iterable[str]) -> list:
-    unique = []
-    for value in values:
-        if not value:
-            continue
-        if value not in unique:
-            unique.append(value)
-    return unique
