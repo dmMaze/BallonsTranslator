@@ -161,9 +161,13 @@ def should_use_china_mirrors(
     return _has_mainland_china_locale(locale_names) or _has_mainland_china_timezone(timezone_names)
 
 
-def collect_system_locale_names(qt_locale_name: str = '') -> list:
+def collect_system_locale_names() -> list:
     candidates = []
-    candidates.append(qt_locale_name)
+    try:
+        from qtpy.QtCore import QLocale
+        candidates.append(QLocale.system().name())
+    except Exception:
+        pass
     candidates.extend([
         os.environ.get('LC_ALL', ''),
         os.environ.get('LC_MESSAGES', ''),
@@ -171,6 +175,10 @@ def collect_system_locale_names(qt_locale_name: str = '') -> list:
     ])
     try:
         candidates.append(locale.getlocale()[0] or '')
+    except Exception:
+        pass
+    try:
+        candidates.append(locale.getdefaultlocale()[0] or '')
     except Exception:
         pass
     return _unique_nonempty(candidates)
@@ -297,19 +305,47 @@ def has_effective_system_proxy() -> bool:
     return any(key.lower() != 'no' and value for key, value in proxies.items())
 
 
-def auto_fill_network_mirrors(config, config_path: str, qt_locale_name: str, program_config_module, logger) -> list:
-    """Backfill and apply network mirror settings after config loading.
+def write_raw_mirror_config(config_path: str, huggingface: Optional[str], pypi: Optional[str]) -> bool:
+    """Write a minimal first-run config containing network mirror choices.
 
-    >>> class Mirrors:
-    ...     huggingface = None
-    ...     pypi = None
-    >>> class Config:
-    ...     mirrors = Mirrors()
-    >>> class ProgramConfig:
-    ...     @staticmethod
-    ...     def save_config():
-    ...         return True
-    >>> auto_fill_network_mirrors(Config(), '/path/that/does/not/exist', 'en_US', ProgramConfig, logger=None)
+    >>> import tempfile
+    >>> with tempfile.TemporaryDirectory() as tmpdir:
+    ...     path = os.path.join(tmpdir, 'config.json')
+    ...     _ = write_raw_mirror_config(path, None, 'https://example.invalid/simple')
+    ...     read_saved_pypi_mirror(path)
+    'https://example.invalid/simple'
+    """
+
+    if not config_path:
+        return False
+
+    try:
+        config_dir = os.path.dirname(config_path)
+        if config_dir and not os.path.exists(config_dir):
+            os.makedirs(config_dir)
+        data = {
+            'mirrors': {
+                'huggingface': normalize_mirror_value(huggingface),
+                'pypi': normalize_mirror_value(pypi),
+            }
+        }
+        tmp_save_tgt = config_path + '.tmp'
+        with open(tmp_save_tgt, 'w', encoding='utf8') as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp_save_tgt, config_path)
+    except Exception:
+        return False
+    return True
+
+
+def auto_fill_network_mirrors(config_path: str, logger=None) -> list:
+    """Create first-run network mirror config when local hints need it.
+
+    >>> import tempfile
+    >>> with tempfile.TemporaryDirectory() as tmpdir:
+    ...     path = os.path.join(tmpdir, 'config.json')
+    ...     _ = write_raw_mirror_config(path, None, None)
+    ...     auto_fill_network_mirrors(path, logger=None)
     []
     """
 
@@ -318,23 +354,18 @@ def auto_fill_network_mirrors(config, config_path: str, qt_locale_name: str, pro
         if logger is not None:
             logger.info(message)
 
+    if config_path and os.path.exists(config_path):
+        log_info('Network mirror config already exists; skipping automatic mirror selection.')
+        return []
+
     if has_effective_system_proxy():
         log_info('System proxy detected; skipping automatic mirror selection.')
         return []
 
-    missing_mirrors = missing_mirror_fields(config_path)
-
-    if not missing_mirrors:
-        log_info('Network mirror config fields are present; skipping automatic mirror selection.')
-        return []
-
-    locale_names = collect_system_locale_names(qt_locale_name)
+    locale_names = collect_system_locale_names()
     timezone_names = collect_system_timezone_names()
-    log_info(
-        'Checking network mirror defaults. Missing mirror fields: '
-        f'{", ".join(sorted(missing_mirrors)) if missing_mirrors else "none"}'
-    )
     use_china_mirrors = should_use_china_mirrors(locale_names, timezone_names)
+    log_info('Checking first-run network mirror defaults.')
     log_info(f'Network mirror heuristic locale hints: {locale_names}')
     log_info(f'Network mirror heuristic timezone hints: {timezone_names}')
     log_info(
@@ -342,28 +373,16 @@ def auto_fill_network_mirrors(config, config_path: str, qt_locale_name: str, pro
         f'{"mainland China detected" if use_china_mirrors else "mainland China not detected"}'
     )
 
-    updated_mirrors = backfill_missing_mirror_defaults(
-        config.mirrors,
-        missing_mirrors,
-        locale_names=locale_names,
-        timezone_names=timezone_names,
-    )
-    if updated_mirrors:
-        log_info(f'Automatically selected network mirrors for: {", ".join(updated_mirrors)}')
-    elif missing_mirrors:
-        log_info('No network mirrors were selected automatically.')
-    if missing_mirrors:
-        program_config_module.save_config()
+    huggingface_mirror = DEFAULT_HUGGINGFACE_MIRROR if use_china_mirrors else None
+    pypi_mirror = DEFAULT_PYPI_MIRROR if use_china_mirrors else None
+    if not write_raw_mirror_config(config_path, huggingface_mirror, pypi_mirror):
+        log_info('Failed to save first-run network mirror config.')
+        return []
 
-    huggingface_mirror = normalize_mirror_value(config.mirrors.huggingface)
-    if huggingface_mirror:
-        os.environ['HF_ENDPOINT'] = huggingface_mirror
-        log_info(f'Using Hugging Face mirror endpoint: {huggingface_mirror}')
-    else:
-        log_info('Hugging Face mirror endpoint: none')
-    pypi_mirror = normalize_mirror_value(config.mirrors.pypi)
-    if pypi_mirror:
-        log_info(f'Using PyPI package mirror: {pypi_mirror}')
-    else:
-        log_info('PyPI package mirror: none')
+    if not use_china_mirrors:
+        log_info('No network mirrors were selected automatically.')
+        return []
+
+    updated_mirrors = list(MIRROR_FIELDS)
+    log_info(f'Automatically selected network mirrors for: {", ".join(updated_mirrors)}')
     return updated_mirrors

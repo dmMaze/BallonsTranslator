@@ -163,20 +163,22 @@ def main():
 
     preload_msvc_runtime()
 
+    from ballontranslator.utils.logger import setup_logging, logger as LOGGER
+    from ballontranslator.utils.network_mirrors import auto_fill_network_mirrors
+    setup_logging(shared.LOGGING_PATH)
+    ensure_resource_theme_files(APP_DIR, LOGGER)
+    updated_mirrors = auto_fill_network_mirrors(args.config_path, LOGGER)
+
     from ballontranslator.utils.core_requirements import ensure_core_requirements
     if ensure_core_requirements(APP_DIR, env=core_requirements_env(args.config_path)):
         print('Core requirements updated. Restarting...')
         restart()
         return
 
-    from ballontranslator.utils.logger import setup_logging, logger as LOGGER
     from ballontranslator.utils.io_utils import find_all_files_recursive
     from ballontranslator.utils import config as program_config
-    from ballontranslator.utils.network_mirrors import auto_fill_network_mirrors
 
     from qtpy.QtCore import QTranslator, QLocale, Qt
-    setup_logging(shared.LOGGING_PATH)
-    ensure_resource_theme_files(APP_DIR, LOGGER)
     shared.args = args
     shared.DEFAULT_DISPLAY_LANG = QLocale.system().name().replace('en_CN', 'zh_CN')
     shared.HEADLESS = args.headless
@@ -186,14 +188,6 @@ def main():
 
     if args.headless:
         config.module.empty_runcache = False
-
-    updated_mirrors = auto_fill_network_mirrors(
-        config,
-        args.config_path,
-        QLocale.system().name(),
-        program_config,
-        LOGGER,
-    )
 
     if sys.platform == 'win32':
         import ctypes
