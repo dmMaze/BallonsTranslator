@@ -42,8 +42,21 @@ download_file() {
     fail "curl or wget is required to download ${url}"
 }
 
-ensure_command() {
-    command -v "$1" >/dev/null 2>&1 || fail "$1 is required but was not found"
+extract_archive() {
+    archive=$1
+    output_dir=$2
+
+    # macOS /usr/bin/unzip can fail on GitHub source zips with UTF-8 filenames.
+    if command -v bsdtar >/dev/null 2>&1; then
+        bsdtar -xf "$archive" -C "$output_dir"
+        return
+    fi
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q "$archive" -d "$output_dir"
+        return
+    fi
+
+    fail "bsdtar or unzip is required to extract ${archive}"
 }
 
 ensure_uv() {
@@ -87,7 +100,6 @@ APP_DIR="${INSTALL_PARENT}/${APP_NAME}"
 TMP_DIR=$(make_temp_dir)
 trap cleanup EXIT INT TERM
 
-ensure_command unzip
 ensure_uv
 
 archive_path="${TMP_DIR}/dev.zip"
@@ -98,7 +110,7 @@ download_file "$SOURCE_URL" "$archive_path"
 
 mkdir "$extract_dir"
 info "Extracting source..."
-unzip -q "$archive_path" -d "$extract_dir"
+extract_archive "$archive_path" "$extract_dir"
 
 extracted_app="${extract_dir}/${ARCHIVE_DIR}"
 [ -d "$extracted_app" ] || fail "Expected ${ARCHIVE_DIR} in downloaded archive"
