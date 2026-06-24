@@ -43,7 +43,7 @@ def post_process(text):
 
 @register_OCR('manga_ocr')
 class MangaOCR(OCRBase):
-    dependencies = ['torch', 'transformers==4.57.6', 'jaconv']
+    dependencies = ['torch', 'transformers==4.57.6', 'jaconv', 'protobuf', 'fugashi', 'unidic-lite']
 
     params = {
         'device': DEVICE_SELECTOR()
