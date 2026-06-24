@@ -28,9 +28,17 @@ class PapagoTranslator(BaseTranslator):
         
         if self.papagoVer is None:
             script = requests.get('https://papago.naver.com', proxies=PROXY)
-            mainJs = re.search(r'\/(main.*\.js)', script.text).group(1)
+            script.raise_for_status()
+            mainJs_match = re.search(r'\/(main.*\.js)', script.text)
+            if not mainJs_match:
+                raise ValueError('Could not find main JS file in Papago response')
+            mainJs = mainJs_match.group(1)
             papagoVerData = requests.get('https://papago.naver.com/' + mainJs, proxies=PROXY)
-            papagoVer = re.search(r'"PPG .*,"(v[^"]*)', papagoVerData.text).group(1)
+            papagoVerData.raise_for_status()
+            papagoVer_match = re.search(r'"PPG .*,"(v[^"]*)', papagoVerData.text)
+            if not papagoVer_match:
+                raise ValueError('Could not find Papago version in JS response')
+            papagoVer = papagoVer_match.group(1)
             self.papagoVer = PapagoTranslator.papagoVer = papagoVer
 
     def _translate(self, src_list: List[str]) -> List[str]:
