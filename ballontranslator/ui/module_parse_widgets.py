@@ -442,7 +442,9 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         self.inpainter_changed = self.module_changed
         self.setInpainter = self.setModule
         self.needInpaintChecker = ParamCheckerBox(self.tr('Let the program decide whether it is necessary to use the selected inpaint method.'))
+        self.filter_mask_by_bboxes_checker = QCheckBox(text=self.tr('Filter mask by text boxes'))
         self.vlayout.addWidget(self.needInpaintChecker)
+        self.vlayout.addWidget(self.filter_mask_by_bboxes_checker)
 
     def showEvent(self, e) -> None:
         self.p_layout.insertWidget(1, self.module_combobox)
@@ -458,7 +460,7 @@ class TextDetectConfigPanel(ModuleConfigParseWidget):
         self.detector_changed = self.module_changed
         self.setDetector = self.setModule
         self.keep_existing_checker = QCheckBox(text=self.tr('Keep Existing Lines'))
-        self.p_layout.insertWidget(2, self.keep_existing_checker)
+        self.vlayout.insertWidget(1, self.keep_existing_checker)
         
 
 class OCRConfigPanel(ModuleConfigParseWidget):

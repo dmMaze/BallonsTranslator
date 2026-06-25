@@ -214,7 +214,7 @@ class TextBlkItem(QGraphicsTextItem):
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
         self.setVertical(blk.vertical)
-        self.setRect(blk.bounding_rect())
+        self.setRect(blk.bounding_rect(), update_blk_rect=False)
         
         if blk.angle != 0:
             self.setRotation(blk.angle)
@@ -271,7 +271,7 @@ class TextBlkItem(QGraphicsTextItem):
         P = p * 2
         return QRectF(rect.x() - p, rect.y() - p, rect.width() + P, rect.height() + P)
 
-    def setRect(self, rect: Union[List, QRectF], padding=True, repaint=True) -> None:
+    def setRect(self, rect: Union[List, QRectF], padding=True, repaint=True, update_blk_rect=True) -> None:
         
         if isinstance(rect, List):
             rect = QRectF(*rect)
@@ -284,6 +284,9 @@ class TextBlkItem(QGraphicsTextItem):
         self.setCenterTransform()
         if repaint:
             self.repaint_background()
+
+        if update_blk_rect:
+            self.blk._bounding_rect = self.absBoundingRect()
 
     def documentSize(self):
         return self.layout.documentSize()

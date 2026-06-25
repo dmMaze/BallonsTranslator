@@ -25,6 +25,7 @@ class ModuleConfig(Config):
     translator: str = "google"
     enable_detect: bool = True
     keep_exist_textlines: bool = False
+    filter_mask_by_bboxes: bool = False
     enable_ocr: bool = True
     enable_translate: bool = True
     enable_inpaint: bool = True
