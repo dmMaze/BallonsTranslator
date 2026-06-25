@@ -1,6 +1,6 @@
 import numpy as np
 
-from .base import OCRBase, register_OCR, List, TextBlock
+from .base import OCRBase, register_OCR
 
 @register_OCR('none_ocr')
 class OCRNone(OCRBase):

@@ -15,6 +15,26 @@ class M2M100Translator(BaseTranslator):
         'device': DEVICE_SELECTOR()
     }
 
+    download_file_list = [{
+        'url': 'https://huggingface.co/entai2965/m2m100-1.2B-ctranslate2/resolve/main/',
+        'files': [
+            'config.json',
+            'model.bin',
+            'sentencepiece.bpe.model',
+            'special_tokens_map.json',
+            'shared_vocabulary.json',
+            'vocab.json',
+        ],
+        'sha256_pre_calculated': [
+            None,
+            '1d5ddc1a1049de15acba4f985e23b64d3795b3c435e9b2f80031df93cb893aa5',
+            'd8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a',
+            None, None, None
+        ],
+        'save_dir': CT_MODEL_PATH,
+        'concatenate_url_filename': 1,
+    }]
+
     def _setup_translator(self):
         self.device = self.params['device']['value']
         self.lang_map['Afrikaans'] = 'af'

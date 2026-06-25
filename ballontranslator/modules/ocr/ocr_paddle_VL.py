@@ -5,7 +5,7 @@ import requests
 import base64
 from typing import List, Any
 
-from .base import register_OCR, OCRBase, TextBlock
+from .base import register_OCR, OCRBase
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
 
 

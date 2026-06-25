@@ -27,10 +27,6 @@ class MangaOcr:
         x = post_process(x)
         return x
 
-    # todo
-    def ocr_batch(self, im_batch: torch.Tensor):
-        raise NotImplementedError
-
 
 def post_process(text):
     text = ''.join(text.split())
@@ -76,29 +72,3 @@ class MangaOCR(OCRBase):
         device = self.params['device']['value']
         if self.device != device and self.model is not None:
             self.model.to(device)
-
-
-
-
-if __name__ == '__main__':
-    import cv2
-
-    img_path = r'data/testpacks/textline/ballontranslator.png'
-    manga_ocr = MangaOcr(pretrained_model_name_or_path=MANGA_OCR_PATH, device='cuda')
-
-    img = cv2.imread(img_path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-    dummy = np.zeros((1024, 1024, 3), np.uint8)
-    manga_ocr(dummy)
-    # preprocessed = manga_ocr(img_path)
-
-    # im_batch = 
-    # img = (torch.from_numpy(img[np.newaxis, ...]).float() - 127.5) / 127.5
-    # img = einops.rearrange(img, 'N H W C -> N C H W')
-    import time
-    
-    for ii in range(10):
-        t0 = time.time()
-        out = manga_ocr(dummy)
-        print(out, time.time() - t0)
