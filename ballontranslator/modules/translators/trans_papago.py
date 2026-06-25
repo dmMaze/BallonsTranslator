@@ -25,34 +25,26 @@ class PapagoTranslator(BaseTranslator):
         self.lang_map['Malayalam'] = 'ml'
         self.lang_map['Tamil'] = 'ta'
         self.lang_map['Hindi'] = 'hi'        
-        
-        if self.papagoVer is None:
-            script = requests.get('https://papago.naver.com', proxies=PROXY)
-            mainJs = re.search(r'\/(main.*\.js)', script.text).group(1)
-            papagoVerData = requests.get('https://papago.naver.com/' + mainJs, proxies=PROXY)
-            papagoVer = re.search(r'"PPG .*,"(v[^"]*)', papagoVerData.text).group(1)
-            self.papagoVer = PapagoTranslator.papagoVer = papagoVer
 
     def _translate(self, src_list: List[str]) -> List[str]:
         data = {}
         data['source'] = self.lang_map[self.lang_source]
         data['target'] = self.lang_map[self.lang_target]
         data['text'] = src_list[0]
+        data['dict'] = "false"
+        data['useGlossary'] = "false"
         data['honorific'] = "false"
 
-        PAPAGO_URL = 'https://papago.naver.com/apis/n2mt/translate'
-        guid = uuid.uuid4()
-        timestamp = int(time.time() * 1000)
-        key = self.papagoVer.encode("utf-8")
-        code = f"{guid}\n{PAPAGO_URL}\n{timestamp}".encode("utf-8")
-        token = base64.b64encode(hmac.new(key, code, "MD5").digest()).decode("utf-8")
-        
+        PAPAGO_URL = 'https://papago.naver.com/api/text/translation'
         headers = {
-            "Authorization": f"PPG {guid}:{token}",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "Timestamp": str(timestamp),
+            "Origin": "https://papago.naver.com",
+            "Referer": "https://papago.naver.com/",
         }
-        resp = requests.post(PAPAGO_URL, data, headers=headers)
+        resp = requests.post(PAPAGO_URL, data, headers=headers, proxies=PROXY)
+        resp.raise_for_status()
         translations = resp.json()['translatedText']
     
         return [translations]
