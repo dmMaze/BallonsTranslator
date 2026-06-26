@@ -26,6 +26,7 @@ DEFAULT_PACKAGE_IMPORT_NAMES = {
     'opencc-python-reimplemented': ['opencc'],
     'pillow': ['PIL'],
     'pillow-jxl-plugin': ['pillow_jxl'],
+    'protobuf': ['google.protobuf'],
     'pyqt5-qt5': [],
     'pyqt6-qt6': [],
     'pywin32': ['win32api'],
