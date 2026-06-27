@@ -36,6 +36,7 @@ DEFAULT_PACKAGE_IMPORT_NAMES = {
     'pyobjc-framework-coreml': ['CoreML'],
     'pyobjc-framework-quartz': ['Quartz'],
     'pyyaml': ['yaml'],
+    'pyspellchecker': ['spellchecker'],
     'spacy-pkuseg': ['spacy_pkuseg'],
 }
 

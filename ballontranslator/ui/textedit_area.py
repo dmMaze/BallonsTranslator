@@ -1,6 +1,6 @@
 from typing import List, Union
 
-from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QSizePolicy, QLabel, QLineEdit
+from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
 from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
 import numpy as np
@@ -12,6 +12,118 @@ from .textitem import TextBlock
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
 STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
 STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
+
+
+class FloatingSuggestionLabel(QWidget):
+    def __init__(self, editor):
+        super().__init__(editor.viewport())
+        self.editor = editor
+        self.setObjectName("suggestion_popup")
+        
+        # Segmented tab style: dark background, border, zero margins/padding between buttons
+        self.setStyleSheet("""
+            QWidget#suggestion_popup {
+                background-color: #2b2b2d;
+                border: 1px solid #45474a;
+                border-radius: 4px;
+            }
+            QScrollArea {
+                border: none;
+                background: transparent;
+            }
+        """)
+        
+        self.main_layout = QHBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+        
+        # Horizontal scroll area
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setFixedHeight(28)
+        self.scroll_area.wheelEvent = self.scroll_area_wheel_event
+        
+        self.scroll_content = QWidget()
+        self.scroll_content.setObjectName("scroll_content")
+        self.scroll_content.setStyleSheet("background: transparent;")
+        
+        self.buttons_layout = QHBoxLayout(self.scroll_content)
+        self.buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self.buttons_layout.setSpacing(0)
+        
+        self.scroll_area.setWidget(self.scroll_content)
+        self.main_layout.addWidget(self.scroll_area)
+        
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(6)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        shadow.setOffset(0, 2)
+        self.setGraphicsEffect(shadow)
+        
+        self.hide()
+
+    def scroll_area_wheel_event(self, event):
+        scrollbar = self.scroll_area.horizontalScrollBar()
+        if scrollbar:
+            delta = event.angleDelta().y() or event.angleDelta().x()
+            scrollbar.setValue(scrollbar.value() - delta // 2)
+            event.accept()
+
+    def set_suggestions(self, cursor, word, suggestions):
+        self.cursor = cursor
+        self.word = word
+        
+        while self.buttons_layout.count() > 0:
+            item = self.buttons_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+                
+        for i, sug in enumerate(suggestions):
+            btn = QPushButton(sug, self.scroll_content)
+            btn.clicked.connect(lambda checked=False, s=sug: self.apply_suggestion(s))
+            self.buttons_layout.addWidget(btn)
+            
+            # Stylize borders and round corners so they form a single seamless block
+            border_right = "1px solid #45474a" if i < len(suggestions) - 1 else "none"
+            left_radius = "4px" if i == 0 else "0px"
+            right_radius = "4px" if i == len(suggestions) - 1 else "0px"
+            
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #3b3d40;
+                    color: #ffffff;
+                    border: none;
+                    border-right: {border_right};
+                    border-top-left-radius: {left_radius};
+                    border-bottom-left-radius: {left_radius};
+                    border-top-right-radius: {right_radius};
+                    border-bottom-right-radius: {right_radius};
+                    padding: 0px 12px;
+                    height: 28px;
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    font-size: 11px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background-color: #1e93e5;
+                    color: #ffffff;
+                }}
+            """)
+            
+        self.scroll_content.adjustSize()
+        total_width = self.scroll_content.width()
+        
+        # Max width is 250px, if more we scroll
+        popup_width = min(total_width, 250)
+        self.scroll_area.setFixedWidth(popup_width)
+        self.setFixedSize(popup_width, 28)
+        
+    def apply_suggestion(self, replacement):
+        self.editor._replace_word(self.cursor, replacement)
+        self.hide()
 
 
 class SourceTextEdit(QTextEdit):
@@ -50,6 +162,10 @@ class SourceTextEdit(QTextEdit):
 
         self.min_height = 45
         self.setFold(fold)
+        from ballontranslator.utils.spellcheck import SpellCheckHighlighter
+        self.spell_highlighter = SpellCheckHighlighter(self.document())
+        self.selectionChanged.connect(self.on_selection_changed)
+        self.suggestion_popup = None
 
     def setFold(self, fold: bool):
         if fold:
@@ -60,10 +176,144 @@ class SourceTextEdit(QTextEdit):
             self.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
             
 
+    def _replace_word(self, cursor, replacement):
+        self.setFocus()
+        tc = self.textCursor()
+        tc.beginEditBlock()
+        tc.setPosition(cursor.selectionStart())
+        tc.setPosition(cursor.selectionEnd(), QTextCursor.MoveMode.KeepAnchor)
+        tc.insertText(replacement)
+        tc.endEditBlock()
+
+    def on_selection_changed(self):
+        try:
+            from ballontranslator.utils.spellcheck import SpellCheckManager
+            import re
+
+            manager = SpellCheckManager.get_instance()
+            if not manager.is_available():
+                return
+            from ballontranslator.utils.config import pcfg
+            if not getattr(pcfg, 'spellcheck_enabled', True):
+                return
+
+            cursor = self.textCursor()
+            if not cursor.hasSelection():
+                if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
+                    self.suggestion_popup.hide()
+                return
+
+            selected_text = cursor.selectedText().strip()
+            # Only suggest for a single word
+            if len(selected_text) > 1 and re.match(r'^[a-zA-Zа-яА-ЯёЁ]+$', selected_text):
+                if not manager.is_correct(selected_text):
+                    suggestions = manager.get_suggestions(selected_text)
+                    if suggestions:
+                        if not self.suggestion_popup:
+                            self.suggestion_popup = FloatingSuggestionLabel(self)
+                        
+                        self.suggestion_popup.set_suggestions(cursor, selected_text, suggestions)
+                        self.suggestion_popup.adjustSize()
+                        
+                        rect = self.cursorRect()
+                        
+                        # Position above the selection inside the editor viewport
+                        px = rect.left() + (rect.width() - self.suggestion_popup.width()) // 2
+                        py = rect.top() - self.suggestion_popup.height() - 4
+                        
+                        # Guard boundaries
+                        # If it goes off the top of the viewport, show it below the cursor
+                        if py < 0:
+                            py = rect.bottom() + 4
+                            
+                        px = max(5, min(px, self.viewport().width() - self.suggestion_popup.width() - 5))
+                        
+                        self.suggestion_popup.move(px, py)
+                        self.suggestion_popup.show()
+                        return
+
+            if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
+                self.suggestion_popup.hide()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
     def contextMenuEvent(self, event):
         menu = self.createStandardContextMenu()
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         acts = menu.actions()
+
+        try:
+            # Spell suggestions integration
+            from ballontranslator.utils.spellcheck import SpellCheckManager
+            import re
+            from qtpy.QtWidgets import QAction
+            from qtpy.QtGui import QDesktopServices
+            from qtpy.QtCore import QUrl
+
+            manager = SpellCheckManager.get_instance()
+            pos = event.pos()
+            # Handle keyboard-triggered menu (where pos is negative)
+            if pos.x() < 0 or pos.y() < 0:
+                cursor = self.textCursor()
+            else:
+                cursor = self.cursorForPosition(pos)
+                
+            cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+            selected_word = cursor.selectedText().strip()
+
+            if selected_word and len(selected_word) > 1:
+                first_act = acts[0] if acts else None
+
+                # Add Search Online action
+                search_act = QAction(self.tr("Search Online"), menu)
+                search_act.triggered.connect(lambda checked, w=selected_word: QDesktopServices.openUrl(QUrl(f"https://translate.google.com/?sl=auto&tl=ru&text={w}")))
+                if first_act:
+                    menu.insertAction(first_act, search_act)
+                    menu.insertSeparator(first_act)
+                else:
+                    menu.addAction(search_act)
+
+                # Check spelling suggestions
+                is_misspelled = False
+                if manager.is_available() and re.match(r'^[a-zA-Zа-яА-ЯёЁ]+$', selected_word):
+                    is_misspelled = not manager.is_correct(selected_word)
+
+                if is_misspelled:
+                    suggestions = manager.get_suggestions(selected_word)
+
+                    # Add suggestions
+                    if suggestions:
+                        for sug in suggestions:
+                            sug_act = QAction(sug, menu)
+                            sug_act.triggered.connect(lambda checked, s=sug, c=cursor: self._replace_word(c, s))
+                            font = sug_act.font()
+                            font.setBold(True)
+                            sug_act.setFont(font)
+                            if first_act:
+                                menu.insertAction(first_act, sug_act)
+                            else:
+                                menu.addAction(sug_act)
+                    else:
+                        no_sug_act = QAction(self.tr("No spelling suggestions"), menu)
+                        no_sug_act.setEnabled(False)
+                        if first_act:
+                            menu.insertAction(first_act, no_sug_act)
+                        else:
+                            menu.addAction(no_sug_act)
+
+                    # Add to Dictionary action
+                    add_dict_act = QAction(self.tr("Add to Dictionary"), menu)
+                    add_dict_act.triggered.connect(lambda checked, w=selected_word: manager.add_to_dictionary(w))
+                    if first_act:
+                        menu.insertAction(first_act, add_dict_act)
+                        menu.insertSeparator(first_act)
+                    else:
+                        menu.addAction(add_dict_act)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
         self.in_acts = True
         rst = menu.exec_(event.globalPos())
 
@@ -166,7 +416,14 @@ class SourceTextEdit(QTextEdit):
     def focusOutEvent(self, event: QFocusEvent) -> None:
         self.setHoverEffect(False)
         self.focus_out.emit(self.idx)
+        if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
+            self.suggestion_popup.hide()
         return super().focusOutEvent(event)
+
+    def wheelEvent(self, event) -> None:
+        if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
+            self.suggestion_popup.hide()
+        return super().wheelEvent(event)
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
         if self.pre_editing is False:

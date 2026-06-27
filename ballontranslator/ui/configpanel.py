@@ -330,6 +330,127 @@ class ConfigTable(QTreeView):
                 self.section_pressed.emit(section_key)
 
 
+from qtpy.QtCore import QThread
+
+class DictDownloadThread(QThread):
+    progress = Signal(int, int)
+    finished = Signal(bool, str)
+
+    def __init__(self, url, save_path):
+        super().__init__()
+        self.url = url
+        self.save_path = save_path
+        import threading
+        self.cancel_event = threading.Event()
+
+    def run(self):
+        try:
+            import os
+            from ballontranslator.utils.download_util import download_url_to_file
+
+            def progress_callback(payload):
+                if payload.get('event') == 'file_progress':
+                    self.progress.emit(payload.get('downloaded', 0), payload.get('total', 0))
+
+            os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
+            download_url_to_file(
+                self.url,
+                self.save_path,
+                progress_callback=progress_callback,
+                cancel_event=self.cancel_event
+            )
+            self.finished.emit(True, "")
+        except Exception as e:
+            self.finished.emit(False, str(e))
+
+    def cancel(self):
+        self.cancel_event.set()
+
+
+from qtpy.QtWidgets import QListWidget, QInputDialog, QHBoxLayout, QVBoxLayout, QPushButton, QLineEdit, QDialog
+
+class DictionaryManagerDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(self.tr("Custom Dictionary Manager"))
+        self.resize(360, 480)
+
+        from ballontranslator.utils.spellcheck import SpellCheckManager
+        self.manager = SpellCheckManager.get_instance()
+
+        layout = QVBoxLayout(self)
+
+        # Word list
+        self.list_widget = QListWidget(self)
+        self.list_widget.itemDoubleClicked.connect(self.edit_word)
+        layout.addWidget(self.list_widget)
+
+        # Input block
+        input_layout = QHBoxLayout()
+        self.word_input = QLineEdit(self)
+        self.word_input.setPlaceholderText(self.tr("Enter new word..."))
+        self.word_input.returnPressed.connect(self.add_word)
+        self.add_btn = QPushButton(self.tr("Add Word"), self)
+        self.add_btn.clicked.connect(self.add_word)
+
+        input_layout.addWidget(self.word_input)
+        input_layout.addWidget(self.add_btn)
+        layout.addLayout(input_layout)
+
+        # Action buttons
+        actions_layout = QHBoxLayout()
+        self.delete_btn = QPushButton(self.tr("Delete Selected"), self)
+        self.delete_btn.clicked.connect(self.delete_selected)
+        self.close_btn = QPushButton(self.tr("Close"), self)
+        self.close_btn.clicked.connect(self.accept)
+
+        actions_layout.addWidget(self.delete_btn)
+        actions_layout.addWidget(self.close_btn)
+        layout.addLayout(actions_layout)
+
+        self.populate_list()
+
+    def populate_list(self):
+        self.list_widget.clear()
+        for word in sorted(self.manager.custom_words):
+            self.list_widget.addItem(word)
+
+    def add_word(self):
+        word = self.word_input.text().strip().lower()
+        if word and word not in self.manager.custom_words:
+            self.manager.add_to_dictionary(word)
+            self.word_input.clear()
+            self.populate_list()
+
+    def delete_selected(self):
+        selected_items = self.list_widget.selectedItems()
+        if not selected_items:
+            return
+        for item in selected_items:
+            word = item.text()
+            self.manager.custom_words.discard(word)
+        self.manager._save_custom_dictionary()
+        self.manager.notify_config_changed()
+        self.populate_list()
+
+    def edit_word(self, item):
+        old_word = item.text()
+        new_word, ok = QInputDialog.getText(
+            self,
+            self.tr("Edit Word"),
+            self.tr("Edit word:"),
+            text=old_word
+        )
+        if ok:
+            new_word = new_word.strip().lower()
+            if new_word and new_word != old_word:
+                self.manager.custom_words.discard(old_word)
+                self.manager.custom_words.add(new_word)
+                self.manager._save_custom_dictionary()
+                self.manager.notify_config_changed()
+                self.populate_list()
+
+
 class ConfigPanel(QDialog):
 
     save_config = Signal()
@@ -338,6 +459,45 @@ class ConfigPanel(QDialog):
     check_update = Signal()
     reload_textstyle = Signal(bool)
     show_only_custom_font = Signal(bool)
+
+    dictionary_urls = {
+        "Arabic (ar)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.dic",
+        "Belarusian (be_BY)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/be_BY/be_BY.dic",
+        "Bulgarian (bg_BG)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bg_BG/bg_BG.dic",
+        "Bosnian (bs_BA)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bs_BA/bs_BA.dic",
+        "Catalan (ca)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/ca.dic",
+        "Czech (cs_CZ)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/cs_CZ/cs_CZ.dic",
+        "Danish (da_DK)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/da_DK/da_DK.dic",
+        "German (de_DE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE.dic",
+        "Greek (el_GR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/el_GR/el_GR.dic",
+        "English (en_US)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_US.dic",
+        "English (en_GB)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_GB.dic",
+        "Spanish (es_ES)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/es/es_ES.dic",
+        "Estonian (et_EE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/et_EE/et_EE.dic",
+        "Persian (fa_IR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fa_IR/fa_IR.dic",
+        "French (fr_FR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/fr_FR.dic",
+        "Croatian (hr_HR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hr_HR/hr_HR.dic",
+        "Hungarian (hu_HU)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hu_HU/hu_HU.dic",
+        "Indonesian (id)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/id/id.dic",
+        "Icelandic (is)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/is/is.dic",
+        "Italian (it_IT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/it_IT/it_IT.dic",
+        "Korean (ko_KR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ko_KR/ko_KR.dic",
+        "Lithuanian (lt_LT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lt_LT/lt_LT.dic",
+        "Latvian (lv_LV)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lv_LV/lv_LV.dic",
+        "Dutch (nl_NL)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/nl_NL/nl_NL.dic",
+        "Polish (pl_PL)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pl_PL/pl_PL.dic",
+        "Portuguese (pt_BR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_BR/pt_BR.dic",
+        "Portuguese (pt_PT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_PT/pt_PT.dic",
+        "Romanian (ro_RO)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ro/ro_RO.dic",
+        "Russian (ru_RU)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ru_RU/ru_RU.dic",
+        "Russian (Large - all inflections) (ru_RU)": "https://raw.githubusercontent.com/danakt/russian-words/master/russian.txt",
+        "Slovak (sk_SK)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sk_SK/sk_SK.dic",
+        "Slovenian (sl_SI)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sl_SI/sl_SI.dic",
+        "Swedish (sv_SE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/sv_SE.dic",
+        "Turkish (tr_TR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/tr_TR/tr_TR.dic",
+        "Ukrainian (uk_UA)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/uk_UA/uk_UA.dic",
+        "Vietnamese (vi)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/vi/vi.dic"
+    }
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -361,6 +521,7 @@ class ConfigPanel(QDialog):
         label_translator = self.tr('Translator')
         label_application = self.tr('Application')
         label_typesetting = self.tr('Typesetting')
+        label_spellcheck = self.tr('Spell Checker')
 
         moduleConfigPanel = self.addConfigBlock(label_modules, moduleTableItem, 'modules')
         dlConfigPanel = self.addConfigBlock(label_text_det, moduleTableItem, 'detector')
@@ -369,6 +530,7 @@ class ConfigPanel(QDialog):
         translatorConfigPanel = self.addConfigBlock(label_translator, moduleTableItem, 'translator')
         applicationConfigPanel = self.addConfigBlock(label_application, generalTableItem, 'application')
         typesettingConfigPanel = self.addConfigBlock(label_typesetting, generalTableItem, 'typesetting')
+        spellcheckConfigPanel = self.addConfigBlock(label_spellcheck, generalTableItem, 'spellcheck')
         
         self.empty_runcache_checker, empty_runcache_subblock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
         moduleConfigPanel.vlayout.addWidget(empty_runcache_subblock)
@@ -418,6 +580,51 @@ class ConfigPanel(QDialog):
 
         self.check_update_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Check update on startup'))
         self.check_update_on_startup_checker.stateChanged.connect(self.on_check_update_onstartup_changed)
+
+        self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable Spell Checker'))
+        self.spellcheck_checker.stateChanged.connect(self.on_spellcheck_changed)
+
+        # Dictionary Words Manager Button
+        self.manage_words_btn = QPushButton(parent=self)
+        self.manage_words_btn.setText(self.tr("Dictionary Words..."))
+        self.manage_words_btn.clicked.connect(self.open_words_manager)
+        self.manage_words_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
+        spellcheckConfigPanel.addBlockWidget(self.manage_words_btn)
+
+        # Repository Dictionaries List
+        repo_layout = QVBoxLayout()
+        repo_label = ConfigTextLabel(self.tr("Repository Dictionaries"), CONFIG_FONTSIZE_CONTENT, QFont.Weight.Bold)
+        repo_layout.addWidget(repo_label)
+
+        self.repo_dicts_list = QListWidget(self)
+        self.repo_dicts_list.setFixedHeight(150)
+        self.repo_dicts_list.itemChanged.connect(self.on_repo_dict_item_changed)
+        repo_layout.addWidget(self.repo_dicts_list)
+
+        spellcheckConfigPanel.addBlockWidget(repo_layout)
+
+        # External Dictionaries List
+        ext_layout = QVBoxLayout()
+        ext_label = ConfigTextLabel(self.tr("External Dictionaries"), CONFIG_FONTSIZE_CONTENT, QFont.Weight.Bold)
+        ext_layout.addWidget(ext_label)
+
+        self.external_dicts_list = QListWidget(self)
+        self.external_dicts_list.setFixedHeight(120)
+        ext_layout.addWidget(self.external_dicts_list)
+
+        ext_btns_layout = QHBoxLayout()
+        self.add_ext_btn = QPushButton(self.tr("Add Dictionary..."), self)
+        self.add_ext_btn.clicked.connect(self.add_external_dictionary)
+        self.add_ext_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
+        self.remove_ext_btn = QPushButton(self.tr("Remove Selected"), self)
+        self.remove_ext_btn.clicked.connect(self.remove_external_dictionary)
+        self.remove_ext_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
+
+        ext_btns_layout.addWidget(self.add_ext_btn)
+        ext_btns_layout.addWidget(self.remove_ext_btn)
+        ext_layout.addLayout(ext_btns_layout)
+
+        self.spellcheck_subblock = spellcheckConfigPanel.addBlockWidget(ext_layout)
 
         update_status_widget = QWidget()
         update_status_layout = QHBoxLayout(update_status_widget)
@@ -584,6 +791,129 @@ class ConfigPanel(QDialog):
     def on_check_update_onstartup_changed(self):
         pcfg.check_update_on_startup = self.check_update_on_startup_checker.isChecked()
 
+    def on_spellcheck_changed(self):
+        enabled = self.spellcheck_checker.isChecked()
+        pcfg.spellcheck_enabled = enabled
+        self.manage_words_btn.setEnabled(enabled)
+        self.repo_dicts_list.setEnabled(enabled)
+        self.external_dicts_list.setEnabled(enabled)
+        self.add_ext_btn.setEnabled(enabled)
+        self.remove_ext_btn.setEnabled(enabled)
+        from ballontranslator.utils.spellcheck import SpellCheckManager
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
+    def open_words_manager(self):
+        dialog = DictionaryManagerDialog(self)
+        dialog.exec_()
+
+    def on_repo_dict_item_changed(self, item):
+        self.repo_dicts_list.blockSignals(True)
+        try:
+            from qtpy.QtCore import Qt
+            import os
+            from ballontranslator.utils.shared import PROGRAM_PATH
+
+            url, filename = item.data(Qt.ItemDataRole.UserRole)
+            save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
+
+            if item.checkState() == Qt.CheckState.Checked:
+                if not os.path.exists(save_path):
+                    success = self.download_repo_dict_sync(url, filename)
+                    if not success:
+                        item.setCheckState(Qt.CheckState.Unchecked)
+                    else:
+                        lang_name = ""
+                        for k, v in self.dictionary_urls.items():
+                            if v == url:
+                                lang_name = k
+                                break
+                        if lang_name:
+                            item.setText(self.tr(lang_name) + self.tr(" (Installed local)"))
+
+            enabled_files = []
+            for idx in range(self.repo_dicts_list.count()):
+                it = self.repo_dicts_list.item(idx)
+                if it.checkState() == Qt.CheckState.Checked:
+                    _, fname = it.data(Qt.ItemDataRole.UserRole)
+                    enabled_files.append(fname)
+
+            pcfg.spellcheck_repo_dicts = ",".join(enabled_files)
+            from ballontranslator.utils.spellcheck import SpellCheckManager
+            SpellCheckManager.get_instance().notify_config_changed()
+            self.save_config.emit()
+        finally:
+            self.repo_dicts_list.blockSignals(False)
+
+    def download_repo_dict_sync(self, url, filename):
+        import os
+        from ballontranslator.utils.shared import PROGRAM_PATH
+        from qtpy.QtWidgets import QProgressDialog
+        from qtpy.QtCore import Qt
+
+        save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
+
+        progress = QProgressDialog(self.tr("Downloading dictionary..."), self.tr("Cancel"), 0, 100, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+
+        thread = DictDownloadThread(url, save_path)
+        download_success = [False]
+
+        def on_progress(downloaded, total):
+            if total > 0:
+                percent = int(downloaded * 100 / total)
+                progress.setValue(percent)
+
+        def on_finished(success, err):
+            progress.close()
+            if success:
+                download_success[0] = True
+                from qtpy.QtWidgets import QMessageBox
+                QMessageBox.information(self, self.tr("Download Complete"), self.tr("Dictionary downloaded successfully!"))
+            else:
+                if "cancelled" not in err.lower():
+                    from qtpy.QtWidgets import QMessageBox
+                    QMessageBox.warning(self, self.tr("Download Failed"), self.tr("Failed to download dictionary: ") + err)
+
+        thread.progress.connect(on_progress)
+        thread.finished.connect(on_finished)
+        progress.canceled.connect(thread.cancel)
+
+        self.active_download_thread = thread
+        thread.start()
+        progress.exec_()
+        thread.wait()
+        return download_success[0]
+
+    def add_external_dictionary(self):
+        from qtpy.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr("Select Dictionary File"),
+            "",
+            self.tr("Dictionary files (*.txt *.dic)")
+        )
+        if path:
+            self.external_dicts_list.addItem(path)
+            self.update_external_dicts_config()
+
+    def remove_external_dictionary(self):
+        selected_items = self.external_dicts_list.selectedItems()
+        if not selected_items:
+            return
+        for item in selected_items:
+            self.external_dicts_list.takeItem(self.external_dicts_list.row(item))
+        self.update_external_dicts_config()
+
+    def update_external_dicts_config(self):
+        paths = []
+        for idx in range(self.external_dicts_list.count()):
+            paths.append(self.external_dicts_list.item(idx).text())
+        pcfg.spellcheck_external_dict_path = ";".join(paths)
+        from ballontranslator.utils.spellcheck import SpellCheckManager
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
     def setLatestVersion(self, version: str):
         self.latest_version_label.setText(self.tr('Latest version: ') + version)
 
@@ -728,10 +1058,54 @@ class ConfigPanel(QDialog):
 
     def setupConfig(self):
         self.blockSignals(True)
+        import os
+        from ballontranslator.utils import shared
 
         if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
         self.check_update_on_startup_checker.setChecked(pcfg.check_update_on_startup)
+        
+        # Setup repository dictionaries
+        active_repos = pcfg.spellcheck_repo_dicts.split(',')
+        active_repos = [x.strip() for x in active_repos if x.strip()]
+        
+        self.repo_dicts_list.blockSignals(True)
+        self.repo_dicts_list.clear()
+        from qtpy.QtWidgets import QListWidgetItem
+        from qtpy.QtCore import Qt
+        
+        for lang_name, url in self.dictionary_urls.items():
+            filename = url.split('/')[-1]
+            dict_path = os.path.join(shared.PROGRAM_PATH, 'data', 'dictionaries', filename)
+
+            display_text = self.tr(lang_name)
+            if os.path.exists(dict_path):
+                display_text += self.tr(" (Installed local)")
+
+            item = QListWidgetItem(display_text, self.repo_dicts_list)
+            item.setData(Qt.ItemDataRole.UserRole, (url, filename))
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+
+            if filename in active_repos:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+        self.repo_dicts_list.blockSignals(False)
+
+        # Setup external dictionaries
+        self.external_dicts_list.clear()
+        ext_paths = pcfg.spellcheck_external_dict_path.split(';')
+        for p in ext_paths:
+            p = p.strip()
+            if p:
+                self.external_dicts_list.addItem(p)
+
+        self.spellcheck_checker.setChecked(pcfg.spellcheck_enabled)
+        self.manage_words_btn.setEnabled(pcfg.spellcheck_enabled)
+        self.repo_dicts_list.setEnabled(pcfg.spellcheck_enabled)
+        self.external_dicts_list.setEnabled(pcfg.spellcheck_enabled)
+        self.add_ext_btn.setEnabled(pcfg.spellcheck_enabled)
+        self.remove_ext_btn.setEnabled(pcfg.spellcheck_enabled)
         self.huggingface_mirror_combobox.setCurrentText(mirror_to_display(
             pcfg.mirrors.huggingface,
             none_label=self.tr('None'),

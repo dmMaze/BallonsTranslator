@@ -9,6 +9,7 @@ PACKAGE_IMPORT_NAMES = {
     'jaconv': ['jaconv'],
     'msl-loadlib': ['msl'],
     'openai': ['openai'],
+    'pyspellchecker': ['spellchecker'],
     'pyobjc-framework-vision': ['Vision', 'objc'],
     'pyyaml': ['yaml'],
     'safetensors': ['safetensors'],
