@@ -16,8 +16,8 @@ def smart_resize(src: np.ndarray, target_size, upscale_interpolation=cv2.INTER_L
 
 
 def hex2bgr(hex):
-    gmask = 254 << 8
-    rmask = 254
+    gmask = 255 << 8
+    rmask = 255
     b = hex >> 16
     g = (hex & gmask) >> 8
     r = hex & rmask
