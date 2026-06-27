@@ -16,7 +16,7 @@ STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color:
 
 class FloatingSuggestionLabel(QWidget):
     def __init__(self, editor):
-        super().__init__(editor.viewport())
+        super().__init__(editor, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
         self.editor = editor
         self.setObjectName("suggestion_popup")
         
@@ -228,7 +228,10 @@ class SourceTextEdit(QTextEdit):
                             
                         px = max(5, min(px, self.viewport().width() - self.suggestion_popup.width() - 5))
                         
-                        self.suggestion_popup.move(px, py)
+                        # Map viewport local coordinates to global screen coordinates
+                        global_pos = self.viewport().mapToGlobal(QPoint(px, py))
+                        
+                        self.suggestion_popup.move(global_pos)
                         self.suggestion_popup.show()
                         return
 
