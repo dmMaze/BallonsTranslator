@@ -372,26 +372,30 @@ from qtpy.QtWidgets import QListWidget, QInputDialog, QHBoxLayout, QVBoxLayout, 
 class WordListItemWidget(QWidget):
     def __init__(self, word, on_delete_callback, parent=None):
         super().__init__(parent)
+        self.setFixedHeight(36)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(12)
 
         self.label = QLabel(word, self)
-        self.label.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px; font-weight: 500;")
+        self.label.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px; font-weight: 500; background-color: transparent;")
 
-        self.delete_btn = QPushButton("🗑", self)
-        self.delete_btn.setFixedSize(28, 28)
+        self.delete_btn = QPushButton("×", self)
+        self.delete_btn.setFixedSize(24, 24)
         self.delete_btn.setToolTip(self.tr("Delete word"))
+        self.delete_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.delete_btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
                 color: #ff4d4d;
                 border: none;
-                font-size: 15px;
+                font-size: 18px;
                 font-weight: bold;
                 padding: 0px;
-                min-width: 0px;
-                min-height: 0px;
+                min-width: 24px;
+                max-width: 24px;
+                min-height: 24px;
+                max-height: 24px;
             }
             QPushButton:hover {
                 color: #ff1a1a;
@@ -401,6 +405,8 @@ class WordListItemWidget(QWidget):
         """)
         self.delete_btn.clicked.connect(lambda: on_delete_callback(word))
         self.delete_btn.setVisible(False)
+        self.delete_btn.setAutoDefault(False)
+        self.delete_btn.setDefault(False)
 
         layout.addWidget(self.label)
         layout.addStretch()
@@ -418,26 +424,49 @@ class WordListItemWidget(QWidget):
 class AddWordItemWidget(QWidget):
     def __init__(self, on_add_callback, parent=None):
         super().__init__(parent)
+        self.setFixedHeight(36)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(12)
 
         self.input_field = QLineEdit(self)
         self.input_field.setPlaceholderText(self.tr("Add new word..."))
-        self.input_field.setFixedHeight(30)
+        self.input_field.setFixedHeight(26)
         self.input_field.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px;")
-        self.input_field.returnPressed.connect(self.trigger_add)
+        
+        # Override keyPressEvent to prevent Enter key from propagating and closing QDialog
+        def input_key_press(event):
+            from qtpy.QtCore import Qt
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.trigger_add()
+                event.accept()
+            else:
+                QLineEdit.keyPressEvent(self.input_field, event)
+        self.input_field.keyPressEvent = input_key_press
 
         self.add_btn = QPushButton("+", self)
-        self.add_btn.setFixedSize(30, 30)
+        self.add_btn.setFixedSize(26, 26)
         self.add_btn.setToolTip(self.tr("Add word"))
+        self.add_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.add_btn.setAutoDefault(False)
+        self.add_btn.setDefault(False)
         self.add_btn.setStyleSheet("""
             QPushButton {
+                background-color: #3b3d40;
+                color: #ffffff;
+                border: 1px solid #45474a;
+                border-radius: 4px;
                 padding: 0px;
-                min-width: 0px;
-                min-height: 0px;
+                min-width: 26px;
+                max-width: 26px;
+                min-height: 26px;
+                max-height: 26px;
                 font-weight: bold;
-                font-size: 16px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #1e93e5;
+                border-color: #1e93e5;
             }
         """)
         self.add_btn.clicked.connect(self.trigger_add)
@@ -467,10 +496,29 @@ class DictionaryManagerDialog(QDialog):
         layout.setContentsMargins(10, 10, 10, 10)
 
         self.list_widget = QListWidget(self)
+        self.list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.list_widget.setStyleSheet("""
+            QListWidget {
+                outline: 0;
+            }
+            QListWidget::item {
+                background-color: transparent;
+            }
+            QListWidget::item:selected {
+                background-color: transparent;
+                color: inherit;
+            }
+            QListWidget::item:hover {
+                background-color: rgba(255, 255, 255, 6%);
+                border-radius: 4px;
+            }
+        """)
         layout.addWidget(self.list_widget)
 
         self.close_btn = QPushButton(self.tr("Close"), self)
         self.close_btn.setFixedHeight(32)
+        self.close_btn.setAutoDefault(False)
+        self.close_btn.setDefault(False)
         self.close_btn.clicked.connect(self.accept)
         layout.addWidget(self.close_btn)
 
@@ -479,19 +527,19 @@ class DictionaryManagerDialog(QDialog):
     def populate_list(self):
         self.list_widget.clear()
         from qtpy.QtWidgets import QListWidgetItem
-        from qtpy.QtCore import Qt
+        from qtpy.QtCore import Qt, QSize
 
         for word in sorted(self.manager.custom_words):
             item = QListWidgetItem(self.list_widget)
             widget = WordListItemWidget(word, self.delete_word, self)
-            item.setSizeHint(widget.sizeHint())
+            item.setSizeHint(QSize(0, 36))
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
 
         input_item = QListWidgetItem(self.list_widget)
         input_item.setFlags(input_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
         input_widget = AddWordItemWidget(self.add_word, self)
-        input_item.setSizeHint(input_widget.sizeHint())
+        input_item.setSizeHint(QSize(0, 36))
         self.list_widget.addItem(input_item)
         self.list_widget.setItemWidget(input_item, input_widget)
 
