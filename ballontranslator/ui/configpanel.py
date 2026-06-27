@@ -373,20 +373,21 @@ class WordListItemWidget(QWidget):
     def __init__(self, word, on_delete_callback, parent=None):
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 2, 8, 2)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(12)
 
         self.label = QLabel(word, self)
-        self.label.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 12px;")
+        self.label.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px; font-weight: 500;")
 
         self.delete_btn = QPushButton("🗑", self)
-        self.delete_btn.setFixedSize(24, 24)
+        self.delete_btn.setFixedSize(28, 28)
+        self.delete_btn.setToolTip(self.tr("Delete word"))
         self.delete_btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
                 color: #ff4d4d;
                 border: none;
-                font-size: 14px;
+                font-size: 15px;
                 font-weight: bold;
                 padding: 0px;
                 min-width: 0px;
@@ -394,6 +395,8 @@ class WordListItemWidget(QWidget):
             }
             QPushButton:hover {
                 color: #ff1a1a;
+                background-color: rgba(255, 77, 77, 12%);
+                border-radius: 4px;
             }
         """)
         self.delete_btn.clicked.connect(lambda: on_delete_callback(word))
@@ -416,22 +419,25 @@ class AddWordItemWidget(QWidget):
     def __init__(self, on_add_callback, parent=None):
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 2, 8, 2)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(12)
 
         self.input_field = QLineEdit(self)
         self.input_field.setPlaceholderText(self.tr("Add new word..."))
+        self.input_field.setFixedHeight(30)
+        self.input_field.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px;")
         self.input_field.returnPressed.connect(self.trigger_add)
 
         self.add_btn = QPushButton("+", self)
-        self.add_btn.setFixedSize(24, 24)
+        self.add_btn.setFixedSize(30, 30)
+        self.add_btn.setToolTip(self.tr("Add word"))
         self.add_btn.setStyleSheet("""
             QPushButton {
                 padding: 0px;
                 min-width: 0px;
                 min-height: 0px;
                 font-weight: bold;
-                font-size: 14px;
+                font-size: 16px;
             }
         """)
         self.add_btn.clicked.connect(self.trigger_add)
@@ -452,7 +458,7 @@ class DictionaryManagerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Custom Dictionary Manager"))
-        self.resize(360, 480)
+        self.resize(450, 520)
 
         from ballontranslator.utils.spellcheck import SpellCheckManager
         self.manager = SpellCheckManager.get_instance()
