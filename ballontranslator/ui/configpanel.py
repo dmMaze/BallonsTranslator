@@ -373,11 +373,11 @@ class WordListItemWidget(QWidget):
     def __init__(self, word, on_delete_callback, parent=None):
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(8, 2, 8, 2)
         layout.setSpacing(8)
 
         self.label = QLabel(word, self)
-        self.label.setStyleSheet("color: #ffffff; font-family: 'Segoe UI', Arial; font-size: 12px;")
+        self.label.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 12px;")
 
         self.delete_btn = QPushButton("🗑", self)
         self.delete_btn.setFixedSize(24, 24)
@@ -388,11 +388,12 @@ class WordListItemWidget(QWidget):
                 border: none;
                 font-size: 14px;
                 font-weight: bold;
+                padding: 0px;
+                min-width: 0px;
+                min-height: 0px;
             }
             QPushButton:hover {
-                background-color: #ff4d4d;
-                color: #ffffff;
-                border-radius: 3px;
+                color: #ff1a1a;
             }
         """)
         self.delete_btn.clicked.connect(lambda: on_delete_callback(word))
@@ -415,37 +416,22 @@ class AddWordItemWidget(QWidget):
     def __init__(self, on_add_callback, parent=None):
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(8, 2, 8, 2)
         layout.setSpacing(8)
 
         self.input_field = QLineEdit(self)
         self.input_field.setPlaceholderText(self.tr("Add new word..."))
-        self.input_field.setStyleSheet("""
-            QLineEdit {
-                background-color: #2b2b2d;
-                color: #ffffff;
-                border: 1px solid #45474a;
-                border-radius: 3px;
-                padding: 2px 6px;
-                font-family: 'Segoe UI', Arial;
-                font-size: 12px;
-            }
-        """)
         self.input_field.returnPressed.connect(self.trigger_add)
 
         self.add_btn = QPushButton("+", self)
         self.add_btn.setFixedSize(24, 24)
         self.add_btn.setStyleSheet("""
             QPushButton {
-                background-color: #1e93e5;
-                color: #ffffff;
-                border: none;
-                border-radius: 3px;
+                padding: 0px;
+                min-width: 0px;
+                min-height: 0px;
                 font-weight: bold;
                 font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #1a7abf;
             }
         """)
         self.add_btn.clicked.connect(self.trigger_add)
@@ -475,38 +461,10 @@ class DictionaryManagerDialog(QDialog):
         layout.setContentsMargins(10, 10, 10, 10)
 
         self.list_widget = QListWidget(self)
-        self.list_widget.setStyleSheet("""
-            QListWidget {
-                background-color: #1e1e1f;
-                border: 1px solid #45474a;
-                border-radius: 4px;
-            }
-            QListWidget::item {
-                background-color: transparent;
-                border-bottom: 1px solid #2b2b2d;
-            }
-            QListWidget::item:hover {
-                background-color: #2b2b2d;
-            }
-        """)
         layout.addWidget(self.list_widget)
 
         self.close_btn = QPushButton(self.tr("Close"), self)
         self.close_btn.setFixedHeight(32)
-        self.close_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3b3d40;
-                color: #ffffff;
-                border: 1px solid #45474a;
-                border-radius: 4px;
-                font-family: 'Segoe UI', Arial;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1e93e5;
-            }
-        """)
         self.close_btn.clicked.connect(self.accept)
         layout.addWidget(self.close_btn)
 
