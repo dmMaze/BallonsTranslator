@@ -29,7 +29,7 @@ class SpellCheckManager:
         self.highlighters = weakref.WeakSet()
         self.dict_path = os.path.join(shared.PROGRAM_PATH, 'config', 'custom_dictionary.txt')
         self._load_custom_dictionary()
-        self.load_external_dictionary()
+        self.load_spellchecker_async()
 
     def _load_custom_dictionary(self):
         """Loads custom user-added words from local storage.
@@ -61,7 +61,7 @@ class SpellCheckManager:
         except Exception as e:
             print(f"Error saving custom dictionary: {e}")
 
-    def _parse_and_load_file(self, path):
+    def _parse_and_load_file_to_set(self, path, target_set):
         try:
             try:
                 with open(path, 'r', encoding='utf-8') as f:
@@ -81,7 +81,7 @@ class SpellCheckManager:
                 if word.isdigit():
                     continue
                 if word:
-                    self.external_words.add(word)
+                    target_set.add(word)
         except Exception as e:
             from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.error(f"Error reading dictionary file {path}: {e}")
@@ -92,7 +92,7 @@ class SpellCheckManager:
         >>> manager = SpellCheckManager.get_instance()
         >>> manager.load_external_dictionary()
         """
-        self.external_words.clear()
+        temp_words = set()
         try:
             from ballontranslator.utils.config import pcfg
             
@@ -104,7 +104,7 @@ class SpellCheckManager:
                 if dict_name:
                     dict_path = os.path.join(shared.PROGRAM_PATH, 'data', 'dictionaries', dict_name)
                     if os.path.exists(dict_path):
-                        self._parse_and_load_file(dict_path)
+                        self._parse_and_load_file_to_set(dict_path, temp_words)
                         loaded_repos += 1
             
             # Load multiple external dictionaries
@@ -113,20 +113,79 @@ class SpellCheckManager:
             for path in ext_paths:
                 path = path.strip()
                 if path and os.path.exists(path):
-                    self._parse_and_load_file(path)
+                    self._parse_and_load_file_to_set(path, temp_words)
                     loaded_externals += 1
                     
             from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.info(
-                f"SpellCheckManager: loaded {len(self.external_words)} words "
+                f"SpellCheckManager: loaded {len(temp_words)} words "
                 f"(from {loaded_repos} repo dictionaries, {loaded_externals} external dictionaries)"
             )
         except Exception as e:
             from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.error(f"Error loading dictionaries: {e}")
             
+        self.external_words = temp_words
         for hl in list(self.highlighters):
             hl.clear_cache()
+
+    def load_spellchecker_async(self):
+        import threading
+        if hasattr(self, '_loading_thread') and self._loading_thread and self._loading_thread.is_alive():
+            return
+
+        def bg_load():
+            if self.spell is None:
+                try:
+                    from spellchecker import SpellChecker
+                    self.spell = SpellChecker(language=['en', 'ru'], distance=1)
+                    from ballontranslator.utils.logger import logger as LOGGER
+                    LOGGER.info("SpellChecker initialized in background")
+                except Exception as e:
+                    from ballontranslator.utils.logger import logger as LOGGER
+                    LOGGER.error(f"Failed to load SpellChecker in background: {e}")
+
+            temp_words = set()
+            try:
+                from ballontranslator.utils.config import pcfg
+                repo_dicts = getattr(pcfg, 'spellcheck_repo_dicts', '').split(',')
+                loaded_repos = 0
+                for dict_name in repo_dicts:
+                    dict_name = dict_name.strip()
+                    if dict_name:
+                        dict_path = os.path.join(shared.PROGRAM_PATH, 'data', 'dictionaries', dict_name)
+                        if os.path.exists(dict_path):
+                            self._parse_and_load_file_to_set(dict_path, temp_words)
+                            loaded_repos += 1
+
+                ext_paths = getattr(pcfg, 'spellcheck_external_dict_path', '').split(';')
+                loaded_externals = 0
+                for path in ext_paths:
+                    path = path.strip()
+                    if path and os.path.exists(path):
+                        self._parse_and_load_file_to_set(path, temp_words)
+                        loaded_externals += 1
+
+                from ballontranslator.utils.logger import logger as LOGGER
+                LOGGER.info(
+                    f"SpellCheckManager: loaded {len(temp_words)} words in background "
+                    f"(from {loaded_repos} repo dictionaries, {loaded_externals} external dictionaries)"
+                )
+            except Exception as e:
+                from ballontranslator.utils.logger import logger as LOGGER
+                LOGGER.error(f"Error loading dictionaries in background: {e}")
+
+            self.external_words = temp_words
+
+            from qtpy.QtCore import QTimer
+            def gui_notify():
+                for hl in list(self.highlighters):
+                    hl.clear_cache()
+                    hl.rehighlight()
+            QTimer.singleShot(0, gui_notify)
+
+        self._loading_thread = threading.Thread(target=bg_load, daemon=True)
+        self._loading_thread.start()
 
     def is_available(self) -> bool:
         """Checks if the required pyspellchecker package is installed.
@@ -177,9 +236,8 @@ class SpellCheckManager:
             return True
 
         if self.spell is None:
-            self.load_spellchecker()
-            if self.spell is None:
-                return True # If spellchecker cannot be loaded, assume correct
+            self.load_spellchecker_async()
+            return True # If spellchecker cannot be loaded or is loading, assume correct
 
         # pyspellchecker: known returns words that are in the dictionary
         try:
@@ -198,9 +256,8 @@ class SpellCheckManager:
             return []
 
         if self.spell is None:
-            self.load_spellchecker()
-            if self.spell is None:
-                return []
+            self.load_spellchecker_async()
+            return []
         
         word_lower = word.lower()
         try:
@@ -234,6 +291,7 @@ class SpellCheckManager:
             # Clear cache of all highlighters and trigger rehighlight
             for hl in list(self.highlighters):
                 hl.clear_cache()
+                hl.rehighlight()
 
     def register_highlighter(self, highlighter):
         """Registers a SpellCheckHighlighter to track active highlighters.
@@ -246,7 +304,7 @@ class SpellCheckManager:
 
     def notify_config_changed(self):
         """Notifies all registered highlighters that config changed, clearing cache."""
-        self.load_external_dictionary()
+        self.load_spellchecker_async()
 
 
 class SpellCheckHighlighter(QSyntaxHighlighter):

@@ -367,7 +367,100 @@ class DictDownloadThread(QThread):
         self.cancel_event.set()
 
 
-from qtpy.QtWidgets import QListWidget, QInputDialog, QHBoxLayout, QVBoxLayout, QPushButton, QLineEdit, QDialog
+from qtpy.QtWidgets import QListWidget, QInputDialog, QHBoxLayout, QVBoxLayout, QPushButton, QLineEdit, QDialog, QLabel, QWidget
+
+class WordListItemWidget(QWidget):
+    def __init__(self, word, on_delete_callback, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(8)
+
+        self.label = QLabel(word, self)
+        self.label.setStyleSheet("color: #ffffff; font-family: 'Segoe UI', Arial; font-size: 12px;")
+
+        self.delete_btn = QPushButton("🗑", self)
+        self.delete_btn.setFixedSize(24, 24)
+        self.delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #ff4d4d;
+                border: none;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #ff4d4d;
+                color: #ffffff;
+                border-radius: 3px;
+            }
+        """)
+        self.delete_btn.clicked.connect(lambda: on_delete_callback(word))
+        self.delete_btn.setVisible(False)
+
+        layout.addWidget(self.label)
+        layout.addStretch()
+        layout.addWidget(self.delete_btn)
+
+    def enterEvent(self, event):
+        self.delete_btn.setVisible(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.delete_btn.setVisible(False)
+        super().leaveEvent(event)
+
+
+class AddWordItemWidget(QWidget):
+    def __init__(self, on_add_callback, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(8)
+
+        self.input_field = QLineEdit(self)
+        self.input_field.setPlaceholderText(self.tr("Add new word..."))
+        self.input_field.setStyleSheet("""
+            QLineEdit {
+                background-color: #2b2b2d;
+                color: #ffffff;
+                border: 1px solid #45474a;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-family: 'Segoe UI', Arial;
+                font-size: 12px;
+            }
+        """)
+        self.input_field.returnPressed.connect(self.trigger_add)
+
+        self.add_btn = QPushButton("+", self)
+        self.add_btn.setFixedSize(24, 24)
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e93e5;
+                color: #ffffff;
+                border: none;
+                border-radius: 3px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #1a7abf;
+            }
+        """)
+        self.add_btn.clicked.connect(self.trigger_add)
+
+        layout.addWidget(self.input_field)
+        layout.addWidget(self.add_btn)
+        self.on_add_callback = on_add_callback
+
+    def trigger_add(self):
+        word = self.input_field.text().strip().lower()
+        if word:
+            self.on_add_callback(word)
+            self.input_field.clear()
+            self.input_field.setFocus()
+
 
 class DictionaryManagerDialog(QDialog):
     def __init__(self, parent=None):
@@ -379,76 +472,75 @@ class DictionaryManagerDialog(QDialog):
         self.manager = SpellCheckManager.get_instance()
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
 
-        # Word list
         self.list_widget = QListWidget(self)
-        self.list_widget.itemDoubleClicked.connect(self.edit_word)
+        self.list_widget.setStyleSheet("""
+            QListWidget {
+                background-color: #1e1e1f;
+                border: 1px solid #45474a;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                background-color: transparent;
+                border-bottom: 1px solid #2b2b2d;
+            }
+            QListWidget::item:hover {
+                background-color: #2b2b2d;
+            }
+        """)
         layout.addWidget(self.list_widget)
 
-        # Input block
-        input_layout = QHBoxLayout()
-        self.word_input = QLineEdit(self)
-        self.word_input.setPlaceholderText(self.tr("Enter new word..."))
-        self.word_input.returnPressed.connect(self.add_word)
-        self.add_btn = QPushButton(self.tr("Add Word"), self)
-        self.add_btn.clicked.connect(self.add_word)
-
-        input_layout.addWidget(self.word_input)
-        input_layout.addWidget(self.add_btn)
-        layout.addLayout(input_layout)
-
-        # Action buttons
-        actions_layout = QHBoxLayout()
-        self.delete_btn = QPushButton(self.tr("Delete Selected"), self)
-        self.delete_btn.clicked.connect(self.delete_selected)
         self.close_btn = QPushButton(self.tr("Close"), self)
+        self.close_btn.setFixedHeight(32)
+        self.close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3b3d40;
+                color: #ffffff;
+                border: 1px solid #45474a;
+                border-radius: 4px;
+                font-family: 'Segoe UI', Arial;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1e93e5;
+            }
+        """)
         self.close_btn.clicked.connect(self.accept)
-
-        actions_layout.addWidget(self.delete_btn)
-        actions_layout.addWidget(self.close_btn)
-        layout.addLayout(actions_layout)
+        layout.addWidget(self.close_btn)
 
         self.populate_list()
 
     def populate_list(self):
         self.list_widget.clear()
-        for word in sorted(self.manager.custom_words):
-            self.list_widget.addItem(word)
+        from qtpy.QtWidgets import QListWidgetItem
+        from qtpy.QtCore import Qt
 
-    def add_word(self):
-        word = self.word_input.text().strip().lower()
+        for word in sorted(self.manager.custom_words):
+            item = QListWidgetItem(self.list_widget)
+            widget = WordListItemWidget(word, self.delete_word, self)
+            item.setSizeHint(widget.sizeHint())
+            self.list_widget.addItem(item)
+            self.list_widget.setItemWidget(item, widget)
+
+        input_item = QListWidgetItem(self.list_widget)
+        input_item.setFlags(input_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        input_widget = AddWordItemWidget(self.add_word, self)
+        input_item.setSizeHint(input_widget.sizeHint())
+        self.list_widget.addItem(input_item)
+        self.list_widget.setItemWidget(input_item, input_widget)
+
+    def add_word(self, word):
         if word and word not in self.manager.custom_words:
             self.manager.add_to_dictionary(word)
-            self.word_input.clear()
             self.populate_list()
 
-    def delete_selected(self):
-        selected_items = self.list_widget.selectedItems()
-        if not selected_items:
-            return
-        for item in selected_items:
-            word = item.text()
-            self.manager.custom_words.discard(word)
+    def delete_word(self, word):
+        self.manager.custom_words.discard(word)
         self.manager._save_custom_dictionary()
         self.manager.notify_config_changed()
         self.populate_list()
-
-    def edit_word(self, item):
-        old_word = item.text()
-        new_word, ok = QInputDialog.getText(
-            self,
-            self.tr("Edit Word"),
-            self.tr("Edit word:"),
-            text=old_word
-        )
-        if ok:
-            new_word = new_word.strip().lower()
-            if new_word and new_word != old_word:
-                self.manager.custom_words.discard(old_word)
-                self.manager.custom_words.add(new_word)
-                self.manager._save_custom_dictionary()
-                self.manager.notify_config_changed()
-                self.populate_list()
 
 
 class ConfigPanel(QDialog):
