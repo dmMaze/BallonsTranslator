@@ -243,38 +243,6 @@ class SourceTextEdit(QTextEdit):
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         acts = menu.actions()
 
-        try:
-            # Spell suggestions integration
-            import re
-            from qtpy.QtWidgets import QAction
-            from qtpy.QtGui import QDesktopServices
-            from qtpy.QtCore import QUrl
-
-            pos = event.pos()
-            # Handle keyboard-triggered menu (where pos is negative)
-            if pos.x() < 0 or pos.y() < 0:
-                cursor = self.textCursor()
-            else:
-                cursor = self.cursorForPosition(pos)
-                
-            cursor.select(QTextCursor.SelectionType.WordUnderCursor)
-            selected_word = cursor.selectedText().strip()
-
-            if selected_word and len(selected_word) > 1:
-                first_act = acts[0] if acts else None
-
-                # Add Search Online action
-                search_act = QAction(self.tr("Search Online"), menu)
-                search_act.triggered.connect(lambda checked, w=selected_word: QDesktopServices.openUrl(QUrl(f"https://translate.google.com/?sl=auto&tl=ru&text={w}")))
-                if first_act:
-                    menu.insertAction(first_act, search_act)
-                    menu.insertSeparator(first_act)
-                else:
-                    menu.addAction(search_act)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-
         self.in_acts = True
         rst = menu.exec_(event.globalPos())
 

@@ -146,6 +146,10 @@ class SpellCheckManager:
         import threading
         if hasattr(self, '_loading_thread') and self._loading_thread and self._loading_thread.is_alive():
             return
+        
+        distance = getattr(pcfg, 'spellcheck_distance', 1)
+        if self.spell is not None and getattr(self.spell, '_distance', 1) != distance:
+            self.spell = None
 
         def bg_load():
             if not getattr(pcfg, 'spellcheck_enabled', True):
@@ -156,8 +160,8 @@ class SpellCheckManager:
             if self.spell is None:
                 try:
                     from spellchecker import SpellChecker
-                    self.spell = SpellChecker(language=['en', 'ru'], distance=1)
-                    LOGGER.info("SpellChecker initialized in background")
+                    self.spell = SpellChecker(language=['en', 'ru'], distance=distance)
+                    LOGGER.info(f"SpellChecker initialized in background (distance={distance})")
                 except Exception as e:
                     LOGGER.error(f"Failed to load SpellChecker in background: {e}")
 
@@ -225,15 +229,20 @@ class SpellCheckManager:
         >>> manager = SpellCheckManager.get_instance()
         >>> manager.load_spellchecker()
         """
+        from ballontranslator.utils.config import pcfg
+        distance = getattr(pcfg, 'spellcheck_distance', 1)
         if self.spell is not None:
-            return
+            if getattr(self.spell, '_distance', 1) == distance:
+                return
+            else:
+                self.spell = None
         
         try:
             from spellchecker import SpellChecker
-            # Load English and Russian dictionaries with fast distance=1
-            self.spell = SpellChecker(language=['en', 'ru'], distance=1)
+            # Load English and Russian dictionaries with configured distance
+            self.spell = SpellChecker(language=['en', 'ru'], distance=distance)
             from ballontranslator.utils.logger import logger as LOGGER
-            LOGGER.info("SpellChecker initialized with languages: en, ru (distance=1)")
+            LOGGER.info(f"SpellChecker initialized with languages: en, ru (distance={distance})")
         except Exception as e:
             from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.error(f"Failed to load SpellChecker: {e}")

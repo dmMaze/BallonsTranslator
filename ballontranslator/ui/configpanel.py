@@ -688,6 +688,24 @@ class ConfigPanel(QDialog):
         self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable Spell Checker'))
         self.spellcheck_checker.stateChanged.connect(self.on_spellcheck_changed)
 
+        # Edit Distance Spinbox
+        from qtpy.QtWidgets import QSpinBox
+        self.spellcheck_distance_spin = QSpinBox(self)
+        self.spellcheck_distance_spin.setRange(1, 4)
+        self.spellcheck_distance_spin.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        self.spellcheck_distance_spin.setToolTip(self.tr("Higher value, slower analysis"))
+        self.spellcheck_distance_spin.valueChanged.connect(self.on_spellcheck_distance_changed)
+
+        dist_layout = QHBoxLayout()
+        dist_layout.setContentsMargins(0, 0, 0, 0)
+        dist_layout.setSpacing(12)
+        dist_label = ConfigTextLabel(self.tr("Edit Distance"), CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
+        dist_label.setToolTip(self.tr("Higher value, slower analysis"))
+        dist_layout.addWidget(dist_label)
+        dist_layout.addWidget(self.spellcheck_distance_spin)
+        dist_layout.insertStretch(-1)
+        spellcheckConfigPanel.addBlockWidget(dist_layout)
+
         # Dictionary Words Manager Button
         self.manage_words_btn = QPushButton(parent=self)
         self.manage_words_btn.setText(self.tr("Dictionary Words..."))
@@ -903,6 +921,13 @@ class ConfigPanel(QDialog):
         self.external_dicts_list.setEnabled(enabled)
         self.add_ext_btn.setEnabled(enabled)
         self.remove_ext_btn.setEnabled(enabled)
+        self.spellcheck_distance_spin.setEnabled(enabled)
+        from ballontranslator.utils.spellcheck import SpellCheckManager
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
+    def on_spellcheck_distance_changed(self):
+        pcfg.spellcheck_distance = self.spellcheck_distance_spin.value()
         from ballontranslator.utils.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
@@ -1206,6 +1231,8 @@ class ConfigPanel(QDialog):
                 self.external_dicts_list.addItem(p)
 
         self.spellcheck_checker.setChecked(pcfg.spellcheck_enabled)
+        self.spellcheck_distance_spin.setValue(getattr(pcfg, 'spellcheck_distance', 1))
+        self.spellcheck_distance_spin.setEnabled(pcfg.spellcheck_enabled)
         self.manage_words_btn.setEnabled(pcfg.spellcheck_enabled)
         self.repo_dicts_list.setEnabled(pcfg.spellcheck_enabled)
         self.external_dicts_list.setEnabled(pcfg.spellcheck_enabled)
