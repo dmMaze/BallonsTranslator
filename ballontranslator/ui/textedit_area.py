@@ -131,6 +131,7 @@ class SourceTextEdit(QTextEdit):
     push_undo_stack = Signal(int)
     text_changed = Signal()
     focus_out = Signal(int)
+    suggestions_ready = Signal(object, str, list)
 
     def __init__(self, idx, parent, fold=False, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -160,6 +161,8 @@ class SourceTextEdit(QTextEdit):
         self.spell_highlighter = SpellCheckHighlighter(self.document())
         self.selectionChanged.connect(self.on_selection_changed)
         self.suggestion_popup = None
+        self.suggestions_ready.connect(self.show_suggestions_popup)
+        self.current_suggestion_word = None
 
     def setFold(self, fold: bool):
         if fold:
@@ -199,41 +202,64 @@ class SourceTextEdit(QTextEdit):
             if not cursor.hasSelection():
                 if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
                     self.suggestion_popup.hide()
+                self.current_suggestion_word = None
                 return
 
             selected_text = cursor.selectedText().strip()
             # Only suggest for a single word
             if len(selected_text) > 1 and re.match(r'^[a-zA-Zа-яА-ЯёЁ]+$', selected_text):
                 if not manager.is_correct(selected_text):
-                    suggestions = manager.get_suggestions(selected_text)
-                    if not self.suggestion_popup:
-                        self.suggestion_popup = FloatingSuggestionLabel(self)
+                    self.current_suggestion_word = selected_text
                     
-                    self.suggestion_popup.set_suggestions(cursor, selected_text, suggestions)
-                    self.suggestion_popup.adjustSize()
-                        
-                    rect = self.cursorRect()
-                    
-                    # Position above the selection inside the editor viewport
-                    px = rect.left() + (rect.width() - self.suggestion_popup.width()) // 2
-                    py = rect.top() - self.suggestion_popup.height() - 4
-                    
-                    # Guard boundaries
-                    # If it goes off the top of the viewport, show it below the cursor
-                    if py < 0:
-                        py = rect.bottom() + 4
-                        
-                    px = max(5, min(px, self.viewport().width() - self.suggestion_popup.width() - 5))
-                    
-                    # Map viewport local coordinates to global screen coordinates
-                    global_pos = self.viewport().mapToGlobal(QPoint(px, py))
-                    
-                    self.suggestion_popup.move(global_pos)
-                    self.suggestion_popup.show()
+                    # Fetch suggestions in background thread to avoid freezing the UI thread
+                    def fetch_bg(c, w):
+                        try:
+                            sugs = manager.get_suggestions(w)
+                            self.suggestions_ready.emit(c, w, sugs)
+                        except Exception:
+                            pass
+                            
+                    import threading
+                    t = threading.Thread(target=fetch_bg, args=(cursor, selected_text), daemon=True)
+                    t.start()
                     return
 
             if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
                 self.suggestion_popup.hide()
+            self.current_suggestion_word = None
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
+    def show_suggestions_popup(self, cursor, word, suggestions):
+        try:
+            if getattr(self, 'current_suggestion_word', None) != word:
+                return
+                
+            if not self.suggestion_popup:
+                self.suggestion_popup = FloatingSuggestionLabel(self)
+            
+            self.suggestion_popup.set_suggestions(cursor, word, suggestions)
+            self.suggestion_popup.adjustSize()
+                
+            rect = self.cursorRect()
+            
+            # Position above the selection inside the editor viewport
+            px = rect.left() + (rect.width() - self.suggestion_popup.width()) // 2
+            py = rect.top() - self.suggestion_popup.height() - 4
+            
+            # Guard boundaries
+            # If it goes off the top of the viewport, show it below the cursor
+            if py < 0:
+                py = rect.bottom() + 4
+                
+            px = max(5, min(px, self.viewport().width() - self.suggestion_popup.width() - 5))
+            
+            # Map viewport local coordinates to global screen coordinates
+            global_pos = self.viewport().mapToGlobal(QPoint(px, py))
+            
+            self.suggestion_popup.move(global_pos)
+            self.suggestion_popup.show()
         except Exception as e:
             import traceback
             traceback.print_exc()
