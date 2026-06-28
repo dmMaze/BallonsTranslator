@@ -20,19 +20,6 @@ class FloatingSuggestionLabel(QWidget):
         self.editor = editor
         self.setObjectName("suggestion_popup")
         
-        # Segmented tab style: dark background, border, zero margins/padding between buttons
-        self.setStyleSheet("""
-            QWidget#suggestion_popup {
-                background-color: #2b2b2d;
-                border: 1px solid #45474a;
-                border-radius: 4px;
-            }
-            QScrollArea {
-                border: none;
-                background: transparent;
-            }
-        """)
-        
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
@@ -87,31 +74,18 @@ class FloatingSuggestionLabel(QWidget):
             self.buttons_layout.addWidget(btn)
             
             # Stylize borders and round corners so they form a single seamless block
-            border_right = "1px solid #45474a" if i < len(suggestions) - 1 else "none"
+            border_right = "1px solid @borderColor"
             left_radius = "4px" if i == 0 else "0px"
-            right_radius = "4px" if i == len(suggestions) - 1 else "0px"
-            
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: #3b3d40;
-                    color: #ffffff;
-                    border: none;
-                    border-right: {border_right};
-                    border-top-left-radius: {left_radius};
-                    border-bottom-left-radius: {left_radius};
-                    border-top-right-radius: {right_radius};
-                    border-bottom-right-radius: {right_radius};
-                    padding: 0px 12px;
-                    height: 28px;
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    font-size: 11px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{
-                    background-color: #1e93e5;
-                    color: #ffffff;
-                }}
-            """)
+            btn.setStyleSheet(f"QPushButton {{ border-right: {border_right}; border-top-left-radius: {left_radius}; border-bottom-left-radius: {left_radius}; border-top-right-radius: 0px; border-bottom-right-radius: 0px; }}")
+
+        # Add "Add to Dict" button at the end
+        add_dict_btn = QPushButton(f"+ {self.tr('Add')}", self.scroll_content)
+        add_dict_btn.setObjectName("add_to_dict")
+        add_dict_btn.clicked.connect(self.add_to_dict)
+        self.buttons_layout.addWidget(add_dict_btn)
+
+        left_radius = "4px" if len(suggestions) == 0 else "0px"
+        add_dict_btn.setStyleSheet(f"QPushButton {{ border: none; border-top-left-radius: {left_radius}; border-bottom-left-radius: {left_radius}; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }}")
             
         self.scroll_content.adjustSize()
         total_width = self.scroll_content.width()
@@ -123,6 +97,11 @@ class FloatingSuggestionLabel(QWidget):
         
     def apply_suggestion(self, replacement):
         self.editor._replace_word(self.cursor, replacement)
+        self.hide()
+
+    def add_to_dict(self):
+        from ballontranslator.utils.spellcheck import SpellCheckManager
+        SpellCheckManager.get_instance().add_to_dictionary(self.word)
         self.hide()
 
 
@@ -179,11 +158,15 @@ class SourceTextEdit(QTextEdit):
     def _replace_word(self, cursor, replacement):
         self.setFocus()
         tc = self.textCursor()
-        tc.beginEditBlock()
         tc.setPosition(cursor.selectionStart())
         tc.setPosition(cursor.selectionEnd(), QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(tc)
+        
+        tc.beginEditBlock()
         tc.insertText(replacement)
         tc.endEditBlock()
+        
+        self.handle_content_change()
 
     def on_selection_changed(self):
         try:
@@ -248,13 +231,11 @@ class SourceTextEdit(QTextEdit):
 
         try:
             # Spell suggestions integration
-            from ballontranslator.utils.spellcheck import SpellCheckManager
             import re
             from qtpy.QtWidgets import QAction
             from qtpy.QtGui import QDesktopServices
             from qtpy.QtCore import QUrl
 
-            manager = SpellCheckManager.get_instance()
             pos = event.pos()
             # Handle keyboard-triggered menu (where pos is negative)
             if pos.x() < 0 or pos.y() < 0:
@@ -276,43 +257,6 @@ class SourceTextEdit(QTextEdit):
                     menu.insertSeparator(first_act)
                 else:
                     menu.addAction(search_act)
-
-                # Check spelling suggestions
-                is_misspelled = False
-                if manager.is_available() and re.match(r'^[a-zA-Zа-яА-ЯёЁ]+$', selected_word):
-                    is_misspelled = not manager.is_correct(selected_word)
-
-                if is_misspelled:
-                    suggestions = manager.get_suggestions(selected_word)
-
-                    # Add suggestions
-                    if suggestions:
-                        for sug in suggestions:
-                            sug_act = QAction(sug, menu)
-                            sug_act.triggered.connect(lambda checked, s=sug, c=cursor: self._replace_word(c, s))
-                            font = sug_act.font()
-                            font.setBold(True)
-                            sug_act.setFont(font)
-                            if first_act:
-                                menu.insertAction(first_act, sug_act)
-                            else:
-                                menu.addAction(sug_act)
-                    else:
-                        no_sug_act = QAction(self.tr("No spelling suggestions"), menu)
-                        no_sug_act.setEnabled(False)
-                        if first_act:
-                            menu.insertAction(first_act, no_sug_act)
-                        else:
-                            menu.addAction(no_sug_act)
-
-                    # Add to Dictionary action
-                    add_dict_act = QAction(self.tr("Add to Dictionary"), menu)
-                    add_dict_act.triggered.connect(lambda checked, w=selected_word: manager.add_to_dictionary(w))
-                    if first_act:
-                        menu.insertAction(first_act, add_dict_act)
-                        menu.insertSeparator(first_act)
-                    else:
-                        menu.addAction(add_dict_act)
         except Exception as e:
             import traceback
             traceback.print_exc()

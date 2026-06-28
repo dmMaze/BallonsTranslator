@@ -1067,3 +1067,40 @@ DeleteStyleButton {
 DeleteStyleButton::hover {
     background-color: #FF605C;
 }
+
+/* Suggestion Popup (Spell Checker) */
+QWidget#suggestion_popup {
+    background-color: @emptyContentBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+}
+
+QWidget#suggestion_popup QScrollArea {
+    border: none;
+    background: transparent;
+}
+
+QWidget#suggestion_popup QPushButton {
+    background-color: @pushBtnBackgroundColor;
+    color: @qwidgetForegroundColor;
+    border: none;
+    padding: 0px 12px;
+    height: 28px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+QWidget#suggestion_popup QPushButton:hover {
+    background-color: #1e93e5;
+    color: #ffffff;
+}
+
+QWidget#suggestion_popup QPushButton#add_to_dict {
+    color: #5cb85c;
+}
+
+QWidget#suggestion_popup QPushButton#add_to_dict:hover {
+    background-color: #5cb85c;
+    color: #ffffff;
+}

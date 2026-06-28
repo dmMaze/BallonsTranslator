@@ -927,6 +927,7 @@ class ConfigPanel(QDialog):
                     if not success:
                         item.setCheckState(Qt.CheckState.Unchecked)
                     else:
+                        item.setCheckState(Qt.CheckState.Checked)
                         lang_name = ""
                         for k, v in self.dictionary_urls.items():
                             if v == url:
