@@ -73,6 +73,17 @@ class FloatingSuggestionLabel(QWidget):
         if win:
             self.setStyleSheet(win.styleSheet())
         
+        from ballontranslator.utils.config import pcfg
+        is_dark = pcfg.darkmode
+        
+        # Determine theme-specific colors
+        theme_normal_bg = "#21252b" if is_dark else "rgba(198, 201, 207, 50%)"
+        theme_hover_bg = "#535671" if is_dark else "#b3b6bf" # Lightens on dark, darkens on light
+        theme_fg = "#8e99b1" if is_dark else "#5d5d5f"
+        theme_hover_fg = "#ffffff" if is_dark else "#000000"
+        green_fg = "#4caf50" if is_dark else "#2e7d32"
+        border_color = "#535671" if is_dark else "#b3b6bf"
+        
         while self.buttons_layout.count() > 0:
             item = self.buttons_layout.takeAt(0)
             w = item.widget()
@@ -85,9 +96,29 @@ class FloatingSuggestionLabel(QWidget):
             self.buttons_layout.addWidget(btn)
             
             # Stylize borders and round corners so they form a single seamless block
-            border_right = "1px solid @borderColor"
+            border_right = f"1px solid {border_color}"
             left_radius = "4px" if i == 0 else "0px"
-            btn.setStyleSheet(f"QPushButton {{ border-right: {border_right}; border-top-left-radius: {left_radius}; border-bottom-left-radius: {left_radius}; border-top-right-radius: 0px; border-bottom-right-radius: 0px; }}")
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {theme_normal_bg};
+                    color: {theme_fg};
+                    border: none;
+                    border-right: {border_right};
+                    border-top-left-radius: {left_radius};
+                    border-bottom-left-radius: {left_radius};
+                    border-top-right-radius: 0px;
+                    border-bottom-right-radius: 0px;
+                    padding: 0px 12px;
+                    height: 28px;
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    font-size: 11px;
+                    font-weight: normal;
+                }}
+                QPushButton:hover {{
+                    background-color: {theme_hover_bg};
+                    color: {theme_hover_fg};
+                }}
+            """)
 
         # Add "Add to Dict" button at the end
         add_dict_btn = QPushButton(f"+ {self.tr('Add')}", self.scroll_content)
@@ -96,7 +127,26 @@ class FloatingSuggestionLabel(QWidget):
         self.buttons_layout.addWidget(add_dict_btn)
 
         left_radius = "4px" if len(suggestions) == 0 else "0px"
-        add_dict_btn.setStyleSheet(f"QPushButton {{ border: none; border-top-left-radius: {left_radius}; border-bottom-left-radius: {left_radius}; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }}")
+        add_dict_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {theme_normal_bg};
+                color: {green_fg};
+                border: none;
+                border-top-left-radius: {left_radius};
+                border-bottom-left-radius: {left_radius};
+                border-top-right-radius: 4px;
+                border-bottom-right-radius: 4px;
+                padding: 0px 12px;
+                height: 28px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 11px;
+                font-weight: normal;
+            }}
+            QPushButton:hover {{
+                background-color: {green_fg};
+                color: #ffffff;
+            }}
+        """)
             
         self.scroll_content.adjustSize()
         total_width = self.scroll_content.width()
