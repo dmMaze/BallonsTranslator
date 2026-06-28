@@ -1092,15 +1092,15 @@ QWidget#suggestion_popup QPushButton {
 }
 
 QWidget#suggestion_popup QPushButton:hover {
-    background-color: #1e93e5;
-    color: #ffffff;
+    background-color: @borderColor;
+    color: @qwidgetForegroundColor;
 }
 
 QWidget#suggestion_popup QPushButton#add_to_dict {
-    color: #5cb85c;
+    color: #4caf50;
 }
 
 QWidget#suggestion_popup QPushButton#add_to_dict:hover {
-    background-color: #5cb85c;
+    background-color: #4caf50;
     color: #ffffff;
 }
