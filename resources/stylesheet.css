@@ -1088,7 +1088,7 @@ QWidget#suggestion_popup QPushButton {
     height: 28px;
     font-family: 'Segoe UI', Arial, sans-serif;
     font-size: 11px;
-    font-weight: bold;
+    font-weight: normal;
 }
 
 QWidget#suggestion_popup QPushButton:hover {
