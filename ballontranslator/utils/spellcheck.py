@@ -130,24 +130,39 @@ class SpellCheckManager:
             hl.clear_cache()
 
     def load_spellchecker_async(self):
+        from ballontranslator.utils.config import pcfg
+        from ballontranslator.utils.logger import logger as LOGGER
+
+        if not getattr(pcfg, 'spellcheck_enabled', True):
+            if self.spell is not None or self.external_words:
+                self.spell = None
+                self.external_words = set()
+                LOGGER.info("Spell Checker is disabled. Unloaded dictionaries.")
+                for hl in list(self.highlighters):
+                    hl.clear_cache()
+                    hl.rehighlight()
+            return
+
         import threading
         if hasattr(self, '_loading_thread') and self._loading_thread and self._loading_thread.is_alive():
             return
 
         def bg_load():
+            if not getattr(pcfg, 'spellcheck_enabled', True):
+                self.spell = None
+                self.external_words = set()
+                return
+
             if self.spell is None:
                 try:
                     from spellchecker import SpellChecker
                     self.spell = SpellChecker(language=['en', 'ru'], distance=1)
-                    from ballontranslator.utils.logger import logger as LOGGER
                     LOGGER.info("SpellChecker initialized in background")
                 except Exception as e:
-                    from ballontranslator.utils.logger import logger as LOGGER
                     LOGGER.error(f"Failed to load SpellChecker in background: {e}")
 
             temp_words = set()
             try:
-                from ballontranslator.utils.config import pcfg
                 repo_dicts = getattr(pcfg, 'spellcheck_repo_dicts', '').split(',')
                 loaded_repos = 0
                 for dict_name in repo_dicts:
@@ -166,13 +181,17 @@ class SpellCheckManager:
                         self._parse_and_load_file_to_set(path, temp_words)
                         loaded_externals += 1
 
-                from ballontranslator.utils.logger import logger as LOGGER
+                if not getattr(pcfg, 'spellcheck_enabled', True):
+                    self.spell = None
+                    self.external_words = set()
+                    LOGGER.info("Spell Checker is disabled. Cancelled dictionary loading.")
+                    return
+
                 LOGGER.info(
                     f"SpellCheckManager: loaded {len(temp_words)} words in background "
                     f"(from {loaded_repos} repo dictionaries, {loaded_externals} external dictionaries)"
                 )
             except Exception as e:
-                from ballontranslator.utils.logger import logger as LOGGER
                 LOGGER.error(f"Error loading dictionaries in background: {e}")
 
             self.external_words = temp_words
