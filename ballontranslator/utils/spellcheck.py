@@ -345,8 +345,17 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
 
     def clear_cache(self):
         self._cache.clear()
-        if self.document():
-            self.rehighlight()
+        try:
+            if self.document():
+                self.rehighlight()
+        except RuntimeError:
+            pass
+
+    def rehighlight(self):
+        try:
+            super().rehighlight()
+        except RuntimeError:
+            pass
 
     def highlightBlock(self, text):
         from ballontranslator.utils.config import pcfg
