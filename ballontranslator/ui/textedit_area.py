@@ -206,8 +206,8 @@ class SourceTextEdit(QTextEdit):
                 return
 
             selected_text = cursor.selectedText().strip()
-            # Only suggest for a single word
-            if len(selected_text) > 1 and re.match(r'^[^\W\d_]+$', selected_text):
+            # Only suggest for a single word (excluding CJK)
+            if len(selected_text) > 1 and re.match(r'^[^\W\d_\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uac00-\ud7a3\u3400-\u4dbf]+$', selected_text):
                 if not manager.is_correct(selected_text):
                     self.current_suggestion_word = selected_text
                     

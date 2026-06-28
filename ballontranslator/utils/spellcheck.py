@@ -374,8 +374,8 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
         if not self.manager.is_available():
             return
 
-        # Pattern matches words in any language using Unicode character classes
-        for match in re.finditer(r'\b[^\W\d_]+\b', text):
+        # Pattern matches words in any language using Unicode character classes (excluding CJK)
+        for match in re.finditer(r'\b[^\W\d_\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uac00-\ud7a3\u3400-\u4dbf]+\b', text):
             word = match.group(0)
             if len(word) <= 1:
                 continue
