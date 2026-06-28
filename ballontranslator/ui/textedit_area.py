@@ -191,32 +191,31 @@ class SourceTextEdit(QTextEdit):
             if len(selected_text) > 1 and re.match(r'^[a-zA-Zа-яА-ЯёЁ]+$', selected_text):
                 if not manager.is_correct(selected_text):
                     suggestions = manager.get_suggestions(selected_text)
-                    if suggestions:
-                        if not self.suggestion_popup:
-                            self.suggestion_popup = FloatingSuggestionLabel(self)
+                    if not self.suggestion_popup:
+                        self.suggestion_popup = FloatingSuggestionLabel(self)
+                    
+                    self.suggestion_popup.set_suggestions(cursor, selected_text, suggestions)
+                    self.suggestion_popup.adjustSize()
                         
-                        self.suggestion_popup.set_suggestions(cursor, selected_text, suggestions)
-                        self.suggestion_popup.adjustSize()
+                    rect = self.cursorRect()
+                    
+                    # Position above the selection inside the editor viewport
+                    px = rect.left() + (rect.width() - self.suggestion_popup.width()) // 2
+                    py = rect.top() - self.suggestion_popup.height() - 4
+                    
+                    # Guard boundaries
+                    # If it goes off the top of the viewport, show it below the cursor
+                    if py < 0:
+                        py = rect.bottom() + 4
                         
-                        rect = self.cursorRect()
-                        
-                        # Position above the selection inside the editor viewport
-                        px = rect.left() + (rect.width() - self.suggestion_popup.width()) // 2
-                        py = rect.top() - self.suggestion_popup.height() - 4
-                        
-                        # Guard boundaries
-                        # If it goes off the top of the viewport, show it below the cursor
-                        if py < 0:
-                            py = rect.bottom() + 4
-                            
-                        px = max(5, min(px, self.viewport().width() - self.suggestion_popup.width() - 5))
-                        
-                        # Map viewport local coordinates to global screen coordinates
-                        global_pos = self.viewport().mapToGlobal(QPoint(px, py))
-                        
-                        self.suggestion_popup.move(global_pos)
-                        self.suggestion_popup.show()
-                        return
+                    px = max(5, min(px, self.viewport().width() - self.suggestion_popup.width() - 5))
+                    
+                    # Map viewport local coordinates to global screen coordinates
+                    global_pos = self.viewport().mapToGlobal(QPoint(px, py))
+                    
+                    self.suggestion_popup.move(global_pos)
+                    self.suggestion_popup.show()
+                    return
 
             if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
                 self.suggestion_popup.hide()
