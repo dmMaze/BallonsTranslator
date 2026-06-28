@@ -19,6 +19,7 @@ class FloatingSuggestionLabel(QWidget):
         super().__init__(editor, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
         self.editor = editor
         self.setObjectName("suggestion_popup")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         
         # Inherit stylesheet dynamically from the parent MainWindow to respect light/dark themes
         win = self.editor.window()
