@@ -207,7 +207,7 @@ class SourceTextEdit(QTextEdit):
 
             selected_text = cursor.selectedText().strip()
             # Only suggest for a single word
-            if len(selected_text) > 1 and re.match(r'^[a-zA-Zа-яА-ЯёЁ]+$', selected_text):
+            if len(selected_text) > 1 and re.match(r'^[^\W\d_]+$', selected_text):
                 if not manager.is_correct(selected_text):
                     self.current_suggestion_word = selected_text
                     

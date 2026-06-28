@@ -374,8 +374,8 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
         if not self.manager.is_available():
             return
 
-        # Pattern matches words in English and Russian
-        for match in re.finditer(r'\b[a-zA-Zа-яА-ЯёЁ]+\b', text):
+        # Pattern matches words in any language using Unicode character classes
+        for match in re.finditer(r'\b[^\W\d_]+\b', text):
             word = match.group(0)
             if len(word) <= 1:
                 continue
