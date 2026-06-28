@@ -704,7 +704,19 @@ class ConfigPanel(QDialog):
         dist_layout.addWidget(dist_label)
         dist_layout.addWidget(self.spellcheck_distance_spin)
         dist_layout.insertStretch(-1)
-        spellcheckConfigPanel.addBlockWidget(dist_layout)
+
+        dist_block = QVBoxLayout()
+        dist_block.setContentsMargins(0, 0, 0, 0)
+        dist_block.setSpacing(4)
+        dist_block.addLayout(dist_layout)
+
+        desc_label = ConfigTextLabel(
+            self.tr("Max spelling difference in letters. Higher values search deeper but perform slower."),
+            CONFIG_FONTSIZE_CONTENT - 2,
+            QFont.Weight.Normal
+        )
+        dist_block.addWidget(desc_label)
+        spellcheckConfigPanel.addBlockWidget(dist_block)
 
         # Dictionary Words Manager Button
         self.manage_words_btn = QPushButton(parent=self)
