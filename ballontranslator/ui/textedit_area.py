@@ -64,7 +64,34 @@ class FloatingSuggestionLabel(QWidget):
         shadow.setOffset(0, 2)
         self.setGraphicsEffect(shadow)
         
+        # Hide the suggestion popup automatically when application focus changes
+        app = QApplication.instance()
+        if app:
+            app.focusChanged.connect(self.on_focus_changed)
+            app.installEventFilter(self)
+            
         self.hide()
+
+    def eventFilter(self, watched, event):
+        try:
+            from qtpy.QtCore import QEvent
+            if event.type() == QEvent.Type.ApplicationDeactivate:
+                self.hide()
+        except RuntimeError:
+            pass
+        return super().eventFilter(watched, event)
+
+    def on_focus_changed(self, old_widget, new_widget):
+        try:
+            if not new_widget:
+                # Application lost focus (user switched to another application)
+                self.hide()
+            elif new_widget is not self.editor and not self.isAncestorOf(new_widget):
+                # User focused another widget within our application
+                self.hide()
+        except RuntimeError:
+            # Widget or editor might be partially deleted/garbage collected during teardown
+            pass
 
     def wheelEvent(self, event):
         scrollbar = self.scroll_area.horizontalScrollBar()
@@ -259,8 +286,10 @@ class SourceTextEdit(QTextEdit):
                 return
 
             selected_text = cursor.selectedText().strip()
-            # Only suggest for a single word (excluding CJK)
-            if len(selected_text) > 1 and re.match(r'^[^\W\d_\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uac00-\ud7a3\u3400-\u4dbf]+$', selected_text):
+            # Only suggest for a single word (optionally excluding CJK)
+            skip_cjk = getattr(pcfg, 'spellcheck_skip_cjk', True)
+            pattern = r'^[^\W\d_\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uac00-\ud7a3\u3400-\u4dbf]+$' if skip_cjk else r'^[^\W\d_]+$'
+            if len(selected_text) > 1 and re.match(pattern, selected_text):
                 if not manager.is_correct(selected_text):
                     self.current_suggestion_word = selected_text
                     

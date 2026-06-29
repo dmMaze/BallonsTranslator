@@ -28,6 +28,7 @@ class SpellCheckManager:
         self.external_words: Set[str] = set()
         self.highlighters = weakref.WeakSet()
         self.dict_path = os.path.join(shared.PROGRAM_PATH, 'config', 'custom_dictionary.txt')
+        self._reload_queued = False
         self._load_custom_dictionary()
         self.load_spellchecker_async()
 
@@ -145,67 +146,73 @@ class SpellCheckManager:
 
         import threading
         if hasattr(self, '_loading_thread') and self._loading_thread and self._loading_thread.is_alive():
+            self._reload_queued = True
             return
         
-        distance = getattr(pcfg, 'spellcheck_distance', 1)
-        if self.spell is not None and getattr(self.spell, '_distance', 1) != distance:
-            self.spell = None
+        self._reload_queued = False
 
         def bg_load():
-            if not getattr(pcfg, 'spellcheck_enabled', True):
-                self.spell = None
-                self.external_words = set()
-                return
-
-            if self.spell is None:
-                try:
-                    from spellchecker import SpellChecker
-                    self.spell = SpellChecker(language=['en', 'ru'], distance=distance)
-                    LOGGER.info(f"SpellChecker initialized in background (distance={distance})")
-                except Exception as e:
-                    LOGGER.error(f"Failed to load SpellChecker in background: {e}")
-
-            temp_words = set()
-            try:
-                repo_dicts = getattr(pcfg, 'spellcheck_repo_dicts', '').split(',')
-                loaded_repos = 0
-                for dict_name in repo_dicts:
-                    dict_name = dict_name.strip()
-                    if dict_name:
-                        dict_path = os.path.join(shared.PROGRAM_PATH, 'data', 'dictionaries', dict_name)
-                        if os.path.exists(dict_path):
-                            self._parse_and_load_file_to_set(dict_path, temp_words)
-                            loaded_repos += 1
-
-                ext_paths = getattr(pcfg, 'spellcheck_external_dict_path', '').split(';')
-                loaded_externals = 0
-                for path in ext_paths:
-                    path = path.strip()
-                    if path and os.path.exists(path):
-                        self._parse_and_load_file_to_set(path, temp_words)
-                        loaded_externals += 1
+            while True:
+                self._reload_queued = False
+                distance = getattr(pcfg, 'spellcheck_distance', 1)
 
                 if not getattr(pcfg, 'spellcheck_enabled', True):
                     self.spell = None
                     self.external_words = set()
-                    LOGGER.info("Spell Checker is disabled. Cancelled dictionary loading.")
                     return
 
-                LOGGER.info(
-                    f"SpellCheckManager: loaded {len(temp_words)} words in background "
-                    f"(from {loaded_repos} repo dictionaries, {loaded_externals} external dictionaries)"
-                )
-            except Exception as e:
-                LOGGER.error(f"Error loading dictionaries in background: {e}")
+                if self.spell is None or getattr(self.spell, '_distance', 1) != distance:
+                    try:
+                        from spellchecker import SpellChecker
+                        self.spell = SpellChecker(language=['en', 'ru'], distance=distance)
+                        LOGGER.info(f"SpellChecker initialized in background (distance={distance})")
+                    except Exception as e:
+                        LOGGER.error(f"Failed to load SpellChecker in background: {e}")
 
-            self.external_words = temp_words
+                temp_words = set()
+                try:
+                    repo_dicts = getattr(pcfg, 'spellcheck_repo_dicts', '').split(',')
+                    loaded_repos = 0
+                    for dict_name in repo_dicts:
+                        dict_name = dict_name.strip()
+                        if dict_name:
+                            dict_path = os.path.join(shared.PROGRAM_PATH, 'data', 'dictionaries', dict_name)
+                            if os.path.exists(dict_path):
+                                self._parse_and_load_file_to_set(dict_path, temp_words)
+                                loaded_repos += 1
 
-            from qtpy.QtCore import QTimer
-            def gui_notify():
-                for hl in list(self.highlighters):
-                    hl.clear_cache()
-                    hl.rehighlight()
-            QTimer.singleShot(0, gui_notify)
+                    ext_paths = getattr(pcfg, 'spellcheck_external_dict_path', '').split(';')
+                    loaded_externals = 0
+                    for path in ext_paths:
+                        path = path.strip()
+                        if path and os.path.exists(path):
+                            self._parse_and_load_file_to_set(path, temp_words)
+                            loaded_externals += 1
+
+                    if not getattr(pcfg, 'spellcheck_enabled', True):
+                        self.spell = None
+                        self.external_words = set()
+                        LOGGER.info("Spell Checker is disabled. Cancelled dictionary loading.")
+                        return
+
+                    LOGGER.info(
+                        f"SpellCheckManager: loaded {len(temp_words)} words in background "
+                        f"(from {loaded_repos} repo dictionaries, {loaded_externals} external dictionaries)"
+                    )
+                except Exception as e:
+                    LOGGER.error(f"Error loading dictionaries in background: {e}")
+
+                self.external_words = temp_words
+
+                from qtpy.QtCore import QTimer
+                def gui_notify():
+                    for hl in list(self.highlighters):
+                        hl.clear_cache()
+                        hl.rehighlight()
+                QTimer.singleShot(0, gui_notify)
+
+                if not self._reload_queued:
+                    break
 
         self._loading_thread = threading.Thread(target=bg_load, daemon=True)
         self._loading_thread.start()
@@ -374,8 +381,10 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
         if not self.manager.is_available():
             return
 
-        # Pattern matches words in any language using Unicode character classes (excluding CJK)
-        for match in re.finditer(r'\b[^\W\d_\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uac00-\ud7a3\u3400-\u4dbf]+\b', text):
+        # Pattern matches words in any language using Unicode character classes (optionally excluding CJK)
+        skip_cjk = getattr(pcfg, 'spellcheck_skip_cjk', True)
+        pattern = r'\b[^\W\d_\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uac00-\ud7a3\u3400-\u4dbf]+\b' if skip_cjk else r'\b[^\W\d_]+\b'
+        for match in re.finditer(pattern, text):
             word = match.group(0)
             if len(word) <= 1:
                 continue

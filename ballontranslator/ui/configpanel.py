@@ -574,27 +574,27 @@ class ConfigPanel(QDialog):
 
     dictionary_urls = {
         "Arabic (ar)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.dic",
-        "Belarusian (be_BY)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/be_BY/be_BY.dic",
+        "Belarusian (be_BY)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/be_BY/be-official.dic",
         "Bulgarian (bg_BG)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bg_BG/bg_BG.dic",
         "Bosnian (bs_BA)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bs_BA/bs_BA.dic",
-        "Catalan (ca)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/ca.dic",
+        "Catalan (ca)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/dictionaries/ca.dic",
         "Czech (cs_CZ)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/cs_CZ/cs_CZ.dic",
         "Danish (da_DK)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/da_DK/da_DK.dic",
-        "German (de_DE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE.dic",
+        "German (de_DE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic",
         "Greek (el_GR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/el_GR/el_GR.dic",
         "English (en_US)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_US.dic",
         "English (en_GB)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_GB.dic",
         "Spanish (es_ES)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/es/es_ES.dic",
         "Estonian (et_EE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/et_EE/et_EE.dic",
-        "Persian (fa_IR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fa_IR/fa_IR.dic",
-        "French (fr_FR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/fr_FR.dic",
+        "Persian (fa_IR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fa_IR/fa-IR.dic",
+        "French (fr_FR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/fr.dic",
         "Croatian (hr_HR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hr_HR/hr_HR.dic",
         "Hungarian (hu_HU)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hu_HU/hu_HU.dic",
-        "Indonesian (id)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/id/id.dic",
+        "Indonesian (id)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/id/id_ID.dic",
         "Icelandic (is)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/is/is.dic",
         "Italian (it_IT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/it_IT/it_IT.dic",
         "Korean (ko_KR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ko_KR/ko_KR.dic",
-        "Lithuanian (lt_LT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lt_LT/lt_LT.dic",
+        "Lithuanian (lt_LT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lt_LT/lt.dic",
         "Latvian (lv_LV)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lv_LV/lv_LV.dic",
         "Dutch (nl_NL)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/nl_NL/nl_NL.dic",
         "Polish (pl_PL)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pl_PL/pl_PL.dic",
@@ -605,10 +605,10 @@ class ConfigPanel(QDialog):
         "Russian (Large - all inflections) (ru_RU)": "https://raw.githubusercontent.com/danakt/russian-words/master/russian.txt",
         "Slovak (sk_SK)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sk_SK/sk_SK.dic",
         "Slovenian (sl_SI)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sl_SI/sl_SI.dic",
-        "Swedish (sv_SE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/sv_SE.dic",
+        "Swedish (sv_SE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/dictionaries/sv_SE.dic",
         "Turkish (tr_TR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/tr_TR/tr_TR.dic",
         "Ukrainian (uk_UA)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/uk_UA/uk_UA.dic",
-        "Vietnamese (vi)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/vi/vi.dic"
+        "Vietnamese (vi)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/vi/vi_VN.dic"
     }
 
     def __init__(self, *args, **kwargs) -> None:
@@ -695,6 +695,9 @@ class ConfigPanel(QDialog):
 
         self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable Spell Checker'))
         self.spellcheck_checker.stateChanged.connect(self.on_spellcheck_changed)
+
+        self.spellcheck_skip_cjk_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Skip CJK (Chinese, Japanese, Korean)'))
+        self.spellcheck_skip_cjk_checker.stateChanged.connect(self.on_spellcheck_skip_cjk_changed)
 
         # Edit Distance Spinbox
         from qtpy.QtWidgets import QSpinBox
@@ -942,6 +945,13 @@ class ConfigPanel(QDialog):
         self.add_ext_btn.setEnabled(enabled)
         self.remove_ext_btn.setEnabled(enabled)
         self.spellcheck_distance_spin.setEnabled(enabled)
+        self.spellcheck_skip_cjk_checker.setEnabled(enabled)
+        from ballontranslator.utils.spellcheck import SpellCheckManager
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
+    def on_spellcheck_skip_cjk_changed(self):
+        pcfg.spellcheck_skip_cjk = self.spellcheck_skip_cjk_checker.isChecked()
         from ballontranslator.utils.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
@@ -957,30 +967,33 @@ class ConfigPanel(QDialog):
         dialog.exec_()
 
     def on_repo_dict_item_changed(self, item):
+        from qtpy.QtCore import Qt
+        import os
+        from ballontranslator.utils.shared import PROGRAM_PATH
+        from ballontranslator.utils.logger import logger as LOGGER
+
+        url, filename = item.data(Qt.ItemDataRole.UserRole)
+        save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
+
+        LOGGER.info(f"on_repo_dict_item_changed: item={item.text()}, checkState={item.checkState()}")
+
+        if item.checkState() == Qt.CheckState.Checked:
+            if not os.path.exists(save_path):
+                # Uncheck immediately so it doesn't look enabled while downloading
+                self.repo_dicts_list.blockSignals(True)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                self.repo_dicts_list.blockSignals(False)
+                
+                # Start async download
+                self.download_repo_dict_async(item, url, filename)
+                return
+
+        self.save_repo_dicts_config()
+
+    def save_repo_dicts_config(self):
         self.repo_dicts_list.blockSignals(True)
         try:
             from qtpy.QtCore import Qt
-            import os
-            from ballontranslator.utils.shared import PROGRAM_PATH
-
-            url, filename = item.data(Qt.ItemDataRole.UserRole)
-            save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
-
-            if item.checkState() == Qt.CheckState.Checked:
-                if not os.path.exists(save_path):
-                    success = self.download_repo_dict_sync(url, filename)
-                    if not success:
-                        item.setCheckState(Qt.CheckState.Unchecked)
-                    else:
-                        item.setCheckState(Qt.CheckState.Checked)
-                        lang_name = ""
-                        for k, v in self.dictionary_urls.items():
-                            if v == url:
-                                lang_name = k
-                                break
-                        if lang_name:
-                            item.setText(self.tr(lang_name) + self.tr(" (Installed local)"))
-
             enabled_files = []
             for idx in range(self.repo_dicts_list.count()):
                 it = self.repo_dicts_list.item(idx)
@@ -995,11 +1008,12 @@ class ConfigPanel(QDialog):
         finally:
             self.repo_dicts_list.blockSignals(False)
 
-    def download_repo_dict_sync(self, url, filename):
+    def download_repo_dict_async(self, item, url, filename):
         import os
         from ballontranslator.utils.shared import PROGRAM_PATH
         from qtpy.QtWidgets import QProgressDialog
         from qtpy.QtCore import Qt
+        from ballontranslator.utils.logger import logger as LOGGER
 
         save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
 
@@ -1007,7 +1021,6 @@ class ConfigPanel(QDialog):
         progress.setWindowModality(Qt.WindowModality.WindowModal)
 
         thread = DictDownloadThread(url, save_path)
-        download_success = [False]
 
         def on_progress(downloaded, total):
             if total > 0:
@@ -1017,10 +1030,22 @@ class ConfigPanel(QDialog):
         def on_finished(success, err):
             progress.close()
             if success:
-                download_success[0] = True
+                LOGGER.info(f"download_repo_dict_async: successful download of {filename}")
+                self.repo_dicts_list.blockSignals(True)
+                try:
+                    item.setCheckState(Qt.CheckState.Checked)
+                    # Remove " (Installed local)" if it exists, then append it
+                    clean_text = item.text().replace(self.tr(" (Installed local)"), "")
+                    item.setText(clean_text + self.tr(" (Installed local)"))
+                finally:
+                    self.repo_dicts_list.blockSignals(False)
+                
+                self.save_repo_dicts_config()
+                
                 from qtpy.QtWidgets import QMessageBox
                 QMessageBox.information(self, self.tr("Download Complete"), self.tr("Dictionary downloaded successfully!"))
             else:
+                LOGGER.warning(f"download_repo_dict_async: download failed for {filename}: {err}")
                 if "cancelled" not in err.lower():
                     from qtpy.QtWidgets import QMessageBox
                     QMessageBox.warning(self, self.tr("Download Failed"), self.tr("Failed to download dictionary: ") + err)
@@ -1033,7 +1058,6 @@ class ConfigPanel(QDialog):
         thread.start()
         progress.exec_()
         thread.wait()
-        return download_success[0]
 
     def add_external_dictionary(self):
         from qtpy.QtWidgets import QFileDialog
@@ -1229,18 +1253,28 @@ class ConfigPanel(QDialog):
             dict_path = os.path.join(shared.PROGRAM_PATH, 'data', 'dictionaries', filename)
 
             display_text = self.tr(lang_name)
-            if os.path.exists(dict_path):
+            exists = os.path.exists(dict_path)
+            if exists:
                 display_text += self.tr(" (Installed local)")
 
             item = QListWidgetItem(display_text, self.repo_dicts_list)
             item.setData(Qt.ItemDataRole.UserRole, (url, filename))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
 
-            if filename in active_repos:
+            if filename in active_repos and exists:
                 item.setCheckState(Qt.CheckState.Checked)
             else:
                 item.setCheckState(Qt.CheckState.Unchecked)
         self.repo_dicts_list.blockSignals(False)
+
+        # Synchronize config to remove any manually deleted dictionaries
+        enabled_files = []
+        for idx in range(self.repo_dicts_list.count()):
+            it = self.repo_dicts_list.item(idx)
+            if it.checkState() == Qt.CheckState.Checked:
+                _, fname = it.data(Qt.ItemDataRole.UserRole)
+                enabled_files.append(fname)
+        pcfg.spellcheck_repo_dicts = ",".join(enabled_files)
 
         # Setup external dictionaries
         self.external_dicts_list.clear()
@@ -1253,6 +1287,8 @@ class ConfigPanel(QDialog):
         self.spellcheck_checker.setChecked(pcfg.spellcheck_enabled)
         self.spellcheck_distance_spin.setValue(getattr(pcfg, 'spellcheck_distance', 1))
         self.spellcheck_distance_spin.setEnabled(pcfg.spellcheck_enabled)
+        self.spellcheck_skip_cjk_checker.setChecked(getattr(pcfg, 'spellcheck_skip_cjk', True))
+        self.spellcheck_skip_cjk_checker.setEnabled(pcfg.spellcheck_enabled)
         self.manage_words_btn.setEnabled(pcfg.spellcheck_enabled)
         self.repo_dicts_list.setEnabled(pcfg.spellcheck_enabled)
         self.external_dicts_list.setEnabled(pcfg.spellcheck_enabled)
