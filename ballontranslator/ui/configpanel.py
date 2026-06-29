@@ -696,9 +696,6 @@ class ConfigPanel(QDialog):
         self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable Spell Checker'))
         self.spellcheck_checker.stateChanged.connect(self.on_spellcheck_changed)
 
-        self.spellcheck_skip_cjk_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Skip CJK (Chinese, Japanese, Korean)'))
-        self.spellcheck_skip_cjk_checker.stateChanged.connect(self.on_spellcheck_skip_cjk_changed)
-
         # Edit Distance Spinbox
         from qtpy.QtWidgets import QSpinBox
         self.spellcheck_distance_spin = QSpinBox(self)
@@ -945,13 +942,6 @@ class ConfigPanel(QDialog):
         self.add_ext_btn.setEnabled(enabled)
         self.remove_ext_btn.setEnabled(enabled)
         self.spellcheck_distance_spin.setEnabled(enabled)
-        self.spellcheck_skip_cjk_checker.setEnabled(enabled)
-        from ballontranslator.utils.spellcheck import SpellCheckManager
-        SpellCheckManager.get_instance().notify_config_changed()
-        self.save_config.emit()
-
-    def on_spellcheck_skip_cjk_changed(self):
-        pcfg.spellcheck_skip_cjk = self.spellcheck_skip_cjk_checker.isChecked()
         from ballontranslator.utils.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
@@ -1287,8 +1277,6 @@ class ConfigPanel(QDialog):
         self.spellcheck_checker.setChecked(pcfg.spellcheck_enabled)
         self.spellcheck_distance_spin.setValue(getattr(pcfg, 'spellcheck_distance', 1))
         self.spellcheck_distance_spin.setEnabled(pcfg.spellcheck_enabled)
-        self.spellcheck_skip_cjk_checker.setChecked(getattr(pcfg, 'spellcheck_skip_cjk', True))
-        self.spellcheck_skip_cjk_checker.setEnabled(pcfg.spellcheck_enabled)
         self.manage_words_btn.setEnabled(pcfg.spellcheck_enabled)
         self.repo_dicts_list.setEnabled(pcfg.spellcheck_enabled)
         self.external_dicts_list.setEnabled(pcfg.spellcheck_enabled)

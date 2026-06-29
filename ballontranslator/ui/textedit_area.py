@@ -286,9 +286,8 @@ class SourceTextEdit(QTextEdit):
                 return
 
             selected_text = cursor.selectedText().strip()
-            # Only suggest for a single word (optionally excluding CJK)
-            skip_cjk = getattr(pcfg, 'spellcheck_skip_cjk', True)
-            pattern = r'^[^\W\d_\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uac00-\ud7a3\u3400-\u4dbf]+$' if skip_cjk else r'^[^\W\d_]+$'
+            # Only suggest for a single word
+            pattern = r'^[^\W\d_]+$'
             if len(selected_text) > 1 and re.match(pattern, selected_text):
                 if not manager.is_correct(selected_text):
                     self.current_suggestion_word = selected_text
