@@ -544,15 +544,23 @@ class DictionaryManagerDialog(QDialog):
         self.list_widget.setItemWidget(input_item, input_widget)
 
     def add_word(self, word):
-        if word and word not in self.manager.custom_words:
-            self.manager.add_to_dictionary(word)
+        word_lower = word.lower()
+        if word_lower and word_lower not in self.manager.custom_words:
+            self.manager.custom_words.add(word_lower)
             self.populate_list()
 
     def delete_word(self, word):
-        self.manager.custom_words.discard(word)
+        word_lower = word.lower()
+        self.manager.custom_words.discard(word_lower)
+        self.populate_list()
+
+    def done(self, r):
+        super().done(r)
         self.manager._save_custom_dictionary()
         self.manager.notify_config_changed()
-        self.populate_list()
+        for hl in list(self.manager.highlighters):
+            hl.clear_cache()
+            hl.rehighlight()
 
 
 class ConfigPanel(QDialog):

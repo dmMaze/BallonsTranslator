@@ -30,10 +30,10 @@ class FloatingSuggestionLabel(QWidget):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
         
-        # Horizontal scroll area
+        # Horizontal scroll area for suggestions only
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setFixedHeight(28)
         self.scroll_area.wheelEvent = self.scroll_area_wheel_event
@@ -49,6 +49,15 @@ class FloatingSuggestionLabel(QWidget):
         self.scroll_area.setWidget(self.scroll_content)
         self.main_layout.addWidget(self.scroll_area)
         
+        # Add static "Add to Dict" button outside scroll area
+        self.add_dict_btn = QPushButton(self)
+        self.add_dict_btn.setObjectName("add_to_dict")
+        self.add_dict_btn.clicked.connect(self.add_to_dict)
+        self.add_dict_btn.setFixedHeight(28)
+        self.add_dict_btn.setMouseTracking(True)
+        self.add_dict_btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self.main_layout.addWidget(self.add_dict_btn)
+        
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(6)
         shadow.setColor(QColor(0, 0, 0, 150))
@@ -56,6 +65,13 @@ class FloatingSuggestionLabel(QWidget):
         self.setGraphicsEffect(shadow)
         
         self.hide()
+
+    def wheelEvent(self, event):
+        scrollbar = self.scroll_area.horizontalScrollBar()
+        if scrollbar:
+            delta = event.angleDelta().y() or event.angleDelta().x()
+            scrollbar.setValue(scrollbar.value() - delta // 2)
+            event.accept()
 
     def scroll_area_wheel_event(self, event):
         scrollbar = self.scroll_area.horizontalScrollBar()
@@ -76,6 +92,7 @@ class FloatingSuggestionLabel(QWidget):
         from ballontranslator.utils.config import pcfg
         is_dark = pcfg.darkmode
         border_color = "rgba(255, 255, 255, 12%)" if is_dark else "rgba(0, 0, 0, 12%)"
+        hover_bg = "rgba(255, 255, 255, 16%)" if is_dark else "rgba(0, 0, 0, 10%)"
         
         while self.buttons_layout.count() > 0:
             item = self.buttons_layout.takeAt(0)
@@ -89,25 +106,61 @@ class FloatingSuggestionLabel(QWidget):
             self.buttons_layout.addWidget(btn)
             
             # Stylize borders and round corners so they form a single seamless block
-            border_right = f"1px solid {border_color}"
+            border_right = "none" if i == len(suggestions) - 1 else f"1px solid {border_color}"
             left_radius = "4px" if i == 0 else "0px"
-            btn.setStyleSheet(f"border: none; border-right: {border_right}; border-top-left-radius: {left_radius}; border-bottom-left-radius: {left_radius}; border-top-right-radius: 0px; border-bottom-right-radius: 0px;")
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    border: none;
+                    border-right: {border_right};
+                    border-top-left-radius: {left_radius};
+                    border-bottom-left-radius: {left_radius};
+                    border-top-right-radius: 0px;
+                    border-bottom-right-radius: 0px;
+                    background-color: transparent;
+                }}
+                QPushButton:hover {{
+                    background-color: {hover_bg};
+                }}
+            """)
 
-        # Add "Add to Dict" button at the end
-        add_dict_btn = QPushButton(f"+ {self.tr('Add')}", self.scroll_content)
-        add_dict_btn.setObjectName("add_to_dict")
-        add_dict_btn.clicked.connect(self.add_to_dict)
-        self.buttons_layout.addWidget(add_dict_btn)
-
+        # Update static Add button
+        self.add_dict_btn.setText(f"+ {self.tr('Add')}")
         left_radius = "4px" if len(suggestions) == 0 else "0px"
-        add_dict_btn.setStyleSheet(f"border: none; border-top-left-radius: {left_radius}; border-bottom-left-radius: {left_radius}; border-top-right-radius: 4px; border-bottom-right-radius: 4px;")
+        border_left = "none" if len(suggestions) == 0 else f"1px solid {border_color}"
+        self.add_dict_btn.setStyleSheet(f"""
+            QPushButton#add_to_dict {{
+                border: none;
+                border-left: {border_left};
+                border-top-left-radius: {left_radius};
+                border-bottom-left-radius: {left_radius};
+                border-top-right-radius: 4px;
+                border-bottom-right-radius: 4px;
+                background-color: transparent;
+                color: #4caf50;
+            }}
+            QPushButton#add_to_dict:hover {{
+                background-color: #4caf50;
+                color: #ffffff;
+            }}
+        """)
             
         self.scroll_content.adjustSize()
-        total_width = self.scroll_content.width()
+        suggestions_width = self.scroll_content.width()
         
-        # Max width is 250px, if more we scroll
-        popup_width = min(total_width, 250)
-        self.scroll_area.setFixedWidth(popup_width)
+        self.add_dict_btn.adjustSize()
+        add_btn_width = self.add_dict_btn.width()
+        self.add_dict_btn.setFixedWidth(add_btn_width)
+        
+        # Calculate horizontal sizes
+        scroll_area_width = min(suggestions_width, 180) if len(suggestions) > 0 else 0
+        self.scroll_area.setFixedWidth(scroll_area_width)
+        
+        if len(suggestions) == 0:
+            self.scroll_area.hide()
+        else:
+            self.scroll_area.show()
+            
+        popup_width = scroll_area_width + add_btn_width
         self.setFixedSize(popup_width, 28)
         
     def apply_suggestion(self, replacement):
