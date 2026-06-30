@@ -686,8 +686,12 @@ class ConfigPanel(QDialog):
                 self.spellcheck_checker.blockSignals(False)
 
                 if manager.install_pyspellchecker(self):
+                    self.spellcheck_checker.blockSignals(True)
                     self.spellcheck_checker.setChecked(True)
-                return
+                    self.spellcheck_checker.blockSignals(False)
+                    enabled = True
+                else:
+                    return
 
         pcfg.spellcheck_enabled = enabled
         self.spellcheck_on_source_checker.setEnabled(enabled)
