@@ -265,6 +265,8 @@ class SpellCheckManager:
         True
         """
         try:
+            import importlib
+            importlib.invalidate_caches()
             import spellchecker
             return True
         except ImportError:
