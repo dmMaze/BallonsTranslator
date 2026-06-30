@@ -76,6 +76,7 @@ class SpellCheckManager(QObject):
     def __init__(self):
         super().__init__()
         self.spell = None
+        self._is_available = None
         self.custom_words: Set[str] = set()
         self.external_words: Set[str] = set()
         self.highlighters = weakref.WeakSet()
@@ -268,12 +269,14 @@ class SpellCheckManager(QObject):
         >>> isinstance(manager.is_available(), bool)
         True
         """
+        if self._is_available is not None:
+            return self._is_available
         try:
-            import importlib
-            importlib.invalidate_caches()
             import spellchecker
+            self._is_available = True
             return True
         except ImportError:
+            self._is_available = False
             return False
 
     def load_spellchecker(self):
@@ -414,6 +417,9 @@ class SpellCheckManager(QObject):
             nonlocal success
             progress.close()
             if thread.last_success:
+                import importlib
+                importlib.invalidate_caches()
+                self._is_available = True
                 QMessageBox.information(
                     parent,
                     parent.tr("Installation Complete"),
