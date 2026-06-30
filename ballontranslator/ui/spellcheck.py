@@ -4,7 +4,7 @@ import weakref
 import threading
 from typing import List, Set
 
-from qtpy.QtCore import Qt, QTimer, QThread, Signal, QSize
+from qtpy.QtCore import Qt, QTimer, QThread, Signal, QSize, QObject
 from qtpy.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
 from qtpy.QtWidgets import (
     QListWidget, QHBoxLayout, QVBoxLayout, QPushButton,
@@ -57,13 +57,14 @@ DICTIONARY_URLS = {
 }
 
 
-class SpellCheckManager:
+class SpellCheckManager(QObject):
     """SpellCheckManager manages spell checking, custom dictionaries, and suggestion retrieval.
 
     >>> manager = SpellCheckManager.get_instance()
     >>> isinstance(manager, SpellCheckManager)
     True
     """
+    dicts_loaded = Signal()
     _instance = None
 
     @classmethod
@@ -73,6 +74,7 @@ class SpellCheckManager:
         return cls._instance
 
     def __init__(self):
+        super().__init__()
         self.spell = None
         self.custom_words: Set[str] = set()
         self.external_words: Set[str] = set()
@@ -80,7 +82,13 @@ class SpellCheckManager:
         self.dict_path = os.path.join(shared.PROGRAM_PATH, 'config', 'custom_dictionary.txt')
         self._reload_queued = False
         self._load_custom_dictionary()
+        self.dicts_loaded.connect(self.on_dicts_loaded)
         self.load_spellchecker_async()
+
+    def on_dicts_loaded(self):
+        for hl in list(self.highlighters):
+            hl.clear_cache()
+            hl.rehighlight()
 
     def _load_custom_dictionary(self):
         """Loads custom user-added words from local storage.
@@ -245,11 +253,7 @@ class SpellCheckManager:
 
                 self.external_words = temp_words
 
-                def gui_notify():
-                    for hl in list(self.highlighters):
-                        hl.clear_cache()
-                        hl.rehighlight()
-                QTimer.singleShot(0, gui_notify)
+                self.dicts_loaded.emit()
 
                 if not self._reload_queued:
                     break
