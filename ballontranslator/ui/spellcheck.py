@@ -17,7 +17,7 @@ from ballontranslator.utils.download_util import download_url_to_file
 from ballontranslator.utils.logger import logger as LOGGER
 
 # Predefined dictionary repository URLs mapping language names to LibreOffice raw URLs.
-dictionary_urls = {
+DICTIONARY_URLS = {
     "Arabic (ar)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.dic",
     "Belarusian (be_BY)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/be_BY/be-official.dic",
     "Bulgarian (bg_BG)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bg_BG/bg_BG.dic",

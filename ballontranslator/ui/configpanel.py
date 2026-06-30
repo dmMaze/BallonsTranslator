@@ -16,7 +16,7 @@ from ballontranslator.utils.network_mirrors import (
 )
 from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
-from ballontranslator.ui.spellcheck import dictionary_urls
+from ballontranslator.ui.spellcheck import DICTIONARY_URLS, SpellCheckManager, DictionaryManagerDialog, DictDownloadThread
 
 
 LAYOUT_SET_MINIMUM_SIZE = getattr(getattr(QLayout, 'SizeConstraint', QLayout), 'SetMinimumSize')
@@ -341,7 +341,7 @@ class ConfigPanel(QDialog):
     reload_textstyle = Signal(bool)
     show_only_custom_font = Signal(bool)
 
-    dictionary_urls = dictionary_urls
+    dictionary_urls = DICTIONARY_URLS
 
 
     def __init__(self, *args, **kwargs) -> None:
@@ -679,25 +679,21 @@ class ConfigPanel(QDialog):
         self.add_ext_btn.setEnabled(enabled)
         self.remove_ext_btn.setEnabled(enabled)
         self.spellcheck_distance_spin.setEnabled(enabled)
-        from ballontranslator.ui.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
 
     def on_spellcheck_on_source_changed(self):
         enabled = self.spellcheck_on_source_checker.isChecked()
         pcfg.spellcheck_on_source_enabled = enabled
-        from ballontranslator.ui.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
 
     def on_spellcheck_distance_changed(self):
         pcfg.spellcheck_distance = self.spellcheck_distance_spin.value()
-        from ballontranslator.ui.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
 
     def open_words_manager(self):
-        from ballontranslator.ui.spellcheck import DictionaryManagerDialog
         dialog = DictionaryManagerDialog(self)
         dialog.exec_()
 
@@ -737,7 +733,6 @@ class ConfigPanel(QDialog):
                     enabled_files.append(fname)
 
             pcfg.spellcheck_repo_dicts = ",".join(enabled_files)
-            from ballontranslator.ui.spellcheck import SpellCheckManager
             SpellCheckManager.get_instance().notify_config_changed()
             self.save_config.emit()
         finally:
@@ -755,7 +750,6 @@ class ConfigPanel(QDialog):
         progress = QProgressDialog(self.tr("Downloading dictionary..."), self.tr("Cancel"), 0, 100, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
 
-        from ballontranslator.ui.spellcheck import DictDownloadThread
         thread = DictDownloadThread(url, save_path)
 
         def on_progress(downloaded, total):
@@ -820,7 +814,6 @@ class ConfigPanel(QDialog):
         for idx in range(self.external_dicts_list.count()):
             paths.append(self.external_dicts_list.item(idx).text())
         pcfg.spellcheck_external_dict_path = ";".join(paths)
-        from ballontranslator.ui.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
 
