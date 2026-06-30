@@ -473,7 +473,7 @@ class MainWindow(mainwindow_cls):
 
     def setupConfigUI(self):
         self.centralStackWidget.setCurrentIndex(0)
-        self.configPanel.showConfigDialog('application')
+        self.configPanel.showConfigDialog()
 
     def check_for_updates(self, manual: bool = True):
         if self.update_thread.isBusy():
