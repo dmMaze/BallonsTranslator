@@ -1,6 +1,6 @@
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox
+from qtpy.QtWidgets import QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox, QListWidget
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
@@ -16,6 +16,8 @@ from ballontranslator.utils.network_mirrors import (
 )
 from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
+from ballontranslator.ui.spellcheck import dictionary_urls
+
 
 LAYOUT_SET_MINIMUM_SIZE = getattr(getattr(QLayout, 'SizeConstraint', QLayout), 'SetMinimumSize')
 PUSHBTN_FIXED_HEIGHT = 32
@@ -330,239 +332,6 @@ class ConfigTable(QTreeView):
                 self.section_pressed.emit(section_key)
 
 
-from qtpy.QtCore import QThread
-
-class DictDownloadThread(QThread):
-    progress = Signal(int, int)
-    finished = Signal(bool, str)
-
-    def __init__(self, url, save_path):
-        super().__init__()
-        self.url = url
-        self.save_path = save_path
-        import threading
-        self.cancel_event = threading.Event()
-
-    def run(self):
-        try:
-            import os
-            from ballontranslator.utils.download_util import download_url_to_file
-
-            def progress_callback(payload):
-                if payload.get('event') == 'file_progress':
-                    self.progress.emit(payload.get('downloaded', 0), payload.get('total', 0))
-
-            os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
-            download_url_to_file(
-                self.url,
-                self.save_path,
-                progress_callback=progress_callback,
-                cancel_event=self.cancel_event
-            )
-            self.finished.emit(True, "")
-        except Exception as e:
-            self.finished.emit(False, str(e))
-
-    def cancel(self):
-        self.cancel_event.set()
-
-
-from qtpy.QtWidgets import QListWidget, QInputDialog, QHBoxLayout, QVBoxLayout, QPushButton, QLineEdit, QDialog, QLabel, QWidget
-
-class WordListItemWidget(QWidget):
-    def __init__(self, word, on_delete_callback, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(36)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 0, 12, 0)
-        layout.setSpacing(12)
-
-        self.label = QLabel(word, self)
-        self.label.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px; font-weight: 500; background-color: transparent;")
-
-        self.delete_btn = QPushButton("×", self)
-        self.delete_btn.setFixedSize(24, 24)
-        self.delete_btn.setToolTip(self.tr("Delete word"))
-        self.delete_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #ff4d4d;
-                border: none;
-                font-size: 18px;
-                font-weight: bold;
-                padding: 0px;
-                min-width: 24px;
-                max-width: 24px;
-                min-height: 24px;
-                max-height: 24px;
-            }
-            QPushButton:hover {
-                color: #ff1a1a;
-                background-color: rgba(255, 77, 77, 12%);
-                border-radius: 4px;
-            }
-        """)
-        self.delete_btn.clicked.connect(lambda: on_delete_callback(word))
-        self.delete_btn.setVisible(False)
-        self.delete_btn.setAutoDefault(False)
-        self.delete_btn.setDefault(False)
-
-        layout.addWidget(self.label)
-        layout.addStretch()
-        layout.addWidget(self.delete_btn)
-
-    def enterEvent(self, event):
-        self.delete_btn.setVisible(True)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.delete_btn.setVisible(False)
-        super().leaveEvent(event)
-
-
-class AddWordItemWidget(QWidget):
-    def __init__(self, on_add_callback, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(36)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 0, 12, 0)
-        layout.setSpacing(12)
-
-        self.input_field = QLineEdit(self)
-        self.input_field.setPlaceholderText(self.tr("Add new word..."))
-        self.input_field.setFixedHeight(26)
-        self.input_field.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px;")
-        
-        # Override keyPressEvent to prevent Enter key from propagating and closing QDialog
-        def input_key_press(event):
-            from qtpy.QtCore import Qt
-            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                self.trigger_add()
-                event.accept()
-            else:
-                QLineEdit.keyPressEvent(self.input_field, event)
-        self.input_field.keyPressEvent = input_key_press
-
-        self.add_btn = QPushButton("+", self)
-        self.add_btn.setFixedSize(26, 26)
-        self.add_btn.setToolTip(self.tr("Add word"))
-        self.add_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.add_btn.setAutoDefault(False)
-        self.add_btn.setDefault(False)
-        self.add_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3b3d40;
-                color: #ffffff;
-                border: 1px solid #45474a;
-                border-radius: 4px;
-                padding: 0px;
-                min-width: 26px;
-                max-width: 26px;
-                min-height: 26px;
-                max-height: 26px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #1e93e5;
-                border-color: #1e93e5;
-            }
-        """)
-        self.add_btn.clicked.connect(self.trigger_add)
-
-        layout.addWidget(self.input_field)
-        layout.addWidget(self.add_btn)
-        self.on_add_callback = on_add_callback
-
-    def trigger_add(self):
-        word = self.input_field.text().strip().lower()
-        if word:
-            self.on_add_callback(word)
-            self.input_field.clear()
-            self.input_field.setFocus()
-
-
-class DictionaryManagerDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(self.tr("Custom Dictionary Manager"))
-        self.resize(450, 520)
-
-        from ballontranslator.utils.spellcheck import SpellCheckManager
-        self.manager = SpellCheckManager.get_instance()
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-
-        self.list_widget = QListWidget(self)
-        self.list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self.list_widget.setStyleSheet("""
-            QListWidget {
-                outline: 0;
-            }
-            QListWidget::item {
-                background-color: transparent;
-            }
-            QListWidget::item:selected {
-                background-color: transparent;
-                color: inherit;
-            }
-            QListWidget::item:hover {
-                background-color: rgba(255, 255, 255, 6%);
-                border-radius: 4px;
-            }
-        """)
-        layout.addWidget(self.list_widget)
-
-        self.close_btn = QPushButton(self.tr("Close"), self)
-        self.close_btn.setFixedHeight(32)
-        self.close_btn.setAutoDefault(False)
-        self.close_btn.setDefault(False)
-        self.close_btn.clicked.connect(self.accept)
-        layout.addWidget(self.close_btn)
-
-        self.populate_list()
-
-    def populate_list(self):
-        self.list_widget.clear()
-        from qtpy.QtWidgets import QListWidgetItem
-        from qtpy.QtCore import Qt, QSize
-
-        for word in sorted(self.manager.custom_words):
-            item = QListWidgetItem(self.list_widget)
-            widget = WordListItemWidget(word, self.delete_word, self)
-            item.setSizeHint(QSize(0, 36))
-            self.list_widget.addItem(item)
-            self.list_widget.setItemWidget(item, widget)
-
-        input_item = QListWidgetItem(self.list_widget)
-        input_item.setFlags(input_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-        input_widget = AddWordItemWidget(self.add_word, self)
-        input_item.setSizeHint(QSize(0, 36))
-        self.list_widget.addItem(input_item)
-        self.list_widget.setItemWidget(input_item, input_widget)
-
-    def add_word(self, word):
-        word_lower = word.lower()
-        if word_lower and word_lower not in self.manager.custom_words:
-            self.manager.custom_words.add(word_lower)
-            self.populate_list()
-
-    def delete_word(self, word):
-        word_lower = word.lower()
-        self.manager.custom_words.discard(word_lower)
-        self.populate_list()
-
-    def done(self, r):
-        super().done(r)
-        self.manager._save_custom_dictionary()
-        self.manager.notify_config_changed()
-        for hl in list(self.manager.highlighters):
-            hl.clear_cache()
-            hl.rehighlight()
-
-
 class ConfigPanel(QDialog):
 
     save_config = Signal()
@@ -572,44 +341,8 @@ class ConfigPanel(QDialog):
     reload_textstyle = Signal(bool)
     show_only_custom_font = Signal(bool)
 
-    dictionary_urls = {
-        "Arabic (ar)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.dic",
-        "Belarusian (be_BY)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/be_BY/be-official.dic",
-        "Bulgarian (bg_BG)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bg_BG/bg_BG.dic",
-        "Bosnian (bs_BA)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bs_BA/bs_BA.dic",
-        "Catalan (ca)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/dictionaries/ca.dic",
-        "Czech (cs_CZ)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/cs_CZ/cs_CZ.dic",
-        "Danish (da_DK)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/da_DK/da_DK.dic",
-        "German (de_DE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic",
-        "Greek (el_GR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/el_GR/el_GR.dic",
-        "English (en_US)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_US.dic",
-        "English (en_GB)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_GB.dic",
-        "Spanish (es_ES)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/es/es_ES.dic",
-        "Estonian (et_EE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/et_EE/et_EE.dic",
-        "Persian (fa_IR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fa_IR/fa-IR.dic",
-        "French (fr_FR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/fr.dic",
-        "Croatian (hr_HR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hr_HR/hr_HR.dic",
-        "Hungarian (hu_HU)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hu_HU/hu_HU.dic",
-        "Indonesian (id)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/id/id_ID.dic",
-        "Icelandic (is)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/is/is.dic",
-        "Italian (it_IT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/it_IT/it_IT.dic",
-        "Korean (ko_KR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ko_KR/ko_KR.dic",
-        "Lithuanian (lt_LT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lt_LT/lt.dic",
-        "Latvian (lv_LV)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lv_LV/lv_LV.dic",
-        "Dutch (nl_NL)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/nl_NL/nl_NL.dic",
-        "Polish (pl_PL)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pl_PL/pl_PL.dic",
-        "Portuguese (pt_BR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_BR/pt_BR.dic",
-        "Portuguese (pt_PT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_PT/pt_PT.dic",
-        "Romanian (ro_RO)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ro/ro_RO.dic",
-        "Russian (ru_RU)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ru_RU/ru_RU.dic",
-        "Russian (Large - all inflections) (ru_RU)": "https://raw.githubusercontent.com/danakt/russian-words/master/russian.txt",
-        "Slovak (sk_SK)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sk_SK/sk_SK.dic",
-        "Slovenian (sl_SI)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sl_SI/sl_SI.dic",
-        "Swedish (sv_SE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/dictionaries/sv_SE.dic",
-        "Turkish (tr_TR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/tr_TR/tr_TR.dic",
-        "Ukrainian (uk_UA)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/uk_UA/uk_UA.dic",
-        "Vietnamese (vi)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/vi/vi_VN.dic"
-    }
+    dictionary_urls = dictionary_urls
+
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -695,6 +428,9 @@ class ConfigPanel(QDialog):
 
         self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable Spell Checker'))
         self.spellcheck_checker.stateChanged.connect(self.on_spellcheck_changed)
+
+        self.spellcheck_on_source_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable Spell Checker on Source Blocks'))
+        self.spellcheck_on_source_checker.stateChanged.connect(self.on_spellcheck_on_source_changed)
 
         # Edit Distance Spinbox
         from qtpy.QtWidgets import QSpinBox
@@ -936,23 +672,32 @@ class ConfigPanel(QDialog):
     def on_spellcheck_changed(self):
         enabled = self.spellcheck_checker.isChecked()
         pcfg.spellcheck_enabled = enabled
+        self.spellcheck_on_source_checker.setEnabled(enabled)
         self.manage_words_btn.setEnabled(enabled)
         self.repo_dicts_list.setEnabled(enabled)
         self.external_dicts_list.setEnabled(enabled)
         self.add_ext_btn.setEnabled(enabled)
         self.remove_ext_btn.setEnabled(enabled)
         self.spellcheck_distance_spin.setEnabled(enabled)
-        from ballontranslator.utils.spellcheck import SpellCheckManager
+        from ballontranslator.ui.spellcheck import SpellCheckManager
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
+    def on_spellcheck_on_source_changed(self):
+        enabled = self.spellcheck_on_source_checker.isChecked()
+        pcfg.spellcheck_on_source_enabled = enabled
+        from ballontranslator.ui.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
 
     def on_spellcheck_distance_changed(self):
         pcfg.spellcheck_distance = self.spellcheck_distance_spin.value()
-        from ballontranslator.utils.spellcheck import SpellCheckManager
+        from ballontranslator.ui.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
 
     def open_words_manager(self):
+        from ballontranslator.ui.spellcheck import DictionaryManagerDialog
         dialog = DictionaryManagerDialog(self)
         dialog.exec_()
 
@@ -992,7 +737,7 @@ class ConfigPanel(QDialog):
                     enabled_files.append(fname)
 
             pcfg.spellcheck_repo_dicts = ",".join(enabled_files)
-            from ballontranslator.utils.spellcheck import SpellCheckManager
+            from ballontranslator.ui.spellcheck import SpellCheckManager
             SpellCheckManager.get_instance().notify_config_changed()
             self.save_config.emit()
         finally:
@@ -1010,6 +755,7 @@ class ConfigPanel(QDialog):
         progress = QProgressDialog(self.tr("Downloading dictionary..."), self.tr("Cancel"), 0, 100, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
 
+        from ballontranslator.ui.spellcheck import DictDownloadThread
         thread = DictDownloadThread(url, save_path)
 
         def on_progress(downloaded, total):
@@ -1074,7 +820,7 @@ class ConfigPanel(QDialog):
         for idx in range(self.external_dicts_list.count()):
             paths.append(self.external_dicts_list.item(idx).text())
         pcfg.spellcheck_external_dict_path = ";".join(paths)
-        from ballontranslator.utils.spellcheck import SpellCheckManager
+        from ballontranslator.ui.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
 
@@ -1275,6 +1021,8 @@ class ConfigPanel(QDialog):
                 self.external_dicts_list.addItem(p)
 
         self.spellcheck_checker.setChecked(pcfg.spellcheck_enabled)
+        self.spellcheck_on_source_checker.setChecked(getattr(pcfg, 'spellcheck_on_source_enabled', False))
+        self.spellcheck_on_source_checker.setEnabled(pcfg.spellcheck_enabled)
         self.spellcheck_distance_spin.setValue(getattr(pcfg, 'spellcheck_distance', 1))
         self.spellcheck_distance_spin.setEnabled(pcfg.spellcheck_enabled)
         self.manage_words_btn.setEnabled(pcfg.spellcheck_enabled)

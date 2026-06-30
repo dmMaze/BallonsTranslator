@@ -195,7 +195,7 @@ class FloatingSuggestionLabel(QWidget):
         self.hide()
 
     def add_to_dict(self):
-        from ballontranslator.utils.spellcheck import SpellCheckManager
+        from ballontranslator.ui.spellcheck import SpellCheckManager
         SpellCheckManager.get_instance().add_to_dictionary(self.word)
         self.hide()
 
@@ -237,8 +237,8 @@ class SourceTextEdit(QTextEdit):
 
         self.min_height = 45
         self.setFold(fold)
-        from ballontranslator.utils.spellcheck import SpellCheckHighlighter
-        self.spell_highlighter = SpellCheckHighlighter(self.document())
+        from ballontranslator.ui.spellcheck import SpellCheckHighlighter
+        self.spell_highlighter = SpellCheckHighlighter(self)
         self.selectionChanged.connect(self.on_selection_changed)
         self.suggestion_popup = None
         self.suggestions_ready.connect(self.show_suggestions_popup)
@@ -268,7 +268,7 @@ class SourceTextEdit(QTextEdit):
 
     def on_selection_changed(self):
         try:
-            from ballontranslator.utils.spellcheck import SpellCheckManager
+            from ballontranslator.ui.spellcheck import SpellCheckManager
             import re
 
             manager = SpellCheckManager.get_instance()

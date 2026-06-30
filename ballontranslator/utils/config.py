@@ -144,6 +144,7 @@ class ProgramConfig(Config):
     spellcheck_external_dict_path: str = ""
     spellcheck_repo_dicts: str = ""
     spellcheck_distance: int = 1
+    spellcheck_on_source_enabled: bool = False
 
     let_fntsize_flag: int = 0
     let_fntstroke_flag: int = 0

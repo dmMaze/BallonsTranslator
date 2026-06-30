@@ -1,11 +1,61 @@
 import os
 import re
 import weakref
+import threading
 from typing import List, Set
-from qtpy.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
-from qtpy.QtCore import Qt
 
-from . import shared
+from qtpy.QtCore import Qt, QTimer, QThread, Signal, QSize
+from qtpy.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
+from qtpy.QtWidgets import (
+    QListWidget, QHBoxLayout, QVBoxLayout, QPushButton,
+    QLineEdit, QDialog, QLabel, QWidget, QListWidgetItem
+)
+
+from ballontranslator.utils import shared
+from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.download_util import download_url_to_file
+from ballontranslator.utils.logger import logger as LOGGER
+
+# Predefined dictionary repository URLs mapping language names to LibreOffice raw URLs.
+dictionary_urls = {
+    "Arabic (ar)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.dic",
+    "Belarusian (be_BY)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/be_BY/be-official.dic",
+    "Bulgarian (bg_BG)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bg_BG/bg_BG.dic",
+    "Bosnian (bs_BA)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bs_BA/bs_BA.dic",
+    "Catalan (ca)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/dictionaries/ca.dic",
+    "Czech (cs_CZ)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/cs_CZ/cs_CZ.dic",
+    "Danish (da_DK)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/da_DK/da_DK.dic",
+    "German (de_DE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic",
+    "Greek (el_GR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/el_GR/el_GR.dic",
+    "English (en_US)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_US.dic",
+    "English (en_GB)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_GB.dic",
+    "Spanish (es_ES)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/es/es_ES.dic",
+    "Estonian (et_EE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/et_EE/et_EE.dic",
+    "Persian (fa_IR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fa_IR/fa-IR.dic",
+    "French (fr_FR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/fr.dic",
+    "Croatian (hr_HR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hr_HR/hr_HR.dic",
+    "Hungarian (hu_HU)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hu_HU/hu_HU.dic",
+    "Indonesian (id)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/id/id_ID.dic",
+    "Icelandic (is)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/is/is.dic",
+    "Italian (it_IT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/it_IT/it_IT.dic",
+    "Korean (ko_KR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ko_KR/ko_KR.dic",
+    "Lithuanian (lt_LT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lt_LT/lt.dic",
+    "Latvian (lv_LV)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lv_LV/lv_LV.dic",
+    "Dutch (nl_NL)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/nl_NL/nl_NL.dic",
+    "Polish (pl_PL)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pl_PL/pl_PL.dic",
+    "Portuguese (pt_BR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_BR/pt_BR.dic",
+    "Portuguese (pt_PT)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_PT/pt_PT.dic",
+    "Romanian (ro_RO)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ro/ro_RO.dic",
+    "Russian (ru_RU)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ru_RU/ru_RU.dic",
+    "Russian (Large - all inflections) (ru_RU)": "https://raw.githubusercontent.com/danakt/russian-words/master/russian.txt",
+    "Slovak (sk_SK)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sk_SK/sk_SK.dic",
+    "Slovenian (sl_SI)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sl_SI/sl_SI.dic",
+    "Swedish (sv_SE)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/dictionaries/sv_SE.dic",
+    "Turkish (tr_TR)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/tr_TR/tr_TR.dic",
+    "Ukrainian (uk_UA)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/uk_UA/uk_UA.dic",
+    "Vietnamese (vi)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/vi/vi_VN.dic"
+}
+
 
 class SpellCheckManager:
     """SpellCheckManager manages spell checking, custom dictionaries, and suggestion retrieval.
@@ -84,7 +134,6 @@ class SpellCheckManager:
                 if word:
                     target_set.add(word)
         except Exception as e:
-            from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.error(f"Error reading dictionary file {path}: {e}")
 
     def load_external_dictionary(self):
@@ -95,8 +144,6 @@ class SpellCheckManager:
         """
         temp_words = set()
         try:
-            from ballontranslator.utils.config import pcfg
-            
             # Load enabled repository dictionaries
             repo_dicts = getattr(pcfg, 'spellcheck_repo_dicts', '').split(',')
             loaded_repos = 0
@@ -117,13 +164,11 @@ class SpellCheckManager:
                     self._parse_and_load_file_to_set(path, temp_words)
                     loaded_externals += 1
                     
-            from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.info(
                 f"SpellCheckManager: loaded {len(temp_words)} words "
                 f"(from {loaded_repos} repo dictionaries, {loaded_externals} external dictionaries)"
             )
         except Exception as e:
-            from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.error(f"Error loading dictionaries: {e}")
             
         self.external_words = temp_words
@@ -131,9 +176,6 @@ class SpellCheckManager:
             hl.clear_cache()
 
     def load_spellchecker_async(self):
-        from ballontranslator.utils.config import pcfg
-        from ballontranslator.utils.logger import logger as LOGGER
-
         if not getattr(pcfg, 'spellcheck_enabled', True):
             if self.spell is not None or self.external_words:
                 self.spell = None
@@ -144,7 +186,6 @@ class SpellCheckManager:
                     hl.rehighlight()
             return
 
-        import threading
         if hasattr(self, '_loading_thread') and self._loading_thread and self._loading_thread.is_alive():
             self._reload_queued = True
             return
@@ -204,7 +245,6 @@ class SpellCheckManager:
 
                 self.external_words = temp_words
 
-                from qtpy.QtCore import QTimer
                 def gui_notify():
                     for hl in list(self.highlighters):
                         hl.clear_cache()
@@ -236,7 +276,6 @@ class SpellCheckManager:
         >>> manager = SpellCheckManager.get_instance()
         >>> manager.load_spellchecker()
         """
-        from ballontranslator.utils.config import pcfg
         distance = getattr(pcfg, 'spellcheck_distance', 1)
         if self.spell is not None:
             if getattr(self.spell, '_distance', 1) == distance:
@@ -248,10 +287,8 @@ class SpellCheckManager:
             from spellchecker import SpellChecker
             # Load English and Russian dictionaries with configured distance
             self.spell = SpellChecker(language=['en', 'ru'], distance=distance)
-            from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.info(f"SpellChecker initialized with languages: en, ru (distance={distance})")
         except Exception as e:
-            from ballontranslator.utils.logger import logger as LOGGER
             LOGGER.error(f"Failed to load SpellChecker: {e}")
             self.spell = None
 
@@ -339,6 +376,8 @@ class SpellCheckManager:
 
     def notify_config_changed(self):
         """Notifies all registered highlighters that config changed, clearing cache."""
+        for hl in list(self.highlighters):
+            hl.clear_cache()
         self.load_spellchecker_async()
 
 
@@ -374,12 +413,26 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
             pass
 
     def highlightBlock(self, text):
-        from ballontranslator.utils.config import pcfg
         # Check if spellcheck is enabled in settings and if spellchecker package is installed
         if not getattr(pcfg, 'spellcheck_enabled', True):
             return
         if not self.manager.is_available():
             return
+
+        # Check if editor is a Source block editor and if spell checking on source is enabled
+        editor = self.parent()
+        from qtpy.QtWidgets import QTextEdit
+        if editor and not isinstance(editor, QTextEdit):
+            # Fallback if document was passed
+            doc_parent = editor.parent()
+            if doc_parent and isinstance(doc_parent, QTextEdit):
+                editor = doc_parent
+        
+        if editor and isinstance(editor, QTextEdit):
+            editor_class = editor.__class__.__name__
+            if editor_class == 'SourceTextEdit':
+                if not getattr(pcfg, 'spellcheck_on_source_enabled', False):
+                    return
 
         # Pattern matches words in any language using Unicode character classes
         pattern = r'\b[^\W\d_]+\b'
@@ -396,3 +449,248 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
                 start = match.start()
                 length = match.end() - start
                 self.setFormat(start, length, self.misspelled_format)
+
+
+class DictDownloadThread(QThread):
+    """QThread to handle dictionary downloads in the background.
+
+    >>> thread = DictDownloadThread("http://example.com/dict.dic", "save/path.dic")
+    >>> isinstance(thread, DictDownloadThread)
+    True
+    """
+    progress = Signal(int, int)
+    finished = Signal(bool, str)
+
+    def __init__(self, url, save_path):
+        super().__init__()
+        self.url = url
+        self.save_path = save_path
+        self.cancel_event = threading.Event()
+
+    def run(self):
+        try:
+            os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
+            download_url_to_file(
+                self.url,
+                self.save_path,
+                progress_callback=self._progress_callback,
+                cancel_event=self.cancel_event
+            )
+            self.finished.emit(True, "")
+        except Exception as e:
+            self.finished.emit(False, str(e))
+
+    def _progress_callback(self, payload):
+        if payload.get('event') == 'file_progress':
+            self.progress.emit(payload.get('downloaded', 0), payload.get('total', 0))
+
+    def cancel(self):
+        self.cancel_event.set()
+
+
+class WordListItemWidget(QWidget):
+    """Custom QWidget representing a single custom word in the manager dialog.
+
+    >>> widget = WordListItemWidget("hello", lambda w: None)
+    >>> isinstance(widget, WordListItemWidget)
+    True
+    """
+    def __init__(self, word, on_delete_callback, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(36)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(12)
+
+        self.label = QLabel(word, self)
+        self.label.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px; font-weight: 500; background-color: transparent;")
+
+        self.delete_btn = QPushButton("×", self)
+        self.delete_btn.setFixedSize(24, 24)
+        self.delete_btn.setToolTip(self.tr("Delete word"))
+        self.delete_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #ff4d4d;
+                border: none;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 0px;
+                min-width: 24px;
+                max-width: 24px;
+                min-height: 24px;
+                max-height: 24px;
+            }
+            QPushButton:hover {
+                color: #ff1a1a;
+                background-color: rgba(255, 77, 77, 12%);
+                border-radius: 4px;
+            }
+        """)
+        self.delete_btn.clicked.connect(lambda: on_delete_callback(word))
+        self.delete_btn.setVisible(False)
+        self.delete_btn.setAutoDefault(False)
+        self.delete_btn.setDefault(False)
+
+        layout.addWidget(self.label)
+        layout.addStretch()
+        layout.addWidget(self.delete_btn)
+
+    def enterEvent(self, event):
+        self.delete_btn.setVisible(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.delete_btn.setVisible(False)
+        super().leaveEvent(event)
+
+
+class AddWordItemWidget(QWidget):
+    """Custom QWidget containing input line and add button for entering custom words.
+
+    >>> widget = AddWordItemWidget(lambda w: None)
+    >>> isinstance(widget, AddWordItemWidget)
+    True
+    """
+    def __init__(self, on_add_callback, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(36)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(12)
+
+        self.input_field = QLineEdit(self)
+        self.input_field.setPlaceholderText(self.tr("Add new word..."))
+        self.input_field.setFixedHeight(26)
+        self.input_field.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px;")
+        
+        # Override keyPressEvent to prevent Enter key from propagating and closing QDialog
+        def input_key_press(event):
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.trigger_add()
+                event.accept()
+            else:
+                QLineEdit.keyPressEvent(self.input_field, event)
+        self.input_field.keyPressEvent = input_key_press
+
+        self.add_btn = QPushButton("+", self)
+        self.add_btn.setFixedSize(26, 26)
+        self.add_btn.setToolTip(self.tr("Add word"))
+        self.add_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.add_btn.setAutoDefault(False)
+        self.add_btn.setDefault(False)
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3b3d40;
+                color: #ffffff;
+                border: 1px solid #45474a;
+                border-radius: 4px;
+                padding: 0px;
+                min-width: 26px;
+                max-width: 26px;
+                min-height: 26px;
+                max-height: 26px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #1e93e5;
+                border-color: #1e93e5;
+            }
+        """)
+        self.add_btn.clicked.connect(self.trigger_add)
+
+        layout.addWidget(self.input_field)
+        layout.addWidget(self.add_btn)
+        self.on_add_callback = on_add_callback
+
+    def trigger_add(self):
+        word = self.input_field.text().strip().lower()
+        if word:
+            self.on_add_callback(word)
+            self.input_field.clear()
+            self.input_field.setFocus()
+
+
+class DictionaryManagerDialog(QDialog):
+    """Dialog allowing users to manage their custom dictionary list.
+
+    >>> dialog = DictionaryManagerDialog(None)
+    >>> isinstance(dialog, DictionaryManagerDialog)
+    True
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(self.tr("Custom Dictionary Manager"))
+        self.resize(450, 520)
+
+        self.manager = SpellCheckManager.get_instance()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        self.list_widget = QListWidget(self)
+        self.list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.list_widget.setStyleSheet("""
+            QListWidget {
+                outline: 0;
+            }
+            QListWidget::item {
+                background-color: transparent;
+            }
+            QListWidget::item:selected {
+                background-color: transparent;
+                color: inherit;
+            }
+            QListWidget::item:hover {
+                background-color: rgba(255, 255, 255, 6%);
+                border-radius: 4px;
+            }
+        """)
+        layout.addWidget(self.list_widget)
+
+        self.close_btn = QPushButton(self.tr("Close"), self)
+        self.close_btn.setFixedHeight(32)
+        self.close_btn.setAutoDefault(False)
+        self.close_btn.setDefault(False)
+        self.close_btn.clicked.connect(self.accept)
+        layout.addWidget(self.close_btn)
+
+        self.populate_list()
+
+    def populate_list(self):
+        self.list_widget.clear()
+
+        for word in sorted(self.manager.custom_words):
+            item = QListWidgetItem(self.list_widget)
+            widget = WordListItemWidget(word, self.delete_word, self)
+            item.setSizeHint(QSize(0, 36))
+            self.list_widget.addItem(item)
+            self.list_widget.setItemWidget(item, widget)
+
+        input_item = QListWidgetItem(self.list_widget)
+        input_item.setFlags(input_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        input_widget = AddWordItemWidget(self.add_word, self)
+        input_item.setSizeHint(QSize(0, 36))
+        self.list_widget.addItem(input_item)
+        self.list_widget.setItemWidget(input_item, input_widget)
+
+    def add_word(self, word):
+        word_lower = word.lower()
+        if word_lower and word_lower not in self.manager.custom_words:
+            self.manager.custom_words.add(word_lower)
+            self.populate_list()
+
+    def delete_word(self, word):
+        word_lower = word.lower()
+        self.manager.custom_words.discard(word_lower)
+        self.populate_list()
+
+    def done(self, r):
+        super().done(r)
+        self.manager._save_custom_dictionary()
+        self.manager.notify_config_changed()
+        for hl in list(self.manager.highlighters):
+            hl.clear_cache()
+            hl.rehighlight()
