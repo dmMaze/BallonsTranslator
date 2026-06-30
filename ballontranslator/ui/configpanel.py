@@ -426,10 +426,10 @@ class ConfigPanel(QDialog):
         self.check_update_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Check update on startup'))
         self.check_update_on_startup_checker.stateChanged.connect(self.on_check_update_onstartup_changed)
 
-        self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable Spell Checker'))
+        self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable'))
         self.spellcheck_checker.stateChanged.connect(self.on_spellcheck_changed)
 
-        self.spellcheck_on_source_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable Spell Checker on Source Blocks'))
+        self.spellcheck_on_source_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Apply for source text'))
         self.spellcheck_on_source_checker.stateChanged.connect(self.on_spellcheck_on_source_changed)
 
         # Edit Distance Spinbox
@@ -765,8 +765,8 @@ class ConfigPanel(QDialog):
                 try:
                     item.setCheckState(Qt.CheckState.Checked)
                     # Remove " (Installed local)" if it exists, then append it
-                    clean_text = item.text().replace(self.tr(" (Installed local)"), "")
-                    item.setText(clean_text + self.tr(" (Installed local)"))
+                    clean_text = item.text().replace(self.tr(" - Installed"), "")
+                    item.setText(clean_text + self.tr(" - Installed"))
                 finally:
                     self.repo_dicts_list.blockSignals(False)
                 
@@ -984,7 +984,7 @@ class ConfigPanel(QDialog):
             display_text = self.tr(lang_name)
             exists = os.path.exists(dict_path)
             if exists:
-                display_text += self.tr(" (Installed local)")
+                display_text += self.tr(" - Installed")
 
             item = QListWidgetItem(display_text, self.repo_dicts_list)
             item.setData(Qt.ItemDataRole.UserRole, (url, filename))
