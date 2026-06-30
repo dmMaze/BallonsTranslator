@@ -1,3 +1,6 @@
+import re
+import threading
+import traceback
 from typing import List, Union
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton
@@ -7,6 +10,7 @@ import numpy as np
 
 from .custom_widget import ScrollBar, Widget, SeparatorWidget
 from .textitem import TextBlock
+from ballontranslator.utils.config import pcfg
 from ballontranslator.ui.spellcheck import SpellCheckManager, SpellCheckHighlighter
 
 
@@ -75,7 +79,6 @@ class FloatingSuggestionLabel(QWidget):
 
     def eventFilter(self, watched, event):
         try:
-            from qtpy.QtCore import QEvent
             if event.type() == QEvent.Type.ApplicationDeactivate:
                 self.hide()
         except RuntimeError:
@@ -117,7 +120,6 @@ class FloatingSuggestionLabel(QWidget):
         if win:
             self.setStyleSheet(win.styleSheet())
         
-        from ballontranslator.utils.config import pcfg
         is_dark = pcfg.darkmode
         border_color = "rgba(255, 255, 255, 12%)" if is_dark else "rgba(0, 0, 0, 12%)"
         hover_bg = "rgba(255, 255, 255, 16%)" if is_dark else "rgba(0, 0, 0, 10%)"
@@ -267,12 +269,9 @@ class SourceTextEdit(QTextEdit):
 
     def on_selection_changed(self):
         try:
-            import re
-
             manager = SpellCheckManager.get_instance()
             if not manager.is_available():
                 return
-            from ballontranslator.utils.config import pcfg
             if not getattr(pcfg, 'spellcheck_enabled', True):
                 return
 
@@ -298,7 +297,6 @@ class SourceTextEdit(QTextEdit):
                         except Exception:
                             pass
                             
-                    import threading
                     t = threading.Thread(target=fetch_bg, args=(cursor, selected_text), daemon=True)
                     t.start()
                     return
@@ -307,7 +305,6 @@ class SourceTextEdit(QTextEdit):
                 self.suggestion_popup.hide()
             self.current_suggestion_word = None
         except Exception as e:
-            import traceback
             traceback.print_exc()
 
     def show_suggestions_popup(self, cursor, word, suggestions):
@@ -340,7 +337,6 @@ class SourceTextEdit(QTextEdit):
             self.suggestion_popup.move(global_pos)
             self.suggestion_popup.show()
         except Exception as e:
-            import traceback
             traceback.print_exc()
 
     def contextMenuEvent(self, event):

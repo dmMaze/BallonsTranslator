@@ -1,6 +1,12 @@
+import os
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox, QListWidget
+from qtpy.QtWidgets import (
+    QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout,
+    QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox,
+    QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox,
+    QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem
+)
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
@@ -14,7 +20,8 @@ from ballontranslator.utils.network_mirrors import (
     mirror_from_display,
     mirror_to_display,
 )
-from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
+from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, PROGRAM_PATH
+from ballontranslator.utils.logger import logger as LOGGER
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 from ballontranslator.ui.spellcheck import DICTIONARY_URLS, SpellCheckManager, DictionaryManagerDialog, DictDownloadThread
 
@@ -433,7 +440,6 @@ class ConfigPanel(QDialog):
         self.spellcheck_on_source_checker.stateChanged.connect(self.on_spellcheck_on_source_changed)
 
         # Edit Distance Spinbox
-        from qtpy.QtWidgets import QSpinBox
         self.spellcheck_distance_spin = QSpinBox(self)
         self.spellcheck_distance_spin.setRange(1, 4)
         self.spellcheck_distance_spin.setFixedWidth(CONFIG_COMBOBOX_SHORT)
@@ -698,11 +704,6 @@ class ConfigPanel(QDialog):
         dialog.exec_()
 
     def on_repo_dict_item_changed(self, item):
-        from qtpy.QtCore import Qt
-        import os
-        from ballontranslator.utils.shared import PROGRAM_PATH
-        from ballontranslator.utils.logger import logger as LOGGER
-
         url, filename = item.data(Qt.ItemDataRole.UserRole)
         save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
 
@@ -724,7 +725,6 @@ class ConfigPanel(QDialog):
     def save_repo_dicts_config(self):
         self.repo_dicts_list.blockSignals(True)
         try:
-            from qtpy.QtCore import Qt
             enabled_files = []
             for idx in range(self.repo_dicts_list.count()):
                 it = self.repo_dicts_list.item(idx)
@@ -739,12 +739,6 @@ class ConfigPanel(QDialog):
             self.repo_dicts_list.blockSignals(False)
 
     def download_repo_dict_async(self, item, url, filename):
-        import os
-        from ballontranslator.utils.shared import PROGRAM_PATH
-        from qtpy.QtWidgets import QProgressDialog
-        from qtpy.QtCore import Qt
-        from ballontranslator.utils.logger import logger as LOGGER
-
         save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
 
         progress = QProgressDialog(self.tr("Downloading dictionary..."), self.tr("Cancel"), 0, 100, self)
@@ -772,12 +766,10 @@ class ConfigPanel(QDialog):
                 
                 self.save_repo_dicts_config()
                 
-                from qtpy.QtWidgets import QMessageBox
                 QMessageBox.information(self, self.tr("Download Complete"), self.tr("Dictionary downloaded successfully!"))
             else:
                 LOGGER.warning(f"download_repo_dict_async: download failed for {filename}: {err}")
                 if "cancelled" not in err.lower():
-                    from qtpy.QtWidgets import QMessageBox
                     QMessageBox.warning(self, self.tr("Download Failed"), self.tr("Failed to download dictionary: ") + err)
 
         thread.progress.connect(on_progress)
@@ -790,7 +782,6 @@ class ConfigPanel(QDialog):
         thread.wait()
 
     def add_external_dictionary(self):
-        from qtpy.QtWidgets import QFileDialog
         path, _ = QFileDialog.getOpenFileName(
             self,
             self.tr("Select Dictionary File"),
@@ -961,8 +952,6 @@ class ConfigPanel(QDialog):
 
     def setupConfig(self):
         self.blockSignals(True)
-        import os
-        from ballontranslator.utils import shared
 
         if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
@@ -974,12 +963,10 @@ class ConfigPanel(QDialog):
         
         self.repo_dicts_list.blockSignals(True)
         self.repo_dicts_list.clear()
-        from qtpy.QtWidgets import QListWidgetItem
-        from qtpy.QtCore import Qt
         
         for lang_name, url in self.dictionary_urls.items():
             filename = url.split('/')[-1]
-            dict_path = os.path.join(shared.PROGRAM_PATH, 'data', 'dictionaries', filename)
+            dict_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
 
             display_text = self.tr(lang_name)
             exists = os.path.exists(dict_path)

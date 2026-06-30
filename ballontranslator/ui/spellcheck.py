@@ -8,7 +8,7 @@ from qtpy.QtCore import Qt, QTimer, QThread, Signal, QSize
 from qtpy.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
 from qtpy.QtWidgets import (
     QListWidget, QHBoxLayout, QVBoxLayout, QPushButton,
-    QLineEdit, QDialog, QLabel, QWidget, QListWidgetItem
+    QLineEdit, QDialog, QLabel, QWidget, QListWidgetItem, QTextEdit
 )
 
 from ballontranslator.utils import shared
@@ -421,7 +421,6 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
 
         # Check if editor is a Source block editor and if spell checking on source is enabled
         editor = self.parent()
-        from qtpy.QtWidgets import QTextEdit
         if editor and not isinstance(editor, QTextEdit):
             # Fallback if document was passed
             doc_parent = editor.parent()
