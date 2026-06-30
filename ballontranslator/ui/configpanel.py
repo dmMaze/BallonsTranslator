@@ -677,6 +677,22 @@ class ConfigPanel(QDialog):
 
     def on_spellcheck_changed(self):
         enabled = self.spellcheck_checker.isChecked()
+        if enabled:
+            manager = SpellCheckManager.get_instance()
+            if not manager.is_available():
+                # Uncheck immediately to prevent UI state drift while prompting
+                self.spellcheck_checker.blockSignals(True)
+                self.spellcheck_checker.setChecked(False)
+                self.spellcheck_checker.blockSignals(False)
+
+                if manager.install_pyspellchecker(self):
+                    self.spellcheck_checker.blockSignals(True)
+                    self.spellcheck_checker.setChecked(True)
+                    self.spellcheck_checker.blockSignals(False)
+                    enabled = True
+                else:
+                    return
+
         pcfg.spellcheck_enabled = enabled
         self.spellcheck_on_source_checker.setEnabled(enabled)
         self.manage_words_btn.setEnabled(enabled)
@@ -1000,7 +1016,11 @@ class ConfigPanel(QDialog):
             if p:
                 self.external_dicts_list.addItem(p)
 
+        self.spellcheck_checker.blockSignals(True)
+        if pcfg.spellcheck_enabled and not SpellCheckManager.get_instance().is_available():
+            pcfg.spellcheck_enabled = False
         self.spellcheck_checker.setChecked(pcfg.spellcheck_enabled)
+        self.spellcheck_checker.blockSignals(False)
         self.spellcheck_on_source_checker.setChecked(getattr(pcfg, 'spellcheck_on_source_enabled', False))
         self.spellcheck_on_source_checker.setEnabled(pcfg.spellcheck_enabled)
         self.spellcheck_distance_spin.setValue(getattr(pcfg, 'spellcheck_distance', 1))
