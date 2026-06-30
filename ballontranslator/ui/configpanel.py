@@ -677,6 +677,24 @@ class ConfigPanel(QDialog):
 
     def on_spellcheck_changed(self):
         enabled = self.spellcheck_checker.isChecked()
+        if enabled:
+            manager = SpellCheckManager.get_instance()
+            if not manager.is_available():
+                # Uncheck immediately to prevent UI state drift while prompting
+                self.spellcheck_checker.blockSignals(True)
+                self.spellcheck_checker.setChecked(False)
+                self.spellcheck_checker.blockSignals(False)
+
+                reply = QMessageBox.question(
+                    self,
+                    self.tr("Install Dependency"),
+                    self.tr("The required package 'pyspellchecker' is not installed. Would you like to install it now?"),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.install_pyspellchecker_async()
+                return
+
         pcfg.spellcheck_enabled = enabled
         self.spellcheck_on_source_checker.setEnabled(enabled)
         self.manage_words_btn.setEnabled(enabled)
@@ -687,6 +705,50 @@ class ConfigPanel(QDialog):
         self.spellcheck_distance_spin.setEnabled(enabled)
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
+
+    def install_pyspellchecker_async(self):
+        from ballontranslator.ui.packageinstall_thread import PackageInstallThread
+
+        progress = QProgressDialog(self.tr("Installing pyspellchecker..."), None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+
+        thread = PackageInstallThread(self)
+
+        def on_finished():
+            progress.close()
+            if thread.last_success:
+                QMessageBox.information(
+                    self,
+                    self.tr("Installation Complete"),
+                    self.tr("Package 'pyspellchecker' installed successfully!")
+                )
+                self.spellcheck_checker.blockSignals(True)
+                self.spellcheck_checker.setChecked(True)
+                self.spellcheck_checker.blockSignals(False)
+
+                pcfg.spellcheck_enabled = True
+                self.spellcheck_on_source_checker.setEnabled(True)
+                self.manage_words_btn.setEnabled(True)
+                self.repo_dicts_list.setEnabled(True)
+                self.external_dicts_list.setEnabled(True)
+                self.add_ext_btn.setEnabled(True)
+                self.remove_ext_btn.setEnabled(True)
+                self.spellcheck_distance_spin.setEnabled(True)
+                SpellCheckManager.get_instance().notify_config_changed()
+                self.save_config.emit()
+            else:
+                err_msg = str(thread.last_error) if thread.last_error else self.tr("Unknown error")
+                QMessageBox.warning(
+                    self,
+                    self.tr("Installation Failed"),
+                    self.tr("Failed to install 'pyspellchecker':\n") + err_msg
+                )
+
+        thread.finish_install.connect(on_finished)
+        thread.installPackages(['pyspellchecker'])
+        progress.exec_()
+        thread.wait()
 
     def on_spellcheck_on_source_changed(self):
         enabled = self.spellcheck_on_source_checker.isChecked()
