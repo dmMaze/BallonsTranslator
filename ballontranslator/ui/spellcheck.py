@@ -380,6 +380,55 @@ class SpellCheckManager:
             hl.clear_cache()
         self.load_spellchecker_async()
 
+    def install_pyspellchecker(self, parent) -> bool:
+        """Prompts the user to install pyspellchecker and handles the installation process.
+
+        Returns True if the package is installed successfully, False otherwise.
+        """
+        from qtpy.QtWidgets import QMessageBox, QProgressDialog
+        reply = QMessageBox.question(
+            parent,
+            parent.tr("Install Dependency"),
+            parent.tr("The required package 'pyspellchecker' is not installed. Would you like to install it now?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return False
+
+        from ballontranslator.ui.packageinstall_thread import PackageInstallThread
+
+        progress = QProgressDialog(parent.tr("Installing pyspellchecker..."), None, 0, 0, parent)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+
+        thread = PackageInstallThread(parent)
+        success = False
+
+        def on_finished():
+            nonlocal success
+            progress.close()
+            if thread.last_success:
+                QMessageBox.information(
+                    parent,
+                    parent.tr("Installation Complete"),
+                    parent.tr("Package 'pyspellchecker' installed successfully!")
+                )
+                success = True
+            else:
+                err_msg = str(thread.last_error) if thread.last_error else parent.tr("Unknown error")
+                QMessageBox.warning(
+                    parent,
+                    parent.tr("Installation Failed"),
+                    parent.tr("Failed to install 'pyspellchecker':\n") + err_msg
+                )
+
+        thread.finish_install.connect(on_finished)
+        thread.installPackages(['pyspellchecker'])
+        progress.exec_()
+        thread.wait()
+
+        return success
+
 
 class SpellCheckHighlighter(QSyntaxHighlighter):
     """SpellCheckHighlighter highlights misspelled words using a red wavy underline.
