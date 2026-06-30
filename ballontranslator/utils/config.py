@@ -140,6 +140,11 @@ class ProgramConfig(Config):
     original_transparency: float = 0.
     open_recent_on_startup: bool = True 
     check_update_on_startup: bool = True
+    spellcheck_enabled: bool = True
+    spellcheck_external_dict_path: str = ""
+    spellcheck_repo_dicts: str = ""
+    spellcheck_distance: int = 1
+    spellcheck_on_source_enabled: bool = False
 
     let_fntsize_flag: int = 0
     let_fntstroke_flag: int = 0

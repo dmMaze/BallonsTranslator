@@ -63,3 +63,7 @@ install_venv.bat
 install-BT.cmd
 download_models.bat
 Ultralytics/settings.json
+
+# Spellcheck dictionaries
+config/custom_dictionary.txt
+data/dictionaries/

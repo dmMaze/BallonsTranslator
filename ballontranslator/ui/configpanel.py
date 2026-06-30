@@ -1,6 +1,12 @@
+import os
 from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox, QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox
+from qtpy.QtWidgets import (
+    QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout,
+    QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox,
+    QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox,
+    QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem
+)
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
@@ -14,8 +20,11 @@ from ballontranslator.utils.network_mirrors import (
     mirror_from_display,
     mirror_to_display,
 )
-from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN
+from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, PROGRAM_PATH
+from ballontranslator.utils.logger import logger as LOGGER
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
+from ballontranslator.ui.spellcheck import DICTIONARY_URLS, SpellCheckManager, DictionaryManagerDialog, DictDownloadThread
+
 
 LAYOUT_SET_MINIMUM_SIZE = getattr(getattr(QLayout, 'SizeConstraint', QLayout), 'SetMinimumSize')
 PUSHBTN_FIXED_HEIGHT = 32
@@ -339,6 +348,9 @@ class ConfigPanel(QDialog):
     reload_textstyle = Signal(bool)
     show_only_custom_font = Signal(bool)
 
+    dictionary_urls = DICTIONARY_URLS
+
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._outside_click_filter_installed = False
@@ -361,6 +373,7 @@ class ConfigPanel(QDialog):
         label_translator = self.tr('Translator')
         label_application = self.tr('Application')
         label_typesetting = self.tr('Typesetting')
+        label_spellcheck = self.tr('Spell Checker')
 
         moduleConfigPanel = self.addConfigBlock(label_modules, moduleTableItem, 'modules')
         dlConfigPanel = self.addConfigBlock(label_text_det, moduleTableItem, 'detector')
@@ -369,6 +382,7 @@ class ConfigPanel(QDialog):
         translatorConfigPanel = self.addConfigBlock(label_translator, moduleTableItem, 'translator')
         applicationConfigPanel = self.addConfigBlock(label_application, generalTableItem, 'application')
         typesettingConfigPanel = self.addConfigBlock(label_typesetting, generalTableItem, 'typesetting')
+        spellcheckConfigPanel = self.addConfigBlock(label_spellcheck, generalTableItem, 'spellcheck')
         
         self.empty_runcache_checker, empty_runcache_subblock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
         moduleConfigPanel.vlayout.addWidget(empty_runcache_subblock)
@@ -418,6 +432,83 @@ class ConfigPanel(QDialog):
 
         self.check_update_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Check update on startup'))
         self.check_update_on_startup_checker.stateChanged.connect(self.on_check_update_onstartup_changed)
+
+        self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable'))
+        self.spellcheck_checker.stateChanged.connect(self.on_spellcheck_changed)
+
+        self.spellcheck_on_source_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Apply for source text'))
+        self.spellcheck_on_source_checker.stateChanged.connect(self.on_spellcheck_on_source_changed)
+
+        # Edit Distance Spinbox
+        self.spellcheck_distance_spin = QSpinBox(self)
+        self.spellcheck_distance_spin.setRange(1, 4)
+        self.spellcheck_distance_spin.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        self.spellcheck_distance_spin.setToolTip(self.tr("Higher value, slower analysis"))
+        self.spellcheck_distance_spin.valueChanged.connect(self.on_spellcheck_distance_changed)
+
+        dist_layout = QHBoxLayout()
+        dist_layout.setContentsMargins(0, 0, 0, 0)
+        dist_layout.setSpacing(12)
+        dist_label = ConfigTextLabel(self.tr("Edit Distance"), CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
+        dist_label.setToolTip(self.tr("Higher value, slower analysis"))
+        dist_layout.addWidget(dist_label)
+        dist_layout.addWidget(self.spellcheck_distance_spin)
+        dist_layout.insertStretch(-1)
+
+        dist_block = QVBoxLayout()
+        dist_block.setContentsMargins(0, 0, 0, 0)
+        dist_block.setSpacing(4)
+        dist_block.addLayout(dist_layout)
+
+        desc_label = ConfigTextLabel(
+            self.tr("Max spelling difference in letters. Higher values search deeper but perform slower."),
+            CONFIG_FONTSIZE_CONTENT - 2,
+            QFont.Weight.Normal
+        )
+        dist_block.addWidget(desc_label)
+        spellcheckConfigPanel.addBlockWidget(dist_block)
+
+        # Dictionary Words Manager Button
+        self.manage_words_btn = QPushButton(parent=self)
+        self.manage_words_btn.setText(self.tr("Dictionary Words..."))
+        self.manage_words_btn.clicked.connect(self.open_words_manager)
+        self.manage_words_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
+        spellcheckConfigPanel.addBlockWidget(self.manage_words_btn)
+
+        # Repository Dictionaries List
+        repo_layout = QVBoxLayout()
+        repo_label = ConfigTextLabel(self.tr("Repository Dictionaries"), CONFIG_FONTSIZE_CONTENT, QFont.Weight.Bold)
+        repo_layout.addWidget(repo_label)
+
+        self.repo_dicts_list = QListWidget(self)
+        self.repo_dicts_list.setFixedHeight(150)
+        self.repo_dicts_list.itemChanged.connect(self.on_repo_dict_item_changed)
+        repo_layout.addWidget(self.repo_dicts_list)
+
+        spellcheckConfigPanel.addBlockWidget(repo_layout)
+
+        # External Dictionaries List
+        ext_layout = QVBoxLayout()
+        ext_label = ConfigTextLabel(self.tr("External Dictionaries"), CONFIG_FONTSIZE_CONTENT, QFont.Weight.Bold)
+        ext_layout.addWidget(ext_label)
+
+        self.external_dicts_list = QListWidget(self)
+        self.external_dicts_list.setFixedHeight(120)
+        ext_layout.addWidget(self.external_dicts_list)
+
+        ext_btns_layout = QHBoxLayout()
+        self.add_ext_btn = QPushButton(self.tr("Add Dictionary..."), self)
+        self.add_ext_btn.clicked.connect(self.add_external_dictionary)
+        self.add_ext_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
+        self.remove_ext_btn = QPushButton(self.tr("Remove Selected"), self)
+        self.remove_ext_btn.clicked.connect(self.remove_external_dictionary)
+        self.remove_ext_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
+
+        ext_btns_layout.addWidget(self.add_ext_btn)
+        ext_btns_layout.addWidget(self.remove_ext_btn)
+        ext_layout.addLayout(ext_btns_layout)
+
+        self.spellcheck_subblock = spellcheckConfigPanel.addBlockWidget(ext_layout)
 
         update_status_widget = QWidget()
         update_status_layout = QHBoxLayout(update_status_widget)
@@ -584,6 +675,139 @@ class ConfigPanel(QDialog):
     def on_check_update_onstartup_changed(self):
         pcfg.check_update_on_startup = self.check_update_on_startup_checker.isChecked()
 
+    def on_spellcheck_changed(self):
+        enabled = self.spellcheck_checker.isChecked()
+        pcfg.spellcheck_enabled = enabled
+        self.spellcheck_on_source_checker.setEnabled(enabled)
+        self.manage_words_btn.setEnabled(enabled)
+        self.repo_dicts_list.setEnabled(enabled)
+        self.external_dicts_list.setEnabled(enabled)
+        self.add_ext_btn.setEnabled(enabled)
+        self.remove_ext_btn.setEnabled(enabled)
+        self.spellcheck_distance_spin.setEnabled(enabled)
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
+    def on_spellcheck_on_source_changed(self):
+        enabled = self.spellcheck_on_source_checker.isChecked()
+        pcfg.spellcheck_on_source_enabled = enabled
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
+    def on_spellcheck_distance_changed(self):
+        pcfg.spellcheck_distance = self.spellcheck_distance_spin.value()
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
+    def open_words_manager(self):
+        dialog = DictionaryManagerDialog(self)
+        dialog.exec_()
+
+    def on_repo_dict_item_changed(self, item):
+        url, filename = item.data(Qt.ItemDataRole.UserRole)
+        save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
+
+        LOGGER.info(f"on_repo_dict_item_changed: item={item.text()}, checkState={item.checkState()}")
+
+        if item.checkState() == Qt.CheckState.Checked:
+            if not os.path.exists(save_path):
+                # Uncheck immediately so it doesn't look enabled while downloading
+                self.repo_dicts_list.blockSignals(True)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                self.repo_dicts_list.blockSignals(False)
+                
+                # Start async download
+                self.download_repo_dict_async(item, url, filename)
+                return
+
+        self.save_repo_dicts_config()
+
+    def save_repo_dicts_config(self):
+        self.repo_dicts_list.blockSignals(True)
+        try:
+            enabled_files = []
+            for idx in range(self.repo_dicts_list.count()):
+                it = self.repo_dicts_list.item(idx)
+                if it.checkState() == Qt.CheckState.Checked:
+                    _, fname = it.data(Qt.ItemDataRole.UserRole)
+                    enabled_files.append(fname)
+
+            pcfg.spellcheck_repo_dicts = ",".join(enabled_files)
+            SpellCheckManager.get_instance().notify_config_changed()
+            self.save_config.emit()
+        finally:
+            self.repo_dicts_list.blockSignals(False)
+
+    def download_repo_dict_async(self, item, url, filename):
+        save_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
+
+        progress = QProgressDialog(self.tr("Downloading dictionary..."), self.tr("Cancel"), 0, 100, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+
+        thread = DictDownloadThread(url, save_path)
+
+        def on_progress(downloaded, total):
+            if total > 0:
+                percent = int(downloaded * 100 / total)
+                progress.setValue(percent)
+
+        def on_finished(success, err):
+            progress.close()
+            if success:
+                LOGGER.info(f"download_repo_dict_async: successful download of {filename}")
+                self.repo_dicts_list.blockSignals(True)
+                try:
+                    item.setCheckState(Qt.CheckState.Checked)
+                    # Remove " (Installed local)" if it exists, then append it
+                    clean_text = item.text().replace(self.tr(" - Installed"), "")
+                    item.setText(clean_text + self.tr(" - Installed"))
+                finally:
+                    self.repo_dicts_list.blockSignals(False)
+                
+                self.save_repo_dicts_config()
+                
+                QMessageBox.information(self, self.tr("Download Complete"), self.tr("Dictionary downloaded successfully!"))
+            else:
+                LOGGER.warning(f"download_repo_dict_async: download failed for {filename}: {err}")
+                if "cancelled" not in err.lower():
+                    QMessageBox.warning(self, self.tr("Download Failed"), self.tr("Failed to download dictionary: ") + err)
+
+        thread.progress.connect(on_progress)
+        thread.finished.connect(on_finished)
+        progress.canceled.connect(thread.cancel)
+
+        self.active_download_thread = thread
+        thread.start()
+        progress.exec_()
+        thread.wait()
+
+    def add_external_dictionary(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr("Select Dictionary File"),
+            "",
+            self.tr("Dictionary files (*.txt *.dic)")
+        )
+        if path:
+            self.external_dicts_list.addItem(path)
+            self.update_external_dicts_config()
+
+    def remove_external_dictionary(self):
+        selected_items = self.external_dicts_list.selectedItems()
+        if not selected_items:
+            return
+        for item in selected_items:
+            self.external_dicts_list.takeItem(self.external_dicts_list.row(item))
+        self.update_external_dicts_config()
+
+    def update_external_dicts_config(self):
+        paths = []
+        for idx in range(self.external_dicts_list.count()):
+            paths.append(self.external_dicts_list.item(idx).text())
+        pcfg.spellcheck_external_dict_path = ";".join(paths)
+        SpellCheckManager.get_instance().notify_config_changed()
+        self.save_config.emit()
+
     def setLatestVersion(self, version: str):
         self.latest_version_label.setText(self.tr('Latest version: ') + version)
 
@@ -732,6 +956,60 @@ class ConfigPanel(QDialog):
         if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
         self.check_update_on_startup_checker.setChecked(pcfg.check_update_on_startup)
+        
+        # Setup repository dictionaries
+        active_repos = pcfg.spellcheck_repo_dicts.split(',')
+        active_repos = [x.strip() for x in active_repos if x.strip()]
+        
+        self.repo_dicts_list.blockSignals(True)
+        self.repo_dicts_list.clear()
+        
+        for lang_name, url in self.dictionary_urls.items():
+            filename = url.split('/')[-1]
+            dict_path = os.path.join(PROGRAM_PATH, 'data', 'dictionaries', filename)
+
+            display_text = self.tr(lang_name)
+            exists = os.path.exists(dict_path)
+            if exists:
+                display_text += self.tr(" - Installed")
+
+            item = QListWidgetItem(display_text, self.repo_dicts_list)
+            item.setData(Qt.ItemDataRole.UserRole, (url, filename))
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+
+            if filename in active_repos and exists:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+        self.repo_dicts_list.blockSignals(False)
+
+        # Synchronize config to remove any manually deleted dictionaries
+        enabled_files = []
+        for idx in range(self.repo_dicts_list.count()):
+            it = self.repo_dicts_list.item(idx)
+            if it.checkState() == Qt.CheckState.Checked:
+                _, fname = it.data(Qt.ItemDataRole.UserRole)
+                enabled_files.append(fname)
+        pcfg.spellcheck_repo_dicts = ",".join(enabled_files)
+
+        # Setup external dictionaries
+        self.external_dicts_list.clear()
+        ext_paths = pcfg.spellcheck_external_dict_path.split(';')
+        for p in ext_paths:
+            p = p.strip()
+            if p:
+                self.external_dicts_list.addItem(p)
+
+        self.spellcheck_checker.setChecked(pcfg.spellcheck_enabled)
+        self.spellcheck_on_source_checker.setChecked(getattr(pcfg, 'spellcheck_on_source_enabled', False))
+        self.spellcheck_on_source_checker.setEnabled(pcfg.spellcheck_enabled)
+        self.spellcheck_distance_spin.setValue(getattr(pcfg, 'spellcheck_distance', 1))
+        self.spellcheck_distance_spin.setEnabled(pcfg.spellcheck_enabled)
+        self.manage_words_btn.setEnabled(pcfg.spellcheck_enabled)
+        self.repo_dicts_list.setEnabled(pcfg.spellcheck_enabled)
+        self.external_dicts_list.setEnabled(pcfg.spellcheck_enabled)
+        self.add_ext_btn.setEnabled(pcfg.spellcheck_enabled)
+        self.remove_ext_btn.setEnabled(pcfg.spellcheck_enabled)
         self.huggingface_mirror_combobox.setCurrentText(mirror_to_display(
             pcfg.mirrors.huggingface,
             none_label=self.tr('None'),

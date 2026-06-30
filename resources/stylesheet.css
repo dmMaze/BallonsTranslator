@@ -1067,3 +1067,64 @@ DeleteStyleButton {
 DeleteStyleButton::hover {
     background-color: #FF605C;
 }
+
+/* Suggestion Popup (Spell Checker) */
+QWidget#suggestion_popup {
+    background-color: @emptyContentBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+}
+
+QWidget#suggestion_popup QScrollArea {
+    border: none;
+    background: transparent;
+}
+
+QWidget#suggestion_popup QPushButton {
+    background-color: @pushBtnBackgroundColor;
+    color: @qwidgetForegroundColor;
+    border: none;
+    padding: 0px 12px;
+    height: 28px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: normal;
+}
+
+QWidget#suggestion_popup QPushButton:hover {
+    background-color: @borderColor;
+    color: @qwidgetForegroundColor;
+}
+
+QWidget#suggestion_popup QPushButton#add_to_dict {
+    color: #4caf50;
+}
+
+QWidget#suggestion_popup QPushButton#add_to_dict:hover {
+    background-color: #4caf50;
+    color: #ffffff;
+}
+
+QWidget#suggestion_popup QScrollBar:horizontal {
+    background: transparent;
+    height: 3px;
+    margin: 0px;
+}
+
+QWidget#suggestion_popup QScrollBar::handle:horizontal {
+    background: @scrollBarColor;
+    border-radius: 1px;
+    min-width: 20px;
+}
+
+QWidget#suggestion_popup QScrollBar::handle:horizontal:hover {
+    background: @scrollBarHoverColor;
+}
+
+QWidget#suggestion_popup QScrollBar::add-line:horizontal,
+QWidget#suggestion_popup QScrollBar::sub-line:horizontal,
+QWidget#suggestion_popup QScrollBar::add-page:horizontal,
+QWidget#suggestion_popup QScrollBar::sub-page:horizontal {
+    width: 0px;
+    background: transparent;
+}
