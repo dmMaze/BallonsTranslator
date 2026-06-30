@@ -1012,7 +1012,11 @@ class ConfigPanel(QDialog):
             if p:
                 self.external_dicts_list.addItem(p)
 
+        self.spellcheck_checker.blockSignals(True)
+        if pcfg.spellcheck_enabled and not SpellCheckManager.get_instance().is_available():
+            pcfg.spellcheck_enabled = False
         self.spellcheck_checker.setChecked(pcfg.spellcheck_enabled)
+        self.spellcheck_checker.blockSignals(False)
         self.spellcheck_on_source_checker.setChecked(getattr(pcfg, 'spellcheck_on_source_enabled', False))
         self.spellcheck_on_source_checker.setEnabled(pcfg.spellcheck_enabled)
         self.spellcheck_distance_spin.setValue(getattr(pcfg, 'spellcheck_distance', 1))
