@@ -66,9 +66,7 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts
 
 Si `curl` n'est pas disponible, téléchargez plutôt le script avec `wget -O ...`. L'application démarre automatiquement après l'installation ; ensuite, utilisez `cd BallonsTranslator && ./launch.sh` pour la relancer.
 
-L'application vérifie les dépendances principales au démarrage. Lorsque vous sélectionnez un module qui nécessite des bibliothèques supplémentaires, l'application vous proposera d'installer les dépendances optionnelles manquantes (vous pouvez aussi activer l'installation automatique dans les paramètres). Si le téléchargement des modèles échoue, vérifiez votre réseau/proxy, ou téléchargez les modèles requis depuis [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) ou [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) et placez-les manuellement dans le dossier `data`.
-
-Le logiciel dispose d'une vérification intégrée des mises à jour ; consultez le panneau de configuration -> Démarrage et mise à jour pour plus de détails.
+L'application vérifie les dépendances principales au démarrage. Lorsque vous sélectionnez un module qui nécessite des bibliothèques supplémentaires, l'application vous proposera d'installer les dépendances optionnelles manquantes (vous pouvez aussi activer l'installation automatique dans les paramètres).
 
 # Utilisation
 

@@ -60,9 +60,7 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts
 
 `curl`을 사용할 수 없으면 대신 `wget -O ...`로 스크립트를 다운로드하세요. 설치 후 앱이 자동으로 시작됩니다. 이후에는 `cd BallonsTranslator && ./launch.sh`를 사용해 다시 실행할 수 있습니다.
 
-앱은 시작 시 핵심 의존성을 확인합니다. 추가 라이브러리가 필요한 모듈을 선택하면 누락된 선택 의존성 설치를 안내합니다(설정에서 자동 설치도 활성화할 수 있습니다). 모델 다운로드가 실패하면 네트워크/프록시를 확인하거나 필요한 모델을 [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) 또는 [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)에서 다운로드한 뒤 `data` 디렉터리에 수동으로 넣어 주세요.
-
-소프트웨어에는 업데이트 확인 기능이 내장되어 있습니다. 자세한 내용은 설정 패널 -> Startup & Update를 참조하세요.
+앱은 시작 시 핵심 의존성을 확인합니다. 추가 라이브러리가 필요한 모듈을 선택하면 누락된 선택 의존성 설치를 안내합니다(설정에서 자동 설치도 활성화할 수 있습니다).
 
 # 사용법
 

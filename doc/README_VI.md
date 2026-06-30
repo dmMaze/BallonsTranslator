@@ -57,9 +57,7 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts
 
 Nếu không có `curl`, hãy tải script bằng `wget -O ...`. Ứng dụng sẽ tự khởi động sau khi cài đặt; những lần sau dùng `cd BallonsTranslator && ./launch.sh` để mở lại.
 
-Ứng dụng kiểm tra các phụ thuộc cốt lõi khi khởi động. Khi bạn chọn một mô-đun cần thư viện bổ sung, ứng dụng sẽ nhắc cài các phụ thuộc tùy chọn còn thiếu (bạn cũng có thể bật tự động cài đặt trong phần cài đặt). Nếu tải model thất bại, hãy kiểm tra mạng/proxy, hoặc tải các model cần thiết từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) hoặc [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) rồi đặt thủ công vào thư mục `data`.
-
-Phần mềm có kiểm tra cập nhật tích hợp; xem Config panel -> Startup & Update để biết chi tiết.
+Ứng dụng kiểm tra các phụ thuộc cốt lõi khi khởi động. Khi bạn chọn một mô-đun cần thư viện bổ sung, ứng dụng sẽ nhắc cài các phụ thuộc tùy chọn còn thiếu (bạn cũng có thể bật tự động cài đặt trong phần cài đặt).
 
 # Cách sử dụng
 
