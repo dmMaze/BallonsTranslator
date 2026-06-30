@@ -176,11 +176,11 @@ class SpellCheckManager:
             hl.clear_cache()
 
     def load_spellchecker_async(self):
-        if not getattr(pcfg, 'spellcheck_enabled', True):
+        if not getattr(pcfg, 'spellcheck_enabled', True) or not self.is_available():
             if self.spell is not None or self.external_words:
                 self.spell = None
                 self.external_words = set()
-                LOGGER.info("Spell Checker is disabled. Unloaded dictionaries.")
+                LOGGER.info("Spell Checker is disabled or not available. Unloaded dictionaries.")
                 for hl in list(self.highlighters):
                     hl.clear_cache()
                     hl.rehighlight()
