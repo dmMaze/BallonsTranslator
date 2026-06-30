@@ -4,7 +4,7 @@ import weakref
 import threading
 from typing import List, Set
 
-from qtpy.QtCore import Qt, QTimer, QThread, Signal, QSize
+from qtpy.QtCore import Qt, QTimer, QThread, Signal, QSize, QObject
 from qtpy.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
 from qtpy.QtWidgets import (
     QListWidget, QHBoxLayout, QVBoxLayout, QPushButton,
@@ -57,13 +57,14 @@ DICTIONARY_URLS = {
 }
 
 
-class SpellCheckManager:
+class SpellCheckManager(QObject):
     """SpellCheckManager manages spell checking, custom dictionaries, and suggestion retrieval.
 
     >>> manager = SpellCheckManager.get_instance()
     >>> isinstance(manager, SpellCheckManager)
     True
     """
+    dicts_loaded = Signal()
     _instance = None
 
     @classmethod
@@ -73,14 +74,22 @@ class SpellCheckManager:
         return cls._instance
 
     def __init__(self):
+        super().__init__()
         self.spell = None
+        self._is_available = None
         self.custom_words: Set[str] = set()
         self.external_words: Set[str] = set()
         self.highlighters = weakref.WeakSet()
         self.dict_path = os.path.join(shared.PROGRAM_PATH, 'config', 'custom_dictionary.txt')
         self._reload_queued = False
         self._load_custom_dictionary()
+        self.dicts_loaded.connect(self.on_dicts_loaded)
         self.load_spellchecker_async()
+
+    def on_dicts_loaded(self):
+        for hl in list(self.highlighters):
+            hl.clear_cache()
+            hl.rehighlight()
 
     def _load_custom_dictionary(self):
         """Loads custom user-added words from local storage.
@@ -176,11 +185,11 @@ class SpellCheckManager:
             hl.clear_cache()
 
     def load_spellchecker_async(self):
-        if not getattr(pcfg, 'spellcheck_enabled', True):
+        if not getattr(pcfg, 'spellcheck_enabled', True) or not self.is_available():
             if self.spell is not None or self.external_words:
                 self.spell = None
                 self.external_words = set()
-                LOGGER.info("Spell Checker is disabled. Unloaded dictionaries.")
+                LOGGER.info("Spell Checker is disabled or not available. Unloaded dictionaries.")
                 for hl in list(self.highlighters):
                     hl.clear_cache()
                     hl.rehighlight()
@@ -245,11 +254,7 @@ class SpellCheckManager:
 
                 self.external_words = temp_words
 
-                def gui_notify():
-                    for hl in list(self.highlighters):
-                        hl.clear_cache()
-                        hl.rehighlight()
-                QTimer.singleShot(0, gui_notify)
+                self.dicts_loaded.emit()
 
                 if not self._reload_queued:
                     break
@@ -264,10 +269,14 @@ class SpellCheckManager:
         >>> isinstance(manager.is_available(), bool)
         True
         """
+        if self._is_available is not None:
+            return self._is_available
         try:
             import spellchecker
+            self._is_available = True
             return True
         except ImportError:
+            self._is_available = False
             return False
 
     def load_spellchecker(self):
@@ -379,6 +388,58 @@ class SpellCheckManager:
         for hl in list(self.highlighters):
             hl.clear_cache()
         self.load_spellchecker_async()
+
+    def install_pyspellchecker(self, parent) -> bool:
+        """Prompts the user to install pyspellchecker and handles the installation process.
+
+        Returns True if the package is installed successfully, False otherwise.
+        """
+        from qtpy.QtWidgets import QMessageBox, QProgressDialog
+        reply = QMessageBox.question(
+            parent,
+            parent.tr("Install Dependency"),
+            parent.tr("The required package 'pyspellchecker' is not installed. Would you like to install it now?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return False
+
+        from ballontranslator.ui.packageinstall_thread import PackageInstallThread
+
+        progress = QProgressDialog(parent.tr("Installing pyspellchecker..."), None, 0, 0, parent)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+
+        thread = PackageInstallThread(parent)
+        success = False
+
+        def on_finished():
+            nonlocal success
+            progress.close()
+            if thread.last_success:
+                import importlib
+                importlib.invalidate_caches()
+                self._is_available = True
+                QMessageBox.information(
+                    parent,
+                    parent.tr("Installation Complete"),
+                    parent.tr("Package 'pyspellchecker' installed successfully!")
+                )
+                success = True
+            else:
+                err_msg = str(thread.last_error) if thread.last_error else parent.tr("Unknown error")
+                QMessageBox.warning(
+                    parent,
+                    parent.tr("Installation Failed"),
+                    parent.tr("Failed to install 'pyspellchecker':\n") + err_msg
+                )
+
+        thread.finish_install.connect(on_finished)
+        thread.installPackages(['pyspellchecker'])
+        progress.exec_()
+        thread.wait()
+
+        return success
 
 
 class SpellCheckHighlighter(QSyntaxHighlighter):
