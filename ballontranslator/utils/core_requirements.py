@@ -145,6 +145,51 @@ def install_core_requirements(
     )
 
 
+def _install_core_requirements_for_failures(
+    requirements_path: Path,
+    probes: Iterable[Tuple[str, Iterable[str]]],
+    failures: Iterable[str],
+    backend: str,
+    env: dict,
+) -> bool:
+    """Install core packages and clear any probe modules loaded before repair.
+
+    >>> import io
+    >>> from contextlib import redirect_stdout
+    >>> from unittest import mock
+    >>> result = package_installer.InstallResult(True, ['python', '-m', 'pip'])
+    >>> with mock.patch(f'{__name__}.install_core_requirements', return_value=result), redirect_stdout(io.StringIO()):
+    ...     did_install = _install_core_requirements_for_failures(Path('/tmp/requirements.txt'), [], [], 'pip', {})
+    >>> did_install
+    True
+    """
+
+    failures = list(dict.fromkeys(failures))
+    print('Core Python requirements are missing or invalid.')
+    if failures:
+        print('Missing/invalid core imports:')
+        for failure in failures:
+            print(f'  - {failure}')
+    print(f'Installing core requirements from {requirements_path}...')
+
+    result = install_core_requirements(
+        str(requirements_path),
+        backend=backend,
+        env=env,
+    )
+    if not result.ok:
+        raise RuntimeError(
+            'Failed to install core Python requirements.\n'
+            f'Command: {result.command_text}\n'
+            f'Exit code: {result.returncode}\n'
+            f'{result.stderr or result.stdout or result.error}'
+        )
+
+    _drop_probe_modules(probes)
+    print('Core Python requirements were installed.')
+    return True
+
+
 def ensure_core_requirements(
     repo_root: str = '',
     requirements_file: str = '',
@@ -169,32 +214,28 @@ def ensure_core_requirements(
     repo_path = Path(repo_root or Path(__file__).resolve().parents[2])
     requirements_path = Path(requirements_file) if requirements_file else repo_path / 'requirements.txt'
     probes = tuple(CORE_IMPORT_PROBES) + _platform_import_probes()
-    failures = check_core_imports(probes)
-    failures.extend(check_core_requirements_file(requirements_path))
-    failures = list(dict.fromkeys(failures))
-    if not force and not failures:
-        return False
+    install_env = env or os.environ.copy()
 
-    print('Core Python requirements are missing or invalid.')
-    if failures:
-        print('Missing/invalid core imports:')
-        for failure in failures:
-            print(f'  - {failure}')
-    print(f'Installing core requirements from {requirements_path}...')
-
-    result = install_core_requirements(
-        str(requirements_path),
-        backend=backend,
-        env=env or os.environ.copy(),
-    )
-    if not result.ok:
-        raise RuntimeError(
-            'Failed to install core Python requirements.\n'
-            f'Command: {result.command_text}\n'
-            f'Exit code: {result.returncode}\n'
-            f'{result.stderr or result.stdout or result.error}'
+    # Inspect requirement metadata before native import probes so version repairs
+    # for packages like numpy/cv2 happen before their extension modules are loaded.
+    requirement_failures = check_core_requirements_file(requirements_path)
+    if force or requirement_failures:
+        return _install_core_requirements_for_failures(
+            requirements_path,
+            probes,
+            requirement_failures,
+            backend,
+            install_env,
         )
 
-    _drop_probe_modules(probes)
-    print('Core Python requirements were installed.')
-    return True
+    import_failures = check_core_imports(probes)
+    if not import_failures:
+        return False
+
+    return _install_core_requirements_for_failures(
+        requirements_path,
+        probes,
+        import_failures,
+        backend,
+        install_env,
+    )

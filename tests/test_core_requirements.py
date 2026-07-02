@@ -84,6 +84,22 @@ class CoreRequirementsTests(unittest.TestCase):
         install.assert_called_once()
         drop.assert_called_once()
 
+    def test_requirement_file_failure_installs_before_import_probes(self):
+        with mock.patch(
+            'ballontranslator.utils.core_requirements.check_core_requirements_file',
+            return_value=['numpy>=2: missing package or import (numpy)'],
+        ), mock.patch(
+            'ballontranslator.utils.core_requirements.check_core_imports',
+        ) as check_imports, mock.patch(
+            'ballontranslator.utils.core_requirements.install_core_requirements',
+            return_value=InstallResult(True, ['python', '-m', 'pip']),
+        ) as install, mock.patch('ballontranslator.utils.core_requirements._drop_probe_modules'):
+            did_install = core_requirements.ensure_core_requirements(repo_root='/tmp/repo')
+
+        self.assertTrue(did_install)
+        install.assert_called_once()
+        check_imports.assert_not_called()
+
     def test_broken_cv2_attr_is_reported(self):
         def import_module(name):
             if name == 'cv2':

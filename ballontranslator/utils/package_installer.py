@@ -71,6 +71,7 @@ def resolve_backend(backend: str = 'auto', env: Optional[dict] = None) -> str:
 def build_install_command(
     requirements: Iterable[str] = (),
     requirements_file: str = '',
+    constraint_files: Iterable[str] = (),
     backend: str = 'auto',
     extra_args: str = '',
     env: Optional[dict] = None,
@@ -85,11 +86,15 @@ def build_install_command(
     ['uv', 'pip', 'install', '--python', 'python']
     >>> build_install_command(['torch', 'torch'], backend='pip', python_executable='python').count('torch')
     1
+    >>> '-c' in build_install_command(['onnxruntime'], constraint_files=['constraints.txt'], backend='pip', python_executable='python')
+    True
     """
 
     reqs = [req for req in dict.fromkeys(requirements) if req]
     if requirements_file:
         reqs.extend(['-r', requirements_file])
+    constraints = [path for path in dict.fromkeys(constraint_files) if path]
+    constraint_args = [arg for path in constraints for arg in ('-c', path)]
     extra = shlex.split(extra_args or '')
     env = env or os.environ
     index_url = env.get('INDEX_URL')
@@ -103,14 +108,14 @@ def build_install_command(
     if resolved_backend == 'uv':
         return [
             'uv', 'pip', 'install', '--python', python_executable,
-            *reqs, *find_links_args, *index_args, *extra,
+            *reqs, *constraint_args, *find_links_args, *index_args, *extra,
         ]
     progress_args = _pip_progress_args(extra, env, python_executable)
     if resolved_backend == 'conda-pip':
         return [
             'conda', 'run', '-p', python_prefix,
             python_executable, '-m', 'pip', 'install',
-            *reqs, *progress_args, *find_links_args, *index_args, *extra,
+            *reqs, *constraint_args, *progress_args, *find_links_args, *index_args, *extra,
         ]
     return [
         python_executable,
@@ -118,6 +123,7 @@ def build_install_command(
         'pip',
         'install',
         *reqs,
+        *constraint_args,
         '--prefer-binary',
         '--disable-pip-version-check',
         '--no-warn-script-location',
@@ -191,6 +197,7 @@ def _pip_supports_raw_progress(python_executable: str, env: dict) -> bool:
 def install(
     requirements: Iterable[str] = (),
     requirements_file: str = '',
+    constraint_files: Iterable[str] = (),
     backend: str = 'auto',
     extra_args: str = '',
     env: Optional[dict] = None,
@@ -210,6 +217,7 @@ def install(
     command = build_install_command(
         requirements=requirements,
         requirements_file=requirements_file,
+        constraint_files=constraint_files,
         backend=backend,
         extra_args=extra_args,
         env=install_env,

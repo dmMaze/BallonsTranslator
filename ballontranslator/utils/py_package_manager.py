@@ -2,6 +2,7 @@ import importlib.util
 import os
 import shlex
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional
 
@@ -24,7 +25,9 @@ except (ModuleNotFoundError, ImportError):
 
 DEFAULT_PACKAGE_IMPORT_NAMES = {
     'hf-transfer': ['hf_transfer'],
+    'opencv-contrib-python': ['cv2'],
     'opencv-python': ['cv2'],
+    'opencv-python-headless': ['cv2'],
     'opencc-python-reimplemented': ['opencc'],
     'onnxruntime': ['onnxruntime'],
     'onnxruntime-gpu': ['onnxruntime'],
@@ -43,6 +46,14 @@ DEFAULT_PACKAGE_IMPORT_NAMES = {
     'pyspellchecker': ['spellchecker'],
     'spacy-pkuseg': ['spacy_pkuseg'],
 }
+
+RUNTIME_CONSTRAINED_PACKAGES = (
+    'numpy',
+    'opencv-python',
+    'opencv-contrib-python',
+    'opencv-python-headless',
+)
+ALLOW_RUNTIME_PACKAGE_UPGRADE_ENV = 'BALLONTRANSLATOR_ALLOW_RUNTIME_PACKAGE_UPGRADE'
 
 
 def _requirement_with_package_name(req: Requirement, package_name: str) -> str:
@@ -89,6 +100,73 @@ def _onnxruntime_cuda_available(gpu_detector=detect_nvidia_gpus) -> bool:
         return bool(gpu_detector())
     except Exception:
         return False
+
+
+def _distribution_installed(package_name: str) -> bool:
+    """Return whether package metadata exists without importing the package.
+
+    >>> _distribution_installed('__ballontranslator_missing_package__')
+    False
+    """
+
+    try:
+        importlib_metadata.distribution(package_name)
+    except importlib_metadata.PackageNotFoundError:
+        return False
+    return True
+
+
+def _opencv_python_installed() -> bool:
+    """Return whether the GUI OpenCV wheel is present.
+
+    >>> isinstance(_opencv_python_installed(), bool)
+    True
+    """
+
+    return _distribution_installed('opencv-python')
+
+
+def _runtime_package_constraints(
+    version_lookup: Optional[Callable[[str], Optional[str]]] = None,
+) -> List[str]:
+    """Return constraints that keep loaded core native packages in place.
+
+    >>> _runtime_package_constraints(lambda name: {'numpy': '1.26.4'}.get(name))
+    ['numpy==1.26.4']
+    """
+
+    version_lookup = version_lookup or importlib_metadata.version
+    constraints = []
+    for package_name in RUNTIME_CONSTRAINED_PACKAGES:
+        try:
+            version = version_lookup(package_name)
+        except importlib_metadata.PackageNotFoundError:
+            continue
+        if version:
+            constraints.append(f'{package_name}=={version}')
+    return constraints
+
+
+def _write_runtime_constraints_file(
+    constraints: Iterable[str],
+    directory: Optional[str] = None,
+) -> str:
+    """Write runtime package constraints for pip-compatible installers.
+
+    >>> path = _write_runtime_constraints_file(['numpy==1.26.4'], directory=tempfile.gettempdir())
+    >>> os.path.basename(path).startswith('ballontranslator-runtime-constraints-')
+    True
+    """
+
+    lines = list(dict.fromkeys(constraints))
+    if not lines:
+        return ''
+    directory = directory or tempfile.gettempdir()
+    path = os.path.join(directory, f'ballontranslator-runtime-constraints-{os.getpid()}.txt')
+    with open(path, 'w', encoding='utf8') as f:
+        f.write('\n'.join(lines))
+        f.write('\n')
+    return path
 
 
 @dataclass
@@ -183,6 +261,8 @@ class PyPackageManager:
                 continue
             req = Requirement(req_text)
             package_name = canonicalize_name(req.name)
+            if package_name == 'opencv-python-headless' and _opencv_python_installed():
+                continue
             if package_name == 'onnxruntime' and use_onnxruntime_gpu:
                 resolved.append(_requirement_with_package_name(req, 'onnxruntime-gpu'))
             else:
@@ -239,9 +319,11 @@ class PyPackageManager:
             torch_device=torch_device,
             torch_cuda_version=torch_cuda_version,
         )
+        constraint_files = self._runtime_constraint_files()
         return [
             package_installer.build_install_command(
                 requirements=request.requirements,
+                constraint_files=constraint_files,
                 backend=request.backend or self.backend,
                 extra_args=self.extra_args,
                 env=request.env,
@@ -267,10 +349,12 @@ class PyPackageManager:
                 'event': 'installing_packages',
                 'message': self._installing_packages_summary(requirements),
             })
+        constraint_files = self._runtime_constraint_files()
         final_result = None
         for request in requests:
             result = package_installer.install(
                 requirements=request.requirements,
+                constraint_files=constraint_files,
                 backend=request.backend or self.backend,
                 extra_args=self.extra_args,
                 env=request.env,
@@ -381,6 +465,19 @@ class PyPackageManager:
                 env=dict(self.env),
             ))
         return requests
+
+    def _runtime_constraint_files(self) -> List[str]:
+        """Return constraint files that protect loaded core native packages.
+
+        >>> manager = PyPackageManager(env={ALLOW_RUNTIME_PACKAGE_UPGRADE_ENV: '1'})
+        >>> manager._runtime_constraint_files()
+        []
+        """
+
+        if self.env.get(ALLOW_RUNTIME_PACKAGE_UPGRADE_ENV, '').lower() in {'1', 'true', 'yes'}:
+            return []
+        constraint_file = _write_runtime_constraints_file(_runtime_package_constraints())
+        return [constraint_file] if constraint_file else []
 
     @staticmethod
     def _split_torch_family_requirements(requirements: Iterable[str]):
