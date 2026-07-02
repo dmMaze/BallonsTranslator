@@ -364,7 +364,7 @@ class OCRScreenAI(OCRBase):
             }]
     else:
         download_file_list = [{
-            'url': 'https://chrome-infra-packages.appspot.com/dl/chromium/third_party/screen-ai/linux-amd64/+/latest',
+            'url': 'https://chrome-infra-packages.appspot.com/dl/chromium/third_party/screen-ai/linux/+/latest',
             'files': ['resources'],
             'save_files': ['data/models/screen_ai/resources'],
             'archived_files': 'screen-ai-linux.zip',
