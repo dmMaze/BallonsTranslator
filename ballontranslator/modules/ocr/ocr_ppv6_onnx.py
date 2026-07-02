@@ -8,6 +8,7 @@ import argparse
 
 import numpy as np
 import yaml
+import cv2
 
 from .base import DEVICE_SELECTOR, OCRBase, TextBlock, register_OCR
 from ballontranslator.utils.textblock import collect_textblock_regions
@@ -206,7 +207,48 @@ def _restore_text_recognizer_call(recognizer_cls):
     return restored
 
 
-# ── Module registration ──────────────────────────────────────────────────────
+def get_rotate_crop_image(img, points):
+    """
+    img_height, img_width = img.shape[0:2]
+    left = int(np.min(points[:, 0]))
+    right = int(np.max(points[:, 0]))
+    top = int(np.min(points[:, 1]))
+    bottom = int(np.max(points[:, 1]))
+    img_crop = img[top:bottom, left:right, :].copy()
+    points[:, 0] = points[:, 0] - left
+    points[:, 1] = points[:, 1] - top
+    """
+    assert len(points) == 4, "shape of points must be 4*2"
+    img_crop_width = int(
+        max(
+            np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])
+        )
+    )
+    img_crop_height = int(
+        max(
+            np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2])
+        )
+    )
+    pts_std = np.float32(
+        [
+            [0, 0],
+            [img_crop_width, 0],
+            [img_crop_width, img_crop_height],
+            [0, img_crop_height],
+        ]
+    )
+    M = cv2.getPerspectiveTransform(points, pts_std)
+    dst_img = cv2.warpPerspective(
+        img,
+        M,
+        (img_crop_width, img_crop_height),
+        borderMode=cv2.BORDER_REPLICATE,
+        flags=cv2.INTER_CUBIC,
+    )
+    dst_img_height, dst_img_width = dst_img.shape[0:2]
+    if dst_img_height * 1.0 / dst_img_width >= 1.5:
+        dst_img = np.rot90(dst_img)
+    return dst_img
 
 
 @register_OCR("ppv6_onnx")
@@ -220,7 +262,7 @@ class PaddleOCRv6ONNX(OCRBase):
         "description": "PP-OCRv6 ONNX recognition-only — crops text blocks then recognizes via ONNX Runtime",
     }
 
-    dependencies = ["onnxruntime", "onnxocr", "torch"]
+    dependencies = ["onnxruntime", "torch"]
 
     download_file_list = [
         {
@@ -242,9 +284,6 @@ class PaddleOCRv6ONNX(OCRBase):
         self._dll_loaded = False
         self._dll_dir_handle = None
         self._cuda_lib_handles = []
-        self._get_rotate_crop_image = None
-
-    # ── Device / param updates ──────────────────────────────────────────
 
     def updateParam(self, param_key: str, param_content):
         device = self.get_param_value("device")
@@ -291,18 +330,8 @@ class PaddleOCRv6ONNX(OCRBase):
         # 1. Make PyTorch/env CUDA runtime libraries visible before ONNX
         #    Runtime tries to load its CUDA provider.
         self._ensure_cuda_dll_path()
-        from onnxocr.utils import get_rotate_crop_image
-        from onnxocr.predict_rec import TextRecognizer
+        from .utils.onnxocr import TextRecognizer
         import onnxruntime
-        from onnxocr import predict_base
-
-        self._get_rotate_crop_image = get_rotate_crop_image
-
-        # 2. Monkey-patch onnxocr's CUDA provider config *before* any session
-        #    is created.  onnxocr hardcodes ``cudnn_conv_algo_search="DEFAULT"``
-        #    which limits available CUDA kernels — PP-OCRv6 models have ~120
-        #    Conv ops that fall back to extremely slow generic implementations
-        #    (203 ms vs. 11.6 ms with EXHAUSTIVE).
 
         _providers = onnxruntime.get_available_providers()
         _device = self.get_param_value("device")
@@ -315,33 +344,15 @@ class PaddleOCRv6ONNX(OCRBase):
                 "    pip install onnxruntime-gpu\n"
                 "  Falling back to CPU for this session."
             )
-            _use_cuda = False
+            _device = 'cpu'
         if _use_coreml and "CoreMLExecutionProvider" not in _providers:
             self.logger.warning(
                 "MPS device selected but onnxruntime CoreML provider not found.\n"
                 "  Install a macOS ONNX Runtime build with CoreML support.\n"
                 "  Falling back to CPU for this session."
             )
-            _use_coreml = False
+            _device = 'cpu'
 
-        _orig_session = predict_base.PredictBase.get_onnx_session
-
-        def _patched_session(self_, model_dir, use_gpu):
-            if _use_cuda:
-                providers = [
-                    ("CUDAExecutionProvider", {"cudnn_conv_algo_search": "EXHAUSTIVE"}),
-                    "CPUExecutionProvider",
-                ]
-            elif _use_coreml:
-                providers = [
-                    ("CoreMLExecutionProvider", {"MLComputeUnits": "ALL"}),
-                    "CPUExecutionProvider",
-                ]
-            else:
-                providers = ["CPUExecutionProvider"]
-            return onnxruntime.InferenceSession(model_dir, None, providers=providers)
-
-        predict_base.PredictBase.get_onnx_session = _patched_session
 
         # 3. Create the recognizer directly — no detector involved.
 
@@ -358,7 +369,7 @@ class PaddleOCRv6ONNX(OCRBase):
             max_text_length=25,
             rec_char_dict_path=dict_path,
             use_space_char=True,
-            use_gpu=_use_cuda,
+            device=_device,
             drop_score=0.5,
         )
         self.recognizer = TextRecognizer(args)
@@ -470,7 +481,7 @@ class PaddleOCRv6ONNX(OCRBase):
 
             for line in lines:
                 poly = np.array(line, dtype=np.float32)
-                crop = self._get_rotate_crop_image(img, poly)
+                crop = get_rotate_crop_image(img, poly)
                 all_crops.append(crop)
                 crop_to_blk.append(blk_idx)
 
