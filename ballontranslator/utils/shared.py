@@ -119,6 +119,24 @@ DEFAULT_DISPLAY_LANG = 'English'
 USE_PYSIDE6 = False
 ON_MACOS = sys.platform == 'darwin'
 ON_WINDOWS = sys.platform == 'win32'
+
+def _detect_apple_silicon() -> bool:
+    if not ON_MACOS:
+        return False
+    import platform
+    if platform.machine().lower() in {'arm64', 'aarch64'}:
+        return True
+    try:
+        import subprocess
+        out = subprocess.run(
+            ['sysctl', '-n', 'hw.optional.arm64'],
+            capture_output=True, text=True, timeout=2,
+        )
+        return out.stdout.strip() == '1'
+    except Exception:
+        return False
+
+ON_APPLE_SILICON = _detect_apple_silicon()
 HEADLESS = False
 DEBUG = False
 args = None
