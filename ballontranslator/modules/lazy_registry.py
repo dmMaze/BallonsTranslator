@@ -358,6 +358,9 @@ class SafeEval:
                         return sys.platform == 'darwin'
                     if node.attr == 'ON_LINUX':
                         return sys.platform.startswith('linux')
+                    if node.attr == 'ON_APPLE_SILICON':
+                        from ballontranslator.utils.shared import ON_APPLE_SILICON
+                        return ON_APPLE_SILICON
             return UNKNOWN
         return getattr(value, node.attr, UNKNOWN)
 
@@ -375,20 +378,6 @@ class SafeEval:
             return platform.version()
         if func_name == 'platform.machine':
             return platform.machine()
-        if func_name == '_is_apple_silicon':
-            if platform.machine().lower() in {'arm64', 'aarch64'}:
-                return True
-            if sys.platform != 'darwin':
-                return False
-            try:
-                import subprocess
-                out = subprocess.run(
-                    ['sysctl', '-n', 'hw.optional.arm64'],
-                    capture_output=True, text=True, timeout=2,
-                )
-                return out.stdout.strip() == '1'
-            except Exception:
-                return False
 
         if isinstance(node.func, ast.Attribute) and not args and not node.keywords:
             value = self.visit(node.func.value)
