@@ -32,6 +32,58 @@ class LaunchRestartTests(unittest.TestCase):
 
         self.assertEqual(env['INDEX_URL'], 'https://example.invalid/simple')
 
+    def test_bundled_windows_runtime_disables_user_site(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            user_site = str(root / 'AppData' / 'Roaming' / 'Python' / 'Python312' / 'site-packages')
+            bundled_executable = str(root / 'ballontrans_pylibs_win' / 'python.exe')
+            original_path = sys.path[:]
+            original_env = os.environ.get('PYTHONNOUSERSITE')
+            import site
+            original_enable_user_site = site.ENABLE_USER_SITE
+
+            try:
+                sys.path[:] = ['project', user_site, 'bundled-site']
+                with mock.patch.object(launch.sys, 'platform', 'win32'), \
+                        mock.patch.object(launch.sys, 'executable', bundled_executable), \
+                        mock.patch('site.getusersitepackages', return_value=user_site):
+                    removed = launch.disable_bundled_windows_user_site()
+                    current_path = sys.path[:]
+                    current_env = os.environ.get('PYTHONNOUSERSITE')
+                    current_enable_user_site = site.ENABLE_USER_SITE
+            finally:
+                sys.path[:] = original_path
+                site.ENABLE_USER_SITE = original_enable_user_site
+                if original_env is None:
+                    os.environ.pop('PYTHONNOUSERSITE', None)
+                else:
+                    os.environ['PYTHONNOUSERSITE'] = original_env
+
+            self.assertEqual(removed, [user_site])
+            self.assertNotIn(user_site, current_path)
+            self.assertEqual(current_env, '1')
+            self.assertFalse(current_enable_user_site)
+
+    def test_non_bundled_windows_runtime_keeps_user_site(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            user_site = str(root / 'AppData' / 'Roaming' / 'Python' / 'Python312' / 'site-packages')
+            system_executable = str(root / 'Python312' / 'python.exe')
+            original_path = sys.path[:]
+
+            try:
+                sys.path[:] = ['project', user_site, 'system-site']
+                with mock.patch.object(launch.sys, 'platform', 'win32'), \
+                        mock.patch.object(launch.sys, 'executable', system_executable), \
+                        mock.patch('site.getusersitepackages', return_value=user_site):
+                    removed = launch.disable_bundled_windows_user_site()
+                    current_path = sys.path[:]
+            finally:
+                sys.path[:] = original_path
+
+            self.assertEqual(removed, [])
+            self.assertIn(user_site, current_path)
+
     def test_resource_theme_fallback_copies_old_config_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

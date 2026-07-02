@@ -14,13 +14,22 @@ MODEL_DIR = 'data/models'
 YSGYOLO_MODEL_PREFIXES = ('ysgyolo', 'ultralyticsyolo')
 
 def find_model_paths(model_dir, prefixes):
+    default_path_list = [
+        'data/models/ysgyolo_yolo26_2.0.pt',
+        'data/models/ysgyolo_yolo26OBB_2.0.pt'
+    ]
     if not osp.exists(model_dir):
         return []
-    return [
+    found_list = [
         osp.join(model_dir, p).replace('\\', '/')
         for p in sorted(os.listdir(model_dir))
         if p.startswith(prefixes)
     ]
+    for p in default_path_list:
+        if p not in found_list:
+            found_list.append(p)
+
+    return found_list
 
 
 CKPT_LIST = find_model_paths(MODEL_DIR, YSGYOLO_MODEL_PREFIXES)
@@ -81,7 +90,7 @@ class YSGYoloDetector(TextDetectorBase):
                 'shuqing': True,
                 'changfangtiao': True,
                 'hengxie': True,
-                'other': True
+                'other': False
             },
             'type': 'check_group',
             'display_name': '标签'
@@ -95,6 +104,20 @@ class YSGYoloDetector(TextDetectorBase):
     }
 
     _load_model_keys = {'model'}
+
+
+    download_file_list = [
+        {
+            'url': 'https://huggingface.co/YSGforMTL/YSGYoloDetector/resolve/main/ysgyolo_yolo26OBB_2.0.pt',
+            'files': 'data/models/ysgyolo_yolo26OBB_2.0.pt',
+            'sha256_pre_calculated': 'a9c03afb069285fc9e0d3fffc3c9ead440b687570952a945391ba22cd843dc3f'
+        },
+        {
+            'url': 'https://huggingface.co/YSGforMTL/YSGYoloDetector/resolve/main/ysgyolo_yolo26_2.0.pt',
+            'files': 'data/models/ysgyolo_yolo26_2.0.pt',
+            'sha256_pre_calculated': '889347d65c8636dd188a8ed4f312b29658543faaa69016b5958ddf0559980e22'
+        }
+    ]
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
