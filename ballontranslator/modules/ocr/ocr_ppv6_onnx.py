@@ -262,7 +262,7 @@ class PaddleOCRv6ONNX(OCRBase):
         "description": "PP-OCRv6 ONNX recognition-only — crops text blocks then recognizes via ONNX Runtime",
     }
 
-    dependencies = ["onnxruntime", "torch"]
+    dependencies = ["onnxruntime", "torch", "pyyaml"]
 
     download_file_list = [
         {
