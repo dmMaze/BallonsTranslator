@@ -81,7 +81,7 @@ class YSGYoloDetector(TextDetectorBase):
                 'shuqing': True,
                 'changfangtiao': True,
                 'hengxie': True,
-                'other': True
+                'other': False
             },
             'type': 'check_group',
             'display_name': '标签'
@@ -95,6 +95,20 @@ class YSGYoloDetector(TextDetectorBase):
     }
 
     _load_model_keys = {'model'}
+
+
+    download_file_list = [
+        {
+            'url': 'https://huggingface.co/YSGforMTL/YSGYoloDetector/resolve/main/ysgyolo_yolo26OBB_2.0.pt',
+            'files': 'data/models/ysgyolo_yolo26OBB_2.0.pt',
+            'sha256_pre_calculated': 'a9c03afb069285fc9e0d3fffc3c9ead440b687570952a945391ba22cd843dc3f'
+        },
+        {
+            'url': 'https://huggingface.co/YSGforMTL/YSGYoloDetector/resolve/main/ysgyolo_yolo26_2.0.pt',
+            'files': 'data/models/ysgyolo_yolo26_2.0.pt',
+            'sha256_pre_calculated': '889347d65c8636dd188a8ed4f312b29658543faaa69016b5958ddf0559980e22'
+        }
+    ]
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
