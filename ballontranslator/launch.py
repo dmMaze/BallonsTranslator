@@ -16,6 +16,57 @@ FONT_EXTS = {'.ttf','.otf','.ttc','.pfb'}
 
 IS_WIN7 = "Windows-7" in platform()
 
+def disable_bundled_windows_user_site() -> list:
+    """Remove per-user packages from the bundled Windows Python runtime.
+
+    >>> isinstance(disable_bundled_windows_user_site(), list)
+    True
+    """
+
+    if sys.platform != 'win32':
+        return []
+
+    executable_dir = Path(sys.executable).parent
+    if executable_dir.name.lower() != 'ballontrans_pylibs_win':
+        return []
+
+    os.environ['PYTHONNOUSERSITE'] = '1'
+    try:
+        import site
+    except Exception:
+        return []
+
+    try:
+        user_site = site.getusersitepackages()
+    except Exception:
+        user_site = getattr(site, 'USER_SITE', None)
+    if not user_site:
+        return []
+
+    user_site_paths = user_site if isinstance(user_site, (list, tuple)) else [user_site]
+    blocked_paths = {
+        osp.normcase(osp.abspath(path))
+        for path in user_site_paths
+        if path
+    }
+    removed = []
+    remaining = []
+    for path in sys.path:
+        if path and osp.normcase(osp.abspath(path)) in blocked_paths:
+            removed.append(path)
+        else:
+            remaining.append(path)
+
+    if removed:
+        sys.path[:] = remaining
+
+    # Keep later imports and subprocess restarts from re-enabling AppData packages.
+    site.ENABLE_USER_SITE = False
+    return removed
+
+
+disable_bundled_windows_user_site()
+
 import ballontranslator.utils.shared as shared # Earlier import of shared to use default for config_path argument
 from ballontranslator.utils.version import APP_VERSION
 

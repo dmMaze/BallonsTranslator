@@ -18,6 +18,7 @@ RELEASES_URL = 'https://github.com/dmMaze/BallonsTranslator/releases'
 LATEST_RELEASE_API_URL = 'https://api.github.com/repos/dmMaze/BallonsTranslator/releases/latest'
 UPDATE_BRANCH = 'userspace_update'
 SOURCE_UPDATE_DIRS = ('ballontranslator', 'resources')
+SOURCE_UPDATE_FILES = ('pyproject.toml', 'requirements.txt')
 
 
 @dataclass
@@ -263,9 +264,14 @@ class BallonsTranslatorUpdater:
             self._notify('backup_source', 65, dirname)
             shutil.copytree(source_path, backup_path / dirname)
 
-        pyproject_path = self.program_path / 'pyproject.toml'
-        if pyproject_path.exists():
-            shutil.copy2(pyproject_path, backup_path / 'pyproject.toml')
+        for filename in SOURCE_UPDATE_FILES:
+            source_path = self.program_path / filename
+            if not source_path.exists():
+                continue
+            if not source_path.is_file():
+                raise RuntimeError(f'Cannot back up non-file source path: {source_path}')
+            self._notify('backup_source', 65, filename)
+            shutil.copy2(source_path, backup_path / filename)
         return backup_path
 
     def prepare_git_worktree(self, latest_version: str) -> str:
@@ -303,12 +309,11 @@ class BallonsTranslatorUpdater:
             self._safe_extract(archive, extract_root)
 
         release_root = self._find_release_root(extract_root)
-        self._notify('replace_source', 90, ', '.join(SOURCE_UPDATE_DIRS))
+        self._notify('replace_source', 90, ', '.join(SOURCE_UPDATE_DIRS + SOURCE_UPDATE_FILES))
         for dirname in SOURCE_UPDATE_DIRS:
             self._replace_directory(release_root / dirname, self.program_path / dirname)
-        release_pyproject = release_root / 'pyproject.toml'
-        if release_pyproject.exists():
-            self._replace_file(release_pyproject, self.program_path / 'pyproject.toml')
+        for filename in SOURCE_UPDATE_FILES:
+            self._replace_file(release_root / filename, self.program_path / filename)
         try:
             self._cleanup_downloaded_source(zip_path, extract_root)
         except Exception as e:
@@ -394,6 +399,8 @@ class BallonsTranslatorUpdater:
                 shutil.rmtree(temp_target)
 
     def _replace_file(self, source: Path, target: Path) -> None:
+        if not source.is_file():
+            raise RuntimeError(f'Update archive is missing source file: {source}')
         temp_target = target.with_name(f'.{target.name}.update_tmp')
         shutil.copy2(source, temp_target)
         os.replace(temp_target, target)
