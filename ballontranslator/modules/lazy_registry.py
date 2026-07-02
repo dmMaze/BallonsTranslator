@@ -144,17 +144,28 @@ def _find_model_paths(model_dir, prefixes):
         ['...ysgyolo_demo.pt']
     """
 
+    default_path_list = [
+        'data/models/ysgyolo_yolo26_2.0.pt',
+        'data/models/ysgyolo_yolo26OBB_2.0.pt'
+    ]
+
     if isinstance(prefixes, str):
         prefixes = (prefixes,)
     try:
         names = sorted(os.listdir(model_dir))
     except OSError:
         return []
-    return [
+    found_list = [
         os.path.join(model_dir, name).replace('\\', '/')
         for name in names
         if name.startswith(tuple(prefixes))
     ]
+
+    for p in default_path_list:
+        if p not in found_list:
+            found_list.append(p)
+
+    return found_list
 
 
 class SafeEval:

@@ -14,13 +14,22 @@ MODEL_DIR = 'data/models'
 YSGYOLO_MODEL_PREFIXES = ('ysgyolo', 'ultralyticsyolo')
 
 def find_model_paths(model_dir, prefixes):
+    default_path_list = [
+        'data/models/ysgyolo_yolo26_2.0.pt',
+        'data/models/ysgyolo_yolo26OBB_2.0.pt'
+    ]
     if not osp.exists(model_dir):
         return []
-    return [
+    found_list = [
         osp.join(model_dir, p).replace('\\', '/')
         for p in sorted(os.listdir(model_dir))
         if p.startswith(prefixes)
     ]
+    for p in default_path_list:
+        if p not in found_list:
+            found_list.append(p)
+
+    return found_list
 
 
 CKPT_LIST = find_model_paths(MODEL_DIR, YSGYOLO_MODEL_PREFIXES)
