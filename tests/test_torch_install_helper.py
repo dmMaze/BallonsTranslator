@@ -1,6 +1,9 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
+from ballontranslator.utils import package_installer
 from ballontranslator.utils import shared
 from ballontranslator.utils.py_package_manager import PyPackageManager
 from ballontranslator.utils.torch_install_helper import (
@@ -236,6 +239,35 @@ class TorchInstallHelperTests(unittest.TestCase):
         self.assertEqual(len(commands), 2)
         self.assertIn('torch==2.7.1', commands[0])
         self.assertIn('https://download.pytorch.org/whl/cu118', commands[0])
+        self.assertIn('einops', commands[1])
+
+    def test_package_manager_auto_uses_bundled_uv_for_non_torch_split(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime_dir = Path(tmpdir) / 'ballontrans_pylibs_win'
+            runtime_dir.mkdir()
+            python_path = runtime_dir / 'python.exe'
+            uv_path = runtime_dir / 'uv.exe'
+            python_path.write_text('', encoding='utf8')
+            uv_path.write_text('', encoding='utf8')
+            manager = PyPackageManager(backend='auto', env={'PATH': ''})
+
+            with mock.patch.object(
+                package_installer.sys,
+                'executable',
+                str(python_path),
+            ), mock.patch(
+                'ballontranslator.utils.package_installer._pip_supports_raw_progress',
+                return_value=False,
+            ):
+                commands = manager.build_install_commands(
+                    ['torch', 'einops'],
+                    torch_device='cuda',
+                    torch_cuda_version='cu128',
+                )
+
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(commands[0][0], str(python_path))
+        self.assertEqual(commands[1][0], str(uv_path))
         self.assertIn('einops', commands[1])
 
 
