@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import shlex
+import sys
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional
 
@@ -10,6 +11,7 @@ from ballontranslator.utils import package_installer
 from ballontranslator.utils.package_installer import InstallResult
 from ballontranslator.utils.torch_install_helper import (
     TORCH_FAMILY_PACKAGES,
+    detect_nvidia_gpus,
     has_plain_unpinned_torch,
     prepare_torch_install_request,
 )
@@ -24,6 +26,8 @@ DEFAULT_PACKAGE_IMPORT_NAMES = {
     'hf-transfer': ['hf_transfer'],
     'opencv-python': ['cv2'],
     'opencc-python-reimplemented': ['opencc'],
+    'onnxruntime': ['onnxruntime'],
+    'onnxruntime-gpu': ['onnxruntime'],
     'pillow': ['PIL'],
     'pillow-jxl-plugin': ['pillow_jxl'],
     'protobuf': ['google.protobuf'],
@@ -39,6 +43,52 @@ DEFAULT_PACKAGE_IMPORT_NAMES = {
     'pyspellchecker': ['spellchecker'],
     'spacy-pkuseg': ['spacy_pkuseg'],
 }
+
+
+def _requirement_with_package_name(req: Requirement, package_name: str) -> str:
+    """Return ``req`` with a different distribution name.
+
+    >>> _requirement_with_package_name(Requirement('onnxruntime>=1'), 'onnxruntime-gpu')
+    'onnxruntime-gpu>=1'
+    """
+    requirement = package_name
+    if req.extras:
+        requirement += '[' + ','.join(sorted(req.extras)) + ']'
+    requirement += str(req.specifier)
+    if req.marker:
+        requirement += f'; {req.marker}'
+    return requirement
+
+
+def _torch_cuda_package_installed() -> bool:
+    """Return whether installed torch metadata points at CUDA wheels.
+
+    >>> isinstance(_torch_cuda_package_installed(), bool)
+    True
+    """
+    try:
+        version = importlib_metadata.version('torch')
+    except importlib_metadata.PackageNotFoundError:
+        return False
+    if '+' not in version:
+        return False
+    return version.split('+', 1)[1].lower().startswith('cu')
+
+
+def _onnxruntime_cuda_available(gpu_detector=detect_nvidia_gpus) -> bool:
+    """Return a lazy, import-free CUDA hint for ONNX Runtime package choice.
+
+    >>> isinstance(_onnxruntime_cuda_available(gpu_detector=lambda: []), bool)
+    True
+    """
+    if sys.platform not in {'win32', 'linux'}:
+        return False
+    if _torch_cuda_package_installed():
+        return True
+    try:
+        return bool(gpu_detector())
+    except Exception:
+        return False
 
 
 @dataclass
@@ -106,7 +156,7 @@ class PyPackageManager:
         """
 
         missing = []
-        for req_text in dict.fromkeys(requirements):
+        for req_text in self.resolve_runtime_requirements(requirements):
             if not req_text:
                 continue
             req = Requirement(req_text)
@@ -119,6 +169,26 @@ class PyPackageManager:
             missing.append(MissingRequirement(str(req), package_name, import_names))
         return missing
 
+    def resolve_runtime_requirements(self, requirements: Iterable[str]) -> List[str]:
+        """Resolve backend-specific runtime packages without importing them.
+
+        >>> manager = PyPackageManager()
+        >>> manager.resolve_runtime_requirements([])
+        []
+        """
+        resolved = []
+        use_onnxruntime_gpu = _onnxruntime_cuda_available()
+        for req_text in dict.fromkeys(requirements):
+            if not req_text:
+                continue
+            req = Requirement(req_text)
+            package_name = canonicalize_name(req.name)
+            if package_name == 'onnxruntime' and use_onnxruntime_gpu:
+                resolved.append(_requirement_with_package_name(req, 'onnxruntime-gpu'))
+            else:
+                resolved.append(str(req))
+        return resolved
+
     def import_names_for_requirement(self, requirement: str) -> List[str]:
         req = Requirement(requirement)
         package_name = canonicalize_name(req.name)
@@ -127,7 +197,7 @@ class PyPackageManager:
         return [req.name.replace('-', '_')]
 
     def requirement_for_import_name(self, import_name: str, requirements: Iterable[str]) -> Optional[str]:
-        for requirement in requirements:
+        for requirement in self.resolve_runtime_requirements(requirements):
             if import_name in self.import_names_for_requirement(requirement):
                 return str(Requirement(requirement))
         return None
@@ -285,6 +355,7 @@ class PyPackageManager:
         torch_device: Optional[str] = None,
         torch_cuda_version: Optional[str] = None,
     ):
+        requirements = self.resolve_runtime_requirements(requirements)
         request = prepare_torch_install_request(
             requirements=requirements,
             env=self.env,
