@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional
 
 from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 from ballontranslator.utils import package_installer
 from ballontranslator.utils.package_installer import InstallResult
@@ -56,50 +57,104 @@ RUNTIME_CONSTRAINED_PACKAGES = (
 ALLOW_RUNTIME_PACKAGE_UPGRADE_ENV = 'BALLONTRANSLATOR_ALLOW_RUNTIME_PACKAGE_UPGRADE'
 
 
-def _requirement_with_package_name(req: Requirement, package_name: str) -> str:
+def _requirement_with_package_name(
+    req: Requirement,
+    package_name: str,
+    extra_specifier: str = '',
+) -> str:
     """Return ``req`` with a different distribution name.
 
     >>> _requirement_with_package_name(Requirement('onnxruntime>=1'), 'onnxruntime-gpu')
     'onnxruntime-gpu>=1'
+    >>> _requirement_with_package_name(
+    ...     Requirement('onnxruntime>=1'), 'onnxruntime-gpu', '<1.27.0'
+    ... )
+    'onnxruntime-gpu<1.27.0,>=1'
     """
     requirement = package_name
     if req.extras:
         requirement += '[' + ','.join(sorted(req.extras)) + ']'
-    requirement += str(req.specifier)
+    specifier = str(req.specifier)
+    if extra_specifier:
+        specifier = str(
+            SpecifierSet(','.join(filter(None, (specifier, extra_specifier))))
+        )
+    requirement += specifier
     if req.marker:
         requirement += f'; {req.marker}'
     return requirement
 
 
-def _torch_cuda_package_installed() -> bool:
-    """Return whether installed torch metadata points at CUDA wheels.
+def _torch_cuda_package_suffix(
+    version_lookup: Optional[Callable[[str], str]] = None,
+) -> Optional[str]:
+    """Return the CUDA suffix from installed torch metadata.
 
-    >>> isinstance(_torch_cuda_package_installed(), bool)
+    >>> _torch_cuda_package_suffix(lambda _: '2.7.1+cu118')
+    'cu118'
+    >>> _torch_cuda_package_suffix(lambda _: '2.7.1') is None
+    True
+    >>> _torch_cuda_package_suffix(lambda _: '2.7.1+cpu') is None
     True
     """
+    version_lookup = version_lookup or importlib_metadata.version
     try:
-        version = importlib_metadata.version('torch')
+        version = version_lookup('torch')
     except importlib_metadata.PackageNotFoundError:
-        return False
+        return None
     if '+' not in version:
-        return False
-    return version.split('+', 1)[1].lower().startswith('cu')
+        return None
+    suffix = version.split('+', 1)[1].lower()
+    if suffix.startswith('cu'):
+        return suffix
+    return None
 
 
-def _onnxruntime_cuda_available(gpu_detector=detect_nvidia_gpus) -> bool:
-    """Return a lazy, import-free CUDA hint for ONNX Runtime package choice.
+def _onnxruntime_requirement_for_cuda(req: Requirement, cuda_suffix: str) -> str:
+    """Return the ONNX Runtime package matching detected torch CUDA.
 
-    >>> isinstance(_onnxruntime_cuda_available(gpu_detector=lambda: []), bool)
-    True
+    >>> _onnxruntime_requirement_for_cuda(Requirement('onnxruntime'), 'cu118')
+    'onnxruntime'
+    >>> _onnxruntime_requirement_for_cuda(Requirement('onnxruntime'), 'cu128')
+    'onnxruntime-gpu<1.27.0'
+    >>> _onnxruntime_requirement_for_cuda(Requirement('onnxruntime'), 'cu130')
+    'onnxruntime-gpu>=1.27.0'
+    """
+    if cuda_suffix == 'cu118':
+        return str(req)
+    if cuda_suffix.startswith('cu12'):
+        return _requirement_with_package_name(req, 'onnxruntime-gpu', '<1.27.0')
+    return _requirement_with_package_name(req, 'onnxruntime-gpu', '>=1.27.0')
+
+
+def _resolve_onnxruntime_requirement(
+    req: Requirement,
+    gpu_detector=detect_nvidia_gpus,
+    cuda_suffix_lookup=_torch_cuda_package_suffix,
+) -> str:
+    """Return the install requirement for ONNX Runtime in this environment.
+
+    >>> _resolve_onnxruntime_requirement(
+    ...     Requirement('onnxruntime'),
+    ...     gpu_detector=lambda: [],
+    ...     cuda_suffix_lookup=lambda: None,
+    ... )
+    'onnxruntime'
     """
     if sys.platform not in {'win32', 'linux'}:
-        return False
-    if _torch_cuda_package_installed():
-        return True
+        return str(req)
+
+    cuda_suffix = cuda_suffix_lookup()
+    if cuda_suffix is not None:
+        return _onnxruntime_requirement_for_cuda(req, cuda_suffix)
+
     try:
-        return bool(gpu_detector())
+        has_gpu = bool(gpu_detector())
     except Exception:
-        return False
+        has_gpu = False
+    if has_gpu:
+        return _requirement_with_package_name(req, 'onnxruntime-gpu', '>=1.27.0')
+    return str(req)
 
 
 def _distribution_installed(package_name: str) -> bool:
@@ -255,7 +310,6 @@ class PyPackageManager:
         []
         """
         resolved = []
-        use_onnxruntime_gpu = _onnxruntime_cuda_available()
         for req_text in dict.fromkeys(requirements):
             if not req_text:
                 continue
@@ -263,8 +317,8 @@ class PyPackageManager:
             package_name = canonicalize_name(req.name)
             if package_name == 'opencv-python-headless' and _opencv_python_installed():
                 continue
-            if package_name == 'onnxruntime' and use_onnxruntime_gpu:
-                resolved.append(_requirement_with_package_name(req, 'onnxruntime-gpu'))
+            if package_name == 'onnxruntime':
+                resolved.append(_resolve_onnxruntime_requirement(req))
             else:
                 resolved.append(str(req))
         return resolved
