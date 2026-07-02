@@ -373,6 +373,22 @@ class SafeEval:
             return platform.mac_ver()
         if func_name == 'platform.version':
             return platform.version()
+        if func_name == 'platform.machine':
+            return platform.machine()
+        if func_name == '_is_apple_silicon':
+            if platform.machine().lower() in {'arm64', 'aarch64'}:
+                return True
+            if sys.platform != 'darwin':
+                return False
+            try:
+                import subprocess
+                out = subprocess.run(
+                    ['sysctl', '-n', 'hw.optional.arm64'],
+                    capture_output=True, text=True, timeout=2,
+                )
+                return out.stdout.strip() == '1'
+            except Exception:
+                return False
 
         if isinstance(node.func, ast.Attribute) and not args and not node.keywords:
             value = self.visit(node.func.value)
@@ -385,6 +401,13 @@ class SafeEval:
                     return list(value.values())
                 if node.func.attr == 'items':
                     return list(value.items())
+            if isinstance(value, str):
+                if node.func.attr == 'lower':
+                    return value.lower()
+                if node.func.attr == 'upper':
+                    return value.upper()
+                if node.func.attr == 'strip':
+                    return value.strip()
             return UNKNOWN
 
         if func_name == 'DEVICE_SELECTOR':

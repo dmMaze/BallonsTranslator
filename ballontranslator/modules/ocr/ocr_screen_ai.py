@@ -23,6 +23,34 @@ def get_binary_name() -> str:
         return "chrome_screen_ai.dll"
     return "libchromescreenai.so"
 
+
+def _is_apple_silicon() -> bool:
+    """Detect Apple Silicon even when Python runs under Rosetta 2.
+
+    ``platform.machine()`` reports ``x86_64`` for Rosetta-translated processes,
+    so we fall back to ``sysctl hw.optional.arm64`` which is always ``1`` on
+    any Apple Silicon Mac regardless of the active ABI layer.
+
+    SafeEval in lazy_registry.py has a dedicated handler for this function so
+    it can be evaluated statically when building lazy module specs.
+
+    >>> isinstance(_is_apple_silicon(), bool)
+    True
+    """
+    if platform.machine().lower() in {'arm64', 'aarch64'}:
+        return True
+    if sys.platform != 'darwin':
+        return False
+    try:
+        import subprocess
+        out = subprocess.run(
+            ['sysctl', '-n', 'hw.optional.arm64'],
+            capture_output=True, text=True, timeout=2,
+        )
+        return out.stdout.strip() == '1'
+    except Exception:
+        return False
+
 # === Skia ctypes Mapping structures ===
 class SkColorInfo(ctypes.Structure):
     _fields_ = [
@@ -348,7 +376,10 @@ class OCRScreenAI(OCRBase):
             'archived_files': 'screen-ai-windows.zip',
         }]
     elif sys.platform == 'darwin':
-        if platform.machine().lower() in {'arm64', 'aarch64'}:
+        # _is_apple_silicon() handles both native arm64 and Rosetta-translated Python.
+        # SafeEval in lazy_registry.py has a matching handler so this condition is
+        # also evaluated correctly during AST-based lazy module spec building.
+        if _is_apple_silicon():
             download_file_list = [{
                 'url': 'https://chrome-infra-packages.appspot.com/dl/chromium/third_party/screen-ai/mac-arm64/+/latest',
                 'files': ['resources'],
