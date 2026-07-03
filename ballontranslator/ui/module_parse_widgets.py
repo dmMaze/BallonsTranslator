@@ -353,6 +353,8 @@ class ModuleConfigParseWidget(QWidget):
             self.module_combobox.currentTextChanged.connect(self.on_module_changed)
 
     def setModule(self, module: str):
+        if self.module_combobox.currentText() == module and self.visibleWidget is not None:
+            return
         self.blockSignals(True)
         self.module_combobox.setCurrentText(module)
         self.updateModuleParamWidget()
@@ -418,6 +420,7 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.vlayout.addWidget(self.replaceMTkeywordBtn)
 
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
+        refresh_params = self.module_combobox.currentText() != name or self.visibleWidget is None
         self.source_combobox.blockSignals(True)
         self.target_combobox.blockSignals(True)
         self.module_combobox.blockSignals(True)
@@ -430,7 +433,8 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.module_combobox.setCurrentText(name)
         self.source_combobox.setCurrentText(lang_source)
         self.target_combobox.setCurrentText(lang_target)
-        self.updateModuleParamWidget()
+        if refresh_params:
+            self.updateModuleParamWidget()
         self.source_combobox.blockSignals(False)
         self.target_combobox.blockSignals(False)
         self.module_combobox.blockSignals(False)
