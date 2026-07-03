@@ -141,18 +141,10 @@ Remove-Item -Recurse -Force $UvTempDir
 # Clean up temp folder
 Remove-Item -Recurse -Force $BuildDir
 
-# Step 5: Install core requirements (if requirements.txt exists)
-$RequirementsFile = Join-Path $ProjectRoot "requirements.txt"
-if (Test-Path $RequirementsFile) {
-    Write-Host "Installing dependencies from requirements.txt..."
-    $UvPath = Join-Path $PyLibsDir "uv.exe"
-    Start-Process -FilePath $UvPath -ArgumentList "pip install --python `"$PythonExe`" -r `"$RequirementsFile`"" -Wait -NoNewWindow
-}
-
 Write-Host "=== Installation Completed Successfully! ==="
 Write-Host "You can now run launch_win.bat to start BallonsTranslator."
 
-# Step 6: Automatically launch launch_win.bat
+# Step 5: Automatically launch launch_win.bat
 $LaunchBat = Join-Path $ProjectRoot "launch_win.bat"
 if (Test-Path $LaunchBat) {
     Write-Host "Launching BallonsTranslator..."

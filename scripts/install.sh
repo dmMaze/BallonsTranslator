@@ -129,9 +129,6 @@ uv venv --python 3.12 "$VENV_NAME"
 venv_python="${APP_DIR}/${VENV_NAME}/bin/python"
 [ -x "$venv_python" ] || fail "Virtual environment Python was not created at ${venv_python}"
 
-info "Installing core requirements..."
-uv pip install --python "$venv_python" -r requirements.txt
-
 info ""
 info "${APP_NAME} is ready."
 info "Launching ${APP_NAME}..."
