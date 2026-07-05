@@ -17,7 +17,7 @@ from .version import get_current_version
 RELEASES_URL = 'https://github.com/dmMaze/BallonsTranslator/releases'
 LATEST_RELEASE_API_URL = 'https://api.github.com/repos/dmMaze/BallonsTranslator/releases/latest'
 UPDATE_BRANCH = 'userspace_update'
-SOURCE_UPDATE_DIRS = ('ballontranslator', 'resources', 'config/llm_profile_builtin')
+SOURCE_UPDATE_DIRS = ('ballontranslator', 'resources')
 SOURCE_UPDATE_FILES = ('pyproject.toml', 'requirements.txt')
 
 

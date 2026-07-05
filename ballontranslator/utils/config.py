@@ -257,9 +257,11 @@ def load_textstyle_from(p: str, raise_exception = False):
     text_styles.extend(styles_loaded)
     pcfg.text_styles_path = p
 
-def load_config(config_path: str = shared.CONFIG_PATH):
+def load_config(config_path: str = None):
     global config_created_on_load
     config_created_on_load = False
+    if config_path is None:
+        config_path = shared.CONFIG_PATH
     if config_path != shared.CONFIG_PATH:
         shared.CONFIG_PATH = config_path
         LOGGER.info(f'Using specified config file at {shared.CONFIG_PATH}')
@@ -306,6 +308,9 @@ def json_dump_program_config(obj, **kwargs):
 def save_config():
     global pcfg
     try:
+        config_dir = osp.dirname(shared.CONFIG_PATH)
+        if config_dir and not osp.exists(config_dir):
+            os.makedirs(config_dir)
         tmp_save_tgt = shared.CONFIG_PATH + '.tmp'
         with open(tmp_save_tgt, 'w', encoding='utf8') as f:
             f.write(json_dump_program_config(pcfg))

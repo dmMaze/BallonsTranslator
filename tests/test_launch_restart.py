@@ -32,6 +32,43 @@ class LaunchRestartTests(unittest.TestCase):
 
         self.assertEqual(env['INDEX_URL'], 'https://example.invalid/simple')
 
+    def test_config_alias_sets_config_path_argument(self):
+        config_path = os.path.join('profiles', 'custom.json')
+
+        args = launch.parser.parse_args(['--config', config_path])
+        legacy_args = launch.parser.parse_args(['--config_path', config_path])
+
+        self.assertEqual(args.config_path, config_path)
+        self.assertEqual(legacy_args.config_path, config_path)
+
+    def test_load_config_then_save_uses_custom_config_path(self):
+        try:
+            from ballontranslator.utils import config as program_config
+            from ballontranslator.utils import shared
+        except ImportError as e:
+            self.skipTest(f'config dependencies unavailable: {e}')
+
+        original_path = shared.CONFIG_PATH
+        original_config = program_config.pcfg.copy()
+        original_created_on_load = program_config.config_created_on_load
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                config_path = os.path.join(tmpdir, 'profile', 'custom.json')
+
+                program_config.load_config(config_path)
+                program_config.pcfg.display_lang = 'English'
+                saved = program_config.save_config()
+
+                self.assertTrue(saved)
+                self.assertTrue(os.path.exists(config_path))
+                with open(config_path, 'r', encoding='utf8') as f:
+                    saved_config = json.load(f)
+                self.assertEqual(saved_config['display_lang'], 'English')
+        finally:
+            shared.CONFIG_PATH = original_path
+            program_config.pcfg.merge(original_config)
+            program_config.config_created_on_load = original_created_on_load
+
     def test_bundled_windows_runtime_disables_user_site(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
