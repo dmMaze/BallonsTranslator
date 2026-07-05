@@ -935,12 +935,6 @@
         <translation>Скачивание обновления: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="510" />
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="511" />
-        <source>Backing up source: </source>
-        <translation>Резервное копирование источника: </translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="512" />
         <source>Saving local changes: </source>
         <translation>Сохранение локальных изменений: </translation>
@@ -1002,11 +996,6 @@
         <location filename="../../ballontranslator/ui/mainwindow.py" line="611" />
         <source>Update installed. Restart BallonsTranslator to use the new version.</source>
         <translation>Обновление установлено. Перезапустите BalloonsTranslator для применения изменений.</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="620" />
-        <source>Backup: </source>
-        <translation>Резервная копия: </translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="622" />

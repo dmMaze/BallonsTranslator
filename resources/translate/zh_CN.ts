@@ -1233,11 +1233,6 @@ All existing translation results will be cleared!</source>
         <translation>下载更新: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="510"/>
-        <source>Backing up source: </source>
-        <translation>备份源码: </translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="511"/>
         <source>Saving local changes: </source>
         <translation>保存本地更改: </translation>
@@ -1296,11 +1291,6 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="609"/>
         <source>Update installed. Restart BallonsTranslator to use the new version.</source>
         <translation>更新已安装.重启以应用更新.</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="619"/>
-        <source>Backup: </source>
-        <translation>备份: </translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="621"/>

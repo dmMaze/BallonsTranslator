@@ -506,8 +506,6 @@ class MainWindow(mainwindow_cls):
             'download_start': self.tr('Downloading update: '),
             'download_progress': self.tr('Downloading update: '),
             'download_done': self.tr('Downloading update: '),
-            'backup_source': self.tr('Backing up source: '),
-            'backup_skip': self.tr('Backing up source: '),
             'git_safety': self.tr('Saving local changes: '),
             'extract_source': self.tr('Installing update: '),
             'replace_source': self.tr('Installing update: '),
@@ -615,8 +613,6 @@ class MainWindow(mainwindow_cls):
         layout.addWidget(title_label)
 
         details = []
-        if result.backup_path:
-            details.append(self.tr('Backup: ') + result.backup_path)
         if result.git_message:
             details.append(self.tr('If you are not a developer, you can ignore the following git information.'))
             details.append(result.git_message)

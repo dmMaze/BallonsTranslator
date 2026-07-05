@@ -764,11 +764,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="511"/>
-        <source>Backing up source: </source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="512"/>
         <source>Saving local changes: </source>
         <translation type="unfinished"></translation>
@@ -826,11 +821,6 @@
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="610"/>
         <source>Update installed. Restart BallonsTranslator to use the new version.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="620"/>
-        <source>Backup: </source>
         <translation type="unfinished"></translation>
     </message>
     <message>
