@@ -968,9 +968,6 @@ class SceneTextManager(QObject):
 
         if idx < len(self.textblk_item_list):
             blk_item = self.textblk_item_list[idx]
-            sender = self.sender()
-            if isinstance(sender, TransTextEdit):
-                blk_item.setCacheMode(QGraphicsItem.CacheMode.NoCache)
             self.canvas.gv.ensureVisible(blk_item)
             self.txtblkShapeControl.setBlkItem(blk_item)
 
