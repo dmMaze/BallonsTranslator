@@ -1441,7 +1441,6 @@ class MainWindow(mainwindow_cls):
         tgt_img = self.imgtrans_proj.img_array
         if tgt_img is None:
             return False
-        tgt_mask = self.imgtrans_proj.mask_array
         
         if len(blkitem_list) < 1:
             return False
@@ -1459,7 +1458,7 @@ class MainWindow(mainwindow_cls):
             blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
             blk_list.append(blk)
 
-        self.module_manager.runBlktransPipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask = tgt_mask)
+        self.module_manager.runBlktransPipeline(blk_list, mode, blk_ids)
         return True
 
 

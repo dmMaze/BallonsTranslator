@@ -599,12 +599,17 @@ class ImgtransThread(QThread):
         """请求停止当前任务"""
         self.stop_event.set()
 
-    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
+    def runBlktransPipeline(self, blk_list: List[TextBlock], mode: int, blk_ids: List[int]):
         self.clearStopRequest()
-        self.job = lambda : self._blktrans_pipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask)
+        self.job = lambda : self._blktrans_pipeline(blk_list, mode, blk_ids)
         self.start()
 
-    def _blktrans_pipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
+    def _blktrans_pipeline(self, blk_list: List[TextBlock], mode: int, blk_ids: List[int]):
+        tgt_img = self.imgtrans_proj.img_array if self.imgtrans_proj is not None else None
+        tgt_mask = self.imgtrans_proj.mask_array if self.imgtrans_proj is not None else None
+        if tgt_img is None:
+            self.finish_blktrans.emit(mode, blk_ids)
+            return
         if mode >= 0 and mode < 3:
             try:
                 self.ocr_thread.module.run_ocr(tgt_img, blk_list, split_textblk=True)
@@ -616,21 +621,34 @@ class ImgtransThread(QThread):
             self.translate_thread.module.translate_textblk_lst(blk_list)
             self.finish_blktrans.emit(mode, blk_ids)
         if mode > 1:
+            to_inpaint = self.imgtrans_proj.inpainted_array
             im_h, im_w = tgt_img.shape[:2]
             progress_prod = 100. / len(blk_list) if len(blk_list) > 0 else 0
             for ii, blk in enumerate(blk_list):
-                xyxy = enlarge_window(blk.xyxy, im_w, im_h)
-                xyxy = np.array(xyxy)
-                x1, y1, x2, y2 = xyxy.astype(np.int64)
+                xyxy_ori = np.array(blk.xyxy, dtype=np.int64)
+                xyxy_ori[::2] = np.clip(xyxy_ori[::2], 0, im_w)
+                xyxy_ori[1::2] = np.clip(xyxy_ori[1::2], 0, im_h)
+                ox1, oy1, ox2, oy2 = xyxy_ori
                 blk.region_inpaint_dict = None
-                if y2 - y1 > 2 and x2 - x1 > 2:
-                    im = np.copy(tgt_img[y1: y2, x1: x2])
+                if oy2 - oy1 > 2 and ox2 - ox1 > 2:
+                    xyxy = enlarge_window(xyxy_ori.tolist(), im_w, im_h)
+                    xyxy = np.array(xyxy, dtype=np.int64)
+                    x1, y1, x2, y2 = xyxy.astype(np.int64)
+                    im = np.copy(to_inpaint[y1: y2, x1: x2])
                     maskseg_method = get_maskseg_method()
                     inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im, mask=tgt_mask[y1: y2, x1: x2])
                     mask = self.post_process_mask(inpaint_mask_array)
                     if mask.sum() > 0:
                         inpainted = self.inpaint_thread.inpainter.inpaint(im, mask)
-                        blk.region_inpaint_dict = {'img': im, 'mask': mask, 'inpaint_rect': [x1, y1, x2, y2], 'inpainted': inpainted}
+                        rx1, ry1 = max(0, ox1 - x1), max(0, oy1 - y1)
+                        rx2, ry2 = min(x2 - x1, ox2 - x1), min(y2 - y1, oy2 - y1)
+                        if ry2 > ry1 and rx2 > rx1:
+                            blk.region_inpaint_dict = {
+                                'img': im[ry1: ry2, rx1: rx2],
+                                'mask': mask[ry1: ry2, rx1: rx2],
+                                'inpaint_rect': [int(ox1), int(oy1), int(ox2), int(oy2)],
+                                'inpainted': inpainted[ry1: ry2, rx1: rx2]
+                            }
                     self.finish_blktrans_stage.emit('inpaint', int((ii+1) * progress_prod))
         self.finish_blktrans.emit(mode, blk_ids)
 
@@ -926,6 +944,7 @@ class ModuleManager(QObject):
         self.progress_msgbox.stop_clicked.connect(self.stopImgtransPipeline)
 
         self.imgtrans_thread = ImgtransThread(self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread)
+        self.imgtrans_thread.imgtrans_proj = self.imgtrans_proj
         self.imgtrans_thread.update_detect_progress.connect(self.on_update_detect_progress)
         self.imgtrans_thread.update_ocr_progress.connect(self.on_update_ocr_progress)
         self.imgtrans_thread.update_translate_progress.connect(self.on_update_translate_progress)
@@ -1599,7 +1618,7 @@ class ModuleManager(QObject):
         LOGGER.info('Stopping image translation pipeline...')
         self.imgtrans_thread.requestStop()
 
-    def runBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
+    def runBlktransPipeline(self, blk_list: List[TextBlock], mode: int, blk_ids: List[int]):
         self.terminateRunningThread()
         required_modules = []
         if mode >= 0 and mode < 3:
@@ -1610,10 +1629,10 @@ class ModuleManager(QObject):
             required_modules.append(('inpainter', cfg_module.inpainter))
         self._prepare_modules_then(
             required_modules,
-            lambda: self._startBlktransPipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask),
+            lambda: self._startBlktransPipeline(blk_list, mode, blk_ids),
         )
 
-    def _startBlktransPipeline(self, blk_list: List[TextBlock], tgt_img: np.ndarray, mode: int, blk_ids: List[int], tgt_mask):
+    def _startBlktransPipeline(self, blk_list: List[TextBlock], mode: int, blk_ids: List[int]):
         if self.prepare_msgbox is not None and self.prepare_msgbox.isVisible():
             self.prepare_msgbox.done(0)
         self.progress_msgbox.hide_all_bars()
@@ -1625,7 +1644,7 @@ class ModuleManager(QObject):
             self.progress_msgbox.translate_bar.show()
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show_fitted()
-        self.imgtrans_thread.runBlktransPipeline(blk_list, tgt_img, mode, blk_ids, tgt_mask)
+        self.imgtrans_thread.runBlktransPipeline(blk_list, mode, blk_ids)
 
     def on_finish_blktrans_stage(self, stage: str, progress: int):
         if stage == 'ocr':
