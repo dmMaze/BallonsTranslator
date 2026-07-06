@@ -8,6 +8,21 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .base import BaseTranslator, register_translator
 
+_TRANSIENT_ERROR_QUALNAMES = {
+    "litellm.exceptions.RateLimitError",
+    "litellm.exceptions.APIConnectionError",
+    "litellm.exceptions.Timeout",
+    "litellm.exceptions.InternalServerError",
+    "litellm.exceptions.ServiceUnavailableError",
+}
+
+
+def _is_transient_error(exc: BaseException) -> bool:
+    if isinstance(exc, (ValueError, json.JSONDecodeError)):
+        return True
+    qualname = f"{type(exc).__module__}.{type(exc).__name__}"
+    return qualname in _TRANSIENT_ERROR_QUALNAMES
+
 
 class TranslationElement(BaseModel):
     id: int = Field(..., description="The original numeric ID of the text snippet.")
@@ -148,18 +163,11 @@ class LiteLLMTranslator(BaseTranslator):
         if api_base:
             kwargs["api_base"] = api_base
 
-        try:
-            kwargs["response_format"] = {"type": "json_object"}
-        except Exception:
-            pass
+        kwargs["response_format"] = {"type": "json_object"}
 
         self._respect_delay()
 
-        try:
-            completion = litellm.completion(**kwargs)
-        except Exception as e:
-            self.logger.error(f"LiteLLM API request failed: {e}")
-            raise
+        completion = litellm.completion(**kwargs)
 
         if (
             completion.choices
@@ -264,16 +272,21 @@ class LiteLLMTranslator(BaseTranslator):
                 return translations
 
             except Exception as e:
-                api_retry += 1
-                if api_retry > retry_attempts:
-                    self.logger.error(
-                        f"All {retry_attempts} retries exhausted. Error: {e}"
-                    )
-                    self.logger.debug(traceback.format_exc())
-                    return src_list
+                if _is_transient_error(e):
+                    api_retry += 1
+                    if api_retry > retry_attempts:
+                        self.logger.error(
+                            f"All {retry_attempts} retries exhausted. Error: {e}"
+                        )
+                        self.logger.debug(traceback.format_exc())
+                        return src_list
 
-                self.logger.warning(
-                    f"Attempt {api_retry}/{retry_attempts} failed: {e}. "
-                    f"Retrying in {retry_timeout}s."
-                )
-                time.sleep(retry_timeout)
+                    self.logger.warning(
+                        f"Attempt {api_retry}/{retry_attempts} failed (transient): {e}. "
+                        f"Retrying in {retry_timeout}s."
+                    )
+                    time.sleep(retry_timeout)
+                else:
+                    self.logger.error(f"Non-retryable error: {e}")
+                    self.logger.debug(traceback.format_exc())
+                    raise
