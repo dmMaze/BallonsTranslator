@@ -71,6 +71,7 @@ class MainWindow(mainwindow_cls):
     restart_signal = Signal()
     create_errdialog = Signal(str, str, str)
     create_infodialog = Signal(dict)
+    show_llm_key_dialog = Signal(str, str)
     
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
@@ -79,6 +80,8 @@ class MainWindow(mainwindow_cls):
         self.create_errdialog.connect(self.on_create_errdialog)
         shared.create_infodialog_in_mainthread = self.create_infodialog.emit
         self.create_infodialog.connect(self.on_create_infodialog)
+        shared.show_llm_key_dialog_in_mainthread = self.show_llm_key_dialog.emit
+        self.show_llm_key_dialog.connect(self.on_show_llm_key_dialog)
         shared.register_view_widget = self.register_view_widget
 
         self.app = app
@@ -369,7 +372,9 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.textdet_selector.selector.currentTextChanged.connect(self.on_textdet_changed)
         self.bottomBar.inpaint_selector.selector.currentTextChanged.connect(self.on_inpaint_changed)
         self.bottomBar.trans_selector.cfg_clicked.connect(self.to_trans_config)
+        self.bottomBar.trans_selector.edit_clicked.connect(self.focus_llm_profile)
         self.bottomBar.trans_selector.selector.currentTextChanged.connect(self.on_trans_changed)
+        self.bottomBar.trans_selector.llm_profile_changed.connect(self.on_llm_profile_changed)
         self.bottomBar.trans_selector.tgt_selector.currentTextChanged.connect(self.on_trans_tgt_changed)
         self.bottomBar.trans_selector.src_selector.currentTextChanged.connect(self.on_trans_src_changed)
         self.bottomBar.textdet_selector.cfg_clicked.connect(self.to_detect_config)
@@ -383,6 +388,9 @@ class MainWindow(mainwindow_cls):
 
         self.configPanel.trans_config_panel.target_combobox.currentTextChanged.connect(self.on_trans_tgt_changed)
         self.configPanel.trans_config_panel.source_combobox.currentTextChanged.connect(self.on_trans_src_changed)
+        self.configPanel.trans_config_panel.llm_profile_changed.connect(self.on_llm_profile_changed)
+        self.configPanel.trans_config_panel.llm_profile_config_clicked.connect(self.focus_llm_profile)
+        self.configPanel.llm_profiles_panel.profiles_changed.connect(self.on_llm_profiles_changed)
 
         self.drawingPanel.maskTransperancySlider.setValue(int(pcfg.mask_transparency * 100))
         self.leftBar.initRecentProjMenu(pcfg.recent_proj_list)
@@ -1350,6 +1358,9 @@ class MainWindow(mainwindow_cls):
     def to_trans_config(self):
         self.configPanel.focusOnTranslator()
 
+    def focus_llm_profile(self, profile_id: str = None):
+        self.configPanel.focusOnLLMProfile(profile_id or pcfg.module.llm_profile)
+
     def to_inpaint_config(self):
         self.configPanel.focusOnInpaint()
 
@@ -1376,6 +1387,17 @@ class MainWindow(mainwindow_cls):
         tgt_selector = self.configPanel.trans_config_panel.module_combobox
         if tgt_selector.currentText() != module and module in GET_VALID_TRANSLATORS():
             tgt_selector.setCurrentText(module)
+        self.bottomBar.trans_selector.updateButtonText()
+
+    def on_llm_profile_changed(self, profile_id: str):
+        if profile_id:
+            pcfg.module.llm_profile = profile_id
+        self.configPanel.trans_config_panel.refreshLLMProfiles()
+        self.bottomBar.trans_selector.updateButtonText()
+
+    def on_llm_profiles_changed(self):
+        self.configPanel.trans_config_panel.refreshLLMProfiles()
+        self.bottomBar.trans_selector.updateButtonText()
 
     def on_trans_src_changed(self):
         sender = self.sender()
@@ -1911,12 +1933,9 @@ class MainWindow(mainwindow_cls):
         if len(blks) == 0:
             return
         
-        if self.module_manager.translator is not None and self.module_manager.translator.name == 'ChatGPT':
+        if self.module_manager.translator is not None and hasattr(self.module_manager.translator, 'build_copy_prompt'):
             src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText() for blk in blks]
-            src_txt = ''
-            for (prompt, num_src) in self.module_manager.translator._assemble_prompts(src_list, max_tokens=4294967295):
-                src_txt += prompt
-            src_txt = src_txt.strip()
+            src_txt = self.module_manager.translator.build_copy_prompt(src_list)
         else:
             src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText().strip().replace('\n', ' ') for blk in blks]
             src_txt = '\n'.join(src_list)
@@ -2001,6 +2020,20 @@ class MainWindow(mainwindow_cls):
         QMessageBox.StandardButton.NoButton
         dialog = MessageBox(**info_dict)
         dialog.show()   # exec_ will block main thread
+
+    def on_show_llm_key_dialog(self, profile_id: str, profile_name: str):
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowTitle(self.tr('API key required'))
+        msg.setText(self.tr('The selected LLM profile requires an API key.'))
+        msg.setInformativeText(
+            self.tr('Fill the API key before running translation for: {profile_name}').format(profile_name=profile_name)
+        )
+        fill_btn = msg.addButton(self.tr('Fill API Key'), QMessageBox.AcceptRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        msg.exec()
+        if msg.clickedButton() == fill_btn:
+            self.focus_llm_profile(profile_id)
 
     def setupRegisterWidget(self):
         self.titleBar.viewMenu.addSeparator()

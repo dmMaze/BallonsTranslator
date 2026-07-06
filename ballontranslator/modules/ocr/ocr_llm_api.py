@@ -328,7 +328,7 @@ class LLM_OCR(OCRBase):
             return 1.0
 
     def _respect_delay(self):
-        # This logic is identical to the one in LLM_API_Translator
+        # Keep this OCR-specific limiter local; translator LLM profiles have their own runtime.
         current_time = time.time()
         rpm = self.requests_per_minute
         if rpm > 0:
@@ -356,7 +356,7 @@ class LLM_OCR(OCRBase):
         self.request_count_minute += 1
 
     def _respect_key_limit(self, key: str) -> bool:
-        # This logic is identical to the one in LLM_API_Translator
+        # Keep this OCR-specific limiter local; translator LLM profiles have their own runtime.
         rpm = self.requests_per_minute
         if rpm <= 0:
             return True
@@ -376,7 +376,7 @@ class LLM_OCR(OCRBase):
         return True
 
     def _select_api_key(self) -> Optional[str]:
-        # This logic is identical to the one in LLM_API_Translator
+        # Keep this OCR-specific key selection local; translator LLM profiles have their own runtime.
         api_keys = self.multiple_keys_list
         single_key = self.api_key
         if not api_keys and not single_key:

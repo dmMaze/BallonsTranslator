@@ -1,15 +1,18 @@
+import json
+import os
 import os.path as osp
 from typing import List, Union
 
-from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton
-from qtpy.QtCore import Qt, Signal, QPoint, QEvent, QSize
-from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon
+from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton, QWidgetAction
+from qtpy.QtCore import Qt, Signal, QPoint, QEvent, QSize, QRectF
+from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon, QPainterPath, QRegion
 
 from .custom_widget import Widget, PaintQSlider, SmallComboBox, ConfigClickableLabel
 from .misc import themed_icon_path
 from ballontranslator.utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import FramelessMoveResize
 from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY, normalize_profiles, profile_by_id
 from ballontranslator.utils import shared
 if shared.FLAG_QT6:
     from qtpy.QtGui import QAction
@@ -590,51 +593,398 @@ class SelectionWithConfigWidget(Widget):
             self.blockSignals(False)
     
 
-class TranslatorSelectionWidget(Widget):
+def _theme_value(key: str, fallback: str) -> str:
+    theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
+    try:
+        with open(shared.THEME_PATH, 'r', encoding='utf8') as f:
+            theme_dict = json.loads(f.read())
+        return theme_dict.get(theme, {}).get(key, fallback)
+    except Exception:
+        return fallback
+
+
+def _theme_foreground_hex() -> str:
+    fallback = '#8e99b1' if pcfg.darkmode else '#5d5d5f'
+    return _theme_value('@qwidgetForegroundColor', fallback)
+
+
+def _theme_menu_background_hex() -> str:
+    fallback = '#21252b' if pcfg.darkmode else '#e1e4eb'
+    return _theme_value('@emptyContentBackgroundColor', fallback)
+
+
+def _blend_hex(color: str, target: str, amount: float) -> str:
+    def rgb(value: str):
+        value = value.lstrip('#')
+        return [int(value[i:i + 2], 16) for i in (0, 2, 4)]
+
+    src = rgb(color)
+    dst = rgb(target)
+    mixed = [round(src[i] + (dst[i] - src[i]) * amount) for i in range(3)]
+    return '#{:02x}{:02x}{:02x}'.format(*mixed)
+
+
+def _section_label_color() -> str:
+    foreground = _theme_foreground_hex()
+    return _blend_hex(foreground, '#000000' if pcfg.darkmode else '#ffffff', 0.28)
+
+
+def _bottom_tool_icon_path(icon_filename: str) -> str:
+    icon_path = themed_icon_path(icon_filename)
+    if not pcfg.darkmode or not icon_filename.lower().endswith('.svg'):
+        return icon_path
+
+    color = _theme_foreground_hex()
+    cache_dir = osp.join(shared.cache_dir, 'icons', 'bottom_bar', 'eva-dark')
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = osp.join(cache_dir, icon_filename)
+    with open(icon_path, 'r', encoding='utf-8') as f:
+        svg = f.read()
+    for fill in ('#697187', '#b3b6bf', '#96a4cd', '#697186'):
+        svg = svg.replace(fill, color)
+    with open(cache_path, 'w', encoding='utf-8') as f:
+        f.write(svg)
+    return cache_path
+
+
+def _set_bottom_tool_button_icon(tool_btn: QToolButton, icon_filename: str):
+    tool_btn.setIcon(QIcon(_bottom_tool_icon_path(icon_filename)))
+    tool_btn.setIconSize(QSize(18, 18))
+    style_enum = getattr(Qt, 'ToolButtonStyle', Qt)
+    tool_btn.setToolButtonStyle(style_enum.ToolButtonTextBesideIcon)
+
+
+def _instant_popup_mode():
+    popup_enum = getattr(QToolButton, 'ToolButtonPopupMode', QToolButton)
+    return popup_enum.InstantPopup
+
+
+def _bottom_tool_button_text(name: str) -> str:
+    return '  ' + name
+
+
+
+class BottomBarMenu(QMenu):
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 8, 8)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+
+
+def _style_bottom_menu(menu: QMenu) -> QMenu:
+    menu.setObjectName('BottomBarModuleMenu')
+    attr_enum = getattr(Qt, 'WidgetAttribute', Qt)
+    menu.setAttribute(attr_enum.WA_TranslucentBackground, True)
+    return menu
+
+
+def _bottom_menu(parent: QToolButton) -> QMenu:
+    return _style_bottom_menu(BottomBarMenu(parent))
+
+
+def _bottom_submenu(title: str, parent: QMenu) -> QMenu:
+    menu = _style_bottom_menu(BottomBarMenu(parent))
+    menu.setTitle(title)
+    return menu
+
+
+def _add_bottom_menu_section(menu: QMenu, text: str):
+    label = QLabel(text, menu)
+    label.setObjectName('BottomBarMenuSectionLabel')
+    label.setStyleSheet(
+        'QLabel#BottomBarMenuSectionLabel {{ '
+        'color: {}; background-color: {}; '
+        '}}'.format(_section_label_color(), _theme_menu_background_hex())
+    )
+    action = QWidgetAction(menu)
+    action.setDefaultWidget(label)
+    menu.addAction(action)
+
+
+def _checked_action_text(text: str, checked: bool) -> str:
+    return text + ('\t\u2713' if checked else '')
+
+
+def _add_bottom_menu_action(menu: QMenu, text: str, checked: bool, callback):
+    action = QAction(_checked_action_text(text, checked), menu)
+    action.triggered.connect(callback)
+    menu.addAction(action)
+    return action
+
+
+def _add_bottom_submenu(parent: QMenu, submenu: QMenu, text: str, checked: bool):
+    parent.addMenu(submenu)
+    submenu.menuAction().setText(_checked_action_text(text, checked))
+    return submenu
+
+
+class ModuleSelectionToolButtonWidget(Widget):
 
     cfg_clicked = Signal()
 
-    def __init__(self) -> None:
-        super().__init__()
-        label = ConfigClickableLabel(text=self.tr('Translate'))
-        label.clicked.connect(self.cfg_clicked)
-        label_src = ConfigClickableLabel(text=self.tr('Source'))
-        label_src.clicked.connect(self.cfg_clicked)
-        label_tgt = ConfigClickableLabel(text=self.tr('Target'))
-        label_tgt.clicked.connect(self.cfg_clicked)
-        
+    def __init__(self, fallback_name: str, icon_filename: str, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.fallback_name = fallback_name
+        self.icon_filename = icon_filename
         self.selector = SmallComboBox()
-        self.src_selector = SmallComboBox()
-        self.tgt_selector = SmallComboBox()
+        self.selector.setVisible(False)
+        self.selector.currentTextChanged.connect(self.updateButtonText)
+
+        self.tool_btn = QToolButton(self)
+        self.tool_btn.setObjectName('BottomBarModuleToolButton')
+        self.tool_btn.setToolTip(fallback_name)
+        self.tool_btn.setPopupMode(_instant_popup_mode())
+        _set_bottom_tool_button_icon(self.tool_btn, icon_filename)
+        self.tool_btn.setText(fallback_name)
+        self.menu = _bottom_menu(self.tool_btn)
+        self.tool_btn.setMenu(self.menu)
+        self.menu.aboutToShow.connect(self.rebuildMenu)
+
         self.cfg_btn = SmallConfigPutton()
         self.cfg_btn.clicked.connect(self.cfg_clicked)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(label)
-        layout.addWidget(self.selector)
-        layout.addWidget(label_src)
-        layout.addWidget(self.src_selector)
-        layout.addWidget(label_tgt)
-        layout.addWidget(self.tgt_selector)
-        layout.addWidget(self.cfg_btn)
         layout.setSpacing(1)
+        layout.addWidget(self.tool_btn)
+        layout.addWidget(self.cfg_btn)
+        self.updateButtonText()
 
     def enterEvent(self, event: QEvent) -> None:
+        self.cfg_btn.setIcon(cfg_icon())
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        self.cfg_btn.setIcon(QIcon())
+        return super().leaveEvent(event)
+
+    def changeEvent(self, event: QEvent) -> None:
+        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange):
+            _set_bottom_tool_button_icon(self.tool_btn, self.icon_filename)
+        return super().changeEvent(event)
+
+    def blockSignals(self, block: bool):
+        self.selector.blockSignals(block)
+        super().blockSignals(block)
+
+    def setSelectedValue(self, value: str, block_signals=True):
+        if block_signals:
+            self.blockSignals(True)
+        self.selector.setCurrentText(value)
+        if block_signals:
+            self.blockSignals(False)
+        self.updateButtonText()
+
+    def rebuildMenu(self):
+        self.menu.clear()
+        current_module = self.selector.currentText()
+        for i in range(self.selector.count()):
+            module = self.selector.itemText(i)
+            _add_bottom_menu_action(
+                self.menu,
+                module,
+                module == current_module,
+                lambda checked=False, value=module: self.selector.setCurrentText(value),
+            )
+
+    def updateButtonText(self, *args):
+        name = self.selector.currentText() or self.fallback_name
+        self.tool_btn.setText(_bottom_tool_button_text(name))
+
+
+class TranslatorSelectionWidget(Widget):
+
+    cfg_clicked = Signal()
+    edit_clicked = Signal(str)
+    llm_profile_changed = Signal(str)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.selector = SmallComboBox()
+        self.src_selector = SmallComboBox()
+        self.tgt_selector = SmallComboBox()
+        self.selector.setVisible(False)
+        self.src_selector.setVisible(False)
+        self.tgt_selector.setVisible(False)
+        self.tool_btn = QToolButton(self)
+        self.tool_btn.setObjectName('BottomBarModuleToolButton')
+        self.tool_btn.setToolTip(self.tr('Translator'))
+        self.tool_btn.setPopupMode(_instant_popup_mode())
+        self.tool_btn.setText(self.tr('Translator'))
+        self.icon_filename = 'bottombar_translate_activate.svg'
+        _set_bottom_tool_button_icon(self.tool_btn, self.icon_filename)
+        self.menu = _bottom_menu(self.tool_btn)
+        self.tool_btn.setMenu(self.menu)
+        self.menu.aboutToShow.connect(self.rebuildMenu)
+        self.edit_btn = SmallConfigPutton()
+        self.edit_btn.clicked.connect(self.onEditClicked)
+        self.cfg_btn = SmallConfigPutton()
+        self.cfg_btn.clicked.connect(self.cfg_clicked)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.tool_btn)
+        layout.addWidget(self.edit_btn)
+        layout.addWidget(self.cfg_btn)
+        layout.setSpacing(1)
+        self.updateButtonText()
+
+    def enterEvent(self, event: QEvent) -> None:
+        if self.edit_btn.isVisible():
+            self.edit_btn.setIcon(QIcon(themed_icon_path('edit.svg')))
         if self.cfg_btn is not None:
             self.cfg_btn.setIcon(cfg_icon())
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
+        self.edit_btn.setIcon(QIcon())
         if self.cfg_btn is not None:
             self.cfg_btn.setIcon(QIcon())
         return super().leaveEvent(event)
+
+    def changeEvent(self, event: QEvent) -> None:
+        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange):
+            _set_bottom_tool_button_icon(self.tool_btn, self.icon_filename)
+        return super().changeEvent(event)
     
     def blockSignals(self, block: bool):
         self.src_selector.blockSignals(block)
         self.tgt_selector.blockSignals(block)
         self.selector.blockSignals(block)
         super().blockSignals(block)
+
+    def _section(self, text: str):
+        _add_bottom_menu_section(self.menu, text)
+
+    def rebuildMenu(self):
+        self.menu.clear()
+        current_translator = self.selector.currentText()
+        self._section(self.tr('Translator'))
+        for i in range(self.selector.count()):
+            translator = self.selector.itemText(i)
+            if translator == LLM_TRANSLATOR_KEY:
+                continue
+            _add_bottom_menu_action(
+                self.menu,
+                translator,
+                current_translator == translator,
+                lambda checked=False, value=translator: self.selector.setCurrentText(value),
+            )
+
+        self._section(self.tr('LLM'))
+        for profile in normalize_profiles(pcfg.module.llm_profiles):
+            profile_id = profile.get('id', '')
+            raw_profile = profile_by_id(pcfg.module.llm_profiles, profile_id) or profile
+            profile_menu = _bottom_submenu(profile.get('name', profile_id), self.menu)
+            _add_bottom_submenu(
+                self.menu,
+                profile_menu,
+                profile.get('name', profile_id),
+                current_translator == LLM_TRANSLATOR_KEY and pcfg.module.llm_profile == profile_id,
+            )
+            self._buildProfileMenu(profile_menu, raw_profile, profile)
+
+        self._section(self.tr('Language'))
+        source_menu = _bottom_submenu(
+            self.tr('Source - {language}').format(language=self.src_selector.currentText()),
+            self.menu,
+        )
+        self.menu.addMenu(source_menu)
+        for i in range(self.src_selector.count()):
+            lang = self.src_selector.itemText(i)
+            _add_bottom_menu_action(
+                source_menu,
+                lang,
+                lang == self.src_selector.currentText(),
+                lambda checked=False, value=lang: self.src_selector.setCurrentText(value),
+            )
+
+        target_menu = _bottom_submenu(
+            self.tr('Target - {language}').format(language=self.tgt_selector.currentText()),
+            self.menu,
+        )
+        self.menu.addMenu(target_menu)
+        for i in range(self.tgt_selector.count()):
+            lang = self.tgt_selector.itemText(i)
+            _add_bottom_menu_action(
+                target_menu,
+                lang,
+                lang == self.tgt_selector.currentText(),
+                lambda checked=False, value=lang: self.tgt_selector.setCurrentText(value),
+            )
+
+    def selectLLMProfile(self, profile_id: str):
+        pcfg.module.llm_profile = profile_id
+        if self.selector.currentText() != LLM_TRANSLATOR_KEY:
+            self.selector.setCurrentText(LLM_TRANSLATOR_KEY)
+        self.llm_profile_changed.emit(profile_id)
+        self.updateButtonText()
+
+    def selectLLMProfileSetting(self, profile_id: str, key: str, value: str):
+        profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
+        if profile is not None:
+            profile[key] = value
+            if key == 'model':
+                options = profile.setdefault('model options', [])
+                if value and value not in options:
+                    options.insert(0, value)
+        self.selectLLMProfile(profile_id)
+
+    def _buildProfileMenu(self, menu: QMenu, profile: dict, normalized_profile: dict):
+        profile_id = profile.get('id', '')
+        selected_profile = self.selector.currentText() == LLM_TRANSLATOR_KEY and pcfg.module.llm_profile == profile_id
+
+        _add_bottom_menu_section(menu, self.tr('Thinking Level'))
+        thinking_options = [str(option) for option in profile.get('thinking level options', []) if str(option)]
+        if not thinking_options:
+            thinking_options = [str(option) for option in normalized_profile.get('thinking level options', []) if str(option)] or ['None']
+        current_thinking = str(profile.get('thinking level') or 'None')
+        for thinking_level in thinking_options:
+            _add_bottom_menu_action(
+                menu,
+                thinking_level,
+                selected_profile and thinking_level == current_thinking,
+                lambda checked=False, pid=profile_id, value=thinking_level: self.selectLLMProfileSetting(pid, 'thinking level', value),
+            )
+
+        _add_bottom_menu_section(menu, self.tr('Model'))
+        model_options = [str(option) for option in profile.get('model options', []) if str(option)]
+        current_model = str(profile.get('model') or '')
+        for model in model_options:
+            _add_bottom_menu_action(
+                menu,
+                model,
+                selected_profile and model == current_model,
+                lambda checked=False, pid=profile_id, value=model: self.selectLLMProfileSetting(pid, 'model', value),
+            )
+
+    def onEditClicked(self):
+        if self.selector.currentText() == LLM_TRANSLATOR_KEY:
+            self.edit_clicked.emit(pcfg.module.llm_profile)
+
+    def updateButtonText(self):
+        name = self.selector.currentText()
+        is_llm = name == LLM_TRANSLATOR_KEY
+        if name == LLM_TRANSLATOR_KEY:
+            profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.llm_profile)
+            if profile is None:
+                profile = profile_by_id(normalize_profiles(pcfg.module.llm_profiles), pcfg.module.llm_profile)
+            if profile is not None:
+                model_options = [str(option) for option in profile.get('model options', []) if str(option)]
+                model = str(profile.get('model') or '').strip()
+                thinking_level = str(profile.get('thinking level') or 'None').strip()
+                if model_options and model:
+                    name = model
+                    if thinking_level and thinking_level != 'None':
+                        name = self.tr('{model} {thinking_level}').format(model=model, thinking_level=thinking_level)
+                else:
+                    name = profile.get('name', name)
+        if not name:
+            name = self.tr('Translator')
+        self.tool_btn.setText(_bottom_tool_button_text(name))
+        self.edit_btn.setVisible(is_llm)
     
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
         # Metadata can come from ModuleSpec before the translator is imported.
@@ -647,6 +997,7 @@ class TranslatorSelectionWidget(Widget):
         self.src_selector.setCurrentText(lang_source)
         self.tgt_selector.setCurrentText(lang_target)
         self.blockSignals(False)
+        self.updateButtonText()
 
 
 
@@ -662,8 +1013,8 @@ class BottomBar(Widget):
         self.setMouseTracking(True)
         self.mainwindow = mainwindow
         
-        self.textdet_selector = SelectionWithConfigWidget(self.tr('Text Detector'))
-        self.ocr_selector = SelectionWithConfigWidget(self.tr('OCR'))
+        self.textdet_selector = ModuleSelectionToolButtonWidget(self.tr('Text Detector'), 'textdetect.svg')
+        self.ocr_selector = ModuleSelectionToolButtonWidget(self.tr('OCR'), 'small_ocr.svg')
         self.inpaint_selector = SelectionWithConfigWidget(self.tr('Inpaint'))
         self.trans_selector = TranslatorSelectionWidget()
 

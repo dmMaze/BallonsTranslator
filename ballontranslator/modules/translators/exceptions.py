@@ -151,3 +151,14 @@ class MissingTranslatorParams(Exception):
 
 class TranslatorNotValid(Exception):
     pass
+
+
+class LLMApiKeyRequiredError(Exception):
+    def __init__(self, profile_id: str, profile_name: str = ''):
+        self.profile_id = profile_id
+        self.profile_name = profile_name or profile_id
+        super().__init__(f'API key is required for LLM profile "{self.profile_name}".')
+
+
+class LLMTranslationStopped(Exception):
+    pass

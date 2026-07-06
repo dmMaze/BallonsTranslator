@@ -8,6 +8,8 @@ from .fontformat import FontFormat
 from .structures import List, Dict, Config, field, nested_dataclass
 from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
+from .llm_profiles import default_profiles, dedupe_profiles, migrate_module_llm_profiles, normalize_profiles, profile_by_id
+from .secret_store import SecretStore
 
 class RunStatus:
     FIN_DET = 1
@@ -34,6 +36,8 @@ class ModuleConfig(Config):
     textdetector_params: Dict = field(default_factory=lambda: dict())
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
+    llm_profiles: List = field(default_factory=lambda: list())
+    llm_profile: str = ''
     inpainter_params: Dict = field(default_factory=lambda: dict())
     translate_source: str = '日本語'
     translate_target: str = '简体中文'
@@ -71,9 +75,26 @@ class ModuleConfig(Config):
         params.inpainter_params = self.get_params('inpainter', for_saving=True)
         params.textdetector_params = self.get_params('textdetector', for_saving=True)
         params.translator_params = self.get_params('translator', for_saving=True)
+        params.llm_profiles = self.get_saving_llm_profiles()
         if to_dict:
             return params.__dict__
         return params
+
+    def get_saving_llm_profiles(self):
+        profiles = []
+        secret_store = SecretStore()
+        for profile in normalize_profiles(self.llm_profiles):
+            saving_profile = {}
+            for key, value in profile.items():
+                if key.startswith('__'):
+                    continue
+                if key in {'provider', 'prompt mode', 'prompt mode options'}:
+                    continue
+                if key == 'api key':
+                    value = secret_store.prepare_for_save(profile.get('id', ''), value)
+                saving_profile[key] = value
+            profiles.append(saving_profile)
+        return profiles
     
     def stage_enabled(self, idx: int):
         if idx == 0:
@@ -91,6 +112,12 @@ class ModuleConfig(Config):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
 
     def __post_init__(self):
+        if not self.llm_profiles:
+            self.llm_profiles = default_profiles()
+        else:
+            self.llm_profiles = dedupe_profiles(self.llm_profiles, self.llm_profile)
+        if (not self.llm_profile or not profile_by_id(self.llm_profiles, self.llm_profile)) and self.llm_profiles:
+            self.llm_profile = self.llm_profiles[0]['id']
         self.update_finish_code()
 
     def update_finish_code(self):
@@ -214,13 +241,15 @@ class ProgramConfig(Config):
 
         if 'module' in config_dict:
             module_cfg = config_dict['module']
-            trans_params = module_cfg['translator_params']
+            trans_params = module_cfg.setdefault('translator_params', {})
             repl_pairs = {'baidu': 'Baidu', 'caiyun': 'Caiyun', 'chatgpt': 'ChatGPT', 'Deepl': 'DeepL', 'papago': 'Papago'}
             for k, i in repl_pairs.items():
                 if k in trans_params:
                     trans_params[i] = trans_params.pop(k)
             if module_cfg['translator'] in repl_pairs:
                 module_cfg['translator'] = repl_pairs[module_cfg['translator']]
+            # LLM translator keys must be consumed before module-param patching drops unknown keys.
+            migrate_module_llm_profiles(module_cfg)
 
         return ProgramConfig(**config_dict)
     

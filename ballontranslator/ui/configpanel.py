@@ -10,7 +10,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
-from .custom_widget import ConfigComboBox, Widget
+from .custom_widget import ConfigComboBox, ScrollBar, Widget
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.version import APP_VERSION
 from ballontranslator.utils.network_mirrors import (
@@ -23,6 +23,7 @@ from ballontranslator.utils.network_mirrors import (
 from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, PROGRAM_PATH
 from ballontranslator.utils.logger import logger as LOGGER
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
+from .llm_profile_widgets import LLMProfilesWidget
 from ballontranslator.ui.spellcheck import DICTIONARY_URLS, SpellCheckManager, DictionaryManagerDialog, DictDownloadThread
 
 
@@ -156,6 +157,7 @@ def combobox_with_label(sel: List[str], name: str, discription: str = None, vert
     
 def checkbox_with_label(name: str, discription: str = None, target_block: QWidget = None):
     checkbox = QCheckBox()
+    checkbox.setObjectName('ConfigCheckBox')
     if discription is not None:
         font = checkbox.font()
         font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
@@ -218,16 +220,23 @@ class ConfigBlock(Widget):
 class ConfigContent(QStackedWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.setObjectName('ConfigContent')
         self.config_block_list: List[ConfigBlock] = []
         self.setContentsMargins(0, 0, 0, 0)
         self.section_index = {}
 
     def addConfigBlock(self, block: ConfigBlock, section_key: str):
         scroll_area = QScrollArea()
+        scroll_area.setObjectName('ConfigContentScrollArea')
+        scroll_area.viewport().setObjectName('ConfigContentViewport')
+        fadeout_scrollbar = section_key != 'llm_profile'
+        scroll_area.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, scroll_area, fadeout=fadeout_scrollbar, hover_style=True)
+        scroll_area.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, scroll_area, fadeout=fadeout_scrollbar, hover_style=True)
         scroll_area.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         scroll_area.setWidgetResizable(True)
         scroll_area.setContentsMargins(0, 0, 0, 0)
         scroll_content = Widget()
+        scroll_content.setObjectName('ConfigContentScrollContent')
         scroll_content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         scroll_layout = QHBoxLayout(scroll_content)
         scroll_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -371,6 +380,7 @@ class ConfigPanel(QDialog):
         label_text_ocr = self.tr('OCR')
         label_inpaint = self.tr('Inpainter')
         label_translator = self.tr('Translator')
+        label_llm_profile = self.tr('LLM Profile')
         label_application = self.tr('Application')
         label_typesetting = self.tr('Typesetting')
         label_spellcheck = self.tr('Spell Checker')
@@ -380,6 +390,7 @@ class ConfigPanel(QDialog):
         ocrConfigPanel = self.addConfigBlock(label_text_ocr, moduleTableItem, 'ocr')
         inpaintConfigPanel = self.addConfigBlock(label_inpaint, moduleTableItem, 'inpainter')
         translatorConfigPanel = self.addConfigBlock(label_translator, moduleTableItem, 'translator')
+        llmProfileConfigPanel = self.addConfigBlock(label_llm_profile, moduleTableItem, 'llm_profile')
         applicationConfigPanel = self.addConfigBlock(label_application, generalTableItem, 'application')
         typesettingConfigPanel = self.addConfigBlock(label_typesetting, generalTableItem, 'typesetting')
         spellcheckConfigPanel = self.addConfigBlock(label_spellcheck, generalTableItem, 'spellcheck')
@@ -394,6 +405,8 @@ class ConfigPanel(QDialog):
         self.package_auto_install_checker.stateChanged.connect(self.on_package_auto_install_changed)
         moduleConfigPanel.vlayout.addWidget(msublock)
         module_actions = QWidget()
+        module_actions.setObjectName('ConfigInlineRow')
+        module_actions.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         module_actions_layout = QHBoxLayout(module_actions)
         module_actions_layout.setContentsMargins(0, 0, 0, 0)
         module_actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -426,6 +439,8 @@ class ConfigPanel(QDialog):
         self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
         self.trans_config_panel.module_label.hide()
         self.trans_sub_block = translatorConfigPanel.addBlockWidget(self.trans_config_panel)
+        self.llm_profiles_panel = LLMProfilesWidget(scrollWidget=self)
+        llmProfileConfigPanel.addBlockWidget(self.llm_profiles_panel)
 
         self.open_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
@@ -441,6 +456,7 @@ class ConfigPanel(QDialog):
 
         # Edit Distance Spinbox
         self.spellcheck_distance_spin = QSpinBox(self)
+        self.spellcheck_distance_spin.setObjectName('SpellCheckDistanceSpin')
         self.spellcheck_distance_spin.setRange(1, 4)
         self.spellcheck_distance_spin.setFixedWidth(CONFIG_COMBOBOX_SHORT)
         self.spellcheck_distance_spin.setToolTip(self.tr("Higher value, slower analysis"))
@@ -460,12 +476,6 @@ class ConfigPanel(QDialog):
         dist_block.setSpacing(4)
         dist_block.addLayout(dist_layout)
 
-        desc_label = ConfigTextLabel(
-            self.tr("Max spelling difference in letters. Higher values search deeper but perform slower."),
-            CONFIG_FONTSIZE_CONTENT - 2,
-            QFont.Weight.Normal
-        )
-        dist_block.addWidget(desc_label)
         spellcheckConfigPanel.addBlockWidget(dist_block)
 
         # Dictionary Words Manager Button
@@ -481,7 +491,10 @@ class ConfigPanel(QDialog):
         repo_layout.addWidget(repo_label)
 
         self.repo_dicts_list = QListWidget(self)
+        self.repo_dicts_list.setObjectName('SpellCheckDictionaryList')
         self.repo_dicts_list.setFixedHeight(150)
+        self.repo_dicts_list.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, self.repo_dicts_list, hover_style=True)
+        self.repo_dicts_list.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, self.repo_dicts_list, hover_style=True)
         self.repo_dicts_list.itemChanged.connect(self.on_repo_dict_item_changed)
         repo_layout.addWidget(self.repo_dicts_list)
 
@@ -493,7 +506,10 @@ class ConfigPanel(QDialog):
         ext_layout.addWidget(ext_label)
 
         self.external_dicts_list = QListWidget(self)
+        self.external_dicts_list.setObjectName('SpellCheckDictionaryList')
         self.external_dicts_list.setFixedHeight(120)
+        self.external_dicts_list.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, self.external_dicts_list, hover_style=True)
+        self.external_dicts_list.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, self.external_dicts_list, hover_style=True)
         ext_layout.addWidget(self.external_dicts_list)
 
         ext_btns_layout = QHBoxLayout()
@@ -511,6 +527,8 @@ class ConfigPanel(QDialog):
         self.spellcheck_subblock = spellcheckConfigPanel.addBlockWidget(ext_layout)
 
         update_status_widget = QWidget()
+        update_status_widget.setObjectName('ConfigInlineRow')
+        update_status_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         update_status_layout = QHBoxLayout(update_status_widget)
         update_status_layout.setContentsMargins(0, 0, 0, 0)
         update_status_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -891,6 +909,10 @@ class ConfigPanel(QDialog):
 
     def focusOnTranslator(self):
         self.showConfigDialog('translator')
+
+    def focusOnLLMProfile(self, profile_id: str):
+        self.showConfigDialog('llm_profile')
+        self.llm_profiles_panel.focusProfileApiKey(profile_id)
 
     def focusOnInpaint(self):
         self.showConfigDialog('inpainter')
