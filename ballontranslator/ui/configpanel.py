@@ -910,9 +910,9 @@ class ConfigPanel(QDialog):
     def focusOnTranslator(self):
         self.showConfigDialog('translator')
 
-    def focusOnLLMProfile(self, profile_id: str):
+    def focusOnLLMProfile(self, profile_id: str, expand_details: bool = True):
         self.showConfigDialog('llm_profile')
-        self.llm_profiles_panel.focusProfileApiKey(profile_id)
+        self.llm_profiles_panel.focusProfileApiKey(profile_id, expand_details=expand_details)
 
     def focusOnInpaint(self):
         self.showConfigDialog('inpainter')
@@ -924,6 +924,8 @@ class ConfigPanel(QDialog):
         self.showConfigDialog('ocr')
 
     def hideEvent(self, e) -> None:
+        if hasattr(self, 'llm_profiles_panel'):
+            self.llm_profiles_panel.collapseProfiles()
         self._removeOutsideClickFilter()
         self.save_config.emit()
         return super().hideEvent(e)

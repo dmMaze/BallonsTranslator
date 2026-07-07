@@ -1,5 +1,6 @@
 import copy
 import uuid
+from typing import get_type_hints
 
 from qtpy.QtWidgets import (
     QApplication,
@@ -31,9 +32,9 @@ from .module_parse_widgets import ParamWidget, SecretParamWidget
 from ballontranslator.utils.shared import size2width
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
+    LLMProfile,
     copy_profile,
     default_profile,
-    dedupe_profiles,
     profile_by_id,
     restore_builtin_profiles,
     resolve_api_key,
@@ -42,18 +43,21 @@ from ballontranslator.utils.llm_profiles import (
 
 
 PROFILE_PARAM_DEFS = [
-    ('require api key', 'checkbox'),
-    ('base url', 'line_editor'),
-    ('thinking level', 'selector'),
+    ('require_api_key', 'checkbox'),
+    ('base_url', 'line_editor'),
+    ('thinking_level', 'selector'),
     ('prompt', 'editor'),
-    ('invalid repeat count', 'line_editor'),
-    ('max tokens', 'line_editor'),
+    ('invalid_repeat_count', 'line_editor'),
+    ('max_tokens', 'line_editor'),
     ('temperature', 'line_editor'),
-    ('top p', 'line_editor'),
-    ('frequency penalty', 'line_editor'),
-    ('presence penalty', 'line_editor'),
-    ('low vram mode', 'checkbox'),
+    ('top_p', 'line_editor'),
+    ('frequency_penalty', 'line_editor'),
+    ('presence_penalty', 'line_editor'),
+    ('json_schema_response_format', 'checkbox'),
+    ('low_vram_mode', 'checkbox'),
 ]
+
+PROFILE_FIELD_TYPES = get_type_hints(LLMProfile)
 
 
 class ProfileNameEdit(QLineEdit):
@@ -142,11 +146,11 @@ class ProfileCardWidget(QGroupBox):
     copy_requested = Signal(str)
     delete_requested = Signal(str)
 
-    def __init__(self, profile: dict, scrollWidget: QWidget = None, *args, **kwargs):
+    def __init__(self, profile: LLMProfile, scrollWidget: QWidget = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setObjectName('LLMProfileCard')
         self.profile = profile
-        self.setTitle(profile.get('name', ''))
+        self.setTitle(profile.name)
         self.setToolTip(self.tr('Double click the name to edit. Right click for profile actions.'))
         self.scrollWidget = scrollWidget
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
@@ -155,36 +159,38 @@ class ProfileCardWidget(QGroupBox):
         self._previous_model_text = ''
         self._app_filter_installed = False
         self.profile_param_display_names = {
-            'base url': self.tr('Base URL'),
-            'require api key': self.tr('Require API Key'),
-            'thinking level': self.tr('Thinking Level'),
+            'base_url': self.tr('Base URL'),
+            'require_api_key': self.tr('Require API Key'),
+            'thinking_level': self.tr('Thinking Level'),
             'prompt': self.tr('Prompt'),
-            'invalid repeat count': self.tr('Invalid Repeat Count'),
-            'max tokens': self.tr('Max Tokens'),
+            'invalid_repeat_count': self.tr('Invalid Repeat Count'),
+            'max_tokens': self.tr('Max Tokens'),
             'temperature': self.tr('Temperature'),
-            'top p': self.tr('Top P'),
-            'frequency penalty': self.tr('Frequency Penalty'),
-            'presence penalty': self.tr('Presence Penalty'),
-            'low vram mode': self.tr('Low VRAM Mode'),
+            'top_p': self.tr('Top P'),
+            'frequency_penalty': self.tr('Frequency Penalty'),
+            'presence_penalty': self.tr('Presence Penalty'),
+            'json_schema_response_format': self.tr('JSON Schema Response'),
+            'low_vram_mode': self.tr('Low VRAM Mode'),
         }
         self.profile_param_descriptions = {
-            'base url': self.tr('OpenAI-compatible API base URL.'),
-            'require api key': self.tr('Require API key before running translation.'),
-            'thinking level': self.tr('Reasoning effort sent only when it is not None.'),
+            'base_url': self.tr('OpenAI-compatible API base URL.'),
+            'require_api_key': self.tr('Require API key before running translation.'),
+            'thinking_level': self.tr('Reasoning effort sent only when it is not None.'),
             'prompt': self.tr('Additional translation instructions for style and wording.'),
-            'invalid repeat count': self.tr('Retries when response count does not match source count.'),
-            'max tokens': self.tr('Maximum generated response tokens, not input/context tokens.'),
+            'invalid_repeat_count': self.tr('Retries when response count does not match source count.'),
+            'max_tokens': self.tr('Maximum generated response tokens, not input/context tokens.'),
             'temperature': self.tr('Sampling temperature.'),
-            'top p': self.tr('Top-p sampling.'),
-            'frequency penalty': self.tr('OpenAI frequency penalty.'),
-            'presence penalty': self.tr('OpenAI presence penalty.'),
-            'low vram mode': self.tr('Preserved compatibility flag for local profiles.'),
+            'top_p': self.tr('Top-p sampling.'),
+            'frequency_penalty': self.tr('Sent only when greater than 0. Some OpenAI-compatible providers may ignore or reject it.'),
+            'presence_penalty': self.tr('Sent only when greater than 0. Some OpenAI-compatible providers may ignore or reject it.'),
+            'json_schema_response_format': self.tr('Request responses with the translation JSON schema. Useful for LM Studio; disable it if a provider rejects json_schema response_format.'),
+            'low_vram_mode': self.tr('Preserved compatibility flag for local profiles.'),
         }
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 24, 16, 14)
         layout.setSpacing(8)
 
-        self.name_edit = ProfileNameEdit(profile.get('name', ''), self)
+        self.name_edit = ProfileNameEdit(profile.name, self)
         self.name_edit.edit_requested.connect(self.startNameEdit)
         self.name_edit.edit_finished.connect(self.on_name_edit_finished)
         self.name_edit.hide()
@@ -208,7 +214,7 @@ class ProfileCardWidget(QGroupBox):
         self.delete_btn.setObjectName('LLMProfileDeleteButton')
         self.delete_btn.setIcon(QIcon(themed_icon_path('titlebar_close.svg')))
         self.delete_btn.setToolTip(self.tr('Delete'))
-        self.delete_btn.clicked.connect(lambda: self.delete_requested.emit(self.profile['id']))
+        self.delete_btn.clicked.connect(lambda: self.delete_requested.emit(self.profile.id))
         self.delete_btn.setFixedSize(18, 18)
 
         summary = QHBoxLayout()
@@ -232,7 +238,7 @@ class ProfileCardWidget(QGroupBox):
         api_label_row.addWidget(self.api_label, 0, Qt.AlignmentFlag.AlignLeft)
         api_label_row.addWidget(self.key_status_icon, 0, Qt.AlignmentFlag.AlignLeft)
         api_label_row.addStretch(1)
-        self.api_key_widget = SecretParamWidget('api key', size='short')
+        self.api_key_widget = SecretParamWidget('api_key', size='short')
         self.api_key_widget.editor.setObjectName('LLMProfileApiKeyEditor')
         self.api_key_widget.setText(resolve_api_key(profile))
 
@@ -269,10 +275,10 @@ class ProfileCardWidget(QGroupBox):
         model_label_row.addWidget(self.add_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
         model_label_row.addWidget(self.remove_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
         model_label_row.addStretch(1)
-        self.model_combo = ParamComboBox('model', profile.get('model options', []), size=size2width('short'), scrollWidget=scrollWidget)
+        self.model_combo = ParamComboBox('model', profile.model_options, size=size2width('short'), scrollWidget=scrollWidget)
         self.model_combo.setObjectName('LLMProfileModelCombo')
         self.model_combo.setEditable(False)
-        self.model_combo.setCurrentText(profile.get('model', ''))
+        self.model_combo.setCurrentText(profile.model)
         right_column.addLayout(model_label_row)
         right_column.addWidget(self.model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -308,11 +314,11 @@ class ProfileCardWidget(QGroupBox):
     def _detail_params(self):
         params = {}
         for key, widget_type in PROFILE_PARAM_DEFS:
-            value = self.profile.get(key)
+            value = getattr(self.profile, key)
             display_name = self.profile_param_display_names.get(key, key)
             description = self.profile_param_descriptions.get(key, '')
-            if key == 'thinking level':
-                options = self.profile.get('thinking level options', [])
+            if key == 'thinking_level':
+                options = self.profile.thinking_level_options
             else:
                 options = None
             if widget_type == 'selector':
@@ -384,7 +390,7 @@ class ProfileCardWidget(QGroupBox):
 
     def startNameEdit(self):
         self._name_editing = True
-        self.name_edit.setText(self.profile.get('name', '') or self.tr('LLM Profile'))
+        self.name_edit.setText(self.profile.name or self.tr('LLM Profile'))
         self.name_edit.resizeToContent()
         self._position_header_controls()
         self.setTitle('')
@@ -393,9 +399,9 @@ class ProfileCardWidget(QGroupBox):
         self.name_edit.startEdit(select_all=True)
 
     def on_name_edit_finished(self):
-        self.profile['name'] = self.name_edit.text().strip() or self.tr('LLM Profile')
-        self.name_edit.setText(self.profile['name'])
-        self.setTitle(self.profile['name'])
+        self.profile.name = self.name_edit.text().strip() or self.tr('LLM Profile')
+        self.name_edit.setText(self.profile.name)
+        self.setTitle(self.profile.name)
         self.name_edit.resizeToContent()
         self.name_edit.hide()
         self._sync_minimum_width_with_content()
@@ -456,9 +462,9 @@ class ProfileCardWidget(QGroupBox):
         if action == edit_action:
             self.startNameEdit()
         elif action == delete_action:
-            self.delete_requested.emit(self.profile['id'])
+            self.delete_requested.emit(self.profile.id)
         elif action == copy_action:
-            self.copy_requested.emit(self.profile['id'])
+            self.copy_requested.emit(self.profile.id)
         elif action == more_action:
             self.toggleExpanded()
 
@@ -509,8 +515,8 @@ class ProfileCardWidget(QGroupBox):
     def on_model_edited(self, param_key, value):
         if self._model_editing:
             return
-        self.profile['model'] = value
-        options = self.profile.setdefault('model options', [])
+        self.profile.model = value
+        options = self.profile.model_options
         if value and value not in options:
             options.append(value)
         self.profile_changed.emit()
@@ -546,7 +552,7 @@ class ProfileCardWidget(QGroupBox):
         if not text:
             self._setModelText(self._previous_model_text, emit_changed=False)
             return
-        options = self.profile.setdefault('model options', [])
+        options = self.profile.model_options
         if text not in options:
             options.append(text)
             self.model_combo.blockSignals(True)
@@ -558,12 +564,12 @@ class ProfileCardWidget(QGroupBox):
         if self._model_editing:
             self.finishModelEdit()
         current = self.model_combo.currentText()
-        options = [str(option) for option in self.profile.get('model options', []) if str(option)]
+        options = [str(option) for option in self.profile.model_options if str(option)]
         if current not in options:
             return
         removed_idx = options.index(current)
         options.pop(removed_idx)
-        self.profile['model options'] = options
+        self.profile.model_options = options
         next_model = options[min(removed_idx, len(options) - 1)] if options else ''
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
@@ -575,7 +581,7 @@ class ProfileCardWidget(QGroupBox):
         self.model_combo.blockSignals(True)
         self.model_combo.setCurrentText(text)
         self.model_combo.blockSignals(False)
-        self.profile['model'] = text
+        self.profile.model = text
         if emit_changed:
             self.profile_changed.emit()
 
@@ -586,22 +592,33 @@ class ProfileCardWidget(QGroupBox):
 
     def on_detail_edited(self, param_key, param_content):
         content = param_content.get('content')
-        self.profile[param_key] = content
-        if param_key == 'require api key':
+        profile_type = PROFILE_FIELD_TYPES.get(param_key)
+        if profile_type is int:
+            try:
+                content = int(str(content).strip())
+            except (TypeError, ValueError):
+                return
+        elif profile_type is float:
+            try:
+                content = float(str(content).strip())
+            except (TypeError, ValueError):
+                return
+        setattr(self.profile, param_key, content)
+        if param_key == 'require_api_key':
             self.refreshConditionalVisibility()
             self.refreshKeyStatus()
         self.profile_changed.emit()
 
     def refreshConditionalVisibility(self):
-        require_key = bool(self.profile.get('require api key'))
+        require_key = bool(self.profile.require_api_key)
         self.api_summary_widget.setVisible(require_key)
         self.summary_spacer.setVisible(require_key)
         if hasattr(self.details, 'setParamVisible'):
-            self.details.setParamVisible('low vram mode', not require_key)
+            self.details.setParamVisible('low_vram_mode', not require_key)
         self.refreshKeyStatus()
 
     def refreshKeyStatus(self):
-        require_key = bool(self.profile.get('require api key'))
+        require_key = bool(self.profile.require_api_key)
         self.key_status_icon.setVisible(require_key)
         if not require_key:
             return
@@ -673,42 +690,59 @@ class LLMProfilesWidget(QWidget):
                 widget.deleteLater()
         self.rows.clear()
 
+    def addProfileRow(self, profile: LLMProfile):
+        row = ProfileCardWidget(profile, scrollWidget=self.scrollWidget)
+        row.profile_changed.connect(self.onProfileChanged)
+        row.copy_requested.connect(self.copyProfile)
+        row.delete_requested.connect(self.deleteProfile)
+        self.rows_layout.addWidget(row)
+        self.rows[profile.id] = row
+        return row
+
     def rebuild(self):
-        pcfg.module.llm_profiles = dedupe_profiles(pcfg.module.llm_profiles, pcfg.module.llm_profile)
-        if not profile_by_id(pcfg.module.llm_profiles, pcfg.module.llm_profile) and pcfg.module.llm_profiles:
-            pcfg.module.llm_profile = pcfg.module.llm_profiles[0]['id']
         self.clearRows()
         for profile in pcfg.module.llm_profiles:
-            row = ProfileCardWidget(profile, scrollWidget=self.scrollWidget)
-            row.profile_changed.connect(self.onProfileChanged)
-            row.copy_requested.connect(self.copyProfile)
-            row.delete_requested.connect(self.deleteProfile)
-            self.rows_layout.addWidget(row)
-            self.rows[profile['id']] = row
+            self.addProfileRow(profile)
         self.applyFilter()
 
     def onProfileChanged(self):
-        self.applyFilter()
+        sender = self.sender()
+        if isinstance(sender, ProfileCardWidget):
+            self.applyFilterToRow(sender)
+        else:
+            self.applyFilter()
         self.profiles_changed.emit()
 
-    def applyFilter(self):
+    def filterQuery(self):
+        return self.filter_edit.text().strip().lower() if hasattr(self, 'filter_edit') else ''
+
+    def applyFilterToRow(self, row: ProfileCardWidget, query: str = None):
+        query = self.filterQuery() if query is None else query
+        profile = row.profile
+        haystack = ' '.join((profile.name, profile.model, profile.base_url, profile.id)).lower()
+        row.setVisible(not query or query in haystack)
+
+    def applyFilter(self, *args):
         query = self.filter_edit.text().strip().lower() if hasattr(self, 'filter_edit') else ''
         for row in self.rows.values():
-            profile = row.profile
-            haystack = ' '.join(str(profile.get(key, '')) for key in ('name', 'model', 'base url', 'id')).lower()
-            row.setVisible(not query or query in haystack)
+            self.applyFilterToRow(row, query)
+
+    def collapseProfiles(self):
+        for row in self.rows.values():
+            row.collapse()
 
     def newProfile(self):
         self.filter_edit.clear()
         profile = default_profile('OpenAI')
-        profile['id'] = f"custom-{uuid.uuid4().hex[:10]}"
-        profile['name'] = self.tr('New Profile')
-        profile['built_in'] = False
-        profile['api key'] = ''
+        profile.id = f"custom-{uuid.uuid4().hex[:10]}"
+        profile.name = self.tr('New Profile')
+        profile.built_in = False
+        profile.api_key = ''
         pcfg.module.llm_profiles.append(profile)
-        pcfg.module.llm_profile = profile['id']
-        self.rebuild()
-        self.focusProfileName(profile['id'], deferred=True)
+        pcfg.module.llm_profile = profile.id
+        row = self.addProfileRow(profile)
+        self.applyFilterToRow(row)
+        self.focusProfileName(profile.id, deferred=True)
         self.profiles_changed.emit()
 
     def copyProfile(self, profile_id: str):
@@ -717,20 +751,25 @@ class LLMProfilesWidget(QWidget):
             return
         self.filter_edit.clear()
         copied = copy_profile(copy.deepcopy(profile))
-        copied['id'] = f"custom-{uuid.uuid4().hex[:10]}"
+        copied.id = f"custom-{uuid.uuid4().hex[:10]}"
         pcfg.module.llm_profiles.append(copied)
-        pcfg.module.llm_profile = copied['id']
-        self.rebuild()
-        self.focusProfileName(copied['id'], deferred=True)
+        pcfg.module.llm_profile = copied.id
+        row = self.addProfileRow(copied)
+        self.applyFilterToRow(row)
+        self.focusProfileName(copied.id, deferred=True)
         self.profiles_changed.emit()
 
     def deleteProfile(self, profile_id: str):
         if len(pcfg.module.llm_profiles) <= 1:
             return
-        pcfg.module.llm_profiles = [p for p in pcfg.module.llm_profiles if p.get('id') != profile_id]
+        pcfg.module.llm_profiles = [p for p in pcfg.module.llm_profiles if p.id != profile_id]
         if pcfg.module.llm_profile == profile_id:
-            pcfg.module.llm_profile = pcfg.module.llm_profiles[0]['id']
-        self.rebuild()
+            pcfg.module.llm_profile = pcfg.module.llm_profiles[0].id
+        row = self.rows.pop(profile_id, None)
+        if row is not None:
+            row.collapse()
+            self.rows_layout.removeWidget(row)
+            row.deleteLater()
         self.profiles_changed.emit()
 
     def restoreBuiltins(self):
@@ -749,20 +788,29 @@ class LLMProfilesWidget(QWidget):
             return
         pcfg.module.llm_profiles = restore_builtin_profiles(pcfg.module.llm_profiles)
         if not profile_by_id(pcfg.module.llm_profiles, pcfg.module.llm_profile):
-            pcfg.module.llm_profile = pcfg.module.llm_profiles[0]['id']
+            pcfg.module.llm_profile = pcfg.module.llm_profiles[0].id
         self.rebuild()
         self.profiles_changed.emit()
 
-    def focusProfileApiKey(self, profile_id: str, deferred: bool = False):
+    def focusProfileApiKey(self, profile_id: str, deferred: bool = False, expand_details: bool = True):
         row = self.rows.get(profile_id)
         if row is None:
             return
         if deferred:
-            QTimer.singleShot(0, lambda profile_id=profile_id: self.focusProfileApiKey(profile_id))
+            # A zero-timeout timer runs on the next Qt event-loop turn, after
+            # rebuild/show/layout work has settled enough for focus and scroll.
+            QTimer.singleShot(
+                0,
+                lambda profile_id=profile_id, expand_details=expand_details: self.focusProfileApiKey(
+                    profile_id,
+                    expand_details=expand_details,
+                ),
+            )
             return
         if not row.isVisible():
             self.filter_edit.clear()
-        row.expand()
+        if expand_details:
+            row.expand()
         row.focusApiKey()
         self.ensureWidgetVisible(row.api_key_widget.editor)
 

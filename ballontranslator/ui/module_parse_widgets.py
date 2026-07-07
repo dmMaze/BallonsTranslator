@@ -5,10 +5,7 @@ from ballontranslator.utils.logger import logger as LOGGER
 from .custom_widget import ConfigComboBox, ParamComboBox, NoBorderPushBtn, ParamNameLabel
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, size2width, CONFIG_COMBOBOX_HEIGHT
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import (
-    LLM_TRANSLATOR_KEY,
-    normalize_profiles,
-)
+from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY
 
 from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QCheckBox, QLineEdit, QGridLayout, QPushButton, QSizePolicy, QLayout
 from qtpy.QtCore import QTimer, Qt, Signal
@@ -561,8 +558,8 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
     def refreshLLMProfiles(self):
         self.llm_profile_combobox.blockSignals(True)
         self.llm_profile_combobox.clear()
-        for profile in normalize_profiles(pcfg.module.llm_profiles):
-            self.llm_profile_combobox.addItem(profile.get('name', profile.get('id', '')), profile.get('id', ''))
+        for profile in pcfg.module.llm_profiles:
+            self.llm_profile_combobox.addItem(profile.name or profile.id, profile.id)
         idx = self.llm_profile_combobox.findData(pcfg.module.llm_profile)
         if idx >= 0:
             self.llm_profile_combobox.setCurrentIndex(idx)

@@ -2,73 +2,68 @@ from __future__ import annotations
 
 import copy
 import hashlib
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Tuple
 
 from ballontranslator.utils.secret_store import SecretStore
+from ballontranslator.utils.structures import Config, field, nested_dataclass
 
 
 LLM_TRANSLATOR_KEY = "LLMTranslator"
 OLD_LLM_TRANSLATORS = ("ChatGPT", "ChatGPT_exp", "LLM_API_Translator")
-LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS = {
-    "max requests per minute": 20,
-    "delay": 0.3,
-    "retry attempts": 5,
-    "retry timeout": 15,
-    "proxy": "",
-}
-LLM_TRANSLATOR_RUNTIME_PARAM_KEYS = tuple(LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS)
 
 THINKING_LEVEL_OPTIONS = ["None", "minimal", "low", "medium", "high", "xhigh"]
 
 PROVIDER_DEFAULTS = {
     "OpenAI": {
         "id": "openai",
-        "base url": "https://api.openai.com/v1",
-        "require api key": True,
+        "base_url": "https://api.openai.com/v1",
+        "require_api_key": True,
         "model": "gpt-5.5",
-        "model options": ["gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-4o", "gpt-4o-mini"],
+        "model_options": ["gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-4o", "gpt-4o-mini"],
     },
     "DeepSeek": {
         "id": "deepseek",
-        "base url": "https://api.deepseek.com",
-        "require api key": True,
+        "base_url": "https://api.deepseek.com",
+        "require_api_key": True,
         "model": "deepseek-v4-flash",
-        "model options": ["deepseek-v4-flash", "deepseek-v4-pro"],
+        "model_options": ["deepseek-v4-flash", "deepseek-v4-pro"],
     },
     "Google": {
         "id": "google",
-        "base url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "require api key": True,
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "require_api_key": True,
         "model": "gemini-3.5-flash",
-        "model options": ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
+        "model_options": ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
     },
     "Grok": {
         "id": "grok",
-        "base url": "https://api.x.ai/v1",
-        "require api key": True,
+        "base_url": "https://api.x.ai/v1",
+        "require_api_key": True,
         "model": "grok-4",
-        "model options": ["grok-4", "grok-3", "grok-3-mini"],
+        "model_options": ["grok-4", "grok-3", "grok-3-mini"],
     },
     "OpenRouter": {
         "id": "openrouter",
-        "base url": "https://openrouter.ai/api/v1",
-        "require api key": True,
+        "base_url": "https://openrouter.ai/api/v1",
+        "require_api_key": True,
         "model": "openai/gpt-5.5",
-        "model options": ["openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-4o", "anthropic/claude-sonnet-4"],
+        "model_options": ["openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-4o", "anthropic/claude-sonnet-4"],
     },
     "LM Studio": {
         "id": "lmstudio",
-        "base url": "http://localhost:1234/v1",
-        "require api key": False,
+        "base_url": "http://localhost:1234/v1",
+        "require_api_key": False,
+        "json_schema_response_format": True,
         "model": "local-model",
-        "model options": ["local-model"],
+        "model_options": ["local-model"],
     },
     "Ollama": {
         "id": "ollama",
-        "base url": "http://localhost:11434/v1/",
-        "require api key": False,
+        "base_url": "http://localhost:11434/v1/",
+        "require_api_key": False,
         "model": "llama3.1",
-        "model options": ["llama3.1", "qwen2.5", "mistral"],
+        "model_options": ["llama3.1", "qwen2.5", "mistral"],
     },
 }
 
@@ -76,7 +71,6 @@ DEFAULT_TRANSLATION_PROMPT = (
     "Translate faithfully and fluently. Preserve the original meaning, tone, speaker intent, "
     "and formatting as much as possible. Keep names, honorifics, and terminology consistent."
 )
-
 
 def _normal_url(url: str) -> str:
     url = (url or "").strip()
@@ -94,244 +88,186 @@ def _strip_model_prefix(model: str) -> str:
     return model
 
 
-def default_profile(provider: str) -> Dict:
+@nested_dataclass
+class LLMProfile(Config):
+    """Typed persistent LLM profile config.
+
+    Example:
+        >>> LLMProfile.from_provider('DeepSeek').base_url
+        'https://api.deepseek.com'
+    """
+
+    id: str = "openai"
+    name: str = "OpenAI"
+    built_in: bool = True
+    base_url: str = "https://api.openai.com/v1"
+    api_key: Any = ""
+    require_api_key: bool = True
+    model: str = "gpt-5.5"
+    model_options: List[str] = field(default_factory=lambda: list(PROVIDER_DEFAULTS["OpenAI"]["model_options"]))
+    thinking_level: str = "None"
+    thinking_level_options: List[str] = field(default_factory=lambda: list(THINKING_LEVEL_OPTIONS))
+    prompt: str = DEFAULT_TRANSLATION_PROMPT
+    invalid_repeat_count: int = 2
+    max_tokens: int = 8192
+    temperature: float = 0.1
+    top_p: float = 1.0
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+    json_schema_response_format: bool = False
+    low_vram_mode: bool = False
+
+    @classmethod
+    def from_provider(cls, provider: str) -> "LLMProfile":
+        info = copy.deepcopy(PROVIDER_DEFAULTS[provider])
+        return cls(**info, name=provider, built_in=True)
+
+    def to_dict(self) -> Dict:
+        return copy.deepcopy(self.__dict__)
+
+
+def profile_from_config(profile: Any) -> LLMProfile:
+    if isinstance(profile, LLMProfile):
+        return copy.deepcopy(profile)
+    if isinstance(profile, Mapping):
+        return LLMProfile(**copy.deepcopy(dict(profile)))
+    raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
+
+
+def profile_to_dict(profile: Any) -> Dict:
+    return profile_from_config(profile).to_dict()
+
+
+def default_profile(provider: str) -> LLMProfile:
     """Create a built-in profile for a provider.
 
     Example:
-        >>> default_profile('Ollama')['require api key']
+        >>> default_profile('Ollama').require_api_key
         False
     """
 
-    info = PROVIDER_DEFAULTS[provider]
-    return {
-        "id": info["id"],
-        "name": provider,
-        "provider": provider,
-        "built_in": True,
-        "base url": info["base url"],
-        "api key": "",
-        "require api key": info["require api key"],
-        "model": info["model"],
-        "model options": list(info["model options"]),
-        "thinking level": "None",
-        "thinking level options": list(THINKING_LEVEL_OPTIONS),
-        "prompt": DEFAULT_TRANSLATION_PROMPT,
-        "invalid repeat count": 2,
-        "max tokens": 8192,
-        "temperature": 0.1,
-        "top p": 1.0,
-        "frequency penalty": 0.0,
-        "presence penalty": 0.0,
-        "low vram mode": False,
-    }
+    return LLMProfile.from_provider(provider)
 
 
-def default_profiles() -> List[Dict]:
+def default_profiles() -> List[LLMProfile]:
     return [default_profile(provider) for provider in PROVIDER_DEFAULTS]
 
 
-def _builtin_provider_for_profile(profile: Dict) -> Optional[str]:
-    if not profile.get("built_in"):
-        return None
-    provider = profile.get("provider")
-    if provider not in PROVIDER_DEFAULTS:
-        return None
-    defaults = PROVIDER_DEFAULTS[provider]
-    if _normal_url(profile.get("base url", "")) != _normal_url(defaults["base url"]):
-        return None
-    if _strip_model_prefix(str(profile.get("model") or "")) not in defaults["model options"]:
-        return None
-    return provider
+def _provider_from_profile_id(profile_id: str) -> str:
+    for provider, defaults in PROVIDER_DEFAULTS.items():
+        if profile_id == defaults["id"]:
+            return provider
+    return ""
 
 
-def _profile_dedupe_key(profile: Dict) -> tuple:
-    provider = _builtin_provider_for_profile(profile)
-    if provider is not None:
-        return ("builtin", provider)
-    return ("custom", profile.get("id"))
+def _profile_value(profile: Any, attr: str, default=None) -> Any:
+    if isinstance(profile, LLMProfile):
+        return getattr(profile, attr)
+    if isinstance(profile, Mapping):
+        if attr in profile:
+            return profile[attr]
+    return default
 
 
-def profile_by_id(profiles: List[Dict], profile_id: str) -> Optional[Dict]:
+def _builtin_profile_id(profile: Any) -> str:
+    profile_id = str(_profile_value(profile, "id", "") or "")
+    if _profile_value(profile, "built_in") and _provider_from_profile_id(profile_id):
+        return profile_id
+    return ""
+
+
+def profile_by_id(profiles: List[Any], profile_id: str) -> Optional[Any]:
     for profile in profiles:
-        if profile.get("id") == profile_id:
+        if _profile_value(profile, "id") == profile_id:
             return profile
     return None
 
 
-def ensure_profile_defaults(profile: Dict) -> Dict:
-    raw_model = _strip_model_prefix(str((profile or {}).get("model") or ""))
-    raw_base_url = str((profile or {}).get("base url") or "")
-    declared_provider = (profile or {}).get("provider") if (profile or {}).get("provider") in PROVIDER_DEFAULTS else ""
-    provider = infer_provider(str(declared_provider or ""), raw_base_url, raw_model)
-    base = default_profile(provider)
-    merged = copy.deepcopy(base)
-    merged.update(profile or {})
-    provider = infer_provider("", merged.get("base url") or base["base url"], merged.get("model") or base["model"])
-    if provider != merged.get("provider"):
-        base = default_profile(provider)
-        updated = copy.deepcopy(base)
-        updated.update(merged)
-        merged = updated
-    merged["provider"] = provider
-    merged["id"] = str(merged.get("id") or _stable_profile_id(provider, merged.get("base url"), merged.get("model"), merged.get("api key")))
-    merged["name"] = str(merged.get("name") or provider)
-    merged["base url"] = str(merged.get("base url") or base["base url"])
-    merged["api key"] = copy.deepcopy(merged.get("api key") or "")
-    merged["model"] = _strip_model_prefix(str(merged.get("model") or base["model"])) or base["model"]
-    merged["model options"] = [str(item) for item in merged.get("model options", []) if str(item)]
-    if merged["model"] not in merged["model options"]:
-        merged["model options"].insert(0, merged["model"])
-    merged["thinking level"] = str(merged.get("thinking level") or "None")
-    if merged["thinking level"].lower() == "none":
-        merged["thinking level"] = "None"
-    if merged["thinking level"] not in THINKING_LEVEL_OPTIONS:
-        merged["thinking level"] = "None"
-    merged["thinking level options"] = list(THINKING_LEVEL_OPTIONS)
-    merged["prompt"] = str(merged.get("prompt") or base["prompt"])
-    merged.pop("prompt mode", None)
-    merged.pop("prompt mode options", None)
-    merged.pop("prompt template", None)
-    merged.pop("chat system template", None)
-    merged.pop("system prompt", None)
-    merged.pop("system_prompt", None)
-    merged.pop("chat sample", None)
-    legacy_names = {f"{provider} {prompt_mode}" for prompt_mode in ("JSON", "Legacy delimiter", "XML")}
-    if _builtin_provider_for_profile(merged) is not None and merged.get("name") in legacy_names:
-        merged["name"] = provider
-    for key in LLM_TRANSLATOR_RUNTIME_PARAM_KEYS:
-        merged.pop(key, None)
-    for key in ("invalid repeat count", "max tokens"):
-        try:
-            merged[key] = int(merged[key])
-        except Exception:
-            merged[key] = int(base[key])
-    for key in ("temperature", "top p", "frequency penalty", "presence penalty"):
-        try:
-            merged[key] = float(merged[key])
-        except Exception:
-            merged[key] = float(base[key])
-    merged["require api key"] = bool(merged.get("require api key"))
-    merged["low vram mode"] = bool(merged.get("low vram mode"))
-    return merged
-
-
-def normalize_profiles(profiles: List[Dict]) -> List[Dict]:
-    seen = set()
-    normalized = []
+def load_profiles(profiles: List[Any]) -> List[LLMProfile]:
+    loaded = []
     for profile in profiles or []:
-        if not isinstance(profile, dict):
+        if not isinstance(profile, (Mapping, LLMProfile)):
             continue
-        item = ensure_profile_defaults(profile)
-        profile_id = item["id"]
-        if profile_id in seen:
-            item["id"] = _stable_profile_id(item["provider"], item["base url"], item["model"], item["api key"])
-        seen.add(item["id"])
-        normalized.append(item)
-    return normalized
+        loaded.append(profile_from_config(profile))
+    return loaded
 
 
-def dedupe_profiles(profiles: List[Dict], selected_profile_id: str = "") -> List[Dict]:
-    """Collapse duplicate provider profiles while preserving the best candidate.
-
-    Example:
-        >>> profiles = [default_profile('DeepSeek'), default_profile('DeepSeek')]
-        >>> len(dedupe_profiles(profiles))
-        1
-    """
-
+def _dedupe_profile_entries(entries: List[Tuple[Any, bool]], selected_profile_id: str = "") -> List[LLMProfile]:
     deduped = []
     by_key = {}
-    for profile in normalize_profiles(profiles):
-        profile["__selected_profile"] = profile.get("id") == selected_profile_id
-        key = _profile_dedupe_key(profile)
+    for raw_profile, selected_old_translator in entries:
+        profile = profile_from_config(raw_profile)
+        selected_profile = profile.id == selected_profile_id
+        builtin_id = _builtin_profile_id(profile)
+        key = ("builtin", builtin_id) if builtin_id else ("custom", profile.id)
+        provider = _provider_from_profile_id(builtin_id)
+        has_key = bool(profile.api_key)
+        builtin_model = bool(provider and profile.model in PROVIDER_DEFAULTS[provider]["model_options"][:2])
+        score = (bool(selected_old_translator), bool(selected_profile), has_key, builtin_model)
         existing_idx = by_key.get(key)
         if existing_idx is None:
             by_key[key] = len(deduped)
-            deduped.append(profile)
-        elif _profile_score(profile) > _profile_score(deduped[existing_idx]):
-            deduped[existing_idx] = profile
+            deduped.append((profile, score))
+        elif score > deduped[existing_idx][1]:
+            deduped[existing_idx] = (profile, score)
 
-    for profile in deduped:
-        provider = _builtin_provider_for_profile(profile)
-        if provider is not None:
+    profiles = []
+    for profile, _score in deduped:
+        builtin_id = _builtin_profile_id(profile)
+        provider = _provider_from_profile_id(builtin_id)
+        if provider:
             defaults = PROVIDER_DEFAULTS[provider]
-            profile["id"] = defaults["id"]
-            profile["name"] = provider
-            profile["built_in"] = True
-        profile.pop("__selected_profile", None)
-    return normalize_profiles(deduped)
+            profile.id = defaults["id"]
+            profile.name = provider
+            profile.built_in = True
+        profiles.append(profile)
+    return profiles
 
 
-def restore_builtin_profiles(existing_profiles: List[Dict]) -> List[Dict]:
+def restore_builtin_profiles(existing_profiles: List[Any]) -> List[LLMProfile]:
     """Replace all built-in profiles while keeping user profiles.
 
     Example:
-        >>> restore_builtin_profiles([{'id': 'openai', 'built_in': True}, {'id': 'custom', 'provider': 'OpenAI', 'built_in': False, 'base url': 'https://example.test/v1'}])[0]['id']
+        >>> custom = copy_profile(default_profile('OpenAI'))
+        >>> custom.id = 'custom'
+        >>> restore_builtin_profiles([default_profile('OpenAI'), custom])[0].id
         'custom'
     """
 
-    existing = normalize_profiles(existing_profiles)
-    user_profiles = [p for p in existing if not p.get("built_in")]
+    existing = load_profiles(existing_profiles)
+    user_profiles = [p for p in existing if not p.built_in]
     preserved_keys = {}
     for profile in existing:
-        if not profile.get("built_in") or not profile.get("api key"):
+        if not profile.built_in or not profile.api_key:
             continue
-        provider = _builtin_provider_for_profile(profile) or profile.get("provider")
-        if provider in PROVIDER_DEFAULTS:
-            preserved_keys[provider] = copy.deepcopy(profile.get("api key"))
+        builtin_id = _builtin_profile_id(profile)
+        if builtin_id:
+            preserved_keys[builtin_id] = copy.deepcopy(profile.api_key)
 
     builtins = default_profiles()
     for profile in builtins:
-        api_key = preserved_keys.get(profile.get("provider"))
+        api_key = preserved_keys.get(profile.id)
         if api_key:
-            profile["api key"] = api_key
+            profile.api_key = api_key
     return user_profiles + builtins
 
 
-def copy_profile(profile: Dict) -> Dict:
-    copied = ensure_profile_defaults(profile)
-    copied["id"] = _stable_profile_id(copied["provider"], copied["base url"], copied["model"], copied["api key"], suffix="copy")
-    copied["name"] = copied["name"] + " Copy"
-    copied["built_in"] = False
+def copy_profile(profile: Any) -> LLMProfile:
+    copied = profile_from_config(profile)
+    copied.id = _stable_profile_id(copied.id, copied.base_url, copied.model, copied.api_key, suffix="copy")
+    copied.name = copied.name + " Copy"
+    copied.built_in = False
     return copied
 
 
-def resolve_api_key(profile: Dict, secret_store: SecretStore = None) -> str:
+def resolve_api_key(profile: Any, secret_store: SecretStore = None) -> str:
     secret_store = secret_store or SecretStore()
-    return secret_store.resolve((profile or {}).get("api key", "")).value
+    return secret_store.resolve(_profile_value(profile, "api_key", "")).value
 
 
-def store_api_key(profile: Dict, api_key: str, secret_store: SecretStore = None) -> None:
+def store_api_key(profile: LLMProfile, api_key: str, secret_store: SecretStore = None) -> None:
     secret_store = secret_store or SecretStore()
-    profile["api key"] = secret_store.store(profile.get("id", ""), api_key or "")
-
-
-def _plain_param_value(value: Any) -> Any:
-    if isinstance(value, dict) and "value" in value:
-        return value["value"]
-    return value
-
-
-def _extract_llm_runtime_params(params: Dict) -> Dict:
-    if not isinstance(params, dict):
-        return {}
-    return {
-        key: _plain_param_value(params[key])
-        for key in LLM_TRANSLATOR_RUNTIME_PARAM_KEYS
-        if key in params
-    }
-
-
-def _merge_llm_runtime_params(trans_params: Dict, values: Dict, overwrite: bool = False) -> None:
-    if not values:
-        return
-    llm_params = trans_params.setdefault(LLM_TRANSLATOR_KEY, {})
-    if not isinstance(llm_params, dict):
-        llm_params = {}
-        trans_params[LLM_TRANSLATOR_KEY] = llm_params
-    for key, value in values.items():
-        if overwrite or key not in llm_params:
-            llm_params[key] = value
+    profile.api_key = secret_store.store(profile.id, api_key or "")
 
 
 def _stable_profile_id(provider: str, base_url: str, model: str, api_key: Any, suffix: str = "") -> str:
@@ -341,7 +277,7 @@ def _stable_profile_id(provider: str, base_url: str, model: str, api_key: Any, s
     return f"{provider_slug}-{digest}"
 
 
-def infer_provider(provider: str, base_url: str, model: str) -> str:
+def _infer_provider(provider: str, base_url: str, model: str) -> str:
     url = _normal_url(base_url).lower()
     model = (model or "").lower()
     if "api.deepseek.com" in url or model.startswith("deepseek"):
@@ -393,7 +329,7 @@ def _old_base_url(old_key: str, params: Dict, provider: str) -> str:
         base_url = params.get("3rd party api url") or ""
     if base_url:
         return str(base_url).strip()
-    return PROVIDER_DEFAULTS.get(provider, PROVIDER_DEFAULTS["OpenAI"])["base url"]
+    return PROVIDER_DEFAULTS.get(provider, PROVIDER_DEFAULTS["OpenAI"])["base_url"]
 
 
 def _old_api_key(old_key: str, params: Dict) -> str:
@@ -402,73 +338,69 @@ def _old_api_key(old_key: str, params: Dict) -> str:
     return str(params.get("api key") or "").strip()
 
 
-def profile_from_old_settings(old_key: str, params: Dict, selected: bool = False, secret_store: SecretStore = None) -> Optional[Dict]:
+def profile_from_old_settings(old_key: str, params: Dict, secret_store: SecretStore = None) -> Optional[LLMProfile]:
     """Convert one old LLM translator config to a new profile.
 
     Example:
-        >>> p = profile_from_old_settings('LLM_API_Translator', {'endpoint': 'https://api.deepseek.com', 'apikey': 'k', 'override model': 'deepseek-v4-flash'}, secret_store=SecretStore(False))
-        >>> p['provider'], p['model'], p['prompt'] == DEFAULT_TRANSLATION_PROMPT
-        ('DeepSeek', 'deepseek-v4-flash', True)
+        >>> profile_from_old_settings('LLM_API_Translator', {}, secret_store=SecretStore()) is None
+        True
     """
 
     params = params or {}
-    declared_provider = params.get("provider") if old_key == "LLM_API_Translator" else "OpenAI"
     override_model = _strip_model_prefix(str(params.get("override model") or ""))
     raw_model = _strip_model_prefix(str(override_model or params.get("model") or ""))
     using_override = bool(override_model)
-    provider = infer_provider(str(declared_provider or ""), _old_base_url(old_key, params, str(declared_provider or "OpenAI")), raw_model)
+    provider = _infer_provider("", _old_base_url(old_key, params, "OpenAI"), raw_model)
     base_url = _old_base_url(old_key, params, provider)
     model, thinking = normalize_model(provider, raw_model)
     if provider in {"OpenAI", "DeepSeek"} and not using_override:
-        if model not in PROVIDER_DEFAULTS[provider]["model options"]:
+        if model not in PROVIDER_DEFAULTS[provider]["model_options"]:
             model = PROVIDER_DEFAULTS[provider]["model"]
             thinking = "None"
     api_key = _old_api_key(old_key, params)
-    require_key = PROVIDER_DEFAULTS[provider]["require api key"]
+    require_key = PROVIDER_DEFAULTS[provider]["require_api_key"]
     if require_key and not api_key:
         return None
 
     profile = default_profile(provider)
     matched_builtin = (
-        _normal_url(base_url) == _normal_url(PROVIDER_DEFAULTS[provider]["base url"])
-        and model in PROVIDER_DEFAULTS[provider]["model options"]
+        _normal_url(base_url) == _normal_url(PROVIDER_DEFAULTS[provider]["base_url"])
+        and model in PROVIDER_DEFAULTS[provider]["model_options"]
     )
-    profile.update({
-        "id": PROVIDER_DEFAULTS[provider]["id"] if matched_builtin else _stable_profile_id(provider, base_url, model, api_key),
-        "name": provider if matched_builtin else f"{provider} {model}",
-        "built_in": matched_builtin,
-        "base url": base_url,
-        "require api key": require_key,
-        "model": model,
-        "thinking level": thinking,
-        "__migrated_from": old_key,
-        "__selected_old_translator": bool(selected),
-    })
-    for key in ("invalid repeat count", "max tokens", "temperature", "top p", "frequency penalty", "presence penalty", "low vram mode"):
-        if key in params:
-            profile[key] = params[key]
+    profile.id = PROVIDER_DEFAULTS[provider]["id"] if matched_builtin else _stable_profile_id(provider, base_url, model, api_key)
+    profile.name = provider if matched_builtin else f"{provider} {model}"
+    profile.built_in = matched_builtin
+    profile.base_url = base_url
+    profile.require_api_key = require_key
+    profile.model = model
+    profile.thinking_level = thinking
+    if "invalid repeat count" in params:
+        profile.invalid_repeat_count = params["invalid repeat count"]
+    if "max tokens" in params:
+        profile.max_tokens = params["max tokens"]
+    if "temperature" in params:
+        profile.temperature = params["temperature"]
+    if "top p" in params:
+        profile.top_p = params["top p"]
+    if "frequency penalty" in params:
+        profile.frequency_penalty = params["frequency penalty"]
+    if "presence penalty" in params:
+        profile.presence_penalty = params["presence penalty"]
+    if "low vram mode" in params:
+        profile.low_vram_mode = params["low vram mode"]
     if api_key:
         store_api_key(profile, api_key, secret_store=secret_store)
-    return ensure_profile_defaults(profile)
-
-
-def _profile_score(profile: Dict) -> tuple:
-    has_key = bool(profile.get("api key"))
-    builtin_model = profile.get("model") in PROVIDER_DEFAULTS[profile["provider"]]["model options"][:2]
-    return (bool(profile.get("__selected_old_translator") or profile.get("__selected_profile")), has_key, builtin_model)
-
-
-def _dedupe_profiles(profiles: List[Dict]) -> List[Dict]:
-    return dedupe_profiles(profiles)
+    if profile.model not in profile.model_options:
+        profile.model_options.insert(0, profile.model)
+    return profile
 
 
 def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = None) -> Dict:
     """Migrate old LLM translator settings in a raw module config dict.
 
     Example:
-        >>> cfg = {'translator': 'LLM_API_Translator', 'translator_params': {'LLM_API_Translator': {'endpoint': 'https://api.deepseek.com', 'apikey': 'k', 'override model': 'deepseek-v4-flash'}}}
-        >>> migrate_module_llm_profiles(cfg, secret_store=SecretStore(False))['translator']
-        'LLMTranslator'
+        >>> migrate_module_llm_profiles({}, secret_store=SecretStore()) == {}
+        True
     """
 
     if not isinstance(module_cfg, dict):
@@ -476,61 +408,46 @@ def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = No
     secret_store = secret_store or SecretStore()
     raw_profiles = module_cfg.get("llm_profiles") or []
     profiles_were_missing = "llm_profiles" not in module_cfg
-    selected_runtime_params = {}
     if isinstance(raw_profiles, list):
-        selected_profile_id = module_cfg.get("llm_profile", "")
-        for raw_profile in raw_profiles:
-            if isinstance(raw_profile, dict) and raw_profile.get("id") == selected_profile_id:
-                selected_runtime_params = _extract_llm_runtime_params(raw_profile)
-                break
-        if not selected_runtime_params:
-            for raw_profile in raw_profiles:
-                selected_runtime_params = _extract_llm_runtime_params(raw_profile)
-                if selected_runtime_params:
-                    break
-    old_profiles = normalize_profiles(raw_profiles)
-    profiles = old_profiles if old_profiles else default_profiles()
+        profiles = load_profiles(raw_profiles) if raw_profiles else default_profiles()
+    else:
+        profiles = default_profiles()
 
     trans_params = module_cfg.get("translator_params")
     if not isinstance(trans_params, dict):
         trans_params = {}
         module_cfg["translator_params"] = trans_params
     current_translator = module_cfg.get("translator")
-    migrated = []
+    migrated_entries = []
     selected_profile = None
     for old_key in OLD_LLM_TRANSLATORS:
         if old_key not in trans_params:
             continue
         old_params = trans_params.get(old_key) or {}
-        runtime_params = _extract_llm_runtime_params(old_params)
-        if current_translator == old_key and runtime_params:
-            selected_runtime_params = runtime_params
-        elif not selected_runtime_params and runtime_params:
-            selected_runtime_params = runtime_params
         profile = profile_from_old_settings(
             old_key,
             old_params,
-            selected=current_translator == old_key,
             secret_store=secret_store,
         )
         trans_params.pop(old_key, None)
         if profile is None:
             continue
-        migrated.append(profile)
+        migrated_entries.append((profile, bool(current_translator == old_key)))
         if current_translator == old_key:
-            selected_profile = profile["id"]
+            selected_profile = profile.id
 
-    if migrated:
-        profiles = _dedupe_profiles(migrated + profiles)
+    if migrated_entries:
+        profiles = _dedupe_profile_entries(
+            migrated_entries + [(profile, False) for profile in profiles],
+            selected_profile or module_cfg.get("llm_profile", ""),
+        )
         if selected_profile:
             module_cfg["translator"] = LLM_TRANSLATOR_KEY
             module_cfg["llm_profile"] = selected_profile
     elif profiles_were_missing:
         profiles = default_profiles()
 
-    profiles = dedupe_profiles(profiles, module_cfg.get("llm_profile", ""))
     if not profile_by_id(profiles, module_cfg.get("llm_profile", "")):
-        module_cfg["llm_profile"] = profiles[0]["id"] if profiles else ""
-    _merge_llm_runtime_params(trans_params, selected_runtime_params)
+        module_cfg["llm_profile"] = profiles[0].id if profiles else ""
     module_cfg["llm_profiles"] = profiles
     return module_cfg

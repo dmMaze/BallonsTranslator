@@ -8,7 +8,7 @@ from .fontformat import FontFormat
 from .structures import List, Dict, Config, field, nested_dataclass
 from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
-from .llm_profiles import default_profiles, dedupe_profiles, migrate_module_llm_profiles, normalize_profiles, profile_by_id
+from .llm_profiles import default_profiles, load_profiles, migrate_module_llm_profiles, profile_by_id, profile_to_dict, LLMProfile
 from .secret_store import SecretStore
 
 class RunStatus:
@@ -36,7 +36,7 @@ class ModuleConfig(Config):
     textdetector_params: Dict = field(default_factory=lambda: dict())
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
-    llm_profiles: List = field(default_factory=lambda: list())
+    llm_profiles: List[LLMProfile] = field(default_factory=lambda: list())
     llm_profile: str = ''
     inpainter_params: Dict = field(default_factory=lambda: dict())
     translate_source: str = '日本語'
@@ -83,16 +83,13 @@ class ModuleConfig(Config):
     def get_saving_llm_profiles(self):
         profiles = []
         secret_store = SecretStore()
-        for profile in normalize_profiles(self.llm_profiles):
-            saving_profile = {}
-            for key, value in profile.items():
-                if key.startswith('__'):
-                    continue
-                if key in {'provider', 'prompt mode', 'prompt mode options'}:
-                    continue
-                if key == 'api key':
-                    value = secret_store.prepare_for_save(profile.get('id', ''), value)
-                saving_profile[key] = value
+        for profile in self.llm_profiles:
+            saving_profile = profile_to_dict(profile)
+            if 'api_key' in saving_profile:
+                saving_profile['api_key'] = secret_store.prepare_for_save(
+                    saving_profile.get('id', ''),
+                    saving_profile.get('api_key', ''),
+                )
             profiles.append(saving_profile)
         return profiles
     
@@ -115,9 +112,9 @@ class ModuleConfig(Config):
         if not self.llm_profiles:
             self.llm_profiles = default_profiles()
         else:
-            self.llm_profiles = dedupe_profiles(self.llm_profiles, self.llm_profile)
+            self.llm_profiles = load_profiles(self.llm_profiles)
         if (not self.llm_profile or not profile_by_id(self.llm_profiles, self.llm_profile)) and self.llm_profiles:
-            self.llm_profile = self.llm_profiles[0]['id']
+            self.llm_profile = self.llm_profiles[0].id
         self.update_finish_code()
 
     def update_finish_code(self):

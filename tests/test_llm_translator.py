@@ -49,7 +49,7 @@ class FakeTranslator(LLMTranslator):
     @property
     def profile(self):
         profile = default_profile('OpenAI')
-        profile['api key'] = 'sk-demo'
+        profile.api_key = 'sk-demo'
         return profile
 
 
@@ -68,7 +68,7 @@ class LLMTranslatorTest(unittest.TestCase):
 
     def test_json_prompt_wraps_profile_prompt_without_formatting_json_braces(self):
         profile = default_profile('OpenAI')
-        profile['prompt'] = 'Keep JSON example {"x": 1}.'
+        profile.prompt = 'Keep JSON example {"x": 1}.'
 
         messages, _, prompt = next(self.translator._assemble_batches(['心'], profile))
 
@@ -79,26 +79,39 @@ class LLMTranslatorTest(unittest.TestCase):
 
     def test_missing_required_api_key_raises_profile_error(self):
         profile = default_profile('OpenAI')
-        profile['api key'] = ''
+        profile.api_key = ''
 
         with self.assertRaises(LLMApiKeyRequiredError):
             self.translator._api_key_for_profile(profile)
 
     def test_thinking_level_only_passed_when_not_none(self):
         profile = default_profile('OpenAI')
-        profile['thinking level'] = 'None'
+        profile.thinking_level = 'None'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
         self.assertNotIn('reasoning_effort', args)
+        self.assertNotIn('frequency_penalty', args)
+        self.assertNotIn('presence_penalty', args)
         self.assertEqual(args['response_format'], {'type': 'json_object'})
         self.assertEqual(args['max_tokens'], 8192)
 
-        profile['thinking level'] = 'none'
+        profile.thinking_level = 'none'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
         self.assertNotIn('reasoning_effort', args)
 
-        profile['thinking level'] = 'low'
+        profile.thinking_level = 'low'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
         self.assertEqual(args['reasoning_effort'], 'low')
+
+    def test_json_schema_response_format_is_profile_controlled(self):
+        profile = default_profile('OpenAI')
+        profile.json_schema_response_format = True
+
+        args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
+
+        self.assertEqual(args['response_format']['type'], 'json_schema')
+        self.assertEqual(args['response_format']['json_schema']['name'], 'translation_response')
+        self.assertTrue(args['response_format']['json_schema']['strict'])
+        self.assertEqual(args['response_format']['json_schema']['schema'], self.translator._json_schema())
 
     def test_stop_event_interrupts_wait(self):
         event = threading.Event()
@@ -116,10 +129,10 @@ class LLMTranslatorTest(unittest.TestCase):
         self.translator.set_param_value('proxy', 'http://127.0.0.1:7890')
 
         self.assertEqual(self.translator.delay(), 0.8)
-        self.assertEqual(self.translator._setting_int('retry attempts'), 2)
-        self.assertEqual(self.translator._setting_float('retry timeout'), 3.0)
-        self.assertEqual(self.translator._setting_int('max requests per minute'), 7)
-        self.assertEqual(self.translator._setting_str('proxy'), 'http://127.0.0.1:7890')
+        self.assertEqual(self.translator.get_param_value('retry attempts'), 2)
+        self.assertEqual(self.translator.get_param_value('retry timeout'), 3.0)
+        self.assertEqual(self.translator.get_param_value('max requests per minute'), 7)
+        self.assertEqual(self.translator.get_param_value('proxy'), 'http://127.0.0.1:7890')
 
     def test_authentication_error_becomes_required_key_error(self):
         translator = FakeTranslator(FakeAuthError('bad key'))

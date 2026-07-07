@@ -1,4 +1,3 @@
-import copy
 import json
 import re
 import time
@@ -9,9 +8,9 @@ from .base import BaseTranslator, register_translator
 from .exceptions import LLMApiKeyRequiredError, LLMTranslationStopped
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
-    LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS,
-    ensure_profile_defaults,
+    LLMProfile,
     profile_by_id,
+    profile_from_config,
     resolve_api_key,
 )
 
@@ -36,27 +35,27 @@ class LLMTranslator(BaseTranslator):
     cht_require_convert = True
     params: Dict = {
         "max requests per minute": {
-            "value": LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS["max requests per minute"],
+            "value": 20,
             "display_name": "Max Requests Per Minute",
             "description": "Global request limit for LLM translation.",
         },
         "delay": {
-            "value": LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS["delay"],
+            "value": 0.3,
             "display_name": "Delay",
             "description": "Delay between LLM requests in seconds.",
         },
         "retry attempts": {
-            "value": LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS["retry attempts"],
+            "value": 5,
             "display_name": "Retry Attempts",
             "description": "Retries for API or parsing failures.",
         },
         "retry timeout": {
-            "value": LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS["retry timeout"],
+            "value": 7.0,
             "display_name": "Retry Timeout",
             "description": "Delay between retries in seconds.",
         },
         "proxy": {
-            "value": LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS["proxy"],
+            "value": "",
             "display_name": "Proxy",
             "description": "Proxy address used for the OpenAI-compatible client.",
         },
@@ -97,39 +96,19 @@ class LLMTranslator(BaseTranslator):
         self.stop_event = None
 
     @property
-    def profile(self) -> Dict:
+    def profile(self) -> LLMProfile:
         profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.llm_profile)
         if profile is None and pcfg.module.llm_profiles:
             profile = pcfg.module.llm_profiles[0]
         if profile is None:
             raise RuntimeError('No LLM profile is configured.')
-        return ensure_profile_defaults(copy.deepcopy(profile))
+        return profile_from_config(profile)
 
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
 
-    def _setting(self, key: str):
-        if self.params is not None and key in self.params:
-            return self.get_param_value(key)
-        return LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS[key]
-
-    def _setting_int(self, key: str) -> int:
-        try:
-            return int(self._setting(key))
-        except Exception:
-            return int(LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS[key])
-
-    def _setting_float(self, key: str) -> float:
-        try:
-            return float(self._setting(key))
-        except Exception:
-            return float(LLM_TRANSLATOR_RUNTIME_PARAM_DEFAULTS[key])
-
-    def _setting_str(self, key: str) -> str:
-        return str(self._setting(key) or "")
-
     def delay(self) -> float:
-        return self._setting_float('delay')
+        return self.get_param_value('delay')
 
     def _wait(self, seconds: float):
         if seconds <= 0:
@@ -160,18 +139,16 @@ class LLMTranslator(BaseTranslator):
             self.logger.error(f"Failed to initialize proxy '{proxy}': {e}. Proceeding without proxy.")
             return httpx.Client()
 
-    def _api_key_for_profile(self, profile: Dict) -> str:
+    def _api_key_for_profile(self, profile: LLMProfile) -> str:
         api_key = resolve_api_key(profile).strip()
-        if profile.get('require api key') and not api_key:
-            raise LLMApiKeyRequiredError(profile.get('id', ''), profile.get('name', ''))
-        if not api_key and profile.get('provider') in {'LM Studio', 'Ollama'}:
-            return 'dummy-key'
+        if profile.require_api_key and not api_key:
+            raise LLMApiKeyRequiredError(profile.id, profile.name)
         return api_key
 
-    def _initialize_client(self, profile: Dict):
+    def _initialize_client(self, profile: LLMProfile):
         api_key = self._api_key_for_profile(profile)
-        base_url = profile.get('base url') or None
-        proxy = self._setting_str('proxy')
+        base_url = profile.base_url or None
+        proxy = self.get_param_value('proxy') or ''
         cache_key = (api_key, base_url, proxy)
         if self.client is not None and self.client_cache_key == cache_key:
             return self.client
@@ -188,8 +165,8 @@ class LLMTranslator(BaseTranslator):
     def _translated_lang(self, lang: str) -> str:
         return self.lang_map.get(lang, lang)
 
-    def _system_prompt(self, profile: Dict, to_lang: str) -> str:
-        prompt = str(profile.get('prompt') or '').strip()
+    def _system_prompt(self, profile: LLMProfile, to_lang: str) -> str:
+        prompt = str(profile.prompt or '').strip()
         contract = (
             f"You are an expert translator. Translate every source string into {to_lang}.\n"
             'Return only valid JSON in this shape:\n'
@@ -204,7 +181,7 @@ class LLMTranslator(BaseTranslator):
             return f"{contract}\n\nAdditional translation instructions:\n{prompt}"
         return contract
 
-    def _assemble_json_batches(self, queries: List[str], profile: Dict):
+    def _assemble_json_batches(self, queries: List[str], profile: LLMProfile):
         from_lang = self._translated_lang(self.lang_source)
         to_lang = self._translated_lang(self.lang_target)
         input_elements = [{"id": i + 1, "source": query} for i, query in enumerate(queries)]
@@ -219,7 +196,7 @@ class LLMTranslator(BaseTranslator):
         ]
         yield messages, len(queries), prompt
 
-    def _assemble_batches(self, src_list: List[str], profile: Dict):
+    def _assemble_batches(self, src_list: List[str], profile: LLMProfile):
         return self._assemble_json_batches(src_list, profile)
 
     def build_copy_prompt(self, src_list: List[str], max_tokens: int = 4294967295) -> str:
@@ -227,10 +204,10 @@ class LLMTranslator(BaseTranslator):
         batches = self._assemble_json_batches(src_list, profile)
         return '\n'.join(prompt for _, _, prompt in batches).strip()
 
-    def _respect_delay(self, profile: Dict):
+    def _respect_delay(self, profile: LLMProfile):
         current_time = time.time()
-        rpm = self._setting_int('max requests per minute')
-        delay = self._setting_float('delay')
+        rpm = self.get_param_value('max requests per minute')
+        delay = self.get_param_value('delay')
         if rpm > 0:
             if current_time - self.minute_start_time >= 60:
                 self.request_count_minute = 0
@@ -270,27 +247,35 @@ class LLMTranslator(BaseTranslator):
             "required": ["translations"],
         }
 
-    def _api_args(self, profile: Dict, messages: List[Dict]):
+    def _api_args(self, profile: LLMProfile, messages: List[Dict]):
         api_args = {
-            "model": profile.get('model'),
+            "model": profile.model,
             "messages": messages,
-            "temperature": float(profile.get('temperature', 0.1)),
-            "top_p": float(profile.get('top p', 1.0)),
-            "max_tokens": int(profile.get('max tokens', 8192)),
+            "temperature": float(profile.temperature),
+            "top_p": float(profile.top_p),
+            "max_tokens": int(profile.max_tokens),
         }
-        if profile.get('provider') == 'LM Studio':
+        if profile.json_schema_response_format:
             api_args["response_format"] = {
                 "type": "json_schema",
-                "json_schema": {"schema": self._json_schema()},
+                "json_schema": {
+                    "name": "translation_response",
+                    "strict": True,
+                    "schema": self._json_schema(),
+                },
             }
         else:
             api_args["response_format"] = {"type": "json_object"}
 
-        if profile.get('provider') == 'OpenAI':
-            api_args["frequency_penalty"] = float(profile.get('frequency penalty', 0.0))
-            api_args["presence_penalty"] = float(profile.get('presence penalty', 0.0))
+        for penalty, api_key in (
+            (profile.frequency_penalty, 'frequency_penalty'),
+            (profile.presence_penalty, 'presence_penalty'),
+        ):
+            penalty = float(penalty or 0.0)
+            if penalty > 0:
+                api_args[api_key] = penalty
 
-        thinking_level = str(profile.get('thinking level') or 'None')
+        thinking_level = str(profile.thinking_level or 'None')
         if thinking_level.lower() != 'none':
             api_args["reasoning_effort"] = thinking_level
         return api_args
@@ -314,14 +299,14 @@ class LLMTranslator(BaseTranslator):
                 return str(text)
         return str(error)
 
-    def _request_translation(self, profile: Dict, messages: List[Dict]) -> str:
+    def _request_translation(self, profile: LLMProfile, messages: List[Dict]) -> str:
         openai = self._openai_module()
         client = self._initialize_client(profile)
         self._respect_delay(profile)
         try:
             completion = client.chat.completions.create(**self._api_args(profile, messages))
         except getattr(openai, 'AuthenticationError') as e:
-            raise LLMApiKeyRequiredError(profile.get('id', ''), profile.get('name', '')) from e
+            raise LLMApiKeyRequiredError(profile.id, profile.name) from e
         except getattr(openai, 'APIStatusError') as e:
             raise RuntimeError(self._status_error_message(e)) from e
 
@@ -365,7 +350,7 @@ class LLMTranslator(BaseTranslator):
             raise InvalidNumTranslations(f"Expected {expected}, got {len(result)}")
         return result
 
-    def _parse_response(self, profile: Dict, raw_content: str, expected: int) -> List[str]:
+    def _parse_response(self, profile: LLMProfile, raw_content: str, expected: int) -> List[str]:
         return self._parse_json_response(raw_content, expected)
 
     def _translate(self, src_list: List[str]) -> List[str]:
@@ -386,24 +371,24 @@ class LLMTranslator(BaseTranslator):
                     break
                 except InvalidNumTranslations as e:
                     mismatch_attempt += 1
-                    if mismatch_attempt >= int(profile.get('invalid repeat count', 2)):
+                    if mismatch_attempt >= int(profile.invalid_repeat_count):
                         self.logger.error(f"Failed to parse matching translation count for prompt:\n{prompt}\n{e}")
                         translations.extend([""] * num_src)
                         break
-                    self._wait(self._setting_float('retry timeout') / 2)
+                    self._wait(self.get_param_value('retry timeout') / 2)
                 except LLMApiKeyRequiredError:
                     raise
                 except LLMTranslationStopped:
                     raise
                 except Exception as e:
                     retry_attempt += 1
-                    if retry_attempt >= self._setting_int('retry attempts'):
+                    if retry_attempt >= self.get_param_value('retry attempts'):
                         self.logger.error(f"LLM translation failed: {e}")
                         self.logger.debug(traceback.format_exc())
                         translations.extend([""] * num_src)
                         break
                     self.logger.warning(f"LLM translation failed due to {e}. Attempt: {retry_attempt}")
-                    self._wait(self._setting_float('retry timeout'))
+                    self._wait(self.get_param_value('retry timeout'))
 
         if self.token_count_last:
             self.logger.info(f'Used {self.token_count_last} tokens (Total: {self.token_count})')

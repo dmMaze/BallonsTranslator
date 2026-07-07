@@ -1358,8 +1358,8 @@ class MainWindow(mainwindow_cls):
     def to_trans_config(self):
         self.configPanel.focusOnTranslator()
 
-    def focus_llm_profile(self, profile_id: str = None):
-        self.configPanel.focusOnLLMProfile(profile_id or pcfg.module.llm_profile)
+    def focus_llm_profile(self, profile_id: str = None, expand_details: bool = True):
+        self.configPanel.focusOnLLMProfile(profile_id or pcfg.module.llm_profile, expand_details=expand_details)
 
     def to_inpaint_config(self):
         self.configPanel.focusOnInpaint()
@@ -2041,7 +2041,7 @@ class MainWindow(mainwindow_cls):
         try:
             msg.exec()
             if msg.clickedButton() == fill_btn:
-                self.focus_llm_profile(profile_id)
+                self.focus_llm_profile(profile_id, expand_details=False)
         finally:
             shared.showed_exception.discard(exception_type)
 

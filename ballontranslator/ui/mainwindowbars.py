@@ -12,7 +12,7 @@ from .misc import themed_icon_path
 from ballontranslator.utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import FramelessMoveResize
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY, normalize_profiles, profile_by_id
+from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY, profile_by_id
 from ballontranslator.utils import shared
 if shared.FLAG_QT6:
     from qtpy.QtGui import QAction
@@ -874,17 +874,16 @@ class TranslatorSelectionWidget(Widget):
             )
 
         self._section(self.tr('LLM'))
-        for profile in normalize_profiles(pcfg.module.llm_profiles):
-            profile_id = profile.get('id', '')
-            raw_profile = profile_by_id(pcfg.module.llm_profiles, profile_id) or profile
-            profile_menu = _bottom_submenu(profile.get('name', profile_id), self.menu)
+        for profile in pcfg.module.llm_profiles:
+            profile_id = profile.id
+            profile_menu = _bottom_submenu(profile.name or profile_id, self.menu)
             _add_bottom_submenu(
                 self.menu,
                 profile_menu,
-                profile.get('name', profile_id),
+                profile.name or profile_id,
                 current_translator == LLM_TRANSLATOR_KEY and pcfg.module.llm_profile == profile_id,
             )
-            self._buildProfileMenu(profile_menu, raw_profile, profile)
+            self._buildProfileMenu(profile_menu, profile)
 
         self._section(self.tr('Language'))
         source_menu = _bottom_submenu(
@@ -925,33 +924,31 @@ class TranslatorSelectionWidget(Widget):
     def selectLLMProfileSetting(self, profile_id: str, key: str, value: str):
         profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
         if profile is not None:
-            profile[key] = value
+            setattr(profile, key, value)
             if key == 'model':
-                options = profile.setdefault('model options', [])
+                options = profile.model_options
                 if value and value not in options:
                     options.insert(0, value)
         self.selectLLMProfile(profile_id)
 
-    def _buildProfileMenu(self, menu: QMenu, profile: dict, normalized_profile: dict):
-        profile_id = profile.get('id', '')
+    def _buildProfileMenu(self, menu: QMenu, profile: dict):
+        profile_id = profile.id
         selected_profile = self.selector.currentText() == LLM_TRANSLATOR_KEY and pcfg.module.llm_profile == profile_id
 
         _add_bottom_menu_section(menu, self.tr('Thinking Level'))
-        thinking_options = [str(option) for option in profile.get('thinking level options', []) if str(option)]
-        if not thinking_options:
-            thinking_options = [str(option) for option in normalized_profile.get('thinking level options', []) if str(option)] or ['None']
-        current_thinking = str(profile.get('thinking level') or 'None')
+        thinking_options = [str(option) for option in profile.thinking_level_options if str(option)]
+        current_thinking = str(profile.thinking_level or 'None')
         for thinking_level in thinking_options:
             _add_bottom_menu_action(
                 menu,
                 thinking_level,
                 selected_profile and thinking_level == current_thinking,
-                lambda checked=False, pid=profile_id, value=thinking_level: self.selectLLMProfileSetting(pid, 'thinking level', value),
+                lambda checked=False, pid=profile_id, value=thinking_level: self.selectLLMProfileSetting(pid, 'thinking_level', value),
             )
 
         _add_bottom_menu_section(menu, self.tr('Model'))
-        model_options = [str(option) for option in profile.get('model options', []) if str(option)]
-        current_model = str(profile.get('model') or '')
+        model_options = [str(option) for option in profile.model_options if str(option)]
+        current_model = str(profile.model or '')
         for model in model_options:
             _add_bottom_menu_action(
                 menu,
@@ -969,18 +966,16 @@ class TranslatorSelectionWidget(Widget):
         is_llm = name == LLM_TRANSLATOR_KEY
         if name == LLM_TRANSLATOR_KEY:
             profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.llm_profile)
-            if profile is None:
-                profile = profile_by_id(normalize_profiles(pcfg.module.llm_profiles), pcfg.module.llm_profile)
             if profile is not None:
-                model_options = [str(option) for option in profile.get('model options', []) if str(option)]
-                model = str(profile.get('model') or '').strip()
-                thinking_level = str(profile.get('thinking level') or 'None').strip()
+                model_options = [str(option) for option in profile.model_options if str(option)]
+                model = str(profile.model or '').strip()
+                thinking_level = str(profile.thinking_level or 'None').strip()
                 if model_options and model:
                     name = model
                     if thinking_level and thinking_level != 'None':
                         name = self.tr('{model} {thinking_level}').format(model=model, thinking_level=thinking_level)
                 else:
-                    name = profile.get('name', name)
+                    name = profile.name or name
         if not name:
             name = self.tr('Translator')
         self.tool_btn.setText(_bottom_tool_button_text(name))
