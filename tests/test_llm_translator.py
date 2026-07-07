@@ -66,29 +66,15 @@ class LLMTranslatorTest(unittest.TestCase):
 
         self.assertEqual(result, ['心', '精神'])
 
-    def test_legacy_response_parser_uses_delimiters(self):
-        result = self.translator._parse_legacy_response(
-            '<|1|>心\n<|2|>精神',
-            2,
-        )
-
-        self.assertEqual(result, ['心', '精神'])
-
-    def test_xml_response_parser_uses_ids(self):
-        result = self.translator._parse_xml_response(
-            '<root><element><id>1</id><dst>心</dst></element><element><id>2</id><dst>精神</dst></element></root>',
-            2,
-        )
-
-        self.assertEqual(result, ['心', '精神'])
-
-    def test_json_prompt_uses_system_prompt_without_formatting_json_braces(self):
+    def test_json_prompt_wraps_profile_prompt_without_formatting_json_braces(self):
         profile = default_profile('OpenAI')
-        profile['system prompt'] = 'Keep JSON example {"x": 1}. Translate to {to_lang}.'
+        profile['prompt'] = 'Keep JSON example {"x": 1}.'
 
         messages, _, prompt = next(self.translator._assemble_batches(['心'], profile))
 
-        self.assertEqual(messages[0]['content'], 'Keep JSON example {"x": 1}. Translate to Simplified Chinese.')
+        self.assertIn('Translate every source string into Simplified Chinese.', messages[0]['content'])
+        self.assertIn('Additional translation instructions:\nKeep JSON example {"x": 1}.', messages[0]['content'])
+        self.assertIn('"translations"', messages[0]['content'])
         self.assertIn('"source": "心"', prompt)
 
     def test_missing_required_api_key_raises_profile_error(self):
@@ -104,6 +90,7 @@ class LLMTranslatorTest(unittest.TestCase):
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
         self.assertNotIn('reasoning_effort', args)
         self.assertEqual(args['response_format'], {'type': 'json_object'})
+        self.assertEqual(args['max_tokens'], 8192)
 
         profile['thinking level'] = 'none'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])

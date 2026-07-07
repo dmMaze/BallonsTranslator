@@ -72,8 +72,7 @@ class SecretStore:
         'sk-demo'
     """
 
-    def __init__(self, enable_keyring: bool = False):
-        self.enable_keyring = False
+    def __init__(self):
         self.last_error = ""
 
     @staticmethod

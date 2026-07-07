@@ -113,9 +113,9 @@ class ParamEditor(QPlainTextEdit):
     def __init__(self, param_key: str, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.param_key = param_key
-        self._auto_height = param_key in {'system prompt', 'chat sample'}
+        self._auto_height = param_key == 'prompt'
         self._auto_max_height = 100
-        self._auto_min_height = self._auto_max_height if param_key == 'system prompt' else 58
+        self._auto_min_height = self._auto_max_height
 
         self.setFixedWidth(int(CONFIG_COMBOBOX_LONG))
         if self._auto_height:

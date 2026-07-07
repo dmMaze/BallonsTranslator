@@ -72,33 +72,10 @@ PROVIDER_DEFAULTS = {
     },
 }
 
-DEFAULT_JSON_SYSTEM_PROMPT = (
-    "You are an expert translator. Your task is to accurately translate the given text snippets. "
-    "You MUST provide the output strictly in the specified JSON format, without any additional "
-    "explanations or markdown formatting. The JSON object must have a single key 'translations', "
-    "which is a list of objects, each with an 'id' (integer) and a 'translation' (string).\n\n"
-    "Example Output Schema:\n"
-    '{"translations": [{"id": 1, "translation": "Translated text here."}]}'
+DEFAULT_TRANSLATION_PROMPT = (
+    "Translate faithfully and fluently. Preserve the original meaning, tone, speaker intent, "
+    "and formatting as much as possible. Keep names, honorifics, and terminology consistent."
 )
-DEFAULT_LEGACY_PROMPT_TEMPLATE = (
-    "Please help me to translate the following text from a manga to {to_lang} "
-    "(if it's already in {to_lang} or looks like gibberish you have to output it as it is instead):\n"
-)
-DEFAULT_CHAT_SAMPLE = """日本語-简体中文:
-    source:
-        - 二人のちゅーを 目撃した ぼっちちゃん
-        - ふたりさん
-        - 大好きなお友達には あいさつ代わりに ちゅーするんだって
-        - アイス あげた
-        - 喜多ちゃんとは どどど どういった ご関係なのでしようか...
-        - テレビで見た！
-    target:
-        - 小孤独目击了两人的接吻
-        - 二里酱
-        - 我听说人们会把亲吻作为与喜爱的朋友打招呼的方式
-        - 我给了她冰激凌
-        - 喜多酱和你是怎么样的关系啊...
-        - 我在电视上看到的！"""
 
 
 def _normal_url(url: str) -> str:
@@ -138,10 +115,9 @@ def default_profile(provider: str) -> Dict:
         "model options": list(info["model options"]),
         "thinking level": "None",
         "thinking level options": list(THINKING_LEVEL_OPTIONS),
-        "system prompt": DEFAULT_JSON_SYSTEM_PROMPT,
-        "chat sample": DEFAULT_CHAT_SAMPLE,
+        "prompt": DEFAULT_TRANSLATION_PROMPT,
         "invalid repeat count": 2,
-        "max tokens": 4096,
+        "max tokens": 8192,
         "temperature": 0.1,
         "top p": 1.0,
         "frequency penalty": 0.0,
@@ -211,13 +187,14 @@ def ensure_profile_defaults(profile: Dict) -> Dict:
     if merged["thinking level"] not in THINKING_LEVEL_OPTIONS:
         merged["thinking level"] = "None"
     merged["thinking level options"] = list(THINKING_LEVEL_OPTIONS)
-    old_prompt_mode = merged.get("prompt mode")
-    if old_prompt_mode in {"Legacy delimiter", "XML"}:
-        merged["system prompt"] = DEFAULT_JSON_SYSTEM_PROMPT
+    merged["prompt"] = str(merged.get("prompt") or base["prompt"])
     merged.pop("prompt mode", None)
     merged.pop("prompt mode options", None)
     merged.pop("prompt template", None)
     merged.pop("chat system template", None)
+    merged.pop("system prompt", None)
+    merged.pop("system_prompt", None)
+    merged.pop("chat sample", None)
     legacy_names = {f"{provider} {prompt_mode}" for prompt_mode in ("JSON", "Legacy delimiter", "XML")}
     if _builtin_provider_for_profile(merged) is not None and merged.get("name") in legacy_names:
         merged["name"] = provider
@@ -430,7 +407,7 @@ def profile_from_old_settings(old_key: str, params: Dict, selected: bool = False
 
     Example:
         >>> p = profile_from_old_settings('LLM_API_Translator', {'endpoint': 'https://api.deepseek.com', 'apikey': 'k', 'override model': 'deepseek-v4-flash'}, secret_store=SecretStore(False))
-        >>> p['provider'], p['model'], p['system prompt'] == DEFAULT_JSON_SYSTEM_PROMPT
+        >>> p['provider'], p['model'], p['prompt'] == DEFAULT_TRANSLATION_PROMPT
         ('DeepSeek', 'deepseek-v4-flash', True)
     """
 
@@ -451,8 +428,6 @@ def profile_from_old_settings(old_key: str, params: Dict, selected: bool = False
     if require_key and not api_key:
         return None
 
-    system_prompt = str(params.get("system_prompt") or DEFAULT_JSON_SYSTEM_PROMPT)
-
     profile = default_profile(provider)
     matched_builtin = (
         _normal_url(base_url) == _normal_url(PROVIDER_DEFAULTS[provider]["base url"])
@@ -465,8 +440,6 @@ def profile_from_old_settings(old_key: str, params: Dict, selected: bool = False
         "base url": base_url,
         "require api key": require_key,
         "model": model,
-        "system prompt": system_prompt,
-        "chat sample": str(params.get("chat sample") or DEFAULT_CHAT_SAMPLE),
         "thinking level": thinking,
         "__migrated_from": old_key,
         "__selected_old_translator": bool(selected),

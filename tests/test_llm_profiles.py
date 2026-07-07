@@ -4,6 +4,7 @@ import unittest
 
 from ballontranslator.utils.config import ModuleConfig, json_dump_program_config
 from ballontranslator.utils.llm_profiles import (
+    DEFAULT_TRANSLATION_PROMPT,
     copy_profile,
     dedupe_profiles,
     default_profile,
@@ -27,7 +28,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
                     '3rd party api url': 'https://api.deepseek.com',
                     'prompt template': 'Translate to {to_lang}:',
                     'chat system template': 'Translate to {to_lang}.',
-                    'chat sample': '',
+                    'system_prompt': 'Old prompt with schema pollution.',
                     'max requests per minute': 17,
                     'delay': 0.7,
                     'retry attempts': 4,
@@ -49,6 +50,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
                     'endpoint': 'https://api.deepseek.com',
                     'max requests per minute': 21,
                     'delay': 0.2,
+                    'max tokens': 4096,
                     'retry attempts': 3,
                     'retry timeout': 15,
                     'proxy': '',
@@ -56,7 +58,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
             },
         }
 
-        migrate_module_llm_profiles(module, SecretStore(enable_keyring=False))
+        migrate_module_llm_profiles(module, SecretStore())
 
         self.assertEqual(module['translator'], 'LLMTranslator')
         self.assertFalse({'ChatGPT', 'ChatGPT_exp', 'LLM_API_Translator'} & set(module['translator_params']))
@@ -65,12 +67,16 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(selected['provider'], 'DeepSeek')
         self.assertEqual(selected['model'], 'deepseek-v4-flash')
         self.assertEqual(selected['name'], 'DeepSeek')
+        self.assertEqual(selected['prompt'], DEFAULT_TRANSLATION_PROMPT)
+        self.assertEqual(selected['max tokens'], 4096)
         self.assertNotIn('prompt mode', selected)
         deepseek_profiles = [p for p in module['llm_profiles'] if p['provider'] == 'DeepSeek']
         self.assertEqual(len(deepseek_profiles), 1)
         self.assertNotIn('multiple_keys', selected)
         self.assertNotIn('prompt template', selected)
         self.assertNotIn('chat system template', selected)
+        self.assertNotIn('system prompt', selected)
+        self.assertNotIn('chat sample', selected)
         self.assertNotIn('max requests per minute', selected)
         self.assertNotIn('delay', selected)
         self.assertNotIn('retry attempts', selected)
@@ -172,7 +178,10 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertIn('gpt-5.5', profile['model options'])
         self.assertIn('None', profile['thinking level options'])
         self.assertNotIn('none', profile['thinking level options'])
-        self.assertIn('system prompt', profile)
+        self.assertIn('prompt', profile)
+        self.assertEqual(profile['max tokens'], 8192)
+        self.assertNotIn('system prompt', profile)
+        self.assertNotIn('chat sample', profile)
         self.assertNotIn('prompt template', profile)
         self.assertNotIn('chat system template', profile)
         self.assertNotIn('max requests per minute', profile)
@@ -197,7 +206,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
             'llm_profile': 'deepseek',
         }
 
-        migrate_module_llm_profiles(module, SecretStore(enable_keyring=False))
+        migrate_module_llm_profiles(module, SecretStore())
 
         selected = profile_by_id(module['llm_profiles'], module['llm_profile'])
         self.assertNotIn('max requests per minute', selected)
@@ -252,6 +261,9 @@ class SecretStoreTest(unittest.TestCase):
         profile = default_profile('DeepSeek')
         profile['prompt template'] = 'old prompt'
         profile['chat system template'] = 'old system'
+        profile['system prompt'] = 'old system prompt'
+        profile['system_prompt'] = 'old system prompt'
+        profile['chat sample'] = 'old sample'
         profile['retry attempts'] = 7
         profile['proxy'] = 'http://127.0.0.1:7890'
         cfg = ModuleConfig(llm_profiles=[profile], llm_profile='deepseek')
@@ -263,6 +275,10 @@ class SecretStoreTest(unittest.TestCase):
         self.assertNotIn('"prompt mode options"', saved)
         self.assertNotIn('"prompt template"', saved)
         self.assertNotIn('"chat system template"', saved)
+        self.assertNotIn('"system prompt"', saved)
+        self.assertNotIn('"system_prompt"', saved)
+        self.assertNotIn('"chat sample"', saved)
+        self.assertIn('"max tokens"', saved)
         self.assertNotIn('"retry attempts"', saved)
         self.assertNotIn('"proxy"', saved)
 
