@@ -17,6 +17,7 @@ from ballontranslator.utils.imgproc_utils import enlarge_window, get_block_mask
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.modules.translators import MissingTranslatorParams
 from ballontranslator.modules.translators.exceptions import LLMApiKeyRequiredError, LLMTranslationStopped
+from ballontranslator.modules.exceptions import ModuleRunError
 from ballontranslator.modules.base import BaseModule, soft_empty_cache
 from ballontranslator.modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     GET_VALID_TRANSLATORS, GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_OCR, \
@@ -137,16 +138,21 @@ class ModuleThread(QThread):
         self.last_missing_requirements = []
         self.cancel_event.clear()
         try:
-            if old_module is not None and old_module.name == module_name:
+            same_module = old_module is not None and old_module.name == module_name
+            if same_module and old_module.all_model_loaded():
                 self.last_set_success = True
                 return
             module: Union[TextDetectorBase, BaseTranslator, InpainterBase, OCRBase] = self._prepare_module_class(module_name)
-            params = cfg_module.get_params(self.module_key).get(module_name)
-            self._emit_prepare_progress({'event': 'instantiating', 'message': self.tr('Creating module')})
-            if params is not None:
-                new_module = module(**params)
+            if same_module:
+                new_module = old_module
+                old_module = None
             else:
-                new_module = module()
+                params = cfg_module.get_params(self.module_key).get(module_name)
+                self._emit_prepare_progress({'event': 'instantiating', 'message': self.tr('Creating module')})
+                if params is not None:
+                    new_module = module(**params)
+                else:
+                    new_module = module()
             if self.cancel_event.is_set():
                 raise DownloadCancelled('Module preparation cancelled by user.')
             self._emit_prepare_progress({'event': 'loading_model', 'message': self.tr('Loading model')})
@@ -378,20 +384,23 @@ class TranslateThread(ModuleThread):
         self.last_error = None
         self.last_missing_requirements = []
         self.cancel_event.clear()
-        if self.translator is not None:
-            if self.translator.name == translator:
+        try:
+            same_translator = old_translator is not None and old_translator.name == translator
+            if same_translator and old_translator.all_model_loaded():
                 self.last_set_success = True
                 self.finish_set_module.emit()
                 return
-        
-        try:
             params = cfg_module.translator_params.get(translator)
             translator_module: BaseTranslator = self._prepare_module_class(translator)
-            self._emit_prepare_progress({'event': 'instantiating', 'message': self.tr('Creating module')})
-            if params is not None:
-                new_translator = translator_module(source, target, raise_unsupported_lang=False, **params)
+            if same_translator:
+                new_translator = old_translator
+                old_translator = None
             else:
-                new_translator = translator_module(source, target, raise_unsupported_lang=False)
+                self._emit_prepare_progress({'event': 'instantiating', 'message': self.tr('Creating module')})
+                if params is not None:
+                    new_translator = translator_module(source, target, raise_unsupported_lang=False, **params)
+                else:
+                    new_translator = translator_module(source, target, raise_unsupported_lang=False)
             if self.cancel_event.is_set():
                 raise DownloadCancelled('Module preparation cancelled by user.')
             self._emit_prepare_progress({'event': 'loading_model', 'message': self.tr('Loading model')})
@@ -647,6 +656,10 @@ class ImgtransThread(QThread):
         """请求停止当前任务"""
         self.stop_event.set()
 
+    def _stop_on_stage_failure(self, exception: ModuleRunError, error_msg: str, exception_type: str):
+        create_error_dialog(exception, error_msg, exception_type)
+        self.requestStop()
+
     def runBlktransPipeline(self, blk_list: List[TextBlock], mode: int, blk_ids: List[int]):
         self.clearStopRequest()
         self.job = lambda : self._blktrans_pipeline(blk_list, mode, blk_ids)
@@ -680,8 +693,10 @@ class ImgtransThread(QThread):
         if mode >= 0 and mode < 3:
             try:
                 self.ocr_thread.module.run_ocr(tgt_img, blk_list, split_textblk=True)
-            except Exception as e:
+            except ModuleRunError as e:
                 create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
+                self.finish_blktrans.emit(mode, blk_ids)
+                return
             self.finish_blktrans.emit(mode, blk_ids)
 
         if mode != 0 and mode < 3:
@@ -771,9 +786,9 @@ class ImgtransThread(QThread):
                 try:
                     mask, blk_list = self.textdetector.detect(img, self.imgtrans_proj)
                     need_save_mask = True
-                except Exception as e:
-                    create_error_dialog(e, self.tr('Text Detection Failed.'), 'TextDetectFailed')
-                    blk_list = []
+                except ModuleRunError as e:
+                    self._stop_on_stage_failure(e, self.tr('Text Detection Failed.'), 'TextDetectFailed')
+                    break
                 self.detect_counter += 1
                 if pcfg.module.keep_exist_textlines:
                     blk_list = self.imgtrans_proj.pages[imgname] + blk_list
@@ -796,8 +811,9 @@ class ImgtransThread(QThread):
             if cfg_module.enable_ocr:
                 try:
                     self.ocr.run_ocr(img, blk_list)
-                except Exception as e:
-                    create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
+                except ModuleRunError as e:
+                    self._stop_on_stage_failure(e, self.tr('OCR Failed.'), 'OCRFailed')
+                    break
                 self.ocr_counter += 1
 
                 if pcfg.restore_ocr_empty:
@@ -874,7 +890,7 @@ class ImgtransThread(QThread):
                 if len(blk_removed) > 0:
                     self.imgtrans_proj.load_mask_by_imgname
         
-        if cfg_module.enable_translate and low_vram_trans:
+        if cfg_module.enable_translate and low_vram_trans and not self.isStopRequested():
             unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
             for imgname in pages_to_iterate:
                 # 检查是否请求停止
@@ -1104,7 +1120,7 @@ class ModuleManager(QObject):
     def _module_ready(self, module_key: str, module_name: str) -> bool:
         thread = self._thread_for_module_key(module_key)
         module = thread.module
-        return module is not None and module.name == module_name
+        return module is not None and module.name == module_name and module.all_model_loaded()
 
     def translator_metadata(self, translator: str = None):
         if translator is None:

@@ -45,33 +45,14 @@ class OCRPaddleVL(OCRBase):
 
     @property
     def max_retry_times(self):
-        return max(1, self._int_param('max retry times', 3))
+        return max(1, int(self.get_param_value('max retry times')))
 
     @property
     def retry_interval(self):
-        return max(0.0, self._float_param('retry interval', 1.0))
+        return max(0.0, float(self.get_param_value('retry interval')))
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.debug = False
-
-    def _param_value(self, key: str, default):
-        val = self.params.get(key, default)
-        if isinstance(val, dict):
-            return val.get('value', val.get('text', default))
-        return val
-
-    def _int_param(self, key: str, default: int) -> int:
-        try:
-            return int(self._param_value(key, default))
-        except Exception:
-            return default
-
-    def _float_param(self, key: str, default: float) -> float:
-        try:
-            return float(self._param_value(key, default))
-        except Exception:
-            return default
 
     def _extract_texts_from_pruned(self, pruned: Any) -> List[str]:
         texts: List[str] = []
@@ -221,22 +202,6 @@ class OCRPaddleVL(OCRBase):
                 time.sleep(self.retry_interval)
 
         raise RuntimeError(f'Paddle-VL OCR failed after {attempts} attempts: {last_error}') from last_error
-
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List, *args, **kwargs) -> None:
-        im_h, im_w = img.shape[:2]
-        for i, blk in enumerate(blk_list):
-            x1, y1, x2, y2 = blk.xyxy
-            y1c, y2c = max(0, y1), min(im_h, y2)
-            x1c, x2c = max(0, x1), min(im_w, x2)
-
-            if y1c >= y2c or x1c >= x2c:
-                blk.text = ''
-                continue
-
-            try:
-                blk.text = self.ocr_img(img[y1c:y2c, x1c:x2c], **kwargs)
-            except Exception as e:
-                raise RuntimeError(f'Paddle-VL OCR failed on block {i + 1}/{len(blk_list)}') from e
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
