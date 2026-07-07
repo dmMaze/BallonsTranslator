@@ -9,6 +9,7 @@ from typing import Callable, Dict, Iterable, List, Optional
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
+from packaging.version import InvalidVersion
 from ballontranslator.utils import package_installer
 from ballontranslator.utils.package_installer import InstallResult
 from ballontranslator.utils.torch_install_helper import (
@@ -580,8 +581,15 @@ class PyPackageManager:
             dist = importlib_metadata.distribution(req.name)
         except importlib_metadata.PackageNotFoundError:
             return False
-        if req.specifier and not req.specifier.contains(dist.version, prereleases=True):
-            return False
+        if req.specifier:
+            version = dist.version
+            if not version:
+                return False
+            try:
+                if not req.specifier.contains(version, prereleases=True):
+                    return False
+            except (InvalidVersion, TypeError):
+                return False
         return True
 
     @staticmethod
