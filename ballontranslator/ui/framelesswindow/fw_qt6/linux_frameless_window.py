@@ -87,9 +87,11 @@ class LinuxFramelessWindow(QWidget):
     #     return QRect(0, 0, size.width(), size.height())
 
     def eventFilter(self, obj, event):
+        if not self._isResizeEnabled or not isinstance(event, QMouseEvent):
+            return super().eventFilter(obj, event)
         et = event.type()
-        if et != QEvent.Type.MouseButtonPress and et != QEvent.Type.MouseMove or not self._isResizeEnabled:
-            return False
+        if et != QEvent.Type.MouseButtonPress and et != QEvent.Type.MouseMove:
+            return super().eventFilter(obj, event)
 
         edges = Qt.Edge(0)
         pos = event.globalPosition().toPoint() - self.pos()

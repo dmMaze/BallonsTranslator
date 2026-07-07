@@ -301,10 +301,6 @@ class ProfileCardWidget(QGroupBox):
         self.details.paramwidget_edited.connect(self.on_detail_edited)
         self._position_header_controls()
         self.refreshConditionalVisibility()
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
-            self._app_filter_installed = True
         self.destroyed.connect(self._remove_app_event_filter)
 
     def _install_detail_editor_scrollbars(self):
@@ -372,7 +368,10 @@ class ProfileCardWidget(QGroupBox):
         self.more_btn.setToolTip(self.tr('Edit'))
         self.more_btn.setIcon(self.edit_icon_active if expanded else self.edit_icon)
         if expanded:
+            self._install_app_event_filter()
             self.refreshConditionalVisibility()
+        else:
+            self._remove_app_event_filter()
         self._sync_minimum_width_with_content()
 
     def expand(self):
@@ -472,7 +471,7 @@ class ProfileCardWidget(QGroupBox):
                 self.more_btn.setIcon(self.edit_icon_active)
             elif event.type() == QEvent.Type.Leave and not self.details.isVisible():
                 self.more_btn.setIcon(self.edit_icon)
-        elif event.type() == QEvent.Type.MouseButtonPress and self.details.isVisible():
+        elif self.details.isVisible() and isinstance(obj, QWidget) and event.type() == QEvent.Type.MouseButtonPress:
             if not self._name_editing and not self._globalMouseEventInsideCard(event):
                 self.collapse()
         return super().eventFilter(obj, event)
@@ -485,6 +484,14 @@ class ProfileCardWidget(QGroupBox):
         else:
             return True
         return self.rect().contains(self.mapFromGlobal(global_pos))
+
+    def _install_app_event_filter(self):
+        if self._app_filter_installed:
+            return
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._app_filter_installed = True
 
     def _remove_app_event_filter(self, *args):
         if not self._app_filter_installed:

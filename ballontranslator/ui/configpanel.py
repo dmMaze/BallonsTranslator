@@ -945,10 +945,11 @@ class ConfigPanel(QDialog):
         self._outside_click_filter_installed = False
 
     def eventFilter(self, watched, event):
-        if event.type() == QEvent.Type.MouseButtonPress and self.isVisible():
+        if not self.isVisible() or not isinstance(watched, QWidget):
+            return super().eventFilter(watched, event)
+        if event.type() == QEvent.Type.MouseButtonPress:
             if (
-                isinstance(watched, QWidget)
-                and QApplication.activePopupWidget() is None
+                QApplication.activePopupWidget() is None
                 and not self._widgetInsidePanel(watched)
                 and not self._activeWidgetInWhitelist()
             ):

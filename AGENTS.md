@@ -49,6 +49,14 @@ Important areas:
 - Match widget structure before fighting fonts or spacing. If two checkbox rows need to align, use the same construction pattern, for example a bare checkbox plus `ParamNameLabel`, rather than mixing `QCheckBox(text=...)` with a separate label.
 - For UI-heavy changes, run at least `python -m py_compile` on touched Python files, `git diff --check`, and an offscreen Qt smoke check when practical. State when visual polish still needs a real themed-app pass.
 
+## Qt Event Filter Rules
+
+- Treat `QApplication` and `QCoreApplication` event filters as global hooks. Install them only while the behavior is active when possible, and remove them on hide, collapse, close, or destroy.
+- In app-wide `eventFilter` methods, check cheap relevance first, such as visibility, expected receiver, `isinstance(watched, QWidget)`, or `isinstance(event, QMouseEvent)`, before calling `event.type()`, `globalPosition()`, `globalPos()`, or widget-specific event methods.
+- In widget-local filters, guard with the watched object first, for example `if obj is not target: return super().eventFilter(obj, event)`, before reading event details.
+- For outside-click handling, prefer widget-target mouse press rules and explicit popup/dialog whitelists over broad geometry or `QWindow` event interpretation.
+- For risky app-wide filter changes, add an offscreen Qt regression that sends an irrelevant watched object or non-mouse event and proves the filter ignores it before requesting `event.type()`.
+
 ## Code Comment Rules
 - Include a standard Python >>> doctest snippet in the docstring of core classes and complex functions.
 - Add the minimum comments needed to make code review efficient.
