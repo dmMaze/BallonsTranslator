@@ -2022,6 +2022,13 @@ class MainWindow(mainwindow_cls):
         dialog.show()   # exec_ will block main thread
 
     def on_show_llm_key_dialog(self, profile_id: str, profile_name: str):
+        dialog_key = profile_id or profile_name
+        # QMessageBox.exec() runs a nested event loop, so queued RUN signals can re-enter here.
+        exception_type = f'LLMApiKeyRequired:{dialog_key}'
+        if exception_type in shared.showed_exception:
+            return
+        shared.showed_exception.add(exception_type)
+
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Warning)
         msg.setWindowTitle(self.tr('API key required'))
@@ -2031,9 +2038,12 @@ class MainWindow(mainwindow_cls):
         )
         fill_btn = msg.addButton(self.tr('Fill API Key'), QMessageBox.AcceptRole)
         msg.addButton(QMessageBox.StandardButton.Cancel)
-        msg.exec()
-        if msg.clickedButton() == fill_btn:
-            self.focus_llm_profile(profile_id)
+        try:
+            msg.exec()
+            if msg.clickedButton() == fill_btn:
+                self.focus_llm_profile(profile_id)
+        finally:
+            shared.showed_exception.discard(exception_type)
 
     def setupRegisterWidget(self):
         self.titleBar.viewMenu.addSeparator()

@@ -39,12 +39,26 @@ from ballontranslator.utils.config import pcfg, RunStatus, save_config
 from ballontranslator.utils.global_callbacks import register_global_callback
 cfg_module = pcfg.module
 
+# RUN can report the same missing LLM key from multiple page workers.
+_llm_key_dialog_lock = threading.Lock()
+_shown_llm_key_dialog_profiles = set()
+
 
 def _show_llm_key_required_dialog(error: LLMApiKeyRequiredError):
+    profile_key = error.profile_id or error.profile_name
+    with _llm_key_dialog_lock:
+        if profile_key in _shown_llm_key_dialog_profiles:
+            return
+        _shown_llm_key_dialog_profiles.add(profile_key)
     if not shared.HEADLESS:
         shared.show_llm_key_dialog_in_mainthread(error.profile_id, error.profile_name)
     else:
         LOGGER.error(str(error))
+
+
+def _reset_llm_key_required_dialogs():
+    with _llm_key_dialog_lock:
+        _shown_llm_key_dialog_profiles.clear()
 
 
 class ModuleThread(QThread):
@@ -264,6 +278,8 @@ class ModuleThread(QThread):
                 self.job()
         except LLMApiKeyRequiredError as e:
             _show_llm_key_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
         except LLMTranslationStopped:
             LOGGER.info(f'{self.module_key} task stopped by user.')
         except Exception as e:
@@ -477,6 +493,8 @@ class TranslateThread(ModuleThread):
         except LLMApiKeyRequiredError as e:
             success = False
             _show_llm_key_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
         except LLMTranslationStopped:
             success = False
             LOGGER.info('Translation stopped by user.')
@@ -488,6 +506,7 @@ class TranslateThread(ModuleThread):
         return success
 
     def translatePage(self, page_dict, page_key: str):
+        self.pipeline_stop_event = None
         self.job = lambda: self._translate_page(page_dict, page_key)
         self.start()
 
@@ -645,6 +664,7 @@ class ImgtransThread(QThread):
             return True
         except LLMApiKeyRequiredError as e:
             _show_llm_key_required_dialog(e)
+            self.requestStop()
         except LLMTranslationStopped:
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
@@ -831,6 +851,10 @@ class ImgtransThread(QThread):
                     if trans_success:
                         self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_TRANSLATE)
                     self.update_translate_progress.emit(self.translate_counter)
+
+            if self.isStopRequested():
+                LOGGER.info('Image translation pipeline stopped.')
+                break
                         
             if cfg_module.enable_inpaint:
                 if mask is None:
@@ -1567,6 +1591,7 @@ class ModuleManager(QObject):
                 LOGGER.warning('Terminating a running translation thread.')
                 self.translate_thread.terminate()
             return
+        _reset_llm_key_required_dialogs()
         self._prepare_modules_then(
             [('translator', cfg_module.translator)],
             lambda: self.translate_thread.translatePage(self.imgtrans_proj.pages, page_key),
@@ -1633,6 +1658,7 @@ class ModuleManager(QObject):
         self.inpaint_th_finished.emit()
 
     def runImgtransPipeline(self, pages_to_process=None):
+        _reset_llm_key_required_dialogs()
         if self.imgtrans_proj.is_empty:
             LOGGER.info('proj file is empty, nothing to do')
             self.progress_msgbox.hide()
@@ -1678,6 +1704,7 @@ class ModuleManager(QObject):
         self.imgtrans_thread.requestStop()
 
     def runBlktransPipeline(self, blk_list: List[TextBlock], mode: int, blk_ids: List[int]):
+        _reset_llm_key_required_dialogs()
         self.terminateRunningThread()
         required_modules = []
         if mode >= 0 and mode < 3:
