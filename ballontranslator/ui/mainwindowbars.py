@@ -7,7 +7,7 @@ from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, Q
 from qtpy.QtCore import Qt, Signal, QPoint, QEvent, QSize, QRectF
 from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon, QPainterPath, QRegion
 
-from .custom_widget import Widget, PaintQSlider, SmallComboBox, ConfigClickableLabel
+from .custom_widget import Widget, PaintQSlider, SmallComboBox
 from .misc import themed_icon_path
 from ballontranslator.utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import FramelessMoveResize
@@ -546,55 +546,6 @@ def cfg_icon() -> QIcon:
     return QIcon(themed_icon_path('leftbar_config_activate.svg'))
 
 
-class SelectionWithConfigWidget(Widget):
-
-    cfg_clicked = Signal()
-
-    def __init__(self, selector_name: str, add_cfg_btn=True, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        label = ConfigClickableLabel(text=selector_name)
-        label.clicked.connect(self.cfg_clicked)
-        
-        self.selector = SmallComboBox()
-
-        self.cfg_btn = None
-        if add_cfg_btn:
-            self.cfg_btn = SmallConfigPutton()
-            self.cfg_btn.clicked.connect(self.cfg_clicked)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(label)
-        layout2 = QHBoxLayout()
-        layout2.setSpacing(0)
-        layout2.addWidget(self.selector)
-        layout2.addWidget(self.cfg_btn)
-        layout2.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(label)
-        layout.addLayout(layout2)
-
-    def enterEvent(self, event: QEvent) -> None:
-        if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(cfg_icon())
-        return super().enterEvent(event)
-
-    def leaveEvent(self, event: QEvent) -> None:
-        if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(QIcon())
-        return super().leaveEvent(event)
-    
-    def blockSignals(self, block: bool):
-        self.selector.blockSignals(block)
-        super().blockSignals(block)
-    
-    def setSelectedValue(self, value: str, block_signals=True):
-        if block_signals:
-            self.blockSignals(True)
-        self.selector.setCurrentText(value)
-        if block_signals:
-            self.blockSignals(False)
-    
-
 def _theme_value(key: str, fallback: str) -> str:
     theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
     try:
@@ -936,7 +887,10 @@ class TranslatorSelectionWidget(Widget):
 
     def _buildProfileMenu(self, menu: QMenu, profile: dict):
         profile_id = profile.id
-        selected_profile = self.selector.currentText() == LLM_TRANSLATOR_KEY and pcfg.module.translator_llm_id == profile_id
+        selected_profile = (
+            self.selector.currentText() == LLM_TRANSLATOR_KEY
+            and pcfg.module.translator_llm_id == profile_id
+        )
 
         _add_bottom_menu_section(menu, self.tr('Thinking Level'))
         thinking_options = [str(option) for option in profile.thinking_level_options if str(option)]
@@ -1017,7 +971,7 @@ class BottomBar(Widget):
         
         self.textdet_selector = ModuleSelectionToolButtonWidget(self.tr('Text Detector'), 'textdetect.svg')
         self.ocr_selector = ModuleSelectionToolButtonWidget(self.tr('OCR'), 'small_ocr.svg')
-        self.inpaint_selector = SelectionWithConfigWidget(self.tr('Inpaint'))
+        self.inpaint_selector = ModuleSelectionToolButtonWidget(self.tr('Inpaint'), 'drawingtools_inpaint.svg')
         self.trans_selector = TranslatorSelectionWidget()
 
         self.hlayout = QHBoxLayout(self)

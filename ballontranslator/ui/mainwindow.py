@@ -1393,6 +1393,7 @@ class MainWindow(mainwindow_cls):
     def on_llm_profile_changed(self, profile_id: str):
         if profile_id:
             pcfg.module.translator_llm_id = profile_id
+            self.configPanel.llm_profiles_panel.syncProfile(profile_id)
         self.configPanel.trans_config_panel.refreshLLMProfiles()
         self.bottomBar.trans_selector.updateButtonText()
 

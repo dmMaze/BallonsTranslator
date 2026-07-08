@@ -849,6 +849,10 @@ QToolButton#BottomBarModuleToolButton {
     font-size: 13px;
 }
 
+QToolButton#BottomBarModuleToolButton[llmActive="true"] {
+    color: #5e98f7;
+}
+
 QToolButton#BottomBarModuleToolButton:hover,
 QToolButton#BottomBarModuleToolButton:pressed,
 QToolButton#BottomBarModuleToolButton:open {
@@ -1159,14 +1163,6 @@ QLabel#angleLabel {
 }
 
 .ClickableLabel::hover {
-    background-color: rgba(30, 147, 229, 20%);
-}
-
-.ConfigClickableLabel {
-    font-size: 12px;
-}
-
-.ConfigClickableLabel::hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 

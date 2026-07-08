@@ -320,6 +320,25 @@ class ProfileCardWidget(QGroupBox):
             editor.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, editor, fadeout=False, hover_style=True)
             editor.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, editor, fadeout=False, hover_style=True)
 
+    def syncFromProfile(self):
+        self._syncComboBox(self.model_combo, self.profile.model_options, self.profile.model)
+        thinking_combo = self.details.param_widgets.get('thinking_level')
+        if isinstance(thinking_combo, ParamComboBox):
+            self._syncComboBox(thinking_combo, self.profile.thinking_level_options, self.profile.thinking_level)
+
+    def _syncComboBox(self, combo: ParamComboBox, options, value: str):
+        combo.blockSignals(True)
+        option_texts = [str(option) for option in options if str(option)]
+        current_options = [combo.itemText(i) for i in range(combo.count())]
+        if current_options != option_texts:
+            combo.clear()
+            combo.addItems(option_texts)
+        value = str(value or '')
+        if value and combo.findText(value) < 0:
+            combo.addItem(value)
+        combo.setCurrentText(value)
+        combo.blockSignals(False)
+
     def _detail_params(self):
         params = {}
         for key, widget_type in PROFILE_PARAM_DEFS:
@@ -760,6 +779,13 @@ class LLMProfilesWidget(QWidget):
         for row in self.rows.values():
             self.applyFilterToRow(row, query)
 
+    def syncProfile(self, profile_id: str):
+        row = self.rows.get(profile_id)
+        if row is None:
+            return
+        row.syncFromProfile()
+        self.applyFilterToRow(row)
+
     def collapseProfiles(self):
         for row in self.rows.values():
             row.collapse()
@@ -772,7 +798,6 @@ class LLMProfilesWidget(QWidget):
         profile.built_in = False
         profile.api_key = ''
         pcfg.module.llm_profiles.append(profile)
-        pcfg.module.translator_llm_id = profile.id
         row = self.addProfileRow(profile)
         self.applyFilterToRow(row)
         self.focusProfileName(profile.id, deferred=True)
@@ -786,7 +811,6 @@ class LLMProfilesWidget(QWidget):
         copied = copy_profile(copy.deepcopy(profile))
         copied.id = f"custom-{uuid.uuid4().hex[:10]}"
         pcfg.module.llm_profiles.append(copied)
-        pcfg.module.translator_llm_id = copied.id
         row = self.addProfileRow(copied)
         self.applyFilterToRow(row)
         self.focusProfileName(copied.id, deferred=True)

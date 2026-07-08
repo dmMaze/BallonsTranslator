@@ -13,6 +13,9 @@ LLM_TRANSLATOR_KEY = "LLMTranslator"
 OLD_LLM_TRANSLATORS = ("ChatGPT", "ChatGPT_exp", "LLM_API_Translator")
 
 THINKING_LEVEL_OPTIONS = ["None", "minimal", "low", "medium", "high", "xhigh"]
+PROVIDER_ALIASES = {
+    "Google": "Gemini",
+}
 
 PROVIDER_DEFAULTS = {
     "OpenAI": {
@@ -38,7 +41,7 @@ PROVIDER_DEFAULTS = {
         "model": "deepseek-v4-flash",
         "model_options": ["deepseek-v4-flash", "deepseek-v4-pro"],
     },
-    "Google": {
+    "Gemini": {
         "id": "google",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "require_api_key": True,
@@ -128,6 +131,7 @@ class LLMProfile(Config):
 
     @classmethod
     def from_provider(cls, provider: str) -> "LLMProfile":
+        provider = canonical_provider(provider)
         info = copy.deepcopy(PROVIDER_DEFAULTS[provider])
         return cls(**info, name=provider, built_in=True)
 
@@ -160,6 +164,10 @@ def default_profile(provider: str) -> LLMProfile:
 
 def default_profiles() -> List[LLMProfile]:
     return [default_profile(provider) for provider in PROVIDER_DEFAULTS]
+
+
+def canonical_provider(provider: str) -> str:
+    return PROVIDER_ALIASES.get(provider, provider)
 
 
 def _provider_from_profile_id(profile_id: str) -> str:
@@ -287,12 +295,13 @@ def _stable_profile_id(provider: str, base_url: str, model: str, api_key: Any, s
 
 
 def _infer_provider(provider: str, base_url: str, model: str) -> str:
+    provider = canonical_provider(provider)
     url = _normal_url(base_url).lower()
     model = (model or "").lower()
     if "api.deepseek.com" in url or model.startswith("deepseek"):
         return "DeepSeek"
     if "generativelanguage.googleapis.com" in url or model.startswith("gemini"):
-        return "Google"
+        return "Gemini"
     if "api.x.ai" in url or model.startswith("grok"):
         return "Grok"
     if "openrouter.ai" in url:
@@ -307,6 +316,7 @@ def _infer_provider(provider: str, base_url: str, model: str) -> str:
 
 
 def normalize_model(provider: str, model: str) -> Tuple[str, str]:
+    provider = canonical_provider(provider)
     model = _strip_model_prefix(model)
     thinking = "None"
     if provider == "OpenAI":
@@ -359,7 +369,8 @@ def profile_from_old_settings(old_key: str, params: Dict, secret_store: SecretSt
     override_model = _strip_model_prefix(str(params.get("override model") or ""))
     raw_model = _strip_model_prefix(str(override_model or params.get("model") or ""))
     using_override = bool(override_model)
-    provider = _infer_provider("", _old_base_url(old_key, params, "OpenAI"), raw_model)
+    raw_provider = str(params.get("provider") or "")
+    provider = _infer_provider(raw_provider, _old_base_url(old_key, params, "OpenAI"), raw_model)
     base_url = _old_base_url(old_key, params, provider)
     model, thinking = normalize_model(provider, raw_model)
     if provider in {"OpenAI", "DeepSeek"} and not using_override:
