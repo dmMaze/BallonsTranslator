@@ -113,26 +113,37 @@ class ConfigTextLabel(QLabel):
 
 
 class ConfigSubBlock(Widget):
-    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, 
-    vertical_layout=True, insert_stretch: bool = False, content_margins = (0, 0, 0, 0), fnt_size=None) -> None:
+    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None,
+    vertical_layout=True, insert_stretch: bool = False, content_margins = (0, 0, 0, 0), fnt_size=None,
+    tooltip: str = None) -> None:
         super().__init__()
         if vertical_layout:
             layout = QVBoxLayout(self)
         else:
             layout = QHBoxLayout(self)
 
+        tooltip = tooltip or discription
+        if tooltip is None and isinstance(widget, QWidget):
+            tooltip = widget.toolTip()
         if fnt_size is None:
             fnt_size = CONFIG_FONTSIZE_CONTENT
             if discription is not None:
                 fnt_size = CONFIG_FONTSIZE_CONTENT-2
         if name is not None:
             textlabel = ConfigTextLabel(name, fnt_size, QFont.Weight.Normal)
+            if tooltip:
+                textlabel.setToolTip(tooltip)
             layout.addWidget(textlabel)
         if discription is not None:
-            layout.addWidget(ConfigTextLabel(discription, fnt_size))
+            description_label = ConfigTextLabel(discription, fnt_size)
+            if tooltip:
+                description_label.setToolTip(tooltip)
+            layout.addWidget(description_label)
         if insert_stretch:
             layout.insertStretch(-1)
         if isinstance(widget, QWidget):
+            if tooltip and not widget.toolTip():
+                widget.setToolTip(tooltip)
             layout.addWidget(widget)
         else:
             layout.addLayout(widget)
@@ -143,6 +154,8 @@ class ConfigSubBlock(Widget):
 def combobox_with_label(sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True, parent: QWidget = None, insert_stretch: bool = False) -> Tuple[ConfigComboBox, QWidget]:
     combox = ConfigComboBox(fix_size=fix_size, scrollWidget=parent)
     combox.addItems(sel)
+    if discription:
+        combox.setToolTip(discription)
     if target_block is None:
         sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout, insert_stretch=insert_stretch, fnt_size=CONFIG_FONTSIZE_TABLE-2)
         sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -151,7 +164,10 @@ def combobox_with_label(sel: List[str], name: str, discription: str = None, vert
     else:
         layout = target_block.layout()
         layout.addSpacing(12)
-        layout.addWidget(ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal))
+        textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
+        if discription:
+            textlabel.setToolTip(discription)
+        layout.addWidget(textlabel)
         layout.addWidget(combox)
         return combox, target_block
     
@@ -163,12 +179,13 @@ def checkbox_with_label(name: str, discription: str = None, target_block: QWidge
         font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
         checkbox.setFont(font)
         checkbox.setText(discription)
+        checkbox.setToolTip(discription)
         vertical_layout = True
     else:
         vertical_layout = False
 
     if target_block is None:
-        sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout)
+        sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout, tooltip=discription)
         if vertical_layout is False:
             sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         target_block = sublock
@@ -434,7 +451,7 @@ class ConfigPanel(QDialog):
         self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'), scrollWidget=self)
         self.inpaint_config_panel.module_label.hide()
         self.inpaint_sub_block = inpaintConfigPanel.addBlockWidget(self.inpaint_config_panel)
-        self.inpaint_config_panel.filter_mask_by_bboxes_checker.clicked.connect(self.on_filter_mask_by_bboxes_clicked)
+        self.inpaint_config_panel.filter_mask_by_bboxes_checker.checker_changed.connect(self.on_filter_mask_by_bboxes_clicked)
 
         self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
         self.trans_config_panel.module_label.hide()
@@ -663,8 +680,8 @@ class ConfigPanel(QDialog):
     def on_keepline_clicked(self):
         pcfg.module.keep_exist_textlines = self.detect_config_panel.keep_existing_checker.isChecked()
 
-    def on_filter_mask_by_bboxes_clicked(self):
-        pcfg.module.filter_mask_by_bboxes = self.inpaint_config_panel.filter_mask_by_bboxes_checker.isChecked()
+    def on_filter_mask_by_bboxes_clicked(self, checked: bool):
+        pcfg.module.filter_mask_by_bboxes = checked
 
     def addConfigBlock(self, header: str, parent_item: TableItem, section_key: str) -> ConfigBlock:
         cb = ConfigBlock(parent=self)
@@ -1065,7 +1082,7 @@ class ConfigPanel(QDialog):
         ))
 
         self.detect_config_panel.keep_existing_checker.setChecked(pcfg.module.keep_exist_textlines)
-        self.inpaint_config_panel.filter_mask_by_bboxes_checker.setChecked(pcfg.module.filter_mask_by_bboxes)
+        self.inpaint_config_panel.filter_mask_by_bboxes_checker.checker.setChecked(pcfg.module.filter_mask_by_bboxes)
         self.let_effect_combox.setCurrentIndex(pcfg.let_fnteffect_flag)
         self.let_fntsize_combox.setCurrentIndex(pcfg.let_fntsize_flag)
         self.let_fntstroke_combox.setCurrentIndex(pcfg.let_fntstroke_flag)

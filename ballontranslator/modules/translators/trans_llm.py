@@ -97,7 +97,8 @@ class LLMTranslator(BaseTranslator):
 
     @property
     def profile(self) -> LLMProfile:
-        profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.llm_profile)
+        # probably not a good idea to get it here
+        profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.translator_llm_id)
         if profile is None and pcfg.module.llm_profiles:
             profile = pcfg.module.llm_profiles[0]
         if profile is None:

@@ -390,7 +390,8 @@ class MainWindow(mainwindow_cls):
         self.configPanel.trans_config_panel.source_combobox.currentTextChanged.connect(self.on_trans_src_changed)
         self.configPanel.trans_config_panel.llm_profile_changed.connect(self.on_llm_profile_changed)
         self.configPanel.trans_config_panel.llm_profile_config_clicked.connect(self.focus_llm_profile)
-        self.configPanel.llm_profiles_panel.profiles_changed.connect(self.on_llm_profiles_changed)
+        self.configPanel.llm_profiles_panel.profile_ui_updated.connect(self.on_llm_profile_ui_updated)
+        self.configPanel.llm_profiles_panel.profile_summary_changed.connect(self.on_llm_profile_summary_changed)
 
         self.drawingPanel.maskTransperancySlider.setValue(int(pcfg.mask_transparency * 100))
         self.leftBar.initRecentProjMenu(pcfg.recent_proj_list)
@@ -1359,7 +1360,7 @@ class MainWindow(mainwindow_cls):
         self.configPanel.focusOnTranslator()
 
     def focus_llm_profile(self, profile_id: str = None, expand_details: bool = True):
-        self.configPanel.focusOnLLMProfile(profile_id or pcfg.module.llm_profile, expand_details=expand_details)
+        self.configPanel.focusOnLLMProfile(profile_id or pcfg.module.translator_llm_id, expand_details=expand_details)
 
     def to_inpaint_config(self):
         self.configPanel.focusOnInpaint()
@@ -1391,12 +1392,15 @@ class MainWindow(mainwindow_cls):
 
     def on_llm_profile_changed(self, profile_id: str):
         if profile_id:
-            pcfg.module.llm_profile = profile_id
+            pcfg.module.translator_llm_id = profile_id
         self.configPanel.trans_config_panel.refreshLLMProfiles()
         self.bottomBar.trans_selector.updateButtonText()
 
-    def on_llm_profiles_changed(self):
+    def on_llm_profile_ui_updated(self):
         self.configPanel.trans_config_panel.refreshLLMProfiles()
+        self.bottomBar.trans_selector.updateButtonText()
+
+    def on_llm_profile_summary_changed(self):
         self.bottomBar.trans_selector.updateButtonText()
 
     def on_trans_src_changed(self):

@@ -87,7 +87,12 @@ class LinuxFramelessWindow(QWidget):
     #     return QRect(0, 0, size.width(), size.height())
 
     def eventFilter(self, obj, event):
-        if not self._isResizeEnabled or not isinstance(event, QMouseEvent):
+        if (
+            not self._isResizeEnabled
+            or not isinstance(obj, QWidget)
+            or obj.window() is not self
+            or not isinstance(event, QMouseEvent)
+        ):
             return super().eventFilter(obj, event)
         et = event.type()
         if et != QEvent.Type.MouseButtonPress and et != QEvent.Type.MouseMove:
@@ -117,7 +122,13 @@ class LinuxFramelessWindow(QWidget):
             else:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
 
-        # elif obj in (self, self.titleBar) and et == QEvent.Type.MouseButtonPress and edges:
-        #     LinuxMoveResize.starSystemResize(self, event.globalPosition(), edges)
+        elif (
+            et == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+            and edges
+            and self.windowState() == Qt.WindowState.WindowNoState
+        ):
+            LinuxMoveResize.starSystemResize(self, event.globalPosition(), edges)
+            return True
 
         return super().eventFilter(obj, event)

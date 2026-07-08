@@ -179,6 +179,9 @@ class ParamCheckerBox(QWidget):
         checked = 'true' if is_checked else 'false'
         self.paramwidget_edited.emit(self.param_key, checked)
 
+    def isChecked(self):
+        return self.checker.isChecked()
+
 
 class ParamCheckBox(QCheckBox):
     paramwidget_edited = Signal(str, bool)
@@ -207,6 +210,18 @@ def ensure_current_device_option(param_dict: dict):
         options.append(current_value)
     param_dict['options'] = options
     param_dict['value'] = current_value if current_value in options else 'cpu'
+
+
+def set_label_tooltip_from_widget(label: QWidget, widget: QWidget):
+    """Mirror an editor tooltip onto its visible label.
+
+    Example:
+        >>> set_label_tooltip_from_widget.__name__
+        'set_label_tooltip_from_widget'
+    """
+    tooltip = widget.toolTip()
+    if tooltip:
+        label.setToolTip(tooltip)
 
 
 class ParamPushButton(QPushButton):
@@ -332,6 +347,7 @@ class ParamWidget(QWidget):
                 row_layout.setSpacing(4)
                 param_label = ParamNameLabel(display_param_name)
                 param_label.setObjectName('ParamLabelAboveLabel')
+                set_label_tooltip_from_widget(param_label, param_widget)
                 row_layout.addWidget(param_label, 0, Qt.AlignmentFlag.AlignLeft)
                 row_layout.addWidget(param_widget, 0, Qt.AlignmentFlag.AlignLeft)
                 param_layout.addWidget(row_widget, ii, 0, 1, 2)
@@ -343,6 +359,8 @@ class ParamWidget(QWidget):
             if require_label:
                 param_label = ParamNameLabel(display_param_name)
                 param_label.setObjectName('ParamFieldLabel')
+                if param_widget is not None:
+                    set_label_tooltip_from_widget(param_label, param_widget)
                 param_layout.addWidget(param_label, ii, 0)
                 row_widgets.append(param_label)
                 widget_idx = 1
@@ -560,7 +578,7 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.llm_profile_combobox.clear()
         for profile in pcfg.module.llm_profiles:
             self.llm_profile_combobox.addItem(profile.name or profile.id, profile.id)
-        idx = self.llm_profile_combobox.findData(pcfg.module.llm_profile)
+        idx = self.llm_profile_combobox.findData(pcfg.module.translator_llm_id)
         if idx >= 0:
             self.llm_profile_combobox.setCurrentIndex(idx)
         self.llm_profile_combobox.blockSignals(False)
@@ -568,11 +586,11 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
     def on_llm_profile_changed(self):
         profile_id = self.llm_profile_combobox.currentData()
         if profile_id:
-            pcfg.module.llm_profile = profile_id
+            pcfg.module.translator_llm_id = profile_id
             self.llm_profile_changed.emit(profile_id)
 
     def on_llm_profile_config_clicked(self):
-        profile_id = self.llm_profile_combobox.currentData() or pcfg.module.llm_profile
+        profile_id = self.llm_profile_combobox.currentData() or pcfg.module.translator_llm_id
         self.llm_profile_config_clicked.emit(profile_id)
 
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
@@ -604,18 +622,9 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         self.inpainter_changed = self.module_changed
         self.setInpainter = self.setModule
         self.needInpaintChecker = ParamCheckerBox(self.tr('Let the program decide whether it is necessary to use the selected inpaint method.'))
-        self.filter_mask_by_bboxes_checker = QCheckBox()
-        self.filter_mask_by_bboxes_checker.setObjectName('ConfigCheckBox')
-        filter_mask_label = ParamNameLabel(self.tr('Filter mask by text boxes'))
-        filter_mask_row = QWidget(self)
-        filter_mask_row.setObjectName('ConfigInlineRow')
-        filter_mask_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        filter_mask_layout = QHBoxLayout(filter_mask_row)
-        filter_mask_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        filter_mask_layout.addWidget(self.filter_mask_by_bboxes_checker)
-        filter_mask_layout.addWidget(filter_mask_label)
+        self.filter_mask_by_bboxes_checker = ParamCheckerBox(self.tr('Filter mask by text boxes'))
         self.vlayout.addWidget(self.needInpaintChecker)
-        self.vlayout.addWidget(filter_mask_row)
+        self.vlayout.addWidget(self.filter_mask_by_bboxes_checker)
 
     def showEvent(self, e) -> None:
         self.p_layout.insertWidget(1, self.module_combobox)

@@ -23,7 +23,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
 
         cfg = ProgramConfig.load(cfg_path)
 
-        selected = profile_by_id(cfg.module.llm_profiles, cfg.module.llm_profile)
+        selected = profile_by_id(cfg.module.llm_profiles, cfg.module.translator_llm_id)
         self.assertEqual(cfg.module.translator, 'LLMTranslator')
         self.assertNotIn('ChatGPT', cfg.module.translator_params)
         self.assertNotIn('ChatGPT_exp', cfg.module.translator_params)
@@ -61,6 +61,8 @@ class LLMProfileMigrationTest(unittest.TestCase):
 
         self.assertEqual(profile.model, 'gpt-5.5')
         self.assertIn('gpt-5.5', profile.model_options)
+        self.assertIn('gpt-4.1', profile.model_options)
+        self.assertIn('gpt-4.1-mini', profile.model_options)
         self.assertIn('None', profile.thinking_level_options)
         self.assertNotIn('none', profile.thinking_level_options)
         self.assertEqual(profile.prompt, DEFAULT_TRANSLATION_PROMPT)
@@ -93,7 +95,7 @@ class SecretStoreTest(unittest.TestCase):
     def test_saved_config_obfuscates_plaintext_secret(self):
         profile = default_profile('OpenAI')
         profile.api_key = 'sk-demo'
-        cfg = ModuleConfig(llm_profiles=[profile], llm_profile='openai')
+        cfg = ModuleConfig(llm_profiles=[profile], translator_llm_id='openai')
 
         saved = json_dump_program_config(cfg)
         saved_dict = json.loads(saved)
@@ -106,7 +108,7 @@ class SecretStoreTest(unittest.TestCase):
     def test_saved_config_keeps_obfuscated_secret_not_resolved_secret(self):
         profile = default_profile('OpenAI')
         profile.api_key = SecretStore().store('openai', 'sk-demo')
-        cfg = ModuleConfig(llm_profiles=[profile], llm_profile='openai')
+        cfg = ModuleConfig(llm_profiles=[profile], translator_llm_id='openai')
 
         saved = json_dump_program_config(cfg)
 
@@ -114,7 +116,7 @@ class SecretStoreTest(unittest.TestCase):
 
     def test_saved_config_serializes_profile_dataclass(self):
         profile = default_profile('DeepSeek')
-        cfg = ModuleConfig(llm_profiles=[profile], llm_profile='deepseek')
+        cfg = ModuleConfig(llm_profiles=[profile], translator_llm_id='deepseek')
 
         saved = json_dump_program_config(cfg)
         saved_dict = json.loads(saved)
@@ -127,7 +129,7 @@ class SecretStoreTest(unittest.TestCase):
     def test_saved_profiles_roundtrip_without_provider(self):
         profile = default_profile('OpenAI')
         profile.api_key = 'sk-demo'
-        cfg = ProgramConfig(module=ModuleConfig(llm_profiles=[profile], llm_profile='openai'))
+        cfg = ProgramConfig(module=ModuleConfig(llm_profiles=[profile], translator_llm_id='openai'))
         saved = json_dump_program_config(cfg)
 
         with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
@@ -135,7 +137,7 @@ class SecretStoreTest(unittest.TestCase):
             temp.flush()
             loaded = ProgramConfig.load(temp.name)
 
-        selected = profile_by_id(loaded.module.llm_profiles, loaded.module.llm_profile)
+        selected = profile_by_id(loaded.module.llm_profiles, loaded.module.translator_llm_id)
         self.assertIsNotNone(selected)
         self.assertIsInstance(selected, LLMProfile)
         self.assertEqual(selected.id, 'openai')

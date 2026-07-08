@@ -37,7 +37,7 @@ class ModuleConfig(Config):
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
     llm_profiles: List[LLMProfile] = field(default_factory=lambda: list())
-    llm_profile: str = ''
+    translator_llm_id: str = ''
     inpainter_params: Dict = field(default_factory=lambda: dict())
     translate_source: str = '日本語'
     translate_target: str = '简体中文'
@@ -113,8 +113,8 @@ class ModuleConfig(Config):
             self.llm_profiles = default_profiles()
         else:
             self.llm_profiles = load_profiles(self.llm_profiles)
-        if (not self.llm_profile or not profile_by_id(self.llm_profiles, self.llm_profile)) and self.llm_profiles:
-            self.llm_profile = self.llm_profiles[0].id
+        if (not self.translator_llm_id or not profile_by_id(self.llm_profiles, self.translator_llm_id)) and self.llm_profiles:
+            self.translator_llm_id = self.llm_profiles[0].id
         self.update_finish_code()
 
     def update_finish_code(self):
@@ -218,33 +218,8 @@ class ProgramConfig(Config):
         with open(cfg_path, 'r', encoding='utf8') as f:
             config_dict = json.loads(f.read())
 
-        # for backward compatibility
-        if 'dl' in config_dict:
-            dl = config_dict.pop('dl')
-            if not 'module' in config_dict:
-                if 'textdetector_setup_params' in dl:
-                    textdetector_params = dl.pop('textdetector_setup_params')
-                    dl['textdetector_params'] = textdetector_params
-                if 'inpainter_setup_params' in dl:
-                    inpainter_params = dl.pop('inpainter_setup_params')
-                    dl['inpainter_params'] = inpainter_params
-                if 'ocr_setup_params' in dl:
-                    ocr_params = dl.pop('ocr_setup_params')
-                    dl['ocr_params'] = ocr_params
-                if 'translator_setup_params' in dl:
-                    translator_params = dl.pop('translator_setup_params')
-                    dl['translator_params'] = translator_params
-                config_dict['module'] = dl
-
         if 'module' in config_dict:
             module_cfg = config_dict['module']
-            trans_params = module_cfg.setdefault('translator_params', {})
-            repl_pairs = {'baidu': 'Baidu', 'caiyun': 'Caiyun', 'chatgpt': 'ChatGPT', 'Deepl': 'DeepL', 'papago': 'Papago'}
-            for k, i in repl_pairs.items():
-                if k in trans_params:
-                    trans_params[i] = trans_params.pop(k)
-            if module_cfg['translator'] in repl_pairs:
-                module_cfg['translator'] = repl_pairs[module_cfg['translator']]
             # LLM translator keys must be consumed before module-param patching drops unknown keys.
             migrate_module_llm_profiles(module_cfg)
 

@@ -20,7 +20,16 @@ PROVIDER_DEFAULTS = {
         "base_url": "https://api.openai.com/v1",
         "require_api_key": True,
         "model": "gpt-5.5",
-        "model_options": ["gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-4o", "gpt-4o-mini"],
+        "model_options": [
+            "gpt-5.5",
+            "gpt-5.5-pro",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4o",
+            "gpt-4o-mini",
+        ],
     },
     "DeepSeek": {
         "id": "deepseek",
@@ -439,15 +448,13 @@ def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = No
     if migrated_entries:
         profiles = _dedupe_profile_entries(
             migrated_entries + [(profile, False) for profile in profiles],
-            selected_profile or module_cfg.get("llm_profile", ""),
+            selected_profile or module_cfg.get("translator_llm_id", ""),
         )
         if selected_profile:
             module_cfg["translator"] = LLM_TRANSLATOR_KEY
-            module_cfg["llm_profile"] = selected_profile
+            module_cfg["translator_llm_id"] = selected_profile
     elif profiles_were_missing:
         profiles = default_profiles()
 
-    if not profile_by_id(profiles, module_cfg.get("llm_profile", "")):
-        module_cfg["llm_profile"] = profiles[0].id if profiles else ""
     module_cfg["llm_profiles"] = profiles
     return module_cfg

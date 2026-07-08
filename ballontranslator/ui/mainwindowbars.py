@@ -19,6 +19,8 @@ if shared.FLAG_QT6:
 else:
     from qtpy.QtWidgets import QAction
 
+BOTTOM_BAR_ACCENT_COLOR = '#5e98f7'
+
 class ShowPageListChecker(QCheckBox):
     ...
 
@@ -690,13 +692,14 @@ def _bottom_submenu(title: str, parent: QMenu) -> QMenu:
     return menu
 
 
-def _add_bottom_menu_section(menu: QMenu, text: str):
+def _add_bottom_menu_section(menu: QMenu, text: str, accent: bool = False):
     label = QLabel(text, menu)
     label.setObjectName('BottomBarMenuSectionLabel')
+    color = BOTTOM_BAR_ACCENT_COLOR if accent else _section_label_color()
     label.setStyleSheet(
         'QLabel#BottomBarMenuSectionLabel {{ '
         'color: {}; background-color: {}; '
-        '}}'.format(_section_label_color(), _theme_menu_background_hex())
+        '}}'.format(color, _theme_menu_background_hex())
     )
     action = QWidgetAction(menu)
     action.setDefaultWidget(label)
@@ -855,8 +858,8 @@ class TranslatorSelectionWidget(Widget):
         self.selector.blockSignals(block)
         super().blockSignals(block)
 
-    def _section(self, text: str):
-        _add_bottom_menu_section(self.menu, text)
+    def _section(self, text: str, accent: bool = False):
+        _add_bottom_menu_section(self.menu, text, accent=accent)
 
     def rebuildMenu(self):
         self.menu.clear()
@@ -873,7 +876,7 @@ class TranslatorSelectionWidget(Widget):
                 lambda checked=False, value=translator: self.selector.setCurrentText(value),
             )
 
-        self._section(self.tr('LLM'))
+        self._section(self.tr('LLM'), accent=current_translator == LLM_TRANSLATOR_KEY)
         for profile in pcfg.module.llm_profiles:
             profile_id = profile.id
             profile_menu = _bottom_submenu(profile.name or profile_id, self.menu)
@@ -881,7 +884,7 @@ class TranslatorSelectionWidget(Widget):
                 self.menu,
                 profile_menu,
                 profile.name or profile_id,
-                current_translator == LLM_TRANSLATOR_KEY and pcfg.module.llm_profile == profile_id,
+                current_translator == LLM_TRANSLATOR_KEY and pcfg.module.translator_llm_id == profile_id,
             )
             self._buildProfileMenu(profile_menu, profile)
 
@@ -915,7 +918,7 @@ class TranslatorSelectionWidget(Widget):
             )
 
     def selectLLMProfile(self, profile_id: str):
-        pcfg.module.llm_profile = profile_id
+        pcfg.module.translator_llm_id = profile_id
         if self.selector.currentText() != LLM_TRANSLATOR_KEY:
             self.selector.setCurrentText(LLM_TRANSLATOR_KEY)
         self.llm_profile_changed.emit(profile_id)
@@ -933,7 +936,7 @@ class TranslatorSelectionWidget(Widget):
 
     def _buildProfileMenu(self, menu: QMenu, profile: dict):
         profile_id = profile.id
-        selected_profile = self.selector.currentText() == LLM_TRANSLATOR_KEY and pcfg.module.llm_profile == profile_id
+        selected_profile = self.selector.currentText() == LLM_TRANSLATOR_KEY and pcfg.module.translator_llm_id == profile_id
 
         _add_bottom_menu_section(menu, self.tr('Thinking Level'))
         thinking_options = [str(option) for option in profile.thinking_level_options if str(option)]
@@ -959,13 +962,13 @@ class TranslatorSelectionWidget(Widget):
 
     def onEditClicked(self):
         if self.selector.currentText() == LLM_TRANSLATOR_KEY:
-            self.edit_clicked.emit(pcfg.module.llm_profile)
+            self.edit_clicked.emit(pcfg.module.translator_llm_id)
 
     def updateButtonText(self):
         name = self.selector.currentText()
         is_llm = name == LLM_TRANSLATOR_KEY
         if name == LLM_TRANSLATOR_KEY:
-            profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.llm_profile)
+            profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.translator_llm_id)
             if profile is not None:
                 model_options = [str(option) for option in profile.model_options if str(option)]
                 model = str(profile.model or '').strip()
@@ -979,6 +982,10 @@ class TranslatorSelectionWidget(Widget):
         if not name:
             name = self.tr('Translator')
         self.tool_btn.setText(_bottom_tool_button_text(name))
+        if self.tool_btn.property('llmActive') != is_llm:
+            self.tool_btn.setProperty('llmActive', is_llm)
+            self.tool_btn.style().unpolish(self.tool_btn)
+            self.tool_btn.style().polish(self.tool_btn)
         self.edit_btn.setVisible(is_llm)
     
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
