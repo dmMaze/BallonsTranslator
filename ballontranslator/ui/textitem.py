@@ -385,15 +385,17 @@ class TextBlkItem(QGraphicsTextItem):
             layout = VerticalTextDocumentLayout(doc, self.fontformat)
         else:
             layout = HorizontalTextDocumentLayout(doc, self.fontformat)
-            # letter spacing is managed by doc's format
-            cursor = QTextCursor(doc)
-            cursor.joinPreviousEditBlock()
-            char_fmt = QTextCharFormat()
-            char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-            char_fmt.setFontLetterSpacing(self.fontformat.letter_spacing * 100)
-            cursor.select(QTextCursor.SelectionType.Document)
-            self.set_cursor_cfmt(cursor, char_fmt, True)
-            cursor.endEditBlock()
+
+        # letter spacing must be reset for different layout type
+        reset_spacing_val = 1 if vertical else self.fontformat.letter_spacing
+        cursor = QTextCursor(doc)
+        cursor.joinPreviousEditBlock()
+        char_fmt = QTextCharFormat()
+        char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+        char_fmt.setFontLetterSpacing(reset_spacing_val * 100)
+        cursor.select(QTextCursor.SelectionType.Document)
+        self.set_cursor_cfmt(cursor, char_fmt, True)
+        cursor.endEditBlock()
         
         self.layout = layout
         doc.setDocumentLayout(layout)
