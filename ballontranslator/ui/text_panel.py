@@ -4,7 +4,7 @@ from typing import List
 
 from qtpy.QtWidgets import QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QLabel, QGroupBox, QCheckBox, QSlider
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent
+from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent, QFont
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
@@ -228,7 +228,15 @@ class FontFamilyComboBox(QFontComboBox):
         current_font = self.currentFont().family()
         self.clear()
         self.addItems(font_list)
-        self.addItems([current_font])
+
+        # If the current font is not in the list, use the first available font
+        if current_font not in font_list:
+            if font_list:  # If the list is not empty, use the first one.
+                current_font = list(font_list)[0]
+            else:  # Don't add anything if the list is empty.
+                self.currentFontChanged.connect(self.on_fontfamily_changed)
+                return
+    
         self.setCurrentText(current_font)
         self.currentFontChanged.connect(self.on_fontfamily_changed)
 
@@ -507,6 +515,7 @@ class FontFormatPanel(Widget):
             font_size += "+"
         self.fontsizebox.fcombobox.setCurrentText(font_size)
         self.familybox.setCurrentText(font_format.font_family)
+        self.familybox.setCurrentFont(QFont(font_format.font_family))
         self.colorPicker.setPickerColor(font_format.foreground_color())
         self.strokeColorPicker.setPickerColor(font_format.stroke_color())
         self.strokeWidthBox.setValue(font_format.stroke_width)
