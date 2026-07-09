@@ -34,7 +34,7 @@ class ComicTextDetector(TextDetectorBase):
         'font size multiplier': 1.,
         'font size max': -1,
         'font size min': -1,
-        'mask dilate size': 2
+        'mask dilate size': 3
     }
     _load_model_keys = {'model'}
     download_file_list = [

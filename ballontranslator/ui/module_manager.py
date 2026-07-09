@@ -18,6 +18,7 @@ from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.modules.translators import MissingTranslatorParams
 from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
+    LLMBaseURLRequiredError,
     LLMModelRequiredError,
     LLMRequestStopped,
     ModuleRunError,
@@ -41,6 +42,7 @@ from .custom_widget import ImgtransProgressMessageBox, ParamComboBox, ProgressMe
 from .configpanel import ConfigPanel
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.config import pcfg, RunStatus, save_config
+from ballontranslator.utils.llm_profiles import LLM_INPAINT_KEY
 from ballontranslator.utils.global_callbacks import register_global_callback
 cfg_module = pcfg.module
 
@@ -49,6 +51,8 @@ _llm_key_dialog_lock = threading.Lock()
 _shown_llm_key_dialog_profiles = set()
 _llm_model_dialog_lock = threading.Lock()
 _shown_llm_model_dialog_profiles = set()
+_llm_base_url_dialog_lock = threading.Lock()
+_shown_llm_base_url_dialog_profiles = set()
 
 
 def _show_llm_key_required_dialog(error: LLMApiKeyRequiredError):
@@ -64,13 +68,25 @@ def _show_llm_key_required_dialog(error: LLMApiKeyRequiredError):
 
 
 def _show_llm_model_required_dialog(error: LLMModelRequiredError):
-    profile_key = (error.profile_id or error.profile_name, error.is_vision)
+    profile_key = (error.profile_id or error.profile_name, error.target)
     with _llm_model_dialog_lock:
         if profile_key in _shown_llm_model_dialog_profiles:
             return
         _shown_llm_model_dialog_profiles.add(profile_key)
     if not shared.HEADLESS:
-        shared.show_llm_model_dialog_in_mainthread(error.profile_id, error.profile_name, error.is_vision)
+        shared.show_llm_model_dialog_in_mainthread(error.profile_id, error.profile_name, error.target)
+    else:
+        LOGGER.error(str(error))
+
+
+def _show_llm_base_url_required_dialog(error: LLMBaseURLRequiredError):
+    profile_key = (error.profile_id or error.profile_name, error.target)
+    with _llm_base_url_dialog_lock:
+        if profile_key in _shown_llm_base_url_dialog_profiles:
+            return
+        _shown_llm_base_url_dialog_profiles.add(profile_key)
+    if not shared.HEADLESS:
+        shared.show_llm_base_url_dialog_in_mainthread(error.profile_id, error.profile_name, error.target)
     else:
         LOGGER.error(str(error))
 
@@ -80,6 +96,8 @@ def _reset_llm_key_required_dialogs():
         _shown_llm_key_dialog_profiles.clear()
     with _llm_model_dialog_lock:
         _shown_llm_model_dialog_profiles.clear()
+    with _llm_base_url_dialog_lock:
+        _shown_llm_base_url_dialog_profiles.clear()
 
 
 class ModuleThread(QThread):
@@ -310,6 +328,10 @@ class ModuleThread(QThread):
             _show_llm_model_required_dialog(e)
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
+        except LLMBaseURLRequiredError as e:
+            _show_llm_base_url_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
         except LLMRequestStopped:
             LOGGER.info(f'{self.module_key} task stopped by user.')
         except Exception as e:
@@ -352,6 +374,28 @@ class InpaintThread(ModuleThread):
                 'inpaint_rect': inpaint_rect
             }
             self.finish_inpaint.emit(inpaint_dict)
+        except LLMApiKeyRequiredError as e:
+            _show_llm_key_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
+            self.inpainting = False
+            self.inpaint_failed.emit()
+        except LLMModelRequiredError as e:
+            _show_llm_model_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
+            self.inpainting = False
+            self.inpaint_failed.emit()
+        except LLMBaseURLRequiredError as e:
+            _show_llm_base_url_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
+            self.inpainting = False
+            self.inpaint_failed.emit()
+        except LLMRequestStopped:
+            LOGGER.info('Inpainting stopped by user.')
+            self.inpainting = False
+            self.inpaint_failed.emit()
         except Exception as e:
             create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
             self.inpainting = False
@@ -533,6 +577,11 @@ class TranslateThread(ModuleThread):
             _show_llm_model_required_dialog(e)
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
+        except LLMBaseURLRequiredError as e:
+            success = False
+            _show_llm_base_url_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
         except LLMRequestStopped:
             success = False
             LOGGER.info('Translation stopped by user.')
@@ -710,6 +759,9 @@ class ImgtransThread(QThread):
         except LLMModelRequiredError as e:
             _show_llm_model_required_dialog(e)
             self.requestStop()
+        except LLMBaseURLRequiredError as e:
+            _show_llm_base_url_required_dialog(e)
+            self.requestStop()
         except LLMRequestStopped:
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
@@ -738,6 +790,11 @@ class ImgtransThread(QThread):
                 self.requestStop()
                 self.finish_blktrans.emit(mode, blk_ids)
                 return
+            except LLMBaseURLRequiredError as e:
+                _show_llm_base_url_required_dialog(e)
+                self.requestStop()
+                self.finish_blktrans.emit(mode, blk_ids)
+                return
             except LLMRequestStopped:
                 LOGGER.info('OCR stopped by user.')
                 self.finish_blktrans.emit(mode, blk_ids)
@@ -752,6 +809,8 @@ class ImgtransThread(QThread):
             self._translate_textblocks(blk_list)
             self.finish_blktrans.emit(mode, blk_ids)
         if mode > 1:
+            if hasattr(self.inpaint_thread.inpainter, 'set_stop_event'):
+                self.inpaint_thread.inpainter.set_stop_event(self.stop_event)
             to_inpaint = self.imgtrans_proj.inpainted_array
             im_h, im_w = tgt_img.shape[:2]
             progress_prod = 100. / len(blk_list) if len(blk_list) > 0 else 0
@@ -770,7 +829,28 @@ class ImgtransThread(QThread):
                     inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im, mask=tgt_mask[y1: y2, x1: x2])
                     mask = self.post_process_mask(inpaint_mask_array)
                     if mask.sum() > 0:
-                        inpainted = self.inpaint_thread.inpainter.inpaint(im, mask)
+                        try:
+                            inpainted = self.inpaint_thread.inpainter.inpaint(im, mask)
+                        except LLMApiKeyRequiredError as e:
+                            _show_llm_key_required_dialog(e)
+                            self.requestStop()
+                            self.finish_blktrans.emit(mode, blk_ids)
+                            return
+                        except LLMModelRequiredError as e:
+                            _show_llm_model_required_dialog(e)
+                            self.requestStop()
+                            self.finish_blktrans.emit(mode, blk_ids)
+                            return
+                        except LLMBaseURLRequiredError as e:
+                            _show_llm_base_url_required_dialog(e)
+                            self.requestStop()
+                            self.finish_blktrans.emit(mode, blk_ids)
+                            return
+                        except LLMRequestStopped:
+                            LOGGER.info('Inpainting stopped by user.')
+                            self.requestStop()
+                            self.finish_blktrans.emit(mode, blk_ids)
+                            return
                         rx1, ry1 = max(0, ox1 - x1), max(0, oy1 - y1)
                         rx2, ry2 = min(x2 - x1, ox2 - x1), min(y2 - y1, oy2 - y1)
                         if ry2 > ry1 and rx2 > rx1:
@@ -870,6 +950,10 @@ class ImgtransThread(QThread):
                     _show_llm_model_required_dialog(e)
                     self.requestStop()
                     break
+                except LLMBaseURLRequiredError as e:
+                    _show_llm_base_url_required_dialog(e)
+                    self.requestStop()
+                    break
                 except LLMRequestStopped:
                     LOGGER.info('OCR stopped by user.')
                     self.requestStop()
@@ -936,13 +1020,31 @@ class ImgtransThread(QThread):
                 break
                         
             if cfg_module.enable_inpaint:
+                if hasattr(self.inpainter, 'set_stop_event'):
+                    self.inpainter.set_stop_event(self.stop_event)
                 if mask is None:
                     mask = self.imgtrans_proj.load_mask_by_imgname(imgname)
                     
-                if mask is not None:
+                if mask is not None or cfg_module.inpainter == LLM_INPAINT_KEY:
                     try:
                         inpainted = self.inpainter.inpaint(img, mask, blk_list)
                         self.imgtrans_proj.save_inpainted(imgname, inpainted)
+                    except LLMApiKeyRequiredError as e:
+                        _show_llm_key_required_dialog(e)
+                        self.requestStop()
+                        break
+                    except LLMModelRequiredError as e:
+                        _show_llm_model_required_dialog(e)
+                        self.requestStop()
+                        break
+                    except LLMBaseURLRequiredError as e:
+                        _show_llm_base_url_required_dialog(e)
+                        self.requestStop()
+                        break
+                    except LLMRequestStopped:
+                        LOGGER.info('Inpainting stopped by user.')
+                        self.requestStop()
+                        break
                     except Exception as e:
                         create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
                     
@@ -1003,6 +1105,8 @@ class ImgtransThread(QThread):
             _show_llm_key_required_dialog(e)
         except LLMModelRequiredError as e:
             _show_llm_model_required_dialog(e)
+        except LLMBaseURLRequiredError as e:
+            _show_llm_base_url_required_dialog(e)
         except LLMRequestStopped:
             LOGGER.info('Image translation task stopped by user.')
             self._emit_pipeline_stopped_if_ready(imgtrans_running=False)

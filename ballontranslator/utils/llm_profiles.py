@@ -11,6 +11,7 @@ from ballontranslator.utils.structures import Config, field, nested_dataclass
 
 LLM_TRANSLATOR_KEY = "LLMTranslator"
 LLM_OCR_KEY = "LLMOCR"
+LLM_INPAINT_KEY = "LLMInpaint"
 OLD_LLM_TRANSLATORS = ("ChatGPT", "ChatGPT_exp", "LLM_API_Translator")
 
 THINKING_LEVEL_OPTIONS = ["None", "minimal", "low", "medium", "high", "xhigh"]
@@ -26,17 +27,18 @@ PROVIDER_DEFAULTS = {
         "require_api_key": True,
         "model": "gpt-5.5",
         "support_vision": True,
+        "vision_model": "gpt-5.5",
         "vision_detail_level": "auto",
         "model_options": [
-            "gpt-5.5",
-            "gpt-5.5-pro",
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "gpt-4o",
-            "gpt-4o-mini",
+            "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
+            "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
         ],
+        "vision_model_options": [
+            "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
+            "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
+        ],
+        "support_image": True,
+        "image_model_options": ["gpt-image-2"]
     },
     "DeepSeek": {
         "id": "deepseek",
@@ -51,15 +53,13 @@ PROVIDER_DEFAULTS = {
         "require_api_key": True,
         "model": "gemini-3.5-flash",
         "support_vision": True,
+        "vision_model": "gemini-flash-latest",
         "vision_detail_level": "auto",
-        "model_options": ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
-    },
-    "Grok": {
-        "id": "grok",
-        "base_url": "https://api.x.ai/v1",
-        "require_api_key": True,
-        "model": "grok-4",
-        "model_options": ["grok-4", "grok-3", "grok-3-mini"],
+        "model_options": ["gemini-flash-latest", "gemini-pro-latest", "gemma-4-31b-it", "gemma-4-26b-a4b-it"],
+        "vision_model_options": ["gemini-flash-latest", "gemini-pro-latest"],
+        "support_image": True,
+        "image_model_options": ["gemini-3.1-flash-lite-image"],
+        "image_base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"
     },
     "OpenRouter": {
         "id": "openrouter",
@@ -67,11 +67,22 @@ PROVIDER_DEFAULTS = {
         "require_api_key": True,
         "model": "openai/gpt-5.5",
         "support_vision": True,
+        "vision_model": "openai/gpt-5.5",
         "vision_detail_level": "auto",
-        "model_options": ["openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-4o", "anthropic/claude-sonnet-4", "~x-ai/grok-latest",
-        "qwen/qwen3.7-plus", "qwen/qwen3.7-max", "qwen/qwen3.6-plus",
-        "~anthropic/claude-fable-latest",
+        "model_options": ["openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-4o",
+        "anthropic/claude-sonnet-4", "~anthropic/claude-sonnet-latest", "~x-ai/grok-latest",
+        "~google/gemini-flash-latest", "~google/gemini-pro-latest",
+        "qwen/qwen3.7-plus", "qwen/qwen3.7-max", "qwen/qwen3.6-plus"
         ],
+        "vision_model_options": ["openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-4o",
+        "anthropic/claude-sonnet-4", "~anthropic/claude-sonnet-latest", "~x-ai/grok-latest",
+        "~google/gemini-flash-latest", "~google/gemini-pro-latest",
+        "qwen/qwen3.7-plus", "qwen/qwen3.7-max", "qwen/qwen3.6-plus"
+        ],
+        "support_image": True,
+        "image_base_url": "https://openrouter.ai/api/v1",
+        "image_model": "black-forest-labs/flux.2-klein-4b",
+        "image_model_options": ["black-forest-labs/flux.2-klein-4b"]
     },
     "LM Studio": {
         "id": "lmstudio",
@@ -87,8 +98,10 @@ PROVIDER_DEFAULTS = {
         "require_api_key": False,
         "model": "llama3.1",
         "support_vision": True,
+        "vision_model": "llama3.1",
         "vision_detail_level": "auto",
         "model_options": ["llama3.1", "qwen2.5", "mistral"],
+        "vision_model_options": ["llama3.1", "qwen2.5", "mistral"],
     },
 }
 
@@ -136,6 +149,10 @@ class LLMProfile(Config):
     vision_model_options: List[str] = field(default_factory=list)
     vision_detail_level: str = "None"
     vision_detail_level_options: List[str] = field(default_factory=lambda: list(VISION_DETAIL_LEVEL_OPTIONS))
+    support_image: bool = False
+    image_base_url: str = ""
+    image_model: str = ""
+    image_model_options: List[str] = field(default_factory=list)
     thinking_level: str = "None"
     thinking_level_options: List[str] = field(default_factory=lambda: list(THINKING_LEVEL_OPTIONS))
     prompt: str = DEFAULT_TRANSLATION_PROMPT

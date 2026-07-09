@@ -17,17 +17,55 @@ class LLMModelRequiredError(Exception):
     """Raised when an LLM profile is enabled but has no request model.
 
     Example:
-        >>> err = LLMModelRequiredError('profile-1', 'Profile 1', vision=True)
+        >>> err = LLMModelRequiredError('profile-1', 'Profile 1', target='vision_model')
         >>> err.is_vision
         True
     """
 
-    def __init__(self, profile_id: str, profile_name: str = '', vision: bool = False):
+    def __init__(
+        self,
+        profile_id: str,
+        profile_name: str = '',
+        vision: bool = False,
+        target: str = 'model',
+    ):
         self.profile_id = profile_id
         self.profile_name = profile_name or profile_id
-        self.is_vision = bool(vision)
-        model_label = 'vision model' if self.is_vision else 'model'
+        if vision and target == 'model':
+            target = 'vision_model'
+        if target not in {'model', 'vision_model', 'image_model'}:
+            target = 'model'
+        self.target = target
+        self.is_vision = target == 'vision_model'
+        self.is_image = target == 'image_model'
+        model_label = {
+            'model': 'model',
+            'vision_model': 'vision model',
+            'image_model': 'image model',
+        }[target]
         super().__init__(f'{model_label.capitalize()} is required for LLM profile "{self.profile_name}".')
+
+
+class LLMBaseURLRequiredError(Exception):
+    """Raised when an LLM profile needs a request URL before a task can run.
+
+    Example:
+        >>> err = LLMBaseURLRequiredError('profile-1', 'Profile 1', target='image_base_url')
+        >>> err.target
+        'image_base_url'
+    """
+
+    def __init__(self, profile_id: str, profile_name: str = '', target: str = 'base_url'):
+        self.profile_id = profile_id
+        self.profile_name = profile_name or profile_id
+        if target not in {'base_url', 'image_base_url'}:
+            target = 'base_url'
+        self.target = target
+        url_label = {
+            'base_url': 'base URL',
+            'image_base_url': 'image base URL',
+        }[target]
+        super().__init__(f'{url_label.capitalize()} is required for LLM profile "{self.profile_name}".')
 
 
 class LLMRequestStopped(Exception):

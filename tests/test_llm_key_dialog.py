@@ -6,7 +6,11 @@ from types import SimpleNamespace
 import numpy as np
 
 from ballontranslator.modules.ocr.base import OCRBase
-from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError
+from ballontranslator.modules.exceptions import (
+    LLMApiKeyRequiredError,
+    LLMBaseURLRequiredError,
+    LLMModelRequiredError,
+)
 from ballontranslator.ui import module_manager
 from ballontranslator.utils import shared
 from ballontranslator.utils.textblock import TextBlock
@@ -57,6 +61,21 @@ class MissingModelOCR(OCRBase):
         raise LLMModelRequiredError('profile-1', 'Profile 1', vision=True)
 
 
+class MissingKeyInpainter:
+    def inpaint(self, _img, _mask):
+        raise LLMApiKeyRequiredError('profile-1', 'Profile 1')
+
+
+class MissingModelInpainter:
+    def inpaint(self, _img, _mask):
+        raise LLMModelRequiredError('profile-1', 'Profile 1', target='image_model')
+
+
+class MissingBaseURLInpainter:
+    def inpaint(self, _img, _mask):
+        raise LLMBaseURLRequiredError('profile-1', 'Profile 1', target='image_base_url')
+
+
 class FakeOCRThread:
     def __init__(self, ocr):
         self.module = ocr
@@ -67,15 +86,22 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         self._old_headless = shared.HEADLESS
         self._old_emit = shared.show_llm_key_dialog_in_mainthread
         self._old_model_emit = shared.show_llm_model_dialog_in_mainthread
+        self._old_base_url_emit = shared.show_llm_base_url_dialog_in_mainthread
         self.calls = []
         self.model_calls = []
+        self.base_url_calls = []
         shared.HEADLESS = False
         shared.show_llm_key_dialog_in_mainthread = lambda profile_id, profile_name: self.calls.append(
             (profile_id, profile_name)
         )
         shared.show_llm_model_dialog_in_mainthread = (
-            lambda profile_id, profile_name, is_vision: self.model_calls.append(
-                (profile_id, profile_name, is_vision)
+            lambda profile_id, profile_name, target: self.model_calls.append(
+                (profile_id, profile_name, target)
+            )
+        )
+        shared.show_llm_base_url_dialog_in_mainthread = (
+            lambda profile_id, profile_name, target: self.base_url_calls.append(
+                (profile_id, profile_name, target)
             )
         )
         module_manager._reset_llm_key_required_dialogs()
@@ -84,6 +110,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         shared.HEADLESS = self._old_headless
         shared.show_llm_key_dialog_in_mainthread = self._old_emit
         shared.show_llm_model_dialog_in_mainthread = self._old_model_emit
+        shared.show_llm_base_url_dialog_in_mainthread = self._old_base_url_emit
         module_manager._reset_llm_key_required_dialogs()
 
     def test_missing_llm_key_dialog_emits_once_until_reset(self):
@@ -108,14 +135,33 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         module_manager._show_llm_model_required_dialog(error)
         module_manager._show_llm_model_required_dialog(error)
 
-        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', True)])
+        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', 'vision_model')])
 
         module_manager._reset_llm_key_required_dialogs()
         module_manager._show_llm_model_required_dialog(error)
 
         self.assertEqual(
             self.model_calls,
-            [('profile-1', 'Profile 1', True), ('profile-1', 'Profile 1', True)],
+            [('profile-1', 'Profile 1', 'vision_model'), ('profile-1', 'Profile 1', 'vision_model')],
+        )
+
+    def test_missing_llm_base_url_dialog_emits_once_until_reset(self):
+        error = LLMBaseURLRequiredError('profile-1', 'Profile 1', target='image_base_url')
+
+        module_manager._show_llm_base_url_required_dialog(error)
+        module_manager._show_llm_base_url_required_dialog(error)
+
+        self.assertEqual(self.base_url_calls, [('profile-1', 'Profile 1', 'image_base_url')])
+
+        module_manager._reset_llm_key_required_dialogs()
+        module_manager._show_llm_base_url_required_dialog(error)
+
+        self.assertEqual(
+            self.base_url_calls,
+            [
+                ('profile-1', 'Profile 1', 'image_base_url'),
+                ('profile-1', 'Profile 1', 'image_base_url'),
+            ],
         )
 
     def test_missing_llm_key_stops_imgtrans_thread(self):
@@ -151,7 +197,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         self.assertFalse(result)
         self.assertTrue(thread.isStopRequested())
         self.assertIs(translator.stop_event, thread.stop_event)
-        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', False)])
+        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', 'model')])
 
     def test_module_thread_fatal_llm_key_error_sets_pipeline_stop_event(self):
         stop_event = threading.Event()
@@ -172,7 +218,20 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         thread.run()
 
         self.assertTrue(stop_event.is_set())
-        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', False)])
+        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', 'model')])
+
+    def test_module_thread_fatal_llm_base_url_error_sets_pipeline_stop_event(self):
+        stop_event = threading.Event()
+        thread = module_manager.ModuleThread('inpainter', None)
+        thread.pipeline_stop_event = stop_event
+        thread.job = lambda: (_ for _ in ()).throw(
+            LLMBaseURLRequiredError('profile-1', 'Profile 1', target='image_base_url')
+        )
+
+        thread.run()
+
+        self.assertTrue(stop_event.is_set())
+        self.assertEqual(self.base_url_calls, [('profile-1', 'Profile 1', 'image_base_url')])
 
     def test_standalone_translate_page_clears_stale_pipeline_stop_event(self):
         thread = module_manager.TranslateThread()
@@ -223,7 +282,49 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
 
         self.assertTrue(thread.isStopRequested())
         self.assertEqual(block.text, ['old text'])
-        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', True)])
+        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', 'vision_model')])
+
+    def test_missing_llm_key_stops_inpaint_thread(self):
+        stop_event = threading.Event()
+        thread = module_manager.InpaintThread()
+        thread.module = MissingKeyInpainter()
+        thread.pipeline_stop_event = stop_event
+
+        thread._inpaint(
+            np.zeros((2, 2, 3), dtype=np.uint8),
+            np.ones((2, 2), dtype=np.uint8),
+        )
+
+        self.assertTrue(stop_event.is_set())
+        self.assertEqual(self.calls, [('profile-1', 'Profile 1')])
+
+    def test_missing_llm_model_stops_inpaint_thread(self):
+        stop_event = threading.Event()
+        thread = module_manager.InpaintThread()
+        thread.module = MissingModelInpainter()
+        thread.pipeline_stop_event = stop_event
+
+        thread._inpaint(
+            np.zeros((2, 2, 3), dtype=np.uint8),
+            np.ones((2, 2), dtype=np.uint8),
+        )
+
+        self.assertTrue(stop_event.is_set())
+        self.assertEqual(self.model_calls, [('profile-1', 'Profile 1', 'image_model')])
+
+    def test_missing_llm_base_url_stops_inpaint_thread(self):
+        stop_event = threading.Event()
+        thread = module_manager.InpaintThread()
+        thread.module = MissingBaseURLInpainter()
+        thread.pipeline_stop_event = stop_event
+
+        thread._inpaint(
+            np.zeros((2, 2, 3), dtype=np.uint8),
+            np.ones((2, 2), dtype=np.uint8),
+        )
+
+        self.assertTrue(stop_event.is_set())
+        self.assertEqual(self.base_url_calls, [('profile-1', 'Profile 1', 'image_base_url')])
 
 
 if __name__ == '__main__':

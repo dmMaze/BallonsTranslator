@@ -95,7 +95,7 @@ class LLMOCR(OCRBase):
         model = str(profile.vision_model or '').strip()
         model_options = [str(option).strip() for option in profile.vision_model_options if str(option).strip()]
         if not model or not model_options:
-            raise LLMModelRequiredError(profile.id, profile.name, vision=True)
+            raise LLMModelRequiredError(profile.id, profile.name, target='vision_model')
         return model
 
     def set_stop_event(self, stop_event):

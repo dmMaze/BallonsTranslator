@@ -12,7 +12,7 @@ from .misc import themed_icon_path
 from ballontranslator.utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import FramelessMoveResize
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLM_OCR_KEY, LLM_TRANSLATOR_KEY, profile_by_id
+from ballontranslator.utils.llm_profiles import LLM_INPAINT_KEY, LLM_OCR_KEY, LLM_TRANSLATOR_KEY, profile_by_id
 from ballontranslator.utils import shared
 if shared.FLAG_QT6:
     from qtpy.QtGui import QAction
@@ -542,6 +542,18 @@ class SmallConfigPutton(QPushButton):
     pass
 
 
+def _set_bottom_aux_button_visible(button: QPushButton, visible: bool):
+    if visible == (not button.isHidden()):
+        return
+    button.setVisible(visible)
+    parent = button.parentWidget()
+    if parent is not None:
+        layout = parent.layout()
+        if layout is not None:
+            layout.invalidate()
+        parent.updateGeometry()
+
+
 def cfg_icon() -> QIcon:
     return QIcon(themed_icon_path('leftbar_config_activate.svg'))
 
@@ -614,6 +626,11 @@ def _instant_popup_mode():
 
 def _bottom_tool_button_text(name: str) -> str:
     return '  ' + name
+
+
+def _simplify_llm_model_name(model: str) -> str:
+    parts = [part.strip() for part in str(model or '').split('/') if part.strip()]
+    return parts[-1] if parts else ''
 
 
 
@@ -698,6 +715,7 @@ class ModuleSelectionToolButtonWidget(Widget):
 
         self.cfg_btn = SmallConfigPutton()
         self.cfg_btn.clicked.connect(self.cfg_clicked)
+        self.cfg_btn.setVisible(False)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -707,11 +725,13 @@ class ModuleSelectionToolButtonWidget(Widget):
         self.updateButtonText()
 
     def enterEvent(self, event: QEvent) -> None:
+        _set_bottom_aux_button_visible(self.cfg_btn, True)
         self.cfg_btn.setIcon(cfg_icon())
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
         self.cfg_btn.setIcon(QIcon())
+        _set_bottom_aux_button_visible(self.cfg_btn, False)
         return super().leaveEvent(event)
 
     def changeEvent(self, event: QEvent) -> None:
@@ -776,6 +796,8 @@ class TranslatorSelectionWidget(Widget):
         self.edit_btn.clicked.connect(self.onEditClicked)
         self.cfg_btn = SmallConfigPutton()
         self.cfg_btn.clicked.connect(self.cfg_clicked)
+        self.edit_btn.setVisible(False)
+        self.cfg_btn.setVisible(False)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -786,16 +808,19 @@ class TranslatorSelectionWidget(Widget):
         self.updateButtonText()
 
     def enterEvent(self, event: QEvent) -> None:
-        if self.edit_btn.isVisible():
+        show_edit = self.selector.currentText() == LLM_TRANSLATOR_KEY
+        _set_bottom_aux_button_visible(self.edit_btn, show_edit)
+        if show_edit:
             self.edit_btn.setIcon(QIcon(themed_icon_path('edit.svg')))
-        if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(cfg_icon())
+        _set_bottom_aux_button_visible(self.cfg_btn, True)
+        self.cfg_btn.setIcon(cfg_icon())
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
         self.edit_btn.setIcon(QIcon())
-        if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(QIcon())
+        self.cfg_btn.setIcon(QIcon())
+        _set_bottom_aux_button_visible(self.edit_btn, False)
+        _set_bottom_aux_button_visible(self.cfg_btn, False)
         return super().leaveEvent(event)
 
     def changeEvent(self, event: QEvent) -> None:
@@ -936,19 +961,15 @@ class TranslatorSelectionWidget(Widget):
                 model = str(profile.model or '').strip()
                 thinking_level = str(profile.thinking_level or 'None').strip()
                 if model_options and model:
-                    name = model
+                    name = _simplify_llm_model_name(model)
                     if thinking_level and thinking_level != 'None':
-                        name = self.tr('{model} {thinking_level}').format(model=model, thinking_level=thinking_level)
+                        name = self.tr('{model} {thinking_level}').format(model=name, thinking_level=thinking_level)
                 else:
                     name = profile.name or name
         if not name:
             name = self.tr('Translator')
         self.tool_btn.setText(_bottom_tool_button_text(name))
-        if self.tool_btn.property('llmActive') != is_llm:
-            self.tool_btn.setProperty('llmActive', is_llm)
-            self.tool_btn.style().unpolish(self.tool_btn)
-            self.tool_btn.style().polish(self.tool_btn)
-        self.edit_btn.setVisible(is_llm)
+        _set_bottom_aux_button_visible(self.edit_btn, is_llm and self.underMouse())
     
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
         # Metadata can come from ModuleSpec before the translator is imported.
@@ -989,6 +1010,8 @@ class OCRSelectionWidget(Widget):
         self.edit_btn.clicked.connect(self.onEditClicked)
         self.cfg_btn = SmallConfigPutton()
         self.cfg_btn.clicked.connect(self.cfg_clicked)
+        self.edit_btn.setVisible(False)
+        self.cfg_btn.setVisible(False)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -999,14 +1022,19 @@ class OCRSelectionWidget(Widget):
         self.updateButtonText()
 
     def enterEvent(self, event: QEvent) -> None:
-        if self.edit_btn.isVisible():
+        show_edit = self.selector.currentText() == LLM_OCR_KEY
+        _set_bottom_aux_button_visible(self.edit_btn, show_edit)
+        if show_edit:
             self.edit_btn.setIcon(QIcon(themed_icon_path('edit.svg')))
+        _set_bottom_aux_button_visible(self.cfg_btn, True)
         self.cfg_btn.setIcon(cfg_icon())
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
         self.edit_btn.setIcon(QIcon())
         self.cfg_btn.setIcon(QIcon())
+        _set_bottom_aux_button_visible(self.edit_btn, False)
+        _set_bottom_aux_button_visible(self.cfg_btn, False)
         return super().leaveEvent(event)
 
     def changeEvent(self, event: QEvent) -> None:
@@ -1121,15 +1149,172 @@ class OCRSelectionWidget(Widget):
             profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.ocr_llm_id)
             if profile is not None:
                 model = str(profile.vision_model or '').strip()
-                name = model or profile.name or name
+                name = _simplify_llm_model_name(model) or profile.name or name
         if not name:
             name = self.tr('OCR')
         self.tool_btn.setText(_bottom_tool_button_text(name))
-        if self.tool_btn.property('llmActive') != is_llm:
-            self.tool_btn.setProperty('llmActive', is_llm)
-            self.tool_btn.style().unpolish(self.tool_btn)
-            self.tool_btn.style().polish(self.tool_btn)
-        self.edit_btn.setVisible(is_llm)
+        _set_bottom_aux_button_visible(self.edit_btn, is_llm and self.underMouse())
+
+
+class InpaintSelectionWidget(Widget):
+
+    cfg_clicked = Signal()
+    edit_clicked = Signal(str)
+    llm_profile_changed = Signal(str)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.selector = SmallComboBox()
+        self.selector.setVisible(False)
+        self.selector.currentTextChanged.connect(self.updateButtonText)
+        self.tool_btn = QToolButton(self)
+        self.tool_btn.setObjectName('BottomBarModuleToolButton')
+        self.tool_btn.setToolTip(self.tr('Inpaint'))
+        self.tool_btn.setPopupMode(_instant_popup_mode())
+        self.icon_filename = 'drawingtools_inpaint.svg'
+        _set_bottom_tool_button_icon(self.tool_btn, self.icon_filename)
+        self.tool_btn.setText(self.tr('Inpaint'))
+        self.menu = _bottom_menu(self.tool_btn)
+        self.tool_btn.setMenu(self.menu)
+        self.menu.aboutToShow.connect(self.rebuildMenu)
+        self.edit_btn = SmallConfigPutton()
+        self.edit_btn.clicked.connect(self.onEditClicked)
+        self.cfg_btn = SmallConfigPutton()
+        self.cfg_btn.clicked.connect(self.cfg_clicked)
+        self.edit_btn.setVisible(False)
+        self.cfg_btn.setVisible(False)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(1)
+        layout.addWidget(self.tool_btn)
+        layout.addWidget(self.edit_btn)
+        layout.addWidget(self.cfg_btn)
+        self.updateButtonText()
+
+    def enterEvent(self, event: QEvent) -> None:
+        show_edit = self.selector.currentText() == LLM_INPAINT_KEY
+        _set_bottom_aux_button_visible(self.edit_btn, show_edit)
+        if show_edit:
+            self.edit_btn.setIcon(QIcon(themed_icon_path('edit.svg')))
+        _set_bottom_aux_button_visible(self.cfg_btn, True)
+        self.cfg_btn.setIcon(cfg_icon())
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        self.edit_btn.setIcon(QIcon())
+        self.cfg_btn.setIcon(QIcon())
+        _set_bottom_aux_button_visible(self.edit_btn, False)
+        _set_bottom_aux_button_visible(self.cfg_btn, False)
+        return super().leaveEvent(event)
+
+    def changeEvent(self, event: QEvent) -> None:
+        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange):
+            _set_bottom_tool_button_icon(self.tool_btn, self.icon_filename)
+        return super().changeEvent(event)
+
+    def blockSignals(self, block: bool):
+        self.selector.blockSignals(block)
+        super().blockSignals(block)
+
+    def setSelectedValue(self, value: str, block_signals=True):
+        if block_signals:
+            self.blockSignals(True)
+        self.selector.setCurrentText(value)
+        if block_signals:
+            self.blockSignals(False)
+        self.updateButtonText()
+
+    def _section(self, text: str, accent: bool = False):
+        _add_bottom_menu_section(self.menu, text, accent=accent)
+
+    def rebuildMenu(self):
+        self.menu.clear()
+        current_inpaint = self.selector.currentText()
+        self._section(self.tr('Inpaint'))
+        for i in range(self.selector.count()):
+            inpainter = self.selector.itemText(i)
+            if inpainter == LLM_INPAINT_KEY:
+                continue
+            _add_bottom_menu_action(
+                self.menu,
+                inpainter,
+                current_inpaint == inpainter,
+                lambda checked=False, value=inpainter: self.selector.setCurrentText(value),
+            )
+
+        self._section(self.tr('LLM'), accent=current_inpaint == LLM_INPAINT_KEY)
+        added = False
+        for profile in pcfg.module.llm_profiles:
+            if not profile.support_image:
+                continue
+            added = True
+            profile_id = profile.id
+            profile_menu = _bottom_submenu(profile.name or profile_id, self.menu)
+            _add_bottom_submenu(
+                self.menu,
+                profile_menu,
+                profile.name or profile_id,
+                current_inpaint == LLM_INPAINT_KEY and pcfg.module.inpaint_llm_id == profile_id,
+            )
+            self._buildProfileMenu(profile_menu, profile)
+        if not added:
+            action = QAction(self.tr('No image profiles'), self.menu)
+            action.setEnabled(False)
+            self.menu.addAction(action)
+
+    def selectLLMProfile(self, profile_id: str):
+        pcfg.module.inpaint_llm_id = profile_id
+        pcfg.module.inpainter = LLM_INPAINT_KEY
+        if self.selector.currentText() != LLM_INPAINT_KEY:
+            self.selector.setCurrentText(LLM_INPAINT_KEY)
+        self.llm_profile_changed.emit(profile_id)
+        self.updateButtonText()
+
+    def selectLLMProfileSetting(self, profile_id: str, key: str, value: str):
+        profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
+        if profile is not None:
+            setattr(profile, key, value)
+            if key == 'image_model':
+                options = profile.image_model_options
+                if value and value not in options:
+                    options.insert(0, value)
+        self.selectLLMProfile(profile_id)
+
+    def _buildProfileMenu(self, menu: QMenu, profile: dict):
+        profile_id = profile.id
+        selected_profile = (
+            self.selector.currentText() == LLM_INPAINT_KEY
+            and pcfg.module.inpaint_llm_id == profile_id
+        )
+
+        _add_bottom_menu_section(menu, self.tr('Image Model'))
+        model_options = [str(option) for option in profile.image_model_options if str(option)]
+        current_model = str(profile.image_model or '')
+        for model in model_options:
+            _add_bottom_menu_action(
+                menu,
+                model,
+                selected_profile and model == current_model,
+                lambda checked=False, pid=profile_id, value=model: self.selectLLMProfileSetting(pid, 'image_model', value),
+            )
+
+    def onEditClicked(self):
+        if self.selector.currentText() == LLM_INPAINT_KEY:
+            self.edit_clicked.emit(pcfg.module.inpaint_llm_id)
+
+    def updateButtonText(self, *args):
+        name = self.selector.currentText()
+        is_llm = name == LLM_INPAINT_KEY
+        if is_llm:
+            profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.inpaint_llm_id)
+            if profile is not None:
+                model = str(profile.image_model or '').strip()
+                name = _simplify_llm_model_name(model) or profile.name or name
+        if not name:
+            name = self.tr('Inpaint')
+        self.tool_btn.setText(_bottom_tool_button_text(name))
+        _set_bottom_aux_button_visible(self.edit_btn, is_llm and self.underMouse())
 
 
 
@@ -1147,7 +1332,7 @@ class BottomBar(Widget):
         
         self.textdet_selector = ModuleSelectionToolButtonWidget(self.tr('Text Detector'), 'textdetect.svg')
         self.ocr_selector = OCRSelectionWidget()
-        self.inpaint_selector = ModuleSelectionToolButtonWidget(self.tr('Inpaint'), 'drawingtools_inpaint.svg')
+        self.inpaint_selector = InpaintSelectionWidget()
         self.trans_selector = TranslatorSelectionWidget()
 
         self.hlayout = QHBoxLayout(self)

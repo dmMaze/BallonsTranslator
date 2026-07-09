@@ -72,7 +72,8 @@ class MainWindow(mainwindow_cls):
     create_errdialog = Signal(str, str, str)
     create_infodialog = Signal(dict)
     show_llm_key_dialog = Signal(str, str)
-    show_llm_model_dialog = Signal(str, str, bool)
+    show_llm_model_dialog = Signal(str, str, str)
+    show_llm_base_url_dialog = Signal(str, str, str)
     
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
@@ -85,6 +86,8 @@ class MainWindow(mainwindow_cls):
         self.show_llm_key_dialog.connect(self.on_show_llm_key_dialog)
         shared.show_llm_model_dialog_in_mainthread = self.show_llm_model_dialog.emit
         self.show_llm_model_dialog.connect(self.on_show_llm_model_dialog)
+        shared.show_llm_base_url_dialog_in_mainthread = self.show_llm_base_url_dialog.emit
+        self.show_llm_base_url_dialog.connect(self.on_show_llm_base_url_dialog)
         shared.register_view_widget = self.register_view_widget
 
         self.app = app
@@ -382,6 +385,8 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.trans_selector.src_selector.currentTextChanged.connect(self.on_trans_src_changed)
         self.bottomBar.textdet_selector.cfg_clicked.connect(self.to_detect_config)
         self.bottomBar.inpaint_selector.cfg_clicked.connect(self.to_inpaint_config)
+        self.bottomBar.inpaint_selector.edit_clicked.connect(self.focus_llm_profile)
+        self.bottomBar.inpaint_selector.llm_profile_changed.connect(self.on_inpaint_llm_profile_changed)
         self.bottomBar.ocr_selector.cfg_clicked.connect(self.to_ocr_config)
         self.bottomBar.ocr_selector.edit_clicked.connect(self.focus_llm_profile)
         self.bottomBar.ocr_selector.selector.currentTextChanged.connect(self.on_ocr_changed)
@@ -1413,14 +1418,22 @@ class MainWindow(mainwindow_cls):
             self.configPanel.llm_profiles_panel.syncProfile(profile_id)
         self.bottomBar.ocr_selector.updateButtonText()
 
+    def on_inpaint_llm_profile_changed(self, profile_id: str):
+        if profile_id:
+            pcfg.module.inpaint_llm_id = profile_id
+            self.configPanel.llm_profiles_panel.syncProfile(profile_id)
+        self.bottomBar.inpaint_selector.updateButtonText()
+
     def on_llm_profile_ui_updated(self):
         self.configPanel.trans_config_panel.refreshLLMProfiles()
         self.bottomBar.trans_selector.updateButtonText()
         self.bottomBar.ocr_selector.updateButtonText()
+        self.bottomBar.inpaint_selector.updateButtonText()
 
     def on_llm_profile_summary_changed(self):
         self.bottomBar.trans_selector.updateButtonText()
         self.bottomBar.ocr_selector.updateButtonText()
+        self.bottomBar.inpaint_selector.updateButtonText()
 
     def on_trans_src_changed(self):
         sender = self.sender()
@@ -1463,6 +1476,7 @@ class MainWindow(mainwindow_cls):
         tgt_selector = self.configPanel.inpaint_config_panel.module_combobox
         if tgt_selector.currentText() != module and module in GET_VALID_INPAINTERS():
             tgt_selector.setCurrentText(module)
+        self.bottomBar.inpaint_selector.updateButtonText()
 
     def on_transpagebtn_pressed(self, run_target: bool):
         page_key = self.imgtrans_proj.current_img
@@ -2068,16 +2082,29 @@ class MainWindow(mainwindow_cls):
         finally:
             shared.showed_exception.discard(exception_type)
 
-    def on_show_llm_model_dialog(self, profile_id: str, profile_name: str, is_vision: bool):
+    def on_show_llm_model_dialog(self, profile_id: str, profile_name: str, target: str):
+        if isinstance(target, bool):
+            target = 'vision_model' if target else 'model'
+        target = target if target in {'model', 'vision_model', 'image_model'} else 'model'
         dialog_key = profile_id or profile_name
         # QMessageBox.exec() runs a nested event loop, so queued RUN signals can re-enter here.
-        exception_type = f'LLMModelRequired:{dialog_key}:{int(is_vision)}'
+        exception_type = f'LLMModelRequired:{dialog_key}:{target}'
         if exception_type in shared.showed_exception:
             return
         shared.showed_exception.add(exception_type)
 
-        title = self.tr('Vision model required') if is_vision else self.tr('Model required')
-        field_name = self.tr('vision model') if is_vision else self.tr('model')
+        title_by_target = {
+            'model': self.tr('Model required'),
+            'vision_model': self.tr('Vision model required'),
+            'image_model': self.tr('Image model required'),
+        }
+        field_by_target = {
+            'model': self.tr('model'),
+            'vision_model': self.tr('vision model'),
+            'image_model': self.tr('image model'),
+        }
+        title = title_by_target[target]
+        field_name = field_by_target[target]
         display_profile_name = profile_name or profile_id or self.tr('LLM Profile')
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Warning)
@@ -2096,13 +2123,61 @@ class MainWindow(mainwindow_cls):
         try:
             msg.exec()
             if msg.clickedButton() == fill_btn:
-                target_profile_id = profile_id or (
-                    pcfg.module.ocr_llm_id if is_vision else pcfg.module.translator_llm_id
-                )
+                if target == 'vision_model':
+                    target_profile_id = profile_id or pcfg.module.ocr_llm_id
+                elif target == 'image_model':
+                    target_profile_id = profile_id or pcfg.module.inpaint_llm_id
+                else:
+                    target_profile_id = profile_id or pcfg.module.translator_llm_id
                 self.focus_llm_profile(
                     target_profile_id,
                     expand_details=False,
-                    target='vision_model' if is_vision else 'model',
+                    target=target,
+                )
+        finally:
+            shared.showed_exception.discard(exception_type)
+
+    def on_show_llm_base_url_dialog(self, profile_id: str, profile_name: str, target: str):
+        target = target if target in {'base_url', 'image_base_url'} else 'base_url'
+        dialog_key = profile_id or profile_name
+        exception_type = f'LLMBaseURLRequired:{dialog_key}:{target}'
+        if exception_type in shared.showed_exception:
+            return
+        shared.showed_exception.add(exception_type)
+
+        title_by_target = {
+            'base_url': self.tr('Base URL required'),
+            'image_base_url': self.tr('Image base URL required'),
+        }
+        field_by_target = {
+            'base_url': self.tr('base URL'),
+            'image_base_url': self.tr('image base URL'),
+        }
+        title = title_by_target[target]
+        field_name = field_by_target[target]
+        display_profile_name = profile_name or profile_id or self.tr('LLM Profile')
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowTitle(title)
+        msg.setText(
+            self.tr('The selected LLM profile requires this field: {field_name}.').format(field_name=field_name)
+        )
+        msg.setInformativeText(
+            self.tr('Fill the {field_name} before running this LLM task for: {profile_name}').format(
+                field_name=field_name,
+                profile_name=display_profile_name,
+            )
+        )
+        fill_btn = msg.addButton(self.tr('Fill URL'), QMessageBox.AcceptRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        try:
+            msg.exec()
+            if msg.clickedButton() == fill_btn:
+                target_profile_id = profile_id or pcfg.module.inpaint_llm_id
+                self.focus_llm_profile(
+                    target_profile_id,
+                    expand_details=True,
+                    target=target,
                 )
         finally:
             shared.showed_exception.discard(exception_type)

@@ -45,6 +45,7 @@ from ballontranslator.utils.llm_profiles import (
 PROFILE_PARAM_DEFS = [
     ('require_api_key', 'checkbox'),
     ('base_url', 'line_editor'),
+    ('image_base_url', 'line_editor'),
     ('vision_detail_level', 'selector'),
     ('thinking_level', 'selector'),
     ('invalid_repeat_count', 'line_editor'),
@@ -203,13 +204,17 @@ class ProfileCardWidget(QGroupBox):
         self._name_editing = False
         self._model_editing = False
         self._vision_model_editing = False
+        self._image_model_editing = False
         self._previous_model_text = ''
         self._previous_vision_model_text = ''
+        self._previous_image_model_text = ''
         self._app_filter_installed = False
         self.profile_param_display_names = {
             'base_url': self.tr('Base URL'),
+            'image_base_url': self.tr('Image Base URL'),
             'require_api_key': self.tr('Require API Key'),
             'vision_model': self.tr('Vision Model'),
+            'image_model': self.tr('Image Model'),
             'vision_detail_level': self.tr('Vision Detail Level'),
             'thinking_level': self.tr('Thinking Level'),
             'invalid_repeat_count': self.tr('Invalid Repeat Count'),
@@ -224,8 +229,10 @@ class ProfileCardWidget(QGroupBox):
         }
         self.profile_param_descriptions = {
             'base_url': self.tr('OpenAI-compatible API base URL.'),
-            'require_api_key': self.tr('Require API key before running translation.'),
+            'image_base_url': self.tr('OpenAI-compatible image API base URL used only by LLMInpaint.'),
+            'require_api_key': self.tr('Require API key before running this LLM task.'),
             'vision_model': self.tr('Model used by LLMOCR for image OCR.'),
+            'image_model': self.tr('Model used by LLMInpaint for image cleanup.'),
             'vision_detail_level': self.tr('Image detail level sent to vision-capable providers.'),
             'thinking_level': self.tr('Reasoning effort sent only when it is not None.'),
             'prompt': self.tr('Additional translation instructions for style and wording.'),
@@ -251,6 +258,8 @@ class ProfileCardWidget(QGroupBox):
         self.text_badge.clicked.connect(self.toggleTextSupport)
         self.vision_badge = CapabilityBadgeLabel(QColor(152, 88, 162, 46), self)
         self.vision_badge.clicked.connect(self.toggleVisionSupport)
+        self.image_badge = CapabilityBadgeLabel(QColor(254, 128, 160, 46), self)
+        self.image_badge.clicked.connect(self.toggleImageSupport)
 
         self.key_status_icon = SvgStatusIcon(self)
         self.key_status_icon.setObjectName('LLMProfileKeyStatusIcon')
@@ -399,9 +408,55 @@ class ProfileCardWidget(QGroupBox):
         vision_column.addLayout(vision_model_label_row)
         vision_column.addWidget(self.vision_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
+        self.image_model_summary_widget = QWidget(self)
+        self.image_model_summary_widget.setObjectName('LLMProfileSummaryColumn')
+        self.image_model_summary_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        image_column = QVBoxLayout(self.image_model_summary_widget)
+        image_column.setContentsMargins(0, 0, 0, 0)
+        image_column.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        image_column.setSpacing(2)
+        self.image_model_label = QLabel(self.tr('Image Model'), self)
+        self.image_model_label.setObjectName('LLMProfileFieldLabel')
+        self.image_model_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.add_image_model_btn = QToolButton(self)
+        self.add_image_model_btn.setObjectName('LLMProfileModelAddButton')
+        self.add_image_model_btn.setIcon(QIcon(themed_icon_path('add.svg')))
+        self.add_image_model_btn.setToolTip(self.tr('Add image model'))
+        self.add_image_model_btn.setFixedSize(16, 16)
+        self.add_image_model_btn.clicked.connect(self.startImageModelEdit)
+        self.remove_image_model_btn = QToolButton(self)
+        self.remove_image_model_btn.setObjectName('LLMProfileModelRemoveButton')
+        self.remove_image_model_btn.setIcon(QIcon(themed_icon_path('titlebar_min.svg')))
+        self.remove_image_model_btn.setToolTip(self.tr('Delete current image model'))
+        self.remove_image_model_btn.setFixedSize(16, 16)
+        self.remove_image_model_btn.clicked.connect(self.deleteCurrentImageModel)
+        image_model_label_row = QHBoxLayout()
+        image_model_label_row.setContentsMargins(0, 0, 0, 0)
+        image_model_label_row.setSpacing(4)
+        image_model_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        image_model_label_row.addWidget(self.image_model_label, 0, Qt.AlignmentFlag.AlignLeft)
+        image_model_label_row.addWidget(self.add_image_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        image_model_label_row.addWidget(self.remove_image_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        image_model_label_row.addStretch(1)
+        self.image_model_combo = ParamComboBox(
+            'image_model',
+            profile.image_model_options,
+            size=size2width('short'),
+            scrollWidget=scrollWidget,
+        )
+        self.image_model_combo.setObjectName('LLMProfileModelCombo')
+        image_model_tooltip = self.tr('Model used by LLMInpaint for image cleanup.')
+        self.image_model_label.setToolTip(image_model_tooltip)
+        self.image_model_combo.setToolTip(image_model_tooltip)
+        self.image_model_combo.setEditable(False)
+        self.image_model_combo.setCurrentText(profile.image_model)
+        image_column.addLayout(image_model_label_row)
+        image_column.addWidget(self.image_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
+
         self.summary_layout.addWidget(self.api_summary_widget)
         self.summary_layout.addWidget(self.model_summary_widget)
         self.summary_layout.addWidget(self.vision_model_summary_widget)
+        self.summary_layout.addWidget(self.image_model_summary_widget)
         layout.addWidget(self.summary_widget)
 
         self.details = ParamWidget(self._detail_params(), scrollWidget=scrollWidget)
@@ -415,12 +470,14 @@ class ProfileCardWidget(QGroupBox):
 
         self.model_combo.paramwidget_edited.connect(self.on_model_edited)
         self.vision_model_combo.paramwidget_edited.connect(self.on_vision_model_edited)
+        self.image_model_combo.paramwidget_edited.connect(self.on_image_model_edited)
         self.api_key_widget.editor.editingFinished.connect(self.on_api_key_finished)
         self.api_key_widget.editor.textChanged.connect(self.on_api_key_text_changed)
         self.details.paramwidget_edited.connect(self.on_detail_edited)
         self._position_header_controls()
         self.refreshTextBadge()
         self.refreshVisionBadge()
+        self.refreshImageBadge()
         self.refreshConditionalVisibility()
         self.destroyed.connect(self._remove_app_event_filter)
 
@@ -432,6 +489,7 @@ class ProfileCardWidget(QGroupBox):
     def syncFromProfile(self):
         self._syncComboBox(self.model_combo, self.profile.model_options, self.profile.model)
         self._syncComboBox(self.vision_model_combo, self.profile.vision_model_options, self.profile.vision_model)
+        self._syncComboBox(self.image_model_combo, self.profile.image_model_options, self.profile.image_model)
         vision_detail_combo = self.details.param_widgets.get('vision_detail_level')
         if isinstance(vision_detail_combo, ParamComboBox):
             self._syncComboBox(
@@ -444,6 +502,7 @@ class ProfileCardWidget(QGroupBox):
             self._syncComboBox(thinking_combo, self.profile.thinking_level_options, self.profile.thinking_level)
         self.refreshTextBadge()
         self.refreshVisionBadge()
+        self.refreshImageBadge()
         self.refreshConditionalVisibility()
 
     def _syncComboBox(self, combo: ParamComboBox, options, value: str):
@@ -514,6 +573,7 @@ class ProfileCardWidget(QGroupBox):
         title_width += (
             self.text_badge.width()
             + self.vision_badge.width()
+            + self.image_badge.width()
             + self.more_btn.width()
             + self.delete_btn.width()
             + 78
@@ -526,6 +586,7 @@ class ProfileCardWidget(QGroupBox):
                 self.api_summary_widget,
                 self.model_summary_widget,
                 self.vision_model_summary_widget,
+                self.image_model_summary_widget,
             )
             if not widget.isHidden()
         ]
@@ -587,6 +648,19 @@ class ProfileCardWidget(QGroupBox):
         else:
             self.startModelEdit()
 
+    def focusImageModel(self):
+        self.startImageModelEdit()
+
+    def focusDetailLineEditor(self, target: str, placeholder: str = ''):
+        widget = self.details.param_widgets.get(target)
+        if widget is None:
+            return
+        if placeholder and hasattr(widget, 'setPlaceholderText'):
+            widget.setPlaceholderText(placeholder)
+        widget.setFocus()
+        if hasattr(widget, 'selectAll'):
+            widget.selectAll()
+
     def startNameEdit(self):
         self._name_editing = True
         self.name_edit.setText(self.profile.name or self.tr('LLM Profile'))
@@ -619,6 +693,8 @@ class ProfileCardWidget(QGroupBox):
         self.remove_model_btn.setVisible(visible)
         self.add_vision_model_btn.setVisible(visible)
         self.remove_vision_model_btn.setVisible(visible)
+        self.add_image_model_btn.setVisible(visible)
+        self.remove_image_model_btn.setVisible(visible)
 
     def _position_header_controls(self):
         border_y = 9
@@ -633,17 +709,26 @@ class ProfileCardWidget(QGroupBox):
         else:
             title_right = 18 + self.fontMetrics().boundingRect(self.title() or '').width()
         badge_spacing = 4
-        badge_width = self.text_badge.width() + badge_spacing + self.vision_badge.width()
+        badge_width = (
+            self.text_badge.width()
+            + badge_spacing
+            + self.vision_badge.width()
+            + badge_spacing
+            + self.image_badge.width()
+        )
         badge_x = min(title_right + 5, max(18, more_x - spacing - badge_width))
         badge_y = max(0, border_y - self.vision_badge.height() // 2)
         self.text_badge.move(badge_x, badge_y)
         self.vision_badge.move(badge_x + self.text_badge.width() + badge_spacing, badge_y)
+        image_x = badge_x + self.text_badge.width() + badge_spacing + self.vision_badge.width() + badge_spacing
+        self.image_badge.move(image_x, badge_y)
         self.more_btn.move(more_x, button_y)
         self.delete_btn.move(delete_x, button_y + 2)
         if self.name_edit.isVisible():
             self.name_edit.raise_()
         self.text_badge.raise_()
         self.vision_badge.raise_()
+        self.image_badge.raise_()
         self.more_btn.raise_()
         self.delete_btn.raise_()
 
@@ -749,6 +834,16 @@ class ProfileCardWidget(QGroupBox):
             return
         self.profile.vision_model = value
         options = self.profile.vision_model_options
+        if value and value not in options:
+            options.append(value)
+        self.profile_changed.emit()
+        self.profile_summary_changed.emit()
+
+    def on_image_model_edited(self, param_key, value):
+        if self._image_model_editing:
+            return
+        self.profile.image_model = value
+        options = self.profile.image_model_options
         if value and value not in options:
             options.append(value)
         self.profile_changed.emit()
@@ -887,6 +982,71 @@ class ProfileCardWidget(QGroupBox):
     def _syncVisionModelCombo(self):
         self._syncComboBox(self.vision_model_combo, self.profile.vision_model_options, self.profile.vision_model)
 
+    def startImageModelEdit(self):
+        if self._image_model_editing:
+            return
+        self._image_model_editing = True
+        self._previous_image_model_text = self.image_model_combo.currentText()
+        self.image_model_combo.setEditable(True)
+        editor = self.image_model_combo.lineEdit()
+        if editor is None:
+            self._image_model_editing = False
+            return
+        editor.setObjectName('LLMProfileModelEditor')
+        editor.setPlaceholderText(self.tr('Image model name'))
+        try:
+            editor.editingFinished.disconnect(self.finishImageModelEdit)
+        except Exception:
+            pass
+        editor.editingFinished.connect(self.finishImageModelEdit)
+        self.image_model_combo.setEditText('')
+        editor.setFocus()
+        editor.selectAll()
+
+    def finishImageModelEdit(self):
+        if not self._image_model_editing:
+            return
+        editor = self.image_model_combo.lineEdit()
+        text = editor.text().strip() if editor is not None else ''
+        self._image_model_editing = False
+        self.image_model_combo.setEditable(False)
+        if not text:
+            self._setImageModelText(self._previous_image_model_text, emit_changed=False)
+            return
+        options = self.profile.image_model_options
+        if text not in options:
+            options.append(text)
+            self.image_model_combo.blockSignals(True)
+            self.image_model_combo.addItem(text)
+            self.image_model_combo.blockSignals(False)
+        self._setImageModelText(text, emit_changed=True)
+
+    def deleteCurrentImageModel(self):
+        if self._image_model_editing:
+            self.finishImageModelEdit()
+        current = self.image_model_combo.currentText()
+        options = [str(option) for option in self.profile.image_model_options if str(option)]
+        if current not in options:
+            return
+        removed_idx = options.index(current)
+        options.pop(removed_idx)
+        self.profile.image_model_options = options
+        next_model = options[min(removed_idx, len(options) - 1)] if options else ''
+        self.image_model_combo.blockSignals(True)
+        self.image_model_combo.clear()
+        self.image_model_combo.addItems(options)
+        self.image_model_combo.blockSignals(False)
+        self._setImageModelText(next_model, emit_changed=True)
+
+    def _setImageModelText(self, text: str, emit_changed: bool):
+        self.image_model_combo.blockSignals(True)
+        self.image_model_combo.setCurrentText(text)
+        self.image_model_combo.blockSignals(False)
+        self.profile.image_model = text
+        if emit_changed:
+            self.profile_changed.emit()
+            self.profile_summary_changed.emit()
+
     def on_api_key_finished(self):
         store_api_key(self.profile, self.api_key_widget.text())
         self.profile_changed.emit()
@@ -953,6 +1113,22 @@ class ProfileCardWidget(QGroupBox):
         self.profile_selector_changed.emit()
         self.profile_summary_changed.emit()
 
+    def toggleImageSupport(self):
+        self.profile.support_image = not bool(self.profile.support_image)
+        if self.profile.support_image and not self.profile.image_model:
+            options = [str(option) for option in self.profile.image_model_options if str(option)]
+            self.profile.image_model = options[0] if options else ''
+        if self.profile.support_image and self.profile.image_model:
+            options = self.profile.image_model_options
+            if self.profile.image_model not in options:
+                options.insert(0, self.profile.image_model)
+        self._syncComboBox(self.image_model_combo, self.profile.image_model_options, self.profile.image_model)
+        self.refreshImageBadge()
+        self.refreshConditionalVisibility()
+        self.profile_changed.emit()
+        self.profile_selector_changed.emit()
+        self.profile_summary_changed.emit()
+
     def refreshTextBadge(self):
         active = bool(self.profile.support_text)
         self.text_badge.setIconPath(themed_icon_path('text.svg' if active else 'text_disabled.svg'))
@@ -977,14 +1153,28 @@ class ProfileCardWidget(QGroupBox):
         self.vision_badge.style().polish(self.vision_badge)
         self._position_header_controls()
 
+    def refreshImageBadge(self):
+        active = bool(self.profile.support_image)
+        self.image_badge.setIconPath(themed_icon_path('image.svg' if active else 'image_disabled.svg'))
+        self.image_badge.setProperty('capabilityActive', active)
+        self.image_badge.setToolTip(
+            self.tr('Disable image cleanup for this profile.') if active
+            else self.tr('Enable image cleanup for this profile.')
+        )
+        self.image_badge.style().unpolish(self.image_badge)
+        self.image_badge.style().polish(self.image_badge)
+        self._position_header_controls()
+
     def refreshConditionalVisibility(self):
         require_key = bool(self.profile.require_api_key)
         self.api_summary_widget.setVisible(require_key)
         self.model_summary_widget.setVisible(bool(self.profile.support_text))
         self.vision_model_summary_widget.setVisible(bool(self.profile.support_vision))
+        self.image_model_summary_widget.setVisible(bool(self.profile.support_image))
         if hasattr(self.details, 'setParamVisible'):
             self.details.setParamVisible('low_vram_mode', not require_key)
             self.details.setParamVisible('vision_detail_level', bool(self.profile.support_vision))
+            self.details.setParamVisible('image_base_url', bool(self.profile.support_image))
         self.refreshKeyStatus()
         self._sync_summary_flow_size()
         self._sync_minimum_width_with_content()
@@ -1101,7 +1291,15 @@ class LLMProfilesWidget(QWidget):
     def applyFilterToRow(self, row: ProfileCardWidget, query: str = None):
         query = self.filterQuery() if query is None else query
         profile = row.profile
-        haystack = ' '.join((profile.name, profile.model, profile.vision_model, profile.base_url, profile.id)).lower()
+        haystack = ' '.join((
+            profile.name,
+            profile.model,
+            profile.vision_model,
+            profile.image_model,
+            profile.base_url,
+            profile.image_base_url,
+            profile.id,
+        )).lower()
         row.setVisible(not query or query in haystack)
 
     def applyFilter(self, *args):
@@ -1154,6 +1352,8 @@ class LLMProfilesWidget(QWidget):
             pcfg.module.translator_llm_id = pcfg.module.llm_profiles[0].id
         if pcfg.module.ocr_llm_id == profile_id:
             pcfg.module.ocr_llm_id = pcfg.module.llm_profiles[0].id
+        if pcfg.module.inpaint_llm_id == profile_id:
+            pcfg.module.inpaint_llm_id = pcfg.module.llm_profiles[0].id
         row = self.rows.pop(profile_id, None)
         if row is not None:
             row.collapse()
@@ -1180,6 +1380,8 @@ class LLMProfilesWidget(QWidget):
             pcfg.module.translator_llm_id = pcfg.module.llm_profiles[0].id
         if not profile_by_id(pcfg.module.llm_profiles, pcfg.module.ocr_llm_id):
             pcfg.module.ocr_llm_id = pcfg.module.llm_profiles[0].id
+        if not profile_by_id(pcfg.module.llm_profiles, pcfg.module.inpaint_llm_id):
+            pcfg.module.inpaint_llm_id = pcfg.module.llm_profiles[0].id
         self.rebuild()
         self.profile_ui_updated.emit()
 
@@ -1215,6 +1417,14 @@ class LLMProfilesWidget(QWidget):
         elif target == 'vision_model':
             row.focusModel(vision=True)
             self.ensureWidgetVisible(row.vision_model_combo)
+        elif target == 'image_model':
+            row.focusImageModel()
+            self.ensureWidgetVisible(row.image_model_combo)
+        elif target == 'image_base_url':
+            row.focusDetailLineEditor(target, self.tr('Image Base URL'))
+            widget = row.details.param_widgets.get(target)
+            if widget is not None:
+                self.ensureWidgetVisible(widget)
         else:
             row.focusApiKey()
             self.ensureWidgetVisible(row.api_key_widget.editor)

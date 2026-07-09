@@ -90,6 +90,10 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(profile.vision_model_options, [])
         self.assertEqual(profile.vision_detail_level, 'None')
         self.assertEqual(profile.vision_detail_level_options, VISION_DETAIL_LEVEL_OPTIONS)
+        self.assertFalse(profile.support_image)
+        self.assertEqual(profile.image_base_url, '')
+        self.assertEqual(profile.image_model, '')
+        self.assertEqual(profile.image_model_options, [])
 
     def test_vision_enabled_builtins_default_to_auto_detail(self):
         for provider in ['OpenAI', 'Gemini', 'OpenRouter', 'Ollama']:
@@ -110,6 +114,14 @@ class LLMProfileMigrationTest(unittest.TestCase):
 
         self.assertNotIn('text-only-model', profile.vision_model_options)
         self.assertNotIn('vision-only-model', profile.model_options)
+
+    def test_openrouter_builtin_enables_image_cleanup_profile(self):
+        profile = default_profile('OpenRouter')
+
+        self.assertTrue(profile.support_image)
+        self.assertEqual(profile.image_base_url, 'https://openrouter.ai/api/v1')
+        self.assertEqual(profile.image_model, 'black-forest-labs/flux.2-klein-4b')
+        self.assertEqual(profile.image_model_options, ['black-forest-labs/flux.2-klein-4b'])
 
 
 class SecretStoreTest(unittest.TestCase):
@@ -191,6 +203,7 @@ class SecretStoreTest(unittest.TestCase):
             llm_profiles=[profile],
             translator_llm_id='openai',
             ocr_llm_id='openai',
+            inpaint_llm_id='openai',
         ))
         saved = json_dump_program_config(cfg)
 
@@ -201,11 +214,35 @@ class SecretStoreTest(unittest.TestCase):
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.ocr_llm_id)
         self.assertEqual(loaded.module.ocr_llm_id, 'openai')
+        self.assertEqual(loaded.module.inpaint_llm_id, 'openai')
         self.assertFalse(selected.support_text)
         self.assertTrue(selected.support_vision)
         self.assertEqual(selected.vision_model, 'gpt-4o')
         self.assertEqual(selected.vision_model_options, ['gpt-4o', 'gpt-4o-mini'])
         self.assertEqual(selected.vision_detail_level, 'high')
+
+    def test_saved_config_roundtrips_inpaint_llm_profile_selection(self):
+        profile = default_profile('OpenRouter')
+        profile.api_key = 'sk-demo'
+        cfg = ProgramConfig(module=ModuleConfig(
+            llm_profiles=[profile],
+            translator_llm_id='openrouter',
+            ocr_llm_id='openrouter',
+            inpaint_llm_id='openrouter',
+        ))
+        saved = json_dump_program_config(cfg)
+
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            temp.write(saved)
+            temp.flush()
+            loaded = ProgramConfig.load(temp.name)
+
+        selected = profile_by_id(loaded.module.llm_profiles, loaded.module.inpaint_llm_id)
+        self.assertEqual(loaded.module.inpaint_llm_id, 'openrouter')
+        self.assertTrue(selected.support_image)
+        self.assertEqual(selected.image_base_url, 'https://openrouter.ai/api/v1')
+        self.assertEqual(selected.image_model, 'black-forest-labs/flux.2-klein-4b')
+        self.assertEqual(selected.image_model_options, ['black-forest-labs/flux.2-klein-4b'])
 
 
 if __name__ == '__main__':

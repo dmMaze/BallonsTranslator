@@ -362,6 +362,12 @@ def existing_mask(img, mask: np.ndarray):
     return mask, mask, bub_dict
 
 
+def region_mask(img, mask: np.ndarray):
+    bub_dict = {"rgb": [0, 0, 0],"bground_rgb": [255, 255, 255],"need_inpaint": True}
+    msk = np.full_like(mask, fill_value=255)
+    return msk, msk, bub_dict
+
+
 def extract_ballon_mask(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     '''
     Given original img and text mask (cropped)
