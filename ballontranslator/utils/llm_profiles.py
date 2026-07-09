@@ -10,9 +10,11 @@ from ballontranslator.utils.structures import Config, field, nested_dataclass
 
 
 LLM_TRANSLATOR_KEY = "LLMTranslator"
+LLM_OCR_KEY = "LLMOCR"
 OLD_LLM_TRANSLATORS = ("ChatGPT", "ChatGPT_exp", "LLM_API_Translator")
 
 THINKING_LEVEL_OPTIONS = ["None", "minimal", "low", "medium", "high", "xhigh"]
+VISION_DETAIL_LEVEL_OPTIONS = ["None", "auto", "low", "high"]
 PROVIDER_ALIASES = {
     "Google": "Gemini",
 }
@@ -23,6 +25,8 @@ PROVIDER_DEFAULTS = {
         "base_url": "https://api.openai.com/v1",
         "require_api_key": True,
         "model": "gpt-5.5",
+        "support_vision": True,
+        "vision_detail_level": "auto",
         "model_options": [
             "gpt-5.5",
             "gpt-5.5-pro",
@@ -46,6 +50,8 @@ PROVIDER_DEFAULTS = {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "require_api_key": True,
         "model": "gemini-3.5-flash",
+        "support_vision": True,
+        "vision_detail_level": "auto",
         "model_options": ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
     },
     "Grok": {
@@ -60,7 +66,12 @@ PROVIDER_DEFAULTS = {
         "base_url": "https://openrouter.ai/api/v1",
         "require_api_key": True,
         "model": "openai/gpt-5.5",
-        "model_options": ["openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-4o", "anthropic/claude-sonnet-4"],
+        "support_vision": True,
+        "vision_detail_level": "auto",
+        "model_options": ["openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-4o", "anthropic/claude-sonnet-4", "~x-ai/grok-latest",
+        "qwen/qwen3.7-plus", "qwen/qwen3.7-max", "qwen/qwen3.6-plus",
+        "~anthropic/claude-fable-latest",
+        ],
     },
     "LM Studio": {
         "id": "lmstudio",
@@ -75,6 +86,8 @@ PROVIDER_DEFAULTS = {
         "base_url": "http://localhost:11434/v1/",
         "require_api_key": False,
         "model": "llama3.1",
+        "support_vision": True,
+        "vision_detail_level": "auto",
         "model_options": ["llama3.1", "qwen2.5", "mistral"],
     },
 }
@@ -109,14 +122,20 @@ class LLMProfile(Config):
         'https://api.deepseek.com'
     """
 
-    id: str = "openai"
-    name: str = "OpenAI"
-    built_in: bool = True
-    base_url: str = "https://api.openai.com/v1"
+    id: str = ""
+    name: str = ""
+    built_in: bool = False
+    base_url: str = ""
     api_key: Any = ""
     require_api_key: bool = True
-    model: str = "gpt-5.5"
-    model_options: List[str] = field(default_factory=lambda: list(PROVIDER_DEFAULTS["OpenAI"]["model_options"]))
+    model: str = ""
+    model_options: List[str] = field(default_factory=list)
+    support_text: bool = True
+    support_vision: bool = False
+    vision_model: str = ""
+    vision_model_options: List[str] = field(default_factory=list)
+    vision_detail_level: str = "None"
+    vision_detail_level_options: List[str] = field(default_factory=lambda: list(VISION_DETAIL_LEVEL_OPTIONS))
     thinking_level: str = "None"
     thinking_level_options: List[str] = field(default_factory=lambda: list(THINKING_LEVEL_OPTIONS))
     prompt: str = DEFAULT_TRANSLATION_PROMPT

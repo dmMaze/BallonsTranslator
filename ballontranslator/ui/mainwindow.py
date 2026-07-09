@@ -72,6 +72,7 @@ class MainWindow(mainwindow_cls):
     create_errdialog = Signal(str, str, str)
     create_infodialog = Signal(dict)
     show_llm_key_dialog = Signal(str, str)
+    show_llm_model_dialog = Signal(str, str, bool)
     
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
@@ -82,6 +83,8 @@ class MainWindow(mainwindow_cls):
         self.create_infodialog.connect(self.on_create_infodialog)
         shared.show_llm_key_dialog_in_mainthread = self.show_llm_key_dialog.emit
         self.show_llm_key_dialog.connect(self.on_show_llm_key_dialog)
+        shared.show_llm_model_dialog_in_mainthread = self.show_llm_model_dialog.emit
+        self.show_llm_model_dialog.connect(self.on_show_llm_model_dialog)
         shared.register_view_widget = self.register_view_widget
 
         self.app = app
@@ -380,7 +383,9 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.textdet_selector.cfg_clicked.connect(self.to_detect_config)
         self.bottomBar.inpaint_selector.cfg_clicked.connect(self.to_inpaint_config)
         self.bottomBar.ocr_selector.cfg_clicked.connect(self.to_ocr_config)
+        self.bottomBar.ocr_selector.edit_clicked.connect(self.focus_llm_profile)
         self.bottomBar.ocr_selector.selector.currentTextChanged.connect(self.on_ocr_changed)
+        self.bottomBar.ocr_selector.llm_profile_changed.connect(self.on_ocr_llm_profile_changed)
         self.bottomBar.textdet_selector.setVisible(pcfg.module.enable_detect)
         self.bottomBar.ocr_selector.setVisible(pcfg.module.enable_ocr)
         self.bottomBar.trans_selector.setVisible(pcfg.module.enable_translate)
@@ -1359,8 +1364,12 @@ class MainWindow(mainwindow_cls):
     def to_trans_config(self):
         self.configPanel.focusOnTranslator()
 
-    def focus_llm_profile(self, profile_id: str = None, expand_details: bool = True):
-        self.configPanel.focusOnLLMProfile(profile_id or pcfg.module.translator_llm_id, expand_details=expand_details)
+    def focus_llm_profile(self, profile_id: str = None, expand_details: bool = True, target: str = 'api_key'):
+        self.configPanel.focusOnLLMProfile(
+            profile_id or pcfg.module.translator_llm_id,
+            expand_details=expand_details,
+            target=target,
+        )
 
     def to_inpaint_config(self):
         self.configPanel.focusOnInpaint()
@@ -1382,6 +1391,7 @@ class MainWindow(mainwindow_cls):
         tgt_selector = self.configPanel.ocr_config_panel.module_combobox
         if tgt_selector.currentText() != module and module in GET_VALID_OCR():
             tgt_selector.setCurrentText(module)
+        self.bottomBar.ocr_selector.updateButtonText()
 
     def on_trans_changed(self):
         module = self.bottomBar.trans_selector.selector.currentText()
@@ -1397,12 +1407,20 @@ class MainWindow(mainwindow_cls):
         self.configPanel.trans_config_panel.refreshLLMProfiles()
         self.bottomBar.trans_selector.updateButtonText()
 
+    def on_ocr_llm_profile_changed(self, profile_id: str):
+        if profile_id:
+            pcfg.module.ocr_llm_id = profile_id
+            self.configPanel.llm_profiles_panel.syncProfile(profile_id)
+        self.bottomBar.ocr_selector.updateButtonText()
+
     def on_llm_profile_ui_updated(self):
         self.configPanel.trans_config_panel.refreshLLMProfiles()
         self.bottomBar.trans_selector.updateButtonText()
+        self.bottomBar.ocr_selector.updateButtonText()
 
     def on_llm_profile_summary_changed(self):
         self.bottomBar.trans_selector.updateButtonText()
+        self.bottomBar.ocr_selector.updateButtonText()
 
     def on_trans_src_changed(self):
         sender = self.sender()
@@ -2039,7 +2057,7 @@ class MainWindow(mainwindow_cls):
         msg.setWindowTitle(self.tr('API key required'))
         msg.setText(self.tr('The selected LLM profile requires an API key.'))
         msg.setInformativeText(
-            self.tr('Fill the API key before running translation for: {profile_name}').format(profile_name=profile_name)
+            self.tr('Fill the API key before running this LLM task for: {profile_name}').format(profile_name=profile_name)
         )
         fill_btn = msg.addButton(self.tr('Fill API Key'), QMessageBox.AcceptRole)
         msg.addButton(QMessageBox.StandardButton.Cancel)
@@ -2047,6 +2065,45 @@ class MainWindow(mainwindow_cls):
             msg.exec()
             if msg.clickedButton() == fill_btn:
                 self.focus_llm_profile(profile_id, expand_details=False)
+        finally:
+            shared.showed_exception.discard(exception_type)
+
+    def on_show_llm_model_dialog(self, profile_id: str, profile_name: str, is_vision: bool):
+        dialog_key = profile_id or profile_name
+        # QMessageBox.exec() runs a nested event loop, so queued RUN signals can re-enter here.
+        exception_type = f'LLMModelRequired:{dialog_key}:{int(is_vision)}'
+        if exception_type in shared.showed_exception:
+            return
+        shared.showed_exception.add(exception_type)
+
+        title = self.tr('Vision model required') if is_vision else self.tr('Model required')
+        field_name = self.tr('vision model') if is_vision else self.tr('model')
+        display_profile_name = profile_name or profile_id or self.tr('LLM Profile')
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowTitle(title)
+        msg.setText(
+            self.tr('The selected LLM profile requires a {field_name}.').format(field_name=field_name)
+        )
+        msg.setInformativeText(
+            self.tr('Fill the {field_name} before running this LLM task for: {profile_name}').format(
+                field_name=field_name,
+                profile_name=display_profile_name,
+            )
+        )
+        fill_btn = msg.addButton(self.tr('Fill Model'), QMessageBox.AcceptRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        try:
+            msg.exec()
+            if msg.clickedButton() == fill_btn:
+                target_profile_id = profile_id or (
+                    pcfg.module.ocr_llm_id if is_vision else pcfg.module.translator_llm_id
+                )
+                self.focus_llm_profile(
+                    target_profile_id,
+                    expand_details=False,
+                    target='vision_model' if is_vision else 'model',
+                )
         finally:
             shared.showed_exception.discard(exception_type)
 

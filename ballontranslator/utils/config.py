@@ -38,6 +38,7 @@ class ModuleConfig(Config):
     translator_params: Dict = field(default_factory=lambda: dict())
     llm_profiles: List[LLMProfile] = field(default_factory=lambda: list())
     translator_llm_id: str = ''
+    ocr_llm_id: str = ''
     inpainter_params: Dict = field(default_factory=lambda: dict())
     translate_source: str = '日本語'
     translate_target: str = '简体中文'
@@ -115,6 +116,8 @@ class ModuleConfig(Config):
             self.llm_profiles = load_profiles(self.llm_profiles)
         if (not self.translator_llm_id or not profile_by_id(self.llm_profiles, self.translator_llm_id)) and self.llm_profiles:
             self.translator_llm_id = self.llm_profiles[0].id
+        if (not self.ocr_llm_id or not profile_by_id(self.llm_profiles, self.ocr_llm_id)) and self.llm_profiles:
+            self.ocr_llm_id = self.llm_profiles[0].id
         self.update_finish_code()
 
     def update_finish_code(self):

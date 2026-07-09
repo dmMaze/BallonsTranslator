@@ -16,8 +16,12 @@ from ballontranslator.utils.registry import LazyModuleError, Registry
 from ballontranslator.utils.imgproc_utils import enlarge_window, get_block_mask
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.modules.translators import MissingTranslatorParams
-from ballontranslator.modules.translators.exceptions import LLMApiKeyRequiredError, LLMTranslationStopped
-from ballontranslator.modules.exceptions import ModuleRunError
+from ballontranslator.modules.exceptions import (
+    LLMApiKeyRequiredError,
+    LLMModelRequiredError,
+    LLMRequestStopped,
+    ModuleRunError,
+)
 from ballontranslator.modules.base import BaseModule, soft_empty_cache
 from ballontranslator.modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     GET_VALID_TRANSLATORS, GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_OCR, \
@@ -43,6 +47,8 @@ cfg_module = pcfg.module
 # RUN can report the same missing LLM key from multiple page workers.
 _llm_key_dialog_lock = threading.Lock()
 _shown_llm_key_dialog_profiles = set()
+_llm_model_dialog_lock = threading.Lock()
+_shown_llm_model_dialog_profiles = set()
 
 
 def _show_llm_key_required_dialog(error: LLMApiKeyRequiredError):
@@ -57,9 +63,23 @@ def _show_llm_key_required_dialog(error: LLMApiKeyRequiredError):
         LOGGER.error(str(error))
 
 
+def _show_llm_model_required_dialog(error: LLMModelRequiredError):
+    profile_key = (error.profile_id or error.profile_name, error.is_vision)
+    with _llm_model_dialog_lock:
+        if profile_key in _shown_llm_model_dialog_profiles:
+            return
+        _shown_llm_model_dialog_profiles.add(profile_key)
+    if not shared.HEADLESS:
+        shared.show_llm_model_dialog_in_mainthread(error.profile_id, error.profile_name, error.is_vision)
+    else:
+        LOGGER.error(str(error))
+
+
 def _reset_llm_key_required_dialogs():
     with _llm_key_dialog_lock:
         _shown_llm_key_dialog_profiles.clear()
+    with _llm_model_dialog_lock:
+        _shown_llm_model_dialog_profiles.clear()
 
 
 class ModuleThread(QThread):
@@ -286,7 +306,11 @@ class ModuleThread(QThread):
             _show_llm_key_required_dialog(e)
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
-        except LLMTranslationStopped:
+        except LLMModelRequiredError as e:
+            _show_llm_model_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
+        except LLMRequestStopped:
             LOGGER.info(f'{self.module_key} task stopped by user.')
         except Exception as e:
             create_error_dialog(e, self.tr('Module task failed.'), f'ModuleThreadFailed:{self.module_key}')
@@ -504,7 +528,12 @@ class TranslateThread(ModuleThread):
             _show_llm_key_required_dialog(e)
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
-        except LLMTranslationStopped:
+        except LLMModelRequiredError as e:
+            success = False
+            _show_llm_model_required_dialog(e)
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
+        except LLMRequestStopped:
             success = False
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
@@ -678,7 +707,10 @@ class ImgtransThread(QThread):
         except LLMApiKeyRequiredError as e:
             _show_llm_key_required_dialog(e)
             self.requestStop()
-        except LLMTranslationStopped:
+        except LLMModelRequiredError as e:
+            _show_llm_model_required_dialog(e)
+            self.requestStop()
+        except LLMRequestStopped:
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
             create_error_dialog(e, self.tr('Translation Failed.'), 'TranslationFailed')
@@ -691,8 +723,25 @@ class ImgtransThread(QThread):
             self.finish_blktrans.emit(mode, blk_ids)
             return
         if mode >= 0 and mode < 3:
+            ocr_module = self.ocr_thread.module
+            if hasattr(ocr_module, 'set_stop_event'):
+                ocr_module.set_stop_event(self.stop_event)
             try:
-                self.ocr_thread.module.run_ocr(tgt_img, blk_list, split_textblk=True)
+                ocr_module.run_ocr(tgt_img, blk_list, split_textblk=True)
+            except LLMApiKeyRequiredError as e:
+                _show_llm_key_required_dialog(e)
+                self.requestStop()
+                self.finish_blktrans.emit(mode, blk_ids)
+                return
+            except LLMModelRequiredError as e:
+                _show_llm_model_required_dialog(e)
+                self.requestStop()
+                self.finish_blktrans.emit(mode, blk_ids)
+                return
+            except LLMRequestStopped:
+                LOGGER.info('OCR stopped by user.')
+                self.finish_blktrans.emit(mode, blk_ids)
+                return
             except ModuleRunError as e:
                 create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
                 self.finish_blktrans.emit(mode, blk_ids)
@@ -809,8 +858,22 @@ class ImgtransThread(QThread):
                 blk_list = self.imgtrans_proj.pages[imgname] if imgname in self.imgtrans_proj.pages else []
 
             if cfg_module.enable_ocr:
+                if hasattr(self.ocr, 'set_stop_event'):
+                    self.ocr.set_stop_event(self.stop_event)
                 try:
                     self.ocr.run_ocr(img, blk_list)
+                except LLMApiKeyRequiredError as e:
+                    _show_llm_key_required_dialog(e)
+                    self.requestStop()
+                    break
+                except LLMModelRequiredError as e:
+                    _show_llm_model_required_dialog(e)
+                    self.requestStop()
+                    break
+                except LLMRequestStopped:
+                    LOGGER.info('OCR stopped by user.')
+                    self.requestStop()
+                    break
                 except ModuleRunError as e:
                     self._stop_on_stage_failure(e, self.tr('OCR Failed.'), 'OCRFailed')
                     break
@@ -938,7 +1001,9 @@ class ImgtransThread(QThread):
                 self.job()
         except LLMApiKeyRequiredError as e:
             _show_llm_key_required_dialog(e)
-        except LLMTranslationStopped:
+        except LLMModelRequiredError as e:
+            _show_llm_model_required_dialog(e)
+        except LLMRequestStopped:
             LOGGER.info('Image translation task stopped by user.')
             self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
         except Exception as e:

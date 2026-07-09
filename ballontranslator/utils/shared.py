@@ -172,6 +172,8 @@ create_infodialog_in_mainthread = lambda *args, **kwargs: None
 
 show_llm_key_dialog_in_mainthread = lambda *args, **kwargs: None
 
+show_llm_model_dialog_in_mainthread = lambda *args, **kwargs: None
+
 def load_cache():
     global cache_data
     if cache_data is None:

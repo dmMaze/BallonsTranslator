@@ -204,3 +204,121 @@ class FlowLayout(QLayout):
 
         self.height = y + rowHeight + margin.bottom() - rect.y()
         return self.height
+
+
+class JustifiedFlowLayout(FlowLayout):
+    """Flow layout that distributes extra horizontal space within each row.
+
+    Example:
+        >>> JustifiedFlowLayout.__name__
+        'JustifiedFlowLayout'
+    """
+
+    def _itemHiddenForTightLayout(self, item) -> bool:
+        widget = item.widget()
+        return bool(widget and widget.isHidden() and self.isTight)
+
+    def _visibleItems(self):
+        return [item for item in self._items if not self._itemHiddenForTightLayout(item)]
+
+    def sizeHint(self):
+        items = self._visibleItems()
+        if not items:
+            return self.minimumSize()
+
+        rows = []
+        for row_start in range(0, len(items), 2):
+            rows.append(items[row_start:row_start + 2])
+
+        spaceX = self.horizontalSpacing()
+        spaceY = self.verticalSpacing()
+        width = 0
+        height = 0
+        for row in rows:
+            rowWidth = sum(item.sizeHint().width() for item in row)
+            if len(row) > 1:
+                rowWidth += spaceX * (len(row) - 1)
+            rowHeight = max(item.sizeHint().height() for item in row)
+            width = max(width, rowWidth)
+            height += rowHeight
+
+        if len(rows) > 1:
+            height += spaceY * (len(rows) - 1)
+
+        m = self.contentsMargins()
+        return QSize(width + m.left() + m.right(), height + m.top() + m.bottom())
+
+    def minimumSize(self):
+        size = QSize()
+
+        for item in self._visibleItems():
+            size = size.expandedTo(item.minimumSize())
+
+        m = self.contentsMargins()
+        size += QSize(m.left()+m.right(), m.top()+m.bottom())
+
+        return size
+
+    def _doLayout(self, rect: QRect, move: bool):
+        """Adjust widget positions after grouping visible items into rows."""
+        margin = self.contentsMargins()
+        left = rect.x() + margin.left()
+        content_width = max(0, rect.width() - margin.left() - margin.right())
+        y = rect.y() + margin.top()
+        spaceX = self.horizontalSpacing()
+        spaceY = self.verticalSpacing()
+        rows = []
+        row = []
+        rowWidth = 0
+        rowHeight = 0
+
+        for item in self._items:
+            if self._itemHiddenForTightLayout(item):
+                continue
+
+            itemSize = item.sizeHint()
+            itemWidth = itemSize.width()
+            nextWidth = itemWidth if not row else rowWidth + spaceX + itemWidth
+
+            if row and nextWidth > content_width:
+                rows.append((row, rowWidth, rowHeight))
+                row = []
+                rowWidth = 0
+                rowHeight = 0
+
+            wasEmpty = not row
+            row.append((item, itemSize))
+            rowWidth = itemWidth if wasEmpty else rowWidth + spaceX + itemWidth
+            rowHeight = max(rowHeight, itemSize.height())
+
+        if row:
+            rows.append((row, rowWidth, rowHeight))
+
+        aniRestart = False
+        for rowIndex, (row, rowWidth, rowHeight) in enumerate(rows):
+            x = left
+            gap = spaceX
+            if len(row) > 1 and content_width > rowWidth:
+                gap += (content_width - rowWidth) / (len(row) - 1)
+
+            for item, itemSize in row:
+                if move:
+                    target = QRect(QPoint(round(x), y), itemSize)
+                    ani = item.widget().property('flowAni') if item.widget() is not None else None
+                    if not self.needAni or ani is None:
+                        item.setGeometry(target)
+                    elif target != ani.endValue():
+                        ani.stop()
+                        ani.setEndValue(target)
+                        aniRestart = True
+                x += itemSize.width() + gap
+
+            if rowIndex < len(rows) - 1:
+                y = y + rowHeight + spaceY
+
+        if self.needAni and aniRestart:
+            self._aniGroup.stop()
+            self._aniGroup.start()
+
+        self.height = y + rowHeight + margin.bottom() - rect.y()
+        return self.height

@@ -12,7 +12,7 @@ from .misc import themed_icon_path
 from ballontranslator.utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
 from .framelesswindow import FramelessMoveResize
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY, profile_by_id
+from ballontranslator.utils.llm_profiles import LLM_OCR_KEY, LLM_TRANSLATOR_KEY, profile_by_id
 from ballontranslator.utils import shared
 if shared.FLAG_QT6:
     from qtpy.QtGui import QAction
@@ -828,7 +828,11 @@ class TranslatorSelectionWidget(Widget):
             )
 
         self._section(self.tr('LLM'), accent=current_translator == LLM_TRANSLATOR_KEY)
+        added = False
         for profile in pcfg.module.llm_profiles:
+            if not profile.support_text:
+                continue
+            added = True
             profile_id = profile.id
             profile_menu = _bottom_submenu(profile.name or profile_id, self.menu)
             _add_bottom_submenu(
@@ -838,6 +842,10 @@ class TranslatorSelectionWidget(Widget):
                 current_translator == LLM_TRANSLATOR_KEY and pcfg.module.translator_llm_id == profile_id,
             )
             self._buildProfileMenu(profile_menu, profile)
+        if not added:
+            action = QAction(self.tr('No text profiles'), self.menu)
+            action.setEnabled(False)
+            self.menu.addAction(action)
 
         self._section(self.tr('Language'))
         source_menu = _bottom_submenu(
@@ -956,6 +964,174 @@ class TranslatorSelectionWidget(Widget):
         self.updateButtonText()
 
 
+class OCRSelectionWidget(Widget):
+
+    cfg_clicked = Signal()
+    edit_clicked = Signal(str)
+    llm_profile_changed = Signal(str)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.selector = SmallComboBox()
+        self.selector.setVisible(False)
+        self.selector.currentTextChanged.connect(self.updateButtonText)
+        self.tool_btn = QToolButton(self)
+        self.tool_btn.setObjectName('BottomBarModuleToolButton')
+        self.tool_btn.setToolTip(self.tr('OCR'))
+        self.tool_btn.setPopupMode(_instant_popup_mode())
+        self.icon_filename = 'small_ocr.svg'
+        _set_bottom_tool_button_icon(self.tool_btn, self.icon_filename)
+        self.tool_btn.setText(self.tr('OCR'))
+        self.menu = _bottom_menu(self.tool_btn)
+        self.tool_btn.setMenu(self.menu)
+        self.menu.aboutToShow.connect(self.rebuildMenu)
+        self.edit_btn = SmallConfigPutton()
+        self.edit_btn.clicked.connect(self.onEditClicked)
+        self.cfg_btn = SmallConfigPutton()
+        self.cfg_btn.clicked.connect(self.cfg_clicked)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(1)
+        layout.addWidget(self.tool_btn)
+        layout.addWidget(self.edit_btn)
+        layout.addWidget(self.cfg_btn)
+        self.updateButtonText()
+
+    def enterEvent(self, event: QEvent) -> None:
+        if self.edit_btn.isVisible():
+            self.edit_btn.setIcon(QIcon(themed_icon_path('edit.svg')))
+        self.cfg_btn.setIcon(cfg_icon())
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        self.edit_btn.setIcon(QIcon())
+        self.cfg_btn.setIcon(QIcon())
+        return super().leaveEvent(event)
+
+    def changeEvent(self, event: QEvent) -> None:
+        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange):
+            _set_bottom_tool_button_icon(self.tool_btn, self.icon_filename)
+        return super().changeEvent(event)
+
+    def blockSignals(self, block: bool):
+        self.selector.blockSignals(block)
+        super().blockSignals(block)
+
+    def setSelectedValue(self, value: str, block_signals=True):
+        if block_signals:
+            self.blockSignals(True)
+        self.selector.setCurrentText(value)
+        if block_signals:
+            self.blockSignals(False)
+        self.updateButtonText()
+
+    def _section(self, text: str, accent: bool = False):
+        _add_bottom_menu_section(self.menu, text, accent=accent)
+
+    def rebuildMenu(self):
+        self.menu.clear()
+        current_ocr = self.selector.currentText()
+        self._section(self.tr('OCR'))
+        for i in range(self.selector.count()):
+            ocr = self.selector.itemText(i)
+            if ocr == LLM_OCR_KEY:
+                continue
+            _add_bottom_menu_action(
+                self.menu,
+                ocr,
+                current_ocr == ocr,
+                lambda checked=False, value=ocr: self.selector.setCurrentText(value),
+            )
+
+        self._section(self.tr('LLM'), accent=current_ocr == LLM_OCR_KEY)
+        added = False
+        for profile in pcfg.module.llm_profiles:
+            if not profile.support_vision:
+                continue
+            added = True
+            profile_id = profile.id
+            profile_menu = _bottom_submenu(profile.name or profile_id, self.menu)
+            _add_bottom_submenu(
+                self.menu,
+                profile_menu,
+                profile.name or profile_id,
+                current_ocr == LLM_OCR_KEY and pcfg.module.ocr_llm_id == profile_id,
+            )
+            self._buildProfileMenu(profile_menu, profile)
+        if not added:
+            action = QAction(self.tr('No vision profiles'), self.menu)
+            action.setEnabled(False)
+            self.menu.addAction(action)
+
+    def selectLLMProfile(self, profile_id: str):
+        pcfg.module.ocr_llm_id = profile_id
+        if self.selector.currentText() != LLM_OCR_KEY:
+            self.selector.setCurrentText(LLM_OCR_KEY)
+        self.llm_profile_changed.emit(profile_id)
+        self.updateButtonText()
+
+    def selectLLMProfileSetting(self, profile_id: str, key: str, value: str):
+        profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
+        if profile is not None:
+            setattr(profile, key, value)
+            if key == 'vision_model':
+                options = profile.vision_model_options
+                if value and value not in options:
+                    options.insert(0, value)
+        self.selectLLMProfile(profile_id)
+
+    def _buildProfileMenu(self, menu: QMenu, profile: dict):
+        profile_id = profile.id
+        selected_profile = (
+            self.selector.currentText() == LLM_OCR_KEY
+            and pcfg.module.ocr_llm_id == profile_id
+        )
+
+        _add_bottom_menu_section(menu, self.tr('Vision Model'))
+        model_options = [str(option) for option in profile.vision_model_options if str(option)]
+        current_model = str(profile.vision_model or '')
+        for model in model_options:
+            _add_bottom_menu_action(
+                menu,
+                model,
+                selected_profile and model == current_model,
+                lambda checked=False, pid=profile_id, value=model: self.selectLLMProfileSetting(pid, 'vision_model', value),
+            )
+
+        _add_bottom_menu_section(menu, self.tr('Vision Detail Level'))
+        current_detail = str(profile.vision_detail_level or 'None')
+        detail_options = [str(option) for option in profile.vision_detail_level_options if str(option)]
+        for detail_level in detail_options:
+            _add_bottom_menu_action(
+                menu,
+                detail_level,
+                selected_profile and detail_level == current_detail,
+                lambda checked=False, pid=profile_id, value=detail_level: self.selectLLMProfileSetting(pid, 'vision_detail_level', value),
+            )
+
+    def onEditClicked(self):
+        if self.selector.currentText() == LLM_OCR_KEY:
+            self.edit_clicked.emit(pcfg.module.ocr_llm_id)
+
+    def updateButtonText(self, *args):
+        name = self.selector.currentText()
+        is_llm = name == LLM_OCR_KEY
+        if is_llm:
+            profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.ocr_llm_id)
+            if profile is not None:
+                model = str(profile.vision_model or '').strip()
+                name = model or profile.name or name
+        if not name:
+            name = self.tr('OCR')
+        self.tool_btn.setText(_bottom_tool_button_text(name))
+        if self.tool_btn.property('llmActive') != is_llm:
+            self.tool_btn.setProperty('llmActive', is_llm)
+            self.tool_btn.style().unpolish(self.tool_btn)
+            self.tool_btn.style().polish(self.tool_btn)
+        self.edit_btn.setVisible(is_llm)
+
+
 
 class BottomBar(Widget):
     
@@ -970,7 +1146,7 @@ class BottomBar(Widget):
         self.mainwindow = mainwindow
         
         self.textdet_selector = ModuleSelectionToolButtonWidget(self.tr('Text Detector'), 'textdetect.svg')
-        self.ocr_selector = ModuleSelectionToolButtonWidget(self.tr('OCR'), 'small_ocr.svg')
+        self.ocr_selector = OCRSelectionWidget()
         self.inpaint_selector = ModuleSelectionToolButtonWidget(self.tr('Inpaint'), 'drawingtools_inpaint.svg')
         self.trans_selector = TranslatorSelectionWidget()
 

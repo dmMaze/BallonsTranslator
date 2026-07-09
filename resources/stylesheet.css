@@ -187,7 +187,6 @@ QWidget#ConfigContentScrollContent QWidget#ConfigInlineRow {
 
 QWidget#ConfigContentScrollContent QLabel#ParamFieldLabel,
 QWidget#ConfigContentScrollContent QLabel#ParamLabelAboveLabel,
-QWidget#ConfigContentScrollContent QLabel#LLMProfileFieldLabel,
 QWidget#ConfigContentScrollContent QCheckBox {
     font-size: 13px;
 }
@@ -389,9 +388,15 @@ QLabel#LLMProfileKeyStatusIcon {
     background-color: transparent;
 }
 
+QLabel#LLMProfileCapabilityBadge {
+    padding: 0px;
+    border: none;
+    background-color: transparent;
+}
+
 QLabel#LLMProfileFieldLabel {
     background-color: @widgetBackgroundColor;
-    font-size: 13px;
+    font-size: 12px;
 }
 
 QWidget#LLMProfileSummaryColumn,

@@ -9,6 +9,7 @@ from ballontranslator.utils.registry import Registry
 OCR = Registry('OCR')
 register_OCR = OCR.register_module
 
+from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR, LOGGER
 from ..exceptions import ModuleRunError
 
@@ -51,7 +52,7 @@ class OCRBase(BaseModule):
                 callback(textblocks=blk_list, img=img, ocr_module=self)
 
             return blk_list
-        except ModuleRunError:
+        except (ModuleRunError, LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped):
             if original_text is not None:
                 for blk, text in original_text:
                     blk.text = text

@@ -7,6 +7,7 @@ from ballontranslator.utils.config import ModuleConfig, ProgramConfig, json_dump
 from ballontranslator.utils.llm_profiles import (
     DEFAULT_TRANSLATION_PROMPT,
     LLMProfile,
+    VISION_DETAIL_LEVEL_OPTIONS,
     copy_profile,
     default_profile,
     profile_by_id,
@@ -73,6 +74,42 @@ class LLMProfileMigrationTest(unittest.TestCase):
         profile = default_profile('LM Studio')
 
         self.assertTrue(profile.json_schema_response_format)
+
+    def test_plain_profile_defaults_are_provider_neutral(self):
+        profile = LLMProfile()
+
+        self.assertEqual(profile.id, '')
+        self.assertEqual(profile.name, '')
+        self.assertFalse(profile.built_in)
+        self.assertEqual(profile.base_url, '')
+        self.assertEqual(profile.model, '')
+        self.assertEqual(profile.model_options, [])
+        self.assertTrue(profile.support_text)
+        self.assertFalse(profile.support_vision)
+        self.assertEqual(profile.vision_model, '')
+        self.assertEqual(profile.vision_model_options, [])
+        self.assertEqual(profile.vision_detail_level, 'None')
+        self.assertEqual(profile.vision_detail_level_options, VISION_DETAIL_LEVEL_OPTIONS)
+
+    def test_vision_enabled_builtins_default_to_auto_detail(self):
+        for provider in ['OpenAI', 'Gemini', 'OpenRouter', 'Ollama']:
+            with self.subTest(provider=provider):
+                profile = default_profile(provider)
+
+                self.assertTrue(profile.support_text)
+                self.assertTrue(profile.support_vision)
+                self.assertEqual(profile.vision_model, profile.model)
+                self.assertIn(profile.vision_model, profile.vision_model_options)
+                self.assertEqual(profile.vision_detail_level, 'auto')
+
+    def test_vision_model_options_are_separate_from_text_model_options(self):
+        profile = default_profile('OpenAI')
+
+        profile.model_options.append('text-only-model')
+        profile.vision_model_options.append('vision-only-model')
+
+        self.assertNotIn('text-only-model', profile.vision_model_options)
+        self.assertNotIn('vision-only-model', profile.model_options)
 
 
 class SecretStoreTest(unittest.TestCase):
@@ -142,6 +179,33 @@ class SecretStoreTest(unittest.TestCase):
         self.assertIsInstance(selected, LLMProfile)
         self.assertEqual(selected.id, 'openai')
         self.assertEqual(SecretStore().resolve(selected.api_key).value, 'sk-demo')
+
+    def test_saved_config_roundtrips_ocr_llm_profile_selection(self):
+        profile = default_profile('OpenAI')
+        profile.api_key = 'sk-demo'
+        profile.support_text = False
+        profile.vision_model = 'gpt-4o'
+        profile.vision_model_options = ['gpt-4o', 'gpt-4o-mini']
+        profile.vision_detail_level = 'high'
+        cfg = ProgramConfig(module=ModuleConfig(
+            llm_profiles=[profile],
+            translator_llm_id='openai',
+            ocr_llm_id='openai',
+        ))
+        saved = json_dump_program_config(cfg)
+
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            temp.write(saved)
+            temp.flush()
+            loaded = ProgramConfig.load(temp.name)
+
+        selected = profile_by_id(loaded.module.llm_profiles, loaded.module.ocr_llm_id)
+        self.assertEqual(loaded.module.ocr_llm_id, 'openai')
+        self.assertFalse(selected.support_text)
+        self.assertTrue(selected.support_vision)
+        self.assertEqual(selected.vision_model, 'gpt-4o')
+        self.assertEqual(selected.vision_model_options, ['gpt-4o', 'gpt-4o-mini'])
+        self.assertEqual(selected.vision_detail_level, 'high')
 
 
 if __name__ == '__main__':

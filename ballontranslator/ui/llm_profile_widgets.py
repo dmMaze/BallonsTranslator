@@ -18,7 +18,7 @@ from qtpy.QtWidgets import (
     QScrollArea,
 )
 from qtpy.QtCore import QEvent, QRectF, QTimer, Qt, Signal
-from qtpy.QtGui import QFont, QIcon, QPainter
+from qtpy.QtGui import QColor, QFont, QIcon, QPainter
 from qtpy.QtSvg import QSvgRenderer
 
 try:
@@ -26,7 +26,7 @@ try:
 except ImportError:
     from qtpy.QtWidgets import QAction
 
-from .custom_widget import ParamComboBox, NoBorderPushBtn, ScrollBar
+from .custom_widget import JustifiedFlowLayout, ParamComboBox, NoBorderPushBtn, ScrollBar
 from .misc import themed_icon_path
 from .module_parse_widgets import ParamWidget, SecretParamWidget
 from ballontranslator.utils.shared import size2width
@@ -45,16 +45,17 @@ from ballontranslator.utils.llm_profiles import (
 PROFILE_PARAM_DEFS = [
     ('require_api_key', 'checkbox'),
     ('base_url', 'line_editor'),
+    ('vision_detail_level', 'selector'),
     ('thinking_level', 'selector'),
-    ('prompt', 'editor'),
     ('invalid_repeat_count', 'line_editor'),
     ('max_tokens', 'line_editor'),
     ('temperature', 'line_editor'),
     ('top_p', 'line_editor'),
     ('frequency_penalty', 'line_editor'),
     ('presence_penalty', 'line_editor'),
-    ('json_schema_response_format', 'checkbox'),
     ('low_vram_mode', 'checkbox'),
+    ('json_schema_response_format', 'checkbox'),
+    ('prompt', 'editor'),
 ]
 
 PROFILE_FIELD_TYPES = get_type_hints(LLMProfile)
@@ -119,9 +120,12 @@ class SvgStatusIcon(QLabel):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
     def setIconFile(self, filename: str):
+        self.setIconPath(themed_icon_path(filename))
+
+    def setIconPath(self, path: str):
         if self._renderer is not None:
             self._renderer.deleteLater()
-        self._renderer = QSvgRenderer(themed_icon_path(filename), self)
+        self._renderer = QSvgRenderer(path, self)
         self.update()
 
     def paintEvent(self, event):
@@ -132,6 +136,46 @@ class SvgStatusIcon(QLabel):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         self._renderer.render(painter, QRectF(0, 0, self.width(), self.height()))
         painter.end()
+
+
+class CapabilityBadgeLabel(SvgStatusIcon):
+    """Clickable LLM capability icon shown in each profile header.
+
+    Example:
+        >>> CapabilityBadgeLabel.__name__
+        'CapabilityBadgeLabel'
+    """
+
+    clicked = Signal()
+
+    def __init__(self, active_color: QColor, parent: QWidget = None):
+        super().__init__(parent)
+        self._active_color = active_color
+        self.setObjectName('LLMProfileCapabilityBadge')
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(20, 20)
+
+    def paintEvent(self, event):
+        if not bool(self.property('capabilityActive')):
+            return super().paintEvent(event)
+        if self._renderer is None or not self._renderer.isValid():
+            return super().paintEvent(event)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._active_color)
+        painter.drawRoundedRect(QRectF(0, 0, self.width(), self.height()), 6, 6)
+        self._renderer.render(painter, QRectF(2, 2, self.width() - 4, self.height() - 4))
+        painter.end()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return
+        return super().mouseReleaseEvent(event)
 
 
 class ProfileCardWidget(QGroupBox):
@@ -158,13 +202,16 @@ class ProfileCardWidget(QGroupBox):
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
         self._name_editing = False
         self._model_editing = False
+        self._vision_model_editing = False
         self._previous_model_text = ''
+        self._previous_vision_model_text = ''
         self._app_filter_installed = False
         self.profile_param_display_names = {
             'base_url': self.tr('Base URL'),
             'require_api_key': self.tr('Require API Key'),
+            'vision_model': self.tr('Vision Model'),
+            'vision_detail_level': self.tr('Vision Detail Level'),
             'thinking_level': self.tr('Thinking Level'),
-            'prompt': self.tr('Prompt'),
             'invalid_repeat_count': self.tr('Invalid Repeat Count'),
             'max_tokens': self.tr('Max Tokens'),
             'temperature': self.tr('Temperature'),
@@ -172,11 +219,14 @@ class ProfileCardWidget(QGroupBox):
             'frequency_penalty': self.tr('Frequency Penalty'),
             'presence_penalty': self.tr('Presence Penalty'),
             'json_schema_response_format': self.tr('JSON Schema Response'),
+            'prompt': self.tr('Prompt'),
             'low_vram_mode': self.tr('Low VRAM Mode'),
         }
         self.profile_param_descriptions = {
             'base_url': self.tr('OpenAI-compatible API base URL.'),
             'require_api_key': self.tr('Require API key before running translation.'),
+            'vision_model': self.tr('Model used by LLMOCR for image OCR.'),
+            'vision_detail_level': self.tr('Image detail level sent to vision-capable providers.'),
             'thinking_level': self.tr('Reasoning effort sent only when it is not None.'),
             'prompt': self.tr('Additional translation instructions for style and wording.'),
             'invalid_repeat_count': self.tr('Retries when response count does not match source count.'),
@@ -196,6 +246,11 @@ class ProfileCardWidget(QGroupBox):
         self.name_edit.edit_requested.connect(self.startNameEdit)
         self.name_edit.edit_finished.connect(self.on_name_edit_finished)
         self.name_edit.hide()
+
+        self.text_badge = CapabilityBadgeLabel(QColor(30, 147, 229, 46), self)
+        self.text_badge.clicked.connect(self.toggleTextSupport)
+        self.vision_badge = CapabilityBadgeLabel(QColor(152, 88, 162, 46), self)
+        self.vision_badge.clicked.connect(self.toggleVisionSupport)
 
         self.key_status_icon = SvgStatusIcon(self)
         self.key_status_icon.setObjectName('LLMProfileKeyStatusIcon')
@@ -219,9 +274,12 @@ class ProfileCardWidget(QGroupBox):
         self.delete_btn.clicked.connect(lambda: self.delete_requested.emit(self.profile.id))
         self.delete_btn.setFixedSize(18, 18)
 
-        summary = QHBoxLayout()
-        summary.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        summary.setSpacing(12)
+        self.summary_widget = QWidget(self)
+        self.summary_widget.setObjectName('LLMProfileSummaryFlow')
+        self.summary_layout = JustifiedFlowLayout(self.summary_widget, isTight=True)
+        self.summary_layout.setContentsMargins(0, 0, 0, 0)
+        self.summary_layout.setHorizontalSpacing(12)
+        self.summary_layout.setVerticalSpacing(10)
 
         self.api_summary_widget = QWidget(self)
         self.api_summary_widget.setObjectName('LLMProfileSummaryColumn')
@@ -229,7 +287,7 @@ class ProfileCardWidget(QGroupBox):
         center_column = QVBoxLayout(self.api_summary_widget)
         center_column.setContentsMargins(0, 0, 0, 0)
         center_column.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        center_column.setSpacing(6)
+        center_column.setSpacing(2)
         self.api_label = QLabel(self.tr('API Key'), self)
         self.api_label.setObjectName('LLMProfileFieldLabel')
         self.api_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -238,7 +296,6 @@ class ProfileCardWidget(QGroupBox):
         api_label_row.setSpacing(6)
         api_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         api_label_row.addWidget(self.api_label, 0, Qt.AlignmentFlag.AlignLeft)
-        api_label_row.addWidget(self.key_status_icon, 0, Qt.AlignmentFlag.AlignLeft)
         api_label_row.addStretch(1)
         self.api_key_widget = SecretParamWidget('api_key', size='short')
         self.api_key_widget.editor.setObjectName('LLMProfileApiKeyEditor')
@@ -246,9 +303,16 @@ class ProfileCardWidget(QGroupBox):
         self.api_label.setToolTip(self.api_key_widget.editor.toolTip())
         self.api_key_widget.setText(resolve_api_key(profile))
         self._api_key_editor_is_empty = self._apiKeyEditorIsEmpty()
+        api_editor_row = QHBoxLayout()
+        api_editor_row.setContentsMargins(0, 0, 0, 0)
+        api_editor_row.setSpacing(4)
+        api_editor_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        api_editor_row.addWidget(self.api_key_widget, 0, Qt.AlignmentFlag.AlignLeft)
+        api_editor_row.addWidget(self.key_status_icon, 0, Qt.AlignmentFlag.AlignLeft)
+        api_editor_row.addStretch(1)
 
         center_column.addLayout(api_label_row)
-        center_column.addWidget(self.api_key_widget)
+        center_column.addLayout(api_editor_row)
 
         self.model_summary_widget = QWidget(self)
         self.model_summary_widget.setObjectName('LLMProfileSummaryColumn')
@@ -256,7 +320,7 @@ class ProfileCardWidget(QGroupBox):
         right_column = QVBoxLayout(self.model_summary_widget)
         right_column.setContentsMargins(0, 0, 0, 0)
         right_column.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        right_column.setSpacing(6)
+        right_column.setSpacing(2)
         self.model_label = QLabel(self.tr('Model'), self)
         self.model_label.setObjectName('LLMProfileFieldLabel')
         self.model_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -290,13 +354,55 @@ class ProfileCardWidget(QGroupBox):
         right_column.addLayout(model_label_row)
         right_column.addWidget(self.model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
-        self.summary_spacer = QWidget(self)
-        self.summary_spacer.setObjectName('LLMProfileSummarySpacer')
-        self.summary_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        summary.addWidget(self.api_summary_widget, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        summary.addWidget(self.summary_spacer)
-        summary.addWidget(self.model_summary_widget, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(summary)
+        self.vision_model_summary_widget = QWidget(self)
+        self.vision_model_summary_widget.setObjectName('LLMProfileSummaryColumn')
+        self.vision_model_summary_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        vision_column = QVBoxLayout(self.vision_model_summary_widget)
+        vision_column.setContentsMargins(0, 0, 0, 0)
+        vision_column.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        vision_column.setSpacing(2)
+        self.vision_model_label = QLabel(self.tr('Vision Model'), self)
+        self.vision_model_label.setObjectName('LLMProfileFieldLabel')
+        self.vision_model_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.add_vision_model_btn = QToolButton(self)
+        self.add_vision_model_btn.setObjectName('LLMProfileModelAddButton')
+        self.add_vision_model_btn.setIcon(QIcon(themed_icon_path('add.svg')))
+        self.add_vision_model_btn.setToolTip(self.tr('Add vision model'))
+        self.add_vision_model_btn.setFixedSize(16, 16)
+        self.add_vision_model_btn.clicked.connect(self.startVisionModelEdit)
+        self.remove_vision_model_btn = QToolButton(self)
+        self.remove_vision_model_btn.setObjectName('LLMProfileModelRemoveButton')
+        self.remove_vision_model_btn.setIcon(QIcon(themed_icon_path('titlebar_min.svg')))
+        self.remove_vision_model_btn.setToolTip(self.tr('Delete current vision model'))
+        self.remove_vision_model_btn.setFixedSize(16, 16)
+        self.remove_vision_model_btn.clicked.connect(self.deleteCurrentVisionModel)
+        vision_model_label_row = QHBoxLayout()
+        vision_model_label_row.setContentsMargins(0, 0, 0, 0)
+        vision_model_label_row.setSpacing(4)
+        vision_model_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        vision_model_label_row.addWidget(self.vision_model_label, 0, Qt.AlignmentFlag.AlignLeft)
+        vision_model_label_row.addWidget(self.add_vision_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        vision_model_label_row.addWidget(self.remove_vision_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        vision_model_label_row.addStretch(1)
+        self.vision_model_combo = ParamComboBox(
+            'vision_model',
+            profile.vision_model_options,
+            size=size2width('short'),
+            scrollWidget=scrollWidget,
+        )
+        self.vision_model_combo.setObjectName('LLMProfileModelCombo')
+        vision_model_tooltip = self.tr('Model used by LLMOCR for image OCR.')
+        self.vision_model_label.setToolTip(vision_model_tooltip)
+        self.vision_model_combo.setToolTip(vision_model_tooltip)
+        self.vision_model_combo.setEditable(False)
+        self.vision_model_combo.setCurrentText(profile.vision_model)
+        vision_column.addLayout(vision_model_label_row)
+        vision_column.addWidget(self.vision_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.summary_layout.addWidget(self.api_summary_widget)
+        self.summary_layout.addWidget(self.model_summary_widget)
+        self.summary_layout.addWidget(self.vision_model_summary_widget)
+        layout.addWidget(self.summary_widget)
 
         self.details = ParamWidget(self._detail_params(), scrollWidget=scrollWidget)
         self.details.setObjectName('LLMProfileDetails')
@@ -308,10 +414,13 @@ class ProfileCardWidget(QGroupBox):
         self.setActionButtonsVisible(False)
 
         self.model_combo.paramwidget_edited.connect(self.on_model_edited)
+        self.vision_model_combo.paramwidget_edited.connect(self.on_vision_model_edited)
         self.api_key_widget.editor.editingFinished.connect(self.on_api_key_finished)
         self.api_key_widget.editor.textChanged.connect(self.on_api_key_text_changed)
         self.details.paramwidget_edited.connect(self.on_detail_edited)
         self._position_header_controls()
+        self.refreshTextBadge()
+        self.refreshVisionBadge()
         self.refreshConditionalVisibility()
         self.destroyed.connect(self._remove_app_event_filter)
 
@@ -322,9 +431,20 @@ class ProfileCardWidget(QGroupBox):
 
     def syncFromProfile(self):
         self._syncComboBox(self.model_combo, self.profile.model_options, self.profile.model)
+        self._syncComboBox(self.vision_model_combo, self.profile.vision_model_options, self.profile.vision_model)
+        vision_detail_combo = self.details.param_widgets.get('vision_detail_level')
+        if isinstance(vision_detail_combo, ParamComboBox):
+            self._syncComboBox(
+                vision_detail_combo,
+                self.profile.vision_detail_level_options,
+                self.profile.vision_detail_level,
+            )
         thinking_combo = self.details.param_widgets.get('thinking_level')
         if isinstance(thinking_combo, ParamComboBox):
             self._syncComboBox(thinking_combo, self.profile.thinking_level_options, self.profile.thinking_level)
+        self.refreshTextBadge()
+        self.refreshVisionBadge()
+        self.refreshConditionalVisibility()
 
     def _syncComboBox(self, combo: ParamComboBox, options, value: str):
         combo.blockSignals(True)
@@ -347,6 +467,8 @@ class ProfileCardWidget(QGroupBox):
             description = self.profile_param_descriptions.get(key, '')
             if key == 'thinking_level':
                 options = self.profile.thinking_level_options
+            elif key == 'vision_detail_level':
+                options = self.profile.vision_detail_level_options
             else:
                 options = None
             if widget_type == 'selector':
@@ -384,12 +506,55 @@ class ProfileCardWidget(QGroupBox):
     def _sync_minimum_width_with_content(self):
         margins = self.layout().contentsMargins()
         details_width = self.details.sizeHint().width()
-        summary_width = self.layout().itemAt(0).sizeHint().width()
+        summary_width = self.summary_widget.sizeHint().width()
         title_width = max(
             self.fontMetrics().boundingRect(self.title() or '').width() + 14,
             self.name_edit.sizeHint().width(),
-        ) + self.more_btn.width() + self.delete_btn.width() + 64
+        )
+        title_width += (
+            self.text_badge.width()
+            + self.vision_badge.width()
+            + self.more_btn.width()
+            + self.delete_btn.width()
+            + 78
+        )
         self.setMinimumWidth(max(details_width, summary_width, title_width) + margins.left() + margins.right())
+
+    def _sync_summary_flow_size(self):
+        visible_widgets = [
+            widget for widget in (
+                self.api_summary_widget,
+                self.model_summary_widget,
+                self.vision_model_summary_widget,
+            )
+            if not widget.isHidden()
+        ]
+        self.summary_widget.ensurePolished()
+        for widget in visible_widgets:
+            widget.ensurePolished()
+        row_widths = []
+        for row_start in range(0, len(visible_widgets), 2):
+            row_widgets = visible_widgets[row_start:row_start + 2]
+            row_width = sum(widget.sizeHint().width() for widget in row_widgets)
+            if len(row_widgets) > 1:
+                row_width += self.summary_layout.horizontalSpacing() * (len(row_widgets) - 1)
+            row_widths.append(row_width)
+        self.summary_widget.setMinimumWidth(max(row_widths, default=0))
+        self.summary_widget.setMinimumHeight(0)
+        self.summary_widget.setMaximumHeight(16777215)
+        self.summary_layout.invalidate()
+        contents_margins = self.layout().contentsMargins()
+        available_width = max(0, self.width() - contents_margins.left() - contents_margins.right())
+        summary_width = max(self.summary_widget.width(), self.summary_widget.minimumWidth(), available_width)
+        if summary_width > 0:
+            summary_height = max(
+                self.summary_layout.heightForWidth(summary_width),
+                self.summary_layout.sizeHint().height(),
+            )
+            if len(visible_widgets) > 2:
+                summary_height += 2
+            self.summary_widget.setMinimumHeight(summary_height)
+        self.summary_widget.updateGeometry()
 
     def toggleExpanded(self):
         self.setExpanded(not self.details.isVisible())
@@ -415,6 +580,12 @@ class ProfileCardWidget(QGroupBox):
 
     def focusApiKey(self):
         self.api_key_widget.setFocus()
+
+    def focusModel(self, vision: bool = False):
+        if vision:
+            self.startVisionModelEdit()
+        else:
+            self.startModelEdit()
 
     def startNameEdit(self):
         self._name_editing = True
@@ -446,6 +617,8 @@ class ProfileCardWidget(QGroupBox):
         self.delete_btn.setVisible(visible)
         self.add_model_btn.setVisible(visible)
         self.remove_model_btn.setVisible(visible)
+        self.add_vision_model_btn.setVisible(visible)
+        self.remove_vision_model_btn.setVisible(visible)
 
     def _position_header_controls(self):
         border_y = 9
@@ -455,16 +628,36 @@ class ProfileCardWidget(QGroupBox):
         spacing = 6
         delete_x = max(18, self.width() - 18 - self.delete_btn.width())
         more_x = max(18, delete_x - spacing - self.more_btn.width())
+        if self.name_edit.isVisible():
+            title_right = self.name_edit.x() + self.name_edit.width()
+        else:
+            title_right = 18 + self.fontMetrics().boundingRect(self.title() or '').width()
+        badge_spacing = 4
+        badge_width = self.text_badge.width() + badge_spacing + self.vision_badge.width()
+        badge_x = min(title_right + 5, max(18, more_x - spacing - badge_width))
+        badge_y = max(0, border_y - self.vision_badge.height() // 2)
+        self.text_badge.move(badge_x, badge_y)
+        self.vision_badge.move(badge_x + self.text_badge.width() + badge_spacing, badge_y)
         self.more_btn.move(more_x, button_y)
         self.delete_btn.move(delete_x, button_y + 2)
         if self.name_edit.isVisible():
             self.name_edit.raise_()
+        self.text_badge.raise_()
+        self.vision_badge.raise_()
         self.more_btn.raise_()
         self.delete_btn.raise_()
 
     def resizeEvent(self, event):
+        result = super().resizeEvent(event)
+        self._sync_summary_flow_size()
         self._position_header_controls()
-        return super().resizeEvent(event)
+        return result
+
+    def showEvent(self, event):
+        result = super().showEvent(event)
+        self._sync_summary_flow_size()
+        QTimer.singleShot(0, self._sync_summary_flow_size)
+        return result
 
     def enterEvent(self, event):
         self.setActionButtonsVisible(True)
@@ -551,6 +744,16 @@ class ProfileCardWidget(QGroupBox):
         self.profile_changed.emit()
         self.profile_summary_changed.emit()
 
+    def on_vision_model_edited(self, param_key, value):
+        if self._vision_model_editing:
+            return
+        self.profile.vision_model = value
+        options = self.profile.vision_model_options
+        if value and value not in options:
+            options.append(value)
+        self.profile_changed.emit()
+        self.profile_summary_changed.emit()
+
     def startModelEdit(self):
         if self._model_editing:
             return
@@ -616,6 +819,74 @@ class ProfileCardWidget(QGroupBox):
             self.profile_changed.emit()
             self.profile_summary_changed.emit()
 
+    def startVisionModelEdit(self):
+        if self._vision_model_editing:
+            return
+        self._vision_model_editing = True
+        self._previous_vision_model_text = self.vision_model_combo.currentText()
+        self.vision_model_combo.setEditable(True)
+        editor = self.vision_model_combo.lineEdit()
+        if editor is None:
+            self._vision_model_editing = False
+            return
+        editor.setObjectName('LLMProfileModelEditor')
+        editor.setPlaceholderText(self.tr('Vision model name'))
+        try:
+            editor.editingFinished.disconnect(self.finishVisionModelEdit)
+        except Exception:
+            pass
+        editor.editingFinished.connect(self.finishVisionModelEdit)
+        self.vision_model_combo.setEditText('')
+        editor.setFocus()
+        editor.selectAll()
+
+    def finishVisionModelEdit(self):
+        if not self._vision_model_editing:
+            return
+        editor = self.vision_model_combo.lineEdit()
+        text = editor.text().strip() if editor is not None else ''
+        self._vision_model_editing = False
+        self.vision_model_combo.setEditable(False)
+        if not text:
+            self._setVisionModelText(self._previous_vision_model_text, emit_changed=False)
+            return
+        options = self.profile.vision_model_options
+        if text not in options:
+            options.append(text)
+            self.vision_model_combo.blockSignals(True)
+            self.vision_model_combo.addItem(text)
+            self.vision_model_combo.blockSignals(False)
+        self._setVisionModelText(text, emit_changed=True)
+
+    def deleteCurrentVisionModel(self):
+        if self._vision_model_editing:
+            self.finishVisionModelEdit()
+        current = self.vision_model_combo.currentText()
+        options = [str(option) for option in self.profile.vision_model_options if str(option)]
+        if current not in options:
+            return
+        removed_idx = options.index(current)
+        options.pop(removed_idx)
+        self.profile.vision_model_options = options
+        next_model = options[min(removed_idx, len(options) - 1)] if options else ''
+        self.vision_model_combo.blockSignals(True)
+        self.vision_model_combo.clear()
+        self.vision_model_combo.addItems(options)
+        self.vision_model_combo.blockSignals(False)
+        self._setVisionModelText(next_model, emit_changed=True)
+
+    def _setVisionModelText(self, text: str, emit_changed: bool):
+        self.vision_model_combo.blockSignals(True)
+        self.vision_model_combo.setCurrentText(text)
+        self.vision_model_combo.blockSignals(False)
+        self.profile.vision_model = text
+        if emit_changed:
+            self.profile_changed.emit()
+            self.profile_summary_changed.emit()
+
+    def _syncVisionModelCombo(self):
+        self._syncComboBox(self.vision_model_combo, self.profile.vision_model_options, self.profile.vision_model)
+
     def on_api_key_finished(self):
         store_api_key(self.profile, self.api_key_widget.text())
         self.profile_changed.emit()
@@ -647,17 +918,76 @@ class ProfileCardWidget(QGroupBox):
         if param_key == 'require_api_key':
             self.refreshConditionalVisibility()
             self.refreshKeyStatus()
+        elif param_key == 'vision_detail_level':
+            self.profile_summary_changed.emit()
         self.profile_changed.emit()
         if param_key == 'thinking_level':
             self.profile_summary_changed.emit()
 
+    def toggleVisionSupport(self):
+        self.profile.support_vision = not bool(self.profile.support_vision)
+        if self.profile.support_vision and not self.profile.vision_model:
+            self.profile.vision_model = self.profile.model
+        if self.profile.support_vision and self.profile.vision_model:
+            options = self.profile.vision_model_options
+            if self.profile.vision_model not in options:
+                options.insert(0, self.profile.vision_model)
+        self.refreshVisionBadge()
+        self.refreshConditionalVisibility()
+        self.profile_changed.emit()
+        self.profile_selector_changed.emit()
+        self.profile_summary_changed.emit()
+
+    def toggleTextSupport(self):
+        self.profile.support_text = not bool(self.profile.support_text)
+        if self.profile.support_text and not self.profile.model:
+            options = [str(option) for option in self.profile.model_options if str(option)]
+            self.profile.model = options[0] if options else ''
+        if self.profile.support_text and self.profile.model:
+            options = self.profile.model_options
+            if self.profile.model not in options:
+                options.insert(0, self.profile.model)
+        self.refreshTextBadge()
+        self.refreshConditionalVisibility()
+        self.profile_changed.emit()
+        self.profile_selector_changed.emit()
+        self.profile_summary_changed.emit()
+
+    def refreshTextBadge(self):
+        active = bool(self.profile.support_text)
+        self.text_badge.setIconPath(themed_icon_path('text.svg' if active else 'text_disabled.svg'))
+        self.text_badge.setProperty('capabilityActive', active)
+        self.text_badge.setToolTip(
+            self.tr('Disable text translation for this profile.') if active
+            else self.tr('Enable text translation for this profile.')
+        )
+        self.text_badge.style().unpolish(self.text_badge)
+        self.text_badge.style().polish(self.text_badge)
+        self._position_header_controls()
+
+    def refreshVisionBadge(self):
+        active = bool(self.profile.support_vision)
+        self.vision_badge.setIconPath(themed_icon_path('eye.svg' if active else 'eye-closed.svg'))
+        self.vision_badge.setProperty('capabilityActive', active)
+        self.vision_badge.setToolTip(
+            self.tr('Disable vision OCR for this profile.') if active
+            else self.tr('Enable vision OCR for this profile.')
+        )
+        self.vision_badge.style().unpolish(self.vision_badge)
+        self.vision_badge.style().polish(self.vision_badge)
+        self._position_header_controls()
+
     def refreshConditionalVisibility(self):
         require_key = bool(self.profile.require_api_key)
         self.api_summary_widget.setVisible(require_key)
-        self.summary_spacer.setVisible(require_key)
+        self.model_summary_widget.setVisible(bool(self.profile.support_text))
+        self.vision_model_summary_widget.setVisible(bool(self.profile.support_vision))
         if hasattr(self.details, 'setParamVisible'):
             self.details.setParamVisible('low_vram_mode', not require_key)
+            self.details.setParamVisible('vision_detail_level', bool(self.profile.support_vision))
         self.refreshKeyStatus()
+        self._sync_summary_flow_size()
+        self._sync_minimum_width_with_content()
 
     def refreshKeyStatus(self):
         require_key = bool(self.profile.require_api_key)
@@ -771,7 +1101,7 @@ class LLMProfilesWidget(QWidget):
     def applyFilterToRow(self, row: ProfileCardWidget, query: str = None):
         query = self.filterQuery() if query is None else query
         profile = row.profile
-        haystack = ' '.join((profile.name, profile.model, profile.base_url, profile.id)).lower()
+        haystack = ' '.join((profile.name, profile.model, profile.vision_model, profile.base_url, profile.id)).lower()
         row.setVisible(not query or query in haystack)
 
     def applyFilter(self, *args):
@@ -822,6 +1152,8 @@ class LLMProfilesWidget(QWidget):
         pcfg.module.llm_profiles = [p for p in pcfg.module.llm_profiles if p.id != profile_id]
         if pcfg.module.translator_llm_id == profile_id:
             pcfg.module.translator_llm_id = pcfg.module.llm_profiles[0].id
+        if pcfg.module.ocr_llm_id == profile_id:
+            pcfg.module.ocr_llm_id = pcfg.module.llm_profiles[0].id
         row = self.rows.pop(profile_id, None)
         if row is not None:
             row.collapse()
@@ -846,10 +1178,18 @@ class LLMProfilesWidget(QWidget):
         pcfg.module.llm_profiles = restore_builtin_profiles(pcfg.module.llm_profiles)
         if not profile_by_id(pcfg.module.llm_profiles, pcfg.module.translator_llm_id):
             pcfg.module.translator_llm_id = pcfg.module.llm_profiles[0].id
+        if not profile_by_id(pcfg.module.llm_profiles, pcfg.module.ocr_llm_id):
+            pcfg.module.ocr_llm_id = pcfg.module.llm_profiles[0].id
         self.rebuild()
         self.profile_ui_updated.emit()
 
-    def focusProfileApiKey(self, profile_id: str, deferred: bool = False, expand_details: bool = True):
+    def focusProfileControl(
+        self,
+        profile_id: str,
+        target: str = 'api_key',
+        deferred: bool = False,
+        expand_details: bool = True,
+    ):
         row = self.rows.get(profile_id)
         if row is None:
             return
@@ -858,8 +1198,9 @@ class LLMProfilesWidget(QWidget):
             # rebuild/show/layout work has settled enough for focus and scroll.
             QTimer.singleShot(
                 0,
-                lambda profile_id=profile_id, expand_details=expand_details: self.focusProfileApiKey(
+                lambda profile_id=profile_id, target=target, expand_details=expand_details: self.focusProfileControl(
                     profile_id,
+                    target=target,
                     expand_details=expand_details,
                 ),
             )
@@ -868,8 +1209,23 @@ class LLMProfilesWidget(QWidget):
             self.filter_edit.clear()
         if expand_details:
             row.expand()
-        row.focusApiKey()
-        self.ensureWidgetVisible(row.api_key_widget.editor)
+        if target == 'model':
+            row.focusModel(vision=False)
+            self.ensureWidgetVisible(row.model_combo)
+        elif target == 'vision_model':
+            row.focusModel(vision=True)
+            self.ensureWidgetVisible(row.vision_model_combo)
+        else:
+            row.focusApiKey()
+            self.ensureWidgetVisible(row.api_key_widget.editor)
+
+    def focusProfileApiKey(self, profile_id: str, deferred: bool = False, expand_details: bool = True):
+        self.focusProfileControl(
+            profile_id,
+            target='api_key',
+            deferred=deferred,
+            expand_details=expand_details,
+        )
 
     def focusProfileName(self, profile_id: str, deferred: bool = False):
         row = self.rows.get(profile_id)

@@ -5,7 +5,7 @@ import traceback
 from typing import Dict, List
 
 from .base import BaseTranslator, register_translator
-from .exceptions import LLMApiKeyRequiredError, LLMTranslationStopped
+from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
@@ -103,7 +103,19 @@ class LLMTranslator(BaseTranslator):
             profile = pcfg.module.llm_profiles[0]
         if profile is None:
             raise RuntimeError('No LLM profile is configured.')
-        return profile_from_config(profile)
+        profile = profile_from_config(profile)
+        if not profile.support_text:
+            raise RuntimeError(f'LLM profile "{profile.name}" does not have text translation enabled.')
+        self._text_model(profile)
+        return profile
+
+    @staticmethod
+    def _text_model(profile: LLMProfile) -> str:
+        model = str(profile.model or '').strip()
+        model_options = [str(option).strip() for option in profile.model_options if str(option).strip()]
+        if not model or not model_options:
+            raise LLMModelRequiredError(profile.id, profile.name)
+        return model
 
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
@@ -116,7 +128,7 @@ class LLMTranslator(BaseTranslator):
             return
         if self.stop_event is not None:
             if self.stop_event.wait(seconds):
-                raise LLMTranslationStopped()
+                raise LLMRequestStopped()
             return
         time.sleep(seconds)
 
@@ -249,8 +261,9 @@ class LLMTranslator(BaseTranslator):
         }
 
     def _api_args(self, profile: LLMProfile, messages: List[Dict]):
+        model = self._text_model(profile)
         api_args = {
-            "model": profile.model,
+            "model": model,
             "messages": messages,
             "temperature": float(profile.temperature),
             "top_p": float(profile.top_p),
@@ -364,7 +377,7 @@ class LLMTranslator(BaseTranslator):
             mismatch_attempt = 0
             while True:
                 if self.stop_event is not None and self.stop_event.is_set():
-                    raise LLMTranslationStopped()
+                    raise LLMRequestStopped()
                 try:
                     raw_response = self._request_translation(profile, messages)
                     batch_translations = self._parse_response(profile, raw_response, num_src)
@@ -379,7 +392,9 @@ class LLMTranslator(BaseTranslator):
                     self._wait(self.get_param_value('retry timeout') / 2)
                 except LLMApiKeyRequiredError:
                     raise
-                except LLMTranslationStopped:
+                except LLMModelRequiredError:
+                    raise
+                except LLMRequestStopped:
                     raise
                 except Exception as e:
                     retry_attempt += 1

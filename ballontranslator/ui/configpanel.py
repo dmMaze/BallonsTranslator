@@ -927,9 +927,9 @@ class ConfigPanel(QDialog):
     def focusOnTranslator(self):
         self.showConfigDialog('translator')
 
-    def focusOnLLMProfile(self, profile_id: str, expand_details: bool = True):
+    def focusOnLLMProfile(self, profile_id: str, expand_details: bool = True, target: str = 'api_key'):
         self.showConfigDialog('llm_profile')
-        self.llm_profiles_panel.focusProfileApiKey(profile_id, expand_details=expand_details)
+        self.llm_profiles_panel.focusProfileControl(profile_id, target=target, expand_details=expand_details)
 
     def focusOnInpaint(self):
         self.showConfigDialog('inpainter')

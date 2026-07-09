@@ -4,6 +4,7 @@ import numpy as np
 
 from ballontranslator.modules.exceptions import ModuleRunError
 from ballontranslator.modules.ocr.base import OCRBase
+from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError
 from ballontranslator.modules.textdetector.base import TextDetectorBase
 from ballontranslator.ui import module_manager
 from ballontranslator.utils.registry import ModuleSpec
@@ -19,6 +20,18 @@ class FailingOCR(OCRBase):
     def _ocr_blk_list(self, _img, blk_list, *args, **kwargs):
         blk_list[0].text = ['partial text']
         raise ValueError('ocr backend failed')
+
+
+class MissingKeyOCR(OCRBase):
+    def _ocr_blk_list(self, _img, blk_list, *args, **kwargs):
+        blk_list[0].text = ['partial text']
+        raise LLMApiKeyRequiredError('profile-1', 'Profile 1')
+
+
+class MissingModelOCR(OCRBase):
+    def _ocr_blk_list(self, _img, blk_list, *args, **kwargs):
+        blk_list[0].text = ['partial text']
+        raise LLMModelRequiredError('profile-1', 'Profile 1', vision=True)
 
 
 class FailingDetector(TextDetectorBase):
@@ -86,6 +99,26 @@ class ModuleRunErrorTest(unittest.TestCase):
         self.assertEqual(caught.exception.module_key, 'ocr')
         self.assertEqual(caught.exception.module_name, 'failing_ocr')
         self.assertIsInstance(caught.exception.__cause__, ValueError)
+
+    def test_ocr_preserves_llm_key_error_after_restoring_text(self):
+        ocr = MissingKeyOCR()
+        ocr.name = 'LLMOCR'
+        block = TextBlock(xyxy=[0, 0, 10, 10], text=['old text'])
+
+        with self.assertRaises(LLMApiKeyRequiredError):
+            ocr.run_ocr(np.zeros((12, 12, 3), dtype=np.uint8), [block])
+
+        self.assertEqual(block.text, ['old text'])
+
+    def test_ocr_preserves_llm_model_error_after_restoring_text(self):
+        ocr = MissingModelOCR()
+        ocr.name = 'LLMOCR'
+        block = TextBlock(xyxy=[0, 0, 10, 10], text=['old text'])
+
+        with self.assertRaises(LLMModelRequiredError):
+            ocr.run_ocr(np.zeros((12, 12, 3), dtype=np.uint8), [block])
+
+        self.assertEqual(block.text, ['old text'])
 
     def test_text_detector_wraps_runtime_failure(self):
         detector = FailingDetector()

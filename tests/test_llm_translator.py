@@ -2,8 +2,9 @@ import threading
 import unittest
 from types import SimpleNamespace
 
-from ballontranslator.modules.translators.exceptions import LLMApiKeyRequiredError, LLMTranslationStopped
+from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
+from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import default_profile
 
 
@@ -36,8 +37,9 @@ class FakeClient:
 
 
 class FakeTranslator(LLMTranslator):
-    def __init__(self, error=None):
+    def __init__(self, error=None, profile=None):
         self.fake_error = error
+        self.profile_override = profile
         super().__init__('日本語', '简体中文')
 
     def _openai_module(self):
@@ -48,6 +50,8 @@ class FakeTranslator(LLMTranslator):
 
     @property
     def profile(self):
+        if self.profile_override is not None:
+            return self.profile_override
         profile = default_profile('OpenAI')
         profile.api_key = 'sk-demo'
         return profile
@@ -84,6 +88,54 @@ class LLMTranslatorTest(unittest.TestCase):
         with self.assertRaises(LLMApiKeyRequiredError):
             self.translator._api_key_for_profile(profile)
 
+    def test_text_disabled_profile_is_not_translator_usable(self):
+        old_profiles = pcfg.module.llm_profiles
+        old_translator_llm_id = pcfg.module.translator_llm_id
+        profile = default_profile('OpenAI')
+        profile.support_text = False
+        try:
+            pcfg.module.llm_profiles = [profile]
+            pcfg.module.translator_llm_id = profile.id
+
+            with self.assertRaisesRegex(RuntimeError, 'text translation'):
+                _ = self.translator.profile
+        finally:
+            pcfg.module.llm_profiles = old_profiles
+            pcfg.module.translator_llm_id = old_translator_llm_id
+
+    def test_text_enabled_profile_requires_model(self):
+        old_profiles = pcfg.module.llm_profiles
+        old_translator_llm_id = pcfg.module.translator_llm_id
+        profile = default_profile('OpenAI')
+        profile.model = ''
+        try:
+            pcfg.module.llm_profiles = [profile]
+            pcfg.module.translator_llm_id = profile.id
+
+            with self.assertRaises(LLMModelRequiredError):
+                _ = self.translator.profile
+            with self.assertRaises(LLMModelRequiredError):
+                self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
+
+            profile.model = 'stale-model'
+            profile.model_options = []
+            with self.assertRaises(LLMModelRequiredError):
+                _ = self.translator.profile
+            with self.assertRaises(LLMModelRequiredError):
+                self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
+        finally:
+            pcfg.module.llm_profiles = old_profiles
+            pcfg.module.translator_llm_id = old_translator_llm_id
+
+    def test_model_required_error_propagates_from_request_loop(self):
+        profile = default_profile('OpenAI')
+        profile.api_key = 'sk-demo'
+        profile.model = ''
+        translator = FakeTranslator(profile=profile)
+
+        with self.assertRaises(LLMModelRequiredError):
+            translator._translate(['hello'])
+
     def test_thinking_level_only_passed_when_not_none(self):
         profile = default_profile('OpenAI')
         profile.thinking_level = 'None'
@@ -118,7 +170,7 @@ class LLMTranslatorTest(unittest.TestCase):
         event.set()
         self.translator.set_stop_event(event)
 
-        with self.assertRaises(LLMTranslationStopped):
+        with self.assertRaises(LLMRequestStopped):
             self.translator._wait(5)
 
     def test_runtime_settings_live_on_translator_params(self):
