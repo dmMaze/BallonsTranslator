@@ -3,10 +3,11 @@ import json
 import cv2
 import requests
 import base64
+import time
 from typing import List, Any
 
 from .base import register_OCR, OCRBase
-from ballontranslator.utils.message import create_error_dialog, create_info_dialog
+from ballontranslator.utils.message import create_info_dialog
 
 
 @register_OCR('paddle_vl')
@@ -15,6 +16,8 @@ class OCRPaddleVL(OCRBase):
         'server_url': 'http://127.0.0.1:8080/layout-parsing',
         'prettifyMarkdown': {'type': 'checkbox', 'value': False},
         'visualize': {'type': 'checkbox', 'value': False},
+        'max retry times': 3,
+        'retry interval': 1.0,
         'description': '本地部署的 Paddle OCR-VL 服务 (POST /layout-parsing)'
     }
 
@@ -40,9 +43,16 @@ class OCRPaddleVL(OCRBase):
             return bool(v.get('value', False))
         return bool(v)
 
+    @property
+    def max_retry_times(self):
+        return max(1, int(self.get_param_value('max retry times')))
+
+    @property
+    def retry_interval(self):
+        return max(0.0, float(self.get_param_value('retry interval')))
+
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.debug = False
 
     def _extract_texts_from_pruned(self, pruned: Any) -> List[str]:
         texts: List[str] = []
@@ -107,30 +117,10 @@ class OCRPaddleVL(OCRBase):
         except Exception:
             return md
 
-    def ocr_img(self, img: np.ndarray, **kwargs) -> str:
-        """
-        将图片（单张或块）以 Base64 发送到本地 Paddle-VL 服务的 `/layout-parsing`。
-        优先使用返回的 Markdown 文本；若无，则尝试从 prunedResult 中抽取文本。
-        返回字符串（整块识别结果）。
-        """
-        try:
-            image_bytes = cv2.imencode('.jpg', img)[1].tobytes()
-        except Exception as e:
-            self.logger.exception('图片编码失败')
-            raise
-
-        image_b64 = base64.b64encode(image_bytes).decode('ascii')
-
-        payload = {
-            'file': image_b64,
-            'fileType': 1,
-            'prettifyMarkdown': self.prettifyMarkdown,
-            'visualize': self.visualize,
-        }
-
+    def _request_ocr(self, payload: dict) -> str:
         try:
             resp = requests.post(self.server_url, json=payload, timeout=60)
-        except Exception as e:
+        except Exception:
             self.logger.exception('请求本地 Paddle-VL 服务失败')
             raise
 
@@ -177,6 +167,41 @@ class OCRPaddleVL(OCRBase):
 
         # 最后退回到 outputImages 或 pruned 的 JSON 字符串
         return json.dumps(first, ensure_ascii=False)
+
+    def ocr_img(self, img: np.ndarray, **kwargs) -> str:
+        """
+        将图片（单张或块）以 Base64 发送到本地 Paddle-VL 服务的 `/layout-parsing`。
+        优先使用返回的 Markdown 文本；若无，则尝试从 prunedResult 中抽取文本。
+        返回字符串（整块识别结果）。
+        """
+        try:
+            image_bytes = cv2.imencode('.jpg', img)[1].tobytes()
+        except Exception:
+            self.logger.exception('图片编码失败')
+            raise
+
+        payload = {
+            'file': base64.b64encode(image_bytes).decode('ascii'),
+            'fileType': 1,
+            'prettifyMarkdown': self.prettifyMarkdown,
+            'visualize': self.visualize,
+        }
+
+        last_error = None
+        attempts = self.max_retry_times
+        for attempt in range(attempts):
+            try:
+                return self._request_ocr(payload)
+            except Exception as e:
+                last_error = e
+                if attempt + 1 >= attempts:
+                    break
+                self.logger.warning(
+                    f'Paddle-VL OCR failed, retrying {attempt + 1}/{attempts}: {e}'
+                )
+                time.sleep(self.retry_interval)
+
+        raise RuntimeError(f'Paddle-VL OCR failed after {attempts} attempts: {last_error}') from last_error
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)

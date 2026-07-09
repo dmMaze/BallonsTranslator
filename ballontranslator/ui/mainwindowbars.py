@@ -1,13 +1,37 @@
 import os.path as osp
 from typing import List, Union
 
-from qtpy.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QFileDialog, QLabel, QSizePolicy, QToolBar, QMenu, QSpacerItem, QPushButton, QCheckBox, QToolButton
-from qtpy.QtCore import Qt, Signal, QPoint, QEvent, QSize
-from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup, QIcon
+from qtpy.QtWidgets import (
+    QCheckBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QPushButton,
+    QSizePolicy,
+    QSpacerItem,
+    QToolBar,
+    QToolButton,
+    QVBoxLayout,
+)
+from qtpy.QtCore import Qt, Signal, QPoint, QEvent
+from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup
 
-from .custom_widget import Widget, PaintQSlider, SmallComboBox, ConfigClickableLabel
-from .misc import themed_icon_path
-from ballontranslator.utils.shared import TITLEBAR_HEIGHT, WINDOW_BORDER_WIDTH, BOTTOMBAR_HEIGHT, LEFTBAR_WIDTH, LEFTBTN_WIDTH
+from .custom_widget import Widget, PaintQSlider
+from .module_tool_button import (
+    InpaintSelectionWidget,
+    ModuleSelectionToolButtonWidget,
+    OCRSelectionWidget,
+    TranslatorSelectionWidget,
+)
+from ballontranslator.utils.shared import (
+    BOTTOMBAR_HEIGHT,
+    LEFTBAR_WIDTH,
+    LEFTBTN_WIDTH,
+    TITLEBAR_HEIGHT,
+    WINDOW_BORDER_WIDTH,
+)
 from .framelesswindow import FramelessMoveResize
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils import shared
@@ -533,121 +557,6 @@ class TitleBar(Widget):
         self.titleLabel.setText(title)
 
 
-class SmallConfigPutton(QPushButton):
-    pass
-
-
-def cfg_icon() -> QIcon:
-    return QIcon(themed_icon_path('leftbar_config_activate.svg'))
-
-
-class SelectionWithConfigWidget(Widget):
-
-    cfg_clicked = Signal()
-
-    def __init__(self, selector_name: str, add_cfg_btn=True, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        label = ConfigClickableLabel(text=selector_name)
-        label.clicked.connect(self.cfg_clicked)
-        
-        self.selector = SmallComboBox()
-
-        self.cfg_btn = None
-        if add_cfg_btn:
-            self.cfg_btn = SmallConfigPutton()
-            self.cfg_btn.clicked.connect(self.cfg_clicked)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(label)
-        layout2 = QHBoxLayout()
-        layout2.setSpacing(0)
-        layout2.addWidget(self.selector)
-        layout2.addWidget(self.cfg_btn)
-        layout2.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(label)
-        layout.addLayout(layout2)
-
-    def enterEvent(self, event: QEvent) -> None:
-        if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(cfg_icon())
-        return super().enterEvent(event)
-
-    def leaveEvent(self, event: QEvent) -> None:
-        if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(QIcon())
-        return super().leaveEvent(event)
-    
-    def blockSignals(self, block: bool):
-        self.selector.blockSignals(block)
-        super().blockSignals(block)
-    
-    def setSelectedValue(self, value: str, block_signals=True):
-        if block_signals:
-            self.blockSignals(True)
-        self.selector.setCurrentText(value)
-        if block_signals:
-            self.blockSignals(False)
-    
-
-class TranslatorSelectionWidget(Widget):
-
-    cfg_clicked = Signal()
-
-    def __init__(self) -> None:
-        super().__init__()
-        label = ConfigClickableLabel(text=self.tr('Translate'))
-        label.clicked.connect(self.cfg_clicked)
-        label_src = ConfigClickableLabel(text=self.tr('Source'))
-        label_src.clicked.connect(self.cfg_clicked)
-        label_tgt = ConfigClickableLabel(text=self.tr('Target'))
-        label_tgt.clicked.connect(self.cfg_clicked)
-        
-        self.selector = SmallComboBox()
-        self.src_selector = SmallComboBox()
-        self.tgt_selector = SmallComboBox()
-        self.cfg_btn = SmallConfigPutton()
-        self.cfg_btn.clicked.connect(self.cfg_clicked)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(label)
-        layout.addWidget(self.selector)
-        layout.addWidget(label_src)
-        layout.addWidget(self.src_selector)
-        layout.addWidget(label_tgt)
-        layout.addWidget(self.tgt_selector)
-        layout.addWidget(self.cfg_btn)
-        layout.setSpacing(1)
-
-    def enterEvent(self, event: QEvent) -> None:
-        if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(cfg_icon())
-        return super().enterEvent(event)
-
-    def leaveEvent(self, event: QEvent) -> None:
-        if self.cfg_btn is not None:
-            self.cfg_btn.setIcon(QIcon())
-        return super().leaveEvent(event)
-    
-    def blockSignals(self, block: bool):
-        self.src_selector.blockSignals(block)
-        self.tgt_selector.blockSignals(block)
-        self.selector.blockSignals(block)
-        super().blockSignals(block)
-    
-    def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
-        # Metadata can come from ModuleSpec before the translator is imported.
-        self.blockSignals(True)
-        self.src_selector.clear()
-        self.tgt_selector.clear()
-        self.src_selector.addItems(supported_src_list)
-        self.tgt_selector.addItems(supported_tgt_list)
-        self.selector.setCurrentText(name)
-        self.src_selector.setCurrentText(lang_source)
-        self.tgt_selector.setCurrentText(lang_target)
-        self.blockSignals(False)
-
 
 
 class BottomBar(Widget):
@@ -662,9 +571,9 @@ class BottomBar(Widget):
         self.setMouseTracking(True)
         self.mainwindow = mainwindow
         
-        self.textdet_selector = SelectionWithConfigWidget(self.tr('Text Detector'))
-        self.ocr_selector = SelectionWithConfigWidget(self.tr('OCR'))
-        self.inpaint_selector = SelectionWithConfigWidget(self.tr('Inpaint'))
+        self.textdet_selector = ModuleSelectionToolButtonWidget(self.tr('Text Detector'), 'textdetect.svg')
+        self.ocr_selector = OCRSelectionWidget()
+        self.inpaint_selector = InpaintSelectionWidget()
         self.trans_selector = TranslatorSelectionWidget()
 
         self.hlayout = QHBoxLayout(self)

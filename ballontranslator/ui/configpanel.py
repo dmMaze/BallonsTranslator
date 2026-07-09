@@ -10,7 +10,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
-from .custom_widget import ConfigComboBox, Widget
+from .custom_widget import ConfigComboBox, ScrollBar, Widget
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.version import APP_VERSION
 from ballontranslator.utils.network_mirrors import (
@@ -23,6 +23,7 @@ from ballontranslator.utils.network_mirrors import (
 from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, PROGRAM_PATH
 from ballontranslator.utils.logger import logger as LOGGER
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
+from .llm_profile_widgets import LLMProfilesWidget
 from ballontranslator.ui.spellcheck import DICTIONARY_URLS, SpellCheckManager, DictionaryManagerDialog, DictDownloadThread
 
 
@@ -112,26 +113,37 @@ class ConfigTextLabel(QLabel):
 
 
 class ConfigSubBlock(Widget):
-    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None, 
-    vertical_layout=True, insert_stretch: bool = False, content_margins = (0, 0, 0, 0), fnt_size=None) -> None:
+    def __init__(self, widget: Union[QWidget, QLayout], name: str = None, discription: str = None,
+    vertical_layout=True, insert_stretch: bool = False, content_margins = (0, 0, 0, 0), fnt_size=None,
+    tooltip: str = None) -> None:
         super().__init__()
         if vertical_layout:
             layout = QVBoxLayout(self)
         else:
             layout = QHBoxLayout(self)
 
+        tooltip = tooltip or discription
+        if tooltip is None and isinstance(widget, QWidget):
+            tooltip = widget.toolTip()
         if fnt_size is None:
             fnt_size = CONFIG_FONTSIZE_CONTENT
             if discription is not None:
                 fnt_size = CONFIG_FONTSIZE_CONTENT-2
         if name is not None:
             textlabel = ConfigTextLabel(name, fnt_size, QFont.Weight.Normal)
+            if tooltip:
+                textlabel.setToolTip(tooltip)
             layout.addWidget(textlabel)
         if discription is not None:
-            layout.addWidget(ConfigTextLabel(discription, fnt_size))
+            description_label = ConfigTextLabel(discription, fnt_size)
+            if tooltip:
+                description_label.setToolTip(tooltip)
+            layout.addWidget(description_label)
         if insert_stretch:
             layout.insertStretch(-1)
         if isinstance(widget, QWidget):
+            if tooltip and not widget.toolTip():
+                widget.setToolTip(tooltip)
             layout.addWidget(widget)
         else:
             layout.addLayout(widget)
@@ -142,6 +154,8 @@ class ConfigSubBlock(Widget):
 def combobox_with_label(sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True, parent: QWidget = None, insert_stretch: bool = False) -> Tuple[ConfigComboBox, QWidget]:
     combox = ConfigComboBox(fix_size=fix_size, scrollWidget=parent)
     combox.addItems(sel)
+    if discription:
+        combox.setToolTip(discription)
     if target_block is None:
         sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout, insert_stretch=insert_stretch, fnt_size=CONFIG_FONTSIZE_TABLE-2)
         sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -150,23 +164,28 @@ def combobox_with_label(sel: List[str], name: str, discription: str = None, vert
     else:
         layout = target_block.layout()
         layout.addSpacing(12)
-        layout.addWidget(ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal))
+        textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
+        if discription:
+            textlabel.setToolTip(discription)
+        layout.addWidget(textlabel)
         layout.addWidget(combox)
         return combox, target_block
     
 def checkbox_with_label(name: str, discription: str = None, target_block: QWidget = None):
     checkbox = QCheckBox()
+    checkbox.setObjectName('ConfigCheckBox')
     if discription is not None:
         font = checkbox.font()
         font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
         checkbox.setFont(font)
         checkbox.setText(discription)
+        checkbox.setToolTip(discription)
         vertical_layout = True
     else:
         vertical_layout = False
 
     if target_block is None:
-        sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout)
+        sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout, tooltip=discription)
         if vertical_layout is False:
             sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         target_block = sublock
@@ -218,16 +237,23 @@ class ConfigBlock(Widget):
 class ConfigContent(QStackedWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.setObjectName('ConfigContent')
         self.config_block_list: List[ConfigBlock] = []
         self.setContentsMargins(0, 0, 0, 0)
         self.section_index = {}
 
     def addConfigBlock(self, block: ConfigBlock, section_key: str):
         scroll_area = QScrollArea()
+        scroll_area.setObjectName('ConfigContentScrollArea')
+        scroll_area.viewport().setObjectName('ConfigContentViewport')
+        fadeout_scrollbar = section_key != 'llm_profile'
+        scroll_area.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, scroll_area, fadeout=fadeout_scrollbar, hover_style=True)
+        scroll_area.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, scroll_area, fadeout=fadeout_scrollbar, hover_style=True)
         scroll_area.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         scroll_area.setWidgetResizable(True)
         scroll_area.setContentsMargins(0, 0, 0, 0)
         scroll_content = Widget()
+        scroll_content.setObjectName('ConfigContentScrollContent')
         scroll_content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         scroll_layout = QHBoxLayout(scroll_content)
         scroll_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -371,6 +397,7 @@ class ConfigPanel(QDialog):
         label_text_ocr = self.tr('OCR')
         label_inpaint = self.tr('Inpainter')
         label_translator = self.tr('Translator')
+        label_llm_profile = self.tr('LLM Profile')
         label_application = self.tr('Application')
         label_typesetting = self.tr('Typesetting')
         label_spellcheck = self.tr('Spell Checker')
@@ -380,6 +407,7 @@ class ConfigPanel(QDialog):
         ocrConfigPanel = self.addConfigBlock(label_text_ocr, moduleTableItem, 'ocr')
         inpaintConfigPanel = self.addConfigBlock(label_inpaint, moduleTableItem, 'inpainter')
         translatorConfigPanel = self.addConfigBlock(label_translator, moduleTableItem, 'translator')
+        llmProfileConfigPanel = self.addConfigBlock(label_llm_profile, moduleTableItem, 'llm_profile')
         applicationConfigPanel = self.addConfigBlock(label_application, generalTableItem, 'application')
         typesettingConfigPanel = self.addConfigBlock(label_typesetting, generalTableItem, 'typesetting')
         spellcheckConfigPanel = self.addConfigBlock(label_spellcheck, generalTableItem, 'spellcheck')
@@ -394,6 +422,8 @@ class ConfigPanel(QDialog):
         self.package_auto_install_checker.stateChanged.connect(self.on_package_auto_install_changed)
         moduleConfigPanel.vlayout.addWidget(msublock)
         module_actions = QWidget()
+        module_actions.setObjectName('ConfigInlineRow')
+        module_actions.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         module_actions_layout = QHBoxLayout(module_actions)
         module_actions_layout.setContentsMargins(0, 0, 0, 0)
         module_actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -421,11 +451,13 @@ class ConfigPanel(QDialog):
         self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'), scrollWidget=self)
         self.inpaint_config_panel.module_label.hide()
         self.inpaint_sub_block = inpaintConfigPanel.addBlockWidget(self.inpaint_config_panel)
-        self.inpaint_config_panel.filter_mask_by_bboxes_checker.clicked.connect(self.on_filter_mask_by_bboxes_clicked)
+        self.inpaint_config_panel.filter_mask_by_bboxes_checker.checker_changed.connect(self.on_filter_mask_by_bboxes_clicked)
 
         self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
         self.trans_config_panel.module_label.hide()
         self.trans_sub_block = translatorConfigPanel.addBlockWidget(self.trans_config_panel)
+        self.llm_profiles_panel = LLMProfilesWidget(scrollWidget=self)
+        llmProfileConfigPanel.addBlockWidget(self.llm_profiles_panel)
 
         self.open_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
@@ -441,6 +473,7 @@ class ConfigPanel(QDialog):
 
         # Edit Distance Spinbox
         self.spellcheck_distance_spin = QSpinBox(self)
+        self.spellcheck_distance_spin.setObjectName('SpellCheckDistanceSpin')
         self.spellcheck_distance_spin.setRange(1, 4)
         self.spellcheck_distance_spin.setFixedWidth(CONFIG_COMBOBOX_SHORT)
         self.spellcheck_distance_spin.setToolTip(self.tr("Higher value, slower analysis"))
@@ -460,12 +493,6 @@ class ConfigPanel(QDialog):
         dist_block.setSpacing(4)
         dist_block.addLayout(dist_layout)
 
-        desc_label = ConfigTextLabel(
-            self.tr("Max spelling difference in letters. Higher values search deeper but perform slower."),
-            CONFIG_FONTSIZE_CONTENT - 2,
-            QFont.Weight.Normal
-        )
-        dist_block.addWidget(desc_label)
         spellcheckConfigPanel.addBlockWidget(dist_block)
 
         # Dictionary Words Manager Button
@@ -481,7 +508,10 @@ class ConfigPanel(QDialog):
         repo_layout.addWidget(repo_label)
 
         self.repo_dicts_list = QListWidget(self)
+        self.repo_dicts_list.setObjectName('SpellCheckDictionaryList')
         self.repo_dicts_list.setFixedHeight(150)
+        self.repo_dicts_list.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, self.repo_dicts_list, hover_style=True)
+        self.repo_dicts_list.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, self.repo_dicts_list, hover_style=True)
         self.repo_dicts_list.itemChanged.connect(self.on_repo_dict_item_changed)
         repo_layout.addWidget(self.repo_dicts_list)
 
@@ -493,7 +523,10 @@ class ConfigPanel(QDialog):
         ext_layout.addWidget(ext_label)
 
         self.external_dicts_list = QListWidget(self)
+        self.external_dicts_list.setObjectName('SpellCheckDictionaryList')
         self.external_dicts_list.setFixedHeight(120)
+        self.external_dicts_list.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, self.external_dicts_list, hover_style=True)
+        self.external_dicts_list.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, self.external_dicts_list, hover_style=True)
         ext_layout.addWidget(self.external_dicts_list)
 
         ext_btns_layout = QHBoxLayout()
@@ -511,6 +544,8 @@ class ConfigPanel(QDialog):
         self.spellcheck_subblock = spellcheckConfigPanel.addBlockWidget(ext_layout)
 
         update_status_widget = QWidget()
+        update_status_widget.setObjectName('ConfigInlineRow')
+        update_status_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         update_status_layout = QHBoxLayout(update_status_widget)
         update_status_layout.setContentsMargins(0, 0, 0, 0)
         update_status_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -645,8 +680,8 @@ class ConfigPanel(QDialog):
     def on_keepline_clicked(self):
         pcfg.module.keep_exist_textlines = self.detect_config_panel.keep_existing_checker.isChecked()
 
-    def on_filter_mask_by_bboxes_clicked(self):
-        pcfg.module.filter_mask_by_bboxes = self.inpaint_config_panel.filter_mask_by_bboxes_checker.isChecked()
+    def on_filter_mask_by_bboxes_clicked(self, checked: bool):
+        pcfg.module.filter_mask_by_bboxes = checked
 
     def addConfigBlock(self, header: str, parent_item: TableItem, section_key: str) -> ConfigBlock:
         cb = ConfigBlock(parent=self)
@@ -892,6 +927,10 @@ class ConfigPanel(QDialog):
     def focusOnTranslator(self):
         self.showConfigDialog('translator')
 
+    def focusOnLLMProfile(self, profile_id: str, expand_details: bool = True, target: str = 'api_key'):
+        self.showConfigDialog('llm_profile')
+        self.llm_profiles_panel.focusProfileControl(profile_id, target=target, expand_details=expand_details)
+
     def focusOnInpaint(self):
         self.showConfigDialog('inpainter')
 
@@ -902,6 +941,8 @@ class ConfigPanel(QDialog):
         self.showConfigDialog('ocr')
 
     def hideEvent(self, e) -> None:
+        if hasattr(self, 'llm_profiles_panel'):
+            self.llm_profiles_panel.collapseProfiles()
         self._removeOutsideClickFilter()
         self.save_config.emit()
         return super().hideEvent(e)
@@ -923,10 +964,11 @@ class ConfigPanel(QDialog):
         self._outside_click_filter_installed = False
 
     def eventFilter(self, watched, event):
-        if event.type() == QEvent.Type.MouseButtonPress and self.isVisible():
+        if not self.isVisible() or not isinstance(watched, QWidget):
+            return super().eventFilter(watched, event)
+        if event.type() == QEvent.Type.MouseButtonPress:
             if (
-                isinstance(watched, QWidget)
-                and QApplication.activePopupWidget() is None
+                QApplication.activePopupWidget() is None
                 and not self._widgetInsidePanel(watched)
                 and not self._activeWidgetInWhitelist()
             ):
@@ -1040,7 +1082,7 @@ class ConfigPanel(QDialog):
         ))
 
         self.detect_config_panel.keep_existing_checker.setChecked(pcfg.module.keep_exist_textlines)
-        self.inpaint_config_panel.filter_mask_by_bboxes_checker.setChecked(pcfg.module.filter_mask_by_bboxes)
+        self.inpaint_config_panel.filter_mask_by_bboxes_checker.checker.setChecked(pcfg.module.filter_mask_by_bboxes)
         self.let_effect_combox.setCurrentIndex(pcfg.let_fnteffect_flag)
         self.let_fntsize_combox.setCurrentIndex(pcfg.let_fntsize_flag)
         self.let_fntstroke_combox.setCurrentIndex(pcfg.let_fntstroke_flag)

@@ -1,13 +1,14 @@
-from typing import List, Callable
+from typing import Callable
 
 from ballontranslator.modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from ballontranslator.utils.logger import logger as LOGGER
 from .custom_widget import ConfigComboBox, ParamComboBox, NoBorderPushBtn, ParamNameLabel
-from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, size2width, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
+from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, size2width, CONFIG_COMBOBOX_HEIGHT
 from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY
 
-from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QCheckBox, QLineEdit, QGridLayout, QPushButton, QSizePolicy, QLayout
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QCheckBox, QLineEdit, QGridLayout, QPushButton, QSizePolicy, QLayout
+from qtpy.QtCore import QTimer, Qt, Signal
 from qtpy.QtGui import QDoubleValidator
 
 LAYOUT_SET_MINIMUM_SIZE = getattr(getattr(QLayout, 'SizeConstraint', QLayout), 'SetMinimumSize')
@@ -24,6 +25,7 @@ class ParamCheckGroup(QWidget):
         self.label2widget = {}
         for k, v in check_group.items():
             checker = QCheckBox(text=k, parent=self)
+            checker.setObjectName('ConfigCheckBox')
             checker.setChecked(v)
             layout.addWidget(checker)
             self.label2widget[k] = checker
@@ -54,30 +56,106 @@ class ParamLineEditor(QLineEdit):
     def on_text_changed(self):
         self.paramwidget_edited.emit(self.param_key, self.text())
 
+
+class SecretParamWidget(QWidget):
+    """Password-style parameter editor.
+
+    Example:
+        >>> SecretParamWidget.__name__
+        'SecretParamWidget'
+    """
+
+    paramwidget_edited = Signal(str, str)
+
+    def __init__(self, param_key: str, size='short', fixed_size: bool = True, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setObjectName('SecretParamWidget')
+        self.param_key = param_key
+        self.editor = QLineEdit(self)
+        if fixed_size:
+            self.editor.setFixedWidth(size2width(size))
+            self.setFixedWidth(size2width(size))
+        else:
+            self.editor.setMinimumWidth(size2width(size))
+            self.editor.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            self.setMinimumWidth(size2width(size))
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.editor.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
+        self.editor.setEchoMode(QLineEdit.EchoMode.Password)
+        self.editor.setToolTip(self.tr(
+            'Stored in portable obfuscated form. This hides the key from plain-text scans, '
+            'but it is not a secure password vault.'
+        ))
+        self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.editor)
+        self.editor.textChanged.connect(self.on_text_changed)
+
+    def on_text_changed(self):
+        self.paramwidget_edited.emit(self.param_key, self.editor.text())
+
+    def setText(self, text: str):
+        self.editor.setText(text)
+
+    def text(self):
+        return self.editor.text()
+
+    def setFocus(self, *args, **kwargs):
+        return self.editor.setFocus(*args, **kwargs)
+
 class ParamEditor(QPlainTextEdit):
     
     paramwidget_edited = Signal(str, str)
     def __init__(self, param_key: str, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.param_key = param_key
+        self._auto_height = param_key == 'prompt'
+        self._auto_max_height = 100
+        self._auto_min_height = self._auto_max_height
 
-        if param_key == 'chat sample':
-            self.setFixedWidth(int(CONFIG_COMBOBOX_LONG * 1.2))
-            self.setFixedHeight(200)
+        self.setFixedWidth(int(CONFIG_COMBOBOX_LONG))
+        if self._auto_height:
+            self.setMinimumHeight(self._auto_min_height)
+            self.setMaximumHeight(self._auto_max_height)
+            self.setFixedHeight(self._auto_min_height)
         else:
-            self.setFixedWidth(CONFIG_COMBOBOX_LONG)
             self.setFixedHeight(100)
         # self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.textChanged.connect(self.on_text_changed)
+        if self._auto_height:
+            self.document().documentLayout().documentSizeChanged.connect(lambda *_: self.updateAutoHeight())
 
     def on_text_changed(self):
+        self.updateAutoHeight()
         self.paramwidget_edited.emit(self.param_key, self.text())
 
     def setText(self, text: str):
         self.setPlainText(text)
+        self.updateAutoHeight()
+        if self._auto_height:
+            QTimer.singleShot(0, self.updateAutoHeight)
 
     def text(self):
         return self.toPlainText()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.updateAutoHeight()
+
+    def updateAutoHeight(self):
+        if not self._auto_height:
+            return
+        available_width = max(1, self.viewport().width() - 16)
+        font_metrics = self.fontMetrics()
+        visual_lines = 0
+        for line in (self.toPlainText() or ' ').splitlines() or [' ']:
+            text_width = max(1, font_metrics.horizontalAdvance(line))
+            visual_lines += max(1, (text_width + available_width - 1) // available_width)
+        content_height = visual_lines * font_metrics.lineSpacing() + 14
+        height = max(self._auto_min_height, min(content_height, self._auto_max_height))
+        if self.height() != height:
+            self.setFixedHeight(height)
 
 
 class ParamCheckerBox(QWidget):
@@ -87,6 +165,7 @@ class ParamCheckerBox(QWidget):
         super().__init__(*args, **kwargs)
         self.param_key = param_key
         self.checker = QCheckBox()
+        self.checker.setObjectName('ConfigCheckBox')
         name_label = ParamNameLabel(param_key)
         hlayout = QHBoxLayout(self)
         hlayout.addWidget(self.checker)
@@ -100,11 +179,15 @@ class ParamCheckerBox(QWidget):
         checked = 'true' if is_checked else 'false'
         self.paramwidget_edited.emit(self.param_key, checked)
 
+    def isChecked(self):
+        return self.checker.isChecked()
+
 
 class ParamCheckBox(QCheckBox):
     paramwidget_edited = Signal(str, bool)
     def __init__(self, param_key: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.setObjectName('ParamCheckBox')
         self.param_key = param_key
         self.stateChanged.connect(self.on_checker_changed)
 
@@ -129,6 +212,18 @@ def ensure_current_device_option(param_dict: dict):
     param_dict['value'] = current_value if current_value in options else 'cpu'
 
 
+def set_label_tooltip_from_widget(label: QWidget, widget: QWidget):
+    """Mirror an editor tooltip onto its visible label.
+
+    Example:
+        >>> set_label_tooltip_from_widget.__name__
+        'set_label_tooltip_from_widget'
+    """
+    tooltip = widget.toolTip()
+    if tooltip:
+        label.setToolTip(tooltip)
+
+
 class ParamPushButton(QPushButton):
     paramwidget_edited = Signal(str, str)
     def __init__(self, param_key: str, param_dict: dict = None, *args, **kwargs):
@@ -150,6 +245,8 @@ class ParamWidget(QWidget):
         layout = QHBoxLayout(self)
         layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
         self.param_layout = param_layout = QGridLayout()
+        self.param_widgets = {}
+        self.param_rows = {}
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         param_layout.setContentsMargins(0, 0, 0, 0)
         param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -168,6 +265,7 @@ class ParamWidget(QWidget):
             is_str = isinstance(params[param_key], str)
             is_digital = isinstance(params[param_key], float) or isinstance(params[param_key], int)
             param_widget = None
+            label_above = False
 
             if isinstance(params[param_key], bool):
                 param_widget = ParamCheckBox(param_key)
@@ -192,6 +290,7 @@ class ParamWidget(QWidget):
                 flush_btn = param_dict.get('flush_btn', False)
                 path_selector = param_dict.get('path_selector', False)
                 param_size = param_dict.get('size', 'short')
+                label_above = param_dict.get('label_above', False)
                 if param_key == 'device' and param_type == 'selector':
                     ensure_current_device_option(param_dict)
                     value = param_dict['value']
@@ -223,7 +322,11 @@ class ParamWidget(QWidget):
                     require_label = False
 
                 elif param_type == 'line_editor':
-                    param_widget = ParamLineEditor(param_key, force_digital=is_digital)
+                    param_widget = ParamLineEditor(param_key, force_digital=isinstance(value, (float, int)))
+                    param_widget.setText(str(value))
+
+                elif param_type == 'secret':
+                    param_widget = SecretParamWidget(param_key, size=param_size)
                     param_widget.setText(str(value))
 
                 elif param_type == 'check_group':
@@ -234,12 +337,36 @@ class ParamWidget(QWidget):
                     if 'description' in param_dict:
                         param_widget.setToolTip(param_dict['description'])
 
+            if param_widget is not None and require_label and label_above:
+                self.param_widgets[param_key] = param_widget
+                row_widget = QWidget(self)
+                row_widget.setObjectName('ParamLabelAboveRow')
+                row_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+                row_layout = QVBoxLayout(row_widget)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(4)
+                param_label = ParamNameLabel(display_param_name)
+                param_label.setObjectName('ParamLabelAboveLabel')
+                set_label_tooltip_from_widget(param_label, param_widget)
+                row_layout.addWidget(param_label, 0, Qt.AlignmentFlag.AlignLeft)
+                row_layout.addWidget(param_widget, 0, Qt.AlignmentFlag.AlignLeft)
+                param_layout.addWidget(row_widget, ii, 0, 1, 2)
+                self.param_rows[param_key] = [row_widget]
+                continue
+
             widget_idx = 0
+            row_widgets = []
             if require_label:
                 param_label = ParamNameLabel(display_param_name)
+                param_label.setObjectName('ParamFieldLabel')
+                if param_widget is not None:
+                    set_label_tooltip_from_widget(param_label, param_widget)
                 param_layout.addWidget(param_label, ii, 0)
+                row_widgets.append(param_label)
                 widget_idx = 1
             if param_widget is not None:
+                self.param_widgets[param_key] = param_widget
+                row_widgets.append(param_widget)
                 pw_lo = None
                 if hasattr(param_widget, 'flush_btn') or hasattr(param_widget, 'path_select_btn'):
                     pw_lo = QHBoxLayout()
@@ -254,6 +381,7 @@ class ParamWidget(QWidget):
                     param_layout.addWidget(param_widget, ii, widget_idx)
                 else:
                     param_layout.addLayout(pw_lo, ii, widget_idx)
+                self.param_rows[param_key] = row_widgets
             else:
                 v = params[param_key]
                 raise ValueError(f"Failed to initialize widget for key-value pair: {param_key}-{v}")
@@ -271,6 +399,10 @@ class ParamWidget(QWidget):
     def on_paramwidget_edited(self, param_key, param_content):
         content_dict = {'content': param_content}
         self.paramwidget_edited.emit(param_key, content_dict)
+
+    def setParamVisible(self, param_key: str, visible: bool):
+        for widget in self.param_rows.get(param_key, []):
+            widget.setVisible(visible)
 
 class ModuleParseWidgets(QWidget):
     def addModulesParamWidgets(self, ocr_instance):
@@ -387,6 +519,8 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
     show_pre_MT_keyword_window = Signal()
     show_MT_keyword_window = Signal()
     show_OCR_keyword_window = Signal()
+    llm_profile_changed = Signal(str)
+    llm_profile_config_clicked = Signal(str)
 
     def __init__(self, module_name, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(module_name, GET_VALID_TRANSLATORS, scrollWidget=scrollWidget, *args, **kwargs)
@@ -412,12 +546,52 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         st_layout.addWidget(self.source_combobox)
         st_layout.addWidget(ParamNameLabel(self.tr('Target')))
         st_layout.addWidget(self.target_combobox)
+
+        self.llm_profile_combobox = ConfigComboBox(scrollWidget=scrollWidget)
+        self.llm_profile_config_btn = NoBorderPushBtn(self.tr('Config'), self)
+        self.llm_profile_config_btn.clicked.connect(self.on_llm_profile_config_clicked)
+        self.llm_profile_layout = QHBoxLayout()
+        self.llm_profile_layout.setSpacing(15)
+        self.llm_profile_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.llm_profile_label = ParamNameLabel(self.tr('LLM Profile'))
+        self.llm_profile_layout.addWidget(self.llm_profile_label)
+        self.llm_profile_layout.addWidget(self.llm_profile_combobox)
+        self.llm_profile_layout.addWidget(self.llm_profile_config_btn)
+        self.llm_profile_layout.addStretch(-1)
+        self.llm_profile_combobox.currentIndexChanged.connect(self.on_llm_profile_changed)
         
         self.vlayout.insertLayout(1, st_layout) 
+        self.vlayout.insertLayout(2, self.llm_profile_layout)
         self.vlayout.addWidget(self.translateByTextblockBox)
         self.vlayout.addWidget(self.replaceOCRkeywordBtn)
         self.vlayout.addWidget(self.replacePreMTkeywordBtn)
         self.vlayout.addWidget(self.replaceMTkeywordBtn)
+        self.refreshLLMProfiles()
+        self.setLLMProfileControlsVisible(False)
+
+    def setLLMProfileControlsVisible(self, visible: bool):
+        for widget in [self.llm_profile_label, self.llm_profile_combobox, self.llm_profile_config_btn]:
+            widget.setVisible(visible)
+
+    def refreshLLMProfiles(self):
+        self.llm_profile_combobox.blockSignals(True)
+        self.llm_profile_combobox.clear()
+        for profile in pcfg.module.llm_profiles:
+            self.llm_profile_combobox.addItem(profile.name or profile.id, profile.id)
+        idx = self.llm_profile_combobox.findData(pcfg.module.translator_llm_id)
+        if idx >= 0:
+            self.llm_profile_combobox.setCurrentIndex(idx)
+        self.llm_profile_combobox.blockSignals(False)
+
+    def on_llm_profile_changed(self):
+        profile_id = self.llm_profile_combobox.currentData()
+        if profile_id:
+            pcfg.module.translator_llm_id = profile_id
+            self.llm_profile_changed.emit(profile_id)
+
+    def on_llm_profile_config_clicked(self):
+        profile_id = self.llm_profile_combobox.currentData() or pcfg.module.translator_llm_id
+        self.llm_profile_config_clicked.emit(profile_id)
 
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
         refresh_params = self.module_combobox.currentText() != name or self.visibleWidget is None
@@ -438,6 +612,8 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.source_combobox.blockSignals(False)
         self.target_combobox.blockSignals(False)
         self.module_combobox.blockSignals(False)
+        self.refreshLLMProfiles()
+        self.setLLMProfileControlsVisible(name == LLM_TRANSLATOR_KEY)
 
 
 class InpaintConfigPanel(ModuleConfigParseWidget):
@@ -446,7 +622,7 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         self.inpainter_changed = self.module_changed
         self.setInpainter = self.setModule
         self.needInpaintChecker = ParamCheckerBox(self.tr('Let the program decide whether it is necessary to use the selected inpaint method.'))
-        self.filter_mask_by_bboxes_checker = QCheckBox(text=self.tr('Filter mask by text boxes'))
+        self.filter_mask_by_bboxes_checker = ParamCheckerBox(self.tr('Filter mask by text boxes'))
         self.vlayout.addWidget(self.needInpaintChecker)
         self.vlayout.addWidget(self.filter_mask_by_bboxes_checker)
 
@@ -464,6 +640,7 @@ class TextDetectConfigPanel(ModuleConfigParseWidget):
         self.detector_changed = self.module_changed
         self.setDetector = self.setModule
         self.keep_existing_checker = QCheckBox(text=self.tr('Keep Existing Lines'))
+        self.keep_existing_checker.setObjectName('ConfigCheckBox')
         self.vlayout.insertWidget(1, self.keep_existing_checker)
         
 
@@ -473,10 +650,12 @@ class OCRConfigPanel(ModuleConfigParseWidget):
         self.ocr_changed = self.module_changed
         self.setOCR = self.setModule
         self.restoreEmptyOCRChecker = QCheckBox(self.tr("Delete and restore region where OCR return empty string."), self)
+        self.restoreEmptyOCRChecker.setObjectName('ConfigCheckBox')
         self.restoreEmptyOCRChecker.clicked.connect(self.on_restore_empty_ocr)
         self.vlayout.addWidget(self.restoreEmptyOCRChecker)
         # 字体检测选项
         self.fontDetectChecker = QCheckBox(self.tr("Font Detection"), self)
+        self.fontDetectChecker.setObjectName('ConfigCheckBox')
         self.fontDetectChecker.setChecked(pcfg.module.ocr_font_detect)
         self.fontDetectChecker.clicked.connect(self.on_fontdetect_changed)
         self.vlayout.addWidget(self.fontDetectChecker)

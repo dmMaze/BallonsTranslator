@@ -38,6 +38,25 @@ Important areas:
 - Preserve localization. New visible UI strings should use Qt translation patterns already used in the surrounding code.
 - Prefer incremental delivery. Large features should be split into domain/config, pipeline, UI, and persistence changes where practical.
 
+## UI Styling Rules
+
+- Keep config-panel styling scoped. Prefer object names and section-specific selectors such as `ConfigContentScrollContent`, profile-card object names, or spell-check object names over broad `QWidget`, `QLabel`, `QCheckBox`, or `QListWidget` rules that can leak into unrelated panels.
+- Use existing theme tokens from `resources/themes.json` and `resources/stylesheet.css` instead of hard-coded colors, except for established project accent values such as `rgb(30, 147, 229)`.
+- When swapping or aligning panel colors, treat background ownership explicitly: the left section list, config content panel, cards, labels, titles, inline rows, and item views may each paint their own background. Make labels and title widgets match their local container, and avoid changing push-button colors unless that is specifically requested.
+- For config rows that contain buttons or custom widgets, set an object name and `WA_StyledBackground` on the row container when its empty space must match the surrounding panel.
+- For checkbox styling, do not add broad `QCheckBox::indicator` rules. Scope normal config checkboxes with object names, and leave icon-based checkboxes such as toolbar, titlebar, alignment, font, and leftbar checkers under their existing rules.
+- Remember that `QListWidget` check indicators are item-view indicators, not child `QCheckBox` widgets. Style `QListWidget::indicator`, selected, hover, and disabled item states separately, and verify selected items stay readable in both light and dark themes.
+- Match widget structure before fighting fonts or spacing. If two checkbox rows need to align, use the same construction pattern, for example a bare checkbox plus `ParamNameLabel`, rather than mixing `QCheckBox(text=...)` with a separate label.
+- For UI-heavy changes, run at least `python -m py_compile` on touched Python files, `git diff --check`, and an offscreen Qt smoke check when practical. State when visual polish still needs a real themed-app pass.
+
+## Qt Event Filter Rules
+
+- Treat `QApplication` and `QCoreApplication` event filters as global hooks. Install them only while the behavior is active when possible, and remove them on hide, collapse, close, or destroy.
+- In app-wide `eventFilter` methods, check cheap relevance first, such as visibility, expected receiver, `isinstance(watched, QWidget)`, or `isinstance(event, QMouseEvent)`, before calling `event.type()`, `globalPosition()`, `globalPos()`, or widget-specific event methods.
+- In widget-local filters, guard with the watched object first, for example `if obj is not target: return super().eventFilter(obj, event)`, before reading event details.
+- For outside-click handling, prefer widget-target mouse press rules and explicit popup/dialog whitelists over broad geometry or `QWindow` event interpretation.
+- For risky app-wide filter changes, add an offscreen Qt regression that sends an irrelevant watched object or non-mouse event and proves the filter ignores it before requesting `event.type()`.
+
 ## Code Comment Rules
 - Include a standard Python >>> doctest snippet in the docstring of core classes and complex functions.
 - Add the minimum comments needed to make code review efficient.

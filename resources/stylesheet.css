@@ -28,11 +28,198 @@ CustomGV {
 }
 
 ConfigTable {
-    border-color: @borderColor;
-    border-style: solid;
-    border-width: 1px;
-    background-color: @emptyContentBackgroundColor;
+    border: none;
+    background-color: @widgetBackgroundColor;
     padding: 6px;
+}
+
+ConfigTable::item,
+ConfigTable::branch {
+    background-color: @widgetBackgroundColor;
+}
+
+ConfigTable::item:selected,
+ConfigTable::item:selected:active,
+ConfigTable::item:selected:!active {
+    color: white;
+    background-color: rgb(30, 147, 229);
+}
+
+QStackedWidget#ConfigContent,
+QScrollArea#ConfigContentScrollArea,
+QWidget#ConfigContentViewport,
+QWidget#ConfigContentScrollContent,
+QWidget#ConfigContentScrollContent Widget,
+QWidget#ConfigContentScrollContent QLabel,
+QWidget#ConfigContentScrollContent QCheckBox,
+QWidget#ConfigContentScrollContent QWidget#ParamLabelAboveRow {
+    background-color: @emptyContentBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QLineEdit,
+QWidget#ConfigContentScrollContent QComboBox,
+QWidget#ConfigContentScrollContent QPlainTextEdit {
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+QWidget#ConfigContentScrollContent QLineEdit,
+QWidget#ConfigContentScrollContent QComboBox {
+    height: 26px;
+}
+
+QWidget#ConfigContentScrollContent QLineEdit {
+    padding: 0px 8px;
+}
+
+QWidget#ConfigContentScrollContent QComboBox {
+    padding-left: 8px;
+}
+
+QWidget#ConfigContentScrollContent QPlainTextEdit {
+    padding: 4px 8px;
+}
+
+QWidget#ConfigContentScrollContent QLineEdit:focus,
+QWidget#ConfigContentScrollContent QComboBox:hover,
+QWidget#ConfigContentScrollContent QComboBox:focus,
+QWidget#ConfigContentScrollContent QPlainTextEdit:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QWidget#ConfigContentScrollContent QComboBox::drop-down {
+    border: none;
+}
+
+QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin {
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 6px;
+    background-color: @transtexteditBackgroundColor;
+    height: 26px;
+    padding-left: 8px;
+    font-size: 13px;
+}
+
+QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin::up-button,
+QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin::down-button {
+    border: none;
+    background-color: transparent;
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList,
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::item {
+    background-color: @transtexteditBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::item:selected,
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::item:selected:active,
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::item:selected:!active {
+    color: @qwidgetForegroundColor;
+    background-color: @transtexteditBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::item:hover {
+    color: @qwidgetForegroundColor;
+    background-color: @emptyContentBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList {
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::indicator {
+    width: 13px;
+    height: 13px;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+    background-color: @transtexteditBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::indicator:hover {
+    border: 1px solid rgb(30, 147, 229);
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::indicator:checked {
+    border: 1px solid @borderColor;
+    background-color: @transtexteditBackgroundColor;
+    image: url(resources/icons/checkbox_checked.svg);
+}
+
+QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::indicator:disabled {
+    border: 1px solid @borderColor;
+    background-color: @emptyContentBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QPushButton {
+    min-height: 26px;
+    max-height: 26px;
+    height: 26px;
+    padding: 1px 10px;
+    font-size: 13px;
+    border-radius: 4px;
+}
+
+QWidget#ConfigContentScrollContent NoBorderPushBtn {
+    border: none;
+}
+
+QWidget#ConfigContentScrollContent QWidget#ConfigInlineRow {
+    background-color: @emptyContentBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QLabel#ParamFieldLabel,
+QWidget#ConfigContentScrollContent QLabel#ParamLabelAboveLabel,
+QWidget#ConfigContentScrollContent QCheckBox {
+    font-size: 13px;
+}
+
+QWidget#ConfigContentScrollContent QCheckBox#ConfigCheckBox::indicator,
+QWidget#ConfigContentScrollContent QCheckBox#ParamCheckBox::indicator,
+QGroupBox#LLMProfileCard QCheckBox#ParamCheckBox::indicator {
+    width: 13px;
+    height: 13px;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+    background-color: @transtexteditBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QCheckBox#ConfigCheckBox::indicator:hover,
+QWidget#ConfigContentScrollContent QCheckBox#ParamCheckBox::indicator:hover,
+QGroupBox#LLMProfileCard QCheckBox#ParamCheckBox::indicator:hover {
+    border: 1px solid rgb(30, 147, 229);
+}
+
+QWidget#ConfigContentScrollContent QCheckBox#ConfigCheckBox::indicator:checked,
+QWidget#ConfigContentScrollContent QCheckBox#ParamCheckBox::indicator:checked,
+QGroupBox#LLMProfileCard QCheckBox#ParamCheckBox::indicator:checked {
+    border: 1px solid @borderColor;
+    background-color: @transtexteditBackgroundColor;
+    image: url(resources/icons/checkbox_checked.svg);
+}
+
+QWidget#ConfigContentScrollContent QCheckBox#ConfigCheckBox::indicator:disabled,
+QWidget#ConfigContentScrollContent QCheckBox#ParamCheckBox::indicator:disabled,
+QGroupBox#LLMProfileCard QCheckBox#ParamCheckBox::indicator:disabled {
+    border: 1px solid @borderColor;
+    background-color: @emptyContentBackgroundColor;
 }
 
 
@@ -168,6 +355,184 @@ QGroupBox::title {
     subcontrol-origin: margin;
     left: 7px;
     padding: 0px 5px 0px 5px;
+}
+
+QGroupBox#LLMProfileCard,
+QWidget#ConfigContentScrollContent QGroupBox#LLMProfileCard {
+    border: 1px solid @borderColor;
+    margin-top: 9px;
+    border-radius: 6px;
+    background-color: @widgetBackgroundColor;
+    font-size: 13px;
+}
+
+QLineEdit#LLMProfileNameEdit {
+    border: 1px solid rgb(30, 147, 229);
+    border-radius: 4px;
+    background-color: @transtexteditBackgroundColor;
+    color: @qwidgetForegroundColor;
+    padding: 0px 5px;
+    height: 18px;
+    font-size: 13px;
+}
+
+QLineEdit#LLMProfileNameEdit:focus {
+    border: 1px solid rgb(30, 147, 229);
+    border-radius: 4px;
+    background-color: @transtexteditBackgroundColor;
+}
+
+QLabel#LLMProfileKeyStatusIcon {
+    padding: 0px;
+    border: none;
+    background-color: transparent;
+}
+
+QLabel#LLMProfileCapabilityBadge {
+    padding: 0px;
+    border: none;
+    background-color: transparent;
+}
+
+QLabel#LLMProfileFieldLabel {
+    background-color: @widgetBackgroundColor;
+    font-size: 12px;
+}
+
+QWidget#LLMProfileSummaryColumn,
+QWidget#ConfigContentScrollContent QGroupBox#LLMProfileCard QLabel#LLMProfileFieldLabel {
+    background-color: @widgetBackgroundColor;
+}
+
+QLineEdit#LLMProfileApiKeyEditor {
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 6px;
+    background-color: @transtexteditBackgroundColor;
+    color: @qwidgetForegroundColor;
+    padding: 0px 8px;
+    font-size: 13px;
+}
+
+QLineEdit#LLMProfileApiKeyEditor:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QComboBox#LLMProfileModelCombo {
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 6px;
+    background-color: @transtexteditBackgroundColor;
+    color: @qwidgetForegroundColor;
+    padding-left: 8px;
+    font-size: 13px;
+}
+
+QComboBox#LLMProfileModelCombo:hover,
+QComboBox#LLMProfileModelCombo:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QComboBox#LLMProfileModelCombo::drop-down {
+    border: none;
+}
+
+QLineEdit#LLMProfileModelEditor {
+    border: none;
+    background-color: @transtexteditBackgroundColor;
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
+}
+
+QLineEdit#LLMProfileModelEditor:focus {
+    border: none;
+}
+
+QWidget#LLMProfileDetails,
+QWidget#ConfigContentScrollContent QGroupBox#LLMProfileCard QWidget#LLMProfileDetails,
+QGroupBox#LLMProfileCard QWidget#ParamLabelAboveRow,
+QGroupBox#LLMProfileCard QLabel#ParamLabelAboveLabel,
+QGroupBox#LLMProfileCard QLabel#ParamFieldLabel,
+QGroupBox#LLMProfileCard QCheckBox#ParamCheckBox {
+    background-color: @widgetBackgroundColor;
+    font-size: 13px;
+}
+
+QGroupBox#LLMProfileCard QPlainTextEdit {
+    background-color: @transtexteditBackgroundColor;
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
+}
+
+QGroupBox#LLMProfileCard QLineEdit,
+QGroupBox#LLMProfileCard QComboBox {
+    background-color: @transtexteditBackgroundColor;
+    color: @qwidgetForegroundColor;
+}
+
+QPushButton#LLMProfileNewButton,
+QPushButton#LLMProfileRestoreButton {
+    min-height: 24px;
+    max-height: 24px;
+    height: 24px;
+    padding: 1px 10px;
+    font-size: 12px;
+}
+
+QPushButton#LLMProfileNewButton {
+    color: white;
+    border: 1px solid rgb(30, 147, 229);
+    background-color: rgb(30, 147, 229);
+}
+
+QPushButton#LLMProfileNewButton:hover {
+    background-color: #4ba7ee;
+}
+
+QPushButton#LLMProfileRestoreButton {
+    border: none;
+}
+
+QToolButton#LLMProfileConfigButton {
+    width: 16px;
+    height: 16px;
+    padding: 2px;
+    border: none;
+    border-radius: 4px;
+    background-color: @widgetBackgroundColor;
+}
+
+QToolButton#LLMProfileModelAddButton,
+QToolButton#LLMProfileModelRemoveButton {
+    width: 12px;
+    height: 12px;
+    padding: 1px;
+    border: none;
+    border-radius: 4px;
+    background-color: @widgetBackgroundColor;
+}
+
+QToolButton#LLMProfileModelAddButton:hover {
+    background-color: rgb(30, 147, 229);
+}
+
+QToolButton#LLMProfileModelRemoveButton:hover {
+    background-color: #FF605C;
+}
+
+QToolButton#LLMProfileDeleteButton {
+    width: 12px;
+    height: 12px;
+    padding: 2px;
+    border: none;
+    border-radius: 4px;
+    background-color: @widgetBackgroundColor;
+}
+
+QToolButton#LLMProfileDeleteButton:hover {
+    background-color: #FF605C;
 }
 
 QLabel#letterSpacingLabel {
@@ -479,6 +844,64 @@ QCheckBox#TransChecker::indicator:hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 
+QToolButton#BottomBarModuleToolButton {
+    min-height: 22px;
+    padding: 1px 24px 1px 8px;
+    border: none;
+    border-radius: 5px;
+    background-color: rgba(0, 0, 0, 0);
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
+}
+
+QToolButton#BottomBarModuleToolButton:hover,
+QToolButton#BottomBarModuleToolButton:pressed,
+QToolButton#BottomBarModuleToolButton:open {
+    border: none;
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QToolButton#BottomBarModuleToolButton::menu-indicator {
+    image: url(resources/icons/combobox_arrow.svg);
+    width: 11px;
+    height: 11px;
+    subcontrol-origin: padding;
+    subcontrol-position: right center;
+    right: 8px;
+}
+
+QMenu#BottomBarModuleMenu {
+    border: none;
+    border-radius: 8px;
+    padding: 5px;
+    background-color: @emptyContentBackgroundColor;
+    font-size: 13px;
+}
+
+QMenu#BottomBarModuleMenu::item {
+    height: 26px;
+    min-width: 128px;
+    margin: 0px;
+    padding-left: 7px;
+    padding-right: 26px;
+    border-radius: 5px;
+    background-color: @emptyContentBackgroundColor;
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
+}
+
+QMenu#BottomBarModuleMenu::item:selected {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QLabel#BottomBarMenuSectionLabel {
+    min-height: 20px;
+    padding: 6px 7px 2px 7px;
+    background-color: @emptyContentBackgroundColor;
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
+}
+
 QCheckBox#PaintChecker::indicator {
     padding-left: 8px;
     padding-right: 8px;
@@ -741,14 +1164,6 @@ QLabel#angleLabel {
 }
 
 .ClickableLabel::hover {
-    background-color: rgba(30, 147, 229, 20%);
-}
-
-.ConfigClickableLabel {
-    font-size: 12px;
-}
-
-.ConfigClickableLabel::hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 

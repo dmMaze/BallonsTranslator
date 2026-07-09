@@ -78,6 +78,9 @@ class FloatingSuggestionLabel(QWidget):
         self.hide()
 
     def eventFilter(self, watched, event):
+        app = QApplication.instance()
+        if watched is not app:
+            return super().eventFilter(watched, event)
         try:
             if event.type() == QEvent.Type.ApplicationDeactivate:
                 self.hide()

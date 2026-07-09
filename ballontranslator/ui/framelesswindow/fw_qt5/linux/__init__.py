@@ -42,12 +42,14 @@ class LinuxFramelessWindow(QWidget):
     #     self.titleBar.raise_()
 
     def eventFilter(self, obj, event):
+        if not isinstance(event, QMouseEvent):
+            return super().eventFilter(obj, event)
         et = event.type()
         if et != QEvent.MouseButtonPress and et != QEvent.MouseMove:
-            return False
+            return super().eventFilter(obj, event)
 
         edges = Qt.Edges()
-        pos = QMouseEvent(event).globalPos() - self.pos()
+        pos = event.globalPos() - self.pos()
         if pos.x() < self.BORDER_WIDTH:
             edges |= Qt.LeftEdge
         if pos.x() >= self.width()-self.BORDER_WIDTH:
@@ -70,7 +72,7 @@ class LinuxFramelessWindow(QWidget):
             else:
                 self.setCursor(Qt.ArrowCursor)
 
-        elif obj in (self, self.titleBar) and et == QEvent.MouseButtonPress and edges:
+        elif obj in (self, getattr(self, 'titleBar', None)) and et == QEvent.MouseButtonPress and edges:
             LinuxMoveResize.starSystemResize(self, event.globalPos(), edges)
 
         return super().eventFilter(obj, event)
