@@ -163,7 +163,6 @@ DARKFILL = "fill=\"#697186\""
 
 ICONREVERSE_DICT_LIGHT2DARK = {LIGHTFILL_ACTIVE: DARKFILL_ACTIVE, LIGHTFILL: DARKFILL}
 ICONREVERSE_DICT_DARK2LIGHT = {DARKFILL_ACTIVE: LIGHTFILL_ACTIVE, DARKFILL: LIGHTFILL}
-ICON_LIST = []
 THEMED_ICON_LIST = []
 THEMED_ICON_READY = set()
 STYLESHEET_ICON_PATTERN = re.compile(r'url\((["\']?)(?:resources/)?icons/([^)"\']+)\1\)')
@@ -233,7 +232,7 @@ def _replace_stylesheet_icon_url(matched, theme: str) -> str:
         return f'url({themed_icon_url(filename, theme)})'
     return f'url({icon_url(filename)})'
 
-def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
+def parse_stylesheet(theme: str = '') -> str:
     with open(shared.STYLESHEET_PATH, "r", encoding='utf-8') as f:
         stylesheet = f.read()
     with open(shared.THEME_PATH, 'r', encoding='utf8') as f:
@@ -252,29 +251,6 @@ def parse_stylesheet(theme: str = '', reverse_icon: bool = False) -> str:
     for key, val in tgt_theme.items():
         stylesheet = stylesheet.replace(key, val)
     return stylesheet
-
-def reverse_icon_color(dark2light: bool = False):
-    global ICON_LIST
-    if not ICON_LIST:
-        for filename in os.listdir(shared.ICON_DIR):
-            file_suffix = Path(filename).suffix
-            if file_suffix.lower() != '.svg':
-                continue
-            else:
-                ICON_LIST.append(osp.join(shared.ICON_DIR, filename))
-
-    if dark2light:
-        pattern = re.compile(re.escape(DARKFILL) + '|' + re.escape(DARKFILL_ACTIVE))
-        rep_dict = ICONREVERSE_DICT_DARK2LIGHT
-    else:
-        pattern = re.compile(re.escape(LIGHTFILL) + '|' + re.escape(LIGHTFILL_ACTIVE))
-        rep_dict = ICONREVERSE_DICT_LIGHT2DARK
-    for svgpath in ICON_LIST:
-        with open(svgpath, "r", encoding="utf-8") as f:
-            svg_content = f.read()
-            svg_content = pattern.sub(lambda m:rep_dict[m.group()], svg_content)
-        with open(svgpath, "w", encoding="utf-8") as f:
-            f.write(svg_content)
 
 def mutate_dict_key(adict: dict, old_key: Union[str, int], new_key: str):
     # https://stackoverflow.com/questions/12150872/change-key-in-ordereddict-without-losing-order

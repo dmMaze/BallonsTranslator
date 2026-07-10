@@ -1,11 +1,14 @@
 import copy
+import math
 import uuid
+from functools import lru_cache
 from typing import get_type_hints
 
 from qtpy.QtWidgets import (
     QApplication,
     QMessageBox,
     QPlainTextEdit,
+    QGridLayout,
     QHBoxLayout,
     QVBoxLayout,
     QWidget,
@@ -18,7 +21,7 @@ from qtpy.QtWidgets import (
     QScrollArea,
 )
 from qtpy.QtCore import QEvent, QRectF, QTimer, Qt, Signal
-from qtpy.QtGui import QColor, QFont, QIcon, QPainter
+from qtpy.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from qtpy.QtSvg import QSvgRenderer
 
 try:
@@ -26,7 +29,13 @@ try:
 except ImportError:
     from qtpy.QtWidgets import QAction
 
-from .custom_widget import JustifiedFlowLayout, ParamComboBox, NoBorderPushBtn, ScrollBar
+from .custom_widget import ParamComboBox, NoBorderPushBtn, ScrollBar
+from .llm_modality import (
+    LLM_MODALITY_IMAGE_COLOR,
+    LLM_MODALITY_TEXT_COLOR,
+    LLM_MODALITY_VISION_COLOR,
+    modality_badge_qcolor,
+)
 from .misc import themed_icon_path
 from .module_parse_widgets import ParamWidget, SecretParamWidget
 from ballontranslator.utils.shared import size2width
@@ -113,10 +122,10 @@ class ProfileNameEdit(QLineEdit):
         self.edit_finished.emit()
 
 
-class SvgStatusIcon(QLabel):
+class CachedSvgStatusIcon(QLabel):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
-        self._renderer = None
+        self._icon_path = ''
         self.setAutoFillBackground(False)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
@@ -124,23 +133,68 @@ class SvgStatusIcon(QLabel):
         self.setIconPath(themed_icon_path(filename))
 
     def setIconPath(self, path: str):
-        if self._renderer is not None:
-            self._renderer.deleteLater()
-        self._renderer = QSvgRenderer(path, self)
+        self._icon_path = path
         self.update()
 
     def paintEvent(self, event):
-        if self._renderer is None or not self._renderer.isValid():
+        pixmap = self._renderIconPixmap()
+        if pixmap.isNull():
             return super().paintEvent(event)
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        self._renderer.render(painter, QRectF(0, 0, self.width(), self.height()))
+        painter.drawPixmap(0, 0, pixmap)
         painter.end()
 
+    def _renderIconPixmap(self) -> QPixmap:
+        return _render_svg_pixmap(
+            self._icon_path,
+            self.width(),
+            self.height(),
+            self.devicePixelRatioF(),
+            0,
+            (0, 0, 0, 0),
+            0,
+        )
 
-class CapabilityBadgeLabel(SvgStatusIcon):
-    """Clickable LLM capability icon shown in each profile header.
+
+@lru_cache(maxsize=256)
+def _render_svg_pixmap(
+    path: str,
+    width: int,
+    height: int,
+    device_pixel_ratio: float,
+    inset: int,
+    background_rgba,
+    background_radius: int,
+) -> QPixmap:
+    if not path or width <= 0 or height <= 0:
+        return QPixmap()
+    renderer = QSvgRenderer(path)
+    if not renderer.isValid():
+        return QPixmap()
+
+    dpr = max(1.0, float(device_pixel_ratio or 1.0))
+    physical_width = max(1, math.ceil(width * dpr))
+    physical_height = max(1, math.ceil(height * dpr))
+    pixmap = QPixmap(physical_width, physical_height)
+    pixmap.setDevicePixelRatio(dpr)
+    pixmap.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+    if background_rgba[3] > 0:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(*background_rgba))
+        painter.drawRoundedRect(QRectF(0, 0, width, height), background_radius, background_radius)
+    renderer.render(
+        painter,
+        QRectF(inset, inset, width - inset * 2, height - inset * 2),
+    )
+    painter.end()
+    return pixmap
+
+
+class CapabilityBadgeLabel(CachedSvgStatusIcon):
+    """Clickable LLM capability icon shown beside its model label.
 
     Example:
         >>> CapabilityBadgeLabel.__name__
@@ -157,19 +211,46 @@ class CapabilityBadgeLabel(SvgStatusIcon):
         self.setFixedSize(20, 20)
 
     def paintEvent(self, event):
-        if not bool(self.property('capabilityActive')):
+        pixmap = self._renderIconPixmap()
+        if pixmap.isNull():
             return super().paintEvent(event)
-        if self._renderer is None or not self._renderer.isValid():
-            return super().paintEvent(event)
-
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(self._active_color)
-        painter.drawRoundedRect(QRectF(0, 0, self.width(), self.height()), 6, 6)
-        self._renderer.render(painter, QRectF(2, 2, self.width() - 4, self.height() - 4))
+        painter.drawPixmap(0, 0, pixmap)
         painter.end()
+
+    def _renderIconPixmap(self) -> QPixmap:
+        background = self._active_color.getRgb() if bool(self.property('capabilityActive')) else (0, 0, 0, 0)
+        return _render_svg_pixmap(
+            self._icon_path,
+            self.width(),
+            self.height(),
+            self.devicePixelRatioF(),
+            2,
+            background,
+            6,
+        )
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return
+        return super().mouseReleaseEvent(event)
+
+
+class ClickableFieldLabel(QLabel):
+    """Field label that can act as a compact toggle target.
+
+    Example:
+        >>> ClickableFieldLabel.__name__
+        'ClickableFieldLabel'
+    """
+
+    clicked = Signal()
+
+    def __init__(self, text: str = '', parent: QWidget = None):
+        super().__init__(text, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -209,6 +290,7 @@ class ProfileCardWidget(QGroupBox):
         self._previous_vision_model_text = ''
         self._previous_image_model_text = ''
         self._app_filter_installed = False
+        self._action_buttons_visible = False
         self.profile_param_display_names = {
             'base_url': self.tr('Base URL'),
             'image_base_url': self.tr('Image Base URL'),
@@ -246,7 +328,7 @@ class ProfileCardWidget(QGroupBox):
             'low_vram_mode': self.tr('Preserved compatibility flag for local profiles.'),
         }
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 24, 16, 14)
+        layout.setContentsMargins(16, 18, 16, 14)
         layout.setSpacing(8)
 
         self.name_edit = ProfileNameEdit(profile.name, self)
@@ -254,14 +336,14 @@ class ProfileCardWidget(QGroupBox):
         self.name_edit.edit_finished.connect(self.on_name_edit_finished)
         self.name_edit.hide()
 
-        self.text_badge = CapabilityBadgeLabel(QColor(30, 147, 229, 46), self)
+        self.text_badge = CapabilityBadgeLabel(modality_badge_qcolor(LLM_MODALITY_TEXT_COLOR), self)
         self.text_badge.clicked.connect(self.toggleTextSupport)
-        self.vision_badge = CapabilityBadgeLabel(QColor(152, 88, 162, 46), self)
+        self.vision_badge = CapabilityBadgeLabel(modality_badge_qcolor(LLM_MODALITY_VISION_COLOR), self)
         self.vision_badge.clicked.connect(self.toggleVisionSupport)
-        self.image_badge = CapabilityBadgeLabel(QColor(254, 128, 160, 46), self)
+        self.image_badge = CapabilityBadgeLabel(modality_badge_qcolor(LLM_MODALITY_IMAGE_COLOR), self)
         self.image_badge.clicked.connect(self.toggleImageSupport)
 
-        self.key_status_icon = SvgStatusIcon(self)
+        self.key_status_icon = CachedSvgStatusIcon(self)
         self.key_status_icon.setObjectName('LLMProfileKeyStatusIcon')
         self.key_status_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.key_status_icon.setFixedSize(16, 16)
@@ -284,11 +366,11 @@ class ProfileCardWidget(QGroupBox):
         self.delete_btn.setFixedSize(18, 18)
 
         self.summary_widget = QWidget(self)
-        self.summary_widget.setObjectName('LLMProfileSummaryFlow')
-        self.summary_layout = JustifiedFlowLayout(self.summary_widget, isTight=True)
+        self.summary_widget.setObjectName('LLMProfileSummaryGrid')
+        self.summary_layout = QGridLayout(self.summary_widget)
         self.summary_layout.setContentsMargins(0, 0, 0, 0)
         self.summary_layout.setHorizontalSpacing(12)
-        self.summary_layout.setVerticalSpacing(10)
+        self.summary_layout.setVerticalSpacing(8)
 
         self.api_summary_widget = QWidget(self)
         self.api_summary_widget.setObjectName('LLMProfileSummaryColumn')
@@ -299,7 +381,8 @@ class ProfileCardWidget(QGroupBox):
         center_column.setSpacing(2)
         self.api_label = QLabel(self.tr('API Key'), self)
         self.api_label.setObjectName('LLMProfileFieldLabel')
-        self.api_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.api_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.api_label.setFixedHeight(self.text_badge.height())
         api_label_row = QHBoxLayout()
         api_label_row.setContentsMargins(0, 0, 0, 0)
         api_label_row.setSpacing(6)
@@ -330,9 +413,11 @@ class ProfileCardWidget(QGroupBox):
         right_column.setContentsMargins(0, 0, 0, 0)
         right_column.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         right_column.setSpacing(2)
-        self.model_label = QLabel(self.tr('Model'), self)
+        self.model_label = ClickableFieldLabel(self.tr('Model'), self)
         self.model_label.setObjectName('LLMProfileFieldLabel')
         self.model_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.model_label.clicked.connect(self.toggleTextSupport)
+        model_tooltip = self.tr('Text translation model used by LLMTranslator.')
         self.add_model_btn = QToolButton(self)
         self.add_model_btn.setObjectName('LLMProfileModelAddButton')
         self.add_model_btn.setIcon(QIcon(themed_icon_path('add.svg')))
@@ -349,13 +434,13 @@ class ProfileCardWidget(QGroupBox):
         model_label_row.setContentsMargins(0, 0, 0, 0)
         model_label_row.setSpacing(4)
         model_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        model_label_row.addWidget(self.text_badge, 0, Qt.AlignmentFlag.AlignLeft)
         model_label_row.addWidget(self.model_label, 0, Qt.AlignmentFlag.AlignLeft)
         model_label_row.addWidget(self.add_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
         model_label_row.addWidget(self.remove_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
         model_label_row.addStretch(1)
         self.model_combo = ParamComboBox('model', profile.model_options, size=size2width('short'), scrollWidget=scrollWidget)
         self.model_combo.setObjectName('LLMProfileModelCombo')
-        model_tooltip = self.tr('Model used by this profile.')
         self.model_label.setToolTip(model_tooltip)
         self.model_combo.setToolTip(model_tooltip)
         self.model_combo.setEditable(False)
@@ -370,9 +455,11 @@ class ProfileCardWidget(QGroupBox):
         vision_column.setContentsMargins(0, 0, 0, 0)
         vision_column.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         vision_column.setSpacing(2)
-        self.vision_model_label = QLabel(self.tr('Vision Model'), self)
+        self.vision_model_label = ClickableFieldLabel(self.tr('Vision Model'), self)
         self.vision_model_label.setObjectName('LLMProfileFieldLabel')
         self.vision_model_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.vision_model_label.clicked.connect(self.toggleVisionSupport)
+        vision_model_tooltip = self.tr('Model used by LLMOCR for image OCR.')
         self.add_vision_model_btn = QToolButton(self)
         self.add_vision_model_btn.setObjectName('LLMProfileModelAddButton')
         self.add_vision_model_btn.setIcon(QIcon(themed_icon_path('add.svg')))
@@ -389,6 +476,7 @@ class ProfileCardWidget(QGroupBox):
         vision_model_label_row.setContentsMargins(0, 0, 0, 0)
         vision_model_label_row.setSpacing(4)
         vision_model_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        vision_model_label_row.addWidget(self.vision_badge, 0, Qt.AlignmentFlag.AlignLeft)
         vision_model_label_row.addWidget(self.vision_model_label, 0, Qt.AlignmentFlag.AlignLeft)
         vision_model_label_row.addWidget(self.add_vision_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
         vision_model_label_row.addWidget(self.remove_vision_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
@@ -400,7 +488,6 @@ class ProfileCardWidget(QGroupBox):
             scrollWidget=scrollWidget,
         )
         self.vision_model_combo.setObjectName('LLMProfileModelCombo')
-        vision_model_tooltip = self.tr('Model used by LLMOCR for image OCR.')
         self.vision_model_label.setToolTip(vision_model_tooltip)
         self.vision_model_combo.setToolTip(vision_model_tooltip)
         self.vision_model_combo.setEditable(False)
@@ -415,9 +502,11 @@ class ProfileCardWidget(QGroupBox):
         image_column.setContentsMargins(0, 0, 0, 0)
         image_column.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         image_column.setSpacing(2)
-        self.image_model_label = QLabel(self.tr('Image Model'), self)
+        self.image_model_label = ClickableFieldLabel(self.tr('Image Model'), self)
         self.image_model_label.setObjectName('LLMProfileFieldLabel')
         self.image_model_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.image_model_label.clicked.connect(self.toggleImageSupport)
+        image_model_tooltip = self.tr('Model used by LLMInpaint for image cleanup.')
         self.add_image_model_btn = QToolButton(self)
         self.add_image_model_btn.setObjectName('LLMProfileModelAddButton')
         self.add_image_model_btn.setIcon(QIcon(themed_icon_path('add.svg')))
@@ -434,6 +523,7 @@ class ProfileCardWidget(QGroupBox):
         image_model_label_row.setContentsMargins(0, 0, 0, 0)
         image_model_label_row.setSpacing(4)
         image_model_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        image_model_label_row.addWidget(self.image_badge, 0, Qt.AlignmentFlag.AlignLeft)
         image_model_label_row.addWidget(self.image_model_label, 0, Qt.AlignmentFlag.AlignLeft)
         image_model_label_row.addWidget(self.add_image_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
         image_model_label_row.addWidget(self.remove_image_model_btn, 0, Qt.AlignmentFlag.AlignLeft)
@@ -445,7 +535,6 @@ class ProfileCardWidget(QGroupBox):
             scrollWidget=scrollWidget,
         )
         self.image_model_combo.setObjectName('LLMProfileModelCombo')
-        image_model_tooltip = self.tr('Model used by LLMInpaint for image cleanup.')
         self.image_model_label.setToolTip(image_model_tooltip)
         self.image_model_combo.setToolTip(image_model_tooltip)
         self.image_model_combo.setEditable(False)
@@ -453,10 +542,10 @@ class ProfileCardWidget(QGroupBox):
         image_column.addLayout(image_model_label_row)
         image_column.addWidget(self.image_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
-        self.summary_layout.addWidget(self.api_summary_widget)
-        self.summary_layout.addWidget(self.model_summary_widget)
-        self.summary_layout.addWidget(self.vision_model_summary_widget)
-        self.summary_layout.addWidget(self.image_model_summary_widget)
+        self._setSummaryColumnWidth(self.model_summary_widget, model_label_row, self.model_combo)
+        self._setSummaryColumnWidth(self.vision_model_summary_widget, vision_model_label_row, self.vision_model_combo)
+        self._setSummaryColumnWidth(self.image_model_summary_widget, image_model_label_row, self.image_model_combo)
+        self._sync_summary_grid()
         layout.addWidget(self.summary_widget)
 
         self.details = ParamWidget(self._detail_params(), scrollWidget=scrollWidget)
@@ -570,29 +659,36 @@ class ProfileCardWidget(QGroupBox):
             self.fontMetrics().boundingRect(self.title() or '').width() + 14,
             self.name_edit.sizeHint().width(),
         )
-        title_width += (
-            self.text_badge.width()
-            + self.vision_badge.width()
-            + self.image_badge.width()
-            + self.more_btn.width()
-            + self.delete_btn.width()
-            + 78
-        )
+        title_width += self.more_btn.width() + self.delete_btn.width() + 42
         self.setMinimumWidth(max(details_width, summary_width, title_width) + margins.left() + margins.right())
 
-    def _sync_summary_flow_size(self):
+    def _summary_grid_widgets(self):
         visible_widgets = [
-            widget for widget in (
-                self.api_summary_widget,
-                self.model_summary_widget,
-                self.vision_model_summary_widget,
-                self.image_model_summary_widget,
-            )
-            if not widget.isHidden()
+            self.model_summary_widget,
+            self.vision_model_summary_widget,
+            self.image_model_summary_widget,
         ]
+        if not self.api_summary_widget.isHidden():
+            visible_widgets.insert(0, self.api_summary_widget)
+        return visible_widgets
+
+    def _setSummaryColumnWidth(self, column_widget: QWidget, label_row: QHBoxLayout, selector: QWidget):
+        selector_width = max(selector.minimumWidth(), selector.width())
+        column_widget.setMinimumWidth(max(
+            label_row.sizeHint().width(),
+            selector_width,
+        ))
+
+    def _sync_summary_grid(self):
+        while self.summary_layout.count():
+            self.summary_layout.takeAt(0)
+        visible_widgets = self._summary_grid_widgets()
         self.summary_widget.ensurePolished()
         for widget in visible_widgets:
             widget.ensurePolished()
+        for index, widget in enumerate(visible_widgets):
+            row, column = divmod(index, 2)
+            self.summary_layout.addWidget(widget, row, column, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         row_widths = []
         for row_start in range(0, len(visible_widgets), 2):
             row_widgets = visible_widgets[row_start:row_start + 2]
@@ -604,17 +700,7 @@ class ProfileCardWidget(QGroupBox):
         self.summary_widget.setMinimumHeight(0)
         self.summary_widget.setMaximumHeight(16777215)
         self.summary_layout.invalidate()
-        contents_margins = self.layout().contentsMargins()
-        available_width = max(0, self.width() - contents_margins.left() - contents_margins.right())
-        summary_width = max(self.summary_widget.width(), self.summary_widget.minimumWidth(), available_width)
-        if summary_width > 0:
-            summary_height = max(
-                self.summary_layout.heightForWidth(summary_width),
-                self.summary_layout.sizeHint().height(),
-            )
-            if len(visible_widgets) > 2:
-                summary_height += 2
-            self.summary_widget.setMinimumHeight(summary_height)
+        self.summary_widget.setMinimumHeight(self.summary_layout.sizeHint().height())
         self.summary_widget.updateGeometry()
 
     def toggleExpanded(self):
@@ -687,14 +773,15 @@ class ProfileCardWidget(QGroupBox):
         self._name_editing = False
 
     def setActionButtonsVisible(self, visible: bool):
+        self._action_buttons_visible = visible
         self.more_btn.setVisible(visible)
         self.delete_btn.setVisible(visible)
-        self.add_model_btn.setVisible(visible)
-        self.remove_model_btn.setVisible(visible)
-        self.add_vision_model_btn.setVisible(visible)
-        self.remove_vision_model_btn.setVisible(visible)
-        self.add_image_model_btn.setVisible(visible)
-        self.remove_image_model_btn.setVisible(visible)
+        self.add_model_btn.setVisible(visible and bool(self.profile.support_text))
+        self.remove_model_btn.setVisible(visible and bool(self.profile.support_text))
+        self.add_vision_model_btn.setVisible(visible and bool(self.profile.support_vision))
+        self.remove_vision_model_btn.setVisible(visible and bool(self.profile.support_vision))
+        self.add_image_model_btn.setVisible(visible and bool(self.profile.support_image))
+        self.remove_image_model_btn.setVisible(visible and bool(self.profile.support_image))
 
     def _position_header_controls(self):
         border_y = 9
@@ -704,44 +791,23 @@ class ProfileCardWidget(QGroupBox):
         spacing = 6
         delete_x = max(18, self.width() - 18 - self.delete_btn.width())
         more_x = max(18, delete_x - spacing - self.more_btn.width())
-        if self.name_edit.isVisible():
-            title_right = self.name_edit.x() + self.name_edit.width()
-        else:
-            title_right = 18 + self.fontMetrics().boundingRect(self.title() or '').width()
-        badge_spacing = 4
-        badge_width = (
-            self.text_badge.width()
-            + badge_spacing
-            + self.vision_badge.width()
-            + badge_spacing
-            + self.image_badge.width()
-        )
-        badge_x = min(title_right + 5, max(18, more_x - spacing - badge_width))
-        badge_y = max(0, border_y - self.vision_badge.height() // 2)
-        self.text_badge.move(badge_x, badge_y)
-        self.vision_badge.move(badge_x + self.text_badge.width() + badge_spacing, badge_y)
-        image_x = badge_x + self.text_badge.width() + badge_spacing + self.vision_badge.width() + badge_spacing
-        self.image_badge.move(image_x, badge_y)
         self.more_btn.move(more_x, button_y)
         self.delete_btn.move(delete_x, button_y + 2)
         if self.name_edit.isVisible():
             self.name_edit.raise_()
-        self.text_badge.raise_()
-        self.vision_badge.raise_()
-        self.image_badge.raise_()
         self.more_btn.raise_()
         self.delete_btn.raise_()
 
     def resizeEvent(self, event):
         result = super().resizeEvent(event)
-        self._sync_summary_flow_size()
+        self._sync_summary_grid()
         self._position_header_controls()
         return result
 
     def showEvent(self, event):
         result = super().showEvent(event)
-        self._sync_summary_flow_size()
-        QTimer.singleShot(0, self._sync_summary_flow_size)
+        self._sync_summary_grid()
+        QTimer.singleShot(0, self._sync_summary_grid)
         return result
 
     def enterEvent(self, event):
@@ -1092,6 +1158,7 @@ class ProfileCardWidget(QGroupBox):
             options = self.profile.vision_model_options
             if self.profile.vision_model not in options:
                 options.insert(0, self.profile.vision_model)
+        self._syncVisionModelCombo()
         self.refreshVisionBadge()
         self.refreshConditionalVisibility()
         self.profile_changed.emit()
@@ -1107,6 +1174,7 @@ class ProfileCardWidget(QGroupBox):
             options = self.profile.model_options
             if self.profile.model not in options:
                 options.insert(0, self.profile.model)
+        self._syncComboBox(self.model_combo, self.profile.model_options, self.profile.model)
         self.refreshTextBadge()
         self.refreshConditionalVisibility()
         self.profile_changed.emit()
@@ -1129,54 +1197,75 @@ class ProfileCardWidget(QGroupBox):
         self.profile_selector_changed.emit()
         self.profile_summary_changed.emit()
 
+    def _setModalityLabelState(self, label: QLabel, active: bool, tooltip: str):
+        label.setProperty('modalityActive', active)
+        label.setStyleSheet('')
+        label.setToolTip(tooltip)
+        label.setAccessibleDescription(tooltip)
+        label.style().unpolish(label)
+        label.style().polish(label)
+
     def refreshTextBadge(self):
         active = bool(self.profile.support_text)
-        self.text_badge.setIconPath(themed_icon_path('text.svg' if active else 'text_disabled.svg'))
+        icon_path = themed_icon_path('text.svg' if active else 'text_disabled.svg')
+        self.text_badge.setIconPath(icon_path)
         self.text_badge.setProperty('capabilityActive', active)
-        self.text_badge.setToolTip(
-            self.tr('Disable text translation for this profile.') if active
-            else self.tr('Enable text translation for this profile.')
+        tooltip = (
+            self.tr('Text translation model used by LLMTranslator. Click to disable text translation for this profile.')
+            if active
+            else self.tr('Text translation model used by LLMTranslator. Click to enable text translation for this profile.')
         )
-        self.text_badge.style().unpolish(self.text_badge)
-        self.text_badge.style().polish(self.text_badge)
-        self._position_header_controls()
+        self.text_badge.setToolTip(tooltip)
+        self.text_badge.setAccessibleDescription(tooltip)
+        self._setModalityLabelState(self.model_label, active, tooltip)
 
     def refreshVisionBadge(self):
         active = bool(self.profile.support_vision)
-        self.vision_badge.setIconPath(themed_icon_path('eye.svg' if active else 'eye-closed.svg'))
+        icon_path = themed_icon_path('eye.svg' if active else 'eye_disabled.svg')
+        self.vision_badge.setIconPath(icon_path)
         self.vision_badge.setProperty('capabilityActive', active)
-        self.vision_badge.setToolTip(
-            self.tr('Disable vision OCR for this profile.') if active
-            else self.tr('Enable vision OCR for this profile.')
+        tooltip = (
+            self.tr('Vision OCR model used by LLMOCR. Click to disable vision OCR for this profile.')
+            if active
+            else self.tr('Vision OCR model used by LLMOCR. Click to enable vision OCR for this profile.')
         )
-        self.vision_badge.style().unpolish(self.vision_badge)
-        self.vision_badge.style().polish(self.vision_badge)
-        self._position_header_controls()
+        self.vision_badge.setToolTip(tooltip)
+        self.vision_badge.setAccessibleDescription(tooltip)
+        self._setModalityLabelState(self.vision_model_label, active, tooltip)
 
     def refreshImageBadge(self):
         active = bool(self.profile.support_image)
-        self.image_badge.setIconPath(themed_icon_path('image.svg' if active else 'image_disabled.svg'))
+        icon_path = themed_icon_path('image.svg' if active else 'image_disabled.svg')
+        self.image_badge.setIconPath(icon_path)
         self.image_badge.setProperty('capabilityActive', active)
-        self.image_badge.setToolTip(
-            self.tr('Disable image cleanup for this profile.') if active
-            else self.tr('Enable image cleanup for this profile.')
+        tooltip = (
+            self.tr('Image cleanup model used by LLMInpaint. Click to disable image cleanup for this profile.')
+            if active
+            else self.tr('Image cleanup model used by LLMInpaint. Click to enable image cleanup for this profile.')
         )
-        self.image_badge.style().unpolish(self.image_badge)
-        self.image_badge.style().polish(self.image_badge)
-        self._position_header_controls()
+        self.image_badge.setToolTip(tooltip)
+        self.image_badge.setAccessibleDescription(tooltip)
+        self._setModalityLabelState(self.image_model_label, active, tooltip)
 
     def refreshConditionalVisibility(self):
         require_key = bool(self.profile.require_api_key)
+        support_text = bool(self.profile.support_text)
+        support_vision = bool(self.profile.support_vision)
+        support_image = bool(self.profile.support_image)
         self.api_summary_widget.setVisible(require_key)
-        self.model_summary_widget.setVisible(bool(self.profile.support_text))
-        self.vision_model_summary_widget.setVisible(bool(self.profile.support_vision))
-        self.image_model_summary_widget.setVisible(bool(self.profile.support_image))
+        self.model_summary_widget.setVisible(True)
+        self.vision_model_summary_widget.setVisible(True)
+        self.image_model_summary_widget.setVisible(True)
+        self.model_combo.setVisible(support_text)
+        self.vision_model_combo.setVisible(support_vision)
+        self.image_model_combo.setVisible(support_image)
+        self.setActionButtonsVisible(self._action_buttons_visible)
         if hasattr(self.details, 'setParamVisible'):
             self.details.setParamVisible('low_vram_mode', not require_key)
-            self.details.setParamVisible('vision_detail_level', bool(self.profile.support_vision))
-            self.details.setParamVisible('image_base_url', bool(self.profile.support_image))
+            self.details.setParamVisible('vision_detail_level', support_vision)
+            self.details.setParamVisible('image_base_url', support_image)
         self.refreshKeyStatus()
-        self._sync_summary_flow_size()
+        self._sync_summary_grid()
         self._sync_minimum_width_with_content()
 
     def refreshKeyStatus(self):

@@ -153,9 +153,9 @@ class MainWindow(mainwindow_cls):
         self.update_progress_msgbox = ProgressMessageBox(self.tr('Updating: '), False, self)
         self._update_progress_visible = False
 
-    def resetStyleSheet(self, reverse_icon: bool = False):
+    def resetStyleSheet(self):
         theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
-        self.setStyleSheet(parse_stylesheet(theme, reverse_icon))
+        self.setStyleSheet(parse_stylesheet(theme))
 
     def setupUi(self):
         screen_size = QGuiApplication.primaryScreen().geometry().size()

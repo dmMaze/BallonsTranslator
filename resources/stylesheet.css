@@ -396,7 +396,15 @@ QLabel#LLMProfileCapabilityBadge {
 
 QLabel#LLMProfileFieldLabel {
     background-color: @widgetBackgroundColor;
-    font-size: 12px;
+    font-size: 13px;
+}
+
+QLabel#LLMProfileFieldLabel[modalityActive="false"] {
+    color: @borderColor;
+}
+
+QLabel#LLMProfileFieldLabel[modalityActive="true"] {
+    color: @qwidgetForegroundColor;
 }
 
 QWidget#LLMProfileSummaryColumn,

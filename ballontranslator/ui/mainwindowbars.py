@@ -19,11 +19,11 @@ from qtpy.QtCore import Qt, Signal, QPoint, QEvent
 from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup
 
 from .custom_widget import Widget, PaintQSlider
-from .module_tool_button import (
-    InpaintSelectionWidget,
-    ModuleSelectionToolButtonWidget,
-    OCRSelectionWidget,
-    TranslatorSelectionWidget,
+from .module_tool_button import ModuleSelectionWidget
+from .llm_modality import (
+    LLM_MODALITY_IMAGE,
+    LLM_MODALITY_TEXT,
+    LLM_MODALITY_VISION,
 )
 from ballontranslator.utils.shared import (
     BOTTOMBAR_HEIGHT,
@@ -571,10 +571,14 @@ class BottomBar(Widget):
         self.setMouseTracking(True)
         self.mainwindow = mainwindow
         
-        self.textdet_selector = ModuleSelectionToolButtonWidget(self.tr('Text Detector'), 'textdetect.svg')
-        self.ocr_selector = OCRSelectionWidget()
-        self.inpaint_selector = InpaintSelectionWidget()
-        self.trans_selector = TranslatorSelectionWidget()
+        self.textdet_selector = ModuleSelectionWidget(self.tr('Text Detector'), 'textdetect.svg')
+        self.ocr_selector = ModuleSelectionWidget(self.tr('OCR'), 'small_ocr.svg', LLM_MODALITY_VISION)
+        self.inpaint_selector = ModuleSelectionWidget(self.tr('Inpaint'), 'drawingtools_inpaint.svg', LLM_MODALITY_IMAGE)
+        self.trans_selector = ModuleSelectionWidget(
+            self.tr('Translator'),
+            'bottombar_translate_activate.svg',
+            LLM_MODALITY_TEXT,
+        )
 
         self.hlayout = QHBoxLayout(self)
         self.paintChecker = QCheckBox()
