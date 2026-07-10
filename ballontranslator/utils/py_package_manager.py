@@ -595,7 +595,23 @@ class PyPackageManager:
     @staticmethod
     def _import_available(import_name: str) -> bool:
         try:
-            return importlib.util.find_spec(import_name) is not None
+            spec = importlib.util.find_spec(import_name)
+            if spec is None:
+                return False
+            # Check if it is a corrupted package (e.g. folder exists but missing __init__.py,
+            # which Python imports as a namespace package).
+            if spec.loader is None and spec.submodule_search_locations is not None:
+                has_init = False
+                for loc in spec.submodule_search_locations:
+                    for ext in ('.py', '.pyc', '.pyd', '.so'):
+                        if os.path.exists(os.path.join(loc, f'__init__{ext}')):
+                            has_init = True
+                            break
+                    if has_init:
+                        break
+                if not has_init:
+                    return False
+            return True
         except (ImportError, ModuleNotFoundError, ValueError):
             return False
 
