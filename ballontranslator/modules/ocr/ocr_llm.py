@@ -36,6 +36,7 @@ class LLMOCR(OCRBase):
     """
 
     dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]']
+    dummy_api_key = 'dummy-key'
 
     params: Dict = {
         "max requests per minute": {
@@ -136,8 +137,18 @@ class LLMOCR(OCRBase):
             raise LLMApiKeyRequiredError(profile.id, profile.name)
         return api_key
 
-    def _initialize_client(self, profile: LLMProfile):
+    def _client_api_key_for_profile(self, profile: LLMProfile) -> str:
         api_key = self._api_key_for_profile(profile)
+        if not api_key:
+            self.logger.debug(
+                f'LLM profile "{profile.name or profile.id}" does not require an API key; '
+                'using a dummy API key for OpenAI-compatible client initialization.'
+            )
+            return self.dummy_api_key
+        return api_key
+
+    def _initialize_client(self, profile: LLMProfile):
+        api_key = self._client_api_key_for_profile(profile)
         base_url = profile.base_url or None
         proxy = self.get_param_value('proxy') or ''
         cache_key = (api_key, base_url, proxy)
