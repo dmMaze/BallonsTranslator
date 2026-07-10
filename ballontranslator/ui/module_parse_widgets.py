@@ -12,9 +12,27 @@ from .module_param_i18n import (
     tr_param_display_name,
 )
 
-from qtpy.QtWidgets import QPlainTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QCheckBox, QLineEdit, QGridLayout, QPushButton, QSizePolicy, QLayout
+from qtpy.QtWidgets import (
+    QApplication,
+    QPlainTextEdit,
+    QHBoxLayout,
+    QVBoxLayout,
+    QWidget,
+    QCheckBox,
+    QLineEdit,
+    QGridLayout,
+    QPushButton,
+    QSizePolicy,
+    QLayout,
+    QMenu,
+)
 from qtpy.QtCore import QTimer, Qt, Signal
-from qtpy.QtGui import QDoubleValidator
+from qtpy.QtGui import QDoubleValidator, QKeySequence
+
+try:
+    from qtpy.QtGui import QAction
+except ImportError:
+    from qtpy.QtWidgets import QAction
 
 LAYOUT_SET_MINIMUM_SIZE = getattr(getattr(QLayout, 'SizeConstraint', QLayout), 'SetMinimumSize')
 
@@ -62,6 +80,49 @@ class ParamLineEditor(QLineEdit):
         self.paramwidget_edited.emit(self.param_key, self.text())
 
 
+class SecretLineEditor(QLineEdit):
+    """Password editor with an explicit copy path for hidden text.
+
+    Example:
+        >>> SecretLineEditor.__name__
+        'SecretLineEditor'
+    """
+
+    def copySecretText(self):
+        text = self.selectedText() if self.hasSelectedText() else self.text()
+        if not text:
+            return
+        QApplication.clipboard().setText(text)
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self.copySecretText()
+            event.accept()
+            return
+        return super().keyPressEvent(event)
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        copy_action = QAction(self.tr('Copy'), menu)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.setEnabled(bool(self.text()))
+        paste_action = QAction(self.tr('Paste'), menu)
+        paste_action.setEnabled(not self.isReadOnly() and bool(QApplication.clipboard().text()))
+        select_all_action = QAction(self.tr('Select All'), menu)
+        select_all_action.setEnabled(bool(self.text()))
+        menu.addAction(copy_action)
+        menu.addAction(paste_action)
+        menu.addSeparator()
+        menu.addAction(select_all_action)
+        action = menu.exec(event.globalPos()) if hasattr(menu, 'exec') else menu.exec_(event.globalPos())
+        if action == copy_action:
+            self.copySecretText()
+        elif action == paste_action:
+            self.paste()
+        elif action == select_all_action:
+            self.selectAll()
+
+
 class SecretParamWidget(QWidget):
     """Password-style parameter editor.
 
@@ -76,7 +137,7 @@ class SecretParamWidget(QWidget):
         super().__init__(*args, **kwargs)
         self.setObjectName('SecretParamWidget')
         self.param_key = param_key
-        self.editor = QLineEdit(self)
+        self.editor = SecretLineEditor(self)
         if fixed_size:
             self.editor.setFixedWidth(size2width(size))
             self.setFixedWidth(size2width(size))
