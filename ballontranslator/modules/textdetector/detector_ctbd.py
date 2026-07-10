@@ -427,90 +427,107 @@ class RTDetrV2TextDetector(TextDetectorBase):
         'confidence_threshold': {
             'value': 0.3,
             'type': 'line_editor',
-            'description': 'Minimum detection score (0.0-1.0).'
+            'description': 'Minimum detection score (0.0-1.0).',
+            'display_name': 'Confidence Threshold'
         },
         'inpaint_mask_dilate': {
             'value': 4,
             'type': 'line_editor',
-            'description': 'Dilation kernel size (px) for the inpaint mask. Merges text fragments.'
+            'description': 'Dilation kernel size (px) for the inpaint mask. Merges text fragments.',
+            'display_name': 'Inpaint Mask Dilate'
         },
         'mask_unification_method': {
             'value': 'none',
             'type': 'selector',
             'options': ['none', 'rectangle', 'hull'],
-            'description': "Method to unify fragments into one mask: 'none', 'bounding rectangle', or 'convex hull'."
+            'description': "Method to unify fragments into one mask: 'none', 'bounding rectangle', or 'convex hull'.",
+            'display_name': 'Mask Unification Method'
         },
         'device': DEVICE_SELECTOR(),
         'description': 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.',
         'slice_threshold_ratio': {
             'value': 3.5,
             'type': 'line_editor',
-            'description': 'H/W ratio to trigger image slicing.'
+            'description': 'H/W ratio to trigger image slicing.',
+            'display_name': 'Slice Threshold Ratio'
         },
         'slice_target_ratio': {
             'value': 3.0,
             'type': 'line_editor',
-            'description': 'Target H/W ratio for slices.'
+            'description': 'Target H/W ratio for slices.',
+            'display_name': 'Slice Target Ratio'
         },
         'slice_overlap_ratio': {
             'value': 0.2,
             'type': 'line_editor',
-            'description': 'Slice overlap ratio (0.0-1.0).'
+            'description': 'Slice overlap ratio (0.0-1.0).',
+            'display_name': 'Slice Overlap Ratio'
         },
         'slice_min_height_ratio': {
             'value': 0.7,
             'type': 'line_editor',
-            'description': 'Minimum height ratio for the last slice.'
+            'description': 'Minimum height ratio for the last slice.',
+            'display_name': 'Slice Min Height Ratio'
         },
         'slice_merge_iou': {
             'value': 0.2,
             'type': 'line_editor',
-            'description': 'IoU threshold for merging text lines.'
+            'description': 'IoU threshold for merging text lines.',
+            'display_name': 'Slice Merge IoU'
         },
         'slice_duplicate_iou': {
             'value': 0.5,
             'type': 'line_editor',
-            'description': 'IoU threshold for removing duplicate boxes.'
+            'description': 'IoU threshold for removing duplicate boxes.',
+            'display_name': 'Slice Duplicate IoU'
         },
         'slice_merge_y_dist': {
             'value': 0.1,
             'type': 'line_editor',
-            'description': 'Max relative Y-distance for merging text lines.'
+            'description': 'Max relative Y-distance for merging text lines.',
+            'display_name': 'Slice Merge Y Distance'
         },
         'slice_containment_thresh': {
             'value': 0.85,
             'type': 'line_editor',
-            'description': 'Containment threshold for merging boxes.'
+            'description': 'Containment threshold for merging boxes.',
+            'display_name': 'Slice Containment Threshold'
         },
         'detect_bubbles': {
             'value': True,
             'type': 'checkbox',
-            'description': 'Detect speech bubbles.'
+            'description': 'Detect speech bubbles.',
+            'display_name': 'Detect Bubbles'
         },
         'detect_text': {
             'value': True,
             'type': 'checkbox',
-            'description': 'Detect text blocks.'
+            'description': 'Detect text blocks.',
+            'display_name': 'Detect Text'
         },
         'merge_duplicates': {
             'value': True,
             'type': 'checkbox',
-            'description': 'Merge near-identical duplicate boxes of the same category.'
+            'description': 'Merge near-identical duplicate boxes of the same category.',
+            'display_name': 'Merge Duplicates'
         },
         'merge_duplicates_iou': {
             'value': 0.7,
             'type': 'line_editor',
-            'description': 'IoU threshold for merging duplicates within the same class.'
+            'description': 'IoU threshold for merging duplicates within the same class.',
+            'display_name': 'Merge Duplicates IoU'
         },
         'remove_contained_text': {
             'value': True,
             'type': 'checkbox',
-            'description': 'Remove text boxes that are largely contained within other larger text boxes.'
+            'description': 'Remove text boxes that are largely contained within other larger text boxes.',
+            'display_name': 'Remove Contained Text'
         },
         'containment_threshold': {
             'value': 0.8,
             'type': 'line_editor',
-            'description': 'Area ratio threshold to trigger removal of contained boxes (0.0-1.0).'
+            'description': 'Area ratio threshold to trigger removal of contained boxes (0.0-1.0).',
+            'display_name': 'Containment Threshold'
         }
     }
 

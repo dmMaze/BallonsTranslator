@@ -258,6 +258,7 @@ class PaddleOCRv6ONNX(OCRBase):
         "rec_batch_num": {
             "value": 6,
             "description": "Recognition batch size (higher = faster, more VRAM)",
+            "display_name": "Recognition Batch Size",
         },
         "description": "PP-OCRv6 ONNX recognition-only — crops text blocks then recognizes via ONNX Runtime",
     }

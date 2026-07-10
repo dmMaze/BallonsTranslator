@@ -160,15 +160,18 @@ class OCRLensAPI_exp(OCRBase):
             "options": ["preserve", "remove"],
             "value": "preserve",
             "description": "Handle newline characters in the final OCR string.",
+            "display_name": "Newline Handling",
         },
         "no_uppercase": {
             "type": "checkbox",
             "value": False,
             "description": "Convert text to lowercase except first letter of sentences.",
+            "display_name": "No Uppercase",
         },
         "target_language": {
             "value": "ja",
             "description": "Target language code (e.g., 'ja', 'en', 'ru').",
+            "display_name": "Target Language",
         },
         "proxy": {
             "value": "",

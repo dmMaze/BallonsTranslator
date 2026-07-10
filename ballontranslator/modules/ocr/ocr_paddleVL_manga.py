@@ -18,7 +18,8 @@ class PaddleOCRVLManga(OCRBase):
         'device': DEVICE_SELECTOR(),
         "max_new_tokens": {
             "value": 512,
-            "description": "Max generation tokens"
+            "description": "Max generation tokens",
+            "display_name": "Max New Tokens"
         }
     }
     device = DEFAULT_DEVICE

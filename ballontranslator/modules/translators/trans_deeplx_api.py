@@ -8,7 +8,10 @@ class DeepLTranslatorv2(BaseTranslator):
 
     concate_text = False
     params: Dict = {
-        'api_url': '',  # EndPoint will be provided by the user
+        'api_url': {
+            'value': '',  # EndPoint will be provided by the user
+            'display_name': 'API URL'
+        },
         'delay': 0.0,
     }
 # Setup your endpoint api with https://github.com/OwO-Network/DeepLX
@@ -43,7 +46,7 @@ class DeepLTranslatorv2(BaseTranslator):
                 'target_lang': self.lang_map[self.lang_target]
             }
 
-            response = requests.post(self.params['api_url'], json=data)
+            response = requests.post(self.get_param_value('api_url'), json=data)
 
             if response.status_code == 200:
                 # Extract the translated text from the 'data' key

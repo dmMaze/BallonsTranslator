@@ -17,33 +17,59 @@ class StariverDetector(TextDetectorBase):
     params = {
         'User': "填入你的用户名",
         'Password': "填入你的密码。请注意，密码会明文保存，请勿在公共电脑上使用",
-        'expand_ratio': "0.01",
+        'expand_ratio': {
+            'value': "0.01",
+            'display_name': 'Expand Ratio'
+        },
         "refine": {
             'type': 'checkbox',
-            'value': True
+            'value': True,
+            'display_name': 'Refine'
         },
         "filtrate": {
             'type': 'checkbox',
-            'value': True
+            'value': True,
+            'display_name': 'Filtrate'
         },
         "disable_skip_area": {
             'type': 'checkbox',
-            'value': True
+            'value': True,
+            'display_name': 'Disable Skip Area'
         },
-        "detect_scale": "3",
-        "merge_threshold": "2.0",
+        "detect_scale": {
+            'value': "3",
+            'display_name': 'Detect Scale'
+        },
+        "merge_threshold": {
+            'value': "2.0",
+            'display_name': 'Merge Threshold'
+        },
         "low_accuracy_mode": {
             'type': 'checkbox',
-            'value': False
+            'value': False,
+            'display_name': 'Low Accuracy Mode'
         },
         "force_expand": {
             'type': 'checkbox',
-            'value': False
+            'value': False,
+            'display_name': 'Force Expand'
         },
-        "font_size_offset": "0",
-        "font_size_min(set to -1 to disable)": "-1",
-        "font_size_max(set to -1 to disable)": "-1",
-        "font_size_multiplier": "1.0",
+        "font_size_offset": {
+            'value': "0",
+            'display_name': 'Font Size Offset'
+        },
+        "font_size_min(set to -1 to disable)": {
+            'value': "-1",
+            'display_name': 'Font Size Min (set to -1 to disable)'
+        },
+        "font_size_max(set to -1 to disable)": {
+            'value': "-1",
+            'display_name': 'Font Size Max (set to -1 to disable)'
+        },
+        "font_size_multiplier": {
+            'value': "1.0",
+            'display_name': 'Font Size Multiplier'
+        },
         'update_token_btn': {
             'type': 'pushbtn',
             'value': '',
@@ -55,59 +81,59 @@ class StariverDetector(TextDetectorBase):
 
     @property
     def User(self):
-        return self.params['User']
+        return self.get_param_value('User')
 
     @property
     def Password(self):
-        return self.params['Password']
+        return self.get_param_value('Password')
 
     @property
     def expand_ratio(self):
-        return float(self.params['expand_ratio'])
+        return float(self.get_param_value('expand_ratio'))
 
     @property
     def refine(self):
-        return self.params['refine']['value']
+        return self.get_param_value('refine')
 
     @property
     def filtrate(self):
-        return self.params['filtrate']['value']
+        return self.get_param_value('filtrate')
 
     @property
     def disable_skip_area(self):
-        return self.params['disable_skip_area']['value']
+        return self.get_param_value('disable_skip_area')
 
     @property
     def detect_scale(self):
-        return int(self.params['detect_scale'])
+        return int(self.get_param_value('detect_scale'))
 
     @property
     def merge_threshold(self):
-        return float(self.params['merge_threshold'])
+        return float(self.get_param_value('merge_threshold'))
 
     @property
     def low_accuracy_mode(self):
-        return self.params['low_accuracy_mode']['value']
+        return self.get_param_value('low_accuracy_mode')
 
     @property
     def force_expand(self):
-        return self.params['force_expand']['value']
+        return self.get_param_value('force_expand')
 
     @property
     def font_size_offset(self):
-        return int(self.params['font_size_offset'])
+        return int(self.get_param_value('font_size_offset'))
 
     @property
     def font_size_min(self):
-        return int(self.params['font_size_min(set to -1 to disable)'])
+        return int(self.get_param_value('font_size_min(set to -1 to disable)'))
 
     @property
     def font_size_max(self):
-        return int(self.params['font_size_max(set to -1 to disable)'])
+        return int(self.get_param_value('font_size_max(set to -1 to disable)'))
     
     @property
     def font_size_multiplier(self):
-        return float(self.params['font_size_multiplier'])
+        return float(self.get_param_value('font_size_multiplier'))
 
     def __init__(self, **params) -> None:
         super().__init__(**params)

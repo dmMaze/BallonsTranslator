@@ -16,26 +16,37 @@ class OCRStariver(OCRBase):
         'Password': "填入你的密码。请注意，密码会明文保存，请勿在公共电脑上使用",
         "refine":{
             'type': 'checkbox',
-            'value': True
+            'value': True,
+            'display_name': 'Refine'
         },
         "filtrate":{
             'type': 'checkbox',
-            'value': True
+            'value': True,
+            'display_name': 'Filtrate'
         },
         "disable_skip_area":{
             'type': 'checkbox',
-            'value': True
+            'value': True,
+            'display_name': 'Disable Skip Area'
         },
-        "detect_scale": "3",
-        "merge_threshold": "2",
+        "detect_scale": {
+            'value': "3",
+            'display_name': 'Detect Scale'
+        },
+        "merge_threshold": {
+            'value': "2",
+            'display_name': 'Merge Threshold'
+        },
         "force_expand":{
             'type': 'checkbox',
             'value': False,
-            'description': '是否强制扩展图片像素，会导致识别速度下降'
+            'description': '是否强制扩展图片像素，会导致识别速度下降',
+            'display_name': 'Force Expand'
         },
         "low_accuracy_mode":{
             'type': 'checkbox',
             'value': False,
+            'display_name': 'Low Accuracy Mode',
         },
         'update_token_btn': {
             'type': 'pushbtn',
@@ -48,11 +59,11 @@ class OCRStariver(OCRBase):
 
     @property
     def User(self):
-        return self.params['User']
+        return self.get_param_value('User')
     
     @property
     def Password(self):
-        return self.params['Password']
+        return self.get_param_value('Password')
     
     @property
     def expand_ratio(self):
@@ -60,27 +71,27 @@ class OCRStariver(OCRBase):
     
     @property
     def refine(self):
-        return  self.params['refine']['value']
+        return self.get_param_value('refine')
      
     @property
     def filtrate(self):
-        self.params['filtrate']['value']
+        return self.get_param_value('filtrate')
 
     @property
     def disable_skip_area(self):
-        return self.params['disable_skip_area']['value']
+        return self.get_param_value('disable_skip_area')
 
     @property
     def detect_scale(self):
-        return int(self.params['detect_scale'])
+        return int(self.get_param_value('detect_scale'))
     
     @property
     def merge_threshold(self):
-        return float(self.params['merge_threshold'])
+        return float(self.get_param_value('merge_threshold'))
     
     @property
     def force_expand(self):
-        return self.params['force_expand']['value']
+        return self.get_param_value('force_expand')
     
     def __init__(self, **params) -> None:
         super().__init__(**params)
@@ -121,7 +132,7 @@ class OCRStariver(OCRBase):
             "disable_skip_area": self.disable_skip_area,
             "detect_scale": self.detect_scale,
             "merge_threshold": self.merge_threshold,
-            "low_accuracy_mode": self.params['low_accuracy_mode']['value'],
+            "low_accuracy_mode": self.get_param_value('low_accuracy_mode'),
             "force_expand": self.force_expand
         }
 

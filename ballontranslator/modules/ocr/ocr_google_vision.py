@@ -19,10 +19,14 @@ class OCRGoogleVisionAPI(OCRBase):
     dependencies = ['httpx[socks,brotli]']
 
     params = {
-        'api_key': '',
+        'api_key': {
+            'value': '',
+            'display_name': 'API Key'
+        },
         'language_hints': {
             'value': '',
-            'description': 'Language codes separated by commas (BCP-47)'
+            'description': 'Language codes separated by commas (BCP-47)',
+            'display_name': 'Language Hints'
         },
         'proxy': {
             'value': '',
@@ -36,12 +40,14 @@ class OCRGoogleVisionAPI(OCRBase):
                 'remove'
             ],
             'value': 'preserve',
-            'description': 'Choose how to handle newline characters in OCR results'
+            'description': 'Choose how to handle newline characters in OCR results',
+            'display_name': 'Newline Handling'
         },
         'no_uppercase': {
             'type': 'checkbox',
             'value': False,
-            'description': 'Convert text to lowercase except the first letter of each sentence'
+            'description': 'Convert text to lowercase except the first letter of each sentence',
+            'display_name': 'No Uppercase'
         },
         'description': 'OCR using Google Vision API'
     }

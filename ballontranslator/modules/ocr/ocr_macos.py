@@ -114,7 +114,10 @@ if platform.system() == 'Darwin' and platform.mac_ver()[0] >= '10.15':
                 #     ],
                 #     'value': 'accurate',
                 # },
-                'confidence_level': '0.1',
+                'confidence_level': {
+                    'value': '0.1',
+                    'display_name': 'Confidence Level',
+                },
             }
             language = 'en-US'
             recognition = 'accurate'
@@ -136,7 +139,7 @@ if platform.system() == 'Darwin' and platform.mac_ver()[0] >= '10.15':
                 # self.model.recog_level = self.recognition
                 # self.params['language']['options'] = list(get_supported_languages(self.recognition)[0])
 
-                self.confidence = self.params['confidence_level']
+                self.confidence = self.get_param_value('confidence_level')
                 self.model.min_confidence = self.confidence
     else:
         LOGGER.warning(f'No supported language packs found for MacOS, MacOS OCR will be unavailable.')

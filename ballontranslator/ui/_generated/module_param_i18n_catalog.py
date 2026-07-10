@@ -62,13 +62,13 @@ MODULE_PARAM_CATALOG = {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
     },
     ('inpainter', 'aot', 'inpaint_size', 'display_name'): {
-        "source": 'inpaint_size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'inpaint_size'),
+        "source": 'Inpaint Size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Inpaint Size'),
     },
     ('inpainter', 'flux2-klein', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
     },
     ('inpainter', 'flux2-klein', 'max_resolution', 'display_name'): {
-        "source": 'max_resolution', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'max_resolution'),
+        "source": 'Max Resolution', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Max Resolution'),
     },
     ('inpainter', 'flux2-klein', 'model', 'display_name'): {
         "source": 'model', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'model'),
@@ -80,7 +80,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
     },
     ('inpainter', 'lama_large_512px', 'inpaint_size', 'display_name'): {
-        "source": 'inpaint_size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'inpaint_size'),
+        "source": 'Inpaint Size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Inpaint Size'),
     },
     ('inpainter', 'lama_large_512px', 'precision', 'display_name'): {
         "source": 'precision', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'precision'),
@@ -89,7 +89,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
     },
     ('inpainter', 'lama_mpe', 'inpaint_size', 'display_name'): {
-        "source": 'inpaint_size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'inpaint_size'),
+        "source": 'Inpaint Size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Inpaint Size'),
     },
     ('ocr', 'LLMOCR', '', 'description'): {
         "source": 'OCR using the selected vision-capable LLM profile.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'OCR using the selected vision-capable LLM profile.'),
@@ -131,7 +131,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'Max generation tokens', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Max generation tokens'),
     },
     ('ocr', 'PaddleOCRVLManga', 'max_new_tokens', 'display_name'): {
-        "source": 'max_new_tokens', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'max_new_tokens'),
+        "source": 'Max New Tokens', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Max New Tokens'),
     },
     ('ocr', 'google_lens_exp', '', 'description'): {
         "source": 'OCR using Google Lens Protobuf API (requests backend)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'OCR using Google Lens Protobuf API (requests backend)'),
@@ -143,13 +143,13 @@ MODULE_PARAM_CATALOG = {
         "source": 'Handle newline characters in the final OCR string.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Handle newline characters in the final OCR string.'),
     },
     ('ocr', 'google_lens_exp', 'newline_handling', 'display_name'): {
-        "source": 'newline_handling', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'newline_handling'),
+        "source": 'Newline Handling', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Newline Handling'),
     },
     ('ocr', 'google_lens_exp', 'no_uppercase', 'description'): {
         "source": 'Convert text to lowercase except first letter of sentences.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Convert text to lowercase except first letter of sentences.'),
     },
     ('ocr', 'google_lens_exp', 'no_uppercase', 'display_name'): {
-        "source": 'no_uppercase', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'no_uppercase'),
+        "source": 'No Uppercase', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'No Uppercase'),
     },
     ('ocr', 'google_lens_exp', 'proxy', 'description'): {
         "source": 'Proxy (requests format: e.g., http://user:pass@host:port or {"http": ..., "https": ...})', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Proxy (requests format: e.g., http://user:pass@host:port or {"http": ..., "https": ...})'),
@@ -161,7 +161,7 @@ MODULE_PARAM_CATALOG = {
         "source": "Target language code (e.g., 'ja', 'en', 'ru').", "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', "Target language code (e.g., 'ja', 'en', 'ru')."),
     },
     ('ocr', 'google_lens_exp', 'target_language', 'display_name'): {
-        "source": 'target_language', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'target_language'),
+        "source": 'Target Language', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Target Language'),
     },
     ('ocr', 'google_screen_ai_ocr', '', 'description'): {
         "source": 'Google ScreenAI OCR engine. Automatically downloads files on module load.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Google ScreenAI OCR engine. Automatically downloads files on module load.'),
@@ -182,7 +182,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'OCR using Google Vision API', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'OCR using Google Vision API'),
     },
     ('ocr', 'google_vision', 'api_key', 'display_name'): {
-        "source": 'api_key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'api_key'),
+        "source": 'API Key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'API Key'),
     },
     ('ocr', 'google_vision', 'delay', 'display_name'): {
         "source": 'delay', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'delay'),
@@ -191,19 +191,19 @@ MODULE_PARAM_CATALOG = {
         "source": 'Language codes separated by commas (BCP-47)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Language codes separated by commas (BCP-47)'),
     },
     ('ocr', 'google_vision', 'language_hints', 'display_name'): {
-        "source": 'language_hints', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'language_hints'),
+        "source": 'Language Hints', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Language Hints'),
     },
     ('ocr', 'google_vision', 'newline_handling', 'description'): {
         "source": 'Choose how to handle newline characters in OCR results', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Choose how to handle newline characters in OCR results'),
     },
     ('ocr', 'google_vision', 'newline_handling', 'display_name'): {
-        "source": 'newline_handling', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'newline_handling'),
+        "source": 'Newline Handling', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Newline Handling'),
     },
     ('ocr', 'google_vision', 'no_uppercase', 'description'): {
         "source": 'Convert text to lowercase except the first letter of each sentence', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Convert text to lowercase except the first letter of each sentence'),
     },
     ('ocr', 'google_vision', 'no_uppercase', 'display_name'): {
-        "source": 'no_uppercase', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'no_uppercase'),
+        "source": 'No Uppercase', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'No Uppercase'),
     },
     ('ocr', 'google_vision', 'proxy', 'description'): {
         "source": 'Proxy address (e.g., http(s)://user:password@host:port or socks4/5://user:password@host:port)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Proxy address (e.g., http(s)://user:password@host:port or socks4/5://user:password@host:port)'),
@@ -218,7 +218,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'OCRMIT48px', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'OCRMIT48px'),
     },
     ('ocr', 'mit48px', 'chunk_size', 'display_name'): {
-        "source": 'chunk_size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'chunk_size'),
+        "source": 'Chunk Size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Chunk Size'),
     },
     ('ocr', 'mit48px', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
@@ -227,7 +227,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'OCRMIT48px', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'OCRMIT48px'),
     },
     ('ocr', 'mit48px_ctc', 'chunk_size', 'display_name'): {
-        "source": 'chunk_size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'chunk_size'),
+        "source": 'Chunk Size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Chunk Size'),
     },
     ('ocr', 'mit48px_ctc', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
@@ -245,13 +245,13 @@ MODULE_PARAM_CATALOG = {
         "source": 'max retry times', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'max retry times'),
     },
     ('ocr', 'paddle_vl', 'prettifyMarkdown', 'display_name'): {
-        "source": 'prettifyMarkdown', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'prettifyMarkdown'),
+        "source": 'Prettify Markdown', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Prettify Markdown'),
     },
     ('ocr', 'paddle_vl', 'retry interval', 'display_name'): {
         "source": 'retry interval', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'retry interval'),
     },
     ('ocr', 'paddle_vl', 'server_url', 'display_name'): {
-        "source": 'server_url', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'server_url'),
+        "source": 'Server URL', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Server URL'),
     },
     ('ocr', 'paddle_vl', 'visualize', 'display_name'): {
         "source": 'visualize', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'visualize'),
@@ -266,7 +266,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'Recognition batch size (higher = faster, more VRAM)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Recognition batch size (higher = faster, more VRAM)'),
     },
     ('ocr', 'ppv6_onnx', 'rec_batch_num', 'display_name'): {
-        "source": 'rec_batch_num', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'rec_batch_num'),
+        "source": 'Recognition Batch Size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Recognition Batch Size'),
     },
     ('ocr', 'stariver_ocr', '', 'description'): {
         "source": '星河云(团子翻译器) OCR API', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', '星河云(团子翻译器) OCR API'),
@@ -278,28 +278,28 @@ MODULE_PARAM_CATALOG = {
         "source": 'User', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'User'),
     },
     ('ocr', 'stariver_ocr', 'detect_scale', 'display_name'): {
-        "source": 'detect_scale', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'detect_scale'),
+        "source": 'Detect Scale', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Scale'),
     },
     ('ocr', 'stariver_ocr', 'disable_skip_area', 'display_name'): {
-        "source": 'disable_skip_area', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'disable_skip_area'),
+        "source": 'Disable Skip Area', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Disable Skip Area'),
     },
     ('ocr', 'stariver_ocr', 'filtrate', 'display_name'): {
-        "source": 'filtrate', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'filtrate'),
+        "source": 'Filtrate', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Filtrate'),
     },
     ('ocr', 'stariver_ocr', 'force_expand', 'description'): {
         "source": '是否强制扩展图片像素，会导致识别速度下降', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', '是否强制扩展图片像素，会导致识别速度下降'),
     },
     ('ocr', 'stariver_ocr', 'force_expand', 'display_name'): {
-        "source": 'force_expand', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'force_expand'),
+        "source": 'Force Expand', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Force Expand'),
     },
     ('ocr', 'stariver_ocr', 'low_accuracy_mode', 'display_name'): {
-        "source": 'low_accuracy_mode', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'low_accuracy_mode'),
+        "source": 'Low Accuracy Mode', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Low Accuracy Mode'),
     },
     ('ocr', 'stariver_ocr', 'merge_threshold', 'display_name'): {
-        "source": 'merge_threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'merge_threshold'),
+        "source": 'Merge Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge Threshold'),
     },
     ('ocr', 'stariver_ocr', 'refine', 'display_name'): {
-        "source": 'refine', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'refine'),
+        "source": 'Refine', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Refine'),
     },
     ('ocr', 'stariver_ocr', 'update_token_btn', 'description'): {
         "source": '删除旧 Token 并重新申请', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', '删除旧 Token 并重新申请'),
@@ -311,10 +311,10 @@ MODULE_PARAM_CATALOG = {
         "source": 'ComicTextDetector', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'ComicTextDetector'),
     },
     ('textdetector', 'ctd', 'det_rearrange_max_batches', 'display_name'): {
-        "source": 'det_rearrange_max_batches', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'det_rearrange_max_batches'),
+        "source": 'Max split batch size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Max split batch size'),
     },
     ('textdetector', 'ctd', 'detect_size', 'display_name'): {
-        "source": 'detect_size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'detect_size'),
+        "source": 'Detect Size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Size'),
     },
     ('textdetector', 'ctd', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
@@ -331,6 +331,114 @@ MODULE_PARAM_CATALOG = {
     ('textdetector', 'ctd', 'mask dilate size', 'display_name'): {
         "source": 'mask dilate size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'mask dilate size'),
     },
+    ('textdetector', 'rtdetr_v2', '', 'description'): {
+        "source": 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'confidence_threshold', 'description'): {
+        "source": 'Minimum detection score (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Minimum detection score (0.0-1.0).'),
+    },
+    ('textdetector', 'rtdetr_v2', 'confidence_threshold', 'display_name'): {
+        "source": 'Confidence Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Confidence Threshold'),
+    },
+    ('textdetector', 'rtdetr_v2', 'containment_threshold', 'description'): {
+        "source": 'Area ratio threshold to trigger removal of contained boxes (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Area ratio threshold to trigger removal of contained boxes (0.0-1.0).'),
+    },
+    ('textdetector', 'rtdetr_v2', 'containment_threshold', 'display_name'): {
+        "source": 'Containment Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Containment Threshold'),
+    },
+    ('textdetector', 'rtdetr_v2', 'detect_bubbles', 'description'): {
+        "source": 'Detect speech bubbles.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect speech bubbles.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'detect_bubbles', 'display_name'): {
+        "source": 'Detect Bubbles', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Bubbles'),
+    },
+    ('textdetector', 'rtdetr_v2', 'detect_text', 'description'): {
+        "source": 'Detect text blocks.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect text blocks.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'detect_text', 'display_name'): {
+        "source": 'Detect Text', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Text'),
+    },
+    ('textdetector', 'rtdetr_v2', 'device', 'display_name'): {
+        "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
+    },
+    ('textdetector', 'rtdetr_v2', 'inpaint_mask_dilate', 'description'): {
+        "source": 'Dilation kernel size (px) for the inpaint mask. Merges text fragments.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Dilation kernel size (px) for the inpaint mask. Merges text fragments.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'inpaint_mask_dilate', 'display_name'): {
+        "source": 'Inpaint Mask Dilate', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Inpaint Mask Dilate'),
+    },
+    ('textdetector', 'rtdetr_v2', 'mask_unification_method', 'description'): {
+        "source": "Method to unify fragments into one mask: 'none', 'bounding rectangle', or 'convex hull'.", "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', "Method to unify fragments into one mask: 'none', 'bounding rectangle', or 'convex hull'."),
+    },
+    ('textdetector', 'rtdetr_v2', 'mask_unification_method', 'display_name'): {
+        "source": 'Mask Unification Method', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Mask Unification Method'),
+    },
+    ('textdetector', 'rtdetr_v2', 'merge_duplicates', 'description'): {
+        "source": 'Merge near-identical duplicate boxes of the same category.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge near-identical duplicate boxes of the same category.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'merge_duplicates', 'display_name'): {
+        "source": 'Merge Duplicates', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge Duplicates'),
+    },
+    ('textdetector', 'rtdetr_v2', 'merge_duplicates_iou', 'description'): {
+        "source": 'IoU threshold for merging duplicates within the same class.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for merging duplicates within the same class.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'merge_duplicates_iou', 'display_name'): {
+        "source": 'Merge Duplicates IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge Duplicates IoU'),
+    },
+    ('textdetector', 'rtdetr_v2', 'remove_contained_text', 'description'): {
+        "source": 'Remove text boxes that are largely contained within other larger text boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Remove text boxes that are largely contained within other larger text boxes.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'remove_contained_text', 'display_name'): {
+        "source": 'Remove Contained Text', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Remove Contained Text'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_containment_thresh', 'description'): {
+        "source": 'Containment threshold for merging boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Containment threshold for merging boxes.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_containment_thresh', 'display_name'): {
+        "source": 'Slice Containment Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Containment Threshold'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_duplicate_iou', 'description'): {
+        "source": 'IoU threshold for removing duplicate boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for removing duplicate boxes.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_duplicate_iou', 'display_name'): {
+        "source": 'Slice Duplicate IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Duplicate IoU'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_merge_iou', 'description'): {
+        "source": 'IoU threshold for merging text lines.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for merging text lines.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_merge_iou', 'display_name'): {
+        "source": 'Slice Merge IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Merge IoU'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_merge_y_dist', 'description'): {
+        "source": 'Max relative Y-distance for merging text lines.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Max relative Y-distance for merging text lines.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_merge_y_dist', 'display_name'): {
+        "source": 'Slice Merge Y Distance', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Merge Y Distance'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_min_height_ratio', 'description'): {
+        "source": 'Minimum height ratio for the last slice.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Minimum height ratio for the last slice.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_min_height_ratio', 'display_name'): {
+        "source": 'Slice Min Height Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Min Height Ratio'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_overlap_ratio', 'description'): {
+        "source": 'Slice overlap ratio (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice overlap ratio (0.0-1.0).'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_overlap_ratio', 'display_name'): {
+        "source": 'Slice Overlap Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Overlap Ratio'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_target_ratio', 'description'): {
+        "source": 'Target H/W ratio for slices.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Target H/W ratio for slices.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_target_ratio', 'display_name'): {
+        "source": 'Slice Target Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Target Ratio'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_threshold_ratio', 'description'): {
+        "source": 'H/W ratio to trigger image slicing.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'H/W ratio to trigger image slicing.'),
+    },
+    ('textdetector', 'rtdetr_v2', 'slice_threshold_ratio', 'display_name'): {
+        "source": 'Slice Threshold Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Threshold Ratio'),
+    },
     ('textdetector', 'stariver_ocr', '', 'description'): {
         "source": '星河云(团子翻译器) OCR 文字检测器', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', '星河云(团子翻译器) OCR 文字检测器'),
     },
@@ -341,40 +449,40 @@ MODULE_PARAM_CATALOG = {
         "source": 'User', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'User'),
     },
     ('textdetector', 'stariver_ocr', 'detect_scale', 'display_name'): {
-        "source": 'detect_scale', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'detect_scale'),
+        "source": 'Detect Scale', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Scale'),
     },
     ('textdetector', 'stariver_ocr', 'disable_skip_area', 'display_name'): {
-        "source": 'disable_skip_area', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'disable_skip_area'),
+        "source": 'Disable Skip Area', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Disable Skip Area'),
     },
     ('textdetector', 'stariver_ocr', 'expand_ratio', 'display_name'): {
-        "source": 'expand_ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'expand_ratio'),
+        "source": 'Expand Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Expand Ratio'),
     },
     ('textdetector', 'stariver_ocr', 'filtrate', 'display_name'): {
-        "source": 'filtrate', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'filtrate'),
+        "source": 'Filtrate', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Filtrate'),
     },
     ('textdetector', 'stariver_ocr', 'font_size_max(set to -1 to disable)', 'display_name'): {
-        "source": 'font_size_max(set to -1 to disable)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'font_size_max(set to -1 to disable)'),
+        "source": 'Font Size Max (set to -1 to disable)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Font Size Max (set to -1 to disable)'),
     },
     ('textdetector', 'stariver_ocr', 'font_size_min(set to -1 to disable)', 'display_name'): {
-        "source": 'font_size_min(set to -1 to disable)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'font_size_min(set to -1 to disable)'),
+        "source": 'Font Size Min (set to -1 to disable)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Font Size Min (set to -1 to disable)'),
     },
     ('textdetector', 'stariver_ocr', 'font_size_multiplier', 'display_name'): {
-        "source": 'font_size_multiplier', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'font_size_multiplier'),
+        "source": 'Font Size Multiplier', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Font Size Multiplier'),
     },
     ('textdetector', 'stariver_ocr', 'font_size_offset', 'display_name'): {
-        "source": 'font_size_offset', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'font_size_offset'),
+        "source": 'Font Size Offset', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Font Size Offset'),
     },
     ('textdetector', 'stariver_ocr', 'force_expand', 'display_name'): {
-        "source": 'force_expand', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'force_expand'),
+        "source": 'Force Expand', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Force Expand'),
     },
     ('textdetector', 'stariver_ocr', 'low_accuracy_mode', 'display_name'): {
-        "source": 'low_accuracy_mode', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'low_accuracy_mode'),
+        "source": 'Low Accuracy Mode', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Low Accuracy Mode'),
     },
     ('textdetector', 'stariver_ocr', 'merge_threshold', 'display_name'): {
-        "source": 'merge_threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'merge_threshold'),
+        "source": 'Merge Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge Threshold'),
     },
     ('textdetector', 'stariver_ocr', 'refine', 'display_name'): {
-        "source": 'refine', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'refine'),
+        "source": 'Refine', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Refine'),
     },
     ('textdetector', 'stariver_ocr', 'update_token_btn', 'description'): {
         "source": '删除旧 Token 并重新申请', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', '删除旧 Token 并重新申请'),
@@ -437,7 +545,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'Return source text as translation', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Return source text as translation'),
     },
     ('translator', 'DeepL', 'api_key', 'display_name'): {
-        "source": 'api_key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'api_key'),
+        "source": 'API Key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'API Key'),
     },
     ('translator', 'DeepL', 'context', 'display_name'): {
         "source": 'context', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'context'),
@@ -449,10 +557,10 @@ MODULE_PARAM_CATALOG = {
         "source": 'formality', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'formality'),
     },
     ('translator', 'DeepL', 'preserve_formatting', 'display_name'): {
-        "source": 'preserve_formatting', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'preserve_formatting'),
+        "source": 'Preserve Formatting', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Preserve Formatting'),
     },
     ('translator', 'DeepLX API', 'api_url', 'display_name'): {
-        "source": 'api_url', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'api_url'),
+        "source": 'API URL', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'API URL'),
     },
     ('translator', 'DeepLX API', 'delay', 'display_name'): {
         "source": 'delay', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'delay'),
@@ -536,7 +644,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
     },
     ('translator', 'Yandex', 'api_key', 'display_name'): {
-        "source": 'api_key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'api_key'),
+        "source": 'API Key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'API Key'),
     },
     ('translator', 'Yandex', 'delay', 'display_name'): {
         "source": 'delay', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'delay'),
@@ -554,7 +662,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'API Key for Yandex.Cloud. If empty, a keyless method will be attempted.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'API Key for Yandex.Cloud. If empty, a keyless method will be attempted.'),
     },
     ('translator', 'Yandex-FOSWLY', 'yandex_cloud_api_key', 'display_name'): {
-        "source": 'yandex_cloud_api_key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'yandex_cloud_api_key'),
+        "source": 'Yandex Cloud API Key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Yandex Cloud API Key'),
     },
     ('translator', 'google', 'delay', 'display_name'): {
         "source": 'delay', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'delay'),

@@ -22,12 +22,14 @@ class ComicTextDetector(TextDetectorBase):
         'detect_size': {
             'type': 'selector',
             'options': [896, 1024, 1152, 1280], 
-            'value': 1280
+            'value': 1280,
+            'display_name': 'Detect Size'
         }, 
         'det_rearrange_max_batches': {
             'type': 'selector',
             'options': [1, 2, 4, 6, 8, 12, 16, 24, 32], 
-            'value': 4
+            'value': 4,
+            'display_name': 'Max split batch size'
         },
         'device': DEVICE_SELECTOR(),
         'description': 'ComicTextDetector',

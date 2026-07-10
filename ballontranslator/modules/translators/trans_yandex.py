@@ -5,7 +5,10 @@ class YandexTranslator(BaseTranslator):
 
     concate_text = False
     params: Dict = {
-        'api_key': '',
+        'api_key': {
+            'value': '',
+            'display_name': 'API Key'
+        },
         'delay': 0.0,
     }
 
@@ -37,9 +40,10 @@ class YandexTranslator(BaseTranslator):
 
     def _translate_with_v2(self, src_list: List[str]) -> List[str]:
         tr_list = []
+        api_key = self.get_param_value('api_key')
         for text in src_list:
             params = {
-                'key': self.params['api_key'],
+                'key': api_key,
                 'text': text,
                 'lang': self.lang_map[self.lang_target],
                 'format': 'plain',
@@ -61,7 +65,7 @@ class YandexTranslator(BaseTranslator):
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": "Api-Key {0}".format(self.params['api_key'])
+            "Authorization": "Api-Key {0}".format(self.get_param_value('api_key'))
         }
 
         response = requests.post(self.api_url, json=body, headers=headers)
@@ -73,7 +77,7 @@ class YandexTranslator(BaseTranslator):
         return tr_list
 
     def _translate(self, src_list: List[str]) -> List[str]:
-        if self.params['api_key'].startswith("trnsl."):
+        if self.get_param_value('api_key').startswith("trnsl."):
             return self._translate_with_v2(src_list)
         else:
             return self._translate_with_standard(src_list)

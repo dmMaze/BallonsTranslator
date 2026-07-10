@@ -183,6 +183,7 @@ class YandexFOSWLYTranslator(BaseTranslator):
         "yandex_cloud_api_key": {
             "value": "",
             "description": "API Key for Yandex.Cloud. If empty, a keyless method will be attempted.",
+            "display_name": "Yandex Cloud API Key",
         },
         "delay": 0.1,
     }

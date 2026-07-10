@@ -13,8 +13,15 @@ from ballontranslator.utils.message import create_info_dialog
 @register_OCR('paddle_vl')
 class OCRPaddleVL(OCRBase):
     params = {
-        'server_url': 'http://127.0.0.1:8080/layout-parsing',
-        'prettifyMarkdown': {'type': 'checkbox', 'value': False},
+        'server_url': {
+            'value': 'http://127.0.0.1:8080/layout-parsing',
+            'display_name': 'Server URL'
+        },
+        'prettifyMarkdown': {
+            'type': 'checkbox',
+            'value': False,
+            'display_name': 'Prettify Markdown'
+        },
         'visualize': {'type': 'checkbox', 'value': False},
         'max retry times': 3,
         'retry interval': 1.0,

@@ -10,7 +10,10 @@ class DeeplTranslator(BaseTranslator):
     concate_text = False
     cht_require_convert = True
     params: Dict = {
-        'api_key': '',
+        'api_key': {
+            'value': '',
+            'display_name': 'API Key'
+        },
         'delay': 0.0,
         'formality': {
             'type': 'selector',
@@ -30,7 +33,8 @@ class DeeplTranslator(BaseTranslator):
         'preserve_formatting': {
             'type': 'selector',
             'options': ['enabled', 'disabled'],
-            'value': 'disabled' 
+            'value': 'disabled',
+            'display_name': 'Preserve Formatting'
         }
     }
 
@@ -79,7 +83,7 @@ class DeeplTranslator(BaseTranslator):
         self.lang_map['Arabic'] = 'ar'
 
     def _translate(self, src_list: List[str]) -> List[str]:
-        api_key = self.params['api_key']
+        api_key = self.get_param_value('api_key')
         translator = deepl.Translator(api_key)
         formality_selected = self.formality
         context_text = self.context
