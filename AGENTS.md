@@ -21,6 +21,10 @@ Important areas:
 - Do not rename registered module keys unless compatibility aliases are added.
 - Keep model-loading lazy/eager behavior intact.
 - Keep module selection lazy/config-only. Data needed by the config UI before module initialization must come from lazy metadata or `SafeEval`-compatible pure helpers, not from `__init__`, `_setup_*`, `update_*`, `flush`, model loading, downloads, or network calls.
+- Prefer the app's real construction path over test-only knobs. Do not keep constructor arguments, wrappers, helper functions, or public APIs only because tests use them; tests can patch small instance attributes or call narrower internals when needed.
+- Prefer one generic lookup path plus small named boundary helpers over parallel field-specific methods.
+- Let the owning module be the integration point. Prefer registering a translator, cache, or helper in the module that owns the feature over threading it through unrelated shared utilities.
+- When a simplification removes an indirection, remove the surrounding leftovers in the same pass: stale shared hooks, unused helpers, compatibility shims, redundant wrappers, and tests that only preserve the old shape.
 - Avoid adding dependencies unless approved.
 
 ## New Feature Rules
@@ -37,6 +41,23 @@ Important areas:
 - Keep user data safe. Do not overwrite source images, existing translations, masks, or project JSON without following existing save/backup behavior.
 - Preserve localization. New visible UI strings should use Qt translation patterns already used in the surrounding code.
 - Prefer incremental delivery. Large features should be split into domain/config, pipeline, UI, and persistence changes where practical.
+
+## Maintainability Rules
+
+- Shape APIs around the app's current caller chain. A small public helper at the UI boundary is easier to review than a stack of generic helpers, constructor injection, and wrapper layers that no production caller needs.
+- Prefer clear ownership names over broad global names. A helper named for the boundary that consumes it is easier to review than a shared API with hidden registration state.
+- In code review, check both sides of every simplification: the new direct path should be obvious, and the old path should be gone enough that future readers do not have to understand both.
+- Tests should protect behavior and failure modes, not obsolete architecture. After simplifying a feature, adjust tests to cover fallback behavior and real public helpers instead of preserving removed injection or wrapper APIs.
+
+## Performance Rules
+
+- For startup or UI latency regressions, trace the real caller chain and repeated lifecycle events before optimizing. Check whether a signal path, selection mirror, or config-panel refresh is rebuilding the same widget more than once.
+- Keep widget updates incremental. Do not use whole-list rebuilds, config re-deduplication, or blanket row recreation for ordinary edits when a single row/card/summary can be synced in place.
+- Keep config sanitation in config/migration code. UI widgets such as LLM profile editors should assume already-valid data, and reserve full rebuilds for explicit reset/restore paths.
+- Make selection setters and metadata refreshers idempotent. If the selected module/profile and visible widget are already current, return without rebuilding or re-emitting equivalent work.
+- For lookup tables, metadata caches, or derived maps, pre-index by the lookup key and resolve entries lazily. Do not scan the whole dataset for each selected module, profile, row, or widget.
+- Keep lookup work O(1) and on demand. Avoid eagerly materializing derived maps, injecting render-only data into shared config, or rebuilding widgets just to refresh unchanged metadata.
+- Avoid using broad `blockSignals()` as a substitute for correct update ownership. Prefer precise state-transition updates and signal names that describe their real consumer path.
 
 ## UI Styling Rules
 

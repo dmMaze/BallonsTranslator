@@ -34,6 +34,7 @@ class LLMTranslator(BaseTranslator):
     concate_text = False
     cht_require_convert = True
     params: Dict = {
+        "description": "Translate using the selected text-capable LLM profile.",
         "max requests per minute": {
             "value": 20,
             "display_name": "Max Requests Per Minute",

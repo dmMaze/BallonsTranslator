@@ -395,7 +395,7 @@ class SakuraTranslator(BaseTranslator):
         'repeat detect threshold': 20,
         'force apply dict': {
             'value': False,
-            'description': 'Force apply the dictionary regardless of whether the terms appear in the original text \n DO NOT CHECK THIS IF YOU ARE NOT SURE WHAT IT MEANS',
+            'description': 'Force apply the dictionary regardless of whether the terms appear in the original text\n DO NOT CHECK THIS IF YOU ARE NOT SURE WHAT IT MEANS',
             'type': 'checkbox',
         },
         'do enlarge small kana': {

@@ -5,12 +5,11 @@ from pathlib import Path
 import subprocess
 from functools import partial
 import time
-import cv2
 
 from tqdm import tqdm
 from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit, QDialog, QLabel, QPushButton
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QTimer
-from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QKeyEvent, QPainter, QClipboard, QImage
+from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QPainter, QClipboard
 
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_processing import is_cjk, full_len, half_len
@@ -36,6 +35,7 @@ from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
+from .module_param_i18n import ModuleParamTranslator, register_module_param_translator
 from . import shared_widget as SW
 from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox, ProgressMessageBox
 
@@ -88,6 +88,9 @@ class MainWindow(mainwindow_cls):
         self.show_llm_model_dialog.connect(self.on_show_llm_model_dialog)
         shared.show_llm_base_url_dialog_in_mainthread = self.show_llm_base_url_dialog.emit
         self.show_llm_base_url_dialog.connect(self.on_show_llm_base_url_dialog)
+        if not shared.HEADLESS:
+            self.module_param_translator = ModuleParamTranslator(parent=self)
+            register_module_param_translator(self.module_param_translator)
         shared.register_view_widget = self.register_view_widget
 
         self.app = app
