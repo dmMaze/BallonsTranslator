@@ -712,10 +712,8 @@ class ProfileCardWidget(QGroupBox):
         self.more_btn.setIcon(self.edit_icon_active if expanded else self.edit_icon)
         if expanded:
             self._install_app_event_filter()
-            self.refreshConditionalVisibility()
         else:
             self._remove_app_event_filter()
-        self._sync_minimum_width_with_content()
 
     def expand(self):
         if not self.details.isVisible():
@@ -800,14 +798,7 @@ class ProfileCardWidget(QGroupBox):
 
     def resizeEvent(self, event):
         result = super().resizeEvent(event)
-        self._sync_summary_grid()
         self._position_header_controls()
-        return result
-
-    def showEvent(self, event):
-        result = super().showEvent(event)
-        self._sync_summary_grid()
-        QTimer.singleShot(0, self._sync_summary_grid)
         return result
 
     def enterEvent(self, event):
