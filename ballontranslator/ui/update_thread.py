@@ -14,18 +14,20 @@ class UpdateCheckThread(QThread):
         super().__init__(*args, **kwargs)
         self.release_info = None
         self.current_version = None
+        self._show_release_info = False
         self._busy = False
         self.finished.connect(self._clearBusy)
 
     def isBusy(self) -> bool:
         return self._busy or self.isRunning()
 
-    def checkLatest(self) -> bool:
+    def checkLatest(self, show_release_info: bool = False) -> bool:
         if self.isBusy():
             return False
         self._busy = True
         self.release_info = None
         self.current_version = None
+        self._show_release_info = show_release_info
         self.start()
         return True
 
@@ -35,6 +37,7 @@ class UpdateCheckThread(QThread):
         self._busy = True
         self.release_info = release_info
         self.current_version = current_version
+        self._show_release_info = False
         self.start()
         return True
 
@@ -45,7 +48,10 @@ class UpdateCheckThread(QThread):
         try:
             updater = BallonsTranslatorUpdater(progress_callback=self.progress_changed.emit)
             if self.release_info is None:
-                result = updater.check_latest_release()
+                if self._show_release_info:
+                    result = updater.preview_cached_release()
+                else:
+                    result = updater.check_latest_release()
             else:
                 result = updater.apply_update(self.release_info, self.current_version)
             self.update_finished.emit(result)

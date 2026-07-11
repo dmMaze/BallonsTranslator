@@ -505,6 +505,78 @@ QToolButton#LLMProfileNewButton::menu-indicator {
     width: 0px;
 }
 
+QDialog#UpdateReleaseDialog {
+    background-color: transparent;
+}
+
+QFrame#UpdateReleaseSurface,
+QFrame#UpdateReleaseSurface QLabel {
+    background-color: @widgetBackgroundColor;
+}
+
+QFrame#UpdateReleaseSurface {
+    border: 1px solid @borderColor;
+    border-radius: 12px;
+}
+
+QLabel#UpdateReleaseTitle {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+QLabel#UpdateReleaseVersion {
+    font-size: 14px;
+}
+
+QLabel#UpdateReleaseMetadata {
+    color: @titleBarColor;
+    font-size: 12px;
+}
+
+QLabel#UpdateReleaseNotesHeading {
+    margin-top: 4px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+QFrame#UpdateReleaseNotesCard {
+    background-color: @widgetBackgroundColor;
+    border: none;
+}
+
+QTextBrowser#UpdateReleaseNotes {
+    padding: 0px;
+    border: none;
+    background-color: transparent;
+    color: @qwidgetForegroundColor;
+    font-size: 14px;
+}
+
+QPushButton#UpdateDialogPrimaryButton,
+QPushButton#UpdateDialogCancelButton {
+    min-width: 52px;
+    min-height: 28px;
+    max-height: 28px;
+    height: 28px;
+    padding: 1px 10px;
+    font-size: 12px;
+}
+
+QPushButton#UpdateDialogPrimaryButton {
+    color: white;
+    border: 1px solid rgb(30, 147, 229);
+    border-radius: 6px;
+    background-color: rgb(30, 147, 229);
+}
+
+QPushButton#UpdateDialogPrimaryButton:hover {
+    background-color: #4ba7ee;
+}
+
+QPushButton#UpdateDialogPrimaryButton:pressed {
+    background-color: #187fc3;
+}
+
 QPushButton#LLMProfileRestoreButton {
     border: none;
 }

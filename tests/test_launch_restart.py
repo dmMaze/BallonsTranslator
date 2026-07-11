@@ -41,6 +41,11 @@ class LaunchRestartTests(unittest.TestCase):
         self.assertEqual(args.config_path, config_path)
         self.assertEqual(legacy_args.config_path, config_path)
 
+    def test_show_release_info_is_opt_in(self):
+        self.assertFalse(launch.parser.parse_args([]).show_release_info)
+        self.assertTrue(launch.parser.parse_args(['--show_release_info']).show_release_info)
+        self.assertTrue(launch.parser.parse_args(['--show-release-info']).show_release_info)
+
     def test_load_config_then_save_uses_custom_config_path(self):
         try:
             from ballontranslator.utils import config as program_config

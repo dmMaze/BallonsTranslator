@@ -87,6 +87,13 @@ parser.add_argument("--ldpi", default=None, type=float, help='logical dots perin
 parser.add_argument("--export-translation-txt", action='store_true', help='save translation to txt file once RUN completed')
 parser.add_argument("--export-source-txt", action='store_true', help='save source to txt file once RUN completed')
 parser.add_argument(
+    "--show-release-info",
+    "--show_release_info",
+    dest="show_release_info",
+    action='store_true',
+    help='show cached GitHub release information on startup without making an API request',
+)
+parser.add_argument(
     "--config",
     "--config_path",
     dest="config_path",

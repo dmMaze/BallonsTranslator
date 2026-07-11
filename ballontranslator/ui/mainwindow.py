@@ -30,6 +30,7 @@ from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .menu_style import MenuStyleFilter
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .update_thread import UpdateCheckThread
+from .update_dialog import UpdateReleaseDialog
 from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .textedit_commands import GlobalRepalceAllCommand
@@ -126,9 +127,16 @@ class MainWindow(mainwindow_cls):
             self.hideSystemTitleBar()
             self.showMaximized()
 
-        if not shared.HEADLESS and pcfg.check_update_on_startup:
+        show_release_info = exec_args.get('show_release_info', False)
+        if not shared.HEADLESS and (show_release_info or pcfg.check_update_on_startup):
             # Defer startup update checks until the event loop can paint progress.
-            QTimer.singleShot(500, lambda: self.check_for_updates(manual=False))
+            QTimer.singleShot(
+                500,
+                lambda: self.check_for_updates(
+                    manual=False,
+                    show_release_info=show_release_info,
+                ),
+            )
 
     def setStyleSheet(self, styleSheet: str) -> None:
         self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
@@ -515,14 +523,14 @@ class MainWindow(mainwindow_cls):
         self.centralStackWidget.setCurrentIndex(0)
         self.configPanel.showConfigDialog()
 
-    def check_for_updates(self, manual: bool = True):
+    def check_for_updates(self, manual: bool = True, show_release_info: bool = False):
         if self.update_thread.isBusy():
             LOGGER.info('Ignored update check request because an update check or update is already running.')
             return
         self._manual_update_check = manual
         self.configPanel.setUpdateChecking(True)
         self.configPanel.setLatestVersion(self.tr('Checking...'))
-        self.update_thread.checkLatest()
+        self.update_thread.checkLatest(show_release_info=show_release_info)
 
     def apply_confirmed_update(self, release_info, current_version: str):
         if self.update_thread.isBusy():
@@ -543,6 +551,7 @@ class MainWindow(mainwindow_cls):
         message = payload.get('message', '')
         event = payload.get('event', '')
         task_names = {
+            'backup_source': self.tr('Backing up current version: '),
             'download_start': self.tr('Downloading update: '),
             'download_progress': self.tr('Downloading update: '),
             'download_done': self.tr('Downloading update: '),
@@ -562,8 +571,9 @@ class MainWindow(mainwindow_cls):
         if result.latest_version:
             self.configPanel.setLatestVersion(result.latest_version)
 
-        if result.status == 'available':
-            if self.confirm_update_release(result):
+        if result.status in {'available', 'preview'}:
+            allow_update = result.status == 'available'
+            if self.confirm_update_release(result, allow_update=allow_update) and allow_update:
                 QTimer.singleShot(
                     0,
                     lambda info=result.release_info, current=result.current_version: self.apply_confirmed_update(info, current),
@@ -592,50 +602,13 @@ class MainWindow(mainwindow_cls):
             '',
         )
 
-    def confirm_update_release(self, result) -> bool:
-        release_info = result.release_info
-        dialog = QDialog(self)
-        dialog.setWindowTitle(self.tr('Update Available'))
-        layout = QVBoxLayout(dialog)
-
-        title_label = QLabel(
-            self.tr('A new version is available.')
-            + f'\n{result.current_version} -> {result.latest_version}',
-            dialog,
+    def confirm_update_release(self, result, allow_update: bool = True) -> bool:
+        dialog = UpdateReleaseDialog(
+            result,
+            self,
+            display_language=pcfg.display_lang,
+            allow_update=allow_update,
         )
-        title_label.setWordWrap(True)
-        layout.addWidget(title_label)
-
-        info_lines = []
-        if release_info.name:
-            info_lines.append(release_info.name)
-        if release_info.published_at:
-            info_lines.append(self.tr('Published: ') + release_info.published_at)
-        if release_info.html_url:
-            info_lines.append(release_info.html_url)
-        if info_lines:
-            meta_label = QLabel('\n'.join(info_lines), dialog)
-            meta_label.setWordWrap(True)
-            meta_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-            meta_label.setOpenExternalLinks(True)
-            layout.addWidget(meta_label)
-
-        release_notes = QPlainTextEdit(dialog)
-        release_notes.setReadOnly(True)
-        release_notes.setPlainText(release_info.body or self.tr('No release notes.'))
-        release_notes.setMinimumSize(620, 320)
-        layout.addWidget(release_notes)
-
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        update_btn = QPushButton(self.tr('Update'), dialog)
-        cancel_btn = QPushButton(self.tr('Cancel'), dialog)
-        update_btn.clicked.connect(dialog.accept)
-        cancel_btn.clicked.connect(dialog.reject)
-        button_layout.addWidget(update_btn)
-        button_layout.addWidget(cancel_btn)
-        layout.addLayout(button_layout)
-
         accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
         return dialog.exec() == accepted
 
@@ -653,6 +626,8 @@ class MainWindow(mainwindow_cls):
         layout.addWidget(title_label)
 
         details = []
+        if result.backup_path:
+            details.append(self.tr('Backup: ') + result.backup_path)
         if result.git_message:
             details.append(self.tr('If you are not a developer, you can ignore the following git information.'))
             details.append(result.git_message)

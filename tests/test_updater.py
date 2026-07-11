@@ -1,8 +1,10 @@
+import json
 import shutil
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 from ballontranslator.utils import updater
 from ballontranslator.utils.version import _read_pyproject_version
@@ -26,6 +28,11 @@ def _write_update_dirs(root: Path, marker: str) -> None:
 
 
 class UpdaterTests(unittest.TestCase):
+
+    def test_managed_payload_includes_builtin_profiles_and_launchers(self):
+        self.assertIn('config/llm_profile_builtin', updater.SOURCE_UPDATE_DIRS)
+        self.assertIn('launch_win.bat', updater.SOURCE_UPDATE_FILES)
+        self.assertIn('launch.sh', updater.SOURCE_UPDATE_FILES)
 
     def test_pyproject_version_reader(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -62,6 +69,9 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(info.name, 'BallonsTranslator 1.4.1')
         self.assertEqual(info.body, 'Release notes')
 
+        with self.assertRaisesRegex(RuntimeError, 'not a JSON object'):
+            updater.release_info_from_api_payload([])
+
     def test_check_latest_release_does_not_apply_update(self):
         class FakeUpdater(updater.BallonsTranslatorUpdater):
             def query_latest_release(self):
@@ -84,6 +94,148 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(result.status, 'available')
         self.assertEqual(result.current_version, '1.4.2')
         self.assertEqual(result.latest_version, '1.4.3')
+
+    def test_cached_release_preview_does_not_query_github(self):
+        payload = {
+            'tag_name': 'v1.4.2',
+            'html_url': 'https://example.invalid/release',
+            'zipball_url': 'https://example.invalid/source.zip',
+            'body': 'Cached release notes',
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cache_dir = root / '.btrans_cache'
+            cache_dir.mkdir()
+            (root / 'pyproject.toml').write_text('[project]\nversion = "1.4.2"\n', encoding='utf8')
+            (cache_dir / updater.RELEASE_RESPONSE_CACHE_FILENAME).write_text(
+                json.dumps(payload),
+                encoding='utf8',
+            )
+
+            with mock.patch('ballontranslator.utils.updater.urlopen') as urlopen:
+                result = updater.BallonsTranslatorUpdater(
+                    program_path=str(root),
+                    cache_dir=str(cache_dir),
+                ).preview_cached_release()
+
+        urlopen.assert_not_called()
+        self.assertEqual(result.status, 'preview')
+        self.assertEqual(result.release_info.body, 'Cached release notes')
+
+    def test_successful_github_query_caches_raw_response(self):
+        payload = {
+            'tag_name': 'v1.4.3',
+            'html_url': 'https://example.invalid/release',
+            'zipball_url': 'https://example.invalid/source.zip',
+            'body': 'Fresh release notes',
+        }
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps(payload).encode('utf8')
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+                mock.patch('ballontranslator.utils.updater.urlopen', return_value=response):
+            cache_dir = Path(tmpdir) / '.btrans_cache'
+            info = updater.BallonsTranslatorUpdater(
+                program_path=tmpdir,
+                cache_dir=str(cache_dir),
+            ).query_latest_release()
+            cached_payload = json.loads(
+                (cache_dir / updater.RELEASE_RESPONSE_CACHE_FILENAME).read_text(encoding='utf8')
+            )
+
+        self.assertEqual(info.version, '1.4.3')
+        self.assertEqual(cached_payload, payload)
+
+    def test_backup_source_replaces_last_version_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cache_dir = root / '.btrans_cache'
+            _write_update_dirs(root, 'current')
+            _write_update_root_files(root, 'current')
+            stale_backup = cache_dir / 'last_version'
+            stale_backup.mkdir(parents=True)
+            (stale_backup / 'stale.txt').write_text('stale', encoding='utf8')
+
+            backup_path = updater.BallonsTranslatorUpdater(
+                program_path=str(root),
+                cache_dir=str(cache_dir),
+            ).backup_source()
+
+            self.assertEqual(backup_path, stale_backup)
+            self.assertFalse((backup_path / 'stale.txt').exists())
+            self.assertFalse((cache_dir / '.last_version_tmp').exists())
+            for dirname in updater.SOURCE_UPDATE_DIRS:
+                source_dir = root / dirname
+                if not source_dir.exists():
+                    continue
+                self.assertTrue((backup_path / dirname).is_dir())
+                for source_file in source_dir.rglob('*'):
+                    if source_file.is_file():
+                        relative_path = source_file.relative_to(root)
+                        self.assertEqual(
+                            (backup_path / relative_path).read_bytes(),
+                            source_file.read_bytes(),
+                        )
+            for filename in updater.SOURCE_UPDATE_FILES:
+                self.assertEqual(
+                    (backup_path / filename).read_bytes(),
+                    (root / filename).read_bytes(),
+                )
+
+    def test_apply_update_creates_backup_before_other_actions(self):
+        calls = []
+
+        class RecordingUpdater(updater.BallonsTranslatorUpdater):
+            def backup_source(self):
+                calls.append('backup')
+                return self.cache_dir / 'last_version'
+
+            def download_source_zip(self, release_info):
+                calls.append('download')
+                return self.cache_dir / 'source.zip'
+
+            def prepare_git_worktree(self, latest_version):
+                calls.append('git')
+                return ''
+
+            def install_source_zip(self, zip_path):
+                calls.append('install')
+
+        release_info = updater.ReleaseInfo(
+            tag_name='v1.4.3',
+            version='1.4.3',
+            html_url='https://example.invalid/release',
+            zip_url='https://example.invalid/source.zip',
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = RecordingUpdater(
+                program_path=tmpdir,
+                cache_dir=str(Path(tmpdir) / '.btrans_cache'),
+            ).apply_update(release_info, current_version='1.4.2')
+
+        self.assertEqual(calls, ['backup', 'download', 'git', 'install'])
+        self.assertTrue(result.backup_path.endswith('last_version'))
+
+    def test_backup_failure_stops_update_before_download(self):
+        class BackupFailingUpdater(updater.BallonsTranslatorUpdater):
+            def backup_source(self):
+                raise OSError('backup failed')
+
+            def download_source_zip(self, release_info):
+                raise AssertionError('download must not start after a backup failure')
+
+        release_info = updater.ReleaseInfo(
+            tag_name='v1.4.3',
+            version='1.4.3',
+            html_url='https://example.invalid/release',
+            zip_url='https://example.invalid/source.zip',
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaisesRegex(OSError, 'backup failed'):
+                BackupFailingUpdater(
+                    program_path=tmpdir,
+                    cache_dir=str(Path(tmpdir) / '.btrans_cache'),
+                ).apply_update(release_info, current_version='1.4.2')
 
     def test_install_source_zip_removes_downloaded_source_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
