@@ -533,6 +533,11 @@ QLabel#UpdateReleaseMetadata {
     font-size: 12px;
 }
 
+QLabel#UpdateReleaseRestartNotice {
+    color: @titleBarColor;
+    font-size: 12px;
+}
+
 QLabel#UpdateReleaseNotesHeading {
     margin-top: 4px;
     font-size: 15px;

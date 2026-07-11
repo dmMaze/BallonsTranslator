@@ -40,8 +40,6 @@ class UpdateResult:
     latest_version: str
     release_url: str = ''
     zip_path: str = ''
-    backup_path: str = ''
-    git_message: str = ''
     release_info: Optional[ReleaseInfo] = None
 
 
@@ -220,9 +218,9 @@ class BallonsTranslatorUpdater:
 
     def apply_update(self, release_info: ReleaseInfo, current_version: str = None) -> UpdateResult:
         current_version = current_version or get_current_version(str(self.program_path))
-        backup_path = self.backup_source()
+        self.backup_source()
         zip_path = self.download_source_zip(release_info)
-        git_message = self.prepare_git_worktree(release_info.version)
+        self.prepare_git_worktree(release_info.version)
         self.install_source_zip(zip_path)
         self._notify('done', 100, release_info.version)
         return UpdateResult(
@@ -231,8 +229,6 @@ class BallonsTranslatorUpdater:
             latest_version=release_info.version,
             release_url=release_info.html_url,
             zip_path=str(zip_path),
-            backup_path=str(backup_path),
-            git_message=git_message,
             release_info=release_info,
         )
 

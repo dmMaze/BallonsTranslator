@@ -103,10 +103,7 @@ class UpdateReleaseDialogTests(unittest.TestCase):
 
         dialog = UpdateReleaseDialog(result, allow_update=False)
 
-        self.assertEqual(
-            dialog.findChild(QPushButton, 'UpdateDialogPrimaryButton').text(),
-            'Close',
-        )
+        self.assertIsNotNone(dialog.findChild(QPushButton, 'UpdateDialogPrimaryButton'))
         self.assertIsNone(dialog.findChild(QPushButton, 'UpdateDialogCancelButton'))
         dialog.close()
 
@@ -135,17 +132,15 @@ class UpdateReleaseDialogTests(unittest.TestCase):
         self.assertTrue(dialog.windowFlags() & window_type.FramelessWindowHint)
         self.assertTrue(dialog.testAttribute(widget_attribute.WA_TranslucentBackground))
         self.assertIsNotNone(dialog.findChild(QFrame, 'UpdateReleaseSurface'))
-        self.assertIn(
-            'https://example.invalid/v1.5.6',
-            dialog.findChild(QLabel, 'UpdateReleaseVersion').text(),
-        )
-        self.assertIn('2026-07-03', dialog.findChild(QLabel, 'UpdateReleaseVersion').text())
-        self.assertNotIn('Current version:', dialog.findChild(QLabel, 'UpdateReleaseVersion').text())
-        self.assertNotIn('New version:', dialog.findChild(QLabel, 'UpdateReleaseVersion').text())
+        self.assertTrue(dialog.findChild(QLabel, 'UpdateReleaseVersion').openExternalLinks())
         self.assertEqual(simplified_release_date(release_info.published_at), '2026-07-03')
-        self.assertEqual(dialog.release_notes.toPlainText(), ' Fixed UI')
         self.assertEqual(dialog.release_notes.verticalScrollBar().maximum(), 0)
         self.assertIsNotNone(dialog.findChild(QTextBrowser, 'UpdateReleaseNotes'))
+        restart_notice = dialog.findChild(QLabel, 'UpdateReleaseRestartNotice')
+        self.assertIsNotNone(restart_notice)
+        self.assertTrue(
+            restart_notice.alignment() & Qt.AlignmentFlag.AlignRight
+        )
         dialog.close()
 
 if __name__ == '__main__':

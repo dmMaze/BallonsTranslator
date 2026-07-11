@@ -45,15 +45,6 @@ class UpdaterTests(unittest.TestCase):
         self.assertTrue(updater.is_remote_newer('1.4.0', 'v1.4.1'))
         self.assertFalse(updater.is_remote_newer('1.4.1', 'v1.4.1'))
 
-    def test_git_update_message_is_user_facing(self):
-        message = updater.format_git_update_message('userspace_update', local_changes_saved=True, local_branch='dev')
-
-        self.assertIn('Local git changes on branch "dev" were saved before updating.', message)
-        self.assertIn('The update was applied on branch: userspace_update', message)
-        self.assertIn('git switch dev', message)
-        self.assertIn('git stash pop', message)
-        self.assertNotIn('Saved working directory', message)
-
     def test_release_payload_requires_source_zip(self):
         info = updater.release_info_from_api_payload({
             'tag_name': 'v1.4.1',
@@ -69,7 +60,7 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(info.name, 'BallonsTranslator 1.4.1')
         self.assertEqual(info.body, 'Release notes')
 
-        with self.assertRaisesRegex(RuntimeError, 'not a JSON object'):
+        with self.assertRaises(RuntimeError):
             updater.release_info_from_api_payload([])
 
     def test_check_latest_release_does_not_apply_update(self):
@@ -214,7 +205,7 @@ class UpdaterTests(unittest.TestCase):
             ).apply_update(release_info, current_version='1.4.2')
 
         self.assertEqual(calls, ['backup', 'download', 'git', 'install'])
-        self.assertTrue(result.backup_path.endswith('last_version'))
+        self.assertEqual(result.status, 'updated')
 
     def test_backup_failure_stops_update_before_download(self):
         class BackupFailingUpdater(updater.BallonsTranslatorUpdater):

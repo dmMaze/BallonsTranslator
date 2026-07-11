@@ -180,15 +180,17 @@ class MenuStyleFilterTest(unittest.TestCase):
     def test_checked_marker_is_idempotent_and_tracks_uncheck(self):
         menu = QMenu()
         action = menu.addAction('Dark Mode')
+        original_text = action.text()
         action.setCheckable(True)
         action.setChecked(True)
         self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
-        self.assertEqual(action.text(), 'Dark Mode\t✓')
+        checked_text = action.text()
+        self.assertNotEqual(checked_text, original_text)
         self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
-        self.assertEqual(action.text(), 'Dark Mode\t✓')
+        self.assertEqual(action.text(), checked_text)
         action.setChecked(False)
         self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
-        self.assertEqual(action.text(), 'Dark Mode')
+        self.assertEqual(action.text(), original_text)
 
 
 if __name__ == '__main__':

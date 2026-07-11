@@ -182,7 +182,7 @@ class UpdateReleaseDialog(QDialog):
             latest_text = latest_version
         release_date = html.escape(simplified_release_date(release_info.published_at))
         if release_date:
-            latest_text = self.tr('{version} - {date}').format(
+            latest_text = '{version} - {date}'.format(
                 version=latest_text,
                 date=release_date,
             )
@@ -243,6 +243,18 @@ class UpdateReleaseDialog(QDialog):
         self._resize_release_notes()
         notes_layout.addWidget(self.release_notes)
         layout.addWidget(notes_frame)
+
+        if allow_update:
+            restart_notice = QLabel(
+                self.tr('Updating will restart the app.'),
+                surface,
+            )
+            restart_notice.setObjectName('UpdateReleaseRestartNotice')
+            restart_notice.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            restart_notice.setWordWrap(True)
+            layout.addWidget(restart_notice)
 
         button_layout = QHBoxLayout()
         button_layout.setSpacing(8)

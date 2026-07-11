@@ -22,6 +22,18 @@ class LaunchRestartTests(unittest.TestCase):
             [sys.executable, '-m', 'ballontranslator', '--debug'],
         )
 
+    def test_restart_closes_window_before_replacing_process(self):
+        events = []
+        window = mock.Mock()
+        window.close.side_effect = lambda: events.append('close')
+
+        with mock.patch.object(launch, 'BT', window), \
+                mock.patch.object(sys, 'argv', ['ballontranslator']), \
+                mock.patch('ballontranslator.launch.os.execv', side_effect=lambda *_: events.append('exec')):
+            launch.restart()
+
+        self.assertEqual(events, ['close', 'exec'])
+
     def test_core_requirements_env_uses_saved_pypi_mirror(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = os.path.join(tmpdir, 'config.json')
