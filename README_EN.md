@@ -1,18 +1,23 @@
-> [!IMPORTANT]  
-> **If you're sharing the translated result publicly and no experienced human translator participated in a throughout translating or proofreading, please mark it as machine translation somewhere clear to see.**
+<h1 align="center">BallonsTranslator</h1>
 
-# BallonTranslator
-[简体中文](/README.md) | English | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
+<p align="center">Yet another computer-aided comic/manga translation tool powered by deep learning.</p>
 
-Yet another computer-aided comic/manga translation tool powered by deep learning.  
+<p align="center">
+  <img
+    width="320"
+    alt="Spinning fox animation"
+    src="https://github.com/user-attachments/assets/fe44e9a6-c7da-4bc5-8421-87fd6c38a0ba"
+  />
+</p>
 
-<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
-
-<p align=center>
-preview
+<p align="center">
+  <a href="/README.md">简体中文</a> | English | <a href="/doc/README_RU.md">Русский</a> | <a href="/doc/README_JA.md">日本語</a> | <a href="/doc/README_ES.md">Español</a> | <a href="/doc/README_FR.md">Français</a> | <a href="/doc/README_PT-BR.md">pt-BR</a> | <a href="/doc/README_KO.md">한국어</a> | <a href="/doc/README_ID.md">Indonesia</a> | <a href="/doc/README_VI.md">Tiếng Việt</a>
 </p>
 
 # Features
+> [!IMPORTANT]
+> **If you're sharing the translated result publicly and no experienced human translator participated in a throughout translating or proofreading, please mark it as machine translation somewhere clear to see.**
+
 * Fully automated translation  
   - Support automatic text-detection, recognition, removal, and translation. Overall performance is dependent upon these modules.
   - Typesetting is based on the formatting estimation of the original text.

@@ -1,18 +1,23 @@
-> [!IMPORTANT]  
-> **번역 결과물을 공개적으로 공유할 때 숙련된 번역가가 번역이나 교정에 참여하지 않았다면, 기계 번역임을 잘 보이는 곳에 표시해 주세요.**
+<h1 align="center">BallonsTranslator</h1>
 
-# BallonTranslator
-[简体中文](/README.md) | [English](/README_EN.md) | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
+<p align="center">딥러닝으로 구동되는 또 다른 컴퓨터 지원 만화/만화 번역 툴.</p>
 
-딥러닝으로 구동되는 또 다른 컴퓨터 지원 만화/만화 번역 툴.
+<p align="center">
+  <img
+    width="320"
+    alt="Spinning fox animation"
+    src="https://github.com/user-attachments/assets/fe44e9a6-c7da-4bc5-8421-87fd6c38a0ba"
+  />
+</p>
 
-<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
-
-<p align=center>
-미리보기
+<p align="center">
+  <a href="/README.md">简体中文</a> | <a href="/README_EN.md">English</a> | <a href="/doc/README_RU.md">Русский</a> | <a href="/doc/README_JA.md">日本語</a> | <a href="/doc/README_ES.md">Español</a> | <a href="/doc/README_FR.md">Français</a> | <a href="/doc/README_PT-BR.md">pt-BR</a> | 한국어 | <a href="/doc/README_ID.md">Indonesia</a> | <a href="/doc/README_VI.md">Tiếng Việt</a>
 </p>
 
 # 특징
+> [!IMPORTANT]
+> **번역 결과물을 공개적으로 공유할 때 숙련된 번역가가 번역이나 교정에 참여하지 않았다면, 기계 번역임을 잘 보이는 곳에 표시해 주세요.**
+
 * 완전 자동화된 번역
   - 자동 텍스트 감지, 인식, 제거 및 번역을 지원합니다. 전반적인 성능은 이러한 모듈에 따라 좌우집니다.
   - 대사는 원본 텍스트의 서식 추정치를 기반으로 합니다.
