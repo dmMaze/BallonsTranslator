@@ -1,22 +1,34 @@
 
+
+<h1 align="center">BallonsTranslator</h1>
+
+<p align="center">深度学习辅助漫画翻译工具，支持一键机翻和简单的图像/文本编辑</p>
+
+<p align="center">
+  <img
+    width="320"
+    alt="Spinning fox animation"
+    src="https://github.com/user-attachments/assets/fe44e9a6-c7da-4bc5-8421-87fd6c38a0ba"
+  />
+</p>
+
+<p align="center">
+  简体中文 | <a href="/README_EN.md">English</a> | <a href="/doc/README_RU.md">Русский</a> | <a href="/doc/README_JA.md">日本語</a> | <a href="/doc/README_ES.md">Español</a> | <a href="/doc/README_FR.md">Français</a> | <a href="/doc/README_PT-BR.md">pt-BR</a> | <a href="/doc/README_KO.md">한국어</a> | <a href="/doc/README_ID.md">Indonesia</a> | <a href="/doc/README_VI.md">Tiếng Việt</a>
+</p>
+
+
+
+
+<p align="center">交流反馈 QQ 群：719881337 </p>
+
+ 
+
+
+# Features
 > [!IMPORTANT]  
 > **如打算公开分享本工具的机翻结果，且没有有经验的译者进行过完整的翻译或校对，请在显眼位置注明机翻。**
 
-# BallonTranslator
-简体中文 | [English](/README_EN.md) | [Русский](/doc/README_RU.md) | [日本語](/doc/README_JA.md) | [Español](/doc/README_ES.md) | [Français](/doc/README_FR.md) | [pt-BR](/doc/README_PT-BR.md) | [한국어](/doc/README_KO.md) | [Indonesia](/doc/README_ID.md) | [Tiếng Việt](/doc/README_VI.md)
 
-深度学习辅助漫画翻译工具，支持一键机翻和简单的图像/文本编辑  
-
-交流反馈 QQ 群：719881337  
-
-
-<img src="https://github.com/user-attachments/assets/2140c402-dda2-47bc-9e7f-83ed41ce78af" div align=center>
-
-<p align=center>
-界面预览
-</p>
-
-# Features
 * 一键机翻  
   - 译文回填参考对原文排版的估计，包括颜色，轮廓，角度，朝向，对齐方式等
   - 最后效果取决于文本检测，识别，抹字，机翻四个模块的整体表现  
