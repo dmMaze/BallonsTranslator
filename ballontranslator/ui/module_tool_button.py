@@ -1,7 +1,7 @@
 import json
 
-from qtpy.QtCore import QEvent, QRectF, QSize, Qt, Signal
-from qtpy.QtGui import QIcon, QPainterPath, QRegion
+from qtpy.QtCore import QEvent, QSize, Qt, Signal
+from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -135,38 +135,18 @@ def _simplify_llm_model_name(model: str) -> str:
     return parts[-1] if parts else ''
 
 
-class BottomBarMenu(QMenu):
-
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), 8, 8)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
-
-
-def _style_bottom_menu(menu: QMenu) -> QMenu:
-    menu.setObjectName('BottomBarModuleMenu')
-    attr_enum = getattr(Qt, 'WidgetAttribute', Qt)
-    menu.setAttribute(attr_enum.WA_TranslucentBackground, True)
-    return menu
-
-
-def _bottom_menu(parent: QToolButton) -> QMenu:
-    return _style_bottom_menu(BottomBarMenu(parent))
-
-
 def _bottom_submenu(title: str, parent: QMenu) -> QMenu:
-    menu = _style_bottom_menu(BottomBarMenu(parent))
+    menu = QMenu(parent)
     menu.setTitle(title)
     return menu
 
 
 def _add_bottom_menu_section(menu: QMenu, text: str, color: str = ''):
     label = QLabel(text, menu)
-    label.setObjectName('BottomBarMenuSectionLabel')
+    label.setObjectName('MenuSectionLabel')
     color = color or _section_label_color()
     label.setStyleSheet(
-        'QLabel#BottomBarMenuSectionLabel {{ '
+        'QLabel#MenuSectionLabel {{ '
         'color: {}; background-color: {}; '
         '}}'.format(color, _theme_menu_background_hex())
     )
@@ -221,7 +201,7 @@ class ModuleSelectionWidget(Widget):
         self.tool_btn.setPopupMode(_instant_popup_mode())
         _set_bottom_tool_button_visuals(self.tool_btn, icon_filename)
         self.tool_btn.setText(fallback_name)
-        self.menu = _bottom_menu(self.tool_btn)
+        self.menu = QMenu(self.tool_btn)
         self.tool_btn.setMenu(self.menu)
         self.menu.aboutToShow.connect(self.rebuildMenu)
 

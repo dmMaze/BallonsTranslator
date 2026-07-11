@@ -6,7 +6,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QObject, QEvent, QPointF, Qt
 from qtpy.QtGui import QColor, QMouseEvent
-from qtpy.QtWidgets import QApplication, QColorDialog, QDialog, QTextEdit, QWidget
+from qtpy.QtWidgets import QApplication, QColorDialog, QDialog, QLabel, QMenu, QTextEdit, QWidget
 from qtpy import API_NAME
 
 
@@ -21,6 +21,7 @@ _APP = qapp()
 
 from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.custom_widget.label import ColorPickerLabel
+from ballontranslator.ui.menu_style import MenuStyleFilter
 from ballontranslator.ui.textedit_area import FloatingSuggestionLabel
 
 if API_NAME in ('PyQt6', 'PySide6'):
@@ -154,6 +155,40 @@ class AppEventFilterOrderingTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIs(calls[0][0], window)
         self.assertTrue(calls[0][2] & Qt.Edge.LeftEdge)
+
+
+class MenuStyleFilterTest(unittest.TestCase):
+    def setUp(self):
+        self.filter = MenuStyleFilter(QApplication.instance())
+
+    def test_ignores_non_menu_before_reading_event(self):
+        class ExplodingEvent:
+            def type(self):
+                raise AssertionError('irrelevant objects must not read event details')
+        self.assertFalse(self.filter.eventFilter(QLabel(), ExplodingEvent()))
+
+    def test_show_and_resize_apply_rounded_mask(self):
+        menu = QMenu()
+        self.filter.eventFilter(menu, QEvent(QEvent.Type.Polish))
+        self.assertTrue(menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))
+        self.assertTrue(menu.mask().isEmpty())
+        self.filter.eventFilter(menu, QEvent(QEvent.Type.Resize))
+        self.assertFalse(menu.mask().isEmpty())
+        self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
+        self.assertFalse(menu.mask().isEmpty())
+
+    def test_checked_marker_is_idempotent_and_tracks_uncheck(self):
+        menu = QMenu()
+        action = menu.addAction('Dark Mode')
+        action.setCheckable(True)
+        action.setChecked(True)
+        self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
+        self.assertEqual(action.text(), 'Dark Mode\t✓')
+        self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
+        self.assertEqual(action.text(), 'Dark Mode\t✓')
+        action.setChecked(False)
+        self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
+        self.assertEqual(action.text(), 'Dark Mode')
 
 
 if __name__ == '__main__':

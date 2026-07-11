@@ -16,6 +16,7 @@ Important areas:
 
 - Preserve behavior unless explicitly asked to change it.
 - Prefer small, reviewable refactors over broad rewrites.
+- Treat all pre-existing modified, untracked, and ignored files as user-owned. Never delete, overwrite, move, clean, or restore them unless the user explicitly authorizes that operation for the exact paths involved, this applies especially to `config/`, backup files, credentials, projects, models, and other user-generated state.
 - Do not change public project JSON shape without migration/backward compatibility.
 - Be careful with Qt signal/thread behavior in `ballontranslator/ui/module_manager.py`.
 - Do not rename registered module keys unless compatibility aliases are added.

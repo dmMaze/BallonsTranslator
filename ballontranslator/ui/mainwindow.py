@@ -27,6 +27,7 @@ from .textedit_area import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
+from .menu_style import MenuStyleFilter
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .update_thread import UpdateCheckThread
 from .custom_widget import Widget, ViewWidget
@@ -78,6 +79,9 @@ class MainWindow(mainwindow_cls):
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
 
+        self.app = app
+        self.app.installEventFilter(MenuStyleFilter(self.app))
+
         shared.create_errdialog_in_mainthread = self.create_errdialog.emit
         self.create_errdialog.connect(self.on_create_errdialog)
         shared.create_infodialog_in_mainthread = self.create_infodialog.emit
@@ -93,7 +97,6 @@ class MainWindow(mainwindow_cls):
             register_module_param_translator(self.module_param_translator)
         shared.register_view_widget = self.register_view_widget
 
-        self.app = app
         self.backup_blkstyles = []
         self._run_imgtrans_wo_textstyle_update = False
 

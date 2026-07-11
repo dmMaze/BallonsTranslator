@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 from collections.abc import Mapping
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, get_args, get_origin, get_type_hints
 
 from ballontranslator.utils.secret_store import SecretStore
 from ballontranslator.utils.structures import Config, field, nested_dataclass
@@ -136,6 +137,7 @@ class LLMProfile(Config):
     """
 
     id: str = ""
+    profile_type = "llm"
     name: str = ""
     built_in: bool = False
     base_url: str = ""
@@ -187,6 +189,86 @@ def profile_to_dict(profile: Any) -> Dict:
     return profile_from_config(profile).to_dict()
 
 
+def profile_to_export_dict(profile: Any) -> Dict:
+    """Return the JSON mapping used by profile clipboard export.
+
+    Clipboard export resolves the API key to plaintext; normal config saving
+    continues to apply portable obfuscation independently.
+
+    Example:
+        >>> profile_to_export_dict(LLMProfile())['profile_type']
+        'llm'
+    """
+
+    exported = profile_to_dict(profile)
+    exported['profile_type'] = LLMProfile.profile_type
+    exported['api_key'] = resolve_api_key(profile)
+    return exported
+
+
+def _normalize_import_profile_data(data: Mapping) -> Dict[str, Any]:
+    """Normalize imported values while letting omitted fields use profile defaults."""
+
+    type_hints = get_type_hints(LLMProfile)
+    normalized = {}
+    for key, expected in type_hints.items():
+        origin = get_origin(expected)
+        args = get_args(expected)
+        if origin is list:
+            value = data.get(key)
+            item_type = args[0] if args else Any
+            normalized[key] = (
+                value if isinstance(value, list)
+                and (item_type is Any or all(isinstance(item, item_type) for item in value))
+                else []
+            )
+            continue
+        if key not in data:
+            continue
+        value = data[key]
+        expected = type_hints.get(key)
+        if key == 'api_key':
+            if isinstance(value, str):
+                normalized[key] = value
+            continue
+        if expected is float:
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                normalized[key] = float(value)
+        elif expected is int:
+            if isinstance(value, int) and not isinstance(value, bool):
+                normalized[key] = value
+        elif isinstance(value, expected):
+            normalized[key] = value
+    return normalized
+
+
+def profiles_from_json(value: str) -> List[LLMProfile]:
+    """Parse one or more valid LLM profiles from clipboard JSON.
+
+    Example:
+        >>> len(profiles_from_json(json.dumps(profile_to_export_dict(LLMProfile()))))
+        1
+    """
+
+    try:
+        decoded = json.loads(value)
+    except (TypeError, ValueError):
+        return []
+    candidates = [decoded] if isinstance(decoded, Mapping) else decoded if isinstance(decoded, list) else []
+    profiles = []
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping) or candidate.get('profile_type') != LLMProfile.profile_type:
+            continue
+        data = copy.deepcopy(dict(candidate))
+        data.pop('profile_type', None)
+        data = _normalize_import_profile_data(data)
+        try:
+            profiles.append(LLMProfile(**data))
+        except (TypeError, ValueError):
+            continue
+    return profiles
+
+
 def default_profile(provider: str) -> LLMProfile:
     """Create a built-in profile for a provider.
 
@@ -236,12 +318,42 @@ def profile_by_id(profiles: List[Any], profile_id: str) -> Optional[Any]:
     return None
 
 
+def _merge_profile_options(default_options: Any, saved_options: Any, selected: Any) -> List[str]:
+    merged = []
+    for option in (default_options if isinstance(default_options, list) else []):
+        if isinstance(option, str) and option not in merged:
+            merged.append(option)
+    for option in (saved_options if isinstance(saved_options, list) else []):
+        if isinstance(option, str) and option not in merged:
+            merged.append(option)
+    if isinstance(selected, str) and selected and selected not in merged:
+        merged.append(selected)
+    return merged
+
+
+def _merge_builtin_profile_options(profile: LLMProfile) -> LLMProfile:
+    provider = _provider_from_profile_id(_builtin_profile_id(profile))
+    if not provider:
+        return profile
+    defaults = PROVIDER_DEFAULTS[provider]
+    profile.model_options = _merge_profile_options(
+        defaults.get('model_options'), profile.model_options, profile.model,
+    )
+    profile.vision_model_options = _merge_profile_options(
+        defaults.get('vision_model_options'), profile.vision_model_options, profile.vision_model,
+    )
+    profile.image_model_options = _merge_profile_options(
+        defaults.get('image_model_options'), profile.image_model_options, profile.image_model,
+    )
+    return profile
+
+
 def load_profiles(profiles: List[Any]) -> List[LLMProfile]:
     loaded = []
     for profile in profiles or []:
         if not isinstance(profile, (Mapping, LLMProfile)):
             continue
-        loaded.append(profile_from_config(profile))
+        loaded.append(_merge_builtin_profile_options(profile_from_config(profile)))
     return loaded
 
 

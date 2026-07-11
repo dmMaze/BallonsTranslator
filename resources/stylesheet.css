@@ -480,7 +480,7 @@ QGroupBox#LLMProfileCard QComboBox {
     color: @qwidgetForegroundColor;
 }
 
-QPushButton#LLMProfileNewButton,
+QToolButton#LLMProfileNewButton,
 QPushButton#LLMProfileRestoreButton {
     min-height: 24px;
     max-height: 24px;
@@ -489,14 +489,20 @@ QPushButton#LLMProfileRestoreButton {
     font-size: 12px;
 }
 
-QPushButton#LLMProfileNewButton {
+QToolButton#LLMProfileNewButton {
     color: white;
     border: 1px solid rgb(30, 147, 229);
+    border-radius: 4px;
     background-color: rgb(30, 147, 229);
 }
 
-QPushButton#LLMProfileNewButton:hover {
+QToolButton#LLMProfileNewButton:hover {
     background-color: #4ba7ee;
+}
+
+QToolButton#LLMProfileNewButton::menu-indicator {
+    image: none;
+    width: 0px;
 }
 
 QPushButton#LLMProfileRestoreButton {
@@ -692,38 +698,52 @@ QListWidget {
     border: none;
 }
 
-QAction {
-    min-height: 66px;
-}
-
 QMenu {
+    border: none;
+    border-radius: 8px;
+    padding: 5px;
     background-color: @emptyContentBackgroundColor;
-    margin: 0px; /* some spacing around the menu */
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
 }
 
 QMenu::item {
-    height: 28px;
+    height: 26px;
     min-width: 128px;
     margin: 0px;
     background-color: @emptyContentBackgroundColor;
-    padding-left: 20px;
-    padding-right: 20px;
+    color: @qwidgetForegroundColor;
+    padding-left: 7px;
+    padding-right: 26px;
+    border-radius: 5px;
 }
 
 QMenu::separator {
-    height: 5px;
-    /* background: lightblue; */
-    margin-left: 12px;
-    margin-right: 12px;
+    height: 1px;
+    background-color: @borderColor;
+    margin: 5px 12px;
 }
 
-/* QMenu::item {
-    background-color: @emptyContentBackgroundColor;
-    min-height: 100px;
-}*/
+QMenu::indicator {
+    width: 18px;
+    height: 18px;
+    margin-left: 2px;
+    margin-right: 5px;
+    subcontrol-origin: padding;
+    subcontrol-position: right center;
+    right: 6px;
+}
+
+QMenu::indicator:unchecked {
+    image: none;
+}
+
+QMenu::indicator:checked {
+    image: none;
+}
 
 QMenu::item:selected {
-    background-color: #cad7ed;
+    background-color: rgba(30, 147, 229, 20%);
 }
 
 QDialog {
@@ -878,31 +898,7 @@ QToolButton#BottomBarModuleToolButton::menu-indicator {
     right: 8px;
 }
 
-QMenu#BottomBarModuleMenu {
-    border: none;
-    border-radius: 8px;
-    padding: 5px;
-    background-color: @emptyContentBackgroundColor;
-    font-size: 13px;
-}
-
-QMenu#BottomBarModuleMenu::item {
-    height: 26px;
-    min-width: 128px;
-    margin: 0px;
-    padding-left: 7px;
-    padding-right: 26px;
-    border-radius: 5px;
-    background-color: @emptyContentBackgroundColor;
-    color: @qwidgetForegroundColor;
-    font-size: 13px;
-}
-
-QMenu#BottomBarModuleMenu::item:selected {
-    background-color: rgba(30, 147, 229, 20%);
-}
-
-QLabel#BottomBarMenuSectionLabel {
+QLabel#MenuSectionLabel {
     min-height: 20px;
     padding: 6px 7px 2px 7px;
     background-color: @emptyContentBackgroundColor;

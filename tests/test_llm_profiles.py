@@ -7,16 +7,159 @@ from ballontranslator.utils.config import ModuleConfig, ProgramConfig, json_dump
 from ballontranslator.utils.llm_profiles import (
     DEFAULT_TRANSLATION_PROMPT,
     LLMProfile,
+    PROVIDER_DEFAULTS,
     VISION_DETAIL_LEVEL_OPTIONS,
     copy_profile,
     default_profile,
     profile_by_id,
+    load_profiles,
+    profile_to_dict,
+    profile_to_export_dict,
+    profiles_from_json,
     restore_builtin_profiles,
 )
 from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
 class LLMProfileMigrationTest(unittest.TestCase):
+    def test_load_profiles_merges_builtin_option_lists_and_selections(self):
+        profile = default_profile('OpenAI')
+        profile.model = 'saved-text-model'
+        profile.model_options = ['saved-text-model', 'gpt-5.5']
+        profile.vision_model = 'saved-vision-model'
+        profile.vision_model_options = None
+        profile.image_model = 'saved-image-model'
+        profile.image_model_options = ['saved-image-model']
+
+        loaded = load_profiles([profile])[0]
+
+        self.assertEqual(loaded.model_options[:len(PROVIDER_DEFAULTS['OpenAI']['model_options'])], PROVIDER_DEFAULTS['OpenAI']['model_options'])
+        self.assertIn('saved-text-model', loaded.model_options)
+        self.assertEqual(loaded.vision_model_options, PROVIDER_DEFAULTS['OpenAI'].get('vision_model_options', []) + ['saved-vision-model'])
+        self.assertEqual(loaded.image_model_options, PROVIDER_DEFAULTS['OpenAI'].get('image_model_options', []) + ['saved-image-model'])
+        self.assertEqual(loaded.model, 'saved-text-model')
+        self.assertEqual(loaded.vision_model, 'saved-vision-model')
+        self.assertEqual(loaded.image_model, 'saved-image-model')
+
+    def test_load_profiles_is_idempotent_and_preserves_builtin_fields(self):
+        profile = default_profile('OpenAI')
+        profile.name = 'Saved OpenAI'
+        profile.base_url = 'https://saved.example/v1'
+        profile.api_key = 'saved-key'
+        profile.model_options = ['saved-model']
+
+        first = load_profiles([profile])[0]
+        second = load_profiles([first])[0]
+
+        self.assertEqual(profile_to_dict(first), profile_to_dict(second))
+        self.assertEqual(first.name, 'Saved OpenAI')
+        self.assertEqual(first.base_url, 'https://saved.example/v1')
+        self.assertEqual(first.api_key, 'saved-key')
+
+    def test_load_profiles_leaves_custom_profiles_unchanged(self):
+        custom = LLMProfile(
+            id='custom-profile', built_in=False, model='custom-model',
+            model_options=['custom-model'], vision_model_options=None,
+        )
+        before = profile_to_dict(custom)
+
+        loaded = load_profiles([custom])[0]
+
+        self.assertEqual(profile_to_dict(loaded), before)
+
+    def test_program_config_load_merges_current_builtin_defaults(self):
+        profile = default_profile('OpenAI')
+        profile.model_options = ['legacy-model']
+        cfg = ProgramConfig(module=ModuleConfig(llm_profiles=[profile], translator_llm_id='openai'))
+        raw = json.loads(json_dump_program_config(cfg))
+        raw['module']['llm_profiles'][0]['model_options'] = ['legacy-model']
+
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            json.dump(raw, temp)
+            temp.flush()
+            loaded = ProgramConfig.load(temp.name)
+
+        selected = profile_by_id(loaded.module.llm_profiles, 'openai')
+        self.assertIn('legacy-model', selected.model_options)
+        self.assertIn('gpt-4.1', selected.model_options)
+
+    def test_profile_export_marks_llm_type_and_roundtrips(self):
+        profile = default_profile('OpenAI')
+        profile.api_key = SecretStore().store('openai', 'sk-demo')
+
+        exported = profile_to_export_dict(profile)
+        imported = profiles_from_json(json.dumps(exported))[0]
+
+        self.assertEqual(exported['profile_type'], 'llm')
+        self.assertEqual(imported.id, profile.id)
+        self.assertEqual(imported.model, profile.model)
+        self.assertEqual(exported['api_key'], 'sk-demo')
+        self.assertEqual(imported.api_key, 'sk-demo')
+
+    def test_profile_export_contains_plaintext_api_key_for_clipboard(self):
+        profile = default_profile('OpenAI')
+        profile.api_key = 'sk-plain-demo'
+
+        exported = profile_to_export_dict(profile)
+
+        self.assertIn('sk-plain-demo', json.dumps(exported))
+        imported = profiles_from_json(json.dumps(exported))[0]
+        self.assertEqual(imported.api_key, 'sk-plain-demo')
+
+    def test_profile_import_accepts_single_and_mixed_lists(self):
+        valid = profile_to_export_dict(default_profile('Ollama'))
+        mixed = [valid, {'profile_type': 'other'}, 'invalid']
+
+        self.assertEqual(len(profiles_from_json(json.dumps(valid))), 1)
+        self.assertEqual(len(profiles_from_json(json.dumps(mixed))), 1)
+
+    def test_profile_import_rejects_invalid_top_level_json(self):
+        for value in ('not json', 'null', '1', json.dumps({'id': 'wrong'})):
+            with self.subTest(value=value):
+                self.assertEqual(profiles_from_json(value), [])
+
+    def test_profile_import_normalizes_invalid_and_unknown_fields(self):
+        imported = profiles_from_json(json.dumps({
+            'profile_type': 'llm',
+            'model_options': None,
+            'vision_model_options': 'invalid',
+            'model': ['not-a-model'],
+            'temperature': 'hot',
+            'support_text': 'yes',
+            'unknown_future_field': 'ignored',
+        }))[0]
+
+        self.assertEqual(imported.model_options, [])
+        self.assertEqual(imported.vision_model_options, [])
+        self.assertEqual(imported.model, '')
+        self.assertEqual(imported.temperature, LLMProfile().temperature)
+        self.assertTrue(imported.support_text)
+        self.assertFalse(hasattr(imported, 'unknown_future_field'))
+
+        encoded = profile_to_export_dict(default_profile('OpenAI'))
+        encoded['api_key'] = SecretStore().store('openai', 'encoded-secret')
+        imported_encoded = profiles_from_json(json.dumps(encoded))[0]
+        self.assertEqual(imported_encoded.api_key, '')
+
+    def test_minimal_profile_import_uses_dataclass_defaults(self):
+        imported = profiles_from_json(json.dumps({'profile_type': 'llm'}))[0]
+
+        self.assertEqual(imported.model_options, [])
+        self.assertEqual(imported.model, '')
+        self.assertEqual(imported.max_tokens, LLMProfile().max_tokens)
+
+    def test_profile_import_rejects_missing_or_wrong_profile_type(self):
+        self.assertEqual(profiles_from_json(json.dumps({})), [])
+        self.assertEqual(profiles_from_json(json.dumps({'profile_type': 'other'})), [])
+
+    def test_imported_builtin_can_become_custom_without_exported_id(self):
+        imported = profiles_from_json(json.dumps(profile_to_export_dict(default_profile('OpenAI'))))[0]
+        imported.id = 'custom-new'
+        imported.built_in = False
+
+        self.assertEqual(imported.id, 'custom-new')
+        self.assertFalse(imported.built_in)
+
     def test_backup_config_loads_selected_old_llm_translator_as_deepseek_profile(self):
         cfg_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config-backup.json')
         if not os.path.exists(cfg_path):
@@ -218,7 +361,10 @@ class SecretStoreTest(unittest.TestCase):
         self.assertFalse(selected.support_text)
         self.assertTrue(selected.support_vision)
         self.assertEqual(selected.vision_model, 'gpt-4o')
-        self.assertEqual(selected.vision_model_options, ['gpt-4o', 'gpt-4o-mini'])
+        self.assertEqual(
+            selected.vision_model_options,
+            PROVIDER_DEFAULTS['OpenAI']['vision_model_options'],
+        )
         self.assertEqual(selected.vision_detail_level, 'high')
 
     def test_saved_config_roundtrips_inpaint_llm_profile_selection(self):

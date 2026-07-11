@@ -1,10 +1,12 @@
 import copy
+import json
 import math
 import uuid
 from functools import lru_cache
 from typing import get_type_hints
 
 from qtpy.QtWidgets import (
+    QApplication,
     QMessageBox,
     QPlainTextEdit,
     QGridLayout,
@@ -13,10 +15,10 @@ from qtpy.QtWidgets import (
     QWidget,
     QLabel,
     QLineEdit,
+    QMenu,
     QSizePolicy,
     QToolButton,
     QGroupBox,
-    QMenu,
     QScrollArea,
     QStyle,
     QStyleOptionGroupBox,
@@ -47,8 +49,9 @@ from ballontranslator.utils.llm_profiles import (
     LLM_TRANSLATOR_KEY,
     LLMProfile,
     copy_profile,
-    default_profile,
     profile_by_id,
+    profile_to_export_dict,
+    profiles_from_json,
     restore_builtin_profiles,
     resolve_api_key,
     store_api_key,
@@ -275,6 +278,7 @@ class ProfileCardWidget(QGroupBox):
     profile_changed = Signal()
     profile_selector_changed = Signal()
     profile_summary_changed = Signal()
+    copy_json_requested = Signal(str)
     copy_requested = Signal(str)
     delete_requested = Signal(str)
     set_translator_requested = Signal(str)
@@ -904,6 +908,7 @@ class ProfileCardWidget(QGroupBox):
         edit_action = QAction(self.tr('Edit name'), menu)
         delete_action = QAction(self.tr('Delete'), menu)
         copy_action = QAction(self.tr('Copy'), menu)
+        copy_json_action = QAction(self.tr('Copy Profile as JSON'), menu)
         more_action = QAction(self.tr('Edit'), menu)
         set_translator_action = QAction(self.tr('Set for Translator'), menu)
         set_ocr_action = QAction(self.tr('Set for OCR'), menu)
@@ -914,6 +919,7 @@ class ProfileCardWidget(QGroupBox):
         menu.addAction(edit_action)
         menu.addAction(delete_action)
         menu.addAction(copy_action)
+        menu.addAction(copy_json_action)
         menu.addSeparator()
         menu.addAction(set_translator_action)
         menu.addAction(set_ocr_action)
@@ -927,6 +933,8 @@ class ProfileCardWidget(QGroupBox):
             self.delete_requested.emit(self.profile.id)
         elif action == copy_action:
             self.copy_requested.emit(self.profile.id)
+        elif action == copy_json_action:
+            self.copy_json_requested.emit(self.profile.id)
         elif action == set_translator_action:
             self.set_translator_requested.emit(self.profile.id)
         elif action == set_ocr_action:
@@ -1381,9 +1389,17 @@ class LLMProfilesWidget(QWidget):
         self.layout.setSpacing(14)
         self.actions_layout = QHBoxLayout()
         self.actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.new_btn = NoBorderPushBtn(self.tr('New'), self)
+        self.new_btn = QToolButton(self)
         self.new_btn.setObjectName('LLMProfileNewButton')
+        self.new_btn.setText(self.tr('New'))
+        self.new_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.new_btn.setFixedHeight(24)
+        new_menu = QMenu(self.new_btn)
+        new_empty_action = new_menu.addAction(self.tr('New Empty Profile'))
+        import_action = new_menu.addAction(self.tr('Import from Clipboard'))
+        new_empty_action.triggered.connect(self.newProfile)
+        import_action.triggered.connect(self.importProfiles)
+        self.new_btn.setMenu(new_menu)
         self.restore_btn = NoBorderPushBtn(self.tr('Restore Built-ins...'), self)
         self.restore_btn.setObjectName('LLMProfileRestoreButton')
         self.restore_btn.setFixedHeight(24)
@@ -1402,7 +1418,6 @@ class LLMProfilesWidget(QWidget):
         self.rows_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.rows_layout.setSpacing(12)
         self.layout.addLayout(self.rows_layout)
-        self.new_btn.clicked.connect(self.newProfile)
         self.restore_btn.clicked.connect(self.restoreBuiltins)
         self.filter_edit.textChanged.connect(self.applyFilter)
         self.rebuild()
@@ -1421,6 +1436,7 @@ class LLMProfilesWidget(QWidget):
         row.profile_selector_changed.connect(self.onProfileSelectorChanged)
         row.profile_summary_changed.connect(self.onProfileSummaryChanged)
         row.copy_requested.connect(self.copyProfile)
+        row.copy_json_requested.connect(self.copyProfileAsJson)
         row.delete_requested.connect(self.deleteProfile)
         row.set_translator_requested.connect(self.set_translator_requested.emit)
         row.set_ocr_requested.connect(self.set_ocr_requested.emit)
@@ -1503,18 +1519,52 @@ class LLMProfilesWidget(QWidget):
         for row in self.rows.values():
             row.collapse()
 
+    def _new_custom_profile_id(self):
+        used_ids = {profile.id for profile in pcfg.module.llm_profiles}
+        while True:
+            profile_id = f"custom-{uuid.uuid4().hex[:10]}"
+            if profile_id not in used_ids:
+                return profile_id
+
     def newProfile(self):
         self.filter_edit.clear()
-        profile = default_profile('OpenAI')
-        profile.id = f"custom-{uuid.uuid4().hex[:10]}"
+        profile = LLMProfile()
+        profile.id = self._new_custom_profile_id()
         profile.name = self.tr('New Profile')
         profile.built_in = False
-        profile.api_key = ''
         pcfg.module.llm_profiles.append(profile)
         row = self.addProfileRow(profile)
         self.applyFilterToRow(row)
         self.focusProfileName(profile.id, deferred=True)
         self.profile_ui_updated.emit()
+
+    def copyProfileAsJson(self, profile_id: str):
+        profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
+        if profile is None:
+            return
+        payload = json.dumps(profile_to_export_dict(profile), ensure_ascii=False, indent=2)
+        QApplication.clipboard().setText(payload)
+
+    def importProfiles(self):
+        imported = profiles_from_json(QApplication.clipboard().text())
+        if not imported:
+            QMessageBox.warning(
+                self,
+                self.tr('Import Profiles'),
+                self.tr('The clipboard does not contain valid LLM profile JSON.'),
+            )
+            return
+        self.filter_edit.clear()
+        imported_rows = []
+        for profile in imported:
+            profile.id = self._new_custom_profile_id()
+            profile.built_in = False
+            pcfg.module.llm_profiles.append(profile)
+            row = self.addProfileRow(profile)
+            self.applyFilterToRow(row)
+            imported_rows.append(row)
+        self.profile_ui_updated.emit()
+        QTimer.singleShot(0, lambda: self.ensureRowVisible(imported_rows[-1]))
 
     def copyProfile(self, profile_id: str):
         profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
@@ -1522,7 +1572,7 @@ class LLMProfilesWidget(QWidget):
             return
         self.filter_edit.clear()
         copied = copy_profile(copy.deepcopy(profile))
-        copied.id = f"custom-{uuid.uuid4().hex[:10]}"
+        copied.id = self._new_custom_profile_id()
         pcfg.module.llm_profiles.append(copied)
         row = self.addProfileRow(copied)
         self.applyFilterToRow(row)
