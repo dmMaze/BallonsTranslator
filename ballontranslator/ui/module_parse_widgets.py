@@ -176,50 +176,44 @@ class ParamEditor(QPlainTextEdit):
     def __init__(self, param_key: str, *args, **kwargs) -> None:
         super().__init__( *args, **kwargs)
         self.param_key = param_key
-        self._auto_height = param_key == 'prompt'
         self._auto_max_height = 100
-        self._auto_min_height = self._auto_max_height
+
+        self._showed = False
 
         self.setFixedWidth(int(CONFIG_COMBOBOX_LONG))
-        if self._auto_height:
-            self.setMinimumHeight(self._auto_min_height)
-            self.setMaximumHeight(self._auto_max_height)
-            self.setFixedHeight(self._auto_min_height)
-        else:
-            self.setFixedHeight(100)
-        # self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.textChanged.connect(self.on_text_changed)
-        if self._auto_height:
-            self.document().documentLayout().documentSizeChanged.connect(lambda *_: self.updateAutoHeight())
+        self.document().documentLayout().documentSizeChanged.connect(lambda *_: self.adjustSize())
 
     def on_text_changed(self):
-        self.updateAutoHeight()
         self.paramwidget_edited.emit(self.param_key, self.text())
 
     def setText(self, text: str):
         self.setPlainText(text)
-        self.updateAutoHeight()
-        if self._auto_height:
-            QTimer.singleShot(0, self.updateAutoHeight)
 
     def text(self):
         return self.toPlainText()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.updateAutoHeight()
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._showed:
+            self._showed = True
+            QTimer.singleShot(0, self.adjustSize)
 
-    def updateAutoHeight(self):
-        if not self._auto_height:
-            return
-        available_width = max(1, self.viewport().width() - 16)
-        font_metrics = self.fontMetrics()
-        visual_lines = 0
-        for line in (self.toPlainText() or ' ').splitlines() or [' ']:
-            text_width = max(1, font_metrics.horizontalAdvance(line))
-            visual_lines += max(1, (text_width + available_width - 1) // available_width)
-        content_height = visual_lines * font_metrics.lineSpacing() + 14
-        height = max(self._auto_min_height, min(content_height, self._auto_max_height))
+    def adjustSize(self):
+
+        # QPlainTextDocumentLayout.documentSize().height() reports a block
+        # count here; block bounds provide the actual wrapped visual heights.
+        document_layout = self.document().documentLayout()
+        block = self.document().begin()
+        content_height = 0.0
+        while block.isValid():
+            content_height += document_layout.blockBoundingRect(block).height()
+            if content_height >= self._auto_max_height:
+                break
+            block = block.next()
+
+        content_height += self.frameWidth() * 2
+        height = min(round(content_height), self._auto_max_height)
         if self.height() != height:
             self.setFixedHeight(height)
 

@@ -384,7 +384,7 @@ class ConfigPanel(QDialog):
         self.setWindowTitle(self.tr('Settings'))
         self.setWindowModality(Qt.WindowModality.NonModal)
         self.setSizeGripEnabled(True)
-        self.resize(900, 640)
+        self.resize(900, 720)
         self.setMinimumSize(720, 520)
         self.configTable = ConfigTable()
         self.configTable.section_pressed.connect(self.showSection)

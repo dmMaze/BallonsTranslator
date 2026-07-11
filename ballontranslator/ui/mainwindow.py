@@ -329,17 +329,23 @@ class MainWindow(mainwindow_cls):
         )
 
     def on_module_selection_changed(self, module_key: str, module_name: str):
+        profile_id = ''
         if module_key == 'translator':
             self.setTranslatorSelectionFromMetadata(module_name)
+            profile_id = pcfg.module.translator_llm_id
         elif module_key == 'textdetector':
             self.configPanel.detect_config_panel.setDetector(module_name)
             self.bottomBar.textdet_selector.setSelectedValue(module_name)
         elif module_key == 'ocr':
             self.configPanel.ocr_config_panel.setOCR(module_name)
             self.bottomBar.ocr_selector.setSelectedValue(module_name)
+            profile_id = pcfg.module.ocr_llm_id
         elif module_key == 'inpainter':
             self.configPanel.inpaint_config_panel.setInpainter(module_name)
             self.bottomBar.inpaint_selector.setSelectedValue(module_name)
+            profile_id = pcfg.module.inpaint_llm_id
+        if profile_id:
+            self.configPanel.llm_profiles_panel.refreshSelectionBorders(profile_id)
 
     def validateModuleSelections(self):
         def valid_or_first(value, valid_values):
@@ -405,6 +411,15 @@ class MainWindow(mainwindow_cls):
         self.configPanel.trans_config_panel.llm_profile_config_clicked.connect(self.focus_llm_profile)
         self.configPanel.llm_profiles_panel.profile_ui_updated.connect(self.on_llm_profile_ui_updated)
         self.configPanel.llm_profiles_panel.profile_summary_changed.connect(self.on_llm_profile_summary_changed)
+        self.configPanel.llm_profiles_panel.set_translator_requested.connect(
+            self.bottomBar.trans_selector.selectLLMProfile
+        )
+        self.configPanel.llm_profiles_panel.set_ocr_requested.connect(
+            self.bottomBar.ocr_selector.selectLLMProfile
+        )
+        self.configPanel.llm_profiles_panel.set_inpainter_requested.connect(
+            self.bottomBar.inpaint_selector.selectLLMProfile
+        )
 
         self.drawingPanel.maskTransperancySlider.setValue(int(pcfg.mask_transparency * 100))
         self.leftBar.initRecentProjMenu(pcfg.recent_proj_list)
@@ -1412,6 +1427,7 @@ class MainWindow(mainwindow_cls):
         if profile_id:
             pcfg.module.translator_llm_id = profile_id
             self.configPanel.llm_profiles_panel.syncProfile(profile_id)
+            self.configPanel.llm_profiles_panel.setSelectedProfile('translator', profile_id)
         self.configPanel.trans_config_panel.refreshLLMProfiles()
         self.bottomBar.trans_selector.updateButtonText()
 
@@ -1419,12 +1435,14 @@ class MainWindow(mainwindow_cls):
         if profile_id:
             pcfg.module.ocr_llm_id = profile_id
             self.configPanel.llm_profiles_panel.syncProfile(profile_id)
+            self.configPanel.llm_profiles_panel.setSelectedProfile('ocr', profile_id)
         self.bottomBar.ocr_selector.updateButtonText()
 
     def on_inpaint_llm_profile_changed(self, profile_id: str):
         if profile_id:
             pcfg.module.inpaint_llm_id = profile_id
             self.configPanel.llm_profiles_panel.syncProfile(profile_id)
+            self.configPanel.llm_profiles_panel.setSelectedProfile('inpainter', profile_id)
         self.bottomBar.inpaint_selector.updateButtonText()
 
     def on_llm_profile_ui_updated(self):

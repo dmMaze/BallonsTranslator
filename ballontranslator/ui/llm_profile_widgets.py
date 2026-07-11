@@ -5,7 +5,6 @@ from functools import lru_cache
 from typing import get_type_hints
 
 from qtpy.QtWidgets import (
-    QApplication,
     QMessageBox,
     QPlainTextEdit,
     QGridLayout,
@@ -19,9 +18,11 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QMenu,
     QScrollArea,
+    QStyle,
+    QStyleOptionGroupBox,
 )
 from qtpy.QtCore import QEvent, QRectF, QTimer, Qt, Signal
-from qtpy.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from qtpy.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from qtpy.QtSvg import QSvgRenderer
 
 try:
@@ -41,6 +42,9 @@ from .module_parse_widgets import ParamWidget, SecretParamWidget
 from ballontranslator.utils.shared import size2width
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
+    LLM_INPAINT_KEY,
+    LLM_OCR_KEY,
+    LLM_TRANSLATOR_KEY,
     LLMProfile,
     copy_profile,
     default_profile,
@@ -273,6 +277,9 @@ class ProfileCardWidget(QGroupBox):
     profile_summary_changed = Signal()
     copy_requested = Signal(str)
     delete_requested = Signal(str)
+    set_translator_requested = Signal(str)
+    set_ocr_requested = Signal(str)
+    set_inpainter_requested = Signal(str)
 
     def __init__(self, profile: LLMProfile, scrollWidget: QWidget = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -286,10 +293,10 @@ class ProfileCardWidget(QGroupBox):
         self._model_editing = False
         self._vision_model_editing = False
         self._image_model_editing = False
+        self._selection_border_colors = []
         self._previous_model_text = ''
         self._previous_vision_model_text = ''
         self._previous_image_model_text = ''
-        self._app_filter_installed = False
         self._action_buttons_visible = False
         self.profile_param_display_names = {
             'base_url': self.tr('Base URL'),
@@ -371,6 +378,7 @@ class ProfileCardWidget(QGroupBox):
         self.summary_layout.setContentsMargins(0, 0, 0, 0)
         self.summary_layout.setHorizontalSpacing(12)
         self.summary_layout.setVerticalSpacing(8)
+        self.summary_layout.setColumnStretch(1, 1)
 
         self.api_summary_widget = QWidget(self)
         self.api_summary_widget.setObjectName('LLMProfileSummaryColumn')
@@ -568,7 +576,7 @@ class ProfileCardWidget(QGroupBox):
         self.refreshVisionBadge()
         self.refreshImageBadge()
         self.refreshConditionalVisibility()
-        self.destroyed.connect(self._remove_app_event_filter)
+        self.refreshSelectionBorder()
 
     def _install_detail_editor_scrollbars(self):
         for editor in self.details.findChildren(QPlainTextEdit):
@@ -688,7 +696,9 @@ class ProfileCardWidget(QGroupBox):
             widget.ensurePolished()
         for index, widget in enumerate(visible_widgets):
             row, column = divmod(index, 2)
-            self.summary_layout.addWidget(widget, row, column, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            alignment = Qt.AlignmentFlag.AlignRight if column else Qt.AlignmentFlag.AlignLeft
+            alignment |= Qt.AlignmentFlag.AlignTop
+            self.summary_layout.addWidget(widget, row, column, alignment)
         row_widths = []
         for row_start in range(0, len(visible_widgets), 2):
             row_widgets = visible_widgets[row_start:row_start + 2]
@@ -703,6 +713,88 @@ class ProfileCardWidget(QGroupBox):
         self.summary_widget.setMinimumHeight(self.summary_layout.sizeHint().height())
         self.summary_widget.updateGeometry()
 
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self._selection_border_colors:
+            return
+
+        radius = 6
+        style_option = QStyleOptionGroupBox()
+        self.initStyleOption(style_option)
+        frame_rect = self.style().subControlRect(
+            QStyle.ComplexControl.CC_GroupBox,
+            style_option,
+            QStyle.SubControl.SC_GroupBoxFrame,
+            self,
+        )
+        rect = QRectF(frame_rect).adjusted(0.5, 0.5, -0.5, -0.5)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen()
+        pen.setWidthF(1.0)
+        if len(self._selection_border_colors) == 1:
+            pen.setColor(QColor(self._selection_border_colors[0]))
+        else:
+            gradient = QLinearGradient(rect.left(), 0, rect.right(), 0)
+            last_index = len(self._selection_border_colors) - 1
+            for index, color in enumerate(self._selection_border_colors):
+                gradient.setColorAt(index / last_index, QColor(color))
+            pen.setBrush(gradient)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        path = QPainterPath()
+        path.moveTo(rect.left() + radius, rect.top())
+        if self.title():
+            title_rect = self.style().subControlRect(
+                QStyle.ComplexControl.CC_GroupBox,
+                style_option,
+                QStyle.SubControl.SC_GroupBoxLabel,
+                self,
+            )
+            title_left = max(rect.left() + radius, title_rect.left() - 2)
+            title_right = min(rect.right() - radius, title_rect.right() + 2)
+            path.lineTo(title_left, rect.top())
+            path.moveTo(title_right, rect.top())
+        path.lineTo(rect.right() - radius, rect.top())
+        path.arcTo(rect.right() - 2 * radius, rect.top(), 2 * radius, 2 * radius, 90, -90)
+        path.lineTo(rect.right(), rect.bottom() - radius)
+        path.arcTo(rect.right() - 2 * radius, rect.bottom() - 2 * radius, 2 * radius, 2 * radius, 0, -90)
+        path.lineTo(rect.left() + radius, rect.bottom())
+        path.arcTo(rect.left(), rect.bottom() - 2 * radius, 2 * radius, 2 * radius, 270, -90)
+        path.lineTo(rect.left(), rect.top() + radius)
+        path.arcTo(rect.left(), rect.top(), 2 * radius, 2 * radius, 180, -90)
+        painter.drawPath(path)
+        painter.end()
+
+    def refreshSelectionBorder(self):
+        self._selection_border_colors = [
+            color
+            for selected_id, color in (
+                (
+                    pcfg.module.translator_llm_id
+                    if pcfg.module.translator == LLM_TRANSLATOR_KEY
+                    else '',
+                    LLM_MODALITY_TEXT_COLOR,
+                ),
+                (
+                    pcfg.module.ocr_llm_id
+                    if pcfg.module.ocr == LLM_OCR_KEY
+                    else '',
+                    LLM_MODALITY_VISION_COLOR,
+                ),
+                (
+                    pcfg.module.inpaint_llm_id
+                    if pcfg.module.inpainter == LLM_INPAINT_KEY
+                    else '',
+                    LLM_MODALITY_IMAGE_COLOR,
+                ),
+            )
+            if selected_id == self.profile.id
+        ]
+        self.update()
+
     def toggleExpanded(self):
         self.setExpanded(not self.details.isVisible())
 
@@ -710,10 +802,6 @@ class ProfileCardWidget(QGroupBox):
         self.details.setVisible(expanded)
         self.more_btn.setToolTip(self.tr('Edit'))
         self.more_btn.setIcon(self.edit_icon_active if expanded else self.edit_icon)
-        if expanded:
-            self._install_app_event_filter()
-        else:
-            self._remove_app_event_filter()
 
     def expand(self):
         if not self.details.isVisible():
@@ -817,9 +905,19 @@ class ProfileCardWidget(QGroupBox):
         delete_action = QAction(self.tr('Delete'), menu)
         copy_action = QAction(self.tr('Copy'), menu)
         more_action = QAction(self.tr('Edit'), menu)
+        set_translator_action = QAction(self.tr('Set for Translator'), menu)
+        set_ocr_action = QAction(self.tr('Set for OCR'), menu)
+        set_inpainter_action = QAction(self.tr('Set for Inpainter'), menu)
+        set_translator_action.setEnabled(bool(self.profile.support_text))
+        set_ocr_action.setEnabled(bool(self.profile.support_vision))
+        set_inpainter_action.setEnabled(bool(self.profile.support_image))
         menu.addAction(edit_action)
         menu.addAction(delete_action)
         menu.addAction(copy_action)
+        menu.addSeparator()
+        menu.addAction(set_translator_action)
+        menu.addAction(set_ocr_action)
+        menu.addAction(set_inpainter_action)
         menu.addSeparator()
         menu.addAction(more_action)
         action = menu.exec(event.globalPos()) if hasattr(menu, 'exec') else menu.exec_(event.globalPos())
@@ -829,6 +927,12 @@ class ProfileCardWidget(QGroupBox):
             self.delete_requested.emit(self.profile.id)
         elif action == copy_action:
             self.copy_requested.emit(self.profile.id)
+        elif action == set_translator_action:
+            self.set_translator_requested.emit(self.profile.id)
+        elif action == set_ocr_action:
+            self.set_ocr_requested.emit(self.profile.id)
+        elif action == set_inpainter_action:
+            self.set_inpainter_requested.emit(self.profile.id)
         elif action == more_action:
             self.toggleExpanded()
 
@@ -838,35 +942,7 @@ class ProfileCardWidget(QGroupBox):
                 self.more_btn.setIcon(self.edit_icon_active)
             elif event.type() == QEvent.Type.Leave and not self.details.isVisible():
                 self.more_btn.setIcon(self.edit_icon)
-        elif self.details.isVisible() and isinstance(obj, QWidget) and event.type() == QEvent.Type.MouseButtonPress:
-            if not self._name_editing and not self._globalMouseEventInsideCard(event):
-                self.collapse()
         return super().eventFilter(obj, event)
-
-    def _globalMouseEventInsideCard(self, event) -> bool:
-        if hasattr(event, 'globalPosition'):
-            global_pos = event.globalPosition().toPoint()
-        elif hasattr(event, 'globalPos'):
-            global_pos = event.globalPos()
-        else:
-            return True
-        return self.rect().contains(self.mapFromGlobal(global_pos))
-
-    def _install_app_event_filter(self):
-        if self._app_filter_installed:
-            return
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
-            self._app_filter_installed = True
-
-    def _remove_app_event_filter(self, *args):
-        if not self._app_filter_installed:
-            return
-        app = QApplication.instance()
-        if app is not None:
-            app.removeEventFilter(self)
-        self._app_filter_installed = False
 
     def mouseDoubleClickEvent(self, event):
         pos_y = event.position().y() if hasattr(event, 'position') else event.y()
@@ -1290,11 +1366,15 @@ class LLMProfilesWidget(QWidget):
     # Raised when the selected profile's bottom-bar summary can change, such
     # as model or thinking-level edits, without rebuilding selector entries.
     profile_summary_changed = Signal()
+    set_translator_requested = Signal(str)
+    set_ocr_requested = Signal(str)
+    set_inpainter_requested = Signal(str)
 
     def __init__(self, scrollWidget: QWidget = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.scrollWidget = scrollWidget
         self.rows = {}
+        self._selected_profile_ids = self._currentSelectedProfileIds()
         self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -1342,6 +1422,9 @@ class LLMProfilesWidget(QWidget):
         row.profile_summary_changed.connect(self.onProfileSummaryChanged)
         row.copy_requested.connect(self.copyProfile)
         row.delete_requested.connect(self.deleteProfile)
+        row.set_translator_requested.connect(self.set_translator_requested.emit)
+        row.set_ocr_requested.connect(self.set_ocr_requested.emit)
+        row.set_inpainter_requested.connect(self.set_inpainter_requested.emit)
         self.rows_layout.addWidget(row)
         self.rows[profile.id] = row
         return row
@@ -1351,6 +1434,7 @@ class LLMProfilesWidget(QWidget):
         for profile in pcfg.module.llm_profiles:
             self.addProfileRow(profile)
         self.applyFilter()
+        self._selected_profile_ids = self._currentSelectedProfileIds()
 
     def onProfileChanged(self):
         sender = self.sender()
@@ -1364,6 +1448,27 @@ class LLMProfilesWidget(QWidget):
 
     def onProfileSummaryChanged(self):
         self.profile_summary_changed.emit()
+
+    def refreshSelectionBorders(self, *profile_ids: str):
+        for profile_id in {profile_id for profile_id in profile_ids if profile_id}:
+            row = self.rows.get(profile_id)
+            if row is not None:
+                row.refreshSelectionBorder()
+
+    @staticmethod
+    def _currentSelectedProfileIds():
+        return {
+            'translator': pcfg.module.translator_llm_id,
+            'ocr': pcfg.module.ocr_llm_id,
+            'inpainter': pcfg.module.inpaint_llm_id,
+        }
+
+    def setSelectedProfile(self, role: str, profile_id: str):
+        previous_profile_id = self._selected_profile_ids.get(role, '')
+        if profile_id == previous_profile_id:
+            return
+        self._selected_profile_ids[role] = profile_id
+        self.refreshSelectionBorders(previous_profile_id, profile_id)
 
     def filterQuery(self):
         return self.filter_edit.text().strip().lower() if hasattr(self, 'filter_edit') else ''
@@ -1439,6 +1544,9 @@ class LLMProfilesWidget(QWidget):
             row.collapse()
             self.rows_layout.removeWidget(row)
             row.deleteLater()
+        self.setSelectedProfile('translator', pcfg.module.translator_llm_id)
+        self.setSelectedProfile('ocr', pcfg.module.ocr_llm_id)
+        self.setSelectedProfile('inpainter', pcfg.module.inpaint_llm_id)
         self.profile_ui_updated.emit()
 
     def restoreBuiltins(self):
