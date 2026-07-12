@@ -226,12 +226,6 @@ class ProgramConfig(Config):
 
         if 'module' in config_dict:
             module_cfg = config_dict['module']
-            if module_cfg.get('textdetector') == 'rtdetr_v2':
-                module_cfg['textdetector'] = 'ctbd'
-            if 'textdetector_params' in module_cfg:
-                params = module_cfg['textdetector_params']
-                if 'rtdetr_v2' in params:
-                    params['ctbd'] = params.pop('rtdetr_v2')
             # LLM translator keys must be consumed before module-param patching drops unknown keys.
             migrate_module_llm_profiles(module_cfg)
 
