@@ -161,7 +161,9 @@ class LeftBar(Widget):
         self.openBtn.setPopupMode(QToolButton.InstantPopup)
     
         openBtnToolBar = QToolBar(self)
+        openBtnToolBar.setObjectName('OpenBtnToolBar')
         openBtnToolBar.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
+        openBtnToolBar.setContentsMargins(0, 0, 0, 0)
         openBtnToolBar.addWidget(self.openBtn)
         
         self.runImgtransBtn = QPushButton()

@@ -193,6 +193,7 @@ class MainWindow(mainwindow_cls):
         self.leftBar.import_trans_txt.connect(self.on_import_trans_txt)
 
         self.pageList = PageListView()
+        self.pageList.setObjectName('PageListArea')
         self.pageList.reveal_file.connect(self.on_reveal_file)
         self.pageList.setHidden(True)
         self.pageList.currentItemChanged.connect(self.pageListCurrentItemChanged)

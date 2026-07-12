@@ -776,6 +776,7 @@ QListWidget {
 }
 
 QMenu {
+    /* border: 1px solid @borderColor; */
     border: none;
     border-radius: 8px;
     padding: 5px;
@@ -1042,6 +1043,16 @@ OpenBtn {
     image: url(resources/icons/openbtn.svg);
     background-color: @widgetBackgroundColor;
 
+}
+
+OpenBtn::menu-indicator {
+    image: none;
+    width: 0px;
+}
+
+QToolBar#OpenBtnToolBar {
+    border: none;
+    padding: 0px;
 }
 
 OpenBtn::hover {
