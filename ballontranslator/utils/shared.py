@@ -99,6 +99,7 @@ TRANSLATE_DIR = osp.join(RESOURCE_DIR, 'translate')
 DISPLAY_LANGUAGE_MAP = {
     "English": "English",
     "简体中文": "zh_CN",
+    "繁體中文": "zh_TW",
     "Русский": "ru_RU",
     "Português (Brasil)": "pt_BR",
     "한국어": "ko_KR",
