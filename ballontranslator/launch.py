@@ -358,7 +358,8 @@ def main():
             'NetworkMirrors',
             'Network mirrors were selected automatically for better access to dependencies and model downloads.',
         ))
-    sys.exit(app.exec())
+    # Let this frame release Qt objects before SIP's interpreter-exit cleanup.
+    return app.exec()
 
 
 if __name__ == '__main__':
