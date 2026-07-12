@@ -405,13 +405,13 @@ class ImageSlicer:
         ), self.merge_overlapping_boxes(ct, image.shape[0])
 
 
-@register_textdetectors("rtdetr_v2")
+@register_textdetectors("ctbd")
 class RTDetrV2TextDetector(TextDetectorBase):
     """RT-DETR-V2 text and speech bubble detector.
 
     >>> detector = RTDetrV2TextDetector()
     >>> detector.name
-    'rtdetr_v2'
+    'ctbd'
     """
     dependencies = ['onnxruntime']
 
@@ -710,7 +710,7 @@ class RTDetrV2TextDetector(TextDetectorBase):
 
             block_to_add = TextBlock(
                 xyxy=current_tb_rect_list,
-                lines=[[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
+                lines=[[[x1, y1], [x2, y1], [x2, y2], [x1, y2]]],
                 det_model=self.name,
                 label="text_bubble" if best_bubble else "text_free",
             )

@@ -94,17 +94,41 @@ MODULE_PARAM_CATALOG = {
     ('ocr', 'LLMOCR', '', 'description'): {
         "source": 'OCR using the selected vision-capable LLM profile.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'OCR using the selected vision-capable LLM profile.'),
     },
+    ('ocr', 'LLMOCR', 'box_color', 'description'): {
+        "source": 'Color of the bounding boxes drawn on the page overlay.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Color of the bounding boxes drawn on the page overlay.'),
+    },
+    ('ocr', 'LLMOCR', 'box_color', 'display_name'): {
+        "source": 'Box Color', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Box Color'),
+    },
+    ('ocr', 'LLMOCR', 'custom_prompt_override', 'description'): {
+        "source": 'Additional OCR instructions/rules. If left empty, the default OCR prompt is used.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Additional OCR instructions/rules. If left empty, the default OCR prompt is used.'),
+    },
+    ('ocr', 'LLMOCR', 'custom_prompt_override', 'display_name'): {
+        "source": 'Custom Prompt Override', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Custom Prompt Override'),
+    },
     ('ocr', 'LLMOCR', 'delay', 'description'): {
         "source": 'Delay between LLM OCR requests in seconds.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Delay between LLM OCR requests in seconds.'),
     },
     ('ocr', 'LLMOCR', 'delay', 'display_name'): {
         "source": 'Delay', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Delay'),
     },
+    ('ocr', 'LLMOCR', 'font_scale', 'description'): {
+        "source": 'Scale of the numbers overlaid next to each box.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Scale of the numbers overlaid next to each box.'),
+    },
+    ('ocr', 'LLMOCR', 'font_scale', 'display_name'): {
+        "source": 'Font Scale', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Font Scale'),
+    },
     ('ocr', 'LLMOCR', 'max requests per minute', 'description'): {
         "source": 'Global request limit for LLM OCR.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Global request limit for LLM OCR.'),
     },
     ('ocr', 'LLMOCR', 'max requests per minute', 'display_name'): {
         "source": 'Max Requests Per Minute', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Max Requests Per Minute'),
+    },
+    ('ocr', 'LLMOCR', 'page_level_ocr', 'description'): {
+        "source": 'Process the entire page in a single request with numbered boxes instead of cropped slices.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Process the entire page in a single request with numbered boxes instead of cropped slices.'),
+    },
+    ('ocr', 'LLMOCR', 'page_level_ocr', 'display_name'): {
+        "source": 'Page-Level OCR', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Page-Level OCR'),
     },
     ('ocr', 'LLMOCR', 'proxy', 'description'): {
         "source": 'Proxy address used for the OpenAI-compatible client.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Proxy address used for the OpenAI-compatible client.'),
@@ -123,6 +147,12 @@ MODULE_PARAM_CATALOG = {
     },
     ('ocr', 'LLMOCR', 'retry timeout', 'display_name'): {
         "source": 'Retry Timeout', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Retry Timeout'),
+    },
+    ('ocr', 'LLMOCR', 'sort_by_llm', 'description'): {
+        "source": 'Re-order text blocks on the page based on the layout analysis and reading order determined by the Vision LLM.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Re-order text blocks on the page based on the layout analysis and reading order determined by the Vision LLM.'),
+    },
+    ('ocr', 'LLMOCR', 'sort_by_llm', 'display_name'): {
+        "source": 'Sort by LLM Reading Order', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Sort by LLM Reading Order'),
     },
     ('ocr', 'PaddleOCRVLManga', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
@@ -307,6 +337,114 @@ MODULE_PARAM_CATALOG = {
     ('ocr', 'stariver_ocr', 'update_token_btn', 'display_name'): {
         "source": '更新 Token', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', '更新 Token'),
     },
+    ('textdetector', 'ctbd', '', 'description'): {
+        "source": 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.'),
+    },
+    ('textdetector', 'ctbd', 'confidence_threshold', 'description'): {
+        "source": 'Minimum detection score (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Minimum detection score (0.0-1.0).'),
+    },
+    ('textdetector', 'ctbd', 'confidence_threshold', 'display_name'): {
+        "source": 'Confidence Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Confidence Threshold'),
+    },
+    ('textdetector', 'ctbd', 'containment_threshold', 'description'): {
+        "source": 'Area ratio threshold to trigger removal of contained boxes (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Area ratio threshold to trigger removal of contained boxes (0.0-1.0).'),
+    },
+    ('textdetector', 'ctbd', 'containment_threshold', 'display_name'): {
+        "source": 'Containment Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Containment Threshold'),
+    },
+    ('textdetector', 'ctbd', 'detect_bubbles', 'description'): {
+        "source": 'Detect speech bubbles.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect speech bubbles.'),
+    },
+    ('textdetector', 'ctbd', 'detect_bubbles', 'display_name'): {
+        "source": 'Detect Bubbles', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Bubbles'),
+    },
+    ('textdetector', 'ctbd', 'detect_text', 'description'): {
+        "source": 'Detect text blocks.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect text blocks.'),
+    },
+    ('textdetector', 'ctbd', 'detect_text', 'display_name'): {
+        "source": 'Detect Text', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Text'),
+    },
+    ('textdetector', 'ctbd', 'device', 'display_name'): {
+        "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
+    },
+    ('textdetector', 'ctbd', 'inpaint_mask_dilate', 'description'): {
+        "source": 'Dilation kernel size (px) for the inpaint mask. Merges text fragments.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Dilation kernel size (px) for the inpaint mask. Merges text fragments.'),
+    },
+    ('textdetector', 'ctbd', 'inpaint_mask_dilate', 'display_name'): {
+        "source": 'Inpaint Mask Dilate', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Inpaint Mask Dilate'),
+    },
+    ('textdetector', 'ctbd', 'mask_unification_method', 'description'): {
+        "source": "Method to unify fragments into one mask: 'none', 'bounding rectangle', or 'convex hull'.", "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', "Method to unify fragments into one mask: 'none', 'bounding rectangle', or 'convex hull'."),
+    },
+    ('textdetector', 'ctbd', 'mask_unification_method', 'display_name'): {
+        "source": 'Mask Unification Method', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Mask Unification Method'),
+    },
+    ('textdetector', 'ctbd', 'merge_duplicates', 'description'): {
+        "source": 'Merge near-identical duplicate boxes of the same category.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge near-identical duplicate boxes of the same category.'),
+    },
+    ('textdetector', 'ctbd', 'merge_duplicates', 'display_name'): {
+        "source": 'Merge Duplicates', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge Duplicates'),
+    },
+    ('textdetector', 'ctbd', 'merge_duplicates_iou', 'description'): {
+        "source": 'IoU threshold for merging duplicates within the same class.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for merging duplicates within the same class.'),
+    },
+    ('textdetector', 'ctbd', 'merge_duplicates_iou', 'display_name'): {
+        "source": 'Merge Duplicates IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge Duplicates IoU'),
+    },
+    ('textdetector', 'ctbd', 'remove_contained_text', 'description'): {
+        "source": 'Remove text boxes that are largely contained within other larger text boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Remove text boxes that are largely contained within other larger text boxes.'),
+    },
+    ('textdetector', 'ctbd', 'remove_contained_text', 'display_name'): {
+        "source": 'Remove Contained Text', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Remove Contained Text'),
+    },
+    ('textdetector', 'ctbd', 'slice_containment_thresh', 'description'): {
+        "source": 'Containment threshold for merging boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Containment threshold for merging boxes.'),
+    },
+    ('textdetector', 'ctbd', 'slice_containment_thresh', 'display_name'): {
+        "source": 'Slice Containment Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Containment Threshold'),
+    },
+    ('textdetector', 'ctbd', 'slice_duplicate_iou', 'description'): {
+        "source": 'IoU threshold for removing duplicate boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for removing duplicate boxes.'),
+    },
+    ('textdetector', 'ctbd', 'slice_duplicate_iou', 'display_name'): {
+        "source": 'Slice Duplicate IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Duplicate IoU'),
+    },
+    ('textdetector', 'ctbd', 'slice_merge_iou', 'description'): {
+        "source": 'IoU threshold for merging text lines.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for merging text lines.'),
+    },
+    ('textdetector', 'ctbd', 'slice_merge_iou', 'display_name'): {
+        "source": 'Slice Merge IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Merge IoU'),
+    },
+    ('textdetector', 'ctbd', 'slice_merge_y_dist', 'description'): {
+        "source": 'Max relative Y-distance for merging text lines.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Max relative Y-distance for merging text lines.'),
+    },
+    ('textdetector', 'ctbd', 'slice_merge_y_dist', 'display_name'): {
+        "source": 'Slice Merge Y Distance', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Merge Y Distance'),
+    },
+    ('textdetector', 'ctbd', 'slice_min_height_ratio', 'description'): {
+        "source": 'Minimum height ratio for the last slice.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Minimum height ratio for the last slice.'),
+    },
+    ('textdetector', 'ctbd', 'slice_min_height_ratio', 'display_name'): {
+        "source": 'Slice Min Height Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Min Height Ratio'),
+    },
+    ('textdetector', 'ctbd', 'slice_overlap_ratio', 'description'): {
+        "source": 'Slice overlap ratio (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice overlap ratio (0.0-1.0).'),
+    },
+    ('textdetector', 'ctbd', 'slice_overlap_ratio', 'display_name'): {
+        "source": 'Slice Overlap Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Overlap Ratio'),
+    },
+    ('textdetector', 'ctbd', 'slice_target_ratio', 'description'): {
+        "source": 'Target H/W ratio for slices.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Target H/W ratio for slices.'),
+    },
+    ('textdetector', 'ctbd', 'slice_target_ratio', 'display_name'): {
+        "source": 'Slice Target Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Target Ratio'),
+    },
+    ('textdetector', 'ctbd', 'slice_threshold_ratio', 'description'): {
+        "source": 'H/W ratio to trigger image slicing.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'H/W ratio to trigger image slicing.'),
+    },
+    ('textdetector', 'ctbd', 'slice_threshold_ratio', 'display_name'): {
+        "source": 'Slice Threshold Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Threshold Ratio'),
+    },
     ('textdetector', 'ctd', '', 'description'): {
         "source": 'ComicTextDetector', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'ComicTextDetector'),
     },
@@ -330,114 +468,6 @@ MODULE_PARAM_CATALOG = {
     },
     ('textdetector', 'ctd', 'mask dilate size', 'display_name'): {
         "source": 'mask dilate size', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'mask dilate size'),
-    },
-    ('textdetector', 'rtdetr_v2', '', 'description'): {
-        "source": 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'confidence_threshold', 'description'): {
-        "source": 'Minimum detection score (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Minimum detection score (0.0-1.0).'),
-    },
-    ('textdetector', 'rtdetr_v2', 'confidence_threshold', 'display_name'): {
-        "source": 'Confidence Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Confidence Threshold'),
-    },
-    ('textdetector', 'rtdetr_v2', 'containment_threshold', 'description'): {
-        "source": 'Area ratio threshold to trigger removal of contained boxes (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Area ratio threshold to trigger removal of contained boxes (0.0-1.0).'),
-    },
-    ('textdetector', 'rtdetr_v2', 'containment_threshold', 'display_name'): {
-        "source": 'Containment Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Containment Threshold'),
-    },
-    ('textdetector', 'rtdetr_v2', 'detect_bubbles', 'description'): {
-        "source": 'Detect speech bubbles.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect speech bubbles.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'detect_bubbles', 'display_name'): {
-        "source": 'Detect Bubbles', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Bubbles'),
-    },
-    ('textdetector', 'rtdetr_v2', 'detect_text', 'description'): {
-        "source": 'Detect text blocks.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect text blocks.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'detect_text', 'display_name'): {
-        "source": 'Detect Text', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Detect Text'),
-    },
-    ('textdetector', 'rtdetr_v2', 'device', 'display_name'): {
-        "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
-    },
-    ('textdetector', 'rtdetr_v2', 'inpaint_mask_dilate', 'description'): {
-        "source": 'Dilation kernel size (px) for the inpaint mask. Merges text fragments.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Dilation kernel size (px) for the inpaint mask. Merges text fragments.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'inpaint_mask_dilate', 'display_name'): {
-        "source": 'Inpaint Mask Dilate', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Inpaint Mask Dilate'),
-    },
-    ('textdetector', 'rtdetr_v2', 'mask_unification_method', 'description'): {
-        "source": "Method to unify fragments into one mask: 'none', 'bounding rectangle', or 'convex hull'.", "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', "Method to unify fragments into one mask: 'none', 'bounding rectangle', or 'convex hull'."),
-    },
-    ('textdetector', 'rtdetr_v2', 'mask_unification_method', 'display_name'): {
-        "source": 'Mask Unification Method', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Mask Unification Method'),
-    },
-    ('textdetector', 'rtdetr_v2', 'merge_duplicates', 'description'): {
-        "source": 'Merge near-identical duplicate boxes of the same category.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge near-identical duplicate boxes of the same category.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'merge_duplicates', 'display_name'): {
-        "source": 'Merge Duplicates', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge Duplicates'),
-    },
-    ('textdetector', 'rtdetr_v2', 'merge_duplicates_iou', 'description'): {
-        "source": 'IoU threshold for merging duplicates within the same class.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for merging duplicates within the same class.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'merge_duplicates_iou', 'display_name'): {
-        "source": 'Merge Duplicates IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Merge Duplicates IoU'),
-    },
-    ('textdetector', 'rtdetr_v2', 'remove_contained_text', 'description'): {
-        "source": 'Remove text boxes that are largely contained within other larger text boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Remove text boxes that are largely contained within other larger text boxes.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'remove_contained_text', 'display_name'): {
-        "source": 'Remove Contained Text', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Remove Contained Text'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_containment_thresh', 'description'): {
-        "source": 'Containment threshold for merging boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Containment threshold for merging boxes.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_containment_thresh', 'display_name'): {
-        "source": 'Slice Containment Threshold', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Containment Threshold'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_duplicate_iou', 'description'): {
-        "source": 'IoU threshold for removing duplicate boxes.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for removing duplicate boxes.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_duplicate_iou', 'display_name'): {
-        "source": 'Slice Duplicate IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Duplicate IoU'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_merge_iou', 'description'): {
-        "source": 'IoU threshold for merging text lines.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'IoU threshold for merging text lines.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_merge_iou', 'display_name'): {
-        "source": 'Slice Merge IoU', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Merge IoU'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_merge_y_dist', 'description'): {
-        "source": 'Max relative Y-distance for merging text lines.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Max relative Y-distance for merging text lines.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_merge_y_dist', 'display_name'): {
-        "source": 'Slice Merge Y Distance', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Merge Y Distance'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_min_height_ratio', 'description'): {
-        "source": 'Minimum height ratio for the last slice.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Minimum height ratio for the last slice.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_min_height_ratio', 'display_name'): {
-        "source": 'Slice Min Height Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Min Height Ratio'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_overlap_ratio', 'description'): {
-        "source": 'Slice overlap ratio (0.0-1.0).', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice overlap ratio (0.0-1.0).'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_overlap_ratio', 'display_name'): {
-        "source": 'Slice Overlap Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Overlap Ratio'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_target_ratio', 'description'): {
-        "source": 'Target H/W ratio for slices.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Target H/W ratio for slices.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_target_ratio', 'display_name'): {
-        "source": 'Slice Target Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Target Ratio'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_threshold_ratio', 'description'): {
-        "source": 'H/W ratio to trigger image slicing.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'H/W ratio to trigger image slicing.'),
-    },
-    ('textdetector', 'rtdetr_v2', 'slice_threshold_ratio', 'display_name'): {
-        "source": 'Slice Threshold Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Threshold Ratio'),
     },
     ('textdetector', 'stariver_ocr', '', 'description'): {
         "source": '星河云(团子翻译器) OCR 文字检测器', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', '星河云(团子翻译器) OCR 文字检测器'),
@@ -568,6 +598,12 @@ MODULE_PARAM_CATALOG = {
     ('translator', 'LLMTranslator', '', 'description'): {
         "source": 'Translate using the selected text-capable LLM profile.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Translate using the selected text-capable LLM profile.'),
     },
+    ('translator', 'LLMTranslator', 'custom_prompt_override', 'description'): {
+        "source": "Additional translation instructions/rules (e.g. 'translate AAA to BBB'). If left empty, only the profile prompt is used.", "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', "Additional translation instructions/rules (e.g. 'translate AAA to BBB'). If left empty, only the profile prompt is used."),
+    },
+    ('translator', 'LLMTranslator', 'custom_prompt_override', 'display_name'): {
+        "source": 'Custom Prompt Override', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Custom Prompt Override'),
+    },
     ('translator', 'LLMTranslator', 'delay', 'description'): {
         "source": 'Delay between LLM requests in seconds.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Delay between LLM requests in seconds.'),
     },
@@ -663,6 +699,15 @@ MODULE_PARAM_CATALOG = {
     },
     ('translator', 'Yandex-FOSWLY', 'yandex_cloud_api_key', 'display_name'): {
         "source": 'Yandex Cloud API Key', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Yandex Cloud API Key'),
+    },
+    ('translator', 'ezTrans', 'path_dat', 'display_name'): {
+        "source": 'DAT Path', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'DAT Path'),
+    },
+    ('translator', 'ezTrans', 'path_j2k(J2KEngine.dll)', 'display_name'): {
+        "source": 'J2KEngine.dll Path', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'J2KEngine.dll Path'),
+    },
+    ('translator', 'ezTrans', 'path_k2j(ehnd-kor.dll, Optional)', 'display_name'): {
+        "source": 'ehnd-kor.dll Path (optional)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'ehnd-kor.dll Path (optional)'),
     },
     ('translator', 'google', 'delay', 'display_name'): {
         "source": 'delay', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'delay'),
