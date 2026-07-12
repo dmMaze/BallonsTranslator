@@ -341,6 +341,9 @@ def main():
     from ballontranslator.ui.mainwindow import MainWindow
     from ballontranslator.utils.message import create_info_dialog
     ballontrans = MainWindow(app, config, open_dir=args.proj_dir, **vars(args))
+    delete_on_close = getattr(Qt, 'WidgetAttribute', Qt).WA_DeleteOnClose
+    # Destroy the Qt window tree before SIP performs interpreter-exit cleanup.
+    ballontrans.setAttribute(delete_on_close, True)
     global BT
     BT = ballontrans
     BT.restart_signal.connect(restart)
