@@ -683,7 +683,7 @@ def validate_lazy_module_specs(specs: Iterable[ModuleSpec]) -> List[str]:
     return warnings
 
 
-def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
+def _scan_file(path: str, module_type: str, include_inactive_platform_branches: bool = False) -> List[ModuleSpec]:
     """Build lazy module specs from decorators and class attributes in one file.
 
     Example:
@@ -739,6 +739,24 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
         'None': None,
     }
 
+    def is_platform_condition(node):
+        for child in ast.walk(node):
+            if isinstance(child, ast.Attribute):
+                if isinstance(child.value, ast.Name):
+                    if child.value.id == 'sys' and child.attr == 'platform':
+                        return True
+                    if child.value.id == 'shared' and child.attr in {
+                        'ON_WINDOWS', 'ON_MACOS', 'ON_LINUX', 'ON_APPLE_SILICON',
+                    }:
+                        return True
+                if (
+                    isinstance(child.value, ast.Name)
+                    and child.value.id == 'platform'
+                    and child.attr in {'system', 'mac_ver', 'version', 'machine'}
+                ):
+                    return True
+        return False
+
     def walk(stmts):
         _walk_assignments(stmts, env)
         evaluator = SafeEval(env)
@@ -776,6 +794,8 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
                     walk(node.body)
                 elif cond is False:
                     walk(node.orelse)
+                    if include_inactive_platform_branches and is_platform_condition(node.test):
+                        walk(node.body)
                 else:
                     walk(node.body)
                     walk(node.orelse)
@@ -784,6 +804,34 @@ def _scan_file(path: str, module_type: str) -> List[ModuleSpec]:
 
     walk(tree.body)
     return specs
+
+
+def iter_lazy_module_specs(include_inactive_platform_branches: bool = False):
+    """Yield module metadata without changing the active runtime registries.
+
+    The translation catalog needs metadata from platform-specific modules too;
+    those modules must remain absent from the runtime registry on unsupported
+    platforms.
+
+    Example:
+        >>> list(iter_lazy_module_specs())  # doctest: +SKIP
+        [...]
+    """
+
+    for module_type in sorted(MODULE_SCRIPTS):
+        script = MODULE_SCRIPTS[module_type]
+        module_dir = script['module_dir']
+        pattern = re.compile(script['module_pattern'])
+        paths = []
+        if os.path.isdir(module_dir):
+            for name in sorted(os.listdir(module_dir)):
+                if pattern.match(name):
+                    paths.append(os.path.join(module_dir, name))
+        paths.extend(EXTRA_MODULE_FILES.get(module_type, []))
+        for path in paths:
+            if not os.path.exists(path):
+                continue
+            yield from _scan_file(path, module_type, include_inactive_platform_branches)
 
 
 def init_lazy_module_registries(target_modules=None):

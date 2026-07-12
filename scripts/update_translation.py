@@ -115,7 +115,8 @@ def build_generated_catalog_source(sources: Dict[ModuleParamKey, str]) -> str:
 
 def write_module_param_catalog(output_path: Path, sources: Dict[ModuleParamKey, str]) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(build_generated_catalog_source(sources), encoding='utf8')
+    with output_path.open('w', encoding='utf8', newline='\n') as output_file:
+        output_file.write(build_generated_catalog_source(sources))
 
 
 def _iter_lazy_module_specs(program_dir: Path):
@@ -123,14 +124,9 @@ def _iter_lazy_module_specs(program_dir: Path):
         sys.path.insert(0, str(program_dir))
     os.environ.setdefault('BALLOONTRANS_APP_ROOT', str(program_dir))
 
-    from ballontranslator.modules import MODULETYPE_TO_REGISTRIES
+    from ballontranslator.modules.lazy_registry import iter_lazy_module_specs
 
-    for module_type in sorted(MODULETYPE_TO_REGISTRIES):
-        registry = MODULETYPE_TO_REGISTRIES[module_type]
-        for module_key in sorted(registry.module_dict):
-            spec = registry.get_spec(module_key)
-            if spec is not None:
-                yield spec
+    yield from iter_lazy_module_specs(include_inactive_platform_branches=True)
 
 
 def generate_module_param_catalog(program_dir: Path) -> Path:
