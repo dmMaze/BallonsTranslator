@@ -95,6 +95,7 @@ class LeftBar(Widget):
         padding = (LEFTBAR_WIDTH - LEFTBTN_WIDTH) // 2
         self.setFixedWidth(LEFTBAR_WIDTH)
         self.showPageListLabel = ShowPageListChecker()
+        self.showPageListLabel.setObjectName('ShowPageListChecker')
 
         self.globalSearchChecker = QCheckBox()
         self.globalSearchChecker.setObjectName('GlobalSearchChecker')
@@ -296,7 +297,7 @@ class TitleBar(Widget):
 
     closebtn_clicked = Signal()
     display_lang_changed = Signal(str)
-    enable_module = Signal(int, bool)
+    show_module = Signal(int, bool)
 
     def __init__(self, parent, *args, **kwargs) -> None:
         super().__init__(parent, *args, **kwargs)
@@ -368,13 +369,29 @@ class TitleBar(Widget):
         self.darkModeAction = darkModeAction = QAction(self.tr('Dark Mode'), self)
         darkModeAction.setCheckable(True)
 
+        visibility_specs = (
+            (self.tr('Show Text Detection'), pcfg.show_textdetector_tool),
+            (self.tr('Show OCR'), pcfg.show_ocr_tool),
+            (self.tr('Show Translation'), pcfg.show_translator_tool),
+            (self.tr('Show Inpainting'), pcfg.show_inpainter_tool),
+        )
+        self.moduleVisibilityActions = module_visibility_actions = [
+            QAction(text, self) for text, _ in visibility_specs
+        ]
+        for action, (_, visible) in zip(module_visibility_actions, visibility_specs):
+            action.setCheckable(True)
+            action.setChecked(visible)
+            action.triggered.connect(self.moduleVisibilityStateChanged)
+
+        viewMenu.addAction(darkModeAction)
         viewMenu.addMenu(self.displayLanguageMenu)
+        viewMenu.addSeparator()
+        viewMenu.addActions(module_visibility_actions)
+        viewMenu.addSeparator()
         viewMenu.addActions([drawBoardAction, texteditAction])
         viewMenu.addSeparator()
         viewMenu.addAction(importTextStyles)
         viewMenu.addAction(exportTextStyles)
-        viewMenu.addSeparator()
-        viewMenu.addAction(darkModeAction)
         self.viewToolBtn.setMenu(viewMenu)
         self.viewToolBtn.setPopupMode(QToolButton.InstantPopup)
         self.textedit_trigger = texteditAction.triggered
@@ -410,33 +427,6 @@ class TitleBar(Widget):
         self.toolsToolBtn.setMenu(toolsMenu)
         self.toolsToolBtn.setPopupMode(QToolButton.InstantPopup)
 
-        self.runToolBtn = TitleBarToolBtn(self)
-        self.runToolBtn.setText(self.tr('Run'))
-
-        self.stageActions = stageActions = [
-            QAction(self.tr('Enable Text Dection'), self),
-            QAction(self.tr('Enable OCR'), self),
-            QAction(self.tr('Enable Translation'), self),
-            QAction(self.tr('Enable Inpainting'), self)
-        ]
-        for idx, sa in enumerate(stageActions):
-            sa.setCheckable(True)
-            sa.setChecked(pcfg.module.stage_enabled(idx))
-            sa.triggered.connect(self.stageEnableStateChanged)
-
-        runAction = QAction(self.tr('Run'), self)
-        runWoUpdateTextStyle = QAction(self.tr('Run without update textstyle'), self)
-        translatePageAction = QAction(self.tr('Translate page'), self)
-        runMenu = QMenu(self.runToolBtn)
-        runMenu.addActions(stageActions)
-        runMenu.addSeparator()
-        runMenu.addActions([runAction, runWoUpdateTextStyle, translatePageAction])
-        self.runToolBtn.setMenu(runMenu)
-        self.runToolBtn.setPopupMode(QToolButton.InstantPopup)
-        self.run_trigger = runAction.triggered
-        self.run_woupdate_textstyle_trigger = runWoUpdateTextStyle.triggered
-        self.translate_page_trigger = translatePageAction.triggered
-
         self.iconLabel = QLabel(self)
         if not shared.ON_MACOS:
             self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
@@ -453,7 +443,6 @@ class TitleBar(Widget):
         hlayout.addWidget(self.editToolBtn)
         hlayout.addWidget(self.viewToolBtn)
         hlayout.addWidget(self.goToolBtn)
-        hlayout.addWidget(self.runToolBtn)
         hlayout.addWidget(self.toolsToolBtn)
         hlayout.addStretch()
         hlayout.addWidget(self.titleLabel)
@@ -485,11 +474,11 @@ class TitleBar(Widget):
 
         return super().eventFilter(obj, e)
 
-    def stageEnableStateChanged(self):
+    def moduleVisibilityStateChanged(self):
         sender = self.sender()
-        idx= self.stageActions.index(sender)
+        idx = self.moduleVisibilityActions.index(sender)
         checked = sender.isChecked()
-        self.enable_module.emit(idx, checked)
+        self.show_module.emit(idx, checked)
 
     def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
         super().mouseDoubleClickEvent(e)

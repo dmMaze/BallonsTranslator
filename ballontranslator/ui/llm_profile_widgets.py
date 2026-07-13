@@ -442,7 +442,10 @@ class ProfileCardWidget(QGroupBox):
         self.remove_model_btn.setToolTip(self.tr('Delete current model'))
         self.remove_model_btn.setFixedSize(16, 16)
         self.remove_model_btn.clicked.connect(self.deleteCurrentModel)
-        model_label_row = QHBoxLayout()
+        self.model_modality_row = QWidget(self.model_summary_widget)
+        self.model_modality_row.setObjectName('LLMProfileModalityRow')
+        self.model_modality_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        model_label_row = QHBoxLayout(self.model_modality_row)
         model_label_row.setContentsMargins(0, 0, 0, 0)
         model_label_row.setSpacing(4)
         model_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -457,7 +460,7 @@ class ProfileCardWidget(QGroupBox):
         self.model_combo.setToolTip(model_tooltip)
         self.model_combo.setEditable(False)
         self.model_combo.setCurrentText(profile.model)
-        right_column.addLayout(model_label_row)
+        right_column.addWidget(self.model_modality_row)
         right_column.addWidget(self.model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.vision_model_summary_widget = QWidget(self)
@@ -484,7 +487,13 @@ class ProfileCardWidget(QGroupBox):
         self.remove_vision_model_btn.setToolTip(self.tr('Delete current vision model'))
         self.remove_vision_model_btn.setFixedSize(16, 16)
         self.remove_vision_model_btn.clicked.connect(self.deleteCurrentVisionModel)
-        vision_model_label_row = QHBoxLayout()
+        self.vision_model_modality_row = QWidget(self.vision_model_summary_widget)
+        self.vision_model_modality_row.setObjectName('LLMProfileModalityRow')
+        self.vision_model_modality_row.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+        vision_model_label_row = QHBoxLayout(self.vision_model_modality_row)
         vision_model_label_row.setContentsMargins(0, 0, 0, 0)
         vision_model_label_row.setSpacing(4)
         vision_model_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -504,7 +513,7 @@ class ProfileCardWidget(QGroupBox):
         self.vision_model_combo.setToolTip(vision_model_tooltip)
         self.vision_model_combo.setEditable(False)
         self.vision_model_combo.setCurrentText(profile.vision_model)
-        vision_column.addLayout(vision_model_label_row)
+        vision_column.addWidget(self.vision_model_modality_row)
         vision_column.addWidget(self.vision_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.image_model_summary_widget = QWidget(self)
@@ -531,7 +540,13 @@ class ProfileCardWidget(QGroupBox):
         self.remove_image_model_btn.setToolTip(self.tr('Delete current image model'))
         self.remove_image_model_btn.setFixedSize(16, 16)
         self.remove_image_model_btn.clicked.connect(self.deleteCurrentImageModel)
-        image_model_label_row = QHBoxLayout()
+        self.image_model_modality_row = QWidget(self.image_model_summary_widget)
+        self.image_model_modality_row.setObjectName('LLMProfileModalityRow')
+        self.image_model_modality_row.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+        image_model_label_row = QHBoxLayout(self.image_model_modality_row)
         image_model_label_row.setContentsMargins(0, 0, 0, 0)
         image_model_label_row.setSpacing(4)
         image_model_label_row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -551,7 +566,7 @@ class ProfileCardWidget(QGroupBox):
         self.image_model_combo.setToolTip(image_model_tooltip)
         self.image_model_combo.setEditable(False)
         self.image_model_combo.setCurrentText(profile.image_model)
-        image_column.addLayout(image_model_label_row)
+        image_column.addWidget(self.image_model_modality_row)
         image_column.addWidget(self.image_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
         self._setSummaryColumnWidth(self.model_summary_widget, model_label_row, self.model_combo)
