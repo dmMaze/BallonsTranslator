@@ -1,14 +1,14 @@
-<h1 align="center">BallonsTranslator</h1>
-
-<p align="center">BallonTranslator est un autre outil assisté par ordinateur, basé sur l'apprentissage profond (deep learning), permettant de traduire des comics/mangas.</p>
-
 <p align="center">
   <img
-    width="320"
+    width="256"
     alt="Spinning fox animation"
     src="https://github.com/user-attachments/assets/fe44e9a6-c7da-4bc5-8421-87fd6c38a0ba"
   />
 </p>
+
+<h1 align="center">BallonsTranslator</h1>
+
+<p align="center">BallonTranslator est un autre outil assisté par ordinateur, basé sur l'apprentissage profond (deep learning), permettant de traduire des comics/mangas.</p>
 
 <p align="center">
   <a href="/README.md">简体中文</a> | <a href="/README_EN.md">English</a> | <a href="/doc/README_RU.md">Русский</a> | <a href="/doc/README_JA.md">日本語</a> | <a href="/doc/README_ES.md">Español</a> | Français | <a href="/doc/README_PT-BR.md">pt-BR</a> | <a href="/doc/README_KO.md">한국어</a> | <a href="/doc/README_ID.md">Indonesia</a> | <a href="/doc/README_VI.md">Tiếng Việt</a>

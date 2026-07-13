@@ -1,14 +1,14 @@
-<h1 align="center">BallonsTranslator</h1>
-
-<p align="center">BallonTranslator é mais uma ferramenta auxiliada por computador, alimentada por deep learning, para a tradução de quadrinhos/mangás.</p>
-
 <p align="center">
   <img
-    width="320"
+    width="256"
     alt="Spinning fox animation"
     src="https://github.com/user-attachments/assets/fe44e9a6-c7da-4bc5-8421-87fd6c38a0ba"
   />
 </p>
+
+<h1 align="center">BallonsTranslator</h1>
+
+<p align="center">BallonTranslator é mais uma ferramenta auxiliada por computador, alimentada por deep learning, para a tradução de quadrinhos/mangás.</p>
 
 <p align="center">
   <a href="/README.md">简体中文</a> | <a href="/README_EN.md">English</a> | <a href="/doc/README_RU.md">Русский</a> | <a href="/doc/README_JA.md">日本語</a> | <a href="/doc/README_ES.md">Español</a> | <a href="/doc/README_FR.md">Français</a> | pt-BR | <a href="/doc/README_KO.md">한국어</a> | <a href="/doc/README_ID.md">Indonesia</a> | <a href="/doc/README_VI.md">Tiếng Việt</a>
