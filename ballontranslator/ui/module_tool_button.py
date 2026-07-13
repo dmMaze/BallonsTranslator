@@ -141,13 +141,14 @@ def _bottom_submenu(title: str, parent: QMenu) -> QMenu:
     return menu
 
 
-def _add_bottom_menu_section(menu: QMenu, text: str):
+def _add_bottom_menu_section(menu: QMenu, text: str, color: str = ''):
     label = QLabel(text, menu)
     label.setObjectName('MenuSectionLabel')
+    color = color or _section_label_color()
     label.setStyleSheet(
         'QLabel#MenuSectionLabel {{ '
         'color: {}; background-color: {}; '
-        '}}'.format(_section_label_color(), _theme_menu_background_hex())
+        '}}'.format(color, _theme_menu_background_hex())
     )
     action = QWidgetAction(menu)
     action.setDefaultWidget(label)
@@ -318,7 +319,7 @@ class ModuleSelectionWidget(Widget):
             self._addLlmProfileMenus(current_module)
 
     def _addLlmProfileMenus(self, current_module: str):
-        self._section(self.tr('LLM'))
+        self._section(self.tr('LLM'), color=self.modality_color)
         added = False
         for profile in pcfg.module.llm_profiles:
             if not getattr(profile, self.profile_support_attr):
@@ -341,8 +342,8 @@ class ModuleSelectionWidget(Widget):
         if self._is_text_modality():
             self._addLanguageMenus()
 
-    def _section(self, text: str):
-        _add_bottom_menu_section(self.menu, text)
+    def _section(self, text: str, color: str = ''):
+        _add_bottom_menu_section(self.menu, text, color=color)
 
     def _no_profiles_text(self) -> str:
         if self.llm_modality == LLM_MODALITY_TEXT:
@@ -421,7 +422,7 @@ class ModuleSelectionWidget(Widget):
         profile_id = profile.id
         selected_profile = self._is_current_llm() and self._selected_profile_id() == profile_id
         for section, value_attr, options_attr in self._profile_menu_groups():
-            _add_bottom_menu_section(menu, section)
+            _add_bottom_menu_section(menu, section, color=self.modality_color)
             options = [str(option) for option in getattr(profile, options_attr) if str(option)]
             current_value = str(getattr(profile, value_attr) or 'None')
             for option in options:
