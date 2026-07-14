@@ -1,0 +1,12 @@
+{
+  "directory": "fixture-project",
+  "pages": {
+    "page.png": [
+      {
+        "rich_text": "",
+        "rich_text_transform_version": 2,
+        "fontformat": {}
+      }
+    ]
+  }
+}

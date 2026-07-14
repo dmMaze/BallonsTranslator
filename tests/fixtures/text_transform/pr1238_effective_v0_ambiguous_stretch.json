@@ -1,0 +1,19 @@
+{
+  "directory": "fixture-project",
+  "pages": {
+    "page.png": [
+      {
+        "translation": "ambiguous",
+        "rich_text": "<p>No exact persisted stretch evidence</p>",
+        "rich_text_transform_version": 0,
+        "fontformat": {
+          "font_family": "Arial",
+          "font_size": 24,
+          "horizontal_scale": 1.5,
+          "vertical_scale": 1.0,
+          "italic_angle": 0.0
+        }
+      }
+    ]
+  }
+}

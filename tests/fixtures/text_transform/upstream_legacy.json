@@ -1,0 +1,15 @@
+{
+  "directory": "fixture-project",
+  "pages": {
+    "page.png": [
+      {
+        "translation": "legacy",
+        "rich_text": "<p><b>unchanged upstream HTML</b></p>",
+        "fontformat": {
+          "font_family": "Arial",
+          "font_size": 24
+        }
+      }
+    ]
+  }
+}
