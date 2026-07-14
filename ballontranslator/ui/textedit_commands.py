@@ -1,4 +1,4 @@
-from typing import List, Union, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple, Union
 
 from qtpy.QtGui import QTextCursor
 from qtpy.QtCore import QPointF
@@ -9,7 +9,7 @@ except:
 
 from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransTextEdit, SourceTextEdit
-from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.fontformat import FontFormat, normalize_text_transform
 import ballontranslator.utils.config as C
 from .misc import doc_replace, doc_replace_no_shift
 from .texteditshapecontrol import TextBlkShapeControl
@@ -18,10 +18,25 @@ from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .scene_textlayout import PUNSET_HALF
 
 
+def utf16_code_unit_length(text: str) -> int:
+    """Return the number of UTF-16 code units used by Qt text positions.
+
+    Python indexes Unicode code points, while ``QTextCursor`` indexes UTF-16
+    code units. Combining characters still occupy their own cursor position,
+    and supplementary characters occupy two.
+
+    >>> utf16_code_unit_length('')
+    0
+    >>> utf16_code_unit_length('A\U0001f600e\u0301')
+    5
+    """
+    return sum(2 if ord(char) > 0xFFFF else 1 for char in text)
+
+
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, joint_previous: bool = False):
     ori_count = target_edit.document().characterCount()
     new_count = src_edit.document().characterCount()
-    removed = ori_count + len(added_text) - new_count
+    removed = ori_count + utf16_code_unit_length(added_text) - new_count
 
     cursor = target_edit.textCursor()
     cursor.setPosition(pos)
@@ -34,6 +49,49 @@ def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit
     cursor.insertText(added_text)
     cursor.endEditBlock()
     target_edit.old_undo_steps = target_edit.document().availableUndoSteps()
+
+
+class SetTextTransformCommand(QUndoCommand):
+    """Atomically apply canonical text transforms to one or more items."""
+
+    def __init__(
+        self,
+        items: Sequence[TextBlkItem],
+        before: Sequence[Tuple[float, float, float]],
+        after: Sequence[Tuple[float, float, float]],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ):
+        super().__init__()
+        self.items = tuple(items)
+        if len(self.items) != len(before) or len(self.items) != len(after):
+            raise ValueError("items, before, and after must have the same length")
+        self.before = tuple(normalize_text_transform(*values) for values in before)
+        self.after = tuple(normalize_text_transform(*values) for values in after)
+        self.refresh_callback = refresh_callback
+
+    @classmethod
+    def create(
+        cls,
+        items: Sequence[TextBlkItem],
+        before: Sequence[Tuple[float, float, float]],
+        after: Sequence[Tuple[float, float, float]],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> Optional["SetTextTransformCommand"]:
+        """Build a command, or return ``None`` for a normalized no-op."""
+        command = cls(items, before, after, refresh_callback)
+        return None if command.before == command.after else command
+
+    def _apply(self, transforms: Sequence[Tuple[float, float, float]]):
+        for item, transform in zip(self.items, transforms):
+            item.set_text_transform(*transform, preview=False)
+        if self.refresh_callback is not None:
+            self.refresh_callback()
+
+    def redo(self):
+        self._apply(self.after)
+
+    def undo(self):
+        self._apply(self.before)
 
 
 class MoveBlkItemsCommand(QUndoCommand):
@@ -95,27 +153,38 @@ class ApplyFontformatCommand(QUndoCommand):
 
     
 class ReshapeItemCommand(QUndoCommand):
-    def __init__(self, item: TextBlkItem):
+    def __init__(
+        self,
+        item: TextBlkItem,
+        shape_ctrl: Optional[TextBlkShapeControl] = None,
+    ):
         super(ReshapeItemCommand, self).__init__()
         self.item = item
+        self.shape_ctrl = shape_ctrl
         self.oldRect = item.oldRect
         self.newRect = item.absBoundingRect(qrect=True)
         self.idx = -1
+
+    def _refresh_shape_control(self):
+        if self.shape_ctrl is not None and self.shape_ctrl.blk_item is self.item:
+            self.shape_ctrl.updateBoundingRect()
 
     def redo(self):
         if self.idx < 0:
             self.idx += 1
             return
         self.item.setRect(self.newRect)
+        self._refresh_shape_control()
 
     def undo(self):
         self.item.setRect(self.oldRect)
+        self._refresh_shape_control()
 
     def mergeWith(self, command: QUndoCommand):
         item = command.item
         if self.item != item:
             return False
-        self.newRect = item.rect()
+        self.newRect = item.absBoundingRect(qrect=True)
         return True
 
 
