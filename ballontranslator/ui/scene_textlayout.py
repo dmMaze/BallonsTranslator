@@ -1,6 +1,16 @@
 import re
+from bisect import bisect_left, bisect_right
 
-from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF, QSize
+from qtpy import QT_VERSION
+from qtpy.QtCore import (
+    Qt,
+    QRectF,
+    QPointF,
+    Signal,
+    QSizeF,
+    QSize,
+    QTextBoundaryFinder,
+)
 from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetricsF, QTextOption, QTextLine, QTextFormat
 
 import cv2
@@ -104,6 +114,63 @@ def _block_cursor_position(block: QTextBlock, cursor_position: int) -> int:
     if block_position <= cursor_position < block_position + block.length():
         return cursor_position - block_position
     return -1
+
+
+@lru_cache(maxsize=1024)
+def _utf16_boundaries(text: str):
+    """Return each Python character boundary in Qt's UTF-16 coordinates."""
+    boundaries = [0]
+    offset = 0
+    for char in text:
+        offset += 2 if ord(char) > 0xFFFF else 1
+        boundaries.append(offset)
+    return tuple(boundaries)
+
+
+def _utf16_length(text: str) -> int:
+    return _utf16_boundaries(text)[-1]
+
+
+def _utf16_slice(text: str, start: int, length: int) -> str:
+    """Slice without allowing a Qt offset inside a surrogate pair to split it."""
+    boundaries = _utf16_boundaries(text)
+    start = max(0, min(start, boundaries[-1]))
+    end = max(start, min(start + length, boundaries[-1]))
+    py_start = max(0, bisect_right(boundaries, start) - 1)
+    py_end = min(len(text), bisect_left(boundaries, end))
+    return text[py_start:py_end]
+
+
+def _utf16_char_at(text: str, offset: int) -> str:
+    if not text:
+        return ''
+    boundaries = _utf16_boundaries(text)
+    offset = max(0, min(offset, boundaries[-1] - 1))
+    return text[bisect_right(boundaries, offset) - 1]
+
+
+def _grapheme_count(text: str) -> int:
+    """Count Qt grapheme clusters for the vertical one-column layout."""
+    if not text:
+        return 0
+    finder = QTextBoundaryFinder(
+        QTextBoundaryFinder.BoundaryType.Grapheme,
+        text,
+    )
+    finder.toStart()
+    previous = 0
+    join_next = False
+    count = 0
+    while True:
+        boundary = finder.toNextBoundary()
+        if boundary == -1:
+            break
+        segment = _utf16_slice(text, previous, boundary - previous)
+        if not join_next and not segment.startswith('\u200d'):
+            count += 1
+        join_next = segment.endswith('\u200d')
+        previous = boundary
+    return count
 
 
 class CharFontFormat:
@@ -216,20 +283,25 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
         self.relayout_on_changed = True
 
+        # Effect padding is view/layout state, not rich-text content.  Keeping
+        # it on QTextDocument would make setDocumentMargin() participate in
+        # the document undo stack and could consume a preceding text edit when
+        # a whole-format command is undone.
+        self._document_margin = max(0.0, float(doc.documentMargin()))
+
         # relative bottom/right
         self.shrink_height = 0 
         self.shrink_width = 0
 
         self._doc_text: str = ''
         
-        self._is_painting_stroke = False
         self._draw_offset = []
         self.text_padding = 0
 
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
         self.max_width = max_width
-        doc_margin = self.document().documentMargin() * 2
+        doc_margin = self._document_margin * 2
         self.available_width = max(max_width -  doc_margin, 0)
         self.available_height = max(max_height - doc_margin, 0)
         if relayout:
@@ -269,13 +341,13 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         return rect
 
     def updateDocumentMargin(self, margin):
-        doc_margin = self.document().documentMargin()
-        dm = margin - doc_margin
-        doc_margin *= 2
-        self.document().setDocumentMargin(margin)
-        margin *= 2
-        self.max_height = margin + self.available_height
-        self.max_width = margin + self.available_width
+        self._document_margin = max(0.0, float(margin))
+        doubled_margin = self._document_margin * 2
+        self.max_height = doubled_margin + self.available_height
+        self.max_width = doubled_margin + self.available_width
+
+    def documentMargin(self) -> float:
+        return self._document_margin
 
     def documentSize(self) -> QSizeF:
         return QSizeF(self.max_width, self.max_height)
@@ -363,7 +435,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.draw_shifted = 0
 
         self.need_ideal_width = True
-        self.line_draw = line_draw_qt6 if C.FLAG_QT6 else line_draw_qt5
+        self.line_draw = line_draw_qt6 if QT_VERSION.startswith('6') else line_draw_qt5
 
         self.per_char_records = []
 
@@ -381,7 +453,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.shrink_width = 0
         self.text_padding = 0
         doc = self.document()
-        doc_margin = doc.documentMargin()
+        doc_margin = self._document_margin
         block = doc.firstBlock()
         while block.isValid():
             self.layoutBlock(block)
@@ -416,8 +488,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
     def updateDrawOffsets(self):
-        if self._is_painting_stroke and len(self._draw_offset) > 0:
-            return
         self._draw_offset.clear()
         doc = self.document()
         block = doc.firstBlock()
@@ -429,7 +499,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             layout = block.layout()
             blk_text = block.text()
-            blk_text_len = len(blk_text)
+            blk_text_len = _utf16_length(blk_text)
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
             char_records = self.per_char_records[blk_no]
@@ -446,7 +516,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if char_idx < 0:
                     continue
 
-                char = blk_text[char_idx]
+                char = _utf16_char_at(blk_text, char_idx)
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 
                 line_width = -1
@@ -460,7 +530,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     space_shift = num_lspaces * cfmt.space_width
 
                 if char in PUNSET_VERNEEDROTATE:
-                    char = blk_text[char_idx]
+                    char = _utf16_char_at(blk_text, char_idx)
                     if char.isalpha():
                         xoff = 0
                         yoff = -line.ascent() - (line_width - cfmt.font_metrics.capHeight()) / 2
@@ -505,6 +575,107 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
 
+    def draw_glyph_selection_mask(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        """Draw only glyphs named by temporary document-layout selections.
+
+        This is the Qt 5/6 common path used to build vertical effect masks.
+        It reads glyph runs from the attached QTextLayout objects, preserving
+        their established positions and rotations without changing document
+        formats. QText decorations are intentionally excluded from the mask.
+        """
+        painter.save()
+        try:
+            painter.setPen(Qt.GlobalColor.white)
+            if context.clip.isValid():
+                painter.setClipRect(context.clip)
+            for selection in context.selections:
+                selection_start = selection.cursor.selectionStart()
+                selection_end = selection.cursor.selectionEnd()
+                if selection_end <= selection_start:
+                    continue
+                self._draw_glyph_range(
+                    painter, selection_start, selection_end
+                )
+        finally:
+            painter.restore()
+
+    def _draw_glyph_range(
+        self, painter: QPainter, selection_start: int, selection_end: int
+    ) -> None:
+        block = self.document().firstBlock()
+        while block.isValid():
+            block_start = block.position()
+            block_end = block_start + block.length() - 1
+            if selection_start >= block_end:
+                block = block.next()
+                continue
+            if selection_end <= block_start:
+                break
+
+            local_start = max(0, selection_start - block_start)
+            local_end = min(block_end - block_start, selection_end - block_start)
+            block_number = block.blockNumber()
+            block_text = block.text()
+            block_text_length = _utf16_length(block_text)
+            layout = block.layout()
+            line_spaces = self.line_spaces_lst[block_number]
+            for line_number in range(layout.lineCount()):
+                line = layout.lineAt(line_number)
+                line_start = line.textStart()
+                line_end = line_start + line.textLength()
+                run_start = max(line_start, local_start)
+                run_end = min(line_end, local_end)
+                if run_end <= run_start:
+                    continue
+
+                glyph_runs = line.glyphRuns(run_start, run_end - run_start)
+                if not glyph_runs:
+                    continue
+                _, leading_spaces, _, line_position = line_spaces[line_number]
+                char_offset = min(
+                    line_position + leading_spaces, block_text_length - 1
+                )
+                if char_offset < 0:
+                    continue
+                char = _utf16_char_at(block_text, char_offset)
+                x_offset, y_offset = self._draw_offset[block_number][line_number]
+
+                painter.save()
+                try:
+                    if char in PUNSET_VERNEEDROTATE:
+                        line_x, line_y = line.x(), line.y()
+                        painter.setTransform(
+                            QTransform(
+                                0,
+                                1,
+                                0,
+                                -1,
+                                0,
+                                0,
+                                line_y + line_x,
+                                line_y - line_x,
+                                1,
+                            ),
+                            True,
+                        )
+                    for glyph_run in glyph_runs:
+                        # QGlyphRun carries decoration flags independently of
+                        # its glyph indexes. They belong to the normal text
+                        # pass and must not be expanded into a thick outline.
+                        glyph_run.setUnderline(False)
+                        glyph_run.setOverline(False)
+                        glyph_run.setStrikeOut(False)
+                        painter.drawGlyphRun(
+                            QPointF(x_offset, y_offset), glyph_run
+                        )
+                finally:
+                    painter.restore()
+            block = block.next()
+
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
@@ -524,7 +695,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blpos, bllen = block.position(), block.length()
             layout = block.layout()
             blk_text = block.text()
-            blk_text_len = len(blk_text)
+            blk_text_len = _utf16_length(blk_text)
             char_records = self.per_char_records[blk_no]
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
@@ -544,7 +715,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 xoff, yoff = self._draw_offset[blk_no][ii]
 
-                char = blk_text[char_idx]
+                char = _utf16_char_at(blk_text, char_idx)
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 fm = cfmt.font_metrics
                 selected = False
@@ -651,13 +822,19 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         else:
                             ntr = line.naturalTextRect()
                             off = line.textStart()
-                            if line.textLength() != 1:
-                                if line_bottom - y < y - line_top:
-                                    off += 2
-                                elif ntr.right() - x < x - ntr.left():
-                                    off += 1
-                            elif line_bottom - y < y - line_top:
-                                off += 1
+                            # QTextLine lengths are UTF-16 units.  A single
+                            # vertical grapheme can therefore span multiple
+                            # units (surrogate + variation selector or a base
+                            # + combining mark).  A hit may choose only the
+                            # start or end caret boundary, never an interior
+                            # code-unit offset.
+                            after = line_bottom - y < y - line_top
+                            if line.textLength() > 1:
+                                after = after or (
+                                    ntr.right() - x < x - ntr.left()
+                                )
+                            if after:
+                                off += line.textLength()
                             break
                 break
             blk = blk.next()
@@ -668,7 +845,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         ls = self.letter_spacing
 
         block.clearLayout()
-        doc_margin = doc.documentMargin()
+        doc_margin = self._document_margin
         line_y_offset = doc_margin
         blk_char_yoffset = []
         blk_line_spaces = []
@@ -676,7 +853,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         block_no = block.blockNumber()
         is_final_block = block == doc.lastBlock()
         blk_text = block.text()
-        blk_text_len = len(blk_text)
+        blk_text_len = _utf16_length(blk_text)
         if blk_text_len != 0:
             block_width = self.block_ideal_width[block_no]
         else:
@@ -727,9 +904,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 continue
 
             num_rspaces, num_lspaces = 0, 0
-            text = blk_text[char_idx: char_idx + text_len].replace('\n', '')
-            num_rspaces = text_len - len(text.rstrip())
-            num_lspaces = text_len - len(text.lstrip())
+            text = _utf16_slice(blk_text, char_idx, text_len).replace('\n', '')
+            num_rspaces = _utf16_length(text[len(text.rstrip()):])
+            num_lspaces = _utf16_length(text[:len(text) - len(text.lstrip())])
 
             tbr_h = space_w = let_sp_offset = 0
             char_idx += num_lspaces
@@ -745,7 +922,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 let_sp_offset = cfmt.tbr.height() * (ls - 1)
 
                 tbr_h = cfmt.tbr.height() + let_sp_offset
-                char = blk_text[char_idx]
+                char = _utf16_char_at(blk_text, char_idx)
                 is_first_lbracket = char_idx - num_lspaces == 0 and char in PUNSET_BRACKETL
                 if is_first_lbracket:
                     _lbracket_shift = -cfmt.punc_actual_rect(line, char, cache=True, space_shift=space_shift)[0]
@@ -753,14 +930,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if char in PUNSET_VERNEEDROTATE:
                     tbr, br = cfmt.punc_rect(char)
                     single_char_h = tbr.width()
-                    tbr_h = tbr.width() * text_len
+                    tbr_h = tbr.width() * _grapheme_count(text)
                     if char.isalpha():
                         cw2 = cfmt.punc_rect(char+char)[1].width()
                         tbr_h = br.width() - (br.width() * 2 - cw2)
                     elif char in {'…', '⋯', '—', '～'}:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
-                        next_char_idx = char_idx + 1
-                        if next_char_idx < blk_text_len and blk_text[next_char_idx] == char:
+                        next_char_idx = char_idx + _utf16_length(char)
+                        if next_char_idx < blk_text_len and _utf16_char_at(blk_text, next_char_idx) == char:
                             tbr_h -= let_sp_offset
                     else:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
@@ -863,7 +1040,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if out_of_vspace:
                     is_first_line = False
 
-            strip_space_textlen = text_len - num_lspaces
+            strip_space_textlen = _grapheme_count(text.lstrip())
             if strip_space_textlen > 1 and single_char_h is not None:
                 for ii in range(strip_space_textlen - 1):
                     blk_char_yoffset.append([line_y_offset + ii * single_char_h, line_y_offset + (ii + 1) * single_char_h])
@@ -901,7 +1078,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def reLayout(self):
         doc = self.document()
-        doc_margin = self.document().documentMargin()
+        doc_margin = self._document_margin
         self.text_padding = 0
         self.shrink_height = 0
         self.shrink_width = 0
@@ -970,7 +1147,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         font = block.charFormat().font()
         
         # fm = QFontMetrics(font)
-        doc_margin = self.document().documentMargin()
+        doc_margin = self._document_margin
 
         block_height = self.block_ideal_height[block.blockNumber()]
         if block_height == 0:
