@@ -8,6 +8,22 @@ from qtpy.QtGui import QPolygonF, QTransform
 from ballontranslator.utils.fontformat import normalize_text_transform
 
 
+def _text_transform_coefficients(
+    horizontal_scale: float,
+    vertical_scale: float,
+    slant_angle: float,
+):
+    """Return the canonical scale and sole shear coefficient."""
+    horizontal_scale, vertical_scale, slant_angle = normalize_text_transform(
+        horizontal_scale, vertical_scale, slant_angle
+    )
+    return (
+        horizontal_scale,
+        vertical_scale,
+        -math.tan(math.radians(slant_angle)),
+    )
+
+
 def text_transform_point(
     point: QPointF,
     pivot: QPointF,
@@ -18,21 +34,20 @@ def text_transform_point(
     """Map one point with the canonical scale-then-shear formula.
 
     ``slant_angle`` follows typographic convention: a positive value leans the
-    top of horizontal text to the right, hence ``k = -tan(angle)`` in Qt's
-    downward-positive coordinate system.
+    top of horizontal text to the right, hence
+    ``k = -tan(radians(angle))`` in Qt's downward-positive coordinate system.
 
     >>> mapped = text_transform_point(QPointF(2, 3), QPointF(1, 1), 2, 3, 0)
     >>> (mapped.x(), mapped.y())
     (3.0, 7.0)
     """
-    horizontal_scale, vertical_scale, slant_angle = normalize_text_transform(
+    horizontal_scale, vertical_scale, shear = _text_transform_coefficients(
         horizontal_scale, vertical_scale, slant_angle
     )
-    k = -math.tan(math.radians(slant_angle))
     dx = point.x() - pivot.x()
     dy = point.y() - pivot.y()
     return QPointF(
-        pivot.x() + horizontal_scale * dx + k * vertical_scale * dy,
+        pivot.x() + horizontal_scale * dx + shear * vertical_scale * dy,
         pivot.y() + vertical_scale * dy,
     )
 
@@ -50,17 +65,16 @@ def text_transform_matrix(
     >>> (mapped.x(), mapped.y())
     (3.0, 7.0)
     """
-    horizontal_scale, vertical_scale, slant_angle = normalize_text_transform(
+    horizontal_scale, vertical_scale, shear = _text_transform_coefficients(
         horizontal_scale, vertical_scale, slant_angle
     )
-    k = -math.tan(math.radians(slant_angle))
     px, py = pivot.x(), pivot.y()
     return QTransform(
         horizontal_scale,
         0.0,
-        k * vertical_scale,
+        shear * vertical_scale,
         vertical_scale,
-        px - horizontal_scale * px - k * vertical_scale * py,
+        px - horizontal_scale * px - shear * vertical_scale * py,
         py - vertical_scale * py,
     )
 

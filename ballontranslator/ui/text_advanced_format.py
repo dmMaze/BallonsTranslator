@@ -75,9 +75,15 @@ class CommittedTransformControl(QWidget):
         layout.addWidget(self.label)
         layout.addWidget(self.editor)
 
+    def _canonical_to_display(self, value: float) -> float:
+        return value * 100.0 if self.percentage else value
+
+    def _display_to_canonical(self, value: float) -> float:
+        return value / 100.0 if self.percentage else value
+
     def _format(self, canonical_value: float) -> str:
         if self.percentage:
-            return f'{canonical_value * 100.0:.1f}%'
+            return f'{self._canonical_to_display(canonical_value):.1f}%'
         return f'{canonical_value:.1f}\N{DEGREE SIGN}'
 
     def _parse(self, text: str) -> float:
@@ -88,7 +94,7 @@ class CommittedTransformControl(QWidget):
             value = float(text)
             if not math.isfinite(value) or not 10.0 <= value <= 400.0:
                 raise ValueError
-            return value / 100.0
+            return self._display_to_canonical(value)
         if text.endswith('\N{DEGREE SIGN}'):
             text = text[:-1].strip()
         value = float(text)
@@ -158,11 +164,14 @@ class CommittedTransformControl(QWidget):
                 f'\N{GREEK CAPITAL LETTER DELTA} {self._drag_delta:+.1f}{suffix}'
             )
         else:
-            canonical_delta = self._drag_delta / 100.0 if self.percentage else self._drag_delta
+            canonical_delta = self._display_to_canonical(self._drag_delta)
             minimum, maximum = ((0.1, 4.0) if self.percentage else (-45.0, 45.0))
             preview_value = min(max(self._model_value + canonical_delta, minimum), maximum)
             self.editor.setText(self._format(preview_value))
-        self.preview_requested.emit(self.param_name, self._drag_delta)
+        self.preview_requested.emit(
+            self.param_name,
+            self._display_to_canonical(self._drag_delta),
+        )
 
     def _finish_drag(self):
         if self.state != self.DRAG_PREVIEW:
@@ -174,7 +183,10 @@ class CommittedTransformControl(QWidget):
         if delta == 0.0:
             self.preview_canceled.emit(self.param_name)
         else:
-            self.drag_commit_requested.emit(self.param_name, delta)
+            self.drag_commit_requested.emit(
+                self.param_name,
+                self._display_to_canonical(delta),
+            )
 
     def cancel_preview(self):
         if self.state != self.DRAG_PREVIEW:

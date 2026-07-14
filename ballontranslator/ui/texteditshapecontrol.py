@@ -251,6 +251,14 @@ class TextBlkShapeControl(QGraphicsRectItem):
         local_polygon = QPolygonF(
             [point - origin for point in parent_polygon]
         )
+        local_bounds = local_polygon.boundingRect()
+        if (
+            self._visual_polygon == local_polygon
+            and self.pos() == origin
+            and self.rect() == local_bounds
+            and self._reported_angle == self.blk_item.rotation()
+        ):
+            return False
 
         self._updating_bounds = True
         try:
@@ -260,11 +268,12 @@ class TextBlkShapeControl(QGraphicsRectItem):
             super().setTransform(QTransform(), False)
             super().setRotation(0.0)
             super().setPos(origin)
-            super().setRect(local_polygon.boundingRect())
+            super().setRect(local_bounds)
             self.updateControlBlocks()
             self.update()
         finally:
             self._updating_bounds = False
+        return True
 
     def visualPolygonInScene(self) -> QPolygonF:
         return QPolygonF([self.mapToScene(point) for point in self._visual_polygon])

@@ -503,7 +503,7 @@ class FontFormatPanel(Widget):
             values['slant_angle'],
         )
 
-    def _refresh_text_transform_controls(self):
+    def _refresh_text_transform_controls(self, refresh_shape=True):
         if self._transform_items:
             self.textadvancedfmt_panel.set_transform_items(self._transform_items)
             if len(self._transform_items) == 1 and C.active_format is not None:
@@ -512,11 +512,20 @@ class FontFormatPanel(Widget):
                     ('horizontal_scale', 'vertical_scale', 'slant_angle'), transform
                 ):
                     setattr(C.active_format, name, value)
-        elif C.active_format is not None:
+        else:
+            active_format = (
+                self.global_format if self.global_mode() else C.active_format
+            )
+            if active_format is None:
+                return
             for name, control in self.textadvancedfmt_panel.transform_controls.items():
-                control.set_model_value(getattr(C.active_format, name))
+                control.set_model_value(getattr(active_format, name))
         control = getattr(SW.canvas, 'txtblkShapeControl', None)
-        if control is not None and control.blk_item in self._transform_items:
+        if (
+            refresh_shape
+            and control is not None
+            and control.blk_item in self._transform_items
+        ):
             control.updateBoundingRect()
 
     def on_text_transform_commit(self, param_name: str, value: float):
@@ -529,7 +538,7 @@ class FontFormatPanel(Widget):
                 ):
                     setattr(self.global_format, name, component)
                 self.update_text_style_label()
-            self._refresh_text_transform_controls()
+            self._refresh_text_transform_controls(refresh_shape=False)
             return
 
         before = [item.blk.fontformat.text_transform for item in self._transform_items]
@@ -546,10 +555,30 @@ class FontFormatPanel(Widget):
         if command is not None:
             SW.canvas.push_undo_command(command)
         else:
-            self._refresh_text_transform_controls()
+            self._refresh_text_transform_controls(refresh_shape=False)
 
-    def on_text_transform_preview(self, param_name: str, display_delta: float):
+    def on_text_transform_preview(self, param_name: str, canonical_delta: float):
         if not self._transform_items:
+            if (
+                self._transform_drag_param != param_name
+                or self._transform_drag_before is None
+            ):
+                self._transform_drag_param = param_name
+                self._transform_drag_before = [self.global_format.text_transform]
+            self._transform_drag_after = [
+                self._transform_with_value(
+                    self._transform_drag_before[0],
+                    param_name,
+                    self._transform_drag_before[0][
+                        (
+                            'horizontal_scale',
+                            'vertical_scale',
+                            'slant_angle',
+                        ).index(param_name)
+                    ]
+                    + canonical_delta,
+                )
+            ]
             return
         if self._transform_drag_param != param_name or self._transform_drag_before is None:
             # Starting a drag must not refresh the controls: the emitting
@@ -564,11 +593,6 @@ class FontFormatPanel(Widget):
                 item.blk.fontformat.text_transform for item in self._transform_items
             ]
             self._transform_drag_after = None
-        canonical_delta = (
-            display_delta / 100.0
-            if param_name in {'horizontal_scale', 'vertical_scale'}
-            else display_delta
-        )
         self._transform_drag_after = [
             self._transform_with_value(
                 transform,
@@ -579,14 +603,38 @@ class FontFormatPanel(Widget):
             )
             for transform in self._transform_drag_before
         ]
-        for item, transform in zip(self._transform_items, self._transform_drag_after):
-            item.set_text_transform(*transform, preview=True)
+        changed_items = []
+        for item, transform in zip(
+            self._transform_items, self._transform_drag_after
+        ):
+            # A drag can point farther out while the canonical value is already
+            # clamped at its limit. Do not even enter the item transform path
+            # unless the effective preview would actually change.
+            if item._effective_text_transform() == transform:
+                continue
+            if item.set_text_transform(*transform, preview=True):
+                changed_items.append(item)
         control = getattr(SW.canvas, 'txtblkShapeControl', None)
-        if control is not None and control.blk_item in self._transform_items:
+        if control is not None and control.blk_item in changed_items:
             control.updateBoundingRect()
 
-    def on_text_transform_drag_commit(self, param_name: str, display_delta: float):
+    def on_text_transform_drag_commit(self, param_name: str, _canonical_delta: float):
         if self._transform_drag_param != param_name or self._transform_drag_before is None:
+            return
+        if not self._transform_items:
+            after = (self._transform_drag_after or self._transform_drag_before)[0]
+            before = self._transform_drag_before[0]
+            self._transform_drag_before = None
+            self._transform_drag_after = None
+            self._transform_drag_param = None
+            if before != after:
+                for name, component in zip(
+                    ('horizontal_scale', 'vertical_scale', 'slant_angle'),
+                    after,
+                ):
+                    setattr(self.global_format, name, component)
+                self.update_text_style_label()
+            self._refresh_text_transform_controls(refresh_shape=False)
             return
         before = self._transform_drag_before
         after = self._transform_drag_after or before
@@ -598,20 +646,35 @@ class FontFormatPanel(Widget):
             items, before, after, self._refresh_text_transform_controls
         )
         if command is None:
+            geometry_changed = False
             for item in items:
-                item.clear_text_transform_preview()
-            self._refresh_text_transform_controls()
+                geometry_changed = (
+                    item.clear_text_transform_preview() or geometry_changed
+                )
+            if geometry_changed:
+                control = getattr(SW.canvas, 'txtblkShapeControl', None)
+                if control is not None and control.blk_item in items:
+                    control.updateBoundingRect()
         else:
             SW.canvas.push_undo_command(command)
 
     def on_text_transform_cancel(self, param_name=None):
+        geometry_changed = False
         if self._transform_drag_before is not None:
             for item in self._transform_items:
-                item.clear_text_transform_preview()
+                geometry_changed = (
+                    item.clear_text_transform_preview() or geometry_changed
+                )
         self._transform_drag_before = None
         self._transform_drag_after = None
         self._transform_drag_param = None
-        self._refresh_text_transform_controls()
+        if not self._transform_items:
+            self._refresh_text_transform_controls(refresh_shape=False)
+            return
+        if geometry_changed:
+            control = getattr(SW.canvas, 'txtblkShapeControl', None)
+            if control is not None and control.blk_item in self._transform_items:
+                control.updateBoundingRect()
 
     def update_text_style_label(self):
         if self.global_mode():
