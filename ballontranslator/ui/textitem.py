@@ -1,19 +1,20 @@
 import math, re
 import numpy as np
-from typing import List, Union, Tuple
+from typing import List, Optional, Union, Tuple
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent
 from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
-from qtpy.QtGui import (QGradient, QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, 
+from qtpy.QtGui import (QGradient, QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument,
                        QInputMethodEvent, QPainter, QPen, QColor, QTextCharFormat, QTextDocument, QLinearGradient, 
-                       QBrush, QPalette, QAbstractTextDocumentLayout)
+                       QBrush, QPalette, QAbstractTextDocumentLayout, QPolygonF)
 
 from ballontranslator.utils.textblock import TextBlock, FontFormat, TextAlignment, LineSpacingType
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
-from ballontranslator.utils.fontformat import FontFormat, px2pt, pt2px
+from ballontranslator.utils.fontformat import FontFormat, normalize_text_transform, px2pt, pt2px
 from .misc import td_pattern, table_pattern
 from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
 from .text_graphical_effect import apply_shadow_effect
+from .text_transform import rect_polygon, text_transform_matrix
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
@@ -42,6 +43,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.pre_editing = False
         self.blk: TextBlock = None
         self.fontformat: FontFormat = None
+        self._text_transform_preview: Optional[Tuple[float, float, float]] = None
         self.repainting = False
         self.reshaping = False
         self.under_ctrl = False
@@ -71,7 +73,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.initTextBlock(blk, set_format=set_format)
         self.setBoundingRegionGranularity(0)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
-        self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+        self._update_text_transform_cache_mode()
 
     def inputMethodEvent(self, e: QInputMethodEvent):
         if self.pre_editing == False:
@@ -205,8 +207,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.doc_size_changed.emit(self.idx)
 
     def initTextBlock(self, blk: TextBlock = None, set_format=True):
-        self.blk = blk
-        self.fontformat = blk.fontformat
         if blk is None:
             xyxy = [0, 0, 0, 0]
             blk = TextBlock(xyxy)
@@ -214,6 +214,9 @@ class TextBlkItem(QGraphicsTextItem):
             bx1, by1, bx2, by2 = xyxy
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
+        self.blk = blk
+        self.fontformat = blk.fontformat
+        self._text_transform_preview = None
         self.setVertical(blk.vertical)
         self.setRect(blk.bounding_rect(), update_blk_rect=False)
         
@@ -245,11 +248,117 @@ class TextBlkItem(QGraphicsTextItem):
             self.setGradientEnabled(True)
         self.setShadow(font_fmt, repaint=False)
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
+        self.setCenterTransform()
         self.repaint_background()
 
-    def setCenterTransform(self):
-        center = self.boundingRect().center()
-        self.setTransformOriginPoint(center)
+    def _canonical_text_transform(self) -> Tuple[float, float, float]:
+        return normalize_text_transform(*self.blk.fontformat.text_transform)
+
+    def _effective_text_transform(self) -> Tuple[float, float, float]:
+        if self._text_transform_preview is not None:
+            return self._text_transform_preview
+        return self._canonical_text_transform()
+
+    def _update_text_transform_cache_mode(self) -> bool:
+        use_no_cache = (
+            self.is_editting()
+            or not self.transform().isIdentity()
+            or self.rotation() != 0
+        )
+        cache_mode = (
+            QGraphicsItem.CacheMode.NoCache
+            if use_no_cache
+            else QGraphicsItem.CacheMode.DeviceCoordinateCache
+        )
+        if self.cacheMode() == cache_mode:
+            return False
+        self.setCacheMode(cache_mode)
+        return True
+
+    def _apply_text_transform(self, values: Tuple[float, float, float]) -> bool:
+        matrix = text_transform_matrix(
+            *values,
+            pivot=self.logical_unpadded_rect().center(),
+        )
+        changed = self.transform() != matrix
+        if changed:
+            self.setTransform(matrix, combine=False)
+        self._update_text_transform_cache_mode()
+        if changed and self.is_editting():
+            self.updateMicroFocus()
+        return changed
+
+    def set_text_transform(
+        self,
+        horizontal_scale: float = None,
+        vertical_scale: float = None,
+        slant_angle: float = None,
+        *,
+        preview: bool = False,
+    ) -> bool:
+        """Apply the canonical item-local transform, optionally as a preview.
+
+        ``preview`` is transient item state; only a committed call writes the
+        existing ``TextBlock.fontformat`` owner.
+        """
+        raw_canonical = self.blk.fontformat.text_transform
+        canonical = normalize_text_transform(*raw_canonical)
+        current = self._effective_text_transform()
+        base = current if preview else canonical
+        target = normalize_text_transform(
+            base[0] if horizontal_scale is None else horizontal_scale,
+            base[1] if vertical_scale is None else vertical_scale,
+            base[2] if slant_angle is None else slant_angle,
+        )
+
+        if preview:
+            if target == current:
+                return False
+            self._text_transform_preview = None if target == canonical else target
+            return self._apply_text_transform(target)
+
+        model_changed = raw_canonical != target
+        if model_changed:
+            fontformat = self.blk.fontformat
+            (
+                fontformat.horizontal_scale,
+                fontformat.vertical_scale,
+                fontformat.slant_angle,
+            ) = target
+        self._text_transform_preview = None
+        visual_changed = self._apply_text_transform(target)
+        return model_changed or visual_changed
+
+    def clear_text_transform_preview(self) -> bool:
+        if self._text_transform_preview is None:
+            return False
+        self._text_transform_preview = None
+        return self._apply_text_transform(self._canonical_text_transform())
+
+    def setCenterTransform(self) -> bool:
+        center = self.logical_unpadded_rect().center()
+        origin_changed = self.transformOriginPoint() != center
+        if origin_changed:
+            self.setTransformOriginPoint(center)
+        transform_changed = self._apply_text_transform(
+            self._effective_text_transform()
+        )
+        if origin_changed and not transform_changed and self.is_editting():
+            self.updateMicroFocus()
+        return origin_changed or transform_changed
+
+    def logical_unpadded_rect(self) -> QRectF:
+        """Return the untransformed, effect-free block rect in item coordinates."""
+        return self.unpadRect(self.boundingRect())
+
+    def visual_polygon_in_scene(self) -> QPolygonF:
+        """Return the exact transformed logical block polygon in scene space."""
+        return QPolygonF(
+            [self.mapToScene(point) for point in rect_polygon(self.logical_unpadded_rect())]
+        )
+
+    def visual_bounds_in_scene(self) -> QRectF:
+        return self.visual_polygon_in_scene().boundingRect()
 
     def rect(self) -> QRectF:
         return QRectF(self.pos(), self.boundingRect().size())
@@ -316,12 +425,12 @@ class TextBlkItem(QGraphicsTextItem):
         self.setRect(abr, repaint=False)
 
     def absBoundingRect(self, max_h=None, max_w=None, qrect=False) -> Union[List, QRectF]:
-        br = self.boundingRect()
-        P = 2 * self.padding()
-        w, h = br.width() - P, br.height() - P
+        # This remains the logical, untransformed persistence/layout rectangle.
+        br = self.logical_unpadded_rect()
+        w, h = br.width(), br.height()
         pos = self.pos()
-        x = pos.x() + self.padding()
-        y = pos.y() + self.padding()
+        x = pos.x() + br.x()
+        y = pos.y() + br.y()
         if max_h is not None:
             y = min(max(0, y), max_h)
             y1 = y + h
@@ -344,6 +453,14 @@ class TextBlkItem(QGraphicsTextItem):
         self.setTransformOriginPoint(0, 0)
         super().setScale(scale)
         self.setCenterTransform()
+
+    def setRotation(self, angle: float) -> None:
+        if self.rotation() == angle:
+            return
+        super().setRotation(angle)
+        self._update_text_transform_cache_mode()
+        if self.is_editting():
+            self.updateMicroFocus()
 
     @property
     def angle(self) -> int:
@@ -535,7 +652,7 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.clearSelection()
         self.setTextCursor(cursor)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+        self._update_text_transform_cache_mode()
         if keep_focus:
             self.setFocus()
 
@@ -728,6 +845,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.fontformat.gradient_size = ffmat.gradient_size
         
         self.fontformat.merge(ffmat)
+        self.set_text_transform(*self.fontformat.text_transform)
         
         if self.fontformat.gradient_enabled:
             self.update()
