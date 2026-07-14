@@ -1,4 +1,3 @@
-import copy
 import sys
 from typing import List
 
@@ -8,11 +7,13 @@ from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent, QFont
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
-from ballontranslator.utils.fontformat import FontFormat, px2pt, LineSpacingType
+from ballontranslator.utils.fontformat import FontFormat, px2pt, LineSpacingType, normalize_text_transform
 from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel
 from .textitem import TextBlkItem
 from .text_advanced_format import TextAdvancedFormatPanel
 from .text_style_presets import TextStylePresetPanel
+from .textedit_commands import SetTextTransformCommand
+from . import shared_widget as SW
 from . import funcmaps as FM
 
 
@@ -261,6 +262,10 @@ class FontFormatPanel(Widget):
     def __init__(self, app: QApplication, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.app = app
+        self._transform_items = []
+        self._transform_drag_before = None
+        self._transform_drag_after = None
+        self._transform_drag_param = None
 
         self.vlayout = QVBoxLayout(self)
         self.vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -381,6 +386,18 @@ class FontFormatPanel(Widget):
             config_expand_name='expand_tadvanced_panel',
             on_format_changed=self.on_param_changed
         )
+        self.textadvancedfmt_panel.transform_commit_requested.connect(
+            self.on_text_transform_commit
+        )
+        self.textadvancedfmt_panel.transform_preview_requested.connect(
+            self.on_text_transform_preview
+        )
+        self.textadvancedfmt_panel.transform_drag_commit_requested.connect(
+            self.on_text_transform_drag_commit
+        )
+        self.textadvancedfmt_panel.transform_preview_canceled.connect(
+            self.on_text_transform_cancel
+        )
         color_label = self.textadvancedfmt_panel.shadow_group.color_label
         color_label.changingColor.connect(self.changingColor)
         color_label.colorChanged.connect(self.onColorLabelChanged)
@@ -474,6 +491,128 @@ class FontFormatPanel(Widget):
         else:
             func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True, **func_kwargs)
 
+    @staticmethod
+    def _transform_with_value(transform, param_name, value):
+        values = dict(zip(
+            ('horizontal_scale', 'vertical_scale', 'slant_angle'), transform
+        ))
+        values[param_name] = value
+        return normalize_text_transform(
+            values['horizontal_scale'],
+            values['vertical_scale'],
+            values['slant_angle'],
+        )
+
+    def _refresh_text_transform_controls(self):
+        if self._transform_items:
+            self.textadvancedfmt_panel.set_transform_items(self._transform_items)
+            if len(self._transform_items) == 1 and C.active_format is not None:
+                transform = self._transform_items[0].blk.fontformat.text_transform
+                for name, value in zip(
+                    ('horizontal_scale', 'vertical_scale', 'slant_angle'), transform
+                ):
+                    setattr(C.active_format, name, value)
+        elif C.active_format is not None:
+            for name, control in self.textadvancedfmt_panel.transform_controls.items():
+                control.set_model_value(getattr(C.active_format, name))
+        control = getattr(SW.canvas, 'txtblkShapeControl', None)
+        if control is not None and control.blk_item in self._transform_items:
+            control.updateBoundingRect()
+
+    def on_text_transform_commit(self, param_name: str, value: float):
+        if not self._transform_items:
+            before = self.global_format.text_transform
+            after = self._transform_with_value(before, param_name, value)
+            if before != after:
+                for name, component in zip(
+                    ('horizontal_scale', 'vertical_scale', 'slant_angle'), after
+                ):
+                    setattr(self.global_format, name, component)
+                self.update_text_style_label()
+            self._refresh_text_transform_controls()
+            return
+
+        before = [item.blk.fontformat.text_transform for item in self._transform_items]
+        after = [
+            self._transform_with_value(transform, param_name, value)
+            for transform in before
+        ]
+        command = SetTextTransformCommand.create(
+            self._transform_items,
+            before,
+            after,
+            self._refresh_text_transform_controls,
+        )
+        if command is not None:
+            SW.canvas.push_undo_command(command)
+        else:
+            self._refresh_text_transform_controls()
+
+    def on_text_transform_preview(self, param_name: str, display_delta: float):
+        if not self._transform_items:
+            return
+        if self._transform_drag_param != param_name or self._transform_drag_before is None:
+            # Starting a drag must not refresh the controls: the emitting
+            # control owns its cumulative display delta until release/Escape.
+            # Only clear a genuinely older item preview if a different control
+            # somehow begins a new session.
+            if self._transform_drag_before is not None:
+                for item in self._transform_items:
+                    item.clear_text_transform_preview()
+            self._transform_drag_param = param_name
+            self._transform_drag_before = [
+                item.blk.fontformat.text_transform for item in self._transform_items
+            ]
+            self._transform_drag_after = None
+        canonical_delta = (
+            display_delta / 100.0
+            if param_name in {'horizontal_scale', 'vertical_scale'}
+            else display_delta
+        )
+        self._transform_drag_after = [
+            self._transform_with_value(
+                transform,
+                param_name,
+                transform[
+                    ('horizontal_scale', 'vertical_scale', 'slant_angle').index(param_name)
+                ] + canonical_delta,
+            )
+            for transform in self._transform_drag_before
+        ]
+        for item, transform in zip(self._transform_items, self._transform_drag_after):
+            item.set_text_transform(*transform, preview=True)
+        control = getattr(SW.canvas, 'txtblkShapeControl', None)
+        if control is not None and control.blk_item in self._transform_items:
+            control.updateBoundingRect()
+
+    def on_text_transform_drag_commit(self, param_name: str, display_delta: float):
+        if self._transform_drag_param != param_name or self._transform_drag_before is None:
+            return
+        before = self._transform_drag_before
+        after = self._transform_drag_after or before
+        items = list(self._transform_items)
+        self._transform_drag_before = None
+        self._transform_drag_after = None
+        self._transform_drag_param = None
+        command = SetTextTransformCommand.create(
+            items, before, after, self._refresh_text_transform_controls
+        )
+        if command is None:
+            for item in items:
+                item.clear_text_transform_preview()
+            self._refresh_text_transform_controls()
+        else:
+            SW.canvas.push_undo_command(command)
+
+    def on_text_transform_cancel(self, param_name=None):
+        if self._transform_drag_before is not None:
+            for item in self._transform_items:
+                item.clear_text_transform_preview()
+        self._transform_drag_before = None
+        self._transform_drag_after = None
+        self._transform_drag_param = None
+        self._refresh_text_transform_controls()
+
     def update_text_style_label(self):
         if self.global_mode():
             active_text_style_label = self.active_text_style_label()
@@ -565,6 +704,18 @@ class FontFormatPanel(Widget):
             self.set_globalfmt_title()
 
     def set_textblk_item(self, textblk_item: TextBlkItem = None, multi_select:bool=False):
+        # A selection transition is a transaction boundary for transform text.
+        # Commit against the old target list before replacing it.
+        self.textadvancedfmt_panel.finish_pending_transform_edits()
+        self.on_text_transform_cancel(self._transform_drag_param)
+        if textblk_item is not None:
+            transform_items = [textblk_item]
+        elif multi_select:
+            transform_items = SW.canvas.selected_text_items()
+        else:
+            transform_items = []
+        self._transform_items = transform_items
+
         if textblk_item is None:
             focus_w = self.app.focusWidget()
             focus_p = None if focus_w is None else focus_w.parentWidget()
@@ -575,13 +726,11 @@ class FontFormatPanel(Widget):
                 if focus_p == self or focus_p.parentWidget() == self:
                     focus_on_fmtoptions = True
             if not focus_on_fmtoptions:
-                # Store the current text block's format before switching to global
-                if self.textblk_item is not None:
-                    # Save all format properties including gradient state
-                    self.textblk_item.fontformat = copy.deepcopy(C.active_format)
                 self.textblk_item = None
                 self.set_active_format(self.global_format, multi_select)
                 self.set_globalfmt_title()
+            if transform_items:
+                self.textadvancedfmt_panel.set_transform_items(transform_items)
             
         else:
             if not self.restoring_textblk:
@@ -596,4 +745,5 @@ class FontFormatPanel(Widget):
                 self.textblk_item = textblk_item
                 multi_size = not textblk_item.isEditing() and textblk_item.isMultiFontSize()
                 self.set_active_format(blk_fmt, multi_size)
+                self.textadvancedfmt_panel.set_transform_items(transform_items)
                 self.textstyle_panel.setTitle(f'TextBlock #{textblk_item.idx}')

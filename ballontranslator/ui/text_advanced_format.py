@@ -1,10 +1,188 @@
+import math
 from typing import Any, Callable
 
-from qtpy.QtWidgets import QSizePolicy, QVBoxLayout, QPushButton, QGroupBox, QLabel, QHBoxLayout
-from qtpy.QtCore import Signal, Qt
+from qtpy.QtWidgets import QSizePolicy, QVBoxLayout, QPushButton, QGroupBox, QLabel, QHBoxLayout, QLineEdit, QWidget
+from qtpy.QtCore import QEvent, Signal, Qt
+from qtpy.QtGui import QKeyEvent
 
 from .custom_widget import SmallColorPickerLabel, SmallParamLabel, PanelArea, SmallSizeControlLabel, SmallSizeComboBox, SmallParamLabel, SmallSizeComboBox, SmallComboBox, TextCheckerLabel
 from ballontranslator.utils.fontformat import FontFormat
+
+
+class TransformDragLabel(SmallSizeControlLabel):
+    drag_started = Signal()
+    drag_canceled = Signal()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setFocus()
+            self.drag_started.emit()
+        return super().mousePressEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key.Key_Escape and self.mouse_pressed:
+            self.mouse_pressed = False
+            self.drag_canceled.emit()
+            event.accept()
+            return
+        return super().keyPressEvent(event)
+
+
+class CommittedTransformControl(QWidget):
+    """One Advanced-panel-only committed numeric transform editor."""
+
+    IDLE = 'IDLE'
+    PENDING_TEXT = 'PENDING_TEXT'
+    DRAG_PREVIEW = 'DRAG_PREVIEW'
+
+    commit_requested = Signal(str, float)
+    preview_requested = Signal(str, float)
+    drag_commit_requested = Signal(str, float)
+    preview_canceled = Signal(str)
+
+    def __init__(self, title: str, param_name: str, percentage: bool, parent=None):
+        super().__init__(parent)
+        self.param_name = param_name
+        self.percentage = percentage
+        self.state = self.IDLE
+        self._model_value = None
+        self._drag_delta = 0.0
+
+        self.label = TransformDragLabel(
+            self,
+            direction=0,
+            text=title,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        self.editor = QLineEdit(self)
+        self.editor.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.editor.setMinimumWidth(72)
+        self.editor.textEdited.connect(self._on_text_edited)
+        self.editor.returnPressed.connect(self.commit_pending)
+        self.editor.installEventFilter(self)
+
+        self.label.drag_started.connect(self._start_drag)
+        self.label.size_ctrl_changed.connect(self._move_drag)
+        self.label.btn_released.connect(self._finish_drag)
+        self.label.drag_canceled.connect(self.cancel_preview)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.label)
+        layout.addWidget(self.editor)
+
+    def _format(self, canonical_value: float) -> str:
+        if self.percentage:
+            return f'{canonical_value * 100.0:.1f}%'
+        return f'{canonical_value:.1f}\N{DEGREE SIGN}'
+
+    def _parse(self, text: str) -> float:
+        text = text.strip()
+        if self.percentage:
+            if text.endswith('%'):
+                text = text[:-1].strip()
+            value = float(text)
+            if not math.isfinite(value) or not 10.0 <= value <= 400.0:
+                raise ValueError
+            return value / 100.0
+        if text.endswith('\N{DEGREE SIGN}'):
+            text = text[:-1].strip()
+        value = float(text)
+        if not math.isfinite(value) or not -45.0 <= value <= 45.0:
+            raise ValueError
+        return value
+
+    def _restore_display(self):
+        self.editor.setText(
+            '\N{EM DASH}'
+            if self._model_value is None
+            else self._format(self._model_value)
+        )
+
+    def set_model_value(self, canonical_value):
+        self.state = self.IDLE
+        self._drag_delta = 0.0
+        self._model_value = canonical_value
+        self._restore_display()
+
+    def _on_text_edited(self):
+        if self.state != self.DRAG_PREVIEW:
+            self.state = self.PENDING_TEXT
+
+    def commit_pending(self):
+        if self.state != self.PENDING_TEXT:
+            return False
+        try:
+            canonical_value = self._parse(self.editor.text())
+        except (TypeError, ValueError):
+            self.state = self.IDLE
+            self._restore_display()
+            return False
+        self.state = self.IDLE
+        self._model_value = canonical_value
+        self._restore_display()
+        self.commit_requested.emit(self.param_name, canonical_value)
+        return True
+
+    def cancel_pending(self):
+        if self.state == self.PENDING_TEXT:
+            self.state = self.IDLE
+            self._restore_display()
+
+    def eventFilter(self, watched, event):
+        if watched is self.editor:
+            if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+                self.cancel_pending()
+                event.accept()
+                return True
+            if event.type() == QEvent.Type.FocusOut:
+                self.commit_pending()
+        return super().eventFilter(watched, event)
+
+    def _start_drag(self):
+        self.commit_pending()
+        self.state = self.DRAG_PREVIEW
+        self._drag_delta = 0.0
+
+    def _move_drag(self, delta: int):
+        if self.state != self.DRAG_PREVIEW:
+            self._start_drag()
+        self._drag_delta += float(delta)
+        if self._model_value is None:
+            suffix = '%' if self.percentage else '\N{DEGREE SIGN}'
+            self.editor.setText(
+                f'\N{GREEK CAPITAL LETTER DELTA} {self._drag_delta:+.1f}{suffix}'
+            )
+        else:
+            canonical_delta = self._drag_delta / 100.0 if self.percentage else self._drag_delta
+            minimum, maximum = ((0.1, 4.0) if self.percentage else (-45.0, 45.0))
+            preview_value = min(max(self._model_value + canonical_delta, minimum), maximum)
+            self.editor.setText(self._format(preview_value))
+        self.preview_requested.emit(self.param_name, self._drag_delta)
+
+    def _finish_drag(self):
+        if self.state != self.DRAG_PREVIEW:
+            return
+        delta = self._drag_delta
+        self.state = self.IDLE
+        self._drag_delta = 0.0
+        self._restore_display()
+        if delta == 0.0:
+            self.preview_canceled.emit(self.param_name)
+        else:
+            self.drag_commit_requested.emit(self.param_name, delta)
+
+    def cancel_preview(self):
+        if self.state != self.DRAG_PREVIEW:
+            return
+        self.state = self.IDLE
+        self._drag_delta = 0.0
+        self._restore_display()
+        self.preview_canceled.emit(self.param_name)
 
 
 class TextShadowGroup(QGroupBox):
@@ -137,12 +315,43 @@ class TextGradientGroup(QGroupBox):
 class TextAdvancedFormatPanel(PanelArea):
 
     param_changed = Signal(str, object)
+    transform_commit_requested = Signal(str, float)
+    transform_preview_requested = Signal(str, float)
+    transform_drag_commit_requested = Signal(str, float)
+    transform_preview_canceled = Signal(str)
 
     def __init__(self, panel_name: str, config_name: str, config_expand_name: str, on_format_changed: Callable):
         super().__init__(panel_name, config_name, config_expand_name)
 
         self.active_format: FontFormat = None
         self.on_format_changed = on_format_changed
+
+        self.horizontal_scale_control = CommittedTransformControl(
+            self.tr('Horizontal Scale'), 'horizontal_scale', True, self
+        )
+        self.vertical_scale_control = CommittedTransformControl(
+            self.tr('Vertical Scale'), 'vertical_scale', True, self
+        )
+        self.slant_angle_control = CommittedTransformControl(
+            self.tr('Slant Angle'), 'slant_angle', False, self
+        )
+        self.transform_controls = {
+            'horizontal_scale': self.horizontal_scale_control,
+            'vertical_scale': self.vertical_scale_control,
+            'slant_angle': self.slant_angle_control,
+        }
+        for control in self.transform_controls.values():
+            control.commit_requested.connect(self.transform_commit_requested.emit)
+            control.preview_requested.connect(self.transform_preview_requested.emit)
+            control.drag_commit_requested.connect(
+                self.transform_drag_commit_requested.emit
+            )
+            control.preview_canceled.connect(self.transform_preview_canceled.emit)
+
+        transform_layout = QHBoxLayout()
+        transform_layout.addWidget(self.horizontal_scale_control)
+        transform_layout.addWidget(self.vertical_scale_control)
+        transform_layout.addWidget(self.slant_angle_control)
 
         self.linespacing_type_combobox = SmallComboBox(
             parent=self,
@@ -182,6 +391,7 @@ class TextAdvancedFormatPanel(PanelArea):
         hlayout.addLayout(opacity_layout)
         vlayout = QVBoxLayout()
         vlayout.addLayout(hlayout)
+        vlayout.addLayout(transform_layout)
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
@@ -199,6 +409,8 @@ class TextAdvancedFormatPanel(PanelArea):
     def set_active_format(self, font_format: FontFormat):
         self.active_format = font_format
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
+        for name, control in self.transform_controls.items():
+            control.set_model_value(getattr(font_format, name))
 
         self.shadow_group.color_label.setPickerColor(font_format.shadow_color)
         self.shadow_group.strength_box.setValue(font_format.shadow_strength)
@@ -212,3 +424,17 @@ class TextAdvancedFormatPanel(PanelArea):
         self.gradient_group.start_picker.setPickerColor(font_format.gradient_start_color)
         self.gradient_group.end_picker.setPickerColor(font_format.gradient_end_color)
         # self.tate_chu_yoko_checker.setChecked(font_format.font)
+
+    def set_transform_items(self, items):
+        for name, control in self.transform_controls.items():
+            values = [getattr(item.blk.fontformat, name) for item in items]
+            common = values[0] if values and all(value == values[0] for value in values) else None
+            control.set_model_value(common)
+
+    def finish_pending_transform_edits(self):
+        for control in self.transform_controls.values():
+            control.commit_pending()
+
+    def cancel_transform_previews(self):
+        for control in self.transform_controls.values():
+            control.cancel_preview()
