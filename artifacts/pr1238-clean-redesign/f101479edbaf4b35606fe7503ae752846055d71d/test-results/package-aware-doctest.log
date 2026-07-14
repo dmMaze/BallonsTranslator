@@ -1,0 +1,92 @@
+=== package-aware doctest for changed core modules ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["F:\\python\\python.exe", "-c", "import doctest\nimport sys\nfrom ballontranslator.utils import fontformat\nfrom ballontranslator.ui import text_transform\n\nfailed = 0\nfor module in (fontformat, text_transform):\n    result = doctest.testmod(module, verbose=True)\n    print(f\"PACKAGE_AWARE_RESULT {module.__name__} attempted={result.attempted} failed={result.failed}\")\n    failed += result.failed\nsys.exit(1 if failed else 0)"]
+exit_code=0
+expected_exit_codes=[0]
+exit_code_as_expected=True
+stdout_nonempty_line_count=80
+--- stdout ---
+Trying:
+    normalize_text_transform(1.23456789, 0.01, -90)
+Expecting:
+    (1.234568, 0.1, -45.0)
+ok
+Trying:
+    normalize_text_transform_value(4.5, 0.1, 4.0)
+Expecting:
+    4.0
+ok
+Trying:
+    normalize_text_transform_value(-0.0, -45.0, 45.0)
+Expecting:
+    0.0
+ok
+Trying:
+    normalize_text_transform_value(float("nan"), 0.1, 4.0)
+Expecting:
+    Traceback (most recent call last):
+    ...
+    ValueError: text transform values must be finite numbers
+ok
+16 items had no tests:
+    ballontranslator.utils.fontformat
+    ballontranslator.utils.fontformat.FontFormat
+    ballontranslator.utils.fontformat.FontFormat.__eq__
+    ballontranslator.utils.fontformat.FontFormat.__post_init__
+    ballontranslator.utils.fontformat.FontFormat.__repr__
+    ballontranslator.utils.fontformat.FontFormat.deepcopy
+    ballontranslator.utils.fontformat.FontFormat.foreground_color
+    ballontranslator.utils.fontformat.FontFormat.merge
+    ballontranslator.utils.fontformat.FontFormat.size_pt
+    ballontranslator.utils.fontformat.FontFormat.stroke_color
+    ballontranslator.utils.fontformat.FontFormat.text_transform
+    ballontranslator.utils.fontformat.LineSpacingType
+    ballontranslator.utils.fontformat.TextAlignment
+    ballontranslator.utils.fontformat.fix_fontweight_qt
+    ballontranslator.utils.fontformat.pt2px
+    ballontranslator.utils.fontformat.px2pt
+2 items passed all tests:
+   1 tests in ballontranslator.utils.fontformat.normalize_text_transform
+   3 tests in ballontranslator.utils.fontformat.normalize_text_transform_value
+4 tests in 18 items.
+4 passed and 0 failed.
+Test passed.
+PACKAGE_AWARE_RESULT ballontranslator.utils.fontformat attempted=4 failed=0
+Trying:
+    matrix = text_transform_matrix(2, 3, 0, QPointF(1, 1))
+Expecting nothing
+ok
+Trying:
+    mapped = matrix.map(QPointF(2, 3))
+Expecting nothing
+ok
+Trying:
+    (mapped.x(), mapped.y())
+Expecting:
+    (3.0, 7.0)
+ok
+Trying:
+    mapped = text_transform_point(QPointF(2, 3), QPointF(1, 1), 2, 3, 0)
+Expecting nothing
+ok
+Trying:
+    (mapped.x(), mapped.y())
+Expecting:
+    (3.0, 7.0)
+ok
+4 items had no tests:
+    ballontranslator.ui.text_transform
+    ballontranslator.ui.text_transform._text_transform_coefficients
+    ballontranslator.ui.text_transform.mapped_rect_polygon
+    ballontranslator.ui.text_transform.rect_polygon
+2 items passed all tests:
+   3 tests in ballontranslator.ui.text_transform.text_transform_matrix
+   2 tests in ballontranslator.ui.text_transform.text_transform_point
+5 tests in 6 items.
+5 passed and 0 failed.
+Test passed.
+PACKAGE_AWARE_RESULT ballontranslator.ui.text_transform attempted=5 failed=0
+--- stderr ---
+=== end ===
+

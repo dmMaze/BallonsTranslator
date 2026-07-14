@@ -1,0 +1,21 @@
+{
+  "distributions": {
+    "PyQt5": "5.15.11",
+    "PyQt5-Qt5": "5.15.2",
+    "PyQt6": "6.6.1",
+    "PyQt6-Qt6": "6.6.3",
+    "PySide6": "6.8.2.1",
+    "numpy": "1.26.4",
+    "pytest": "9.1.1",
+    "pytest-subtests": null,
+    "qtpy": "2.4.3"
+  },
+  "platform": "Windows-10-10.0.19045-SP0",
+  "python_executable": "F:\\python\\python.exe",
+  "python_version": "3.10.6 (tags/v3.10.6:9c7b4bd, Aug  1 2022, 21:53:49) [MSC v.1932 64 bit (AMD64)]",
+  "pythonpath": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator",
+  "qt_api": "pyqt6",
+  "qt_qpa_platform": "offscreen",
+  "qt_runtime_version": "6.6.3",
+  "working_directory": "F:\\ballon\\BallonsTranslator"
+}

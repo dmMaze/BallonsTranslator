@@ -1,0 +1,3 @@
+# Preserve raw pytest/JUnit evidence; upstream tracebacks contain source whitespace.
+artifacts/pr1238-clean-redesign/*/test-results/*.xml whitespace=-trailing-space
+artifacts/pr1238-clean-redesign/*/test-results/*.log whitespace=-trailing-space

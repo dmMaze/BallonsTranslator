@@ -1,0 +1,3 @@
+cwd=F:\ballon\BallonsTranslator
+executable=F:\python\python.exe
+argv=["artifacts\\pr1238-clean-redesign\\f101479edbaf4b35606fe7503ae752846055d71d\\test-results\\generate_evidence.py"]

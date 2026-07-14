@@ -1,0 +1,160 @@
+{
+  "block": {
+    "_bounding_rect": [
+      60,
+      70,
+      380,
+      120
+    ],
+    "_detected_font_confidence": 0.0,
+    "_detected_font_name": "",
+    "_detected_font_size": -1,
+    "angle": 0,
+    "det_model": null,
+    "distance": null,
+    "fontformat": {
+      "_style_name": "",
+      "alignment": 0,
+      "bold": false,
+      "deprecated_attributes": {},
+      "font_family": "Arial",
+      "font_size": 32,
+      "font_weight": null,
+      "frgb": [
+        0,
+        0,
+        0
+      ],
+      "gradient_angle": 0.0,
+      "gradient_enabled": true,
+      "gradient_end_color": [
+        225,
+        65,
+        125
+      ],
+      "gradient_size": 1.0,
+      "gradient_start_color": [
+        35,
+        95,
+        210
+      ],
+      "horizontal_scale": 1.234568,
+      "italic": false,
+      "letter_spacing": 1.15,
+      "line_spacing": 1.2,
+      "line_spacing_type": 0,
+      "opacity": 1.0,
+      "shadow_color": [
+        0,
+        0,
+        0
+      ],
+      "shadow_offset": [
+        -0.14,
+        0.18
+      ],
+      "shadow_radius": 0.17,
+      "shadow_strength": 0.75,
+      "slant_angle": -14.5,
+      "srgb": [
+        0,
+        0,
+        0
+      ],
+      "stroke_width": 0.11,
+      "underline": false,
+      "vertical": false,
+      "vertical_scale": 0.625
+    },
+    "label": null,
+    "language": "unknown",
+    "lines": [],
+    "merged": false,
+    "norm": -1,
+    "region_inpaint_dict": null,
+    "region_mask": null,
+    "rich_text": "<p><b>Save → restart → reload</b> 저장</p>",
+    "src_is_vertical": false,
+    "text": [],
+    "translation": "Save → restart → reload  저장",
+    "vec": null,
+    "xyxy": [
+      60,
+      70,
+      440,
+      190
+    ]
+  },
+  "git": {
+    "branch": "codex/pr1238-clean-redesign-20260714",
+    "expected_feature_sha": "f101479edbaf4b35606fe7503ae752846055d71d",
+    "git_head": "f101479edbaf4b35606fe7503ae752846055d71d",
+    "git_status_porcelain": [
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/controls.png",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/editing-canvas-export.png",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/extreme-effects.png",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/fixture-project/page.png",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/fixture-project/project.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/fixture-project/reload-process-1.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/fixture-project/reload-process-2.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/horizontal-vertical.png",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/manual-checklist.md",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/empty-project/.gitkeep",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/formatted_empty_v0.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/future_block_marker_v2.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/future_root_v2.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/manifest.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/pr1238_effective_v0_ambiguous_stretch.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/pr1238_effective_v0_exact.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/pr1238_logical_v1.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/migration-fixtures/upstream_legacy.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/save-reload.png",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/evidence-environment.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/evidence-generation-command.txt",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/focused-pyqt5.xml",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/focused-pyqt6.xml",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/focused-pyside6.xml",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/full-feature-pyqt6.xml",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/full-upstream-pyqt6.xml",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/generate_evidence.py",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/generation-report.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/git-provenance.json",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/package-aware-doctest.log",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/pip-freeze.txt",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/python-vv.txt",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/static-checks.log",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/upstream-overlay-collectable.log",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/upstream-overlay-collection.log",
+      "?? artifacts/pr1238-clean-redesign/f101479edbaf4b35606fe7503ae752846055d71d/test-results/verification-summary.md",
+      "?? doc/architecture/pr1238-clean-redesign.md"
+    ],
+    "head_matches_expected_feature_sha": true,
+    "repo_dir": "F:\\ballon\\BallonsTranslator",
+    "scope_note": "Untracked doc/artifact files are expected while this evidence bundle is being generated; production and test paths are compared to HEAD separately.",
+    "staged_feature_paths_clean": true,
+    "tracked_feature_paths_clean": true
+  },
+  "invocation": [
+    "F:\\python\\python.exe",
+    "artifacts\\pr1238-clean-redesign\\f101479edbaf4b35606fe7503ae752846055d71d\\test-results\\generate_evidence.py",
+    "--reload-project",
+    "artifacts\\pr1238-clean-redesign\\f101479edbaf4b35606fe7503ae752846055d71d\\fixture-project\\project.json"
+  ],
+  "load_returned_new_project": false,
+  "page_image_sha256": "f10bfded99e9cba62b62dda792fd707644042011581758fb43e57fbca39a4512",
+  "page_name": "page.png",
+  "parent_process_id": 35636,
+  "process_id": 26152,
+  "project_path": "fixture-project\\project.json",
+  "project_sha256": "9056f87c54efcfd46fa4a199ebc1744d689c7c0ef1defe4be3a4c4c80a582a8b",
+  "python_executable": "F:\\python\\python.exe",
+  "read_from_disk": true,
+  "schema_version": 1,
+  "stderr": [],
+  "stored_directory": ".",
+  "text_transform": [
+    1.234568,
+    0.625,
+    -14.5
+  ]
+}

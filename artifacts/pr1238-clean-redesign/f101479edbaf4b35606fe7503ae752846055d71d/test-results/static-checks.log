@@ -1,0 +1,142 @@
+=== py_compile changed production Python ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["F:\\python\\python.exe", "-c", "import os\nimport py_compile\nimport sys\nimport tempfile\n\nwith tempfile.TemporaryDirectory(prefix=\"pr1238-pycompile-\") as output_dir:\n    for index, path in enumerate(sys.argv[1:]):\n        py_compile.compile(\n            path,\n            cfile=os.path.join(output_dir, f\"{index}.pyc\"),\n            doraise=True,\n        )\nprint(\"compiled\", len(sys.argv) - 1, \"changed production Python files\")\nprint(*sys.argv[1:], sep=\"\\n\")", "ballontranslator/ui/mainwindow.py", "ballontranslator/ui/scene_textlayout.py", "ballontranslator/ui/scenetext_manager.py", "ballontranslator/ui/text_advanced_format.py", "ballontranslator/ui/text_panel.py", "ballontranslator/ui/text_transform.py", "ballontranslator/ui/textedit_commands.py", "ballontranslator/ui/texteditshapecontrol.py", "ballontranslator/ui/textitem.py", "ballontranslator/utils/fontformat.py", "ballontranslator/utils/proj_imgtrans.py"]
+exit_code=0
+expected_exit_codes=[0]
+exit_code_as_expected=True
+stdout_nonempty_line_count=12
+--- stdout ---
+compiled 11 changed production Python files
+ballontranslator/ui/mainwindow.py
+ballontranslator/ui/scene_textlayout.py
+ballontranslator/ui/scenetext_manager.py
+ballontranslator/ui/text_advanced_format.py
+ballontranslator/ui/text_panel.py
+ballontranslator/ui/text_transform.py
+ballontranslator/ui/textedit_commands.py
+ballontranslator/ui/texteditshapecontrol.py
+ballontranslator/ui/textitem.py
+ballontranslator/utils/fontformat.py
+ballontranslator/utils/proj_imgtrans.py
+--- stderr ---
+=== end ===
+
+=== git diff --check exact upstream to feature ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["git", "-c", "safe.directory=F:/ballon/BallonsTranslator", "-C", "F:\\ballon\\BallonsTranslator", "diff", "--check", "6155f9b303033b24f57a2c025d2edbfed3eb847f...f101479edbaf4b35606fe7503ae752846055d71d"]
+exit_code=0
+expected_exit_codes=[0]
+exit_code_as_expected=True
+stdout_nonempty_line_count=0
+--- stdout ---
+--- stderr ---
+=== end ===
+
+=== forbidden identifier grep (exit 1 means zero matches) ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["rg", "-n", "VisualLineTransform|LayoutScaleContract|TransformedPaintCache|effective_size_pt|effective_stretch|_source_to_visual|_visual_to_source|_normalize_doc_fonts_for_geometric_scale", "ballontranslator", "tests"]
+exit_code=1
+expected_exit_codes=[1]
+exit_code_as_expected=True
+stdout_nonempty_line_count=0
+--- stdout ---
+--- stderr ---
+=== end ===
+
+=== audit font geometry mutations in changed production files ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["rg", "-n", "setStretch|setFontStretch|pointSizeF.*\\*|setPointSizeF.*(scale|factor)", "ballontranslator/ui/mainwindow.py", "ballontranslator/ui/scene_textlayout.py", "ballontranslator/ui/scenetext_manager.py", "ballontranslator/ui/text_advanced_format.py", "ballontranslator/ui/text_panel.py", "ballontranslator/ui/text_transform.py", "ballontranslator/ui/textedit_commands.py", "ballontranslator/ui/texteditshapecontrol.py", "ballontranslator/ui/textitem.py", "ballontranslator/utils/fontformat.py", "ballontranslator/utils/proj_imgtrans.py"]
+exit_code=0
+expected_exit_codes=[0, 1]
+exit_code_as_expected=True
+stdout_nonempty_line_count=15
+--- stdout ---
+ballontranslator/utils/proj_imgtrans.py:222:    new_default.setPointSizeF(old_default.pointSizeF() * point_size_factor)
+ballontranslator/utils/proj_imgtrans.py:223:    new_default.setStretch(stretch)
+ballontranslator/utils/proj_imgtrans.py:243:            delta.setFontStretch(stretch)
+ballontranslator/utils/proj_imgtrans.py:249:        block_delta.setFontPointSize(block_font.pointSizeF() * point_size_factor)
+ballontranslator/utils/proj_imgtrans.py:250:        block_delta.setFontStretch(stretch)
+ballontranslator/utils/proj_imgtrans.py:267:    font.setPointSizeF(point_size * vertical_scale)
+ballontranslator/utils/proj_imgtrans.py:268:    font.setStretch(stretch)
+ballontranslator/ui/text_panel.py:453:        hl4.setStretch(0, 1)
+ballontranslator/ui/text_panel.py:454:        hl4.setStretch(1, 1)
+ballontranslator/ui/text_panel.py:455:        hl4.setStretch(2, 1)
+ballontranslator/ui/scenetext_manager.py:819:            new_font_size = blk_font.pointSizeF() * resize_ratio   
+ballontranslator/ui/scenetext_manager.py:875:            new_font_size = blkitem.font().pointSizeF() * resize_ratio
+ballontranslator/ui/mainwindow.py:294:        self.comicTransSplitter.setStretchFactor(0, 1)
+ballontranslator/ui/mainwindow.py:295:        self.comicTransSplitter.setStretchFactor(1, 10)
+ballontranslator/ui/mainwindow.py:296:        self.comicTransSplitter.setStretchFactor(2, 1)
+--- stderr ---
+=== end ===
+
+=== audit paint/effect document clone paths ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["rg", "-n", "QTextDocument\\(|clone\\(|drawContents\\(|toPixmap\\(", "ballontranslator/ui/scene_textlayout.py", "ballontranslator/ui/textitem.py"]
+exit_code=1
+expected_exit_codes=[0, 1]
+exit_code_as_expected=True
+stdout_nonempty_line_count=0
+--- stdout ---
+--- stderr ---
+=== end ===
+
+=== audit legacy serialization names ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["rg", "-n", "rich_text_transform_version|italic_angle", "ballontranslator/ui/mainwindow.py", "ballontranslator/ui/scene_textlayout.py", "ballontranslator/ui/scenetext_manager.py", "ballontranslator/ui/text_advanced_format.py", "ballontranslator/ui/text_panel.py", "ballontranslator/ui/text_transform.py", "ballontranslator/ui/textedit_commands.py", "ballontranslator/ui/texteditshapecontrol.py", "ballontranslator/ui/textitem.py", "ballontranslator/utils/fontformat.py", "ballontranslator/utils/proj_imgtrans.py"]
+exit_code=0
+expected_exit_codes=[0, 1]
+exit_code_as_expected=True
+stdout_nonempty_line_count=9
+--- stdout ---
+ballontranslator/utils/proj_imgtrans.py:102:            ('fontformat.italic_angle', fontformat.get('italic_angle', _MISSING)),
+ballontranslator/utils/proj_imgtrans.py:103:            ('italic_angle', block.get('italic_angle', _MISSING)),
+ballontranslator/utils/proj_imgtrans.py:442:            marker_value = block.get('rich_text_transform_version', _MISSING)
+ballontranslator/utils/proj_imgtrans.py:445:                f"{location}.rich_text_transform_version",
+ballontranslator/utils/proj_imgtrans.py:456:            marker_value = block.get('rich_text_transform_version', _MISSING)
+ballontranslator/utils/proj_imgtrans.py:459:                f"{location}.rich_text_transform_version",
+ballontranslator/utils/proj_imgtrans.py:487:            canonical_fontformat.pop('italic_angle', None)
+ballontranslator/utils/proj_imgtrans.py:496:            block.pop('italic_angle', None)
+ballontranslator/utils/proj_imgtrans.py:497:            block.pop('rich_text_transform_version', None)
+--- stderr ---
+=== end ===
+
+=== audit shear/tangent formulas ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["rg", "-n", "math\\.tan|\\.shear\\(", "ballontranslator/ui/mainwindow.py", "ballontranslator/ui/scene_textlayout.py", "ballontranslator/ui/scenetext_manager.py", "ballontranslator/ui/text_advanced_format.py", "ballontranslator/ui/text_panel.py", "ballontranslator/ui/text_transform.py", "ballontranslator/ui/textedit_commands.py", "ballontranslator/ui/texteditshapecontrol.py", "ballontranslator/ui/textitem.py", "ballontranslator/utils/fontformat.py", "ballontranslator/utils/proj_imgtrans.py"]
+exit_code=0
+expected_exit_codes=[0]
+exit_code_as_expected=True
+stdout_nonempty_line_count=1
+--- stdout ---
+ballontranslator/ui/text_transform.py:23:        -math.tan(math.radians(slant_angle)),
+--- stderr ---
+=== end ===
+
+=== audit reconstruction and broad except sites ===
+cwd=F:\ballon\BallonsTranslator
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["rg", "-n", "QTextDocument\\(|QGraphicsScene\\(|TextAdvancedFormatPanel\\(|except\\s*:", "ballontranslator/ui/mainwindow.py", "ballontranslator/ui/scene_textlayout.py", "ballontranslator/ui/scenetext_manager.py", "ballontranslator/ui/text_advanced_format.py", "ballontranslator/ui/text_panel.py", "ballontranslator/ui/text_transform.py", "ballontranslator/ui/textedit_commands.py", "ballontranslator/ui/texteditshapecontrol.py", "ballontranslator/ui/textitem.py", "ballontranslator/utils/fontformat.py", "ballontranslator/utils/proj_imgtrans.py"]
+exit_code=0
+expected_exit_codes=[0, 1]
+exit_code_as_expected=True
+stdout_nonempty_line_count=9
+--- stdout ---
+ballontranslator/utils/proj_imgtrans.py:339:    effective_document = QTextDocument()
+ballontranslator/utils/proj_imgtrans.py:399:    logical_document = QTextDocument()
+ballontranslator/utils/proj_imgtrans.py:405:    replay = QTextDocument()
+ballontranslator/utils/proj_imgtrans.py:876:        except:
+ballontranslator/ui/textedit_commands.py:7:except:
+ballontranslator/ui/text_advanced_format.py:327:class TextAdvancedFormatPanel(PanelArea):
+ballontranslator/ui/text_panel.py:383:        self.textadvancedfmt_panel = TextAdvancedFormatPanel(
+ballontranslator/ui/mainwindow.py:2032:        except:
+ballontranslator/ui/scenetext_manager.py:11:except:
+--- stderr ---
+=== end ===
+

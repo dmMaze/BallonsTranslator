@@ -1,0 +1,19 @@
+{
+  "directory": "fixture-project",
+  "pages": {
+    "page.png": [
+      {
+        "translation": "",
+        "rich_text": "<html><head><meta name=\"qrichtext\" content=\"1\" /></head><body style=\" font-family:'Arial'; font-size:36pt;\"><p style=\"-qt-paragraph-type:empty; margin-left:4px; font-size:42pt; font-weight:700; text-decoration: underline;\"><br /></p><!--ballontranslator-logical-stretch-v1:[{\"start\":0,\"length\":0,\"stretch\":150,\"ratio\":[1,1],\"empty_block\":true}]--></body></html>",
+        "rich_text_transform_version": 0,
+        "fontformat": {
+          "font_family": "Arial",
+          "font_size": 24,
+          "horizontal_scale": 3.0,
+          "vertical_scale": 2.0,
+          "italic_angle": 0.0
+        }
+      }
+    ]
+  }
+}

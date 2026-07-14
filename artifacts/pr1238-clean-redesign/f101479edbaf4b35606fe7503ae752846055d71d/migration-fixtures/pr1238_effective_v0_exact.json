@@ -1,0 +1,19 @@
+{
+  "directory": "fixture-project",
+  "pages": {
+    "page.png": [
+      {
+        "translation": "Rich\n",
+        "rich_text": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\"><html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">p, li { white-space: pre-wrap; }</style></head><body style=\" font-family:'Arial'; font-size:36pt; font-weight:400; font-style:normal;\"><p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:28pt; font-weight:700; font-style:italic; text-decoration: underline; color:#0a141e;\">Rich</span></p><p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:4px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:42pt; font-weight:700; text-decoration: underline;\"><br /></p><!--ballontranslator-logical-stretch-v1:[{\"start\":0,\"length\":4,\"stretch\":150,\"ratio\":[1,1]},{\"start\":5,\"length\":0,\"stretch\":150,\"ratio\":[1,1],\"empty_block\":true}]--></body></html>",
+        "rich_text_transform_version": 0,
+        "fontformat": {
+          "font_family": "Arial",
+          "font_size": 24,
+          "horizontal_scale": 3.0,
+          "vertical_scale": 2.0,
+          "italic_angle": 7.0
+        }
+      }
+    ]
+  }
+}

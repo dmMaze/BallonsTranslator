@@ -1,0 +1,54 @@
+{
+  "feature_sha": "f101479edbaf4b35606fe7503ae752846055d71d",
+  "files": {
+    "empty-project/.gitkeep": {
+      "byte_count": 1,
+      "matches_feature_sha_blob": true,
+      "repo_path": "tests/fixtures/text_transform/empty-project/.gitkeep",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    "formatted_empty_v0.json": {
+      "byte_count": 761,
+      "matches_feature_sha_blob": true,
+      "repo_path": "tests/fixtures/text_transform/formatted_empty_v0.json",
+      "sha256": "7480172b3ac4d0cc097333a3b67869d6de7b0c0f942777a42f5f27e5964c58e2"
+    },
+    "future_block_marker_v2.json": {
+      "byte_count": 187,
+      "matches_feature_sha_blob": true,
+      "repo_path": "tests/fixtures/text_transform/future_block_marker_v2.json",
+      "sha256": "97aa6e978031fc9b257609c65d12919c0a15d62062b4ef57b9029b3d70251dd3"
+    },
+    "future_root_v2.json": {
+      "byte_count": 112,
+      "matches_feature_sha_blob": true,
+      "repo_path": "tests/fixtures/text_transform/future_root_v2.json",
+      "sha256": "0ff2b7157df6ad502148bf8f4a8dc8120b8a446ab0143fb72dad1454a6454717"
+    },
+    "pr1238_effective_v0_ambiguous_stretch.json": {
+      "byte_count": 433,
+      "matches_feature_sha_blob": true,
+      "repo_path": "tests/fixtures/text_transform/pr1238_effective_v0_ambiguous_stretch.json",
+      "sha256": "40019860cb9266aa7d94df3e0b48201baad83cf81c1a9d4fb74db507a7422601"
+    },
+    "pr1238_effective_v0_exact.json": {
+      "byte_count": 1389,
+      "matches_feature_sha_blob": true,
+      "repo_path": "tests/fixtures/text_transform/pr1238_effective_v0_exact.json",
+      "sha256": "de301b91172dd25e0e034628571f5872bd6d66bc956f3e32d84efbe40f43a602"
+    },
+    "pr1238_logical_v1.json": {
+      "byte_count": 414,
+      "matches_feature_sha_blob": true,
+      "repo_path": "tests/fixtures/text_transform/pr1238_logical_v1.json",
+      "sha256": "69a0a74847e0d9639889926bf9265ba7bf2bfa0258b98b2cc2858a97becadb98"
+    },
+    "upstream_legacy.json": {
+      "byte_count": 284,
+      "matches_feature_sha_blob": true,
+      "repo_path": "tests/fixtures/text_transform/upstream_legacy.json",
+      "sha256": "689a9f86c0b6ad738084795de90f0d969681c7b908d40464ff36c4c0b9b0faf2"
+    }
+  },
+  "source": "git object f101479edbaf4b35606fe7503ae752846055d71d:tests/fixtures/text_transform"
+}

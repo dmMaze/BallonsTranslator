@@ -1,0 +1,113 @@
+=== feature test overlay on exact upstream: full collection ===
+cwd=F:\ballon\pr1238-baseline-overlay-6155f9b
+environment_overrides={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "F:\\ballon\\.pr1238-test-deps;F:\\ballon\\BallonsTranslator-baseline-6155f9b", "QT_API": "pyqt6", "QT_QPA_PLATFORM": "offscreen"}
+command=["F:\\python\\python.exe", "-m", "pytest", "-q"]
+exit_code=2
+expected_exit_codes=[2]
+exit_code_as_expected=True
+stdout_nonempty_line_count=99
+--- stdout ---
+
+=================================== ERRORS ====================================
+__________ ERROR collecting test_text_transform_acceptance_matrix.py __________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_text_transform_acceptance_matrix.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_text_transform_acceptance_matrix.py:21: in <module>
+    from ballontranslator.ui.text_transform import rect_polygon
+E   ModuleNotFoundError: No module named 'ballontranslator.ui.text_transform'
+_______________ ERROR collecting test_text_transform_editing.py _______________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_text_transform_editing.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_text_transform_editing.py:10: in <module>
+    from ballontranslator.ui.textedit_commands import (
+E   ImportError: cannot import name 'utf16_code_unit_length' from 'ballontranslator.ui.textedit_commands' (F:\ballon\BallonsTranslator-baseline-6155f9b\ballontranslator\ui\textedit_commands.py)
+______________ ERROR collecting test_text_transform_geometry.py _______________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_text_transform_geometry.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_text_transform_geometry.py:9: in <module>
+    from ballontranslator.ui.text_transform import (
+E   ModuleNotFoundError: No module named 'ballontranslator.ui.text_transform'
+________________ ERROR collecting test_text_transform_item.py _________________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_text_transform_item.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_text_transform_item.py:17: in <module>
+    from ballontranslator.ui.text_transform import text_transform_matrix
+E   ModuleNotFoundError: No module named 'ballontranslator.ui.text_transform'
+______________ ERROR collecting test_text_transform_rendering.py ______________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_text_transform_rendering.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_text_transform_rendering.py:28: in <module>
+    from ballontranslator.ui.textitem import (
+E   ImportError: cannot import name 'GRADIENT_LAYOUT_FORMAT_PROPERTY' from 'ballontranslator.ui.textitem' (F:\ballon\BallonsTranslator-baseline-6155f9b\ballontranslator\ui\textitem.py)
+____________ ERROR collecting test_text_transform_serialization.py ____________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_text_transform_serialization.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_text_transform_serialization.py:41: in <module>
+    from ballontranslator.utils.proj_imgtrans import (
+E   ImportError: cannot import name 'AmbiguousLegacyTextTransformError' from 'ballontranslator.utils.proj_imgtrans' (F:\ballon\BallonsTranslator-baseline-6155f9b\ballontranslator\utils\proj_imgtrans.py)
+_________________ ERROR collecting test_text_transform_ui.py __________________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_text_transform_ui.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_text_transform_ui.py:12: in <module>
+    from ballontranslator.ui.text_advanced_format import (
+E   ImportError: cannot import name 'CommittedTransformControl' from 'ballontranslator.ui.text_advanced_format' (F:\ballon\BallonsTranslator-baseline-6155f9b\ballontranslator\ui\text_advanced_format.py)
+________________ ERROR collecting test_text_transform_undo.py _________________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_text_transform_undo.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_text_transform_undo.py:14: in <module>
+    from ballontranslator.ui.textedit_commands import (
+E   ImportError: cannot import name 'SetTextTransformCommand' from 'ballontranslator.ui.textedit_commands' (F:\ballon\BallonsTranslator-baseline-6155f9b\ballontranslator\ui\textedit_commands.py)
+________________ ERROR collecting test_vertical_text_stroke.py ________________
+ImportError while importing test module 'F:\ballon\pr1238-baseline-overlay-6155f9b\test_vertical_text_stroke.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+F:\python\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+test_vertical_text_stroke.py:21: in <module>
+    from ballontranslator.ui.scene_textlayout import _grapheme_count
+E   ImportError: cannot import name '_grapheme_count' from 'ballontranslator.ui.scene_textlayout' (F:\ballon\BallonsTranslator-baseline-6155f9b\ballontranslator\ui\scene_textlayout.py)
+============================== warnings summary ===============================
+..\BallonsTranslator-baseline-6155f9b\ballontranslator\utils\io_utils.py:22
+  F:\ballon\BallonsTranslator-baseline-6155f9b\ballontranslator\utils\io_utils.py:22: DeprecationWarning: `np.bool8` is a deprecated alias for `np.bool_`.  (Deprecated NumPy 1.24)
+    NP_BOOL_TYPES = (np.bool_, np.bool8)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+ERROR test_text_transform_acceptance_matrix.py
+ERROR test_text_transform_editing.py
+ERROR test_text_transform_geometry.py
+ERROR test_text_transform_item.py
+ERROR test_text_transform_rendering.py
+ERROR test_text_transform_serialization.py
+ERROR test_text_transform_ui.py
+ERROR test_text_transform_undo.py
+ERROR test_vertical_text_stroke.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 9 errors during collection !!!!!!!!!!!!!!!!!!!
+1 warning, 9 errors in 1.47s
+--- stderr ---
+=== end ===
+

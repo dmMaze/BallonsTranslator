@@ -1,0 +1,155 @@
+{
+  "assertions": {
+    "editing_export": {
+      "evidence_outline_removed_before_canvas_export": true,
+      "export_method": "Canvas.render_result_img()"
+    },
+    "extreme_effects": {
+      "all_items_inside_source_rect": true,
+      "items_bounds": [
+        3.8899469169831775,
+        -77.99514508830612,
+        1436.7100530830166,
+        1091.4445677460926
+      ],
+      "source_rect": [
+        -24.110053083016822,
+        -105.99514508830612,
+        1492.7100530830166,
+        1147.4445677460926
+      ]
+    },
+    "feature_and_upstream_have_same_full_suite_failure_case_ids": true,
+    "feature_and_upstream_have_same_full_suite_failure_count": true,
+    "feature_sha_matches_git_head": true,
+    "focused_junit_totals_match_record": true,
+    "migration_fixtures": {
+      "all_destination_hashes_match": true,
+      "committed_blob_count": 8,
+      "materialized_from_feature_sha": true
+    },
+    "production_and_tests_match_feature_sha": true,
+    "raw_verification_logs": {
+      "doctest": {
+        "fontformat": "4/4",
+        "text_transform": "5/5"
+      },
+      "overlay": {
+        "collectable_exit_code": 1,
+        "collectable_result": "20 failed, 1 passed",
+        "collection_errors": 9,
+        "full_collection_exit_code": 2
+      },
+      "static_checks": {
+        "changed_production_python_count": 11,
+        "forbidden_identifier_matches": 0,
+        "shear_tangent_formula_matches": 1
+      }
+    },
+    "save_reload": {
+      "exact_transform_round_trip": true,
+      "feature_sha_attested_in_each_process": true,
+      "fresh_processes_read_from_disk": true,
+      "fresh_reload_process_ids": [
+        26152,
+        45572
+      ],
+      "legacy_aliases_absent": true,
+      "portable_relative_directory": true,
+      "project_path": "fixture-project\\project.json",
+      "project_saved_with": "ProjImgTrans.save()",
+      "real_page_image": "fixture-project\\page.png",
+      "schema_v1": true,
+      "transform_before": [
+        1.234568,
+        0.625,
+        -14.5
+      ],
+      "transform_reload_1": [
+        1.234568,
+        0.625,
+        -14.5
+      ],
+      "transform_reload_2": [
+        1.234568,
+        0.625,
+        -14.5
+      ]
+    }
+  },
+  "feature_sha": "f101479edbaf4b35606fe7503ae752846055d71d",
+  "full_suite_failure_case_ids": [
+    "tests.test_lazy_metadata.LazyMetadataTests::test_current_lazy_registry_metadata_is_complete",
+    "tests.test_lazy_metadata.LazyMetadataTests::test_safe_selector_helper_output_is_preserved",
+    "tests.test_llm_profiles.LLMProfileMigrationTest::test_program_config_load_merges_current_builtin_defaults",
+    "tests.test_llm_profiles.LLMProfileMigrationTest::test_vision_enabled_builtins_default_to_auto_detail",
+    "tests.test_llm_profiles.SecretStoreTest::test_saved_config_roundtrips_inpaint_llm_profile_selection",
+    "tests.test_llm_profiles.SecretStoreTest::test_saved_config_roundtrips_ocr_llm_profile_selection",
+    "tests.test_llm_profiles.SecretStoreTest::test_saved_profiles_roundtrip_without_provider"
+  ],
+  "generator": "test-results\\generate_evidence.py",
+  "junit": {
+    "focused-pyqt5.xml": {
+      "errors": 0,
+      "failures": 0,
+      "passed_including_subtests": 286,
+      "sha256": "f8a5d9cabf73f3b5e77d785f45f4d0836e3c031601965563a50ba9caf276ca23",
+      "skipped": 0,
+      "tests": 286
+    },
+    "focused-pyqt6.xml": {
+      "errors": 0,
+      "failures": 0,
+      "passed_including_subtests": 286,
+      "sha256": "6a66e5d93e4cab3def96eeb512fbb5571364e8923a51dd35f173092cdc90c7a3",
+      "skipped": 0,
+      "tests": 286
+    },
+    "focused-pyside6.xml": {
+      "errors": 0,
+      "failures": 0,
+      "passed_including_subtests": 286,
+      "sha256": "6fbb1742784e0e2a0fee38cac3df7dfdc9243443ae568f366a67ca350823c64c",
+      "skipped": 0,
+      "tests": 286
+    },
+    "full-feature-pyqt6.xml": {
+      "errors": 0,
+      "failures": 7,
+      "passed_including_subtests": 452,
+      "sha256": "1f5f965b65ceb1bef6015cd4ded8c7d1bbd91527fe1170a868a6939a484828e3",
+      "skipped": 1,
+      "tests": 460
+    },
+    "full-upstream-pyqt6.xml": {
+      "errors": 0,
+      "failures": 7,
+      "passed_including_subtests": 166,
+      "sha256": "8b7f862aa14fa8193f428f189dd1212629ea1c9a9f287dac5ab5f4caa94833d9",
+      "skipped": 1,
+      "tests": 174
+    }
+  },
+  "notes": [
+    "JUnit 'tests' includes pytest-subtests cases; the prose report separates ordinary tests from passed subtests.",
+    "Full-suite baseline identity is asserted by matching JUnit classname/name pairs; messages are reported separately and are not normalized here.",
+    "GUI screenshots are offscreen automated evidence, not manual GUI passes."
+  ],
+  "screenshots": {
+    "controls.png": {
+      "sha256": "d608b9dc69b1d4ff1cb939ab74429d0bbdf520aaeea7b24390b0d52eb27e3c2d"
+    },
+    "editing-canvas-export.png": {
+      "sha256": "6c06f7676ec516c5b8cd992a5b1cafffe37bd72175f6c240286f2ae883dac4de"
+    },
+    "extreme-effects.png": {
+      "sha256": "0c3276651f1b6da72906b5142f91d851114a5edf6eb0299a33f133ef11244ed0"
+    },
+    "horizontal-vertical.png": {
+      "sha256": "83decc093512fcb545920dd908b55cb7a67ffc8b5544e998f5cb9da1bd94dc6d"
+    },
+    "save-reload.png": {
+      "sha256": "fcafa40936a403a083deec0cabeca8520813576097aede2875369961a5e8a1ba"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "directory": "fixture-project",
+  "pages": {
+    "page.png": [
+      {
+        "translation": "logical",
+        "rich_text": "<p><i>already logical</i></p>",
+        "rich_text_transform_version": 1,
+        "horizontal_scale": 1.25,
+        "vertical_scale": 0.8,
+        "italic_angle": 12.5,
+        "fontformat": {
+          "font_family": "Arial",
+          "font_size": 24
+        }
+      }
+    ]
+  }
+}
