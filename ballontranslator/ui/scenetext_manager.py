@@ -619,7 +619,9 @@ class SceneTextManager(QObject):
             self.canvas.push_undo_command(MoveBlkItemsCommand(selected_blks, self.txtblkShapeControl))
         
     def onTextBlkItemReshaped(self, item: TextBlkItem):
-        self.canvas.push_undo_command(ReshapeItemCommand(item))
+        self.canvas.push_undo_command(
+            ReshapeItemCommand(item, self.txtblkShapeControl)
+        )
 
     def onTextBlkItemRotated(self, new_angle: float):
         blk_item = self.txtblkShapeControl.blk_item
