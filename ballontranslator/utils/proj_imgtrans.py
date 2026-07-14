@@ -279,8 +279,13 @@ def _migrate_effective_legacy_html(
     vertical_scale: float,
     location: str,
 ) -> str:
-    if not html or (horizontal_scale == 1.0 and vertical_scale == 1.0):
+    if horizontal_scale == 1.0 and vertical_scale == 1.0:
         return html
+    if not html:
+        raise AmbiguousLegacyTextTransformError(
+            f"{location}.rich_text is empty and cannot prove whether the "
+            "non-neutral failed transform was baked"
+        )
 
     legacy_stretch = max(1, int(round(horizontal_scale / vertical_scale * 100)))
     metadata_matches = list(_LEGACY_STRETCH_PATTERN.finditer(html))
