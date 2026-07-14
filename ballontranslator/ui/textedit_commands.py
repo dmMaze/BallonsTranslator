@@ -1,7 +1,7 @@
-from typing import Callable, List, Optional, Sequence, Tuple, Union
+from typing import Callable, List, NamedTuple, Optional, Sequence, Tuple, Union
 
-from qtpy.QtGui import QTextCursor
-from qtpy.QtCore import QPointF
+from qtpy.QtGui import QColor, QFont, QTextCharFormat, QTextCursor, QTextOption
+from qtpy.QtCore import QPointF, QRectF
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -125,31 +125,258 @@ class MoveBlkItemsCommand(QUndoCommand):
                 self.shape_ctrl.setPos(old_pos)
 
 
+class _FontformatItemState(NamedTuple):
+    html: str
+    fontformat: FontFormat
+    logical_rect: QRectF
+    item_position: QPointF
+    cursor_position: int
+    cursor_anchor: int
+    default_font: QFont
+    default_text_option: QTextOption
+    cursor_char_format: QTextCharFormat
+    cursor_block_char_format: QTextCharFormat
+
+
 class ApplyFontformatCommand(QUndoCommand):
-    def __init__(self, items: List[TextBlkItem], trans_widget_lst: List[TransTextEdit], fontformat: FontFormat):
+    """Apply a whole format to every selected item as one deterministic edit."""
+
+    def __init__(
+        self,
+        items: List[TextBlkItem],
+        trans_widget_lst: List[TransTextEdit],
+        fontformat: FontFormat,
+        shape_ctrl: Optional[TextBlkShapeControl] = None,
+    ):
         super(ApplyFontformatCommand, self).__init__()
-        self.items = items
-        self.old_html_lst = []
-        self.old_rect_lst = []
-        self.old_fmt_lst = []
-        self.new_fmt = fontformat
-        self.trans_widget_lst = trans_widget_lst
-        for item in items:
-            self.old_html_lst.append(item.toHtml())
-            self.old_fmt_lst.append(item.get_fontformat())
-            self.old_rect_lst.append(item.absBoundingRect(qrect=True))
+        if len(items) != len(trans_widget_lst):
+            raise ValueError("items and trans_widget_lst must have the same length")
+        self.items = tuple(items)
+        self.trans_widget_lst = tuple(trans_widget_lst)
+        self.new_fmt = fontformat.deepcopy()
+        self.shape_ctrl = shape_ctrl
+        self.before = tuple(self._capture_state(item) for item in self.items)
+        self.after: Optional[Tuple[_FontformatItemState, ...]] = None
+        self.document_undo_floors: Optional[Tuple[int, ...]] = None
+
+    @staticmethod
+    def _capture_state(item: TextBlkItem) -> _FontformatItemState:
+        cursor = item.textCursor()
+        return _FontformatItemState(
+            item.toHtml(),
+            item.fontformat.deepcopy(),
+            QRectF(item.absBoundingRect(qrect=True)),
+            QPointF(item.pos()),
+            cursor.position(),
+            cursor.anchor(),
+            QFont(item.document().defaultFont()),
+            QTextOption(item.document().defaultTextOption()),
+            QTextCharFormat(cursor.charFormat()),
+            QTextCharFormat(cursor.blockCharFormat()),
+        )
+
+    @staticmethod
+    def _restore_cursor(
+        item: TextBlkItem,
+        state: _FontformatItemState,
+        restore_empty_formats: bool = False,
+    ):
+        # Starting at the anchor preserves a reverse selection's orientation.
+        cursor = QTextCursor(item.document())
+        cursor.setPosition(state.cursor_anchor)
+        cursor.setPosition(
+            state.cursor_position,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        if restore_empty_formats and item.document().isEmpty():
+            # Empty-document insertion and paragraph formats are cursor state,
+            # not fragments. Qt does not restore them with document.undo(),
+            # but setting them on an empty cursor is history-neutral.
+            cursor.setBlockCharFormat(
+                QTextCharFormat(state.cursor_block_char_format)
+            )
+            cursor.setCharFormat(QTextCharFormat(state.cursor_char_format))
+        item.setTextCursor(cursor)
+
+    def _restore_state(
+        self,
+        item: TextBlkItem,
+        state: _FontformatItemState,
+        document_undo_floor: int,
+    ):
+        was_in_redo_undo = item.in_redo_undo
+        was_repainting = item.repainting
+        item.in_redo_undo = True
+        item.repainting = True
+        try:
+            # A QTextCursor edit block may account for several low-level
+            # availableUndoSteps(), while document-wide properties can form a
+            # separate top-level operation. Undo only operations above the
+            # exact pre-command floor so an earlier TextItemEditCommand stays
+            # paired with its translation editor.
+            while item.document().availableUndoSteps() > document_undo_floor:
+                undo_steps = item.document().availableUndoSteps()
+                item.document().undo()
+                if item.document().availableUndoSteps() >= undo_steps:
+                    break
+            item.fontformat.merge(state.fontformat)
+            item.setVertical(state.fontformat.vertical)
+            document = item.document()
+            document.setDefaultFont(QFont(state.default_font))
+            document.setDefaultTextOption(
+                QTextOption(state.default_text_option)
+            )
+            item.layout.setLineSpacingType(state.fontformat.line_spacing_type)
+            item.layout.setLineSpacing(state.fontformat.line_spacing)
+            if state.fontformat.vertical:
+                item.layout.setLetterSpacing(state.fontformat.letter_spacing)
+            item.stroke_qcolor = QColor(*state.fontformat.stroke_color())
+            item.setOpacity(state.fontformat.opacity)
+            item.set_text_transform(*state.fontformat.text_transform)
+            item.setRect(QRectF(state.logical_rect), repaint=False)
+            item.blk._bounding_rect = item.absBoundingRect()
+            self._restore_cursor(item, state, restore_empty_formats=True)
+        finally:
+            item.repainting = was_repainting
+            item.in_redo_undo = was_in_redo_undo
+        item.repaint_background()
+
+    def _apply_new_format(self):
+        document_undo_floors = []
+        for item, before in zip(self.items, self.before):
+            document = item.document()
+            document_undo_floors.append(document.availableUndoSteps())
+            was_in_redo_undo = item.in_redo_undo
+            was_repainting = item.repainting
+            item.in_redo_undo = True
+            item.repainting = True
+            try:
+                history_cursor = QTextCursor(document)
+                history_cursor.beginEditBlock()
+                try:
+                    item.set_fontformat(
+                        self.new_fmt.deepcopy(),
+                        set_char_format=True,
+                    )
+                    item.repainting = False
+                    item.repaint_background()
+                    self._restore_cursor(item, before)
+                finally:
+                    history_cursor.endEditBlock()
+            finally:
+                item.in_redo_undo = was_in_redo_undo
+                item.repainting = was_repainting
+                self._restore_cursor(item, before)
+        if self.document_undo_floors is None:
+            self.document_undo_floors = tuple(document_undo_floors)
+
+    @staticmethod
+    def _document_matches_target(
+        item: TextBlkItem,
+        target: FontFormat,
+    ) -> bool:
+        document = item.document()
+        expected_font, expected_format, expected_option = (
+            item._whole_fontformat_document_values(target.deepcopy())
+        )
+        if (
+            document.defaultFont() != expected_font
+            or document.defaultTextOption().alignment()
+            != expected_option.alignment()
+        ):
+            return False
+
+        def comparable(char_format: QTextCharFormat) -> QTextCharFormat:
+            result = QTextCharFormat(char_format)
+            if target.gradient_enabled:
+                # Current gradient coordinates are derived QTextLayout state;
+                # stale historical brush coordinates in HTML are irrelevant
+                # to whole-format no-op detection.
+                result.setForeground(QColor())
+            return result
+
+        expected_comparable = comparable(expected_format)
+        block = item.document().firstBlock()
+        while block.isValid():
+            it = block.begin()
+            has_fragment = False
+            while not it.atEnd():
+                has_fragment = True
+                if comparable(it.fragment().charFormat()) != expected_comparable:
+                    return False
+                it += 1
+            if not has_fragment:
+                insertion_cursor = QTextCursor(block)
+                if (
+                    comparable(insertion_cursor.charFormat())
+                    != expected_comparable
+                ):
+                    return False
+            block = block.next()
+        return (
+            item.layout.line_spacing == target.line_spacing
+            and item.layout.linespacing_type == target.line_spacing_type
+            and (
+                not target.vertical
+                or item.layout.letter_spacing == target.letter_spacing
+            )
+            and item.opacity() == target.opacity
+        )
+
+    def _is_noop(self) -> bool:
+        return all(
+            item._text_transform_preview is None
+            and state.fontformat == self.new_fmt
+            # A live gradient is a QTextLayout override. QTextCharFormat's
+            # foreground().color() is therefore not a meaningful model value
+            # while that override is enabled; the exact document comparator
+            # below validates every persisted whole-format document value.
+            and (
+                self.new_fmt.gradient_enabled
+                or item.get_fontformat() == self.new_fmt
+            )
+            and self._document_matches_target(item, self.new_fmt)
+            for item, state in zip(self.items, self.before)
+        )
+
+    def _finish(self):
+        for item in self.items:
+            item.updateUndoSteps()
+        if (
+            self.shape_ctrl is not None
+            and self.shape_ctrl.blk_item in self.items
+        ):
+            self.shape_ctrl.updateBoundingRect()
 
     def redo(self):
-        for item, edit in zip(self.items, self.trans_widget_lst):
-            item.set_fontformat(self.new_fmt, set_char_format=True)
-            edit.document().clearUndoRedoStacks()
+        if self.after is None:
+            if self._is_noop():
+                self.after = self.before
+                self.document_undo_floors = tuple(
+                    item.document().availableUndoSteps()
+                    for item in self.items
+                )
+                self.setObsolete(True)
+                return
+            self._apply_new_format()
+            self.after = tuple(self._capture_state(item) for item in self.items)
+        else:
+            # Reapply the canonical target. QTextDocument can replay the
+            # grouped character formats, but layout swaps and document-wide
+            # defaults are not part of that cursor edit block.
+            self._apply_new_format()
+        self._finish()
 
     def undo(self):
-        for rect, item, html, fmt, edit in zip(self.old_rect_lst, self.items, self.old_html_lst, self.old_fmt_lst, self.trans_widget_lst):
-            item.setHtml(html)
-            item.set_fontformat(fmt)
-            item.setRect(rect)
-            edit.document().clearUndoRedoStacks()
+        for item, state, document_undo_floor in zip(
+            self.items, self.before, self.document_undo_floors
+        ):
+            self._restore_state(
+                item,
+                state,
+                document_undo_floor,
+            )
+        self._finish()
 
     
 class ReshapeItemCommand(QUndoCommand):

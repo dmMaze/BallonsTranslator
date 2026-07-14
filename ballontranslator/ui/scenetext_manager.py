@@ -1016,7 +1016,14 @@ class SceneTextManager(QObject):
         for blk in selected_blks:
             trans_widget_list.append(self.pairwidget_list[blk.idx].e_trans)
         if len(selected_blks) > 0:
-            self.canvas.push_undo_command(ApplyFontformatCommand(selected_blks, trans_widget_list, fontformat))
+            self.canvas.push_undo_command(
+                ApplyFontformatCommand(
+                    selected_blks,
+                    trans_widget_list,
+                    fontformat,
+                    self.txtblkShapeControl,
+                )
+            )
             if self.formatpanel.global_mode():
                 if id(self.formatpanel.active_text_style_format()) != id(fontformat):
                     self.formatpanel.deactivate_style_label()
