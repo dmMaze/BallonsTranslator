@@ -1,7 +1,6 @@
 import copy
 import math
 import os, json, shutil, re, docx, docx2txt, piexif, cv2
-import warnings
 from docx.shared import Inches
 from docx import Document
 import piexif.helper
@@ -283,11 +282,11 @@ def _migrate_effective_legacy_html(
     if not html or (horizontal_scale == 1.0 and vertical_scale == 1.0):
         return html
 
-    effective_stretch = max(1, int(round(horizontal_scale / vertical_scale * 100)))
+    legacy_stretch = max(1, int(round(horizontal_scale / vertical_scale * 100)))
     metadata_matches = list(_LEGACY_STRETCH_PATTERN.finditer(html))
-    if not metadata_matches:
+    if len(metadata_matches) != 1:
         raise AmbiguousLegacyTextTransformError(
-            f"{location}.rich_text has no exact failed stretch metadata"
+            f"{location}.rich_text does not have exactly one failed stretch metadata record"
         )
     try:
         stretch_runs = json.loads(metadata_matches[-1].group(1))
@@ -299,35 +298,95 @@ def _migrate_effective_legacy_html(
         raise AmbiguousLegacyTextTransformError(
             f"{location}.rich_text has incomplete failed stretch metadata"
         )
+    validated_runs = []
     for run in stretch_runs:
         ratio = run.get('ratio') if isinstance(run, dict) else None
+        empty_block = isinstance(run, dict) and run.get('empty_block') is True
         if (
             not isinstance(run, dict)
             or isinstance(run.get('start'), bool)
             or not isinstance(run.get('start'), int)
             or isinstance(run.get('length'), bool)
             or not isinstance(run.get('length'), int)
+            or isinstance(run.get('stretch'), bool)
+            or not isinstance(run.get('stretch'), int)
             or run['start'] < 0
             or run['length'] < 0
-            or run.get('stretch') != effective_stretch
-            or ratio not in (None, [1, 1])
+            or (run['length'] == 0) != empty_block
+            or run.get('stretch') != legacy_stretch
+            or not (
+                ratio is None
+                or (
+                    isinstance(ratio, list)
+                    and len(ratio) == 2
+                    and all(type(value) is int for value in ratio)
+                    and ratio == [1, 1]
+                )
+            )
         ):
             raise AmbiguousLegacyTextTransformError(
                 f"{location}.rich_text has an ambiguous failed stretch run"
             )
+        validated_runs.append(
+            (run['start'], run['length'], empty_block)
+        )
     clean_html = _LEGACY_STRETCH_PATTERN.sub('', html)
     effective_document = QTextDocument()
     effective_document.setDefaultFont(
-        _legacy_default_font(fontformat, vertical_scale, effective_stretch)
+        _legacy_default_font(fontformat, vertical_scale, legacy_stretch)
     )
     effective_document.setHtml(clean_html)
+
+    valid_character_positions = set()
+    valid_empty_positions = set()
+    block = effective_document.firstBlock()
+    while block.isValid():
+        if block.text() == '':
+            valid_empty_positions.add(block.position())
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid():
+                valid_character_positions.update(
+                    range(fragment.position(), fragment.position() + fragment.length())
+                )
+            iterator += 1
+        block = block.next()
+
+    covered_positions = set()
+    covered_empty_positions = set()
+    for start, length, empty_block in validated_runs:
+        if empty_block:
+            if start not in valid_empty_positions or start in covered_empty_positions:
+                raise AmbiguousLegacyTextTransformError(
+                    f"{location}.rich_text has a stale failed empty-block run"
+                )
+            covered_empty_positions.add(start)
+            continue
+        positions = set(range(start, start + length))
+        if (
+            not positions
+            or not positions.issubset(valid_character_positions)
+            or positions.intersection(covered_positions)
+        ):
+            raise AmbiguousLegacyTextTransformError(
+                f"{location}.rich_text has a stale or overlapping failed stretch run"
+            )
+        covered_positions.update(positions)
+    if (
+        covered_positions != valid_character_positions
+        or covered_empty_positions != valid_empty_positions
+    ):
+        raise AmbiguousLegacyTextTransformError(
+            f"{location}.rich_text has incomplete failed stretch metadata"
+        )
 
     signature = _document_signature(effective_document)
     for block_signature in signature[2]:
         block_char = block_signature[3]
         fragment_signatures = block_signature[4]
         fonts = [block_char[0], *(fragment[2][0] for fragment in fragment_signatures)]
-        if any(font[1] != effective_stretch for font in fonts):
+        if any(font[1] != legacy_stretch for font in fonts):
             raise AmbiguousLegacyTextTransformError(
                 f"{location}.rich_text does not have the exact failed stretch signature"
             )
@@ -342,7 +401,7 @@ def _migrate_effective_legacy_html(
     replay_default = QFont(logical_document.defaultFont())
     replay.setDefaultFont(replay_default)
     replay.setHtml(logical_html)
-    _set_document_font_geometry(replay, vertical_scale, effective_stretch)
+    _set_document_font_geometry(replay, vertical_scale, legacy_stretch)
     if _document_signature(replay) != signature:
         raise AmbiguousLegacyTextTransformError(
             f"{location}.rich_text cannot be reversed without losing formatting"
@@ -375,8 +434,9 @@ def migrate_text_transform_payload(proj_dict: dict):
             location = f"pages.{page_name}[{index}]"
             if not isinstance(block, dict):
                 raise InvalidTextTransformPayloadError(f"{location} must be an object")
+            marker_value = block.get('rich_text_transform_version', _MISSING)
             marker = _payload_version(
-                block.get('rich_text_transform_version', _MISSING),
+                marker_value,
                 f"{location}.rich_text_transform_version",
             )
             if marker > 1:
@@ -388,8 +448,9 @@ def migrate_text_transform_payload(proj_dict: dict):
     for page_name, blocks in pages.items():
         for index, block in enumerate(blocks):
             location = f"pages.{page_name}[{index}]"
+            marker_value = block.get('rich_text_transform_version', _MISSING)
             marker = _payload_version(
-                block.get('rich_text_transform_version', _MISSING),
+                marker_value,
                 f"{location}.rich_text_transform_version",
             )
             transform, fontformat = _block_transform_values(
@@ -397,9 +458,12 @@ def migrate_text_transform_payload(proj_dict: dict):
             )
             horizontal_scale, vertical_scale, slant_angle = transform
 
-            # Marker 1 is the failed branch's logical representation. Marker 0
-            # or absence may contain its effective size/stretch HTML.
-            if root_version == 0 and marker == 0:
+            # Marker 1 is the failed branch's logical representation. An
+            # explicit marker 0 always denotes its effective size/stretch HTML,
+            # even if a partially written file already has a v1 root marker.
+            # Only a missing marker under a v1 root denotes canonical HTML.
+            explicit_effective_marker = marker_value is not _MISSING and marker == 0
+            if marker == 0 and (root_version == 0 or explicit_effective_marker):
                 old_html = block.get('rich_text', '')
                 logical_html = _migrate_effective_legacy_html(
                     old_html,
@@ -428,8 +492,6 @@ def migrate_text_transform_payload(proj_dict: dict):
             block.pop('rich_text_transform_version', None)
 
     migrated['text_transform_schema_version'] = TEXT_TRANSFORM_SCHEMA_VERSION
-    for message in migration_warnings:
-        warnings.warn(message, RuntimeWarning, stacklevel=2)
     return migrated, migration_warnings
 
 
@@ -542,28 +604,61 @@ class ProjImgTrans:
         return self.type+'_'+osp.basename(self.directory)
 
     def load(self, directory: str, json_path: str = None) -> bool:
-        self.directory = directory
+        target_directory = directory
         if json_path is None:
-            self.proj_path = osp.join(self.directory, self.proj_name() + '.json')
+            target_proj_path = osp.join(
+                target_directory,
+                self.type + '_' + osp.basename(target_directory) + '.json',
+            )
         else:
-            self.proj_path = json_path
+            target_proj_path = json_path
         new_proj = False
-        if not osp.exists(self.proj_path):
+        candidate = ProjImgTrans()
+        if not osp.exists(target_proj_path):
             new_proj = True
-            self.new_project()
+            candidate.directory = target_directory
+            candidate.proj_path = target_proj_path
+            candidate.new_project()
         else:
             try:
-                with open(self.proj_path, 'r', encoding='utf8') as f:
+                with open(target_proj_path, 'r', encoding='utf8') as f:
                     proj_dict = json.loads(f.read())
             except Exception as e:
-                raise ProjectLoadFailureException(e)
-            self.load_from_dict(proj_dict)
-        if not osp.exists(self.inpainted_dir()):
-            os.makedirs(self.inpainted_dir())
-        if not osp.exists(self.mask_dir()):
-            os.makedirs(self.mask_dir())
+                raise ProjectLoadFailureException(str(e)) from e
+            candidate.load_from_dict(
+                proj_dict,
+                directory=target_directory,
+                proj_path=target_proj_path,
+            )
+        target_inpainted_dir = osp.join(target_directory, 'inpainted')
+        target_mask_dir = osp.join(target_directory, 'mask')
+        if not osp.exists(target_inpainted_dir):
+            os.makedirs(target_inpainted_dir)
+        if not osp.exists(target_mask_dir):
+            os.makedirs(target_mask_dir)
+
+        self._adopt_project_state(candidate)
 
         return new_proj
+
+    def _adopt_project_state(self, candidate: 'ProjImgTrans') -> None:
+        """Commit one fully constructed project state to this instance."""
+        self.directory = candidate.directory
+        self.proj_path = candidate.proj_path
+        self.pages = candidate.pages
+        self._pagename2idx = candidate._pagename2idx
+        self._idx2pagename = candidate._idx2pagename
+        self.not_found_pages = candidate.not_found_pages
+        self.new_pages = candidate.new_pages
+        self._image_info = candidate._image_info
+        self.current_img = candidate.current_img
+        self.img_array = candidate.img_array
+        self.mask_array = candidate.mask_array
+        self.inpainted_array = candidate.inpainted_array
+        self._fuzzy_inpainted_list = candidate._fuzzy_inpainted_list
+        self.text_transform_migration_warnings = (
+            candidate.text_transform_migration_warnings
+        )
 
     def mask_dir(self):
         return osp.join(self.directory, 'mask')
@@ -574,13 +669,21 @@ class ProjImgTrans:
     def result_dir(self):
         return osp.join(self.directory, 'result')
 
-    def load_from_dict(self, proj_dict: dict):
+    def load_from_dict(
+        self,
+        proj_dict: dict,
+        *,
+        directory: str = None,
+        proj_path: str = None,
+    ):
         migrated, migration_warnings = migrate_text_transform_payload(proj_dict)
         page_dict = migrated['pages']
+        load_directory = self.directory if directory is None else directory
+        load_proj_path = self.proj_path if proj_path is None else proj_path
 
         try:
             found_pages = find_all_imgs(
-                img_dir=self.directory, abs_path=False, sort=True
+                img_dir=load_directory, abs_path=False, sort=True
             )
             pages = {}
             pagename_to_idx = {}
@@ -627,8 +730,8 @@ class ProjImgTrans:
         # Image IO is also performed on an isolated candidate. A failed current
         # image never leaves the existing project half replaced.
         candidate = ProjImgTrans()
-        candidate.directory = self.directory
-        candidate.proj_path = self.proj_path
+        candidate.directory = load_directory
+        candidate.proj_path = load_proj_path
         candidate.pages = pages
         candidate._pagename2idx = pagename_to_idx
         candidate._idx2pagename = idx_to_pagename
@@ -640,18 +743,8 @@ class ProjImgTrans:
             current_image = idx_to_pagename.get(0)
         candidate.set_current_img(current_image)
 
-        self.pages = candidate.pages
-        self._pagename2idx = candidate._pagename2idx
-        self._idx2pagename = candidate._idx2pagename
-        self.not_found_pages = candidate.not_found_pages
-        self.new_pages = candidate.new_pages
-        self._image_info = candidate._image_info
-        self.current_img = candidate.current_img
-        self.img_array = candidate.img_array
-        self.mask_array = candidate.mask_array
-        self.inpainted_array = candidate.inpainted_array
-        self._fuzzy_inpainted_list = candidate._fuzzy_inpainted_list
-        self.text_transform_migration_warnings = migration_warnings
+        candidate.text_transform_migration_warnings = migration_warnings
+        self._adopt_project_state(candidate)
 
     def get_page_progress(self, pagename: str):
         fin_code = self._image_info[pagename]['finish_code']
@@ -698,13 +791,11 @@ class ProjImgTrans:
         return all_matched, {'missing_pages': missing_pages, 'unmatched_pages': unmatched_pages, 'unexpected_pages': unexpected_pages, 'matched_pages': matched_pages}
 
     def load_from_json(self, json_path: str):
-        old_dir = self.directory
         directory = osp.dirname(json_path)
         try:
             self.load(directory, json_path=json_path)
         except Exception as e:
-            self.load(old_dir)
-            raise ProjectLoadFailureException(e)
+            raise ProjectLoadFailureException(str(e)) from e
 
     def set_current_img(self, imgname: str):
         if imgname is not None:

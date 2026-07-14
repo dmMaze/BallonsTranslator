@@ -658,6 +658,7 @@ class MainWindow(mainwindow_cls):
             self.generate_tif_thumbnails(directory)
             # 重新加载项目，此时应该只加载预览图
             self.imgtrans_proj.load(directory)
+            self.show_text_transform_migration_warnings()
             self.st_manager.clearSceneTextitems()
             self.titleBar.setTitleContent(osp.basename(directory))
             self.updatePageList()
@@ -699,6 +700,7 @@ class MainWindow(mainwindow_cls):
         try:
             self.opening_dir = True
             self.imgtrans_proj.load_from_json(json_path)
+            self.show_text_transform_migration_warnings()
             self.st_manager.clearSceneTextitems()
             self.leftBar.updateRecentProjList(self.imgtrans_proj.proj_path)
             self.updatePageList()
@@ -707,6 +709,18 @@ class MainWindow(mainwindow_cls):
         except Exception as e:
             self.opening_dir = False
             create_error_dialog(e, self.tr('Failed to load project from') + json_path)
+
+    def show_text_transform_migration_warnings(self):
+        migration_warnings = self.imgtrans_proj.text_transform_migration_warnings
+        if not migration_warnings:
+            return
+        QMessageBox.warning(
+            self,
+            self.tr('Project migration warning'),
+            self.tr('Some text transforms were migrated:')
+            + '\n\n'
+            + '\n'.join(migration_warnings),
+        )
         
     def updatePageList(self):
         if self.pageList.count() != 0:
@@ -1156,12 +1170,13 @@ class MainWindow(mainwindow_cls):
             json_path = self.imgtrans_proj.proj_path
             current_img = self.imgtrans_proj.current_img
             self.imgtrans_proj.load_from_json(json_path)
+            self.show_text_transform_migration_warnings()
             if current_img and current_img in self.imgtrans_proj.pages:
                 self.imgtrans_proj.set_current_img(current_img)
                 self.canvas.updateCanvas()
                 self.st_manager.updateSceneTextitems()
-        except:
-            pass
+        except Exception as error:
+            create_error_dialog(error, self.tr('Failed to reload merged project'))
         
         # 显示结果
         total = success_count + fail_count
