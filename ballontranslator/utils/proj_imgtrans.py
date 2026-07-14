@@ -1,4 +1,7 @@
+import copy
+import math
 import os, json, shutil, re, docx, docx2txt, piexif, cv2
+import warnings
 from docx.shared import Inches
 from docx import Document
 import piexif.helper
@@ -6,10 +9,12 @@ import numpy as np
 import os.path as osp
 from typing import Tuple, Union, List, Dict
 from PIL import Image
+from qtpy.QtGui import QFont, QTextCharFormat, QTextCursor, QTextDocument
 
 from .logger import logger as LOGGER
 from .io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
 from .textblock import TextBlock, FontFormat
+from .fontformat import normalize_text_transform, px2pt
 from .config import pcfg, RunStatus
 from . import shared
 
@@ -24,6 +29,408 @@ class ProjectNotSupportedException(Exception):
 
 class ImgnameNotInProjectException(Exception):
     pass
+
+
+TEXT_TRANSFORM_SCHEMA_VERSION = 1
+_MISSING = object()
+_LEGACY_STRETCH_PATTERN = re.compile(
+    r'<!--\s*ballontranslator-logical-stretch-v1:(.*?)\s*-->', re.DOTALL
+)
+
+
+class TextTransformPayloadError(ValueError):
+    """Base class for project text-transform payload failures."""
+
+
+class UnsupportedTextTransformVersionError(TextTransformPayloadError):
+    pass
+
+
+class AmbiguousLegacyTextTransformError(TextTransformPayloadError):
+    pass
+
+
+class InvalidTextTransformPayloadError(TextTransformPayloadError):
+    pass
+
+
+def _payload_version(value, location: str, *, missing=0) -> int:
+    if value is _MISSING:
+        return missing
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidTextTransformPayloadError(
+            f"{location} must be an integer schema version"
+        )
+    value = float(value)
+    if not math.isfinite(value) or not value.is_integer() or value < 0:
+        raise InvalidTextTransformPayloadError(
+            f"{location} must be an integer schema version"
+        )
+    return int(value)
+
+
+def _payload_number(value, location: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidTextTransformPayloadError(
+            f"{location} must be a finite number"
+        )
+    value = float(value)
+    if not math.isfinite(value):
+        raise InvalidTextTransformPayloadError(
+            f"{location} must be a finite number"
+        )
+    return value
+
+
+def _block_transform_values(block: dict, location: str, migration_warnings: List[str]):
+    fontformat = block.get('fontformat', {})
+    if fontformat is None:
+        fontformat = {}
+    if not isinstance(fontformat, dict):
+        raise InvalidTextTransformPayloadError(f"{location}.fontformat must be an object")
+
+    sources = {
+        'horizontal_scale': (
+            ('fontformat.horizontal_scale', fontformat.get('horizontal_scale', _MISSING)),
+            ('horizontal_scale', block.get('horizontal_scale', _MISSING)),
+        ),
+        'vertical_scale': (
+            ('fontformat.vertical_scale', fontformat.get('vertical_scale', _MISSING)),
+            ('vertical_scale', block.get('vertical_scale', _MISSING)),
+        ),
+        'slant_angle': (
+            ('fontformat.slant_angle', fontformat.get('slant_angle', _MISSING)),
+            ('fontformat.italic_angle', fontformat.get('italic_angle', _MISSING)),
+            ('italic_angle', block.get('italic_angle', _MISSING)),
+        ),
+    }
+    defaults = {
+        'horizontal_scale': 1.0,
+        'vertical_scale': 1.0,
+        'slant_angle': 0.0,
+    }
+    raw = {}
+    for target, candidates in sources.items():
+        present = []
+        for source, value in candidates:
+            if value is not _MISSING:
+                present.append((source, _payload_number(value, f"{location}.{source}")))
+        if present:
+            first = present[0][1]
+            if any(value != first for _, value in present[1:]):
+                names = ', '.join(source for source, _ in present)
+                raise InvalidTextTransformPayloadError(
+                    f"{location} contains conflicting aliases: {names}"
+                )
+            raw[target] = first
+        else:
+            raw[target] = defaults[target]
+
+    normalized = normalize_text_transform(
+        raw['horizontal_scale'], raw['vertical_scale'], raw['slant_angle']
+    )
+    for name, value, canonical in zip(
+        ('horizontal_scale', 'vertical_scale', 'slant_angle'), raw.values(), normalized
+    ):
+        if value < (0.1 if name != 'slant_angle' else -45.0) or value > (
+            4.0 if name != 'slant_angle' else 45.0
+        ):
+            migration_warnings.append(
+                f"{location}.{name} was clamped from {value} to {canonical}"
+            )
+    return normalized, fontformat
+
+
+def _resolved_font(char_format: QTextCharFormat, default_font: QFont) -> QFont:
+    return char_format.font().resolve(default_font)
+
+
+def _font_signature(font: QFont):
+    return (
+        round(font.pointSizeF(), 6),
+        font.stretch(),
+        font.family(),
+        font.weight(),
+        font.italic(),
+        font.underline(),
+        font.overline(),
+        font.strikeOut(),
+    )
+
+
+def _char_signature(char_format: QTextCharFormat, default_font: QFont):
+    foreground = char_format.foreground().color()
+    return (
+        _font_signature(_resolved_font(char_format, default_font)),
+        foreground.rgba(),
+        char_format.fontLetterSpacingType(),
+        round(char_format.fontLetterSpacing(), 6),
+    )
+
+
+def _block_format_signature(block):
+    block_format = block.blockFormat()
+    return (
+        int(block_format.alignment()),
+        block_format.indent(),
+        round(block_format.leftMargin(), 6),
+        round(block_format.rightMargin(), 6),
+        round(block_format.topMargin(), 6),
+        round(block_format.bottomMargin(), 6),
+        round(block_format.textIndent(), 6),
+        round(block_format.lineHeight(), 6),
+        block_format.lineHeightType(),
+        block_format.nonBreakableLines(),
+    )
+
+
+def _document_signature(document: QTextDocument):
+    default_font = document.defaultFont()
+    blocks = []
+    block = document.firstBlock()
+    while block.isValid():
+        fragments = []
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid():
+                fragments.append(
+                    (
+                        fragment.position(),
+                        fragment.length(),
+                        _char_signature(fragment.charFormat(), default_font),
+                    )
+                )
+            iterator += 1
+        blocks.append(
+            (
+                block.position(),
+                block.length(),
+                _block_format_signature(block),
+                _char_signature(block.charFormat(), default_font),
+                tuple(fragments),
+            )
+        )
+        block = block.next()
+    return document.toPlainText(), _font_signature(default_font), tuple(blocks)
+
+
+def _set_document_font_geometry(
+    document: QTextDocument, point_size_factor: float, stretch: int
+) -> None:
+    old_default = document.defaultFont()
+    new_default = QFont(old_default)
+    new_default.setPointSizeF(old_default.pointSizeF() * point_size_factor)
+    new_default.setStretch(stretch)
+    document.setDefaultFont(new_default)
+
+    block = document.firstBlock()
+    while block.isValid():
+        ranges = []
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid():
+                resolved = _resolved_font(fragment.charFormat(), old_default)
+                ranges.append((fragment.position(), fragment.length(), resolved.pointSizeF()))
+            iterator += 1
+
+        cursor = QTextCursor(document)
+        for position, length, point_size in ranges:
+            cursor.setPosition(position)
+            cursor.setPosition(position + length, QTextCursor.MoveMode.KeepAnchor)
+            delta = QTextCharFormat()
+            delta.setFontPointSize(point_size * point_size_factor)
+            delta.setFontStretch(stretch)
+            cursor.mergeCharFormat(delta)
+
+        block_cursor = QTextCursor(block)
+        block_font = _resolved_font(block.charFormat(), old_default)
+        block_delta = QTextCharFormat()
+        block_delta.setFontPointSize(block_font.pointSizeF() * point_size_factor)
+        block_delta.setFontStretch(stretch)
+        block_cursor.mergeBlockCharFormat(block_delta)
+        block = block.next()
+
+
+def _legacy_default_font(fontformat: dict, vertical_scale: float, stretch: int) -> QFont:
+    try:
+        point_size = px2pt(float(fontformat.get('font_size', 24)))
+    except (TypeError, ValueError) as error:
+        raise InvalidTextTransformPayloadError(
+            "legacy fontformat.font_size must be numeric"
+        ) from error
+    if not math.isfinite(point_size) or point_size <= 0:
+        raise InvalidTextTransformPayloadError(
+            "legacy fontformat.font_size must be a positive finite number"
+        )
+    font = QFont(str(fontformat.get('font_family') or ''))
+    font.setPointSizeF(point_size * vertical_scale)
+    font.setStretch(stretch)
+    font.setBold(bool(fontformat.get('bold', False)))
+    font.setItalic(bool(fontformat.get('italic', False)))
+    font.setUnderline(bool(fontformat.get('underline', False)))
+    return font
+
+
+def _migrate_effective_legacy_html(
+    html: str,
+    fontformat: dict,
+    horizontal_scale: float,
+    vertical_scale: float,
+    location: str,
+) -> str:
+    if not html or (horizontal_scale == 1.0 and vertical_scale == 1.0):
+        return html
+
+    effective_stretch = max(1, int(round(horizontal_scale / vertical_scale * 100)))
+    metadata_matches = list(_LEGACY_STRETCH_PATTERN.finditer(html))
+    if not metadata_matches:
+        raise AmbiguousLegacyTextTransformError(
+            f"{location}.rich_text has no exact failed stretch metadata"
+        )
+    try:
+        stretch_runs = json.loads(metadata_matches[-1].group(1))
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise AmbiguousLegacyTextTransformError(
+            f"{location}.rich_text has invalid failed stretch metadata"
+        ) from error
+    if not isinstance(stretch_runs, list) or not stretch_runs:
+        raise AmbiguousLegacyTextTransformError(
+            f"{location}.rich_text has incomplete failed stretch metadata"
+        )
+    for run in stretch_runs:
+        ratio = run.get('ratio') if isinstance(run, dict) else None
+        if (
+            not isinstance(run, dict)
+            or isinstance(run.get('start'), bool)
+            or not isinstance(run.get('start'), int)
+            or isinstance(run.get('length'), bool)
+            or not isinstance(run.get('length'), int)
+            or run['start'] < 0
+            or run['length'] < 0
+            or run.get('stretch') != effective_stretch
+            or ratio not in (None, [1, 1])
+        ):
+            raise AmbiguousLegacyTextTransformError(
+                f"{location}.rich_text has an ambiguous failed stretch run"
+            )
+    clean_html = _LEGACY_STRETCH_PATTERN.sub('', html)
+    effective_document = QTextDocument()
+    effective_document.setDefaultFont(
+        _legacy_default_font(fontformat, vertical_scale, effective_stretch)
+    )
+    effective_document.setHtml(clean_html)
+
+    signature = _document_signature(effective_document)
+    for block_signature in signature[2]:
+        block_char = block_signature[3]
+        fragment_signatures = block_signature[4]
+        fonts = [block_char[0], *(fragment[2][0] for fragment in fragment_signatures)]
+        if any(font[1] != effective_stretch for font in fonts):
+            raise AmbiguousLegacyTextTransformError(
+                f"{location}.rich_text does not have the exact failed stretch signature"
+            )
+
+    logical_document = QTextDocument()
+    logical_document.setDefaultFont(effective_document.defaultFont())
+    logical_document.setHtml(clean_html)
+    _set_document_font_geometry(logical_document, 1.0 / vertical_scale, 100)
+    logical_html = logical_document.toHtml()
+
+    replay = QTextDocument()
+    replay_default = QFont(logical_document.defaultFont())
+    replay.setDefaultFont(replay_default)
+    replay.setHtml(logical_html)
+    _set_document_font_geometry(replay, vertical_scale, effective_stretch)
+    if _document_signature(replay) != signature:
+        raise AmbiguousLegacyTextTransformError(
+            f"{location}.rich_text cannot be reversed without losing formatting"
+        )
+    return logical_html
+
+
+def migrate_text_transform_payload(proj_dict: dict):
+    """Return a canonical schema-v1 copy without mutating the input payload."""
+    if not isinstance(proj_dict, dict):
+        raise InvalidTextTransformPayloadError("project payload must be an object")
+    migrated = copy.deepcopy(proj_dict)
+    root_version = _payload_version(
+        migrated.get('text_transform_schema_version', _MISSING),
+        'text_transform_schema_version',
+    )
+    if root_version > TEXT_TRANSFORM_SCHEMA_VERSION:
+        raise UnsupportedTextTransformVersionError(
+            f"unsupported text transform schema version {root_version}"
+        )
+    pages = migrated.get('pages')
+    if not isinstance(pages, dict):
+        raise InvalidTextTransformPayloadError("pages must be an object")
+
+    # Reject every future marker before canonicalizing any block in our copy.
+    for page_name, blocks in pages.items():
+        if not isinstance(blocks, list):
+            raise InvalidTextTransformPayloadError(f"pages.{page_name} must be a list")
+        for index, block in enumerate(blocks):
+            location = f"pages.{page_name}[{index}]"
+            if not isinstance(block, dict):
+                raise InvalidTextTransformPayloadError(f"{location} must be an object")
+            marker = _payload_version(
+                block.get('rich_text_transform_version', _MISSING),
+                f"{location}.rich_text_transform_version",
+            )
+            if marker > 1:
+                raise UnsupportedTextTransformVersionError(
+                    f"unsupported rich-text transform version {marker} at {location}"
+                )
+
+    migration_warnings = []
+    for page_name, blocks in pages.items():
+        for index, block in enumerate(blocks):
+            location = f"pages.{page_name}[{index}]"
+            marker = _payload_version(
+                block.get('rich_text_transform_version', _MISSING),
+                f"{location}.rich_text_transform_version",
+            )
+            transform, fontformat = _block_transform_values(
+                block, location, migration_warnings
+            )
+            horizontal_scale, vertical_scale, slant_angle = transform
+
+            # Marker 1 is the failed branch's logical representation. Marker 0
+            # or absence may contain its effective size/stretch HTML.
+            if root_version == 0 and marker == 0:
+                old_html = block.get('rich_text', '')
+                logical_html = _migrate_effective_legacy_html(
+                    old_html,
+                    fontformat,
+                    horizontal_scale,
+                    vertical_scale,
+                    location,
+                )
+                if logical_html != old_html:
+                    block['rich_text'] = logical_html
+                    migration_warnings.append(
+                        f"{location}.rich_text was restored from the failed effective format"
+                    )
+
+            canonical_fontformat = dict(fontformat)
+            canonical_fontformat.pop('italic_angle', None)
+            canonical_fontformat.update(
+                horizontal_scale=horizontal_scale,
+                vertical_scale=vertical_scale,
+                slant_angle=slant_angle,
+            )
+            block['fontformat'] = canonical_fontformat
+            block.pop('horizontal_scale', None)
+            block.pop('vertical_scale', None)
+            block.pop('italic_angle', None)
+            block.pop('rich_text_transform_version', None)
+
+    migrated['text_transform_schema_version'] = TEXT_TRANSFORM_SCHEMA_VERSION
+    for message in migration_warnings:
+        warnings.warn(message, RuntimeWarning, stacklevel=2)
+    return migrated, migration_warnings
 
 
 def get_last_modified_file(file_prefix, exts, ext_fallback=None):
@@ -119,6 +526,7 @@ class ProjImgTrans:
         self.img_array: np.ndarray = None
         self.mask_array: np.ndarray = None
         self.inpainted_array: np.ndarray = None
+        self.text_transform_migration_warnings: List[str] = []
         if directory is not None:
             self.load(directory)
 
@@ -167,60 +575,83 @@ class ProjImgTrans:
         return osp.join(self.directory, 'result')
 
     def load_from_dict(self, proj_dict: dict):
-        self.set_current_img(None)
+        migrated, migration_warnings = migrate_text_transform_payload(proj_dict)
+        page_dict = migrated['pages']
+
         try:
-            self.pages = {}
-            self._pagename2idx = {}
-            self._idx2pagename = {}
-            self.not_found_pages = {}
-            page_dict = proj_dict['pages']
-            not_found_pages = list(page_dict.keys())
-            found_pages = find_all_imgs(img_dir=self.directory, abs_path=False, sort=True)
-            for ii, imname in enumerate(found_pages):
-                if imname in page_dict:
-                    self.pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
-                    not_found_pages.remove(imname)
+            found_pages = find_all_imgs(
+                img_dir=self.directory, abs_path=False, sort=True
+            )
+            pages = {}
+            pagename_to_idx = {}
+            idx_to_pagename = {}
+            not_found_pages = {}
+            new_pages = []
+            missing_names = list(page_dict.keys())
+            for index, image_name in enumerate(found_pages):
+                if image_name in page_dict:
+                    pages[image_name] = [
+                        TextBlock(**block) for block in page_dict[image_name]
+                    ]
+                    missing_names.remove(image_name)
                 else:
-                    self.pages[imname] = []
-                    self.new_pages.append(imname)
-                self._pagename2idx[imname] = ii
-                self._idx2pagename[ii] = imname
-            for imname in not_found_pages:
-                self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
-        except Exception as e:
-            raise ProjectNotSupportedException(e)
-        
-        if 'image_info' in proj_dict:
-            self._image_info = proj_dict['image_info']
-        else:
-            self._image_info = {}
+                    pages[image_name] = []
+                    new_pages.append(image_name)
+                pagename_to_idx[image_name] = index
+                idx_to_pagename[index] = image_name
+            for image_name in missing_names:
+                not_found_pages[image_name] = [
+                    TextBlock(**block) for block in page_dict[image_name]
+                ]
+        except (KeyError, TypeError, ValueError) as error:
+            raise ProjectNotSupportedException(str(error)) from error
 
-        for p in self.pages:
-            if p not in self._image_info:
-                self._image_info[p] = {}
-            img_info = self._image_info[p]
-            if 'finish_code' not in img_info:
-                page_blklist = self.pages[p]
-                has_empty_blk = len(page_blklist) == 0 or \
-                    any(not blk.text or len(blk.text) == 0 for blk in page_blklist)
-                if has_empty_blk:
-                    img_info['finish_code'] = 0
-                else:
-                    img_info['finish_code'] = RunStatus.FIN_ALL
-            
-        set_img_failed = False
-        if 'current_img' in proj_dict:
-            current_img = proj_dict['current_img']
-            try:
-                self.set_current_img(current_img)
-            except ImgnameNotInProjectException:
-                set_img_failed = True
-        else:
-            set_img_failed = True
+        image_info = copy.deepcopy(migrated.get('image_info', {}))
+        if not isinstance(image_info, dict):
+            raise ProjectNotSupportedException("image_info must be an object")
+        for page_name, page_blocks in pages.items():
+            if page_name not in image_info:
+                image_info[page_name] = {}
+            if not isinstance(image_info[page_name], dict):
+                raise ProjectNotSupportedException(
+                    f"image_info.{page_name} must be an object"
+                )
+            if 'finish_code' not in image_info[page_name]:
+                has_empty_block = len(page_blocks) == 0 or any(
+                    not block.text or len(block.text) == 0 for block in page_blocks
+                )
+                image_info[page_name]['finish_code'] = (
+                    0 if has_empty_block else RunStatus.FIN_ALL
+                )
 
-        if set_img_failed:
-            if len(self.pages) > 0:
-                self.set_current_img_byidx(0)
+        # Image IO is also performed on an isolated candidate. A failed current
+        # image never leaves the existing project half replaced.
+        candidate = ProjImgTrans()
+        candidate.directory = self.directory
+        candidate.proj_path = self.proj_path
+        candidate.pages = pages
+        candidate._pagename2idx = pagename_to_idx
+        candidate._idx2pagename = idx_to_pagename
+        candidate.not_found_pages = not_found_pages
+        candidate.new_pages = new_pages
+        candidate._image_info = image_info
+        current_image = migrated.get('current_img')
+        if current_image not in pages:
+            current_image = idx_to_pagename.get(0)
+        candidate.set_current_img(current_image)
+
+        self.pages = candidate.pages
+        self._pagename2idx = candidate._pagename2idx
+        self._idx2pagename = candidate._idx2pagename
+        self.not_found_pages = candidate.not_found_pages
+        self.new_pages = candidate.new_pages
+        self._image_info = candidate._image_info
+        self.current_img = candidate.current_img
+        self.img_array = candidate.img_array
+        self.mask_array = candidate.mask_array
+        self.inpainted_array = candidate.inpainted_array
+        self._fuzzy_inpainted_list = candidate._fuzzy_inpainted_list
+        self.text_transform_migration_warnings = migration_warnings
 
     def get_page_progress(self, pagename: str):
         fin_code = self._image_info[pagename]['finish_code']
@@ -360,6 +791,7 @@ class ProjImgTrans:
         pages.update(self.not_found_pages)        
         image_info = self._image_info.copy()
         return {
+            'text_transform_schema_version': TEXT_TRANSFORM_SCHEMA_VERSION,
             'directory': self.directory,
             'pages': pages,
             'current_img': self.current_img,
