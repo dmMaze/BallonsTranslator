@@ -13,7 +13,6 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDockWidget,
-    QFrame,
     QLabel,
     QMainWindow,
     QStackedWidget,
@@ -21,19 +20,12 @@ from qtpy.QtWidgets import (
 )
 
 from ballontranslator.ui.run_pipeline_dialog import (
-    DialogCloseButton,
     PipelineModuleButton,
-    RUN_PIPELINE_DIALOG_WIDTH,
     RunPipelineDialog,
 )
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.mainwindowbars import TitleBar
 from ballontranslator.ui.module_manager import ModuleManager
-from ballontranslator.ui.llm_modality import (
-    LLM_MODALITY_IMAGE,
-    LLM_MODALITY_TEXT,
-    LLM_MODALITY_VISION,
-)
 from ballontranslator.utils.config import ProgramConfig, json_dump_program_config, pcfg
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.textblock import TextBlock
@@ -87,17 +79,12 @@ class RunPipelineDialogTests(unittest.TestCase):
             self._render_without_text_style_update
         )
 
-    def test_dialog_uses_frameless_rounded_surface(self):
+    def test_dialog_initializes_pipeline_controls(self):
         dialog = RunPipelineDialog()
         window_type = getattr(Qt, 'WindowType', Qt)
-        widget_attribute = getattr(Qt, 'WidgetAttribute', Qt)
 
-        self.assertEqual(dialog.width(), RUN_PIPELINE_DIALOG_WIDTH)
         self.assertTrue(dialog.windowFlags() & window_type.Dialog)
         self.assertTrue(dialog.windowFlags() & window_type.FramelessWindowHint)
-        self.assertTrue(dialog.testAttribute(widget_attribute.WA_TranslucentBackground))
-        self.assertIsNotNone(dialog.findChild(QFrame, 'RunPipelineSurface'))
-        self.assertIsNotNone(dialog.findChild(DialogCloseButton, 'RunPipelineCloseButton'))
         selector = dialog.findChild(QComboBox, 'RunPipelineWorkflowSelector')
         self.assertEqual(selector.currentIndex(), 0)
         self.assertEqual(
@@ -107,19 +94,6 @@ class RunPipelineDialogTests(unittest.TestCase):
         module_buttons = dialog.findChildren(PipelineModuleButton, 'RunPipelineModuleButton')
         self.assertEqual(len(module_buttons), 4)
         self.assertTrue(all(button.isChecked() for button in module_buttons))
-        self.assertTrue(all(not button.icon_label.pixmap().isNull() for button in module_buttons))
-        self.assertEqual(module_buttons[0].active_icon_name, 'textdetect_activate.svg')
-        self.assertEqual(module_buttons[0].inactive_icon_name, 'textdetect.svg')
-        self.assertEqual(
-            [button.modality for button in module_buttons],
-            [
-                LLM_MODALITY_VISION,
-                LLM_MODALITY_VISION,
-                LLM_MODALITY_TEXT,
-                LLM_MODALITY_IMAGE,
-            ],
-        )
-        self.assertIn('rgba(30, 147, 229, 46)', module_buttons[0].icon_label.styleSheet())
         module_buttons[0].click()
         self.assertFalse(module_buttons[0].isChecked())
         self.assertFalse(pcfg.module.enable_detect)

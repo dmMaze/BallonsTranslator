@@ -484,7 +484,8 @@ class TitleBar(Widget):
         self.show_module.emit(idx, checked)
 
     def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
-        super().mouseDoubleClickEvent(e)
+        if e.button() != Qt.MouseButton.LeftButton:
+            return
         FramelessMoveResize.toggleMaxState(self.mainwindow)
 
     def onMaxBtnClicked(self):

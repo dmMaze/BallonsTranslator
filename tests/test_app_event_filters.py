@@ -9,6 +9,10 @@ from qtpy.QtGui import QColor, QMouseEvent
 from qtpy.QtWidgets import QApplication, QColorDialog, QDialog, QLabel, QMenu, QTextEdit, QWidget
 from qtpy import API_NAME
 
+from ballontranslator.utils import shared
+
+shared.FLAG_QT6 = API_NAME in ('PyQt6', 'PySide6')
+
 
 def qapp():
     app = QApplication.instance()
@@ -44,6 +48,7 @@ class TypeSensitiveEvent(QEvent):
 class MinimalConfigPanel(ConfigPanel):
     def __init__(self):
         QDialog.__init__(self)
+        self._deferWindowEffects = False
         self._outside_click_filter_installed = False
 
     def _widgetInsidePanel(self, widget) -> bool:

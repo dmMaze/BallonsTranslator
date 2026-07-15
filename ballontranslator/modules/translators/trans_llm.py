@@ -374,8 +374,7 @@ class LLMTranslator(BaseTranslator):
         expected_ids = set(range(1, expected + 1))
         if set(translations) != expected_ids:
             raise InvalidNumTranslations(f"Expected ids 1-{expected}, got {sorted(translations)}")
-        result = [translations.get(i, "") for i in range(1, expected + 1)]
-        return result
+        return [translations[i] for i in range(1, expected + 1)]
 
     def _parse_response(self, profile: LLMProfile, raw_content: str, expected: int) -> List[str]:
         return self._parse_json_response(raw_content, expected)

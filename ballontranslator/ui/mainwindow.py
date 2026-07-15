@@ -110,8 +110,10 @@ class MainWindow(mainwindow_cls):
         self.setupConfig()
         self.setupShortcuts()
         self.setupRegisterWidget()
-        # self.showMaximized()
-        FramelessMoveResize.toggleMaxState(self)
+        # Apply the final theme once while the native window is still hidden.
+        self.resetStyleSheet()
+        if not shared.ON_WINDOWS:
+            FramelessMoveResize.toggleMaxState(self)
         self.setAcceptDrops(True)
 
         if open_dir != '' and osp.exists(open_dir):
@@ -298,8 +300,6 @@ class MainWindow(mainwindow_cls):
         self.comicTransSplitter.setStretchFactor(1, 10)
         self.comicTransSplitter.setStretchFactor(2, 1)
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
-        self.resetStyleSheet()
-
     def on_finish_settranslator(self):
         module_manager = self.module_manager
         translator = module_manager.translator

@@ -23,19 +23,19 @@ class WindowsFramelessWindowBase:
 
     BORDER_WIDTH = 5
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent=None, flags=Qt.WindowType.Widget):
+        super().__init__(parent, flags)
         self._isSystemButtonVisible = False
 
     def _initFrameless(self):
         self.windowEffect = WindowsWindowEffect(self)
         # self.titleBar = TitleBar(self)
         self._isResizeEnabled = True
+        # Creating an owned HWND before show makes the owner's children native.
+        self._deferWindowEffects = self.isWindow() and self.parentWidget() is not None
+        self._screenHandle = None
 
         self.updateFrameless()
-
-        # solve issue #5
-        self.windowHandle().screenChanged.connect(self.__onScreenChanged)
 
         # self.resize(500, 500)
         # self.titleBar.raise_()
@@ -45,10 +45,27 @@ class WindowsFramelessWindowBase:
         stayOnTop = Qt.WindowStaysOnTopHint if self.windowFlags() & Qt.WindowStaysOnTopHint else 0
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | stayOnTop)
 
+        if not self._deferWindowEffects:
+            self._applyWindowEffects()
+
+    def _applyWindowEffects(self):
+        hWnd = self.winId()
         # add DWM shadow and window animation
-        self.windowEffect.addWindowAnimation(self.winId())
+        self.windowEffect.addWindowAnimation(hWnd)
         if not isinstance(self, AcrylicWindow):
-            self.windowEffect.addShadowEffect(self.winId())
+            self.windowEffect.addShadowEffect(hWnd)
+
+        handle = self.windowHandle()
+        if handle is not self._screenHandle:
+            handle.screenChanged.connect(self.__onScreenChanged)
+            self._screenHandle = handle
+
+    def showEvent(self, event):
+        result = super().showEvent(event)
+        if self._deferWindowEffects:
+            self._deferWindowEffects = False
+            self._applyWindowEffects()
+        return result
 
     # def setTitleBar(self, titleBar):
     #     """ set custom title bar
@@ -173,10 +190,8 @@ class WindowsFramelessWindowBase:
             return True, result
         elif msg.message == win32con.WM_SETFOCUS and isSystemBorderAccentEnabled():
             self.windowEffect.setBorderAccentColor(self.winId(), getSystemAccentColor())
-            return False, 0
-        elif msg.message == win32con.WM_KILLFOCUS:
+        elif msg.message == win32con.WM_KILLFOCUS and isSystemBorderAccentEnabled():
             self.windowEffect.removeBorderAccentColor(self.winId())
-            return False, 0
 
         return False, 0
 
@@ -192,8 +207,8 @@ class WindowsFramelessWindowBase:
 class WindowsFramelessWindow(WindowsFramelessWindowBase, QWidget):
     """  Frameless window for Windows system """
 
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
+    def __init__(self, parent=None, flags=Qt.WindowType.Widget):
+        super().__init__(parent=parent, flags=flags)
         self._initFrameless()
 
 

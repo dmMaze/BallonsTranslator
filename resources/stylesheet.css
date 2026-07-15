@@ -33,6 +33,35 @@ ConfigTable {
     padding: 6px;
 }
 
+QWidget#ConfigPanel[nativeFrame="true"] {
+    background-color: @widgetBackgroundColor;
+}
+
+QWidget#ConfigPanel[nativeFrame="false"] {
+    background-color: transparent;
+}
+
+QFrame#ConfigPanelSurface {
+    background-color: @widgetBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 12px;
+}
+
+QWidget#ConfigPanel[nativeFrame="true"] QFrame#ConfigPanelSurface {
+    border: none;
+    border-radius: 0px;
+}
+
+QWidget#ConfigPanelTitleBar,
+QLabel#ConfigPanelTitle {
+    background-color: transparent;
+}
+
+QLabel#ConfigPanelTitle {
+    font-size: 13px;
+    font-weight: normal;
+}
+
 ConfigTable::item,
 ConfigTable::branch {
     background-color: @widgetBackgroundColor;

@@ -361,6 +361,18 @@ class WindowsMoveResize:
     """ Tool class for moving and resizing Mac OS window """
 
     @staticmethod
+    def maximize(window):
+        """Request native maximize so Windows keeps its window animation."""
+        if shared.HEADLESS:
+            return
+        win32gui.PostMessage(
+            int(window.winId()),
+            win32con.WM_SYSCOMMAND,
+            win32con.SC_MAXIMIZE,
+            0,
+        )
+
+    @staticmethod
     def startSystemMove(window, globalPos):
         """ resize window
 

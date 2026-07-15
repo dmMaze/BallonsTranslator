@@ -13,8 +13,8 @@ class LinuxFramelessWindow(QWidget):
 
     BORDER_WIDTH = 5
 
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
+    def __init__(self, parent=None, flags=Qt.WindowType.Widget):
+        super().__init__(parent, flags)
         self.windowEffect = LinuxWindowEffect(self)
         # self.titleBar = TitleBar(self)
         self._isSystemButtonVisible = False
@@ -99,7 +99,7 @@ class LinuxFramelessWindow(QWidget):
             return super().eventFilter(obj, event)
 
         edges = Qt.Edge(0)
-        pos = event.globalPosition().toPoint() - self.pos()
+        pos = obj.mapTo(self, event.position().toPoint())
         if pos.x() < self.BORDER_WIDTH:
             edges |= Qt.Edge.LeftEdge
         if pos.x() >= self.width()-self.BORDER_WIDTH:

@@ -89,6 +89,10 @@ PROFILE_EDITOR_WIDTH_SCALE = 1.15
 PROFILE_FIELD_TYPES = get_type_hints(LLMProfile)
 
 
+def _widen_profile_editor(editor: QWidget):
+    editor.setFixedWidth(round(editor.width() * PROFILE_EDITOR_WIDTH_SCALE))
+
+
 class ProfileNameEdit(QLineEdit):
     """Title-like profile name editor that only edits on demand.
 
@@ -302,7 +306,7 @@ class ProfileDetailsWidget(QWidget):
         layout.setSpacing(12)
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
-        self.general_param_widget = self._addParamWidget(layout, common_params, scrollWidget, self)
+        self._addParamWidget(layout, common_params, scrollWidget, self)
         for section_key, (title, params) in sections.items():
             section = QWidget(self)
             section.setObjectName('LLMProfileDetailSection')
@@ -331,17 +335,9 @@ class ProfileDetailsWidget(QWidget):
             self._addParamWidget(section_layout, params, scrollWidget, section)
             self.section_widgets[section_key] = section
             layout.addWidget(section, 0, Qt.AlignmentFlag.AlignLeft)
-        self._scaleEditors()
         self._alignParamColumns()
 
-    def _scaleEditors(self):
-        for editor in self.param_widgets.values():
-            if isinstance(editor, (QLineEdit, ParamComboBox, QPlainTextEdit)):
-                editor.setFixedWidth(round(editor.width() * PROFILE_EDITOR_WIDTH_SCALE))
-
     def _addParamWidget(self, layout, params: dict, scrollWidget: QWidget, parent: QWidget):
-        if not params:
-            return None
         param_widget = ParamWidget(params, scrollWidget=scrollWidget, parent=parent)
         param_widget.layout().setContentsMargins(0, 0, 0, 0)
         param_widget.paramwidget_edited.connect(self.paramwidget_edited.emit)
@@ -349,8 +345,9 @@ class ProfileDetailsWidget(QWidget):
         for key, editor in param_widget.param_widgets.items():
             self.param_widgets[key] = editor
             self._param_owners[key] = param_widget
+            if isinstance(editor, (QLineEdit, ParamComboBox, QPlainTextEdit)):
+                _widen_profile_editor(editor)
         layout.addWidget(param_widget, 0, Qt.AlignmentFlag.AlignLeft)
-        return param_widget
 
     def _alignParamColumns(self):
         prompt_width = max(
@@ -693,7 +690,10 @@ class ProfileCardWidget(QGroupBox):
         image_column.addWidget(self.image_model_modality_row)
         image_column.addWidget(self.image_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
-        self._scaleSummaryEditors()
+        _widen_profile_editor(self.api_key_widget)
+        _widen_profile_editor(self.api_key_widget.editor)
+        for editor in (self.model_combo, self.vision_model_combo, self.image_model_combo):
+            _widen_profile_editor(editor)
         self._setSummaryColumnWidth(self.model_summary_widget, model_label_row, self.model_combo)
         self._setSummaryColumnWidth(self.vision_model_summary_widget, vision_model_label_row, self.vision_model_combo)
         self._setSummaryColumnWidth(self.image_model_summary_widget, image_model_label_row, self.image_model_combo)
@@ -728,13 +728,6 @@ class ProfileCardWidget(QGroupBox):
         self.refreshImageBadge()
         self.refreshConditionalVisibility()
         self.refreshSelectionBorder()
-
-    def _scaleSummaryEditors(self):
-        api_key_width = round(self.api_key_widget.width() * PROFILE_EDITOR_WIDTH_SCALE)
-        self.api_key_widget.setFixedWidth(api_key_width)
-        self.api_key_widget.editor.setFixedWidth(api_key_width)
-        for editor in (self.model_combo, self.vision_model_combo, self.image_model_combo):
-            editor.setFixedWidth(round(editor.width() * PROFILE_EDITOR_WIDTH_SCALE))
 
     def _install_detail_editor_scrollbars(self):
         for editor in self.details.findChildren(QPlainTextEdit):
@@ -1495,12 +1488,10 @@ class ProfileCardWidget(QGroupBox):
         self.vision_model_combo.setVisible(support_vision)
         self.image_model_combo.setVisible(support_image)
         self.setActionButtonsVisible(self._action_buttons_visible)
-        if hasattr(self.details, 'setParamVisible'):
-            self.details.setParamVisible('low_vram_mode', not require_key)
-        if hasattr(self.details, 'setSectionVisible'):
-            self.details.setSectionVisible('text', support_text)
-            self.details.setSectionVisible('vision', support_vision)
-            self.details.setSectionVisible('image', support_image)
+        self.details.setParamVisible('low_vram_mode', not require_key)
+        self.details.setSectionVisible('text', support_text)
+        self.details.setSectionVisible('vision', support_vision)
+        self.details.setSectionVisible('image', support_image)
         self.refreshKeyStatus()
         self._sync_summary_grid()
         self._sync_minimum_width_with_content()
