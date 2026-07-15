@@ -178,12 +178,20 @@ class ModuleSelectionWidget(Widget):
     edit_clicked = Signal(str)
     llm_profile_changed = Signal(str)
 
-    def __init__(self, fallback_name: str, icon_filename: str, llm_modality: str = '', *args, **kwargs) -> None:
+    def __init__(
+        self,
+        fallback_name: str,
+        icon_filename: str,
+        llm_modality: str = '',
+        icon_color: str = '',
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.fallback_name = fallback_name
         self.icon_filename = icon_filename
+        self.icon_color = icon_color
         self.llm_modality = llm_modality
-        self._llm_visual_active = False
         if self._has_llm_modality():
             self._configure_modality(llm_modality)
         self.selector = SmallComboBox()
@@ -199,7 +207,11 @@ class ModuleSelectionWidget(Widget):
         self.tool_btn.setObjectName('BottomBarModuleToolButton')
         self.tool_btn.setToolTip(fallback_name)
         self.tool_btn.setPopupMode(_instant_popup_mode())
-        _set_bottom_tool_button_visuals(self.tool_btn, icon_filename)
+        _set_bottom_tool_button_visuals(
+            self.tool_btn,
+            self.icon_filename,
+            self.icon_color,
+        )
         self.tool_btn.setText(fallback_name)
         self.menu = QMenu(self.tool_btn)
         self.tool_btn.setMenu(self.menu)
@@ -231,7 +243,8 @@ class ModuleSelectionWidget(Widget):
             self.model_attr = 'model'
             self.model_options_attr = 'model_options'
             self.modality_color = LLM_MODALITY_TEXT_COLOR
-            self.active_icon_filename = 'text.svg'
+            self.icon_filename = 'text.svg'
+            self.icon_color = self.modality_color
             self.module_attr_to_set = ''
         elif modality == LLM_MODALITY_VISION:
             self.llm_key = LLM_OCR_KEY
@@ -240,7 +253,8 @@ class ModuleSelectionWidget(Widget):
             self.model_attr = 'vision_model'
             self.model_options_attr = 'vision_model_options'
             self.modality_color = LLM_MODALITY_VISION_COLOR
-            self.active_icon_filename = 'eye.svg'
+            self.icon_filename = 'eye.svg'
+            self.icon_color = self.modality_color
             self.module_attr_to_set = ''
         elif modality == LLM_MODALITY_IMAGE:
             self.llm_key = LLM_INPAINT_KEY
@@ -249,7 +263,8 @@ class ModuleSelectionWidget(Widget):
             self.model_attr = 'image_model'
             self.model_options_attr = 'image_model_options'
             self.modality_color = LLM_MODALITY_IMAGE_COLOR
-            self.active_icon_filename = 'image.svg'
+            self.icon_filename = 'image.svg'
+            self.icon_color = self.modality_color
             self.module_attr_to_set = 'inpainter'
         else:
             raise ValueError('Unknown LLM modality: {}'.format(modality))
@@ -278,12 +293,6 @@ class ModuleSelectionWidget(Widget):
         _set_bottom_aux_button_visible(self.edit_btn, False)
         _set_bottom_aux_button_visible(self.cfg_btn, False)
         return super().leaveEvent(event)
-
-    def changeEvent(self, event: QEvent) -> None:
-        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange):
-            if not self._has_llm_modality():
-                _set_bottom_tool_button_visuals(self.tool_btn, self.icon_filename)
-        return super().changeEvent(event)
 
     def blockSignals(self, block: bool):
         self.selector.blockSignals(block)
@@ -448,16 +457,6 @@ class ModuleSelectionWidget(Widget):
         model = str(getattr(profile, self.model_attr) or '').strip()
         return _simplify_llm_model_name(model) or profile.name or self.llm_key
 
-    def _setToolButtonVisualActive(self, active: bool, force: bool = False):
-        if not force and self._llm_visual_active == active:
-            return
-        self._llm_visual_active = active
-        _set_bottom_tool_button_visuals(
-            self.tool_btn,
-            self.active_icon_filename if active else self.icon_filename,
-            self.modality_color if active else '',
-        )
-
     def updateButtonText(self, *args):
         name = self.selector.currentText()
         is_llm = self._is_current_llm()
@@ -469,7 +468,6 @@ class ModuleSelectionWidget(Widget):
             name = self.fallback_name
         self.tool_btn.setText(_bottom_tool_button_text(name))
         if self._has_llm_modality():
-            self._setToolButtonVisualActive(is_llm)
             _set_bottom_aux_button_visible(self.edit_btn, self.shouldShowEditButton() and self.underMouse())
 
     def shouldShowEditButton(self) -> bool:

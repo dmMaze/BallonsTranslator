@@ -15,15 +15,17 @@ from qtpy.QtWidgets import (
     QToolButton,
     QVBoxLayout,
 )
-from qtpy.QtCore import Qt, Signal, QPoint, QEvent
-from qtpy.QtGui import QMouseEvent, QKeySequence, QActionGroup
+from qtpy.QtCore import QEvent, QPoint, QSize, Qt, Signal
+from qtpy.QtGui import QActionGroup, QIcon, QKeySequence, QMouseEvent
 
 from .custom_widget import Widget, PaintQSlider
 from .module_tool_button import ModuleSelectionWidget
+from .misc import themed_icon_path
 from .llm_modality import (
     LLM_MODALITY_IMAGE,
     LLM_MODALITY_TEXT,
     LLM_MODALITY_VISION,
+    LLM_MODALITY_VISION_COLOR,
 )
 from ballontranslator.utils.shared import (
     BOTTOMBAR_HEIGHT,
@@ -88,6 +90,7 @@ class LeftBar(Widget):
     open_json_proj = Signal(str)
     save_proj = Signal()
     save_config = Signal()
+    run_imgtrans_clicked = Signal()
     def __init__(self, mainwindow, *args, **kwargs) -> None:
         super().__init__(mainwindow, *args, **kwargs)
         self.mainwindow: QMainWindow = mainwindow
@@ -166,16 +169,16 @@ class LeftBar(Widget):
         openBtnToolBar.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
         openBtnToolBar.setContentsMargins(0, 0, 0, 0)
         openBtnToolBar.addWidget(self.openBtn)
-        
-        self.runImgtransBtn = QPushButton()
-        self.runImgtransBtn.setObjectName('RunButton')
-        self.runImgtransBtn.setText(self.tr('Run'))
-        font = self.runImgtransBtn.font()
-        font.setPixelSize(10)
-        self.runImgtransBtn.setFont(font)
-        self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
-        self.run_imgtrans_clicked = self.runImgtransBtn.clicked
-        self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
+
+        self.runImgtransBtn = QToolButton(self)
+        self.runImgtransBtn.setObjectName('LeftBarRunButton')
+        self.runImgtransBtn.setIcon(QIcon(themed_icon_path('run.svg')))
+        self.runImgtransBtn.setIconSize(QSize(LEFTBTN_WIDTH + 3, LEFTBTN_WIDTH + 3))
+        self.runImgtransBtn.setFixedSize(LEFTBTN_WIDTH + 4, LEFTBTN_WIDTH + 4)
+        self.runImgtransBtn.setToolTip('{} (F5)'.format(self.tr('Run')))
+        self.runImgtransBtn.setAccessibleName(self.tr('Run'))
+        self.runImgtransBtn.setShortcut(QKeySequence('F5'))
+        self.runImgtransBtn.clicked.connect(self.run_imgtrans_clicked.emit)
         
         vlayout = QVBoxLayout(self)
         vlayout.addWidget(openBtnToolBar)
@@ -562,7 +565,11 @@ class BottomBar(Widget):
         self.setMouseTracking(True)
         self.mainwindow = mainwindow
         
-        self.textdet_selector = ModuleSelectionWidget(self.tr('Text Detector'), 'textdetect.svg')
+        self.textdet_selector = ModuleSelectionWidget(
+            self.tr('Text Detector'),
+            'textdetect_activate.svg',
+            icon_color=LLM_MODALITY_VISION_COLOR,
+        )
         self.ocr_selector = ModuleSelectionWidget(self.tr('OCR'), 'small_ocr.svg', LLM_MODALITY_VISION)
         self.inpaint_selector = ModuleSelectionWidget(self.tr('Inpaint'), 'drawingtools_inpaint.svg', LLM_MODALITY_IMAGE)
         self.trans_selector = ModuleSelectionWidget(

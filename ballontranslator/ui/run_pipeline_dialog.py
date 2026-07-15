@@ -407,8 +407,8 @@ class RunPipelineDialog(QDialog):
                 'textdetect.svg',
             ),
             (self.tr('OCR'), LLM_MODALITY_VISION, '', ''),
-            (self.tr('Translation'), LLM_MODALITY_TEXT, '', ''),
             (self.tr('Inpainting'), LLM_MODALITY_IMAGE, '', ''),
+            (self.tr('Translation'), LLM_MODALITY_TEXT, '', ''),
         )
         self.module_buttons = []
         for index, (name, modality, active_icon, inactive_icon) in enumerate(stage_specs):

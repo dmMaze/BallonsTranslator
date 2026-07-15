@@ -1036,10 +1036,6 @@ QPushButton {
     border-radius: 4px;
 }
 
-QPushButton#RunButton {
-    font-size: 12px;
-}
-
 NoBorderPushBtn {
     background-color: @noboderPushBtnBackgroundColor;
     border: none;
@@ -1164,6 +1160,22 @@ QToolButton#BottomBarModuleToolButton::menu-indicator {
     subcontrol-origin: padding;
     subcontrol-position: right center;
     right: 8px;
+}
+
+QToolButton#LeftBarRunButton {
+    border: none;
+    border-radius: 7px;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+QToolButton#LeftBarRunButton:hover {
+    border: none;
+    background-color: rgba(14, 170, 205, 20%);
+}
+
+QToolButton#LeftBarRunButton:pressed {
+    border: none;
+    background-color: rgba(14, 170, 205, 32%);
 }
 
 QLabel#MenuSectionLabel {
