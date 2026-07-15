@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
-from ballontranslator.modules.translators.trans_llm import LLMTranslator
+from ballontranslator.modules.translators.trans_llm import InvalidNumTranslations, LLMTranslator
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import default_profile
 

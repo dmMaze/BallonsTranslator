@@ -111,6 +111,23 @@ DEFAULT_TRANSLATION_PROMPT = (
     "and formatting as much as possible. Keep names, honorifics, and terminology consistent."
 )
 
+DEFAULT_OCR_PROMPT = (
+    "Extract every visible text string from this image. "
+    "The text may be vertical manga/comic text or left-to-right text; infer the intended reading order from the image. If "
+    "characters look jumbled because vertical text was read horizontally, reconstruct the intended "
+    "vertical order. Return only the recognized text, using spaces instead of line breaks when possible. "
+    "If no text is visible, return an empty response."
+)
+
+DEFAULT_INPAINT_PROMPT = (
+    "Clean up this comic or manga image for further scanlation. Remove all visible text elements, "
+    "including speech bubble lettering, captions, sound effects, signs, labels, and text-like "
+    "watermarks. Keep all non-text artwork intact: characters, faces, line art, screentones, "
+    "backgrounds, speech bubbles, panel borders, lighting, colors, texture, and composition. "
+    "Do not translate, redraw with new text, add captions, or explain the edit. Return only the "
+    "cleaned image."
+)
+
 def _normal_url(url: str) -> str:
     url = (url or "").strip()
     if url == "http://localhost:11434/v1/":
@@ -158,7 +175,8 @@ class LLMProfile(Config):
     thinking_level: str = "None"
     thinking_level_options: List[str] = field(default_factory=lambda: list(THINKING_LEVEL_OPTIONS))
     prompt: str = DEFAULT_TRANSLATION_PROMPT
-    invalid_repeat_count: int = 2
+    vision_prompt: str = DEFAULT_OCR_PROMPT
+    image_prompt: str = DEFAULT_INPAINT_PROMPT
     max_tokens: int = 8192
     temperature: float = 0.1
     top_p: float = 1.0
@@ -542,8 +560,6 @@ def profile_from_old_settings(old_key: str, params: Dict, secret_store: SecretSt
     profile.require_api_key = require_key
     profile.model = model
     profile.thinking_level = thinking
-    if "invalid repeat count" in params:
-        profile.invalid_repeat_count = params["invalid repeat count"]
     if "max tokens" in params:
         profile.max_tokens = params["max tokens"]
     if "temperature" in params:

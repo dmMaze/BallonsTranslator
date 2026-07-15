@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMBaseURLRequiredError, LLMModelRequiredError
-from ballontranslator.modules.inpaint.inpaint_llm import DEFAULT_INPAINT_PROMPT, LLMInpaint
+from ballontranslator.modules.inpaint.inpaint_llm import LLMInpaint
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import default_profile
 
@@ -318,11 +318,6 @@ class LLMInpaintTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, 'image provider says no'):
             inpainter._request_inpaint(inpainter.profile, np.zeros((2, 2, 3), dtype=np.uint8))
-
-    def test_prompt_contract_mentions_scanlation_cleanup(self):
-        self.assertIn('scanlation', DEFAULT_INPAINT_PROMPT)
-        self.assertIn('speech bubble lettering', DEFAULT_INPAINT_PROMPT)
-        self.assertIn('Keep all non-text artwork intact', DEFAULT_INPAINT_PROMPT)
 
 
 if __name__ == '__main__':

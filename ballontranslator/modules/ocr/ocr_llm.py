@@ -10,16 +10,6 @@ from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModel
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import LLMProfile, profile_by_id, profile_from_config, resolve_api_key
 
-
-DEFAULT_OCR_PROMPT = (
-    "Extract every visible text string from this image. Preserve the original script and wording; "
-    "do not translate, summarize, explain, or add text that is not visible. The text may be vertical "
-    "manga/comic text or left-to-right text; infer the intended reading order from the image. If "
-    "characters look jumbled because vertical text was read horizontally, reconstruct the intended "
-    "vertical order. Return only the recognized text, using spaces instead of line breaks when possible. "
-    "If no text is visible, return an empty response."
-)
-
 DEFAULT_OCR_SYSTEM_PROMPT = (
     "You are an OCR engine for comic and manga image crops. Your job is to recognize visible text only. "
     "Return raw recognized text and nothing else."
@@ -230,7 +220,7 @@ class LLMOCR(OCRBase):
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt or DEFAULT_OCR_PROMPT},
+                    {"type": "text", "text": prompt if prompt is not None else profile.vision_prompt},
                     self._image_content_part(img, profile),
                 ],
             },

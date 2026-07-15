@@ -5,6 +5,8 @@ import unittest
 
 from ballontranslator.utils.config import ModuleConfig, ProgramConfig, json_dump_program_config
 from ballontranslator.utils.llm_profiles import (
+    DEFAULT_INPAINT_PROMPT,
+    DEFAULT_OCR_PROMPT,
     DEFAULT_TRANSLATION_PROMPT,
     LLMProfile,
     PROVIDER_DEFAULTS,
@@ -126,6 +128,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
             'model': ['not-a-model'],
             'temperature': 'hot',
             'support_text': 'yes',
+            'invalid_repeat_count': 5,
             'unknown_future_field': 'ignored',
         }))[0]
 
@@ -134,6 +137,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(imported.model, '')
         self.assertEqual(imported.temperature, LLMProfile().temperature)
         self.assertTrue(imported.support_text)
+        self.assertFalse(hasattr(imported, 'invalid_repeat_count'))
         self.assertFalse(hasattr(imported, 'unknown_future_field'))
 
         encoded = profile_to_export_dict(default_profile('OpenAI'))
@@ -210,6 +214,9 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertIn('None', profile.thinking_level_options)
         self.assertNotIn('none', profile.thinking_level_options)
         self.assertEqual(profile.prompt, DEFAULT_TRANSLATION_PROMPT)
+        self.assertEqual(profile.vision_prompt, DEFAULT_OCR_PROMPT)
+        self.assertEqual(profile.image_prompt, DEFAULT_INPAINT_PROMPT)
+        self.assertFalse(hasattr(profile, 'invalid_repeat_count'))
         self.assertEqual(profile.max_tokens, 8192)
         self.assertFalse(profile.json_schema_response_format)
 

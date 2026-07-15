@@ -495,12 +495,27 @@ QLineEdit#LLMProfileModelEditor:focus {
 
 QWidget#LLMProfileDetails,
 QWidget#ConfigContentScrollContent QGroupBox#LLMProfileCard QWidget#LLMProfileDetails,
+QGroupBox#LLMProfileCard QWidget#LLMProfileDetailSection,
 QGroupBox#LLMProfileCard QWidget#ParamLabelAboveRow,
 QGroupBox#LLMProfileCard QLabel#ParamLabelAboveLabel,
 QGroupBox#LLMProfileCard QLabel#ParamFieldLabel,
 QGroupBox#LLMProfileCard QCheckBox#ParamCheckBox {
     background-color: @widgetBackgroundColor;
     font-size: 13px;
+}
+
+QGroupBox#LLMProfileCard QLabel#LLMProfileDetailSectionTitle {
+    background-color: @widgetBackgroundColor;
+    color: @qwidgetForegroundColor;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0px 6px;
+}
+
+QGroupBox#LLMProfileCard QFrame#LLMProfileDetailSectionLine {
+    border: none;
+    border-top: 1px solid @borderColor;
+    background-color: transparent;
 }
 
 QGroupBox#LLMProfileCard QPlainTextEdit {

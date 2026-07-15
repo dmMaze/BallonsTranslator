@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QVBoxLayout,
     QWidget,
+    QFrame,
     QLabel,
     QLineEdit,
     QMenu,
@@ -58,13 +59,9 @@ from ballontranslator.utils.llm_profiles import (
 )
 
 
-PROFILE_PARAM_DEFS = [
+PROFILE_COMMON_PARAM_DEFS = [
     ('require_api_key', 'checkbox'),
     ('base_url', 'line_editor'),
-    ('image_base_url', 'line_editor'),
-    ('vision_detail_level', 'selector'),
-    ('thinking_level', 'selector'),
-    ('invalid_repeat_count', 'line_editor'),
     ('max_tokens', 'line_editor'),
     ('temperature', 'line_editor'),
     ('top_p', 'line_editor'),
@@ -72,8 +69,22 @@ PROFILE_PARAM_DEFS = [
     ('presence_penalty', 'line_editor'),
     ('low_vram_mode', 'checkbox'),
     ('json_schema_response_format', 'checkbox'),
-    ('prompt', 'editor'),
 ]
+PROFILE_MODALITY_PARAM_DEFS = {
+    'text': [
+        ('thinking_level', 'selector'),
+        ('prompt', 'editor'),
+    ],
+    'vision': [
+        ('vision_detail_level', 'selector'),
+        ('vision_prompt', 'editor'),
+    ],
+    'image': [
+        ('image_base_url', 'line_editor'),
+        ('image_prompt', 'editor'),
+    ],
+}
+PROFILE_EDITOR_WIDTH_SCALE = 1.15
 
 PROFILE_FIELD_TYPES = get_type_hints(LLMProfile)
 
@@ -267,6 +278,117 @@ class ClickableFieldLabel(QLabel):
         return super().mouseReleaseEvent(event)
 
 
+class ProfileDetailsWidget(QWidget):
+    """Profile detail editor grouped by modality while keeping one lookup path.
+
+    Example:
+        >>> ProfileDetailsWidget.__name__
+        'ProfileDetailsWidget'
+    """
+
+    paramwidget_edited = Signal(str, dict)
+
+    def __init__(self, common_params: dict, sections: dict, scrollWidget: QWidget = None, parent=None):
+        super().__init__(parent)
+        self.setObjectName('LLMProfileDetails')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.param_widgets = {}
+        self._param_owners = {}
+        self._param_groups = []
+        self.section_widgets = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+
+        self.general_param_widget = self._addParamWidget(layout, common_params, scrollWidget, self)
+        for section_key, (title, params) in sections.items():
+            section = QWidget(self)
+            section.setObjectName('LLMProfileDetailSection')
+            section.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            section_layout = QVBoxLayout(section)
+            section_layout.setContentsMargins(0, 0, 0, 0)
+            section_layout.setSpacing(6)
+            title_label = QLabel(title, section)
+            title_label.setObjectName('LLMProfileDetailSectionTitle')
+            title_lines = [QFrame(section), QFrame(section)]
+            for title_line in title_lines:
+                title_line.setObjectName('LLMProfileDetailSectionLine')
+                title_line.setFrameShape(QFrame.Shape.HLine)
+                title_line.setFrameShadow(QFrame.Shadow.Plain)
+                title_line.setFixedHeight(1)
+                title_line.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            header_widget = QWidget(section)
+            header_widget.setFixedWidth(240)
+            header_layout = QHBoxLayout(header_widget)
+            header_layout.setContentsMargins(0, 8, 0, 8)
+            header_layout.setSpacing(0)
+            header_layout.addWidget(title_lines[0], 1, Qt.AlignmentFlag.AlignVCenter)
+            header_layout.addWidget(title_label, 0, Qt.AlignmentFlag.AlignCenter)
+            header_layout.addWidget(title_lines[1], 1, Qt.AlignmentFlag.AlignVCenter)
+            section_layout.addWidget(header_widget, 0, Qt.AlignmentFlag.AlignHCenter)
+            self._addParamWidget(section_layout, params, scrollWidget, section)
+            self.section_widgets[section_key] = section
+            layout.addWidget(section, 0, Qt.AlignmentFlag.AlignLeft)
+        self._scaleEditors()
+        self._alignParamColumns()
+
+    def _scaleEditors(self):
+        for editor in self.param_widgets.values():
+            if isinstance(editor, (QLineEdit, ParamComboBox, QPlainTextEdit)):
+                editor.setFixedWidth(round(editor.width() * PROFILE_EDITOR_WIDTH_SCALE))
+
+    def _addParamWidget(self, layout, params: dict, scrollWidget: QWidget, parent: QWidget):
+        if not params:
+            return None
+        param_widget = ParamWidget(params, scrollWidget=scrollWidget, parent=parent)
+        param_widget.layout().setContentsMargins(0, 0, 0, 0)
+        param_widget.paramwidget_edited.connect(self.paramwidget_edited.emit)
+        self._param_groups.append(param_widget)
+        for key, editor in param_widget.param_widgets.items():
+            self.param_widgets[key] = editor
+            self._param_owners[key] = param_widget
+        layout.addWidget(param_widget, 0, Qt.AlignmentFlag.AlignLeft)
+        return param_widget
+
+    def _alignParamColumns(self):
+        prompt_width = max(
+            (
+                self.param_widgets[key].minimumWidth()
+                for key in ('prompt', 'vision_prompt', 'image_prompt')
+                if key in self.param_widgets
+            ),
+            default=0,
+        )
+        for group in self._param_groups:
+            inline_rows = [row for row in group.param_rows.values() if len(row) > 1]
+            inline_editors = [
+                editor
+                for editor in group.param_widgets.values()
+                if isinstance(editor, (QLineEdit, ParamComboBox))
+            ]
+            if not inline_rows or not inline_editors:
+                continue
+            spacing = max(0, group.param_layout.horizontalSpacing())
+            # Preserve editor widths and align their right edge with the full-width prompt.
+            label_width = max(
+                max(row[0].sizeHint().width() for row in inline_rows),
+                prompt_width - max(editor.width() for editor in inline_editors) - spacing,
+            )
+            group.param_layout.setColumnMinimumWidth(0, label_width)
+
+    def setParamVisible(self, param_key: str, visible: bool):
+        owner = self._param_owners.get(param_key)
+        if owner is not None:
+            owner.setParamVisible(param_key, visible)
+
+    def setSectionVisible(self, section_key: str, visible: bool):
+        section = self.section_widgets.get(section_key)
+        if section is not None:
+            section.setVisible(visible)
+
+
 class ProfileCardWidget(QGroupBox):
     """Compact card editor for a single LLM profile.
 
@@ -310,7 +432,6 @@ class ProfileCardWidget(QGroupBox):
             'image_model': self.tr('Image Model'),
             'vision_detail_level': self.tr('Vision Detail Level'),
             'thinking_level': self.tr('Thinking Level'),
-            'invalid_repeat_count': self.tr('Invalid Repeat Count'),
             'max_tokens': self.tr('Max Tokens'),
             'temperature': self.tr('Temperature'),
             'top_p': self.tr('Top P'),
@@ -318,6 +439,8 @@ class ProfileCardWidget(QGroupBox):
             'presence_penalty': self.tr('Presence Penalty'),
             'json_schema_response_format': self.tr('JSON Schema Response'),
             'prompt': self.tr('Prompt'),
+            'vision_prompt': self.tr('Prompt'),
+            'image_prompt': self.tr('Prompt'),
             'low_vram_mode': self.tr('Low VRAM Mode'),
         }
         self.profile_param_descriptions = {
@@ -329,7 +452,8 @@ class ProfileCardWidget(QGroupBox):
             'vision_detail_level': self.tr('Image detail level sent to vision-capable providers.'),
             'thinking_level': self.tr('Reasoning effort sent only when it is not None.'),
             'prompt': self.tr('Additional translation instructions for style and wording.'),
-            'invalid_repeat_count': self.tr('Retries when response count does not match source count.'),
+            'vision_prompt': self.tr('Instructions sent to the vision model for OCR.'),
+            'image_prompt': self.tr('Instructions sent to the image model for cleanup.'),
             'max_tokens': self.tr('Maximum generated response tokens, not input/context tokens.'),
             'temperature': self.tr('Sampling temperature.'),
             'top_p': self.tr('Top-p sampling.'),
@@ -425,7 +549,7 @@ class ProfileCardWidget(QGroupBox):
         right_column.setContentsMargins(0, 0, 0, 0)
         right_column.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         right_column.setSpacing(2)
-        self.model_label = ClickableFieldLabel(self.tr('Model'), self)
+        self.model_label = ClickableFieldLabel(self.tr('Text Model'), self)
         self.model_label.setObjectName('LLMProfileFieldLabel')
         self.model_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.model_label.clicked.connect(self.toggleTextSupport)
@@ -569,15 +693,23 @@ class ProfileCardWidget(QGroupBox):
         image_column.addWidget(self.image_model_modality_row)
         image_column.addWidget(self.image_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
+        self._scaleSummaryEditors()
         self._setSummaryColumnWidth(self.model_summary_widget, model_label_row, self.model_combo)
         self._setSummaryColumnWidth(self.vision_model_summary_widget, vision_model_label_row, self.vision_model_combo)
         self._setSummaryColumnWidth(self.image_model_summary_widget, image_model_label_row, self.image_model_combo)
         self._sync_summary_grid()
         layout.addWidget(self.summary_widget)
 
-        self.details = ParamWidget(self._detail_params(), scrollWidget=scrollWidget)
-        self.details.setObjectName('LLMProfileDetails')
-        self.details.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.details = ProfileDetailsWidget(
+            self._detail_params(PROFILE_COMMON_PARAM_DEFS),
+            {
+                'text': (self.tr('Text'), self._detail_params(PROFILE_MODALITY_PARAM_DEFS['text'])),
+                'vision': (self.tr('Vision'), self._detail_params(PROFILE_MODALITY_PARAM_DEFS['vision'])),
+                'image': (self.tr('Image'), self._detail_params(PROFILE_MODALITY_PARAM_DEFS['image'])),
+            },
+            scrollWidget=scrollWidget,
+            parent=self,
+        )
         self._install_detail_editor_scrollbars()
         layout.addWidget(self.details)
         self._sync_minimum_width_with_content()
@@ -596,6 +728,13 @@ class ProfileCardWidget(QGroupBox):
         self.refreshImageBadge()
         self.refreshConditionalVisibility()
         self.refreshSelectionBorder()
+
+    def _scaleSummaryEditors(self):
+        api_key_width = round(self.api_key_widget.width() * PROFILE_EDITOR_WIDTH_SCALE)
+        self.api_key_widget.setFixedWidth(api_key_width)
+        self.api_key_widget.editor.setFixedWidth(api_key_width)
+        for editor in (self.model_combo, self.vision_model_combo, self.image_model_combo):
+            editor.setFixedWidth(round(editor.width() * PROFILE_EDITOR_WIDTH_SCALE))
 
     def _install_detail_editor_scrollbars(self):
         for editor in self.details.findChildren(QPlainTextEdit):
@@ -616,6 +755,12 @@ class ProfileCardWidget(QGroupBox):
         thinking_combo = self.details.param_widgets.get('thinking_level')
         if isinstance(thinking_combo, ParamComboBox):
             self._syncComboBox(thinking_combo, self.profile.thinking_level_options, self.profile.thinking_level)
+        for key in ('prompt', 'vision_prompt', 'image_prompt'):
+            editor = self.details.param_widgets.get(key)
+            if isinstance(editor, QPlainTextEdit):
+                editor.blockSignals(True)
+                editor.setPlainText(str(getattr(self.profile, key) or ''))
+                editor.blockSignals(False)
         self.refreshTextBadge()
         self.refreshVisionBadge()
         self.refreshImageBadge()
@@ -634,9 +779,9 @@ class ProfileCardWidget(QGroupBox):
         combo.setCurrentText(value)
         combo.blockSignals(False)
 
-    def _detail_params(self):
+    def _detail_params(self, param_defs):
         params = {}
-        for key, widget_type in PROFILE_PARAM_DEFS:
+        for key, widget_type in param_defs:
             value = getattr(self.profile, key)
             display_name = self.profile_param_display_names.get(key, key)
             description = self.profile_param_descriptions.get(key, '')
@@ -1352,8 +1497,10 @@ class ProfileCardWidget(QGroupBox):
         self.setActionButtonsVisible(self._action_buttons_visible)
         if hasattr(self.details, 'setParamVisible'):
             self.details.setParamVisible('low_vram_mode', not require_key)
-            self.details.setParamVisible('vision_detail_level', support_vision)
-            self.details.setParamVisible('image_base_url', support_image)
+        if hasattr(self.details, 'setSectionVisible'):
+            self.details.setSectionVisible('text', support_text)
+            self.details.setSectionVisible('vision', support_vision)
+            self.details.setSectionVisible('image', support_image)
         self.refreshKeyStatus()
         self._sync_summary_grid()
         self._sync_minimum_width_with_content()
@@ -1400,7 +1547,7 @@ class LLMProfilesWidget(QWidget):
         self._selected_profile_ids = self._currentSelectedProfileIds()
         self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setContentsMargins(9, 0, 0, 0)
         self.layout.setSpacing(14)
         self.actions_layout = QHBoxLayout()
         self.actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)

@@ -20,16 +20,6 @@ from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import LLMProfile, profile_by_id, profile_from_config, resolve_api_key
 
 
-DEFAULT_INPAINT_PROMPT = (
-    "Clean up this comic or manga image for further scanlation. Remove all visible text elements, "
-    "including speech bubble lettering, captions, sound effects, signs, labels, and text-like "
-    "watermarks. Keep all non-text artwork intact: characters, faces, line art, screentones, "
-    "backgrounds, speech bubbles, panel borders, lighting, colors, texture, and composition. "
-    "Do not translate, redraw with new text, add captions, or explain the edit. Return only the "
-    "cleaned image."
-)
-
-
 @register_inpainter("LLMInpaint")
 class LLMInpaint(InpainterBase):
     """Profile-backed image cleanup using image-capable LLM APIs.
@@ -328,14 +318,14 @@ class LLMInpaint(InpainterBase):
         return {
             "model": self._image_model(profile),
             "image": image_file,
-            "prompt": prompt or DEFAULT_INPAINT_PROMPT,
+            "prompt": prompt if prompt is not None else profile.image_prompt,
         }
 
     def _openrouter_api_args(self, profile: LLMProfile, image_file, prompt: str = None) -> Dict:
         encoded_image = base64.b64encode(image_file.getvalue()).decode('ascii')
         return {
             "model": self._image_model(profile),
-            "prompt": prompt or DEFAULT_INPAINT_PROMPT,
+            "prompt": prompt if prompt is not None else profile.image_prompt,
             "input_references": [
                 {
                     "type": "image_url",
@@ -355,7 +345,7 @@ class LLMInpaint(InpainterBase):
                 {
                     "parts": [
                         {
-                            "text": prompt or DEFAULT_INPAINT_PROMPT,
+                            "text": prompt if prompt is not None else profile.image_prompt,
                         },
                         {
                             "inline_data": {
