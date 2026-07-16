@@ -1854,8 +1854,19 @@ class ModuleManager(QObject):
         if (render_only or cfg_module.all_stages_disabled()) and \
                 self.imgtrans_proj is not None and self.imgtrans_proj.num_pages > 0:
             # Rendering reuses the normal page-finished path without preparing
-            # or running any automation module.
-            for ii in range(self.imgtrans_proj.num_pages):
+            # or running any pipeline module.
+            page_indexes = range(self.imgtrans_proj.num_pages)
+            if not render_only and pages_to_process is not None:
+                page_index_by_name = {
+                    page_name: index
+                    for index, page_name in enumerate(self.imgtrans_proj.pages)
+                }
+                page_indexes = (
+                    page_index_by_name[page_name]
+                    for page_name in pages_to_process
+                    if page_name in page_index_by_name
+                )
+            for ii in page_indexes:
                 self.page_trans_finished.emit(ii)
             self.imgtrans_pipeline_finished.emit()
             return

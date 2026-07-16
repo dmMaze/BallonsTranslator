@@ -703,8 +703,8 @@ QComboBox#RunPipelineWorkflowSelector::drop-down {
 
 QDockWidget#RunPipelineContentDock,
 QStackedWidget#RunPipelineContentStack,
-QWidget#RunPipelineAutomationPage,
-QWidget#RunPipelineAutomationPage QLabel,
+QWidget#RunPipelinePipelinePage,
+QWidget#RunPipelinePipelinePage QLabel,
 QWidget#RunPipelineRenderingPage,
 QWidget#RunPipelineRenderingPage QLabel,
 QWidget#RunPipelineRenderingSetting {
@@ -764,6 +764,27 @@ QFrame#RunPipelineStages QLabel#RunPipelineModuleLabel[moduleActive="false"] {
     color: @borderColor;
 }
 
+QWidget#RunPipelineSettingsSection,
+QWidget#RunPipelineSettingsSectionHeader,
+QWidget#RunPipelineSettingsBody,
+QWidget#RunPipelinePageRangeProgress,
+QWidget#RunPipelineGeneralSettingRow {
+    background-color: @widgetBackgroundColor;
+}
+
+QLabel#RunPipelineSettingsSectionTitle {
+    color: @qwidgetForegroundColor;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0px 6px;
+}
+
+QFrame#RunPipelineSettingsSectionLine {
+    border: none;
+    border-top: 1px solid @borderColor;
+    background-color: transparent;
+}
+
 QToolButton#RunPipelineSettingsHeader {
     min-height: 20px;
     padding: 0px;
@@ -773,6 +794,42 @@ QToolButton#RunPipelineSettingsHeader {
     font-size: 13px;
     font-weight: 600;
     text-align: left;
+}
+
+QLabel#RunPipelineSettingLabel {
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
+}
+
+QSpinBox#RunPipelineRangeStart,
+QSpinBox#RunPipelineRangeEnd {
+    min-height: 24px;
+    max-height: 24px;
+    padding-left: 8px;
+    padding-right: 36px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    font-size: 13px;
+}
+
+QSpinBox#RunPipelineRangeStart:hover,
+QSpinBox#RunPipelineRangeStart:focus,
+QSpinBox#RunPipelineRangeEnd:hover,
+QSpinBox#RunPipelineRangeEnd:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QSpinBox#RunPipelineRangeStart::up-button,
+QSpinBox#RunPipelineRangeStart::down-button,
+QSpinBox#RunPipelineRangeEnd::up-button,
+QSpinBox#RunPipelineRangeEnd::down-button {
+    width: 0px;
+    height: 0px;
+    border: none;
 }
 
 QPushButton#RunPipelinePrimaryButton,
@@ -1206,7 +1263,7 @@ QToolButton#BottomBarModuleToolButton:open {
 }
 
 QToolButton#BottomBarModuleToolButton::menu-indicator {
-    image: url(resources/icons/combobox_arrow.svg);
+    image: none;
     width: 11px;
     height: 11px;
     subcontrol-origin: padding;
@@ -1317,7 +1374,7 @@ OpenBtn::pressed {
     image: url(resources/icons/openbtn_activate.svg);
 }
 
-QProgressBar {
+TaskProgressBar QProgressBar {
     background-color: @emptyContentBackgroundColor;
     width: 450px;
     height: 45px;

@@ -31,6 +31,7 @@ _APP = qapp()
 
 from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.custom_widget.label import ColorPickerLabel
+from ballontranslator.ui.icon_rendering import render_svg_pixmap
 from ballontranslator.ui.menu_style import MenuStyleFilter
 from ballontranslator.ui.textedit_area import FloatingSuggestionLabel
 
@@ -202,6 +203,26 @@ class MenuStyleFilterTest(unittest.TestCase):
         action.setChecked(False)
         self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
         self.assertEqual(action.text(), original_text)
+
+    def test_submenu_chevron_uses_shared_svg_renderer(self):
+        menu = QMenu()
+        submenu = menu.addMenu('Submenu')
+        submenu.addAction('Child')
+        with patch(
+            'ballontranslator.ui.menu_style.render_svg_pixmap',
+            wraps=render_svg_pixmap,
+        ) as render_svg:
+            self.filter.eventFilter(menu, QEvent(QEvent.Type.Polish))
+            menu.ensurePolished()
+            menu.resize(menu.sizeHint())
+            menu.grab()
+
+        self.assertTrue(
+            any(
+                call.args and call.args[0].endswith('chevron-right.svg')
+                for call in render_svg.call_args_list
+            )
+        )
 
 
 if __name__ == '__main__':

@@ -192,7 +192,7 @@ class ProgramConfig(Config):
     show_ocr_tool: bool = True
     show_translator_tool: bool = True
     show_inpainter_tool: bool = True
-    run_pipeline_mode: str = 'automation'
+    run_pipeline_mode: str = 'pipeline'
     render_without_text_style_update: bool = False
 
     let_fntsize_flag: int = 0

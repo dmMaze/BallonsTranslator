@@ -1,8 +1,6 @@
 import copy
 import json
-import math
 import uuid
-from functools import lru_cache
 from typing import get_type_hints
 
 from qtpy.QtWidgets import (
@@ -26,7 +24,6 @@ from qtpy.QtWidgets import (
 )
 from qtpy.QtCore import QEvent, QRectF, QTimer, Qt, Signal
 from qtpy.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
-from qtpy.QtSvg import QSvgRenderer
 
 try:
     from qtpy.QtGui import QAction
@@ -34,6 +31,7 @@ except ImportError:
     from qtpy.QtWidgets import QAction
 
 from .custom_widget import ParamComboBox, NoBorderPushBtn, ScrollBar
+from .icon_rendering import render_svg_pixmap
 from .llm_modality import (
     LLM_MODALITY_IMAGE_COLOR,
     LLM_MODALITY_TEXT_COLOR,
@@ -167,7 +165,7 @@ class CachedSvgStatusIcon(QLabel):
         painter.end()
 
     def _renderIconPixmap(self) -> QPixmap:
-        return _render_svg_pixmap(
+        return render_svg_pixmap(
             self._icon_path,
             self.width(),
             self.height(),
@@ -176,43 +174,6 @@ class CachedSvgStatusIcon(QLabel):
             (0, 0, 0, 0),
             0,
         )
-
-
-@lru_cache(maxsize=256)
-def _render_svg_pixmap(
-    path: str,
-    width: int,
-    height: int,
-    device_pixel_ratio: float,
-    inset: int,
-    background_rgba,
-    background_radius: int,
-) -> QPixmap:
-    if not path or width <= 0 or height <= 0:
-        return QPixmap()
-    renderer = QSvgRenderer(path)
-    if not renderer.isValid():
-        return QPixmap()
-
-    dpr = max(1.0, float(device_pixel_ratio or 1.0))
-    physical_width = max(1, math.ceil(width * dpr))
-    physical_height = max(1, math.ceil(height * dpr))
-    pixmap = QPixmap(physical_width, physical_height)
-    pixmap.setDevicePixelRatio(dpr)
-    pixmap.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-    if background_rgba[3] > 0:
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(*background_rgba))
-        painter.drawRoundedRect(QRectF(0, 0, width, height), background_radius, background_radius)
-    renderer.render(
-        painter,
-        QRectF(inset, inset, width - inset * 2, height - inset * 2),
-    )
-    painter.end()
-    return pixmap
 
 
 class CapabilityBadgeLabel(CachedSvgStatusIcon):
@@ -242,7 +203,7 @@ class CapabilityBadgeLabel(CachedSvgStatusIcon):
 
     def _renderIconPixmap(self) -> QPixmap:
         background = self._active_color.getRgb() if bool(self.property('capabilityActive')) else (0, 0, 0, 0)
-        return _render_svg_pixmap(
+        return render_svg_pixmap(
             self._icon_path,
             self.width(),
             self.height(),

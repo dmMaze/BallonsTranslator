@@ -2,12 +2,42 @@ import sys
 
 from qtpy.QtCore import QEvent, QObject, QRectF, Qt
 from qtpy.QtGui import QColor, QPainter, QPainterPath, QPen, QRegion
-from qtpy.QtWidgets import QMenu, QWidget
+from qtpy.QtWidgets import QMenu, QProxyStyle, QStyle, QWidget
 
+from .icon_rendering import render_svg_pixmap
+from .misc import themed_icon_path
 from ballontranslator.utils import shared
 
 
 _MENU_CORNER_RADIUS = 8
+_MENU_CHEVRON_SIZE = 12
+
+
+class _MenuChevronStyle(QProxyStyle):
+    """Replace native submenu arrows with the shared themed SVG chevron.
+
+    >>> _MenuChevronStyle.__name__
+    '_MenuChevronStyle'
+    """
+
+    def drawPrimitive(self, element, option, painter, widget=None):
+        primitive = getattr(QStyle, 'PrimitiveElement', QStyle)
+        if (
+            element == primitive.PE_IndicatorArrowRight
+            and isinstance(widget, QMenu)
+        ):
+            pixmap = render_svg_pixmap(
+                themed_icon_path('chevron-right.svg'),
+                _MENU_CHEVRON_SIZE,
+                _MENU_CHEVRON_SIZE,
+                widget.devicePixelRatioF(),
+            )
+            target = option.rect
+            x = target.center().x() - _MENU_CHEVRON_SIZE // 2
+            y = target.center().y() - _MENU_CHEVRON_SIZE // 2
+            painter.drawPixmap(x, y, pixmap)
+            return
+        return super().drawPrimitive(element, option, painter, widget)
 
 
 def _windows_menu_mask(rect):
@@ -69,6 +99,11 @@ class _MenuBorderOverlay(QWidget):
 class MenuStyleFilter(QObject):
     """Apply shared popup geometry and text-based checked markers to menus."""
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._menu_chevron_style = _MenuChevronStyle()
+        self._menu_chevron_style.setParent(self)
+
     def eventFilter(self, watched, event):
         if not isinstance(watched, QMenu):
             return False
@@ -76,6 +111,7 @@ class MenuStyleFilter(QObject):
         if event_type == QEvent.Type.Polish:
             attr_enum = getattr(Qt, 'WidgetAttribute', Qt)
             watched.setAttribute(attr_enum.WA_TranslucentBackground, True)
+            watched.setStyle(self._menu_chevron_style)
             if sys.platform == 'darwin':
                 # Use the stylesheet border instead of macOS's native popup
                 # frame, which is black and leaves an outer gap around menus.

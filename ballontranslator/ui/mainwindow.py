@@ -18,7 +18,16 @@ from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from .misc import parse_stylesheet, set_html_family, QKEY
-from ballontranslator.utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from, FontFormat
+from ballontranslator.utils.config import (
+    FontFormat,
+    ProgramConfig,
+    RunStatus,
+    load_textstyle_from,
+    pcfg,
+    save_config,
+    save_text_styles,
+    text_styles,
+)
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -1679,7 +1688,7 @@ class MainWindow(mainwindow_cls):
             self.set_display_lang(lang)
     
     def run_imgtrans(self):
-        dialog = RunPipelineDialog(self)
+        dialog = RunPipelineDialog(self, project=self.imgtrans_proj)
         result = dialog.exec_()
         if result == RunPipelineDialog.CONTINUE:
             self._run_imgtrans_wo_textstyle_update = False
@@ -1694,9 +1703,14 @@ class MainWindow(mainwindow_cls):
         if result != RunPipelineDialog.RUN:
             return
         self._run_imgtrans_wo_textstyle_update = False
-        self.on_run_imgtrans()
+        self.on_run_imgtrans(pages_to_process=dialog.selected_pages())
 
-    def on_run_imgtrans(self, continue_mode=False, render_only=False):
+    def on_run_imgtrans(
+        self,
+        continue_mode=False,
+        render_only=False,
+        pages_to_process=None,
+    ):
         self.backup_blkstyles.clear()
         self._render_only = render_only
         self._render_global_format = (
@@ -1717,51 +1731,67 @@ class MainWindow(mainwindow_cls):
             enable_detect or enable_ocr or enable_translate or enable_inpaint
         )
         
-        pages_to_process = []
-        
-        # 继续模式：先检查哪些页面需要处理
+        all_page_names = list(self.imgtrans_proj.pages)
+        # Continue always scans the whole project; the dialog range applies only
+        # to a fresh run.
+        has_explicit_range = pages_to_process is not None and not continue_mode
+        requested_pages = (
+            all_page_names
+            if not has_explicit_range
+            else [
+                page
+                for page in pages_to_process
+                if page in self.imgtrans_proj.pages
+            ]
+        )
+        if has_explicit_range and not requested_pages and not render_only:
+            return
+
+        pipeline_pages = None
         if continue_mode:
-            for page_name in self.imgtrans_proj.pages:
-                if not self.imgtrans_proj.get_page_progress(page_name):
-                    pages_to_process.append(page_name)
-            if len(pages_to_process) == 0:
+            pipeline_pages = [
+                page_name
+                for page_name in requested_pages
+                if not self.imgtrans_proj.get_page_progress(page_name)
+            ]
+            if not pipeline_pages:
                 return
+            requested_pages = pipeline_pages
         elif not render_only:
-            for page_name in self.imgtrans_proj.pages:
-                self.imgtrans_proj.set_page_progress(page_name, 0)
-        
+            progress_mask = (
+                RunStatus.FIN_ALL
+                if enable_detect
+                else pcfg.module.finish_code
+            )
+            for page_name in requested_pages:
+                self.imgtrans_proj.clear_page_progress(
+                    page_name,
+                    progress_mask,
+                )
+            if has_explicit_range:
+                pipeline_pages = requested_pages
+
         if enable_detect:
-            for page in self.imgtrans_proj.pages:
-                if not pcfg.module.keep_exist_textlines:
-                    if not pages_to_process:
-                        # 没有指定pages_to_process，清空所有页面
-                        self.imgtrans_proj.pages[page].clear()
+            for page in requested_pages:
+                if not pcfg.module.keep_exist_textlines and not continue_mode:
+                    self.imgtrans_proj.pages[page].clear()
         else:
             self.st_manager.updateTextBlkList()
-            textblk: TextBlock = None
-            for page_name, blklist in self.imgtrans_proj.pages.items():
-                # 如果指定了pages_to_process，跳过不需要处理的页面
-                if pages_to_process and page_name not in pages_to_process:
-                    continue
-                    
+            for page_name in requested_pages:
+                blklist = self.imgtrans_proj.pages[page_name]
                 ffmt_list = []
                 self.backup_blkstyles.append(ffmt_list)
                 for textblk in blklist:
-                    if not enable_detect:
-                        ffmt_list.append(textblk.fontformat.deepcopy())
-                    # 继续模式且没有指定pages_to_process时：跳过已有文本的文本块
-                    if continue_mode and not pages_to_process and textblk.text and len(textblk.text) > 0:
-                        continue
+                    ffmt_list.append(textblk.fontformat.deepcopy())
                     if enable_ocr:
                         textblk.text = []
                         textblk.set_font_colors((0, 0, 0), (0, 0, 0))
                     if enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or enable_ocr:
                         textblk.rich_text = ''
                     textblk.vertical = textblk.src_is_vertical
-        
-        # 如果有指定pages_to_process或者是continue_mode，则传递页面列表
+
         self.module_manager.runImgtransPipeline(
-            pages_to_process if (pages_to_process or continue_mode) else None,
+            pipeline_pages,
             render_only=render_only,
         )
 
