@@ -33,11 +33,11 @@ ConfigTable {
     padding: 6px;
 }
 
-QWidget#ConfigPanel[nativeFrame="true"] {
+QWidget#ConfigPanel[opaqueFrame="true"] {
     background-color: @widgetBackgroundColor;
 }
 
-QWidget#ConfigPanel[nativeFrame="false"] {
+QWidget#ConfigPanel[opaqueFrame="false"] {
     background-color: transparent;
 }
 

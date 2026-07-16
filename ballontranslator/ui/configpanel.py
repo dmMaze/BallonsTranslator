@@ -21,7 +21,7 @@ from ballontranslator.utils.network_mirrors import (
     mirror_from_display,
     mirror_to_display,
 )
-from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, ON_WINDOWS, PROGRAM_PATH, TITLEBAR_HEIGHT
+from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, ON_MACOS, ON_WINDOWS, PROGRAM_PATH, TITLEBAR_HEIGHT
 from ballontranslator.utils.logger import logger as LOGGER
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 from .llm_profile_widgets import LLMProfilesWidget
@@ -390,13 +390,18 @@ class ConfigPanel(FramelessWindow):
         super().__init__(parent, window_type.Dialog)
         self._outside_click_filter_installed = False
         self.setObjectName("ConfigPanel")
+        # QNSWindow composites a transparent outer inset as an opaque black band.
+        opaque_frame = ON_WINDOWS or ON_MACOS
+        self.setProperty('opaqueFrame', opaque_frame)
         self.setProperty('nativeFrame', ON_WINDOWS)
         self.setWindowTitle(self.tr('Settings'))
         self.setWindowModality(Qt.WindowModality.NonModal)
         widget_attribute = getattr(Qt, 'WidgetAttribute', Qt)
-        if not ON_WINDOWS:
+        if not opaque_frame:
             self.setAttribute(widget_attribute.WA_TranslucentBackground)
         self.setAttribute(widget_attribute.WA_StyledBackground)
+        if ON_MACOS:
+            self.windowEffect.removeShadowEffect(self.winId())
         self.resize(900, 720)
         self.setMinimumSize(720, 520)
         self.configTable = ConfigTable()
@@ -676,7 +681,7 @@ class ConfigPanel(FramelessWindow):
         splitter.setStretchFactor(1, 3)
 
         root_layout = QVBoxLayout(self)
-        margin = 0 if ON_WINDOWS else 5
+        margin = 0 if opaque_frame else 5
         root_layout.setContentsMargins(margin, margin, margin, margin)
 
         surface = QFrame(self)
