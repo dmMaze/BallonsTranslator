@@ -1197,7 +1197,6 @@ class ModuleManager(QObject):
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
 
         self.prepare_msgbox = ProgressMessageBox(self.tr('Preparing module: '), True, parent_widget)
-        self.prepare_msgbox.setStyleSheet(imgtrans_progress_msgbox.styleSheet())
         self.prepare_msgbox.stop_clicked.connect(self.cancelModulePreparation)
 
         for module_thread in [self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread]:

@@ -11,7 +11,6 @@ from qtpy.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSpacerItem,
-    QToolBar,
     QToolButton,
     QVBoxLayout,
 )
@@ -164,12 +163,6 @@ class LeftBar(Widget):
         self.openBtn.setMenu(openMenu)
         self.openBtn.setPopupMode(QToolButton.InstantPopup)
     
-        openBtnToolBar = QToolBar(self)
-        openBtnToolBar.setObjectName('OpenBtnToolBar')
-        openBtnToolBar.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
-        openBtnToolBar.setContentsMargins(0, 0, 0, 0)
-        openBtnToolBar.addWidget(self.openBtn)
-
         self.runImgtransBtn = QToolButton(self)
         self.runImgtransBtn.setObjectName('LeftBarRunButton')
         self.runImgtransBtn.setIcon(QIcon(themed_icon_path('run.svg')))
@@ -181,7 +174,7 @@ class LeftBar(Widget):
         self.runImgtransBtn.clicked.connect(self.run_imgtrans_clicked.emit)
         
         vlayout = QVBoxLayout(self)
-        vlayout.addWidget(openBtnToolBar)
+        vlayout.addWidget(self.openBtn)
         vlayout.addWidget(self.showPageListLabel)
         vlayout.addWidget(self.globalSearchChecker)
         vlayout.addWidget(self.imgTransChecker)

@@ -955,6 +955,7 @@ AlignmentChecker::indicator {
     height: 28px;
     width: 28px;
     border: 2px solid @borderColor;
+    border-radius: 0px;
 }
 
 AlignmentChecker::indicator:checked {
@@ -1013,6 +1014,7 @@ QFontChecker::indicator {
     width: 30px;
     height: 30px;
     border: 2px solid rgba(30, 147, 229, 0);
+    border-radius: 0px;
 }
 
 QFontChecker::indicator::hover {
@@ -1359,11 +1361,6 @@ OpenBtn {
 OpenBtn::menu-indicator {
     image: none;
     width: 0px;
-}
-
-QToolBar#OpenBtnToolBar {
-    border: none;
-    padding: 0px;
 }
 
 OpenBtn::hover {

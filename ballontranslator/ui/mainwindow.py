@@ -36,7 +36,7 @@ from .textedit_area import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
-from .menu_style import MenuStyleFilter
+from .menu_style import dropdown_stylesheet, install_app_style_filters
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .update_thread import UpdateCheckThread
 from .update_dialog import UpdateReleaseDialog
@@ -91,7 +91,8 @@ class MainWindow(mainwindow_cls):
         super().__init__()
 
         self.app = app
-        self.app.installEventFilter(MenuStyleFilter(self.app))
+        install_app_style_filters(self.app)
+        self.resetStyleSheet()
 
         shared.create_errdialog_in_mainthread = self.create_errdialog.emit
         self.create_errdialog.connect(self.on_create_errdialog)
@@ -119,8 +120,6 @@ class MainWindow(mainwindow_cls):
         self.setupConfig()
         self.setupShortcuts()
         self.setupRegisterWidget()
-        # Apply the final theme once while the native window is still hidden.
-        self.resetStyleSheet()
         if not shared.ON_WINDOWS:
             FramelessMoveResize.toggleMaxState(self)
         self.setAcceptDrops(True)
@@ -152,19 +151,6 @@ class MainWindow(mainwindow_cls):
                 ),
             )
 
-    def setStyleSheet(self, styleSheet: str) -> None:
-        self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
-        self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
-        self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
-        if hasattr(self, 'update_progress_msgbox'):
-            self.update_progress_msgbox.setStyleSheet(styleSheet)
-        if hasattr(self, 'configPanel'):
-            self.configPanel.setStyleSheet(styleSheet)
-        if hasattr(self, 'module_manager') and self.module_manager.prepare_msgbox is not None:
-            # The prepare dialog is created after startup; keep it on the app theme.
-            self.module_manager.prepare_msgbox.setStyleSheet(styleSheet)
-        return super().setStyleSheet(styleSheet)
-
     def setupThread(self):
         self.imsave_thread = ImgSaveThread()
         self.export_doc_thread = ExportDocThread()
@@ -180,7 +166,9 @@ class MainWindow(mainwindow_cls):
 
     def resetStyleSheet(self):
         theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
-        self.setStyleSheet(parse_stylesheet(theme))
+        application_stylesheet = parse_stylesheet(theme) + dropdown_stylesheet()
+        if self.app.styleSheet() != application_stylesheet:
+            self.app.setStyleSheet(application_stylesheet)
 
     def setupUi(self):
         screen_size = QGuiApplication.primaryScreen().geometry().size()

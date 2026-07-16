@@ -2,7 +2,19 @@ import sys
 
 from qtpy.QtCore import QEvent, QObject, QRectF, Qt
 from qtpy.QtGui import QColor, QPainter, QPainterPath, QPen, QRegion
-from qtpy.QtWidgets import QMenu, QProxyStyle, QStyle, QWidget
+from qtpy.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QComboBox,
+    QFontComboBox,
+    QFrame,
+    QMenu,
+    QProxyStyle,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QWidget,
+)
 
 from .icon_rendering import render_svg_pixmap
 from .misc import themed_icon_path
@@ -11,6 +23,125 @@ from ballontranslator.utils import shared
 
 _MENU_CORNER_RADIUS = 8
 _MENU_CHEVRON_SIZE = 12
+
+
+def dropdown_stylesheet() -> str:
+    """Return the application-level style for combo-box popup views.
+
+    >>> 'selection-background-color' in dropdown_stylesheet()
+    True
+    """
+    border = ', '.join(str(value) for value in shared.BORDER_COLOR)
+    foreground = ', '.join(str(value) for value in shared.FOREGROUND_FONTCOLOR)
+    return f'''
+QComboBox QAbstractItemView {{
+    border: 1px solid rgb({border});
+    border-radius: 0px;
+    outline: 0px;
+    selection-background-color: rgba(30, 147, 229, 51);
+    selection-color: rgb({foreground});
+}}
+QComboBox QAbstractItemView::item {{
+    border: none;
+    border-radius: 0px;
+}}
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected {{
+    background-color: rgba(30, 147, 229, 51);
+    color: rgb({foreground});
+}}
+'''
+
+
+class DropDownStyleFilter(QObject):
+    """Keep combo popup hover colors independent of platform styling.
+
+    >>> DropDownStyleFilter.__name__
+    'DropDownStyleFilter'
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # Qt owns the delegates as children, while this registry keeps their
+        # Python wrappers alive so overridden paint methods remain callable.
+        self._delegates = {}
+
+    def eventFilter(self, watched, event):
+        if isinstance(watched, QComboBox):
+            if event.type() in (
+                QEvent.Type.Polish,
+                QEvent.Type.Show,
+                QEvent.Type.MouseButtonPress,
+                QEvent.Type.KeyPress,
+            ):
+                self._style_view(watched, watched.view())
+            return super().eventFilter(watched, event)
+
+        if not isinstance(watched, QWidget):
+            return False
+        if watched.objectName() != 'qt_scrollarea_viewport':
+            return False
+        if event.type() not in (
+            QEvent.Type.Paint,
+            QEvent.Type.MouseMove,
+            QEvent.Type.HoverMove,
+        ):
+            return False
+        view = watched.parentWidget()
+        if not isinstance(view, QAbstractItemView):
+            return False
+        popup = view.parentWidget()
+        if not isinstance(popup, QFrame):
+            return False
+        combo = popup.parentWidget()
+        if not isinstance(combo, QComboBox):
+            return False
+        self._style_view(combo, view)
+        return super().eventFilter(watched, event)
+
+    def _style_view(self, combo: QComboBox, view: QAbstractItemView):
+        view.setMouseTracking(True)
+        # QFontComboBox's native delegate previews every item in its own font.
+        if isinstance(combo, QFontComboBox):
+            return
+        key = id(combo)
+        record = self._delegates.get(key)
+        if record is None or record[0] is not combo or record[1] is not view:
+            delegate = _DropDownItemDelegate(view)
+            self._delegates[key] = (combo, view, delegate)
+            if record is None or record[0] is not combo:
+                # Follow the C++ widget lifetime; Python wrappers may disappear
+                # earlier or be recreated by the binding.
+                combo.destroyed.connect(
+                    lambda _obj=None, key=key: self._delegates.pop(key, None)
+                )
+        else:
+            delegate = record[2]
+        if view.itemDelegate() is not delegate:
+            view.setItemDelegate(delegate)
+
+
+class _DropDownItemDelegate(QStyledItemDelegate):
+    """Paint combo popup hover without relying on stylesheet precedence."""
+
+    def paint(self, painter, option, index):
+        option = QStyleOptionViewItem(option)
+        self.initStyleOption(option, index)
+        state_enum = getattr(QStyle, 'StateFlag', QStyle)
+        highlighted = state_enum.State_MouseOver | state_enum.State_Selected
+        is_highlighted = bool(option.state & highlighted)
+        if is_highlighted:
+            option.state &= ~highlighted
+        style = QApplication.style() if option.widget is None else option.widget.style()
+        control = getattr(QStyle, 'ControlElement', QStyle)
+        style.drawControl(
+            control.CE_ItemViewItem,
+            option,
+            painter,
+            option.widget,
+        )
+        if is_highlighted:
+            painter.fillRect(option.rect, QColor(30, 147, 229, 51))
 
 
 class _MenuChevronStyle(QProxyStyle):
@@ -103,6 +234,23 @@ class MenuStyleFilter(QObject):
         super().__init__(parent)
         self._menu_chevron_style = _MenuChevronStyle()
         self._menu_chevron_style.setParent(self)
+        # Keep one live Python overlay wrapper per menu for paintEvent dispatch.
+        self._menu_border_overlays = {}
+
+    def _menu_border_overlay(self, menu: QMenu, create=False):
+        key = id(menu)
+        record = self._menu_border_overlays.get(key)
+        if record is not None and record[0] is menu:
+            return record[1]
+        if not create:
+            return None
+        overlay = _MenuBorderOverlay(menu)
+        self._menu_border_overlays[key] = (menu, overlay)
+        # QMenu owns the QWidget; the registry only mirrors that lifetime.
+        menu.destroyed.connect(
+            lambda _obj=None, key=key: self._menu_border_overlays.pop(key, None)
+        )
+        return overlay
 
     def eventFilter(self, watched, event):
         if not isinstance(watched, QMenu):
@@ -122,14 +270,13 @@ class MenuStyleFilter(QObject):
                 watched.setWindowFlag(window_type.FramelessWindowHint, True)
                 watched.setWindowFlag(window_type.NoDropShadowWindowHint, True)
                 watched.setProperty('windowsBorderOverlay', True)
-                if not hasattr(watched, '_menu_border_overlay'):
-                    watched._menu_border_overlay = _MenuBorderOverlay(watched)
+                self._menu_border_overlay(watched, create=True)
         elif event_type in (QEvent.Type.Show, QEvent.Type.Resize):
             if sys.platform == 'win32':
                 window = watched.windowHandle()
                 if window is not None:
                     window.setMask(_windows_menu_mask(watched.rect()))
-                overlay = getattr(watched, '_menu_border_overlay', None)
+                overlay = self._menu_border_overlay(watched)
                 if overlay is not None:
                     overlay.setGeometry(watched.rect().adjusted(0, 0, -1, -1))
                     overlay.show()
@@ -157,3 +304,21 @@ class MenuStyleFilter(QObject):
                 base_text = action.text()
                 action.setProperty('_menuBaseText', base_text)
             action.setText(base_text + ('\t\u2713' if action.isChecked() else ''))
+
+
+def install_app_style_filters(app):
+    """Install one application-owned instance of each popup style filter.
+
+    >>> hasattr(QObject(), '_menu_style_filter')
+    False
+    """
+    filter_specs = (
+        ('_menu_style_filter', MenuStyleFilter),
+        ('_dropdown_style_filter', DropDownStyleFilter),
+    )
+    for attribute, filter_class in filter_specs:
+        if getattr(app, attribute, None) is not None:
+            continue
+        event_filter = filter_class(app)
+        setattr(app, attribute, event_filter)
+        app.installEventFilter(event_filter)
