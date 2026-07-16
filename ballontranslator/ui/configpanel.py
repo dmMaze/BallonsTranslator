@@ -464,7 +464,6 @@ class ConfigPanel(FramelessWindow):
         self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'), scrollWidget=self)
         self.inpaint_config_panel.module_label.hide()
         self.inpaint_sub_block = inpaintConfigPanel.addBlockWidget(self.inpaint_config_panel)
-        self.inpaint_config_panel.filter_mask_by_bboxes_checker.checker_changed.connect(self.on_filter_mask_by_bboxes_clicked)
 
         self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
         self.trans_config_panel.module_label.hide()
@@ -723,9 +722,6 @@ class ConfigPanel(FramelessWindow):
 
     def on_keepline_clicked(self):
         pcfg.module.keep_exist_textlines = self.detect_config_panel.keep_existing_checker.isChecked()
-
-    def on_filter_mask_by_bboxes_clicked(self, checked: bool):
-        pcfg.module.filter_mask_by_bboxes = checked
 
     def addConfigBlock(self, header: str, parent_item: TableItem, section_key: str) -> ConfigBlock:
         cb = ConfigBlock(parent=self)
@@ -1171,7 +1167,6 @@ class ConfigPanel(FramelessWindow):
         ))
 
         self.detect_config_panel.keep_existing_checker.setChecked(pcfg.module.keep_exist_textlines)
-        self.inpaint_config_panel.filter_mask_by_bboxes_checker.checker.setChecked(pcfg.module.filter_mask_by_bboxes)
         self.let_effect_combox.setCurrentIndex(pcfg.let_fnteffect_flag)
         self.let_fntsize_combox.setCurrentIndex(pcfg.let_fntsize_flag)
         self.let_fntstroke_combox.setCurrentIndex(pcfg.let_fntstroke_flag)
@@ -1190,5 +1185,8 @@ class ConfigPanel(FramelessWindow):
         self.empty_runcache_checker.setChecked(pcfg.module.empty_runcache)
         self.package_auto_install_checker.setChecked(pcfg.package_manager.auto_install_missing_packages)
         self.let_show_only_custom_fonts.setChecked(pcfg.let_show_only_custom_fonts_flag)
+
+        self.inpaint_config_panel.needInpaintChecker.setChecked(pcfg.module.check_need_inpaint)
+        self.inpaint_config_panel.filter_mask_by_bboxes_checker.setChecked(pcfg.module.filter_mask_by_bboxes)
 
         self.blockSignals(False)

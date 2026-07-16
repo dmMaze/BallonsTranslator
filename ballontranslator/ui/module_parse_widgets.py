@@ -678,16 +678,22 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.refreshLLMProfiles()
         self.setLLMProfileControlsVisible(name == LLM_TRANSLATOR_KEY)
 
+    # def on_translatebyblock_checker_changed(self, is_checked: bool):
+    #     pcfg.module.translate_by_textblock = is_checked
+    #     BaseTranslator.translate_by_textblock = is_checked
+
 
 class InpaintConfigPanel(ModuleConfigParseWidget):
     def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(module_name, GET_VALID_INPAINTERS, scrollWidget, *args, module_type='inpainter', **kwargs)
         self.inpainter_changed = self.module_changed
         self.setInpainter = self.setModule
-        self.needInpaintChecker = ParamCheckerBox(self.tr('Let the program decide whether it is necessary to use the selected inpaint method.'))
-        self.filter_mask_by_bboxes_checker = ParamCheckerBox(self.tr('Filter mask by text boxes'))
-        self.vlayout.addWidget(self.needInpaintChecker)
-        self.vlayout.addWidget(self.filter_mask_by_bboxes_checker)
+        self.needInpaintChecker = QCheckBox(self.tr('Skip simple cases'))
+        self.needInpaintChecker.clicked.connect(self.on_inpainter_checker_changed)
+        self.vlayout.insertWidget(1, self.needInpaintChecker)
+        self.filter_mask_by_bboxes_checker = QCheckBox(self.tr('Filter mask by text boxes'))
+        self.filter_mask_by_bboxes_checker.clicked.connect(self.on_filter_mask_checker_changed)
+        self.vlayout.insertWidget(2, self.filter_mask_by_bboxes_checker)
 
     def showEvent(self, e) -> None:
         self.p_layout.insertWidget(1, self.module_combobox)
@@ -696,6 +702,13 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
     def hideEvent(self, e) -> None:
         self.p_layout.removeWidget(self.module_combobox)
         return super().hideEvent(e)
+
+    def on_inpainter_checker_changed(self):
+        pcfg.module.check_need_inpaint = self.needInpaintChecker.isChecked()
+
+    def on_filter_mask_checker_changed(self):
+        pcfg.module.filter_mask_by_bboxes = self.filter_mask_by_bboxes_checker.isChecked()
+
 
 class TextDetectConfigPanel(ModuleConfigParseWidget):
     def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
@@ -712,16 +725,16 @@ class OCRConfigPanel(ModuleConfigParseWidget):
         super().__init__(module_name, GET_VALID_OCR, scrollWidget, *args, module_type='ocr', **kwargs)
         self.ocr_changed = self.module_changed
         self.setOCR = self.setModule
-        self.restoreEmptyOCRChecker = QCheckBox(self.tr("Delete and restore region where OCR return empty string."), self)
+        self.restoreEmptyOCRChecker = QCheckBox(self.tr("Remove empty textblocks"), self)
         self.restoreEmptyOCRChecker.setObjectName('ConfigCheckBox')
         self.restoreEmptyOCRChecker.clicked.connect(self.on_restore_empty_ocr)
-        self.vlayout.addWidget(self.restoreEmptyOCRChecker)
+        self.vlayout.insertWidget(1, self.restoreEmptyOCRChecker)
         # 字体检测选项
         self.fontDetectChecker = QCheckBox(self.tr("Font Detection"), self)
         self.fontDetectChecker.setObjectName('ConfigCheckBox')
         self.fontDetectChecker.setChecked(pcfg.module.ocr_font_detect)
         self.fontDetectChecker.clicked.connect(self.on_fontdetect_changed)
-        self.vlayout.addWidget(self.fontDetectChecker)
+        self.vlayout.insertWidget(2, self.fontDetectChecker)
 
     def on_restore_empty_ocr(self):
         pcfg.restore_ocr_empty = self.restoreEmptyOCRChecker.isChecked()

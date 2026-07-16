@@ -36,6 +36,7 @@ from .llm_modality import (
 )
 from .page_range_progress import PageRangeProgressWidget
 from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
 RUN_PIPELINE_DIALOG_WIDTH = 460
@@ -196,7 +197,7 @@ class RunPipelineDialog(QDialog):
     _settings_expanded = False
     _page_range = (1, None)
 
-    def __init__(self, parent: QWidget = None, project=None):
+    def __init__(self, parent: QWidget = None, project: ProjImgTrans = None):
         super().__init__(parent)
         self.project = project
         self._app_event_filter_installed = False
@@ -626,13 +627,10 @@ class RunPipelineDialog(QDialog):
         return super().changeEvent(event)
 
     def _refresh_progress(self):
-        if not hasattr(self, 'progress_bar'):
+        if not hasattr(self, 'progress_bar') or self.project is None:
             return
         pages = self._project_page_names()
-        finished_pages = [False] * len(pages)
-        get_page_progress = getattr(self.project, 'get_page_progress', None)
-        if get_page_progress is not None:
-            finished_pages = [bool(get_page_progress(page)) for page in pages]
+        finished_pages = [bool(self.project.get_page_progress(page)) for page in pages]
         self.page_range_progress.set_finished_pages(finished_pages)
 
     def _build_rendering_page(self) -> QWidget:

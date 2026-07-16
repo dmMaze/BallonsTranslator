@@ -79,7 +79,6 @@ class LLMInpaint(InpainterBase):
     }
 
     inpaint_by_block = True
-    check_need_inpaint = False
 
     def __init__(self, **params) -> None:
         super().__init__(**params)

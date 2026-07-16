@@ -352,7 +352,7 @@ def save_config():
         return False
     
     os.replace(tmp_save_tgt, shared.CONFIG_PATH)
-    LOGGER.info('Config saved')
+    LOGGER.debug('Config saved')
     return True
 
 def save_text_styles(raise_exception = False):
