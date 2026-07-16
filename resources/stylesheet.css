@@ -330,6 +330,25 @@ QComboBox::down-arrow {
     padding-right: 13px;
 }
 
+QComboBox QAbstractItemView {
+    border: 1px solid @borderColor;
+    border-radius: 0px;
+    outline: 0px;
+    selection-background-color: rgba(30, 147, 229, 51);
+    selection-color: @qwidgetForegroundColor;
+}
+
+QComboBox QAbstractItemView::item {
+    border: none;
+    border-radius: 0px;
+}
+
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected {
+    background-color: rgba(30, 147, 229, 51);
+    color: @qwidgetForegroundColor;
+}
+
 QFontComboBox#FontFamilyBox {
     width: 106px;
     height: 26px;

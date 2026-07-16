@@ -36,7 +36,7 @@ from .textedit_area import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
-from .menu_style import dropdown_stylesheet, install_app_style_filters
+from .menu_style import install_app_style_filters
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .update_thread import UpdateCheckThread
 from .update_dialog import UpdateReleaseDialog
@@ -166,9 +166,9 @@ class MainWindow(mainwindow_cls):
 
     def resetStyleSheet(self):
         theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
-        application_stylesheet = parse_stylesheet(theme) + dropdown_stylesheet()
-        if self.app.styleSheet() != application_stylesheet:
-            self.app.setStyleSheet(application_stylesheet)
+        application_stylesheet = parse_stylesheet(theme)
+        if self.styleSheet() != application_stylesheet:
+            self.setStyleSheet(application_stylesheet)
 
     def setupUi(self):
         screen_size = QGuiApplication.primaryScreen().geometry().size()

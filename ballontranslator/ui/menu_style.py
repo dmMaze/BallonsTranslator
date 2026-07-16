@@ -21,34 +21,6 @@ from ballontranslator.utils import shared
 _MENU_CORNER_RADIUS = 8
 
 
-def dropdown_stylesheet() -> str:
-    """Return the application-level style for combo-box popup views.
-
-    >>> 'selection-background-color' in dropdown_stylesheet()
-    True
-    """
-    border = ', '.join(str(value) for value in shared.BORDER_COLOR)
-    foreground = ', '.join(str(value) for value in shared.FOREGROUND_FONTCOLOR)
-    return f'''
-QComboBox QAbstractItemView {{
-    border: 1px solid rgb({border});
-    border-radius: 0px;
-    outline: 0px;
-    selection-background-color: rgba(30, 147, 229, 51);
-    selection-color: rgb({foreground});
-}}
-QComboBox QAbstractItemView::item {{
-    border: none;
-    border-radius: 0px;
-}}
-QComboBox QAbstractItemView::item:hover,
-QComboBox QAbstractItemView::item:selected {{
-    background-color: rgba(30, 147, 229, 51);
-    color: rgb({foreground});
-}}
-'''
-
-
 class DropDownStyleFilter(QObject):
     """Keep combo popup hover colors independent of platform styling.
 
