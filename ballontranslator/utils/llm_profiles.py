@@ -81,7 +81,7 @@ PROVIDER_DEFAULTS = {
         "qwen/qwen3.7-plus", "qwen/qwen3.7-max", "qwen/qwen3.6-plus"
         ],
         "support_image": True,
-        "image_base_url": "https://openrouter.ai/api/v1",
+        "image_base_url": "https://openrouter.ai/api/v1/images",
         "image_model": "black-forest-labs/flux.2-klein-4b",
         "image_model_options": ["black-forest-labs/flux.2-klein-4b"]
     },

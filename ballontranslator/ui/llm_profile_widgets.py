@@ -694,6 +694,9 @@ class ProfileCardWidget(QGroupBox):
         _widen_profile_editor(self.api_key_widget.editor)
         for editor in (self.model_combo, self.vision_model_combo, self.image_model_combo):
             _widen_profile_editor(editor)
+            # The finish handlers own option insertion; otherwise Enter also lets
+            # QComboBox insert the edit text before editingFinished is emitted.
+            editor.setInsertPolicy(editor.InsertPolicy.NoInsert)
         self._setSummaryColumnWidth(self.model_summary_widget, model_label_row, self.model_combo)
         self._setSummaryColumnWidth(self.vision_model_summary_widget, vision_model_label_row, self.vision_model_combo)
         self._setSummaryColumnWidth(self.image_model_summary_widget, image_model_label_row, self.image_model_combo)
