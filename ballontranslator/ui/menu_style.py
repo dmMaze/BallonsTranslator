@@ -9,20 +9,16 @@ from qtpy.QtWidgets import (
     QFontComboBox,
     QFrame,
     QMenu,
-    QProxyStyle,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QWidget,
 )
 
-from .icon_rendering import render_svg_pixmap
-from .misc import themed_icon_path
 from ballontranslator.utils import shared
 
 
 _MENU_CORNER_RADIUS = 8
-_MENU_CHEVRON_SIZE = 12
 
 
 def dropdown_stylesheet() -> str:
@@ -69,7 +65,6 @@ class DropDownStyleFilter(QObject):
     def eventFilter(self, watched, event):
         if isinstance(watched, QComboBox):
             if event.type() in (
-                QEvent.Type.Polish,
                 QEvent.Type.Show,
                 QEvent.Type.MouseButtonPress,
                 QEvent.Type.KeyPress,
@@ -82,7 +77,6 @@ class DropDownStyleFilter(QObject):
         if watched.objectName() != 'qt_scrollarea_viewport':
             return False
         if event.type() not in (
-            QEvent.Type.Paint,
             QEvent.Type.MouseMove,
             QEvent.Type.HoverMove,
         ):
@@ -100,7 +94,10 @@ class DropDownStyleFilter(QObject):
         return super().eventFilter(watched, event)
 
     def _style_view(self, combo: QComboBox, view: QAbstractItemView):
-        view.setMouseTracking(True)
+        # Never reach this from Polish or Paint: replacing a delegate while Qt
+        # is styling or drawing the same view can re-enter platform style code.
+        if not view.hasMouseTracking():
+            view.setMouseTracking(True)
         # QFontComboBox's native delegate previews every item in its own font.
         if isinstance(combo, QFontComboBox):
             return
@@ -142,33 +139,6 @@ class _DropDownItemDelegate(QStyledItemDelegate):
         )
         if is_highlighted:
             painter.fillRect(option.rect, QColor(30, 147, 229, 51))
-
-
-class _MenuChevronStyle(QProxyStyle):
-    """Replace native submenu arrows with the shared themed SVG chevron.
-
-    >>> _MenuChevronStyle.__name__
-    '_MenuChevronStyle'
-    """
-
-    def drawPrimitive(self, element, option, painter, widget=None):
-        primitive = getattr(QStyle, 'PrimitiveElement', QStyle)
-        if (
-            element == primitive.PE_IndicatorArrowRight
-            and isinstance(widget, QMenu)
-        ):
-            pixmap = render_svg_pixmap(
-                themed_icon_path('chevron-right.svg'),
-                _MENU_CHEVRON_SIZE,
-                _MENU_CHEVRON_SIZE,
-                widget.devicePixelRatioF(),
-            )
-            target = option.rect
-            x = target.center().x() - _MENU_CHEVRON_SIZE // 2
-            y = target.center().y() - _MENU_CHEVRON_SIZE // 2
-            painter.drawPixmap(x, y, pixmap)
-            return
-        return super().drawPrimitive(element, option, painter, widget)
 
 
 def _windows_menu_mask(rect):
@@ -232,8 +202,6 @@ class MenuStyleFilter(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._menu_chevron_style = _MenuChevronStyle()
-        self._menu_chevron_style.setParent(self)
         # Keep one live Python overlay wrapper per menu for paintEvent dispatch.
         self._menu_border_overlays = {}
 
@@ -259,7 +227,6 @@ class MenuStyleFilter(QObject):
         if event_type == QEvent.Type.Polish:
             attr_enum = getattr(Qt, 'WidgetAttribute', Qt)
             watched.setAttribute(attr_enum.WA_TranslucentBackground, True)
-            watched.setStyle(self._menu_chevron_style)
             if sys.platform == 'darwin':
                 # Use the stylesheet border instead of macOS's native popup
                 # frame, which is black and leaves an outer gap around menus.

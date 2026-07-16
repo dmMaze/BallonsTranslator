@@ -1125,6 +1125,13 @@ QMenu::item:selected {
     background-color: rgba(30, 147, 229, 20%);
 }
 
+QMenu::right-arrow {
+    image: url(resources/icons/chevron-right.svg);
+    width: 12px;
+    height: 12px;
+    right: 7px;
+}
+
 QDialog {
     font-size: 14px;
     background-color: @widgetBackgroundColor;
