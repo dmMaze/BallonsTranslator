@@ -13,12 +13,13 @@ class LinuxFramelessWindow(QWidget):
 
     BORDER_WIDTH = 5
 
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
+    def __init__(self, parent=None, flags=Qt.Widget):
+        super().__init__(parent, flags)
         self.windowEffect = LinuxWindowEffect(self)
         # self.titleBar = TitleBar(self)
+        self._isResizeEnabled = True
 
-        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
+        self.updateFrameless()
         QCoreApplication.instance().installEventFilter(self)
 
         # self.titleBar.raise_()
@@ -27,6 +28,12 @@ class LinuxFramelessWindow(QWidget):
     # def resizeEvent(self, e):
     #     super().resizeEvent(e)
     #     self.titleBar.resize(self.width(), self.titleBar.height())
+
+    def updateFrameless(self):
+        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
+
+    def setResizeEnabled(self, isEnabled: bool):
+        self._isResizeEnabled = isEnabled
 
     # def setTitleBar(self, titleBar):
     #     """ set custom title bar
@@ -42,14 +49,19 @@ class LinuxFramelessWindow(QWidget):
     #     self.titleBar.raise_()
 
     def eventFilter(self, obj, event):
-        if not isinstance(event, QMouseEvent):
+        if (
+            not self._isResizeEnabled
+            or not isinstance(obj, QWidget)
+            or obj.window() is not self
+            or not isinstance(event, QMouseEvent)
+        ):
             return super().eventFilter(obj, event)
         et = event.type()
         if et != QEvent.MouseButtonPress and et != QEvent.MouseMove:
             return super().eventFilter(obj, event)
 
         edges = Qt.Edges()
-        pos = event.globalPos() - self.pos()
+        pos = obj.mapTo(self, event.pos())
         if pos.x() < self.BORDER_WIDTH:
             edges |= Qt.LeftEdge
         if pos.x() >= self.width()-self.BORDER_WIDTH:
@@ -72,7 +84,13 @@ class LinuxFramelessWindow(QWidget):
             else:
                 self.setCursor(Qt.ArrowCursor)
 
-        elif obj in (self, getattr(self, 'titleBar', None)) and et == QEvent.MouseButtonPress and edges:
+        elif (
+            et == QEvent.MouseButtonPress
+            and event.button() == Qt.LeftButton
+            and edges
+            and self.windowState() == Qt.WindowNoState
+        ):
             LinuxMoveResize.starSystemResize(self, event.globalPos(), edges)
+            return True
 
         return super().eventFilter(obj, event)

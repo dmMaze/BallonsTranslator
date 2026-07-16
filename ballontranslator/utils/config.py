@@ -106,6 +106,19 @@ class ModuleConfig(Config):
             return self.enable_inpaint
         else:
             raise Exception(f'not supported stage idx: {idx}')
+
+    def set_stage_enabled(self, idx: int, enabled: bool):
+        stage_attrs = (
+            'enable_detect',
+            'enable_ocr',
+            'enable_translate',
+            'enable_inpaint',
+        )
+        if idx < 0 or idx >= len(stage_attrs):
+            raise Exception(f'not supported stage idx: {idx}')
+        stage_attr = stage_attrs[idx]
+        setattr(self, stage_attr, bool(enabled))
+        self.update_finish_code()
         
     def all_stages_disabled(self):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
@@ -175,6 +188,12 @@ class ProgramConfig(Config):
     spellcheck_repo_dicts: str = ""
     spellcheck_distance: int = 1
     spellcheck_on_source_enabled: bool = False
+    show_textdetector_tool: bool = True
+    show_ocr_tool: bool = True
+    show_translator_tool: bool = True
+    show_inpainter_tool: bool = True
+    run_pipeline_mode: str = 'automation'
+    render_without_text_style_update: bool = False
 
     let_fntsize_flag: int = 0
     let_fntstroke_flag: int = 0

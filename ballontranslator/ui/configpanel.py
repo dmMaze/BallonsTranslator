@@ -4,8 +4,9 @@ from typing import List, Union, Tuple
 from qtpy.QtWidgets import (
     QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout,
     QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox,
-    QSplitter, QScrollArea, QLineEdit, QDialog, QStackedWidget, QMessageBox,
-    QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem
+    QSplitter, QScrollArea, QLineEdit, QStackedWidget, QMessageBox,
+    QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem,
+    QFrame,
 )
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
@@ -20,10 +21,11 @@ from ballontranslator.utils.network_mirrors import (
     mirror_from_display,
     mirror_to_display,
 )
-from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, PROGRAM_PATH
+from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, ON_WINDOWS, PROGRAM_PATH, TITLEBAR_HEIGHT
 from ballontranslator.utils.logger import logger as LOGGER
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 from .llm_profile_widgets import LLMProfilesWidget
+from .framelesswindow import FramelessMoveResize, FramelessWindow
 from ballontranslator.ui.spellcheck import DICTIONARY_URLS, SpellCheckManager, DictionaryManagerDialog, DictDownloadThread
 
 
@@ -365,7 +367,12 @@ class ConfigTable(QTreeView):
                 self.section_pressed.emit(section_key)
 
 
-class ConfigPanel(QDialog):
+class ConfigPanel(FramelessWindow):
+    """Non-modal frameless settings window.
+
+    >>> issubclass(ConfigPanel, FramelessWindow)
+    True
+    """
 
     save_config = Signal()
     unload_models = Signal()
@@ -377,13 +384,19 @@ class ConfigPanel(QDialog):
     dictionary_urls = DICTIONARY_URLS
 
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent: QWidget = None) -> None:
+        window_type = getattr(Qt, 'WindowType', Qt)
+        # Establish the owned top-level type before frameless initialization.
+        super().__init__(parent, window_type.Dialog)
         self._outside_click_filter_installed = False
         self.setObjectName("ConfigPanel")
+        self.setProperty('nativeFrame', ON_WINDOWS)
         self.setWindowTitle(self.tr('Settings'))
         self.setWindowModality(Qt.WindowModality.NonModal)
-        self.setSizeGripEnabled(True)
+        widget_attribute = getattr(Qt, 'WidgetAttribute', Qt)
+        if not ON_WINDOWS:
+            self.setAttribute(widget_attribute.WA_TranslucentBackground)
+        self.setAttribute(widget_attribute.WA_StyledBackground)
         self.resize(900, 720)
         self.setMinimumSize(720, 520)
         self.configTable = ConfigTable()
@@ -662,11 +675,42 @@ class ConfigPanel(QDialog):
         splitter.addWidget(self.configContent)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
-        hlayout = QHBoxLayout(self)
 
-        hlayout.addWidget(splitter)
-        hlayout.setSpacing(0)
-        hlayout.setContentsMargins(0, 0, 0, 0)
+        root_layout = QVBoxLayout(self)
+        margin = 0 if ON_WINDOWS else 5
+        root_layout.setContentsMargins(margin, margin, margin, margin)
+
+        surface = QFrame(self)
+        surface.setObjectName('ConfigPanelSurface')
+        root_layout.addWidget(surface)
+
+        window_layout = QVBoxLayout(surface)
+        window_layout.setSpacing(0)
+        window_layout.setContentsMargins(6, 0, 6, 6)
+
+        self.title_bar = QWidget(surface)
+        self.title_bar.setObjectName('ConfigPanelTitleBar')
+        self.title_bar.setFixedHeight(TITLEBAR_HEIGHT)
+        title_layout = QGridLayout(self.title_bar)
+        title_layout.setContentsMargins(6, 1, 6, 1)
+        title_layout.setSpacing(0)
+        title_layout.setColumnMinimumWidth(0, 46)
+        title_layout.setColumnStretch(1, 1)
+
+        self.title_label = QLabel(self.tr('Settings'), self.title_bar)
+        self.title_label.setObjectName('ConfigPanelTitle')
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_layout.addWidget(self.title_label, 0, 1)
+
+        self.close_button = QPushButton(self.title_bar)
+        self.close_button.setObjectName('closeBtn')
+        self.close_button.setToolTip(self.tr('Close'))
+        self.close_button.setAccessibleName(self.tr('Close'))
+        self.close_button.clicked.connect(self.hide)
+        title_layout.addWidget(self.close_button, 0, 2)
+
+        window_layout.addWidget(self.title_bar)
+        window_layout.addWidget(splitter, 1)
 
         self.configTable.expandAll()
         self.showSection('application')
@@ -947,6 +991,22 @@ class ConfigPanel(QDialog):
         self.save_config.emit()
         return super().hideEvent(e)
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        geometry = self.frameGeometry()
+        geometry.moveCenter(parent.window().frameGeometry().center())
+        self.move(geometry.topLeft())
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            self.hide()
+            event.accept()
+            return
+        return super().keyPressEvent(event)
+
     def _installOutsideClickFilter(self):
         if self._outside_click_filter_installed:
             return
@@ -965,15 +1025,44 @@ class ConfigPanel(QDialog):
 
     def eventFilter(self, watched, event):
         if not self.isVisible() or not isinstance(watched, QWidget):
-            return super().eventFilter(watched, event)
-        if event.type() == QEvent.Type.MouseButtonPress:
+            return QWidget.eventFilter(self, watched, event)
+
+        event_type = event.type()
+        if event_type == QEvent.Type.MouseButtonPress:
             if (
                 QApplication.activePopupWidget() is None
                 and not self._widgetInsidePanel(watched)
                 and not self._activeWidgetInWhitelist()
             ):
                 self.hide()
-        return super().eventFilter(watched, event)
+
+        handled = super().eventFilter(watched, event)
+        if handled:
+            return True
+        if (
+            self._widgetInsidePanel(watched)
+            and isinstance(event, QMouseEvent)
+            and event_type == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+            and self._can_drag_title(watched)
+        ):
+            FramelessMoveResize.startSystemMove(
+                self,
+                self._global_mouse_pos(event),
+            )
+            return True
+        return handled
+
+    @staticmethod
+    def _global_mouse_pos(event: QMouseEvent):
+        if hasattr(event, 'globalPosition'):
+            return event.globalPosition().toPoint()
+        return event.globalPos()
+
+    def _can_drag_title(self, watched: QWidget) -> bool:
+        if watched is self.close_button or self.close_button.isAncestorOf(watched):
+            return False
+        return watched is self.title_bar or self.title_bar.isAncestorOf(watched)
 
     def _widgetInsidePanel(self, widget) -> bool:
         while widget is not None:

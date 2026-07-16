@@ -31,6 +31,7 @@ from .menu_style import MenuStyleFilter
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .update_thread import UpdateCheckThread
 from .update_dialog import UpdateReleaseDialog
+from .run_pipeline_dialog import RunPipelineDialog
 from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .textedit_commands import GlobalRepalceAllCommand
@@ -100,6 +101,8 @@ class MainWindow(mainwindow_cls):
 
         self.backup_blkstyles = []
         self._run_imgtrans_wo_textstyle_update = False
+        self._render_only = False
+        self._render_global_format = None
 
         self.setupThread()
         self.setupUi()
@@ -107,8 +110,10 @@ class MainWindow(mainwindow_cls):
         self.setupConfig()
         self.setupShortcuts()
         self.setupRegisterWidget()
-        # self.showMaximized()
-        FramelessMoveResize.toggleMaxState(self)
+        # Apply the final theme once while the native window is still hidden.
+        self.resetStyleSheet()
+        if not shared.ON_WINDOWS:
+            FramelessMoveResize.toggleMaxState(self)
         self.setAcceptDrops(True)
 
         if open_dir != '' and osp.exists(open_dir):
@@ -295,8 +300,6 @@ class MainWindow(mainwindow_cls):
         self.comicTransSplitter.setStretchFactor(1, 10)
         self.comicTransSplitter.setStretchFactor(2, 1)
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
-        self.resetStyleSheet()
-
     def on_finish_settranslator(self):
         module_manager = self.module_manager
         translator = module_manager.translator
@@ -306,20 +309,28 @@ class MainWindow(mainwindow_cls):
             self.setTranslatorSelectionFromMetadata(name)
             LOGGER.info('Translator set to {}'.format(name))
         
-    def on_enable_module(self, idx, checked):
-        if idx == 0:
-            pcfg.module.enable_detect = checked
-            self.bottomBar.textdet_selector.setVisible(checked)
-        elif idx == 1:
-            pcfg.module.enable_ocr = checked
-            self.bottomBar.ocr_selector.setVisible(checked)
-        elif idx == 2:
-            pcfg.module.enable_translate = checked
-            self.bottomBar.trans_selector.setVisible(checked)
-        elif idx == 3:
-            pcfg.module.enable_inpaint = checked
-            self.bottomBar.inpaint_selector.setVisible(checked)
-        pcfg.module.update_finish_code()
+    def on_show_module(self, idx, checked):
+        visibility_attrs = (
+            'show_textdetector_tool',
+            'show_ocr_tool',
+            'show_translator_tool',
+            'show_inpainter_tool',
+        )
+        if not 0 <= idx < len(visibility_attrs):
+            return
+        setattr(pcfg, visibility_attrs[idx], checked)
+        self._set_module_tool_visibility(idx, checked)
+        save_config()
+
+    def _set_module_tool_visibility(self, idx, visible):
+        module_widgets = (
+            self.bottomBar.textdet_selector,
+            self.bottomBar.ocr_selector,
+            self.bottomBar.trans_selector,
+            self.bottomBar.inpaint_selector,
+        )
+        if 0 <= idx < len(module_widgets):
+            module_widgets[idx].setVisible(visible)
 
     def setTranslatorSelectionFromMetadata(self, translator: str = None):
         metadata = self.module_manager.translator_metadata(translator)
@@ -412,10 +423,8 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.ocr_selector.edit_clicked.connect(self.focus_llm_profile)
         self.bottomBar.ocr_selector.selector.currentTextChanged.connect(self.on_ocr_changed)
         self.bottomBar.ocr_selector.llm_profile_changed.connect(self.on_ocr_llm_profile_changed)
-        self.bottomBar.textdet_selector.setVisible(pcfg.module.enable_detect)
-        self.bottomBar.ocr_selector.setVisible(pcfg.module.enable_ocr)
-        self.bottomBar.trans_selector.setVisible(pcfg.module.enable_translate)
-        self.bottomBar.inpaint_selector.setVisible(pcfg.module.enable_inpaint)
+        for idx, action in enumerate(self.titleBar.moduleVisibilityActions):
+            self._set_module_tool_visibility(idx, action.isChecked())
 
         self.configPanel.trans_config_panel.target_combobox.currentTextChanged.connect(self.on_trans_tgt_changed)
         self.configPanel.trans_config_panel.source_combobox.currentTextChanged.connect(self.on_trans_src_changed)
@@ -811,10 +820,7 @@ class MainWindow(mainwindow_cls):
         self.titleBar.replacePreMTkeyword_trigger.connect(self.show_pre_MT_keyword_window)
         self.titleBar.replaceMTkeyword_trigger.connect(self.show_MT_keyword_window)
         self.titleBar.replaceOCRkeyword_trigger.connect(self.show_OCR_keyword_window)
-        self.titleBar.run_trigger.connect(self.leftBar.runImgtransBtn.click)
-        self.titleBar.run_woupdate_textstyle_trigger.connect(self.run_imgtrans_wo_textstyle_update)
-        self.titleBar.translate_page_trigger.connect(self.on_transpagebtn_pressed)
-        self.titleBar.enable_module.connect(self.on_enable_module)
+        self.titleBar.show_module.connect(self.on_show_module)
         self.titleBar.importtstyle_trigger.connect(self.import_tstyles)
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
@@ -1491,6 +1497,8 @@ class MainWindow(mainwindow_cls):
     def on_imgtrans_pipeline_finished(self):
         self.backup_blkstyles.clear()
         self._run_imgtrans_wo_textstyle_update = False
+        self._render_only = False
+        self._render_global_format = None
         self.postprocess_mt_toggle = True
         if pcfg.module.empty_runcache and not shared.HEADLESS:
             self.module_manager.unload_all_models()
@@ -1540,10 +1548,17 @@ class MainWindow(mainwindow_cls):
         override_effect = pcfg.let_fnteffect_flag == 1
         override_writing_mode = pcfg.let_writing_mode_flag == 1
         override_font_family = pcfg.let_family_flag == 1
-        gf = self.textPanel.formatpanel.global_format
+        gf = self._render_global_format
+        if gf is None:
+            gf = self.textPanel.formatpanel.global_format
 
-        inpaint_only = pcfg.module.enable_inpaint
-        inpaint_only = inpaint_only and not (pcfg.module.enable_detect or pcfg.module.enable_ocr or pcfg.module.enable_translate)
+        enable_detect = pcfg.module.enable_detect and not self._render_only
+        enable_ocr = pcfg.module.enable_ocr and not self._render_only
+        enable_translate = pcfg.module.enable_translate and not self._render_only
+        enable_inpaint = pcfg.module.enable_inpaint and not self._render_only
+        inpaint_only = enable_inpaint and not (
+            enable_detect or enable_ocr or enable_translate
+        )
         
         if not inpaint_only:
             for ii, blk in enumerate(blk_list):
@@ -1553,11 +1568,11 @@ class MainWindow(mainwindow_cls):
                     if override_fnt_size or \
                         blk.font_size < 0:  # fall back to global font size if font size is not valid, it will be set to -1 for detected blocks
                         blk.font_size = gf.font_size
-                    elif blk._detected_font_size > 0 and not pcfg.module.enable_detect:
+                    elif blk._detected_font_size > 0 and not enable_detect:
                         blk.font_size = blk._detected_font_size
                     if override_fnt_stroke:
                         blk.stroke_width = gf.stroke_width
-                    elif pcfg.module.enable_ocr:
+                    elif enable_ocr:
                         blk.recalulate_stroke_width()
                     if override_fnt_color:
                         blk.set_font_colors(fg_colors=gf.frgb)
@@ -1565,7 +1580,7 @@ class MainWindow(mainwindow_cls):
                         blk.set_font_colors(bg_colors=gf.srgb)
                     if override_alignment:
                         blk.alignment = gf.alignment
-                    elif pcfg.module.enable_detect and not blk.src_is_vertical:
+                    elif enable_detect and not blk.src_is_vertical:
                         blk.recalulate_alignment()
                     if override_effect:
                         blk.opacity = gf.opacity
@@ -1586,11 +1601,11 @@ class MainWindow(mainwindow_cls):
                     blk.bold = gf.bold
                     blk.underline = gf.underline
                     sw = blk.stroke_width
-                    if sw > 0 and pcfg.module.enable_ocr and pcfg.module.enable_detect and not override_fnt_size:
+                    if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
 
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
-                (pcfg.module.enable_detect or pcfg.module.enable_translate)
+                (enable_detect or enable_translate)
         
         if page_index != self.pageList.currentIndex().row():
             self.pageList.setCurrentRow(page_index)
@@ -1599,7 +1614,7 @@ class MainWindow(mainwindow_cls):
             self.canvas.updateCanvas()
             self.st_manager.updateSceneTextitems()
 
-        if not pcfg.module.enable_detect and pcfg.module.enable_translate:
+        if not enable_detect and enable_translate:
             for blkitem in self.st_manager.textblk_item_list:
                 blkitem.squeezeBoundingRect()
 
@@ -1664,43 +1679,43 @@ class MainWindow(mainwindow_cls):
             self.set_display_lang(lang)
     
     def run_imgtrans(self):
-        if not self.imgtrans_proj.is_all_pages_no_text and not pcfg.module.keep_exist_textlines:
-            # 创建自定义消息框，添加"继续运行"选项
-            msgBox = QMessageBox(self)
-            msgBox.setIcon(QMessageBox.Question)
-            msgBox.setWindowTitle(self.tr('Confirmation'))
-            msgBox.setText(self.tr('\"Run\" will clear previous results, \"Continue\" will try to run from previous progress'))
-            
-            # 添加三个按钮（直接使用中文）
-            restart_btn = msgBox.addButton(self.tr('Run'), QMessageBox.YesRole)
-            continue_btn = msgBox.addButton(self.tr('Continue'), QMessageBox.AcceptRole)
-            cancel_btn = msgBox.addButton(self.tr('Cancel'), QMessageBox.RejectRole)
-            
-            msgBox.setDefaultButton(continue_btn)
-            msgBox.exec_()
-            
-            clicked_button = msgBox.clickedButton()
-            if clicked_button == cancel_btn:
-                return  # 取消，不执行任何操作
-            elif clicked_button == continue_btn:
-                # 继续运行：只处理没有文本的页面
-                self.on_run_imgtrans(continue_mode=True)
-                return
-            # 如果是 restart_btn，继续执行下面的代码（重新运行）
+        dialog = RunPipelineDialog(self)
+        result = dialog.exec_()
+        if result == RunPipelineDialog.CONTINUE:
+            self._run_imgtrans_wo_textstyle_update = False
+            self.on_run_imgtrans(continue_mode=True)
+            return
+        if result == RunPipelineDialog.RENDER:
+            self._run_imgtrans_wo_textstyle_update = (
+                dialog.render_without_text_style_update.isChecked()
+            )
+            self.on_run_imgtrans(render_only=True)
+            return
+        if result != RunPipelineDialog.RUN:
+            return
+        self._run_imgtrans_wo_textstyle_update = False
         self.on_run_imgtrans()
 
-    def run_imgtrans_wo_textstyle_update(self):
-        self._run_imgtrans_wo_textstyle_update = True
-        self.run_imgtrans()
-
-    def on_run_imgtrans(self, continue_mode=False):
+    def on_run_imgtrans(self, continue_mode=False, render_only=False):
         self.backup_blkstyles.clear()
+        self._render_only = render_only
+        self._render_global_format = (
+            self.textPanel.formatpanel.global_format.deepcopy()
+            if render_only
+            else None
+        )
 
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
         self.postprocess_mt_toggle = False
 
-        all_disabled = pcfg.module.all_stages_disabled()
+        enable_detect = pcfg.module.enable_detect and not render_only
+        enable_ocr = pcfg.module.enable_ocr and not render_only
+        enable_translate = pcfg.module.enable_translate and not render_only
+        enable_inpaint = pcfg.module.enable_inpaint and not render_only
+        all_disabled = not (
+            enable_detect or enable_ocr or enable_translate or enable_inpaint
+        )
         
         pages_to_process = []
         
@@ -1711,11 +1726,11 @@ class MainWindow(mainwindow_cls):
                     pages_to_process.append(page_name)
             if len(pages_to_process) == 0:
                 return
-        else:
+        elif not render_only:
             for page_name in self.imgtrans_proj.pages:
                 self.imgtrans_proj.set_page_progress(page_name, 0)
         
-        if pcfg.module.enable_detect:
+        if enable_detect:
             for page in self.imgtrans_proj.pages:
                 if not pcfg.module.keep_exist_textlines:
                     if not pages_to_process:
@@ -1732,20 +1747,23 @@ class MainWindow(mainwindow_cls):
                 ffmt_list = []
                 self.backup_blkstyles.append(ffmt_list)
                 for textblk in blklist:
-                    if not pcfg.module.enable_detect:
+                    if not enable_detect:
                         ffmt_list.append(textblk.fontformat.deepcopy())
                     # 继续模式且没有指定pages_to_process时：跳过已有文本的文本块
                     if continue_mode and not pages_to_process and textblk.text and len(textblk.text) > 0:
                         continue
-                    if pcfg.module.enable_ocr:
+                    if enable_ocr:
                         textblk.text = []
                         textblk.set_font_colors((0, 0, 0), (0, 0, 0))
-                    if pcfg.module.enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or pcfg.module.enable_ocr:
+                    if enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or enable_ocr:
                         textblk.rich_text = ''
                     textblk.vertical = textblk.src_is_vertical
         
         # 如果有指定pages_to_process或者是continue_mode，则传递页面列表
-        self.module_manager.runImgtransPipeline(pages_to_process if (pages_to_process or continue_mode) else None)
+        self.module_manager.runImgtransPipeline(
+            pages_to_process if (pages_to_process or continue_mode) else None,
+            render_only=render_only,
+        )
 
     def on_transpanel_changed(self):
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()

@@ -242,7 +242,7 @@ def main():
     from ballontranslator.utils.io_utils import find_all_files_recursive
     from ballontranslator.utils import config as program_config
 
-    from qtpy.QtCore import QTranslator, QLocale, Qt
+    from qtpy.QtCore import QTranslator, QLocale, Qt, QTimer
     shared.args = args
     shared.DEFAULT_DISPLAY_LANG = QLocale.system().name().replace('en_CN', 'zh_CN')
     shared.HEADLESS = args.headless
@@ -274,6 +274,13 @@ def main():
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True) #enable high dpi scaling
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use high dpi icons
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+
+    if sys.platform == 'win32':
+        application_attribute = getattr(Qt, 'ApplicationAttribute', Qt)
+        QApplication.setAttribute(
+            application_attribute.AA_DontCreateNativeWidgetSiblings,
+            True,
+        )
 
     os.chdir(shared.PROGRAM_PATH)
 
@@ -355,7 +362,13 @@ def main():
 
         ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
         ballontrans.show()
-        ballontrans.resetStyleSheet()
+        if shared.ON_WINDOWS:
+            from ballontranslator.ui.framelesswindow import FramelessMoveResize
+            # SC_MAXIMIZE animates only after the normal window is visible.
+            QTimer.singleShot(
+                0,
+                lambda: FramelessMoveResize.maximize(ballontrans),
+            )
     if updated_mirrors:
         create_info_dialog(QApplication.translate(
             'NetworkMirrors',

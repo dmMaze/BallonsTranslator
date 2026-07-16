@@ -1842,7 +1842,7 @@ class ModuleManager(QObject):
         self.check_inpaint_fin_timer.stop()
         self.inpaint_th_finished.emit()
 
-    def runImgtransPipeline(self, pages_to_process=None):
+    def runImgtransPipeline(self, pages_to_process=None, render_only=False):
         _reset_llm_key_required_dialogs()
         if self.imgtrans_proj.is_empty:
             LOGGER.info('proj file is empty, nothing to do')
@@ -1851,7 +1851,10 @@ class ModuleManager(QObject):
         self.last_finished_index = -1
         self.terminateRunningThread()
         
-        if cfg_module.all_stages_disabled() and self.imgtrans_proj is not None and self.imgtrans_proj.num_pages > 0:
+        if (render_only or cfg_module.all_stages_disabled()) and \
+                self.imgtrans_proj is not None and self.imgtrans_proj.num_pages > 0:
+            # Rendering reuses the normal page-finished path without preparing
+            # or running any automation module.
             for ii in range(self.imgtrans_proj.num_pages):
                 self.page_trans_finished.emit(ii)
             self.imgtrans_pipeline_finished.emit()

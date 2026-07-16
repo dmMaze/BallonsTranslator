@@ -1,13 +1,23 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QObject, QEvent, QPointF, Qt
+from qtpy.QtCore import QObject, QEvent, QPoint, QPointF, Qt
 from qtpy.QtGui import QColor, QMouseEvent
 from qtpy.QtWidgets import QApplication, QColorDialog, QDialog, QLabel, QMenu, QTextEdit, QWidget
 from qtpy import API_NAME
+
+from ballontranslator.utils import shared
+
+shared.FLAG_QT6 = API_NAME in ('PyQt6', 'PySide6')
+application_attribute = getattr(Qt, 'ApplicationAttribute', Qt)
+QApplication.setAttribute(
+    application_attribute.AA_DontCreateNativeWidgetSiblings,
+    True,
+)
 
 
 def qapp():
@@ -167,15 +177,16 @@ class MenuStyleFilterTest(unittest.TestCase):
                 raise AssertionError('irrelevant objects must not read event details')
         self.assertFalse(self.filter.eventFilter(QLabel(), ExplodingEvent()))
 
-    def test_show_and_resize_apply_rounded_mask(self):
+    def test_linux_show_and_resize_apply_rounded_widget_mask(self):
         menu = QMenu()
-        self.filter.eventFilter(menu, QEvent(QEvent.Type.Polish))
-        self.assertTrue(menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))
-        self.assertTrue(menu.mask().isEmpty())
-        self.filter.eventFilter(menu, QEvent(QEvent.Type.Resize))
-        self.assertFalse(menu.mask().isEmpty())
-        self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
-        self.assertFalse(menu.mask().isEmpty())
+        with patch('ballontranslator.ui.menu_style.sys.platform', 'linux'):
+            self.filter.eventFilter(menu, QEvent(QEvent.Type.Polish))
+            self.assertTrue(menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))
+            self.assertTrue(menu.mask().isEmpty())
+            self.filter.eventFilter(menu, QEvent(QEvent.Type.Resize))
+            self.assertFalse(menu.mask().isEmpty())
+            self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
+            self.assertFalse(menu.mask().isEmpty())
 
     def test_checked_marker_is_idempotent_and_tracks_uncheck(self):
         menu = QMenu()

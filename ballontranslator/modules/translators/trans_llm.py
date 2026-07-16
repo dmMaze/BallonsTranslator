@@ -371,10 +371,10 @@ class LLMTranslator(BaseTranslator):
         else:
             raise ValueError("Unsupported JSON translation response.")
         translations = {int(item["id"]): str(item["translation"]) for item in items}
-        result = [translations.get(i, "") for i in range(1, expected + 1)]
-        if len(result) != expected:
-            raise InvalidNumTranslations(f"Expected {expected}, got {len(result)}")
-        return result
+        expected_ids = set(range(1, expected + 1))
+        if set(translations) != expected_ids:
+            raise InvalidNumTranslations(f"Expected ids 1-{expected}, got {sorted(translations)}")
+        return [translations[i] for i in range(1, expected + 1)]
 
     def _parse_response(self, profile: LLMProfile, raw_content: str, expected: int) -> List[str]:
         return self._parse_json_response(raw_content, expected)
@@ -386,7 +386,6 @@ class LLMTranslator(BaseTranslator):
         translations = []
         for messages, num_src, prompt in self._assemble_batches(src_list, profile):
             retry_attempt = 0
-            mismatch_attempt = 0
             while True:
                 if self.stop_event is not None and self.stop_event.is_set():
                     raise LLMRequestStopped()
@@ -395,13 +394,6 @@ class LLMTranslator(BaseTranslator):
                     batch_translations = self._parse_response(profile, raw_response, num_src)
                     translations.extend(batch_translations)
                     break
-                except InvalidNumTranslations as e:
-                    mismatch_attempt += 1
-                    if mismatch_attempt >= int(profile.invalid_repeat_count):
-                        self.logger.error(f"Failed to parse matching translation count for prompt:\n{prompt}\n{e}")
-                        translations.extend([""] * num_src)
-                        break
-                    self._wait(self.get_param_value('retry timeout') / 2)
                 except LLMApiKeyRequiredError:
                     raise
                 except LLMModelRequiredError:
@@ -409,6 +401,8 @@ class LLMTranslator(BaseTranslator):
                 except LLMRequestStopped:
                     raise
                 except Exception as e:
+                    if isinstance(e, InvalidNumTranslations):
+                        self.logger.error(f"Failed to parse matching translation count for prompt:\n{prompt}\n{e}")
                     retry_attempt += 1
                     if retry_attempt >= self.get_param_value('retry attempts'):
                         self.logger.error(f"LLM translation failed: {e}")

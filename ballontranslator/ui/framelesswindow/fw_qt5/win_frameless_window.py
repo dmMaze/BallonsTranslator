@@ -23,8 +23,8 @@ class WindowsFramelessWindow(QWidget):
 
     BORDER_WIDTH = 5
 
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
+    def __init__(self, parent=None, flags=Qt.Widget):
+        super().__init__(parent, flags)
         self.windowEffect = WindowsWindowEffect(self)
         # self.titleBar = TitleBar(self)
         self._isSystemButtonVisible = False
@@ -181,10 +181,8 @@ class WindowsFramelessWindow(QWidget):
             return True, result
         elif msg.message == win32con.WM_SETFOCUS and isSystemBorderAccentEnabled():
             self.windowEffect.setBorderAccentColor(self.winId(), getSystemAccentColor())
-            return True, 0
-        elif msg.message == win32con.WM_KILLFOCUS:
+        elif msg.message == win32con.WM_KILLFOCUS and isSystemBorderAccentEnabled():
             self.windowEffect.removeBorderAccentColor(self.winId())
-            return True, 0
 
         return super().nativeEvent(eventType, message)
 

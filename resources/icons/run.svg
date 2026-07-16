@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rounded-stroke adaptation of run-all-svgrepo-com.svg. -->
+<svg width="24" height="24" viewBox="1.5 1.5 14 14" xmlns="http://www.w3.org/2000/svg">
+  <path d="M2.5 2.6L11.2 8.42L2.5 14.2Z"
+        fill="none"
+        stroke="#1E93E5"
+        stroke-width="0.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+  <path d="M6 14.082L14.19 8.42"
+        fill="none"
+        stroke="#9858A2"
+        stroke-width="0.9"
+        stroke-linecap="round"/>
+  <path d="M6 2.749L14.19 8.42"
+        fill="none"
+        stroke="#FE80A0"
+        stroke-width="0.9"
+        stroke-linecap="round"/>
+</svg>

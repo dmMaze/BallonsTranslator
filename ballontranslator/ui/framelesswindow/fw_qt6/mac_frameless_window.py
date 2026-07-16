@@ -174,8 +174,8 @@ class MacFramelessWindowBase:
 class MacFramelessWindow(QWidget, MacFramelessWindowBase):
     """ Frameless window for Linux system """
 
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
+    def __init__(self, parent=None, flags=Qt.WindowType.Widget):
+        super().__init__(parent, flags)
         self._isSystemButtonVisible = False
         self._initFrameless()
 
