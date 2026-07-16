@@ -13,6 +13,11 @@ from qtpy import API_NAME
 from ballontranslator.utils import shared
 
 shared.FLAG_QT6 = API_NAME in ('PyQt6', 'PySide6')
+application_attribute = getattr(Qt, 'ApplicationAttribute', Qt)
+QApplication.setAttribute(
+    application_attribute.AA_DontCreateNativeWidgetSiblings,
+    True,
+)
 
 
 def qapp():
@@ -49,7 +54,6 @@ class TypeSensitiveEvent(QEvent):
 class MinimalConfigPanel(ConfigPanel):
     def __init__(self):
         QDialog.__init__(self)
-        self._deferWindowEffects = False
         self._outside_click_filter_installed = False
 
     def _widgetInsidePanel(self, widget) -> bool:

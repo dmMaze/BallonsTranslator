@@ -275,6 +275,13 @@ def main():
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True) #use high dpi icons
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
+    if sys.platform == 'win32':
+        application_attribute = getattr(Qt, 'ApplicationAttribute', Qt)
+        QApplication.setAttribute(
+            application_attribute.AA_DontCreateNativeWidgetSiblings,
+            True,
+        )
+
     os.chdir(shared.PROGRAM_PATH)
 
     app_args = sys.argv

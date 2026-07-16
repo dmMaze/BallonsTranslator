@@ -31,11 +31,11 @@ class WindowsFramelessWindowBase:
         self.windowEffect = WindowsWindowEffect(self)
         # self.titleBar = TitleBar(self)
         self._isResizeEnabled = True
-        # Creating an owned HWND before show makes the owner's children native.
-        self._deferWindowEffects = self.isWindow() and self.parentWidget() is not None
-        self._screenHandle = None
 
         self.updateFrameless()
+
+        # solve issue #5
+        self.windowHandle().screenChanged.connect(self.__onScreenChanged)
 
         # self.resize(500, 500)
         # self.titleBar.raise_()
@@ -45,27 +45,10 @@ class WindowsFramelessWindowBase:
         stayOnTop = Qt.WindowStaysOnTopHint if self.windowFlags() & Qt.WindowStaysOnTopHint else 0
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | stayOnTop)
 
-        if not self._deferWindowEffects:
-            self._applyWindowEffects()
-
-    def _applyWindowEffects(self):
-        hWnd = self.winId()
         # add DWM shadow and window animation
-        self.windowEffect.addWindowAnimation(hWnd)
+        self.windowEffect.addWindowAnimation(self.winId())
         if not isinstance(self, AcrylicWindow):
-            self.windowEffect.addShadowEffect(hWnd)
-
-        handle = self.windowHandle()
-        if handle is not self._screenHandle:
-            handle.screenChanged.connect(self.__onScreenChanged)
-            self._screenHandle = handle
-
-    def showEvent(self, event):
-        result = super().showEvent(event)
-        if self._deferWindowEffects:
-            self._deferWindowEffects = False
-            self._applyWindowEffects()
-        return result
+            self.windowEffect.addShadowEffect(self.winId())
 
     # def setTitleBar(self, titleBar):
     #     """ set custom title bar
