@@ -1,8 +1,30 @@
 import sys
 
 from qtpy.QtCore import QEvent, QObject, QRectF, Qt
-from qtpy.QtGui import QPainterPath, QRegion
-from qtpy.QtWidgets import QMenu
+from qtpy.QtGui import QColor, QPainter, QPainterPath, QPen, QRegion
+from qtpy.QtWidgets import QMenu, QWidget
+
+from ballontranslator.utils import shared
+
+
+class _MenuBorderOverlay(QWidget):
+    """Paint the Windows menu border independently of its binary mask."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setObjectName('MenuBorderOverlay')
+        attr_enum = getattr(Qt, 'WidgetAttribute', Qt)
+        self.setAttribute(attr_enum.WA_TransparentForMouseEvents, True)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        render_hint = getattr(QPainter, 'RenderHint', QPainter)
+        painter.setRenderHint(render_hint.Antialiasing, True)
+        brush_style = getattr(Qt, 'BrushStyle', Qt)
+        painter.setBrush(brush_style.NoBrush)
+        painter.setPen(QPen(QColor(*shared.BORDER_COLOR), 1))
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        painter.drawRoundedRect(rect, 7, 7)
 
 
 class MenuStyleFilter(QObject):
@@ -20,8 +42,25 @@ class MenuStyleFilter(QObject):
                 # frame, which is black and leaves an outer gap around menus.
                 window_type = getattr(Qt, 'WindowType', Qt)
                 watched.setWindowFlag(window_type.NoDropShadowWindowHint, True)
+            elif sys.platform == 'win32':
+                watched.setProperty('windowsBorderOverlay', True)
+                if not hasattr(watched, '_menu_border_overlay'):
+                    watched._menu_border_overlay = _MenuBorderOverlay(watched)
         elif event_type in (QEvent.Type.Show, QEvent.Type.Resize):
-            if sys.platform != 'darwin':
+            if sys.platform == 'win32':
+                rect = QRectF(watched.rect()).adjusted(0, 0, -1, -1)
+                path = QPainterPath()
+                path.addRoundedRect(rect, 8, 8)
+                window = watched.windowHandle()
+                if window is not None:
+                    window.setMask(QRegion(path.toFillPolygon().toPolygon()))
+                overlay = getattr(watched, '_menu_border_overlay', None)
+                if overlay is not None:
+                    overlay.setGeometry(watched.rect().adjusted(1, 1, -1, -1))
+                    overlay.show()
+                    overlay.raise_()
+                    overlay.update()
+            elif sys.platform != 'darwin':
                 path = QPainterPath()
                 path.addRoundedRect(QRectF(watched.rect()), 8, 8)
                 watched.setMask(QRegion(path.toFillPolygon().toPolygon()))

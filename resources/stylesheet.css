@@ -1010,13 +1010,21 @@ QListWidget {
 }
 
 QMenu {
-    /* border: 1px solid @borderColor; */
-    border: none;
+    border: 1px solid @borderColor;
     border-radius: 8px;
     padding: 5px;
     background-color: @emptyContentBackgroundColor;
     color: @qwidgetForegroundColor;
     font-size: 13px;
+}
+
+QMenu[windowsBorderOverlay="true"] {
+    border: none;
+}
+
+QWidget#MenuBorderOverlay {
+    border: none;
+    background-color: transparent;
 }
 
 QMenu::item {
