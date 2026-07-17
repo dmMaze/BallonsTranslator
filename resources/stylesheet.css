@@ -815,9 +815,14 @@ QToolButton#RunPipelineSettingsHeader {
     text-align: left;
 }
 
+QToolButton#RunPipelineSettingsHeader:hover {
+    background-color: rgba(30, 147, 229, 20%);
+    border-radius: 4px;
+}
+
 QLabel#RunPipelineSettingLabel {
     color: @qwidgetForegroundColor;
-    font-size: 13px;
+    font-size: 12px;
 }
 
 QSpinBox#RunPipelineRangeStart,
@@ -831,7 +836,7 @@ QSpinBox#RunPipelineRangeEnd {
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 0px;
-    font-size: 13px;
+    font-size: 12px;
 }
 
 QSpinBox#RunPipelineRangeStart:hover,

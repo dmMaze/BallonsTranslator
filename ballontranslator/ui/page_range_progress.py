@@ -129,7 +129,7 @@ class PageProgressRangeBar(QWidget):
     TRACK_HEIGHT = 5
     TRACK_Y = 18
     HANDLE_RADIUS = 7
-    TRACK_SIDE_MARGIN = 16
+    TRACK_SIDE_MARGIN = 0
 
     def __init__(self, page_names, parent=None):
         super().__init__(parent)
@@ -247,13 +247,6 @@ class PageProgressRangeBar(QWidget):
         if changed:
             self.update()
 
-    def _small_font(self, delta: float = -2.0):
-        font = QFont(self.font())
-        point_size = font.pointSizeF()
-        if point_size > 0:
-            font.setPointSizeF(max(7.0, point_size + delta))
-        return font
-
     def paintEvent(self, event):
         painter = QPainter(self)
         render_hint = getattr(QPainter, 'RenderHint', QPainter)
@@ -338,7 +331,6 @@ class PageProgressRangeBar(QWidget):
                     and self._hover_handle_index < 0
                 ),
             )
-        self._paint_progress_text(painter)
         painter.end()
 
     def _paint_hover_info(
@@ -360,7 +352,8 @@ class PageProgressRangeBar(QWidget):
                 int(track.bottom() + 13),
             )
 
-        font = self._small_font(-2.0)
+        font = QFont(self.font())
+        font.setPixelSize(12)
         painter.setFont(font)
         metrics = painter.fontMetrics()
         text_color = self.palette().color(QPalette.ColorRole.WindowText)
@@ -382,31 +375,6 @@ class PageProgressRangeBar(QWidget):
             int(track.bottom() + metrics.ascent() + 3),
             index_text,
         )
-
-    def _paint_progress_text(self, painter: QPainter):
-        font = self._small_font(-2.5)
-        painter.setFont(font)
-        metrics = painter.fontMetrics()
-        parts = (
-            (
-                self.tr('progress') + ' ',
-                self.palette().color(QPalette.ColorRole.WindowText),
-            ),
-            (str(self.finished_count), _ACCENT_COLOR),
-            (
-                '/{}'.format(self.page_count),
-                self.palette().color(QPalette.ColorRole.WindowText),
-            ),
-        )
-        total_width = sum(metrics.horizontalAdvance(text) for text, _ in parts)
-        x = self.width() - total_width - 2
-        baseline = self.height() - 3
-        for text, color in parts:
-            color = QColor(color)
-            color.setAlpha(215)
-            painter.setPen(color)
-            painter.drawText(x, baseline, text)
-            x += metrics.horizontalAdvance(text)
 
     def mousePressEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton or not self.page_names:
@@ -494,7 +462,7 @@ class PageRangeProgressWidget(QWidget):
         range_layout = QHBoxLayout(range_row)
         range_layout.setContentsMargins(2, 0, 2, 0)
         range_layout.setSpacing(8)
-        range_label = QLabel(self.tr('Range to Run'), range_row)
+        range_label = QLabel(self.tr('Pages to Run'), range_row)
         range_label.setObjectName('RunPipelineSettingLabel')
         range_layout.addWidget(range_label)
 
@@ -517,10 +485,15 @@ class PageRangeProgressWidget(QWidget):
         range_layout.addWidget(QLabel('-', range_row))
         range_layout.addWidget(self.range_end)
         range_layout.addStretch(1)
+        self.progress_label = QLabel(range_row)
+        self.progress_label.setObjectName('RunPipelineSettingLabel')
+        self.progress_label.setTextFormat(Qt.TextFormat.RichText)
+        range_layout.addWidget(self.progress_label)
         layout.addWidget(range_row)
 
         self.range_bar = PageProgressRangeBar(self.page_names, self)
         self.range_bar.set_range(start, saved_end, emit=False)
+        self._update_progress_label()
         layout.addWidget(self.range_bar)
 
         self.range_start.valueChanged.connect(self._on_start_changed)
@@ -529,6 +502,15 @@ class PageRangeProgressWidget(QWidget):
 
     def set_finished_pages(self, finished_pages):
         self.range_bar.set_finished_pages(finished_pages)
+        self._update_progress_label()
+
+    def _update_progress_label(self):
+        finished_count = self.range_bar.finished_count
+        self.progress_label.setText(
+            f'{self.tr("progress")} '
+            f'<span style="color: rgb(30, 147, 229);">{finished_count}</span>'
+            f'/{self.range_bar.page_count}'
+        )
 
     def set_range(self, start: int, end: int):
         self.range_bar.set_range(start, end)

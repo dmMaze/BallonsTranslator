@@ -17,7 +17,6 @@ from qtpy.QtWidgets import (
     QStyle,
     QStyleOptionButton,
     QStylePainter,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -35,6 +34,7 @@ from .llm_modality import (
     modality_badge_qcolor,
 )
 from .page_range_progress import PageRangeProgressWidget
+from .custom_widget import ExpandingToolButton
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
@@ -269,15 +269,15 @@ class RunPipelineDialog(QDialog):
         button_row.addStretch()
 
         self.run_button = QPushButton(_pipeline_text('Run'), surface)
-        self.run_button.setObjectName('RunPipelineSecondaryButton')
+        self.run_button.setObjectName('RunPipelinePrimaryButton')
         self.run_button.clicked.connect(lambda: self.done(self.RUN))
-        button_row.addWidget(self.run_button)
 
         self.continue_button = QPushButton(_pipeline_text('Continue'), surface)
-        self.continue_button.setObjectName('RunPipelinePrimaryButton')
+        self.continue_button.setObjectName('RunPipelineSecondaryButton')
         self.continue_button.setDefault(True)
         self.continue_button.clicked.connect(lambda: self.done(self.CONTINUE))
         button_row.addWidget(self.continue_button)
+        button_row.addWidget(self.run_button)
 
         self.render_button = QPushButton(self.tr('Render'), surface)
         self.render_button.setObjectName('RunPipelinePrimaryButton')
@@ -460,7 +460,7 @@ class RunPipelineDialog(QDialog):
         self.settings_body = QWidget(page)
         self.settings_body.setObjectName('RunPipelineSettingsBody')
         settings_layout = QVBoxLayout(self.settings_body)
-        settings_layout.setContentsMargins(0, 0, 0, 0)
+        settings_layout.setContentsMargins(16, 0, 16, 0)
         settings_layout.setSpacing(10)
         self.settings_sections = {}
         general_section, general_layout = self._add_settings_section(
@@ -693,7 +693,7 @@ class RunPipelineDialog(QDialog):
         row.setSpacing(8)
 
         if folded:
-            title = QToolButton(self)
+            title = ExpandingToolButton(self)
             title.setObjectName('RunPipelineSettingsHeader')
             button_style = getattr(Qt, 'ToolButtonStyle', Qt)
             title.setToolButtonStyle(button_style.ToolButtonTextBesideIcon)
@@ -701,11 +701,11 @@ class RunPipelineDialog(QDialog):
         else:
             title = QLabel(text, self)
             title.setObjectName('RunPipelineSectionTitle')
-        row.addWidget(title)
+        row.addWidget(title, 1 if folded else 0)
 
-        if folded or not show_line:
+        if not folded and not show_line:
             row.addStretch(1)
-        else:
+        elif not folded:
             line = QFrame(self)
             line.setObjectName('RunPipelineSectionLine')
             frame_shape = getattr(QFrame, 'Shape', QFrame)
