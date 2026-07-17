@@ -1,7 +1,7 @@
 import json
 
 from qtpy.QtCore import QEvent, QSize, Qt, Signal
-from qtpy.QtGui import QIcon
+from qtpy.QtGui import QIcon, QPainter
 from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -12,6 +12,7 @@ from qtpy.QtWidgets import (
 )
 
 from .custom_widget import SmallComboBox, Widget
+from .icon_rendering import render_svg_pixmap
 from .llm_modality import (
     LLM_MODALITY_IMAGE,
     LLM_MODALITY_IMAGE_COLOR,
@@ -38,6 +39,31 @@ else:
 
 class SmallConfigPutton(QPushButton):
     pass
+
+
+class BottomBarModuleToolButton(QToolButton):
+    """Bottom module selector with a cached themed dropdown chevron.
+
+    >>> BottomBarModuleToolButton.__name__
+    'BottomBarModuleToolButton'
+    """
+
+    CHEVRON_SIZE = 12
+    CHEVRON_RIGHT_MARGIN = 8
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        pixmap = render_svg_pixmap(
+            themed_icon_path('chevron-down.svg'),
+            self.CHEVRON_SIZE,
+            self.CHEVRON_SIZE,
+            self.devicePixelRatioF(),
+        )
+        painter = QPainter(self)
+        x = self.width() - self.CHEVRON_RIGHT_MARGIN - self.CHEVRON_SIZE
+        y = (self.height() - self.CHEVRON_SIZE) // 2
+        painter.drawPixmap(x, y, pixmap)
+        painter.end()
 
 
 def _set_bottom_aux_button_visible(button: QPushButton, visible: bool):
@@ -203,7 +229,7 @@ class ModuleSelectionWidget(Widget):
             self.src_selector.setVisible(False)
             self.tgt_selector.setVisible(False)
 
-        self.tool_btn = QToolButton(self)
+        self.tool_btn = BottomBarModuleToolButton(self)
         self.tool_btn.setObjectName('BottomBarModuleToolButton')
         self.tool_btn.setToolTip(fallback_name)
         self.tool_btn.setPopupMode(_instant_popup_mode())

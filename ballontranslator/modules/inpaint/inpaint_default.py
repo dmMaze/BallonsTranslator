@@ -401,7 +401,6 @@ class Flux2Klein(InpainterBase):
         'device': DEVICE_SELECTOR(),
         'step': 8
     }
-    check_need_inpaint = False
     inpaint_by_block = False
 
     download_file_list = [

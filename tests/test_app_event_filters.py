@@ -31,6 +31,7 @@ _APP = qapp()
 
 from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.custom_widget.label import ColorPickerLabel
+from ballontranslator.ui.icon_rendering import render_svg_pixmap
 from ballontranslator.ui.menu_style import MenuStyleFilter
 from ballontranslator.ui.textedit_area import FloatingSuggestionLabel
 
@@ -202,6 +203,7 @@ class MenuStyleFilterTest(unittest.TestCase):
         action.setChecked(False)
         self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
         self.assertEqual(action.text(), original_text)
+
 
 
 if __name__ == '__main__':

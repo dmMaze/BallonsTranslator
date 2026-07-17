@@ -25,12 +25,7 @@ class FloatingSuggestionLabel(QWidget):
         self.editor = editor
         self.setObjectName("suggestion_popup")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        
-        # Inherit stylesheet dynamically from the parent MainWindow to respect light/dark themes
-        win = self.editor.window()
-        if win:
-            self.setStyleSheet(win.styleSheet())
-        
+
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
@@ -117,12 +112,7 @@ class FloatingSuggestionLabel(QWidget):
     def set_suggestions(self, cursor, word, suggestions):
         self.cursor = cursor
         self.word = word
-        
-        # Refresh stylesheet to match the current theme
-        win = self.editor.window()
-        if win:
-            self.setStyleSheet(win.styleSheet())
-        
+
         is_dark = pcfg.darkmode
         border_color = "rgba(255, 255, 255, 12%)" if is_dark else "rgba(0, 0, 0, 12%)"
         hover_bg = "rgba(255, 255, 255, 16%)" if is_dark else "rgba(0, 0, 0, 10%)"

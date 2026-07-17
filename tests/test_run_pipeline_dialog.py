@@ -13,8 +13,10 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDockWidget,
+    QFrame,
     QLabel,
     QMainWindow,
+    QSpinBox,
     QStackedWidget,
     QToolButton,
 )
@@ -23,12 +25,27 @@ from ballontranslator.ui.run_pipeline_dialog import (
     PipelineModuleButton,
     RunPipelineDialog,
 )
+from ballontranslator.ui.configpanel import ConfigPanel
+from ballontranslator.ui.llm_profile_widgets import ProfileDetailsWidget
+from ballontranslator.ui.module_parse_widgets import (
+    TextDetectConfigPanel,
+    TranslatorConfigPanel,
+)
+from ballontranslator.ui.page_range_progress import PageRangeProgressWidget
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.mainwindowbars import TitleBar
 from ballontranslator.ui.module_manager import ModuleManager
-from ballontranslator.utils.config import ProgramConfig, json_dump_program_config, pcfg
+from ballontranslator.utils.config import (
+    ProgramConfig,
+    RunStatus,
+    json_dump_program_config,
+    pcfg,
+)
 from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.shared import CONFIG_MODULE_PARAM_BODY_MIN_WIDTH
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.modules import GET_VALID_TEXTDETECTORS
 
 
 def get_app():
@@ -45,10 +62,31 @@ class RunPipelineDialogTests(unittest.TestCase):
         cls.app = get_app()
 
     def setUp(self):
+        self._module_settings_expanded = (
+            RunPipelineDialog._module_settings_expanded
+        )
+        self._page_range = RunPipelineDialog._page_range
+        RunPipelineDialog._module_settings_expanded = (
+            False,
+            False,
+            False,
+            False,
+        )
+        RunPipelineDialog._page_range = (1, None)
         self._stage_states = [pcfg.module.stage_enabled(idx) for idx in range(4)]
         self._pipeline_mode = pcfg.run_pipeline_mode
         self._render_without_text_style_update = (
             pcfg.render_without_text_style_update
+        )
+        self._pipeline_general_settings = (
+            pcfg.module.keep_exist_textlines,
+            pcfg.restore_ocr_empty,
+            pcfg.module.ocr_font_detect,
+            pcfg.module.check_need_inpaint,
+            pcfg.module.filter_mask_by_bboxes,
+            pcfg.module.translate_source,
+            pcfg.module.translate_target,
+            pcfg.module.translate_context,
         )
         self._visibility_states = (
             pcfg.show_textdetector_tool,
@@ -62,10 +100,14 @@ class RunPipelineDialogTests(unittest.TestCase):
         pcfg.show_ocr_tool = True
         pcfg.show_translator_tool = True
         pcfg.show_inpainter_tool = True
-        pcfg.run_pipeline_mode = 'automation'
+        pcfg.run_pipeline_mode = 'pipeline'
         pcfg.render_without_text_style_update = False
 
     def tearDown(self):
+        RunPipelineDialog._module_settings_expanded = (
+            self._module_settings_expanded
+        )
+        RunPipelineDialog._page_range = self._page_range
         for idx, enabled in enumerate(self._stage_states):
             pcfg.module.set_stage_enabled(idx, enabled)
         (
@@ -78,18 +120,50 @@ class RunPipelineDialogTests(unittest.TestCase):
         pcfg.render_without_text_style_update = (
             self._render_without_text_style_update
         )
+        (
+            pcfg.module.keep_exist_textlines,
+            pcfg.restore_ocr_empty,
+            pcfg.module.ocr_font_detect,
+            pcfg.module.check_need_inpaint,
+            pcfg.module.filter_mask_by_bboxes,
+            pcfg.module.translate_source,
+            pcfg.module.translate_target,
+            pcfg.module.translate_context,
+        ) = self._pipeline_general_settings
 
     def test_dialog_initializes_pipeline_controls(self):
-        dialog = RunPipelineDialog()
+        project = SimpleNamespace(
+            pages={'001.png': [], '002.png': [], '003.png': [], '004.png': []},
+            _image_info={
+                '001.png': {'finish_code': RunStatus.FIN_ALL},
+                '002.png': {'finish_code': RunStatus.FIN_DET},
+                '003.png': {
+                    'finish_code': RunStatus.FIN_DET | RunStatus.FIN_OCR
+                },
+                '004.png': {
+                    'finish_code': (
+                        RunStatus.FIN_DET
+                        | RunStatus.FIN_OCR
+                        | RunStatus.FIN_INPAINT
+                    )
+                },
+            },
+        )
+        project.get_page_progress = lambda page: (
+            project._image_info[page]['finish_code'] & pcfg.module.finish_code
+        ) == pcfg.module.finish_code
+        dialog = RunPipelineDialog(project=project)
         window_type = getattr(Qt, 'WindowType', Qt)
 
+        self.assertEqual(dialog.windowTitle(), 'Run')
+        self.assertEqual(dialog.title_label.text(), 'Run')
         self.assertTrue(dialog.windowFlags() & window_type.Dialog)
         self.assertTrue(dialog.windowFlags() & window_type.FramelessWindowHint)
         selector = dialog.findChild(QComboBox, 'RunPipelineWorkflowSelector')
         self.assertEqual(selector.currentIndex(), 0)
         self.assertEqual(
             [selector.itemText(i) for i in range(selector.count())],
-            ['Automation', 'Rendering'],
+            ['Pipeline', 'Rendering'],
         )
         module_buttons = dialog.findChildren(PipelineModuleButton, 'RunPipelineModuleButton')
         self.assertEqual(len(module_buttons), 4)
@@ -98,7 +172,14 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertFalse(module_buttons[0].isChecked())
         self.assertFalse(pcfg.module.enable_detect)
         self.assertFalse(module_buttons[0].text_label.property('moduleActive'))
-        self.assertIn('background-color: transparent', module_buttons[0].icon_label.styleSheet())
+        self.assertEqual(module_buttons[0].icon_label.size().width(), 20)
+        icon_pixmap = module_buttons[0].icon_label.pixmap()
+        self.assertEqual(
+            icon_pixmap.width() / icon_pixmap.devicePixelRatio(),
+            20,
+        )
+        self.assertTrue(dialog.settings_sections[0].isHidden())
+        module_buttons[0].click()
         self.assertEqual(
             {
                 label.text()
@@ -109,14 +190,93 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertIsNotNone(dialog.findChild(QDockWidget, 'RunPipelineContentDock'))
         stack = dialog.findChild(QStackedWidget, 'RunPipelineContentStack')
         self.assertEqual(stack.currentIndex(), 0)
-        self.assertIsNotNone(dialog.findChild(QToolButton, 'RunPipelineSettingsHeader'))
+        self.assertFalse(dialog.settings_body.isHidden())
+        module_settings_headers = dialog.findChildren(
+            QToolButton,
+            'RunPipelineModuleSettingsHeader',
+        )
+        self.assertEqual(
+            {header.text().strip() for header in module_settings_headers},
+            {
+                'Text Detection',
+                'OCR',
+                'Inpainting',
+                'Translation',
+            },
+        )
+        self.assertEqual(len(module_settings_headers), 4)
+        self.assertTrue(
+            all(not header.isChecked() for header in module_settings_headers)
+        )
+        self.assertTrue(
+            all(
+                not dialog.settings_body.isAncestorOf(header)
+                for header in module_settings_headers
+            )
+        )
+        self.assertFalse(
+            dialog.findChildren(QFrame, 'RunPipelineSettingsSectionLine')
+        )
+        detector_body = dialog.module_settings_bodies[0]
+        detector_header = dialog.module_settings_headers[0]
+        self.assertTrue(detector_body.isHidden())
+        collapsed_height = dialog.height()
+        detector_header.click()
+        self.assertFalse(detector_body.isHidden())
+        self.assertFalse(detector_header.isHidden())
+        self.assertGreater(dialog.height(), collapsed_height)
+        expanded_height = dialog.height()
+        remembered_dialog = RunPipelineDialog(project=project)
+        self.assertTrue(remembered_dialog.module_settings_headers[0].isChecked())
+        self.assertFalse(remembered_dialog.module_settings_bodies[0].isHidden())
+        self.assertTrue(
+            all(
+                not remembered_dialog.module_settings_headers[index].isChecked()
+                for index in range(1, 4)
+            )
+        )
+        remembered_dialog.close()
+        detector_header.click()
+        self.assertTrue(detector_body.isHidden())
+        self.assertLess(dialog.height(), expanded_height)
+        self.assertTrue(
+            all(
+                not dialog.settings_sections[index].isHidden()
+                for index in range(4)
+            )
+        )
+        progress = dialog.progress_bar
+        self.assertEqual(progress.finished_count, 1)
+        self.assertEqual(progress.page_count, 4)
+        module_buttons[3].click()
+        self.assertEqual(progress.finished_count, 2)
+        self.assertTrue(dialog.settings_sections[3].isHidden())
+        module_buttons[3].click()
+        self.assertFalse(dialog.settings_sections[3].isHidden())
+
+        range_start = dialog.findChild(QSpinBox, 'RunPipelineRangeStart')
+        range_end = dialog.findChild(QSpinBox, 'RunPipelineRangeEnd')
+        range_start.setValue(2)
+        range_end.setValue(3)
+        self.assertEqual(dialog.selected_pages(), ['002.png', '003.png'])
+        self.assertEqual(progress.start_index, 1)
+        self.assertEqual(progress.end_index, 2)
+        range_dialog = RunPipelineDialog(project=project)
+        self.assertEqual(range_dialog.range_start.value(), 2)
+        self.assertEqual(range_dialog.range_end.value(), 3)
+        range_dialog.close()
+        progress.set_range(1, 4)
+        self.assertEqual(range_start.value(), 1)
+        self.assertEqual(range_end.value(), 4)
         self.assertTrue(dialog.continue_button.isDefault())
         self.assertFalse(dialog.run_button.isHidden())
         self.assertFalse(dialog.continue_button.isHidden())
         self.assertTrue(dialog.render_button.isHidden())
 
+        pipeline_height = dialog.height()
         selector.setCurrentIndex(1)
         self.assertEqual(stack.currentIndex(), 1)
+        self.assertLess(dialog.height(), pipeline_height)
         self.assertTrue(dialog.run_button.isHidden())
         self.assertTrue(dialog.continue_button.isHidden())
         self.assertFalse(dialog.render_button.isHidden())
@@ -147,6 +307,53 @@ class RunPipelineDialogTests(unittest.TestCase):
         dialog = RunPipelineDialog()
         dialog.close_button.click()
         self.assertEqual(dialog.result(), dialog.Rejected)
+
+    def test_pipeline_general_settings_update_config_and_emit_actions(self):
+        dialog = RunPipelineDialog(translator_metadata={
+            'supported_src_list': ['Japanese', 'English'],
+            'supported_tgt_list': ['English', 'Chinese'],
+        })
+        source_changes = []
+        dialog.translate_source_changed.connect(source_changes.append)
+
+        dialog.keep_existing_lines.setChecked(
+            not pcfg.module.keep_exist_textlines
+        )
+        self.assertEqual(
+            pcfg.module.keep_exist_textlines,
+            dialog.keep_existing_lines.isChecked(),
+        )
+        dialog.source_combobox.setCurrentText('English')
+        self.assertEqual(pcfg.module.translate_source, 'English')
+        self.assertEqual(source_changes, ['English'])
+        context_index = dialog.context_combobox.findData('textblock')
+        dialog.context_combobox.setCurrentIndex(context_index)
+        self.assertEqual(pcfg.module.translate_context, 'textblock')
+        self.assertFalse(hasattr(dialog, 'show_MT_keyword_window'))
+        dialog.close()
+
+    def test_keyword_substitution_buttons_live_below_translator_params(self):
+        panel = TranslatorConfigPanel('Translator')
+        actions = []
+        panel.show_OCR_keyword_window.connect(lambda: actions.append('ocr'))
+        panel.show_pre_MT_keyword_window.connect(lambda: actions.append('pre_mt'))
+        panel.show_MT_keyword_window.connect(lambda: actions.append('mt'))
+
+        params_index = next(
+            index
+            for index in range(panel.vlayout.count())
+            if panel.vlayout.itemAt(index).layout() is panel.params_layout
+        )
+        for button in (
+            panel.replaceOCRkeywordBtn,
+            panel.replacePreMTkeywordBtn,
+            panel.replaceMTkeywordBtn,
+        ):
+            self.assertGreater(panel.vlayout.indexOf(button), params_index)
+            button.click()
+        self.assertEqual(actions, ['ocr', 'pre_mt', 'mt'])
+        panel.close()
+
 
     def test_dialog_uses_platform_move_resize_backend(self):
         dialog = RunPipelineDialog()
@@ -222,7 +429,16 @@ class RunPipelineDialogTests(unittest.TestCase):
         owner = SimpleNamespace(
             imgtrans_proj=SimpleNamespace(is_all_pages_no_text=True),
             on_run_imgtrans=lambda **kwargs: calls.append(kwargs),
+            module_manager=SimpleNamespace(
+                translator_metadata=lambda: {},
+            ),
+            on_trans_src_changed=lambda _source: None,
+            on_trans_tgt_changed=lambda _target: None,
         )
+
+        class FakeSignal:
+            def connect(self, _slot):
+                pass
 
         class FakeDialog:
             RUN = RunPipelineDialog.RUN
@@ -230,9 +446,14 @@ class RunPipelineDialogTests(unittest.TestCase):
             RENDER = RunPipelineDialog.RENDER
             result = 0
             preserve_style = False
+            pages = ['page-2']
 
-            def __init__(self, parent):
+            def __init__(self, parent, project=None, translator_metadata=None):
                 self.parent = parent
+                self.project = project
+                self.translator_metadata = translator_metadata
+                self.translate_source_changed = FakeSignal()
+                self.translate_target_changed = FakeSignal()
                 self.render_without_text_style_update = SimpleNamespace(
                     isChecked=lambda: self.preserve_style
                 )
@@ -240,15 +461,21 @@ class RunPipelineDialogTests(unittest.TestCase):
             def exec_(self):
                 return self.result
 
+            def selected_pages(self):
+                return self.pages
+
         with patch('ballontranslator.ui.mainwindow.RunPipelineDialog', FakeDialog):
             FakeDialog.result = FakeDialog.CONTINUE
             MainWindow.run_imgtrans(owner)
-            self.assertEqual(calls, [{'continue_mode': True}])
+            self.assertEqual(
+                calls,
+                [{'continue_mode': True}],
+            )
 
             calls.clear()
             FakeDialog.result = FakeDialog.RUN
             MainWindow.run_imgtrans(owner)
-            self.assertEqual(calls, [{}])
+            self.assertEqual(calls, [{'pages_to_process': ['page-2']}])
 
             calls.clear()
             FakeDialog.result = FakeDialog.RENDER
@@ -331,7 +558,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertTrue(dialog.render_without_text_style_update.isChecked())
 
         dialog.workflow_selector.setCurrentIndex(0)
-        self.assertEqual(pcfg.run_pipeline_mode, 'automation')
+        self.assertEqual(pcfg.run_pipeline_mode, 'pipeline')
         dialog.render_without_text_style_update.setChecked(False)
         self.assertFalse(pcfg.render_without_text_style_update)
         dialog.close()
@@ -343,6 +570,165 @@ class RunPipelineDialogTests(unittest.TestCase):
         restored = ProgramConfig(**json.loads(json_dump_program_config(config)))
         self.assertEqual(restored.run_pipeline_mode, 'rendering')
         self.assertTrue(restored.render_without_text_style_update)
+
+        pcfg.run_pipeline_mode = 'automation'
+        dialog = RunPipelineDialog()
+        self.assertEqual(dialog.workflow_selector.currentText(), 'Pipeline')
+        self.assertEqual(pcfg.run_pipeline_mode, 'automation')
+        dialog.close()
+
+    def test_fresh_run_only_resets_and_dispatches_selected_pages(self):
+        pcfg.module.set_stage_enabled(3, False)
+        project = ProjImgTrans()
+        project.pages = {
+            '001.png': [TextBlock(text=['first'])],
+            '002.png': [TextBlock(text=['second'])],
+            '003.png': [TextBlock(text=['third'])],
+        }
+        project._image_info = {
+            '001.png': {'finish_code': RunStatus.FIN_ALL},
+            '002.png': {'finish_code': RunStatus.FIN_ALL},
+            '003.png': {'finish_code': RunStatus.FIN_ALL},
+        }
+        calls = []
+        owner = SimpleNamespace(
+            backup_blkstyles=[],
+            _run_imgtrans_wo_textstyle_update=False,
+            _render_only=False,
+            _render_global_format=None,
+            textPanel=SimpleNamespace(
+                formatpanel=SimpleNamespace(global_format=FontFormat())
+            ),
+            bottomBar=SimpleNamespace(
+                textblockChecker=SimpleNamespace(isChecked=lambda: False)
+            ),
+            postprocess_mt_toggle=True,
+            imgtrans_proj=project,
+            st_manager=SimpleNamespace(updateTextBlkList=lambda: None),
+            module_manager=SimpleNamespace(
+                runImgtransPipeline=lambda *args, **kwargs: calls.append(
+                    (args, kwargs)
+                )
+            ),
+        )
+
+        MainWindow.on_run_imgtrans(owner, pages_to_process=['002.png'])
+
+        self.assertEqual(
+            {page: info['finish_code'] for page, info in project._image_info.items()},
+            {
+                '001.png': RunStatus.FIN_ALL,
+                '002.png': 0,
+                '003.png': RunStatus.FIN_ALL,
+            },
+        )
+        self.assertEqual(len(project.pages['001.png']), 1)
+        self.assertEqual(project.pages['002.png'], [])
+        self.assertEqual(len(project.pages['003.png']), 1)
+        self.assertEqual(calls, [((['002.png'],), {'render_only': False})])
+
+        pcfg.module.set_stage_enabled(0, False)
+        project._image_info['002.png']['finish_code'] = RunStatus.FIN_ALL
+        project.pages['002.png'] = [TextBlock(text=['second'])]
+        owner.backup_blkstyles.clear()
+        calls.clear()
+
+        MainWindow.on_run_imgtrans(owner, pages_to_process=['002.png'])
+
+        self.assertEqual(
+            project._image_info['002.png']['finish_code'],
+            RunStatus.FIN_DET | RunStatus.FIN_INPAINT,
+        )
+        self.assertEqual(calls, [((['002.png'],), {'render_only': False})])
+
+    def test_continue_dispatches_all_unfinished_pages_ignoring_selected_range(self):
+        pcfg.module.set_stage_enabled(0, False)
+        project = SimpleNamespace(
+            pages={
+                '001.png': [TextBlock()],
+                '002.png': [TextBlock()],
+                '003.png': [TextBlock()],
+            },
+            get_page_progress=lambda page: page == '002.png',
+        )
+        calls = []
+        owner = SimpleNamespace(
+            backup_blkstyles=[],
+            _run_imgtrans_wo_textstyle_update=False,
+            _render_only=False,
+            _render_global_format=None,
+            textPanel=SimpleNamespace(
+                formatpanel=SimpleNamespace(global_format=FontFormat())
+            ),
+            bottomBar=SimpleNamespace(
+                textblockChecker=SimpleNamespace(isChecked=lambda: False)
+            ),
+            postprocess_mt_toggle=True,
+            imgtrans_proj=project,
+            st_manager=SimpleNamespace(updateTextBlkList=lambda: None),
+            module_manager=SimpleNamespace(
+                runImgtransPipeline=lambda *args, **kwargs: calls.append(
+                    (args, kwargs)
+                )
+            ),
+        )
+
+        MainWindow.on_run_imgtrans(
+            owner,
+            continue_mode=True,
+            pages_to_process=['002.png', '003.png'],
+        )
+
+        self.assertEqual(len(project.pages['002.png']), 1)
+        self.assertEqual(len(project.pages['003.png']), 1)
+        self.assertEqual(len(owner.backup_blkstyles), 2)
+        self.assertEqual(
+            calls,
+            [((['001.png', '003.png'],), {'render_only': False})],
+        )
+
+    def test_successful_translation_import_sets_translation_progress(self):
+        project = ProjImgTrans()
+        project.pages = {
+            '001.png': [TextBlock(), TextBlock()],
+            '002.png': [TextBlock()],
+        }
+        project._image_info = {
+            '001.png': {'finish_code': RunStatus.FIN_DET},
+            '002.png': {'finish_code': RunStatus.FIN_OCR},
+        }
+        imported_pages = [
+            {'page_name': '001.png', 'blk_list': ['one', 'two']},
+            {'page_name': '002.png', 'blk_list': ['three']},
+        ]
+
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
+            return_value=imported_pages,
+        ):
+            all_matched, _ = project.load_translation_from_txt('translation.md')
+
+        self.assertTrue(all_matched)
+        self.assertEqual(
+            project._image_info['001.png']['finish_code'],
+            RunStatus.FIN_DET | RunStatus.FIN_TRANSLATE,
+        )
+        self.assertEqual(
+            project._image_info['002.png']['finish_code'],
+            RunStatus.FIN_OCR | RunStatus.FIN_TRANSLATE,
+        )
+
+        project._image_info['001.png']['finish_code'] = 0
+        project._image_info['002.png']['finish_code'] = 0
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
+            return_value=imported_pages[:1],
+        ):
+            all_matched, _ = project.load_translation_from_txt('partial.md')
+
+        self.assertFalse(all_matched)
+        self.assertEqual(project._image_info['001.png']['finish_code'], 0)
+        self.assertEqual(project._image_info['002.png']['finish_code'], 0)
 
     def test_render_only_snapshots_complete_global_format(self):
         global_format = FontFormat(
@@ -481,7 +867,7 @@ class RunPipelineDialogTests(unittest.TestCase):
                 emit=lambda: finished.append(True)
             ),
             _prepare_modules_then=lambda *args, **kwargs: self.fail(
-                'Rendering must not prepare automation modules'
+                'Rendering must not prepare pipeline modules'
             ),
         )
 

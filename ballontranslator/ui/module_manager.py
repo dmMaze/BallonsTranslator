@@ -1197,7 +1197,6 @@ class ModuleManager(QObject):
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
 
         self.prepare_msgbox = ProgressMessageBox(self.tr('Preparing module: '), True, parent_widget)
-        self.prepare_msgbox.setStyleSheet(imgtrans_progress_msgbox.styleSheet())
         self.prepare_msgbox.stop_clicked.connect(self.cancelModulePreparation)
 
         for module_thread in [self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread]:
@@ -1227,8 +1226,6 @@ class ModuleManager(QObject):
         translator_panel.addModulesParamWidgets(translator_params, cfg_module.translator)
         translator_panel.translator_changed.connect(self.selectTranslator)
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
-        translator_panel.translateByTextblockBox.checker_changed.connect(self.on_translatebyblock_checker_changed)
-        translator_panel.translateByTextblockBox.checker.setChecked(cfg_module.translate_by_textblock)
 
         from ballontranslator.modules.translators.hooks import chs2cht
         BaseTranslator.register_preprocess_hooks({'keyword_sub': translate_preprocess})
@@ -1240,8 +1237,6 @@ class ModuleManager(QObject):
         inpainter_panel.addModulesParamWidgets(inpainter_params, cfg_module.inpainter)
         inpainter_panel.paramwidget_edited.connect(self.on_inpainterparam_edited)
         inpainter_panel.inpainter_changed.connect(self.selectInpainter)
-        inpainter_panel.needInpaintChecker.checker_changed.connect(self.on_inpainter_checker_changed)
-        inpainter_panel.needInpaintChecker.checker.setChecked(cfg_module.check_need_inpaint)
 
         self.textdetect_panel = textdetector_panel = config_panel.detect_config_panel
         textdetector_params = merge_config_module_params(
@@ -1854,8 +1849,19 @@ class ModuleManager(QObject):
         if (render_only or cfg_module.all_stages_disabled()) and \
                 self.imgtrans_proj is not None and self.imgtrans_proj.num_pages > 0:
             # Rendering reuses the normal page-finished path without preparing
-            # or running any automation module.
-            for ii in range(self.imgtrans_proj.num_pages):
+            # or running any pipeline module.
+            page_indexes = range(self.imgtrans_proj.num_pages)
+            if not render_only and pages_to_process is not None:
+                page_index_by_name = {
+                    page_name: index
+                    for index, page_name in enumerate(self.imgtrans_proj.pages)
+                }
+                page_indexes = (
+                    page_index_by_name[page_name]
+                    for page_name in pages_to_process
+                    if page_name in page_index_by_name
+                )
+            for ii in page_indexes:
                 self.page_trans_finished.emit(ii)
             self.imgtrans_pipeline_finished.emit()
             return
@@ -2167,11 +2173,3 @@ class ModuleManager(QObject):
             if self.inpaint_thread.inpainting:
                 self.run_canvas_inpaint = False
                 self.inpaint_thread.terminate()
-
-    def on_inpainter_checker_changed(self, is_checked: bool):
-        cfg_module.check_need_inpaint = is_checked
-        InpainterBase.check_need_inpaint = is_checked
-
-    def on_translatebyblock_checker_changed(self, is_checked: bool):
-        cfg_module.translate_by_textblock = is_checked
-        BaseTranslator.translate_by_textblock = is_checked

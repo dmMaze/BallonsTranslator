@@ -227,10 +227,13 @@ class ProjImgTrans:
         return (fin_code & pcfg.module.finish_code) == pcfg.module.finish_code
 
     def set_page_progress(self, pagename, code):
-        self._image_info[pagename]['finish_code'] = code 
+        self._image_info[pagename]['finish_code'] = code
+
+    def clear_page_progress(self, pagename, code):
+        self._image_info[pagename]['finish_code'] &= ~code
 
     def update_page_progress(self, pagename, code):
-        self._image_info[pagename]['finish_code'] |= code 
+        self._image_info[pagename]['finish_code'] |= code
 
     def load_translation_from_txt(self, file_path: str):
         page_list = parse_txt_translation(file_path)
@@ -263,8 +266,20 @@ class ProjImgTrans:
                 if page_name not in matched_pages:
                     missing_pages.append(page_name)
         
-        all_matched = len(missing_pages) == 0 and len(unmatched_pages) == 0 and len(unexpected_pages) == 0
-        return all_matched, {'missing_pages': missing_pages, 'unmatched_pages': unmatched_pages, 'unexpected_pages': unexpected_pages, 'matched_pages': matched_pages}
+        all_matched = (
+            len(missing_pages) == 0
+            and len(unmatched_pages) == 0
+            and len(unexpected_pages) == 0
+        )
+        if all_matched:
+            for page_name in matched_pages:
+                self.update_page_progress(page_name, RunStatus.FIN_TRANSLATE)
+        return all_matched, {
+            'missing_pages': missing_pages,
+            'unmatched_pages': unmatched_pages,
+            'unexpected_pages': unexpected_pages,
+            'matched_pages': matched_pages,
+        }
 
     def load_from_json(self, json_path: str):
         old_dir = self.directory
@@ -668,6 +683,3 @@ def gen_ballon_cuts(cuts_dir: str, imgpath: str, blk_list: List[TextBlock], resi
         cut_width_list.append(width)
 
     return cuts_path_list, cut_width_list
-
-
-

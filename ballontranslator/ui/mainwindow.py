@@ -18,7 +18,16 @@ from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from .misc import parse_stylesheet, set_html_family, QKEY
-from ballontranslator.utils.config import ProgramConfig, pcfg, save_config, text_styles, save_text_styles, load_textstyle_from, FontFormat
+from ballontranslator.utils.config import (
+    FontFormat,
+    ProgramConfig,
+    RunStatus,
+    load_textstyle_from,
+    pcfg,
+    save_config,
+    save_text_styles,
+    text_styles,
+)
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -27,7 +36,7 @@ from .textedit_area import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
 from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
-from .menu_style import MenuStyleFilter
+from .menu_style import install_app_style_filters
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .update_thread import UpdateCheckThread
 from .update_dialog import UpdateReleaseDialog
@@ -82,7 +91,8 @@ class MainWindow(mainwindow_cls):
         super().__init__()
 
         self.app = app
-        self.app.installEventFilter(MenuStyleFilter(self.app))
+        install_app_style_filters(self.app)
+        self.resetStyleSheet()
 
         shared.create_errdialog_in_mainthread = self.create_errdialog.emit
         self.create_errdialog.connect(self.on_create_errdialog)
@@ -110,8 +120,6 @@ class MainWindow(mainwindow_cls):
         self.setupConfig()
         self.setupShortcuts()
         self.setupRegisterWidget()
-        # Apply the final theme once while the native window is still hidden.
-        self.resetStyleSheet()
         if not shared.ON_WINDOWS:
             FramelessMoveResize.toggleMaxState(self)
         self.setAcceptDrops(True)
@@ -143,19 +151,6 @@ class MainWindow(mainwindow_cls):
                 ),
             )
 
-    def setStyleSheet(self, styleSheet: str) -> None:
-        self.imgtrans_progress_msgbox.setStyleSheet(styleSheet)
-        self.export_doc_thread.progress_bar.setStyleSheet(styleSheet)
-        self.import_doc_thread.progress_bar.setStyleSheet(styleSheet)
-        if hasattr(self, 'update_progress_msgbox'):
-            self.update_progress_msgbox.setStyleSheet(styleSheet)
-        if hasattr(self, 'configPanel'):
-            self.configPanel.setStyleSheet(styleSheet)
-        if hasattr(self, 'module_manager') and self.module_manager.prepare_msgbox is not None:
-            # The prepare dialog is created after startup; keep it on the app theme.
-            self.module_manager.prepare_msgbox.setStyleSheet(styleSheet)
-        return super().setStyleSheet(styleSheet)
-
     def setupThread(self):
         self.imsave_thread = ImgSaveThread()
         self.export_doc_thread = ExportDocThread()
@@ -171,15 +166,23 @@ class MainWindow(mainwindow_cls):
 
     def resetStyleSheet(self):
         theme = 'eva-dark' if pcfg.darkmode else 'eva-light'
-        self.setStyleSheet(parse_stylesheet(theme))
+        application_stylesheet = parse_stylesheet(theme)
+        if self.styleSheet() != application_stylesheet:
+            self.setStyleSheet(application_stylesheet)
 
     def setupUi(self):
         screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
         self.configPanel = ConfigPanel(self)
-        self.configPanel.trans_config_panel.show_pre_MT_keyword_window.connect(self.show_pre_MT_keyword_window)
-        self.configPanel.trans_config_panel.show_MT_keyword_window.connect(self.show_MT_keyword_window)
-        self.configPanel.trans_config_panel.show_OCR_keyword_window.connect(self.show_OCR_keyword_window)
+        self.configPanel.trans_config_panel.show_pre_MT_keyword_window.connect(
+            self.show_pre_MT_keyword_window
+        )
+        self.configPanel.trans_config_panel.show_MT_keyword_window.connect(
+            self.show_MT_keyword_window
+        )
+        self.configPanel.trans_config_panel.show_OCR_keyword_window.connect(
+            self.show_OCR_keyword_window
+        )
 
         self.leftBar = LeftBar(self)
         self.leftBar.showPageListLabel.clicked.connect(self.pageLabelStateChanged)
@@ -299,7 +302,7 @@ class MainWindow(mainwindow_cls):
         self.comicTransSplitter.setStretchFactor(0, 1)
         self.comicTransSplitter.setStretchFactor(1, 10)
         self.comicTransSplitter.setStretchFactor(2, 1)
-        self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
+        self.imgtrans_progress_msgbox = ImgtransProgressMessageBox(self)
     def on_finish_settranslator(self):
         module_manager = self.module_manager
         translator = module_manager.translator
@@ -426,8 +429,6 @@ class MainWindow(mainwindow_cls):
         for idx, action in enumerate(self.titleBar.moduleVisibilityActions):
             self._set_module_tool_visibility(idx, action.isChecked())
 
-        self.configPanel.trans_config_panel.target_combobox.currentTextChanged.connect(self.on_trans_tgt_changed)
-        self.configPanel.trans_config_panel.source_combobox.currentTextChanged.connect(self.on_trans_src_changed)
         self.configPanel.trans_config_panel.llm_profile_changed.connect(self.on_llm_profile_changed)
         self.configPanel.trans_config_panel.llm_profile_config_clicked.connect(self.focus_llm_profile)
         self.configPanel.llm_profiles_panel.profile_ui_updated.connect(self.on_llm_profile_ui_updated)
@@ -1408,36 +1409,28 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.ocr_selector.updateButtonText()
         self.bottomBar.inpaint_selector.updateButtonText()
 
-    def on_trans_src_changed(self):
+    def on_trans_src_changed(self, text: str = None):
         sender = self.sender()
-        text = sender.currentText()
+        if text is None:
+            text = sender.currentText()
         translator = self.module_manager.translator
         if translator is not None and translator.name == pcfg.module.translator:
             translator.set_source(text)
         pcfg.module.translate_source = text
-        combobox = self.configPanel.trans_config_panel.source_combobox
-        if sender != combobox:
-            combobox.blockSignals(True)
-            combobox.setCurrentText(text)
-            combobox.blockSignals(False)
         combobox = self.bottomBar.trans_selector.src_selector
         if sender != combobox:
             combobox.blockSignals(True)
             combobox.setCurrentText(text)
             combobox.blockSignals(False)
 
-    def on_trans_tgt_changed(self):
+    def on_trans_tgt_changed(self, text: str = None):
         sender = self.sender()
-        text = sender.currentText()
+        if text is None:
+            text = sender.currentText()
         translator = self.module_manager.translator
         if translator is not None and translator.name == pcfg.module.translator:
             translator.set_target(text)
         pcfg.module.translate_target = text
-        combobox = self.configPanel.trans_config_panel.target_combobox
-        if sender != combobox:
-            combobox.blockSignals(True)
-            combobox.setCurrentText(text)
-            combobox.blockSignals(False)
         combobox = self.bottomBar.trans_selector.tgt_selector
         if sender != combobox:
             combobox.blockSignals(True)
@@ -1679,7 +1672,13 @@ class MainWindow(mainwindow_cls):
             self.set_display_lang(lang)
     
     def run_imgtrans(self):
-        dialog = RunPipelineDialog(self)
+        dialog = RunPipelineDialog(
+            self,
+            project=self.imgtrans_proj,
+            translator_metadata=self.module_manager.translator_metadata(),
+        )
+        dialog.translate_source_changed.connect(self.on_trans_src_changed)
+        dialog.translate_target_changed.connect(self.on_trans_tgt_changed)
         result = dialog.exec_()
         if result == RunPipelineDialog.CONTINUE:
             self._run_imgtrans_wo_textstyle_update = False
@@ -1694,9 +1693,14 @@ class MainWindow(mainwindow_cls):
         if result != RunPipelineDialog.RUN:
             return
         self._run_imgtrans_wo_textstyle_update = False
-        self.on_run_imgtrans()
+        self.on_run_imgtrans(pages_to_process=dialog.selected_pages())
 
-    def on_run_imgtrans(self, continue_mode=False, render_only=False):
+    def on_run_imgtrans(
+        self,
+        continue_mode=False,
+        render_only=False,
+        pages_to_process=None,
+    ):
         self.backup_blkstyles.clear()
         self._render_only = render_only
         self._render_global_format = (
@@ -1717,51 +1721,67 @@ class MainWindow(mainwindow_cls):
             enable_detect or enable_ocr or enable_translate or enable_inpaint
         )
         
-        pages_to_process = []
-        
-        # 继续模式：先检查哪些页面需要处理
+        all_page_names = list(self.imgtrans_proj.pages)
+        # Continue always scans the whole project; the dialog range applies only
+        # to a fresh run.
+        has_explicit_range = pages_to_process is not None and not continue_mode
+        requested_pages = (
+            all_page_names
+            if not has_explicit_range
+            else [
+                page
+                for page in pages_to_process
+                if page in self.imgtrans_proj.pages
+            ]
+        )
+        if has_explicit_range and not requested_pages and not render_only:
+            return
+
+        pipeline_pages = None
         if continue_mode:
-            for page_name in self.imgtrans_proj.pages:
-                if not self.imgtrans_proj.get_page_progress(page_name):
-                    pages_to_process.append(page_name)
-            if len(pages_to_process) == 0:
+            pipeline_pages = [
+                page_name
+                for page_name in requested_pages
+                if not self.imgtrans_proj.get_page_progress(page_name)
+            ]
+            if not pipeline_pages:
                 return
+            requested_pages = pipeline_pages
         elif not render_only:
-            for page_name in self.imgtrans_proj.pages:
-                self.imgtrans_proj.set_page_progress(page_name, 0)
-        
+            progress_mask = (
+                RunStatus.FIN_ALL
+                if enable_detect
+                else pcfg.module.finish_code
+            )
+            for page_name in requested_pages:
+                self.imgtrans_proj.clear_page_progress(
+                    page_name,
+                    progress_mask,
+                )
+            if has_explicit_range:
+                pipeline_pages = requested_pages
+
         if enable_detect:
-            for page in self.imgtrans_proj.pages:
-                if not pcfg.module.keep_exist_textlines:
-                    if not pages_to_process:
-                        # 没有指定pages_to_process，清空所有页面
-                        self.imgtrans_proj.pages[page].clear()
+            for page in requested_pages:
+                if not pcfg.module.keep_exist_textlines and not continue_mode:
+                    self.imgtrans_proj.pages[page].clear()
         else:
             self.st_manager.updateTextBlkList()
-            textblk: TextBlock = None
-            for page_name, blklist in self.imgtrans_proj.pages.items():
-                # 如果指定了pages_to_process，跳过不需要处理的页面
-                if pages_to_process and page_name not in pages_to_process:
-                    continue
-                    
+            for page_name in requested_pages:
+                blklist = self.imgtrans_proj.pages[page_name]
                 ffmt_list = []
                 self.backup_blkstyles.append(ffmt_list)
                 for textblk in blklist:
-                    if not enable_detect:
-                        ffmt_list.append(textblk.fontformat.deepcopy())
-                    # 继续模式且没有指定pages_to_process时：跳过已有文本的文本块
-                    if continue_mode and not pages_to_process and textblk.text and len(textblk.text) > 0:
-                        continue
+                    ffmt_list.append(textblk.fontformat.deepcopy())
                     if enable_ocr:
                         textblk.text = []
                         textblk.set_font_colors((0, 0, 0), (0, 0, 0))
                     if enable_translate or (all_disabled and not self._run_imgtrans_wo_textstyle_update) or enable_ocr:
                         textblk.rich_text = ''
                     textblk.vertical = textblk.src_is_vertical
-        
-        # 如果有指定pages_to_process或者是continue_mode，则传递页面列表
+
         self.module_manager.runImgtransPipeline(
-            pages_to_process if (pages_to_process or continue_mode) else None,
+            pipeline_pages,
             render_only=render_only,
         )
 

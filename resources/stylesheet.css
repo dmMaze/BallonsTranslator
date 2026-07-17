@@ -33,11 +33,11 @@ ConfigTable {
     padding: 6px;
 }
 
-QWidget#ConfigPanel[nativeFrame="true"] {
+QWidget#ConfigPanel[opaqueFrame="true"] {
     background-color: @widgetBackgroundColor;
 }
 
-QWidget#ConfigPanel[nativeFrame="false"] {
+QWidget#ConfigPanel[opaqueFrame="false"] {
     background-color: transparent;
 }
 
@@ -214,6 +214,25 @@ QWidget#ConfigContentScrollContent QWidget#ConfigInlineRow {
     background-color: @emptyContentBackgroundColor;
 }
 
+QWidget#ConfigContentScrollContent QWidget#PipelineModuleOptions {
+    background-color: @emptyContentBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QWidget#PipelineModuleHeader {
+    background-color: @emptyContentBackgroundColor;
+    border-left: 3px solid transparent;
+    border-radius: 4px;
+}
+
+QWidget#ConfigContentScrollContent QWidget#PipelineModuleHeader[jumpHighlighted="true"] {
+    background-color: rgba(30, 147, 229, 28);
+    border-left: 3px solid rgb(30, 147, 229);
+}
+
+QWidget#ConfigContentScrollContent QCheckBox#PipelineModuleActionCheckBox {
+    font-size: 13px;
+}
+
 QWidget#ConfigContentScrollContent QLabel#ParamFieldLabel,
 QWidget#ConfigContentScrollContent QLabel#ParamLabelAboveLabel,
 QWidget#ConfigContentScrollContent QCheckBox {
@@ -328,6 +347,25 @@ QComboBox::down-arrow {
     width: 11px;
     height: 11px;
     padding-right: 13px;
+}
+
+QComboBox QAbstractItemView {
+    border: 1px solid @borderColor;
+    border-radius: 0px;
+    outline: 0px;
+    selection-background-color: rgba(30, 147, 229, 51);
+    selection-color: @qwidgetForegroundColor;
+}
+
+QComboBox QAbstractItemView::item {
+    border: none;
+    border-radius: 0px;
+}
+
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected {
+    background-color: rgba(30, 147, 229, 51);
+    color: @qwidgetForegroundColor;
 }
 
 QFontComboBox#FontFamilyBox {
@@ -703,8 +741,8 @@ QComboBox#RunPipelineWorkflowSelector::drop-down {
 
 QDockWidget#RunPipelineContentDock,
 QStackedWidget#RunPipelineContentStack,
-QWidget#RunPipelineAutomationPage,
-QWidget#RunPipelineAutomationPage QLabel,
+QWidget#RunPipelinePipelinePage,
+QWidget#RunPipelinePipelinePage QLabel,
 QWidget#RunPipelineRenderingPage,
 QWidget#RunPipelineRenderingPage QLabel,
 QWidget#RunPipelineRenderingSetting {
@@ -764,15 +802,99 @@ QFrame#RunPipelineStages QLabel#RunPipelineModuleLabel[moduleActive="false"] {
     color: @borderColor;
 }
 
-QToolButton#RunPipelineSettingsHeader {
+QWidget#RunPipelineSettingsSection,
+QWidget#RunPipelineModuleSettingsBody,
+QWidget#RunPipelineSettingsBody,
+QWidget#RunPipelinePageRangeProgress,
+QWidget#RunPipelineGeneralSettingRow {
+    background-color: @widgetBackgroundColor;
+}
+
+QToolButton#RunPipelineModuleSettingsHeader {
     min-height: 20px;
     padding: 0px;
     color: @qwidgetForegroundColor;
     background-color: transparent;
     border: none;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 500;
     text-align: left;
+}
+
+QToolButton#RunPipelineModuleSettingsHeader:hover {
+    background-color: rgba(30, 147, 229, 20%);
+    border-radius: 4px;
+}
+
+QLabel#RunPipelineSettingLabel {
+    color: @qwidgetForegroundColor;
+    font-size: 12px;
+}
+
+QComboBox#RunPipelineSourceComboBox,
+QComboBox#RunPipelineTargetComboBox,
+QComboBox#RunPipelineContextComboBox {
+    min-height: 24px;
+    font-size: 13px;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 4px;
+    padding-left: 6px;
+}
+
+QComboBox#RunPipelineSourceComboBox:hover,
+QComboBox#RunPipelineSourceComboBox:focus,
+QComboBox#RunPipelineTargetComboBox:hover,
+QComboBox#RunPipelineTargetComboBox:focus,
+QComboBox#RunPipelineContextComboBox:hover,
+QComboBox#RunPipelineContextComboBox:focus {
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QComboBox#RunPipelineSourceComboBox::drop-down,
+QComboBox#RunPipelineTargetComboBox::drop-down,
+QComboBox#RunPipelineContextComboBox::drop-down {
+    border: none;
+}
+
+QWidget#RunPipelineSettingsSection QPushButton {
+    min-height: 26px;
+    border-radius: 4px;
+}
+
+QWidget#RunPipelineSettingsSection QCheckBox {
+    font-size: 13px;
+}
+
+QSpinBox#RunPipelineRangeStart,
+QSpinBox#RunPipelineRangeEnd {
+    min-height: 24px;
+    max-height: 24px;
+    padding-left: 8px;
+    padding-right: 36px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    font-size: 12px;
+}
+
+QSpinBox#RunPipelineRangeStart:hover,
+QSpinBox#RunPipelineRangeStart:focus,
+QSpinBox#RunPipelineRangeEnd:hover,
+QSpinBox#RunPipelineRangeEnd:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QSpinBox#RunPipelineRangeStart::up-button,
+QSpinBox#RunPipelineRangeStart::down-button,
+QSpinBox#RunPipelineRangeEnd::up-button,
+QSpinBox#RunPipelineRangeEnd::down-button {
+    width: 0px;
+    height: 0px;
+    border: none;
 }
 
 QPushButton#RunPipelinePrimaryButton,
@@ -898,6 +1020,7 @@ AlignmentChecker::indicator {
     height: 28px;
     width: 28px;
     border: 2px solid @borderColor;
+    border-radius: 0px;
 }
 
 AlignmentChecker::indicator:checked {
@@ -956,6 +1079,7 @@ QFontChecker::indicator {
     width: 30px;
     height: 30px;
     border: 2px solid rgba(30, 147, 229, 0);
+    border-radius: 0px;
 }
 
 QFontChecker::indicator::hover {
@@ -1064,6 +1188,13 @@ QMenu::indicator:checked {
 
 QMenu::item:selected {
     background-color: rgba(30, 147, 229, 20%);
+}
+
+QMenu::right-arrow {
+    image: url(resources/icons/chevron-right.svg);
+    width: 12px;
+    height: 12px;
+    right: 7px;
 }
 
 QDialog {
@@ -1206,7 +1337,7 @@ QToolButton#BottomBarModuleToolButton:open {
 }
 
 QToolButton#BottomBarModuleToolButton::menu-indicator {
-    image: url(resources/icons/combobox_arrow.svg);
+    image: none;
     width: 11px;
     height: 11px;
     subcontrol-origin: padding;
@@ -1304,11 +1435,6 @@ OpenBtn::menu-indicator {
     width: 0px;
 }
 
-QToolBar#OpenBtnToolBar {
-    border: none;
-    padding: 0px;
-}
-
 OpenBtn::hover {
     image: url(resources/icons/openbtn_activate.svg);
 }
@@ -1317,12 +1443,9 @@ OpenBtn::pressed {
     image: url(resources/icons/openbtn_activate.svg);
 }
 
-QProgressBar {
-    background-color: @emptyContentBackgroundColor;
+TaskProgressBar QProgressBar {
     width: 450px;
-    height: 45px;
     max-width: 450px;
-    max-height: 45px;
 }
 
 QCheckBox#ShowPageListChecker::indicator{

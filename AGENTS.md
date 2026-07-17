@@ -69,6 +69,8 @@ Important areas:
 - For checkbox styling, do not add broad `QCheckBox::indicator` rules. Scope normal config checkboxes with object names, and leave icon-based checkboxes such as toolbar, titlebar, alignment, font, and leftbar checkers under their existing rules.
 - Remember that `QListWidget` check indicators are item-view indicators, not child `QCheckBox` widgets. Style `QListWidget::indicator`, selected, hover, and disabled item states separately, and verify selected items stay readable in both light and dark themes.
 - Match widget structure before fighting fonts or spacing. If two checkbox rows need to align, use the same construction pattern, for example a bare checkbox plus `ParamNameLabel`, rather than mixing `QCheckBox(text=...)` with a separate label.
+- Render runtime chevrons and other manually painted SVG pixmaps through `ballontranslator/ui/icon_rendering.py`.
+- Do not change a widget's style machinery while handling `QEvent.Polish`, `QEvent.StyleChange`, or `QEvent.Paint`: avoid `setStyle()`, `setStyleSheet()`, explicit `polish()`/`unpolish()`, `ensurePolished()`, and item-delegate replacement in those callbacks. These operations can re-enter Qt's native style code and crash on platform-specific bindings. Prefer scoped stylesheet subcontrols such as `QMenu::right-arrow` and `QComboBox::down-arrow`, construction-time setup, or idempotent setup from safe show/input events before painting.
 - For UI-heavy changes, run at least `python -m py_compile` on touched Python files, `git diff --check`, and an offscreen Qt smoke check when practical. State when visual polish still needs a real themed-app pass.
 
 ## Qt Event Filter Rules
