@@ -302,7 +302,7 @@ class MainWindow(mainwindow_cls):
         self.comicTransSplitter.setStretchFactor(0, 1)
         self.comicTransSplitter.setStretchFactor(1, 10)
         self.comicTransSplitter.setStretchFactor(2, 1)
-        self.imgtrans_progress_msgbox = ImgtransProgressMessageBox()
+        self.imgtrans_progress_msgbox = ImgtransProgressMessageBox(self)
     def on_finish_settranslator(self):
         module_manager = self.module_manager
         translator = module_manager.translator

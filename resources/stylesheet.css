@@ -1444,11 +1444,8 @@ OpenBtn::pressed {
 }
 
 TaskProgressBar QProgressBar {
-    background-color: @emptyContentBackgroundColor;
     width: 450px;
-    height: 45px;
     max-width: 450px;
-    max-height: 45px;
 }
 
 QCheckBox#ShowPageListChecker::indicator{
