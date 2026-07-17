@@ -141,7 +141,7 @@ class InpainterBase(BaseModule):
             mask = filter_mask_by_bboxes(mask, textblock_list)
         
         if not self.inpaint_by_block or textblock_list is None:
-            if pcfg.module.check_need_inpaint:
+            if check_need_inpaint:
                 ballon_msk, non_text_msk = extract_ballon_mask(img_rgb, mask)
                 if ballon_msk is not None:
                     non_text_region = np.where(non_text_msk > 0)

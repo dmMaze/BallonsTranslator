@@ -1,4 +1,4 @@
-from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QSize, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QSize, Qt, Signal
 from qtpy.QtGui import QIcon, QMouseEvent, QPainter, QPalette, QPen
 from qtpy.QtWidgets import (
     QAbstractButton,
@@ -35,11 +35,11 @@ from .llm_modality import (
 )
 from .page_range_progress import PageRangeProgressWidget
 from .custom_widget import ExpandingToolButton
-from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.config import pcfg, TranslateContext
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
-RUN_PIPELINE_DIALOG_WIDTH = 460
+RUN_PIPELINE_DIALOG_WIDTH = 510
 
 
 def _pipeline_text(source: str) -> str:
@@ -193,13 +193,21 @@ class RunPipelineDialog(QDialog):
     RUN = 1
     CONTINUE = 2
     RENDER = 3
+    translate_source_changed = Signal(str)
+    translate_target_changed = Signal(str)
     RESIZE_BORDER_WIDTH = 5
-    _settings_expanded = False
+    _module_settings_expanded = (False, False, False, False)
     _page_range = (1, None)
 
-    def __init__(self, parent: QWidget = None, project: ProjImgTrans = None):
+    def __init__(
+        self,
+        parent: QWidget = None,
+        project: ProjImgTrans = None,
+        translator_metadata: dict = None,
+    ):
         super().__init__(parent)
         self.project = project
+        self.translator_metadata = translator_metadata or {}
         self._app_event_filter_installed = False
         self.setObjectName('RunPipelineDialog')
         self.setWindowTitle(self.tr('Run'))
@@ -446,16 +454,7 @@ class RunPipelineDialog(QDialog):
             self.module_buttons.append(button)
         layout.addWidget(stages)
 
-        self.settings_header = self._add_section_divider(
-            layout,
-            self.tr('Settings'),
-            folded=True,
-            show_line=False,
-        )
-        self.settings_header.setCheckable(True)
-        self.settings_header.setChecked(type(self)._settings_expanded)
-        self.settings_header.setIconSize(QSize(12, 12))
-        self._refresh_settings_chevron(type(self)._settings_expanded)
+        self._add_section_divider(layout, self.tr('Settings'))
 
         self.settings_body = QWidget(page)
         self.settings_body.setObjectName('RunPipelineSettingsBody')
@@ -463,28 +462,33 @@ class RunPipelineDialog(QDialog):
         settings_layout.setContentsMargins(16, 0, 16, 0)
         settings_layout.setSpacing(10)
         self.settings_sections = {}
+        self.module_settings_headers = {}
+        self.module_settings_bodies = {}
         general_section, general_layout = self._add_settings_section(
             settings_layout,
             'general',
             show_header=False,
         )
         self._build_general_settings(general_section, general_layout)
-        for index, title in enumerate(
-            (
-                self.tr('Text Detection'),
-                self.tr('OCR'),
-                self.tr('Inpainting'),
-                self.tr('Translation'),
+        layout.addWidget(self.settings_body)
+
+        section_specs = (
+            (self.tr('Text Detection'), self._build_detector_settings),
+            (self.tr('OCR'), self._build_ocr_settings),
+            (self.tr('Inpainting'), self._build_inpainting_settings),
+            (self.tr('Translation'), self._build_translation_settings),
+        )
+        for index, (title, builder) in enumerate(section_specs):
+            section, section_body, section_layout = self._add_settings_section(
+                layout,
+                index,
+                title,
             )
-        ):
-            section, _ = self._add_settings_section(settings_layout, index, title)
+            builder(section_body, section_layout)
             section.setVisible(
                 self.module_buttons[index].isChecked()
-                and self._settings_section_has_content(section)
+                and self._settings_section_has_content(section_body)
             )
-        self.settings_body.setVisible(type(self)._settings_expanded)
-        layout.addWidget(self.settings_body)
-        self.settings_header.toggled.connect(self._set_settings_expanded)
         return page
 
     def _build_general_settings(self, section: QWidget, layout: QVBoxLayout):
@@ -503,6 +507,146 @@ class RunPipelineDialog(QDialog):
         )
         layout.addWidget(self.page_range_progress)
         self._refresh_progress()
+
+    def _add_checkbox_setting(
+        self,
+        parent: QWidget,
+        layout: QVBoxLayout,
+        object_name: str,
+        text: str,
+        checked: bool,
+        on_toggled,
+    ) -> QCheckBox:
+        checkbox = QCheckBox(text, parent)
+        checkbox.setObjectName(object_name)
+        checkbox.setChecked(checked)
+        checkbox.toggled.connect(on_toggled)
+        layout.addWidget(checkbox)
+        return checkbox
+
+    def _build_detector_settings(self, section: QWidget, layout: QVBoxLayout):
+        self.keep_existing_lines = self._add_checkbox_setting(
+            section,
+            layout,
+            'RunPipelineKeepExistingLines',
+            self.tr('Keep Existing Lines'),
+            pcfg.module.keep_exist_textlines,
+            lambda checked: setattr(pcfg.module, 'keep_exist_textlines', checked),
+        )
+
+    def _build_ocr_settings(self, section: QWidget, layout: QVBoxLayout):
+        self.remove_empty_textblocks = self._add_checkbox_setting(
+            section,
+            layout,
+            'RunPipelineRemoveEmptyTextblocks',
+            self.tr('Remove empty textblocks'),
+            pcfg.restore_ocr_empty,
+            lambda checked: setattr(pcfg, 'restore_ocr_empty', checked),
+        )
+        self.font_detection = self._add_checkbox_setting(
+            section,
+            layout,
+            'RunPipelineFontDetection',
+            self.tr('Font Detection'),
+            pcfg.module.ocr_font_detect,
+            lambda checked: setattr(pcfg.module, 'ocr_font_detect', checked),
+        )
+
+    def _build_inpainting_settings(self, section: QWidget, layout: QVBoxLayout):
+        self.skip_simple_cases = self._add_checkbox_setting(
+            section,
+            layout,
+            'RunPipelineSkipSimpleCases',
+            self.tr('Skip simple cases'),
+            pcfg.module.check_need_inpaint,
+            lambda checked: setattr(pcfg.module, 'check_need_inpaint', checked),
+        )
+        self.filter_mask_by_text_boxes = self._add_checkbox_setting(
+            section,
+            layout,
+            'RunPipelineFilterMaskByTextBoxes',
+            self.tr('Filter mask by text boxes'),
+            pcfg.module.filter_mask_by_bboxes,
+            lambda checked: setattr(pcfg.module, 'filter_mask_by_bboxes', checked),
+        )
+
+    def _translation_options(self, key: str, current: str):
+        options = list(self.translator_metadata.get(key, ()))
+        if current and current not in options:
+            options.append(current)
+        return options
+
+    def _build_translation_settings(self, section: QWidget, layout: QVBoxLayout):
+        language_row = QWidget(section)
+        language_row.setObjectName('RunPipelineGeneralSettingRow')
+        language_layout = QHBoxLayout(language_row)
+        language_layout.setContentsMargins(0, 0, 0, 0)
+        language_layout.setSpacing(8)
+
+        source_label = QLabel(self.tr('Source'), language_row)
+        source_label.setObjectName('RunPipelineSettingLabel')
+        language_layout.addWidget(source_label)
+        self.source_combobox = QComboBox(language_row)
+        self.source_combobox.setObjectName('RunPipelineSourceComboBox')
+        self.source_combobox.addItems(self._translation_options(
+            'supported_src_list',
+            pcfg.module.translate_source,
+        ))
+        self.source_combobox.setCurrentText(pcfg.module.translate_source)
+        language_layout.addWidget(self.source_combobox, 1)
+
+        target_label = QLabel(self.tr('Target'), language_row)
+        target_label.setObjectName('RunPipelineSettingLabel')
+        language_layout.addWidget(target_label)
+        self.target_combobox = QComboBox(language_row)
+        self.target_combobox.setObjectName('RunPipelineTargetComboBox')
+        self.target_combobox.addItems(self._translation_options(
+            'supported_tgt_list',
+            pcfg.module.translate_target,
+        ))
+        self.target_combobox.setCurrentText(pcfg.module.translate_target)
+        language_layout.addWidget(self.target_combobox, 1)
+        layout.addWidget(language_row)
+
+        context_row = QWidget(section)
+        context_row.setObjectName('RunPipelineGeneralSettingRow')
+        context_layout = QHBoxLayout(context_row)
+        context_layout.setContentsMargins(0, 0, 0, 0)
+        context_layout.setSpacing(8)
+        context_label = QLabel(self.tr('Context'), context_row)
+        context_label.setObjectName('RunPipelineSettingLabel')
+        context_layout.addWidget(context_label)
+        self.context_combobox = QComboBox(context_row)
+        self.context_combobox.setObjectName('RunPipelineContextComboBox')
+        self.context_combobox.addItem(self.tr('textblock'), TranslateContext.TextBlock)
+        self.context_combobox.addItem(self.tr('page'), TranslateContext.Page)
+        context_index = self.context_combobox.findData(pcfg.module.translate_context)
+        self.context_combobox.setCurrentIndex(max(context_index, 0))
+        context_layout.addWidget(self.context_combobox)
+        context_layout.addStretch()
+        layout.addWidget(context_row)
+
+        self.source_combobox.currentTextChanged.connect(
+            self._on_translate_source_changed
+        )
+        self.target_combobox.currentTextChanged.connect(
+            self._on_translate_target_changed
+        )
+        self.context_combobox.currentIndexChanged.connect(
+            self._on_translate_context_changed
+        )
+
+    def _on_translate_source_changed(self, source: str):
+        pcfg.module.translate_source = source
+        self.translate_source_changed.emit(source)
+
+    def _on_translate_target_changed(self, target: str):
+        pcfg.module.translate_target = target
+        self.translate_target_changed.emit(target)
+
+    def _on_translate_context_changed(self):
+        context = self.context_combobox.currentData()
+        pcfg.module.translate_context = context
 
     def _add_settings_section(
         self,
@@ -523,31 +667,41 @@ class RunPipelineDialog(QDialog):
         section_layout.setSpacing(6)
 
         if show_header:
-            title_label = QLabel(title, section)
-            title_label.setObjectName('RunPipelineSettingsSectionTitle')
-            title_lines = [QFrame(section), QFrame(section)]
-            for title_line in title_lines:
-                title_line.setObjectName('RunPipelineSettingsSectionLine')
-                title_line.setFrameShape(QFrame.Shape.HLine)
-                title_line.setFrameShadow(QFrame.Shadow.Plain)
-                title_line.setFixedHeight(1)
-                title_line.setSizePolicy(
-                    QSizePolicy.Policy.Expanding,
-                    QSizePolicy.Policy.Fixed,
+            expanded = type(self)._module_settings_expanded[key]
+            header = self._create_expanding_header(
+                section,
+                title,
+                'RunPipelineModuleSettingsHeader',
+                expanded,
+            )
+            section_layout.addWidget(header)
+            body = QWidget(section)
+            body.setObjectName('RunPipelineModuleSettingsBody')
+            body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            body_layout = QVBoxLayout(body)
+            body_layout.setContentsMargins(18, 0, 0, 0)
+            body_layout.setSpacing(6)
+            section_layout.addWidget(body)
+            body.setVisible(header.isChecked())
+            self.module_settings_headers[key] = header
+            self.module_settings_bodies[key] = body
+            header.toggled.connect(
+                lambda expanded, key=key, header=header, body=body:
+                self._set_module_settings_expanded(
+                    key,
+                    header,
+                    body,
+                    expanded,
                 )
-            header = QWidget(section)
-            header.setObjectName('RunPipelineSettingsSectionHeader')
-            header.setFixedWidth(240)
-            header_layout = QHBoxLayout(header)
-            header_layout.setContentsMargins(0, 8, 0, 8)
-            header_layout.setSpacing(0)
-            header_layout.addWidget(title_lines[0], 1, Qt.AlignmentFlag.AlignVCenter)
-            header_layout.addWidget(title_label, 0, Qt.AlignmentFlag.AlignCenter)
-            header_layout.addWidget(title_lines[1], 1, Qt.AlignmentFlag.AlignVCenter)
-            section_layout.addWidget(header, 0, Qt.AlignmentFlag.AlignHCenter)
+            )
+        else:
+            body = section
+            body_layout = section_layout
         self.settings_sections[key] = section
         layout.addWidget(section)
-        return section, section_layout
+        if show_header:
+            return section, body, body_layout
+        return section, body_layout
 
     def _project_page_names(self):
         pages = getattr(self.project, 'pages', None)
@@ -564,7 +718,7 @@ class RunPipelineDialog(QDialog):
 
     @staticmethod
     def _settings_section_has_content(section: QWidget) -> bool:
-        return section.layout().count() > 1
+        return section.layout().count() > 0
 
     def _on_stage_toggled(
         self,
@@ -574,18 +728,31 @@ class RunPipelineDialog(QDialog):
     ):
         pcfg.module.set_stage_enabled(stage_index, checked)
         section = self.settings_sections.get(section_index)
+        section_body = self.module_settings_bodies.get(section_index)
         if section is not None:
             section.setVisible(
-                checked and self._settings_section_has_content(section)
+                checked
+                and section_body is not None
+                and self._settings_section_has_content(section_body)
             )
         self._refresh_progress()
-        if self.settings_body.isVisible():
-            self._fit_to_current_workflow()
+        self._fit_to_current_workflow()
 
-    def _set_settings_expanded(self, expanded: bool):
-        type(self)._settings_expanded = expanded
-        self._refresh_settings_chevron(expanded)
-        self.settings_body.setVisible(expanded)
+    def _set_module_settings_expanded(
+        self,
+        key: int,
+        header: ExpandingToolButton,
+        body: QWidget,
+        expanded: bool,
+    ):
+        states = list(type(self)._module_settings_expanded)
+        states[key] = expanded
+        type(self)._module_settings_expanded = tuple(states)
+        self._refresh_expanding_header_chevron(header, expanded)
+        body.setVisible(expanded)
+        section = body.parentWidget()
+        section.layout().invalidate()
+        section.updateGeometry()
         self._fit_to_current_workflow()
 
     def _fit_to_current_workflow(self):
@@ -608,7 +775,29 @@ class RunPipelineDialog(QDialog):
         self.resize(self.width(), target_height)
         self.setMinimumHeight(target_height)
 
-    def _refresh_settings_chevron(self, expanded: bool):
+    def _create_expanding_header(
+        self,
+        parent: QWidget,
+        text: str,
+        object_name: str,
+        expanded: bool = False,
+    ) -> ExpandingToolButton:
+        header = ExpandingToolButton(parent)
+        header.setObjectName(object_name)
+        button_style = getattr(Qt, 'ToolButtonStyle', Qt)
+        header.setToolButtonStyle(button_style.ToolButtonTextBesideIcon)
+        header.setText('\u2009' + text)
+        header.setCheckable(True)
+        header.setChecked(expanded)
+        header.setIconSize(QSize(12, 12))
+        self._refresh_expanding_header_chevron(header, expanded)
+        return header
+
+    def _refresh_expanding_header_chevron(
+        self,
+        header: ExpandingToolButton,
+        expanded: bool,
+    ):
         icon_name = 'chevron-down.svg' if expanded else 'chevron-right.svg'
         pixmap = render_svg_pixmap(
             themed_icon_path(icon_name),
@@ -616,14 +805,18 @@ class RunPipelineDialog(QDialog):
             12,
             self.devicePixelRatioF(),
         )
-        self.settings_header.setIcon(QIcon(pixmap))
+        header.setIcon(QIcon(pixmap))
 
     def changeEvent(self, event):
         if (
             event.type() in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange)
-            and hasattr(self, 'settings_header')
+            and hasattr(self, 'module_settings_headers')
         ):
-            self._refresh_settings_chevron(self.settings_header.isChecked())
+            for header in self.module_settings_headers.values():
+                self._refresh_expanding_header_chevron(
+                    header,
+                    header.isChecked(),
+                )
         return super().changeEvent(event)
 
     def _refresh_progress(self):
@@ -685,27 +878,19 @@ class RunPipelineDialog(QDialog):
         self,
         layout: QVBoxLayout,
         text: str,
-        folded: bool = False,
         show_line: bool = True,
     ):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
 
-        if folded:
-            title = ExpandingToolButton(self)
-            title.setObjectName('RunPipelineSettingsHeader')
-            button_style = getattr(Qt, 'ToolButtonStyle', Qt)
-            title.setToolButtonStyle(button_style.ToolButtonTextBesideIcon)
-            title.setText('\u2009' + text)
-        else:
-            title = QLabel(text, self)
-            title.setObjectName('RunPipelineSectionTitle')
-        row.addWidget(title, 1 if folded else 0)
+        title = QLabel(text, self)
+        title.setObjectName('RunPipelineSectionTitle')
+        row.addWidget(title)
 
-        if not folded and not show_line:
+        if not show_line:
             row.addStretch(1)
-        elif not folded:
+        else:
             line = QFrame(self)
             line.setObjectName('RunPipelineSectionLine')
             frame_shape = getattr(QFrame, 'Shape', QFrame)

@@ -3,7 +3,13 @@ from typing import Callable
 from ballontranslator.modules import GET_VALID_INPAINTERS, GET_VALID_TEXTDETECTORS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from ballontranslator.utils.logger import logger as LOGGER
 from .custom_widget import ConfigComboBox, ParamComboBox, NoBorderPushBtn, ParamNameLabel
-from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, size2width, CONFIG_COMBOBOX_HEIGHT
+from ballontranslator.utils.shared import (
+    CONFIG_COMBOBOX_HEIGHT,
+    CONFIG_COMBOBOX_LONG,
+    CONFIG_CONTENT_ROW_SPACING,
+    CONFIG_MODULE_PARAM_BODY_MIN_WIDTH,
+    size2width,
+)
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY
 from .module_param_i18n import (
@@ -292,21 +298,35 @@ class ParamPushButton(QPushButton):
 class ParamWidget(QWidget):
 
     paramwidget_edited = Signal(str, dict)
-    def __init__(self, params, scrollWidget: QWidget = None, module_type: str = '', module_key: str = '', *args, **kwargs) -> None:
+    def __init__(
+        self,
+        params,
+        scrollWidget: QWidget = None,
+        module_type: str = '',
+        module_key: str = '',
+        body_min_width: int = 0,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.module_type = module_type
         self.module_key = module_key
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
         layout = QHBoxLayout(self)
-        layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.param_layout = param_layout = QGridLayout()
         self.param_widgets = {}
         self.param_rows = {}
-        param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         param_layout.setContentsMargins(0, 0, 0, 0)
-        param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        layout.addLayout(param_layout)
-        layout.addStretch(-1)
+        param_layout.setVerticalSpacing(CONFIG_CONTENT_ROW_SPACING)
+        if body_min_width > 0:
+            self.setMinimumWidth(body_min_width)
+            param_layout.setColumnStretch(1, 1)
+            layout.addLayout(param_layout, 1)
+        else:
+            param_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            layout.addLayout(param_layout)
+            layout.addStretch(-1)
 
         module_description = tr_module_description(params, module_type, module_key)
         if module_description:
@@ -412,11 +432,12 @@ class ParamWidget(QWidget):
                 set_label_tooltip_from_widget(param_label, param_widget)
                 row_layout.addWidget(param_label, 0, Qt.AlignmentFlag.AlignLeft)
                 row_layout.addWidget(param_widget, 0, Qt.AlignmentFlag.AlignLeft)
-                param_layout.addWidget(row_widget, ii, 0, 1, 2)
+                column_span = 3 if body_min_width > 0 else 2
+                param_layout.addWidget(row_widget, ii, 0, 1, column_span)
                 self.param_rows[param_key] = [row_widget]
                 continue
 
-            widget_idx = 0
+            widget_idx = 2 if body_min_width > 0 else 0
             row_widgets = []
             if require_label:
                 param_label = ParamNameLabel(display_param_name)
@@ -425,7 +446,7 @@ class ParamWidget(QWidget):
                     set_label_tooltip_from_widget(param_label, param_widget)
                 param_layout.addWidget(param_label, ii, 0)
                 row_widgets.append(param_label)
-                widget_idx = 1
+                widget_idx = 2 if body_min_width > 0 else 1
             if param_widget is not None:
                 self.param_widgets[param_key] = param_widget
                 row_widgets.append(param_widget)
@@ -440,9 +461,19 @@ class ParamWidget(QWidget):
                     pw_lo.addWidget(param_widget.path_select_btn)
                     param_widget.pathbtn_clicked.connect(self.on_pathbtn_clicked)
                 if pw_lo is None:
-                    param_layout.addWidget(param_widget, ii, widget_idx)
+                    param_layout.addWidget(
+                        param_widget,
+                        ii,
+                        widget_idx,
+                        Qt.AlignmentFlag.AlignLeft,
+                    )
                 else:
-                    param_layout.addLayout(pw_lo, ii, widget_idx)
+                    param_layout.addLayout(
+                        pw_lo,
+                        ii,
+                        widget_idx,
+                        Qt.AlignmentFlag.AlignLeft,
+                    )
                 self.param_rows[param_key] = row_widgets
             else:
                 v = params[param_key]
@@ -493,7 +524,15 @@ class ModuleConfigParseWidget(QWidget):
         self.params_layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
         self.params_layout.setContentsMargins(0, 0, 0, 0)
 
-        p_layout = QHBoxLayout()
+        self.header_widget = QWidget(self)
+        self.header_widget.setObjectName('PipelineModuleHeader')
+        self.header_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.header_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        p_layout = QHBoxLayout(self.header_widget)
+        p_layout.setContentsMargins(0, 4, 6, 4)
         p_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.module_label = ParamNameLabel(module_name)
         p_layout.addWidget(self.module_label)
@@ -502,16 +541,26 @@ class ModuleConfigParseWidget(QWidget):
         self.p_layout = p_layout
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
         self.param_widget_map = {}
-        layout.addLayout(p_layout) 
+        layout.addWidget(self.header_widget)
         layout.addLayout(self.params_layout)
-        layout.setSpacing(14)
+        layout.setSpacing(CONFIG_CONTENT_ROW_SPACING)
         self.vlayout = layout
-        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
         self.visibleWidget: QWidget = None
         self.module_dict: dict = {}
+
+    def setJumpHighlighted(self, highlighted: bool):
+        if self.header_widget.property('jumpHighlighted') == highlighted:
+            return
+        self.header_widget.setProperty('jumpHighlighted', highlighted)
+        style = self.header_widget.style()
+        style.unpolish(self.header_widget)
+        style.polish(self.header_widget)
+        self.header_widget.update()
 
     def addModulesParamWidgets(self, module_dict: dict, selected_module: str = None):
         invalid_module_keys = []
@@ -564,7 +613,13 @@ class ModuleConfigParseWidget(QWidget):
             if widget is None:
                 # Build parameter widgets only for the selected manifest entry.
                 params = self.module_dict[module]
-                widget = ParamWidget(params, scrollWidget=self, module_type=self.module_type, module_key=module)
+                widget = ParamWidget(
+                    params,
+                    scrollWidget=self,
+                    module_type=self.module_type,
+                    module_key=module,
+                    body_min_width=CONFIG_MODULE_PARAM_BODY_MIN_WIDTH,
+                )
                 widget.paramwidget_edited.connect(self.paramwidget_edited)
                 self.param_widget_map[module] = widget
                 self.params_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -589,27 +644,6 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         super().__init__(module_name, GET_VALID_TRANSLATORS, scrollWidget, *args, module_type='translator', **kwargs)
         self.translator_changed = self.module_changed
     
-        self.source_combobox = ConfigComboBox(scrollWidget=scrollWidget)
-        self.target_combobox = ConfigComboBox(scrollWidget=scrollWidget)
-        self.replacePreMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation source text"), self)
-        self.replacePreMTkeywordBtn.clicked.connect(self.show_pre_MT_keyword_window)
-        self.replacePreMTkeywordBtn.setFixedWidth(420)
-        self.replaceMTkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for machine translation"), self)
-        self.replaceMTkeywordBtn.clicked.connect(self.show_MT_keyword_window)
-        self.replaceMTkeywordBtn.setFixedWidth(420)
-        self.replaceOCRkeywordBtn = NoBorderPushBtn(self.tr("Keyword substitution for source text"), self)
-        self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
-        self.replaceOCRkeywordBtn.setFixedWidth(420)
-        self.translateByTextblockBox = ParamCheckerBox(self.tr('Translate each text block individually'))
-
-        st_layout = QHBoxLayout()
-        st_layout.setSpacing(15)
-        st_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        st_layout.addWidget(ParamNameLabel(self.tr('Source')))
-        st_layout.addWidget(self.source_combobox)
-        st_layout.addWidget(ParamNameLabel(self.tr('Target')))
-        st_layout.addWidget(self.target_combobox)
-
         self.llm_profile_combobox = ConfigComboBox(scrollWidget=scrollWidget)
         self.llm_profile_config_btn = NoBorderPushBtn(self.tr('Config'), self)
         self.llm_profile_config_btn.clicked.connect(self.on_llm_profile_config_clicked)
@@ -623,9 +657,27 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
         self.llm_profile_layout.addStretch(-1)
         self.llm_profile_combobox.currentIndexChanged.connect(self.on_llm_profile_changed)
         
-        self.vlayout.insertLayout(1, st_layout) 
-        self.vlayout.insertLayout(2, self.llm_profile_layout)
-        self.vlayout.addWidget(self.translateByTextblockBox)
+        self.vlayout.insertLayout(1, self.llm_profile_layout)
+        self.replaceOCRkeywordBtn = NoBorderPushBtn(
+            self.tr('Keyword substitution for source text'),
+            self,
+        )
+        self.replaceOCRkeywordBtn.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
+        self.replacePreMTkeywordBtn = NoBorderPushBtn(
+            self.tr('Keyword substitution for machine translation source text'),
+            self,
+        )
+        self.replacePreMTkeywordBtn.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.replacePreMTkeywordBtn.clicked.connect(
+            self.show_pre_MT_keyword_window
+        )
+        self.replaceMTkeywordBtn = NoBorderPushBtn(
+            self.tr('Keyword substitution for machine translation'),
+            self,
+        )
+        self.replaceMTkeywordBtn.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.replaceMTkeywordBtn.clicked.connect(self.show_MT_keyword_window)
         self.vlayout.addWidget(self.replaceOCRkeywordBtn)
         self.vlayout.addWidget(self.replacePreMTkeywordBtn)
         self.vlayout.addWidget(self.replaceMTkeywordBtn)
@@ -658,29 +710,14 @@ class TranslatorConfigPanel(ModuleConfigParseWidget):
 
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
         refresh_params = self.module_combobox.currentText() != name or self.visibleWidget is None
-        self.source_combobox.blockSignals(True)
-        self.target_combobox.blockSignals(True)
         self.module_combobox.blockSignals(True)
-
-        self.source_combobox.clear()
-        self.target_combobox.clear()
-
-        self.source_combobox.addItems(supported_src_list)
-        self.target_combobox.addItems(supported_tgt_list)
         self.module_combobox.setCurrentText(name)
-        self.source_combobox.setCurrentText(lang_source)
-        self.target_combobox.setCurrentText(lang_target)
         if refresh_params:
             self.updateModuleParamWidget()
-        self.source_combobox.blockSignals(False)
-        self.target_combobox.blockSignals(False)
         self.module_combobox.blockSignals(False)
         self.refreshLLMProfiles()
         self.setLLMProfileControlsVisible(name == LLM_TRANSLATOR_KEY)
 
-    # def on_translatebyblock_checker_changed(self, is_checked: bool):
-    #     pcfg.module.translate_by_textblock = is_checked
-    #     BaseTranslator.translate_by_textblock = is_checked
 
 
 class InpaintConfigPanel(ModuleConfigParseWidget):
@@ -688,12 +725,6 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         super().__init__(module_name, GET_VALID_INPAINTERS, scrollWidget, *args, module_type='inpainter', **kwargs)
         self.inpainter_changed = self.module_changed
         self.setInpainter = self.setModule
-        self.needInpaintChecker = QCheckBox(self.tr('Skip simple cases'))
-        self.needInpaintChecker.clicked.connect(self.on_inpainter_checker_changed)
-        self.vlayout.insertWidget(1, self.needInpaintChecker)
-        self.filter_mask_by_bboxes_checker = QCheckBox(self.tr('Filter mask by text boxes'))
-        self.filter_mask_by_bboxes_checker.clicked.connect(self.on_filter_mask_checker_changed)
-        self.vlayout.insertWidget(2, self.filter_mask_by_bboxes_checker)
 
     def showEvent(self, e) -> None:
         self.p_layout.insertWidget(1, self.module_combobox)
@@ -703,21 +734,11 @@ class InpaintConfigPanel(ModuleConfigParseWidget):
         self.p_layout.removeWidget(self.module_combobox)
         return super().hideEvent(e)
 
-    def on_inpainter_checker_changed(self):
-        pcfg.module.check_need_inpaint = self.needInpaintChecker.isChecked()
-
-    def on_filter_mask_checker_changed(self):
-        pcfg.module.filter_mask_by_bboxes = self.filter_mask_by_bboxes_checker.isChecked()
-
-
 class TextDetectConfigPanel(ModuleConfigParseWidget):
     def __init__(self, module_name: str, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(module_name, GET_VALID_TEXTDETECTORS, scrollWidget, *args, module_type='textdetector', **kwargs)
         self.detector_changed = self.module_changed
         self.setDetector = self.setModule
-        self.keep_existing_checker = QCheckBox(text=self.tr('Keep Existing Lines'))
-        self.keep_existing_checker.setObjectName('ConfigCheckBox')
-        self.vlayout.insertWidget(1, self.keep_existing_checker)
         
 
 class OCRConfigPanel(ModuleConfigParseWidget):
@@ -725,19 +746,3 @@ class OCRConfigPanel(ModuleConfigParseWidget):
         super().__init__(module_name, GET_VALID_OCR, scrollWidget, *args, module_type='ocr', **kwargs)
         self.ocr_changed = self.module_changed
         self.setOCR = self.setModule
-        self.restoreEmptyOCRChecker = QCheckBox(self.tr("Remove empty textblocks"), self)
-        self.restoreEmptyOCRChecker.setObjectName('ConfigCheckBox')
-        self.restoreEmptyOCRChecker.clicked.connect(self.on_restore_empty_ocr)
-        self.vlayout.insertWidget(1, self.restoreEmptyOCRChecker)
-        # 字体检测选项
-        self.fontDetectChecker = QCheckBox(self.tr("Font Detection"), self)
-        self.fontDetectChecker.setObjectName('ConfigCheckBox')
-        self.fontDetectChecker.setChecked(pcfg.module.ocr_font_detect)
-        self.fontDetectChecker.clicked.connect(self.on_fontdetect_changed)
-        self.vlayout.insertWidget(2, self.fontDetectChecker)
-
-    def on_restore_empty_ocr(self):
-        pcfg.restore_ocr_empty = self.restoreEmptyOCRChecker.isChecked()
-
-    def on_fontdetect_changed(self):
-        pcfg.module.ocr_font_detect = self.fontDetectChecker.isChecked()

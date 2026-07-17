@@ -214,6 +214,25 @@ QWidget#ConfigContentScrollContent QWidget#ConfigInlineRow {
     background-color: @emptyContentBackgroundColor;
 }
 
+QWidget#ConfigContentScrollContent QWidget#PipelineModuleOptions {
+    background-color: @emptyContentBackgroundColor;
+}
+
+QWidget#ConfigContentScrollContent QWidget#PipelineModuleHeader {
+    background-color: @emptyContentBackgroundColor;
+    border-left: 3px solid transparent;
+    border-radius: 4px;
+}
+
+QWidget#ConfigContentScrollContent QWidget#PipelineModuleHeader[jumpHighlighted="true"] {
+    background-color: rgba(30, 147, 229, 28);
+    border-left: 3px solid rgb(30, 147, 229);
+}
+
+QWidget#ConfigContentScrollContent QCheckBox#PipelineModuleActionCheckBox {
+    font-size: 13px;
+}
+
 QWidget#ConfigContentScrollContent QLabel#ParamFieldLabel,
 QWidget#ConfigContentScrollContent QLabel#ParamLabelAboveLabel,
 QWidget#ConfigContentScrollContent QCheckBox {
@@ -784,38 +803,25 @@ QFrame#RunPipelineStages QLabel#RunPipelineModuleLabel[moduleActive="false"] {
 }
 
 QWidget#RunPipelineSettingsSection,
-QWidget#RunPipelineSettingsSectionHeader,
+QWidget#RunPipelineModuleSettingsBody,
 QWidget#RunPipelineSettingsBody,
 QWidget#RunPipelinePageRangeProgress,
 QWidget#RunPipelineGeneralSettingRow {
     background-color: @widgetBackgroundColor;
 }
 
-QLabel#RunPipelineSettingsSectionTitle {
-    color: @qwidgetForegroundColor;
-    font-size: 11px;
-    font-weight: 500;
-    padding: 0px 6px;
-}
-
-QFrame#RunPipelineSettingsSectionLine {
-    border: none;
-    border-top: 1px solid @borderColor;
-    background-color: transparent;
-}
-
-QToolButton#RunPipelineSettingsHeader {
+QToolButton#RunPipelineModuleSettingsHeader {
     min-height: 20px;
     padding: 0px;
     color: @qwidgetForegroundColor;
     background-color: transparent;
     border: none;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 500;
     text-align: left;
 }
 
-QToolButton#RunPipelineSettingsHeader:hover {
+QToolButton#RunPipelineModuleSettingsHeader:hover {
     background-color: rgba(30, 147, 229, 20%);
     border-radius: 4px;
 }
@@ -823,6 +829,41 @@ QToolButton#RunPipelineSettingsHeader:hover {
 QLabel#RunPipelineSettingLabel {
     color: @qwidgetForegroundColor;
     font-size: 12px;
+}
+
+QComboBox#RunPipelineSourceComboBox,
+QComboBox#RunPipelineTargetComboBox,
+QComboBox#RunPipelineContextComboBox {
+    min-height: 24px;
+    font-size: 13px;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 4px;
+    padding-left: 6px;
+}
+
+QComboBox#RunPipelineSourceComboBox:hover,
+QComboBox#RunPipelineSourceComboBox:focus,
+QComboBox#RunPipelineTargetComboBox:hover,
+QComboBox#RunPipelineTargetComboBox:focus,
+QComboBox#RunPipelineContextComboBox:hover,
+QComboBox#RunPipelineContextComboBox:focus {
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QComboBox#RunPipelineSourceComboBox::drop-down,
+QComboBox#RunPipelineTargetComboBox::drop-down,
+QComboBox#RunPipelineContextComboBox::drop-down {
+    border: none;
+}
+
+QWidget#RunPipelineSettingsSection QPushButton {
+    min-height: 26px;
+    border-radius: 4px;
+}
+
+QWidget#RunPipelineSettingsSection QCheckBox {
+    font-size: 13px;
 }
 
 QSpinBox#RunPipelineRangeStart,

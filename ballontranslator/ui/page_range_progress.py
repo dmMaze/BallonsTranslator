@@ -130,6 +130,7 @@ class PageProgressRangeBar(QWidget):
     TRACK_Y = 18
     HANDLE_RADIUS = 7
     TRACK_SIDE_MARGIN = 0
+    HEIGHT = 40
 
     def __init__(self, page_names, parent=None):
         super().__init__(parent)
@@ -141,7 +142,7 @@ class PageProgressRangeBar(QWidget):
         self._active_handle = ''
         self._hover_handle_index = -1
         self.setMouseTracking(True)
-        self.setFixedHeight(52)
+        self.setFixedHeight(self.HEIGHT)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -156,7 +157,7 @@ class PageProgressRangeBar(QWidget):
         return sum(self.finished_pages)
 
     def sizeHint(self):
-        return QSize(280, 52)
+        return QSize(280, self.HEIGHT)
 
     def set_finished_pages(self, finished_pages):
         finished = [bool(value) for value in finished_pages]

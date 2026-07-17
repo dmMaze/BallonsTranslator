@@ -174,9 +174,15 @@ class MainWindow(mainwindow_cls):
         screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
         self.configPanel = ConfigPanel(self)
-        self.configPanel.trans_config_panel.show_pre_MT_keyword_window.connect(self.show_pre_MT_keyword_window)
-        self.configPanel.trans_config_panel.show_MT_keyword_window.connect(self.show_MT_keyword_window)
-        self.configPanel.trans_config_panel.show_OCR_keyword_window.connect(self.show_OCR_keyword_window)
+        self.configPanel.trans_config_panel.show_pre_MT_keyword_window.connect(
+            self.show_pre_MT_keyword_window
+        )
+        self.configPanel.trans_config_panel.show_MT_keyword_window.connect(
+            self.show_MT_keyword_window
+        )
+        self.configPanel.trans_config_panel.show_OCR_keyword_window.connect(
+            self.show_OCR_keyword_window
+        )
 
         self.leftBar = LeftBar(self)
         self.leftBar.showPageListLabel.clicked.connect(self.pageLabelStateChanged)
@@ -423,8 +429,6 @@ class MainWindow(mainwindow_cls):
         for idx, action in enumerate(self.titleBar.moduleVisibilityActions):
             self._set_module_tool_visibility(idx, action.isChecked())
 
-        self.configPanel.trans_config_panel.target_combobox.currentTextChanged.connect(self.on_trans_tgt_changed)
-        self.configPanel.trans_config_panel.source_combobox.currentTextChanged.connect(self.on_trans_src_changed)
         self.configPanel.trans_config_panel.llm_profile_changed.connect(self.on_llm_profile_changed)
         self.configPanel.trans_config_panel.llm_profile_config_clicked.connect(self.focus_llm_profile)
         self.configPanel.llm_profiles_panel.profile_ui_updated.connect(self.on_llm_profile_ui_updated)
@@ -1405,36 +1409,28 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.ocr_selector.updateButtonText()
         self.bottomBar.inpaint_selector.updateButtonText()
 
-    def on_trans_src_changed(self):
+    def on_trans_src_changed(self, text: str = None):
         sender = self.sender()
-        text = sender.currentText()
+        if text is None:
+            text = sender.currentText()
         translator = self.module_manager.translator
         if translator is not None and translator.name == pcfg.module.translator:
             translator.set_source(text)
         pcfg.module.translate_source = text
-        combobox = self.configPanel.trans_config_panel.source_combobox
-        if sender != combobox:
-            combobox.blockSignals(True)
-            combobox.setCurrentText(text)
-            combobox.blockSignals(False)
         combobox = self.bottomBar.trans_selector.src_selector
         if sender != combobox:
             combobox.blockSignals(True)
             combobox.setCurrentText(text)
             combobox.blockSignals(False)
 
-    def on_trans_tgt_changed(self):
+    def on_trans_tgt_changed(self, text: str = None):
         sender = self.sender()
-        text = sender.currentText()
+        if text is None:
+            text = sender.currentText()
         translator = self.module_manager.translator
         if translator is not None and translator.name == pcfg.module.translator:
             translator.set_target(text)
         pcfg.module.translate_target = text
-        combobox = self.configPanel.trans_config_panel.target_combobox
-        if sender != combobox:
-            combobox.blockSignals(True)
-            combobox.setCurrentText(text)
-            combobox.blockSignals(False)
         combobox = self.bottomBar.trans_selector.tgt_selector
         if sender != combobox:
             combobox.blockSignals(True)
@@ -1676,7 +1672,13 @@ class MainWindow(mainwindow_cls):
             self.set_display_lang(lang)
     
     def run_imgtrans(self):
-        dialog = RunPipelineDialog(self, project=self.imgtrans_proj)
+        dialog = RunPipelineDialog(
+            self,
+            project=self.imgtrans_proj,
+            translator_metadata=self.module_manager.translator_metadata(),
+        )
+        dialog.translate_source_changed.connect(self.on_trans_src_changed)
+        dialog.translate_target_changed.connect(self.on_trans_tgt_changed)
         result = dialog.exec_()
         if result == RunPipelineDialog.CONTINUE:
             self._run_imgtrans_wo_textstyle_update = False

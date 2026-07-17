@@ -19,6 +19,18 @@ class RunStatus:
     FIN_ALL = 15
 
 
+class TranslateContext:
+    """Canonical translation grouping values stored in module config.
+
+    >>> TranslateContext.Page
+    'page'
+    """
+
+    TextBlock = 'textblock'
+    Page = 'page'
+    Valid = (TextBlock, Page)
+
+
 @nested_dataclass
 class ModuleConfig(Config):
     textdetector: str = 'ctd'
@@ -43,7 +55,7 @@ class ModuleConfig(Config):
     inpainter_params: Dict = field(default_factory=lambda: dict())
     translate_source: str = '日本語'
     translate_target: str = '简体中文'
-    translate_by_textblock: bool = False
+    translate_context: str = TranslateContext.Page
 
     check_need_inpaint: bool = True
     empty_runcache: bool = False
@@ -124,6 +136,8 @@ class ModuleConfig(Config):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
 
     def __post_init__(self):
+        if self.translate_context not in TranslateContext.Valid:
+            self.translate_context = TranslateContext.Page
         if not self.llm_profiles:
             self.llm_profiles = default_profiles()
         else:
@@ -245,6 +259,13 @@ class ProgramConfig(Config):
 
         if 'module' in config_dict:
             module_cfg = config_dict['module']
+            if 'translate_context' not in module_cfg and 'translate_by_textblock' in module_cfg:
+                module_cfg['translate_context'] = (
+                    TranslateContext.TextBlock
+                    if module_cfg['translate_by_textblock']
+                    else TranslateContext.Page
+                )
+            module_cfg.pop('translate_by_textblock', None)
             if module_cfg.get('textdetector') == 'rtdetr_v2':
                 module_cfg['textdetector'] = 'ctbd'
             if 'textdetector_params' in module_cfg:

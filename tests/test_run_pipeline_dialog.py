@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDockWidget,
+    QFrame,
     QLabel,
     QMainWindow,
     QSpinBox,
@@ -23,6 +24,12 @@ from qtpy.QtWidgets import (
 from ballontranslator.ui.run_pipeline_dialog import (
     PipelineModuleButton,
     RunPipelineDialog,
+)
+from ballontranslator.ui.configpanel import ConfigPanel
+from ballontranslator.ui.llm_profile_widgets import ProfileDetailsWidget
+from ballontranslator.ui.module_parse_widgets import (
+    TextDetectConfigPanel,
+    TranslatorConfigPanel,
 )
 from ballontranslator.ui.page_range_progress import PageRangeProgressWidget
 from ballontranslator.ui.mainwindow import MainWindow
@@ -36,7 +43,9 @@ from ballontranslator.utils.config import (
 )
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.shared import CONFIG_MODULE_PARAM_BODY_MIN_WIDTH
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.modules import GET_VALID_TEXTDETECTORS
 
 
 def get_app():
@@ -53,14 +62,31 @@ class RunPipelineDialogTests(unittest.TestCase):
         cls.app = get_app()
 
     def setUp(self):
-        self._settings_expanded = RunPipelineDialog._settings_expanded
+        self._module_settings_expanded = (
+            RunPipelineDialog._module_settings_expanded
+        )
         self._page_range = RunPipelineDialog._page_range
-        RunPipelineDialog._settings_expanded = False
+        RunPipelineDialog._module_settings_expanded = (
+            False,
+            False,
+            False,
+            False,
+        )
         RunPipelineDialog._page_range = (1, None)
         self._stage_states = [pcfg.module.stage_enabled(idx) for idx in range(4)]
         self._pipeline_mode = pcfg.run_pipeline_mode
         self._render_without_text_style_update = (
             pcfg.render_without_text_style_update
+        )
+        self._pipeline_general_settings = (
+            pcfg.module.keep_exist_textlines,
+            pcfg.restore_ocr_empty,
+            pcfg.module.ocr_font_detect,
+            pcfg.module.check_need_inpaint,
+            pcfg.module.filter_mask_by_bboxes,
+            pcfg.module.translate_source,
+            pcfg.module.translate_target,
+            pcfg.module.translate_context,
         )
         self._visibility_states = (
             pcfg.show_textdetector_tool,
@@ -78,7 +104,9 @@ class RunPipelineDialogTests(unittest.TestCase):
         pcfg.render_without_text_style_update = False
 
     def tearDown(self):
-        RunPipelineDialog._settings_expanded = self._settings_expanded
+        RunPipelineDialog._module_settings_expanded = (
+            self._module_settings_expanded
+        )
         RunPipelineDialog._page_range = self._page_range
         for idx, enabled in enumerate(self._stage_states):
             pcfg.module.set_stage_enabled(idx, enabled)
@@ -92,6 +120,16 @@ class RunPipelineDialogTests(unittest.TestCase):
         pcfg.render_without_text_style_update = (
             self._render_without_text_style_update
         )
+        (
+            pcfg.module.keep_exist_textlines,
+            pcfg.restore_ocr_empty,
+            pcfg.module.ocr_font_detect,
+            pcfg.module.check_need_inpaint,
+            pcfg.module.filter_mask_by_bboxes,
+            pcfg.module.translate_source,
+            pcfg.module.translate_target,
+            pcfg.module.translate_context,
+        ) = self._pipeline_general_settings
 
     def test_dialog_initializes_pipeline_controls(self):
         project = SimpleNamespace(
@@ -152,31 +190,13 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertIsNotNone(dialog.findChild(QDockWidget, 'RunPipelineContentDock'))
         stack = dialog.findChild(QStackedWidget, 'RunPipelineContentStack')
         self.assertEqual(stack.currentIndex(), 0)
-        settings_header = dialog.findChild(
-            QToolButton,
-            'RunPipelineSettingsHeader',
-        )
-        self.assertIsNotNone(settings_header)
-        self.assertFalse(settings_header.isChecked())
-        self.assertTrue(dialog.settings_body.isHidden())
-        self.assertFalse(settings_header.icon().isNull())
-        collapsed_height = dialog.height()
-        settings_header.click()
         self.assertFalse(dialog.settings_body.isHidden())
-        self.assertGreater(dialog.height(), collapsed_height)
-        remembered_dialog = RunPipelineDialog(project=project)
-        self.assertTrue(remembered_dialog.settings_header.isChecked())
-        self.assertFalse(remembered_dialog.settings_body.isHidden())
-        remembered_dialog.close()
-        section_titles = {
-            label.text()
-            for label in dialog.findChildren(
-                QLabel,
-                'RunPipelineSettingsSectionTitle',
-            )
-        }
+        module_settings_headers = dialog.findChildren(
+            QToolButton,
+            'RunPipelineModuleSettingsHeader',
+        )
         self.assertEqual(
-            section_titles,
+            {header.text().strip() for header in module_settings_headers},
             {
                 'Text Detection',
                 'OCR',
@@ -184,9 +204,44 @@ class RunPipelineDialogTests(unittest.TestCase):
                 'Translation',
             },
         )
+        self.assertEqual(len(module_settings_headers), 4)
+        self.assertTrue(
+            all(not header.isChecked() for header in module_settings_headers)
+        )
         self.assertTrue(
             all(
-                dialog.settings_sections[index].isHidden()
+                not dialog.settings_body.isAncestorOf(header)
+                for header in module_settings_headers
+            )
+        )
+        self.assertFalse(
+            dialog.findChildren(QFrame, 'RunPipelineSettingsSectionLine')
+        )
+        detector_body = dialog.module_settings_bodies[0]
+        detector_header = dialog.module_settings_headers[0]
+        self.assertTrue(detector_body.isHidden())
+        collapsed_height = dialog.height()
+        detector_header.click()
+        self.assertFalse(detector_body.isHidden())
+        self.assertFalse(detector_header.isHidden())
+        self.assertGreater(dialog.height(), collapsed_height)
+        expanded_height = dialog.height()
+        remembered_dialog = RunPipelineDialog(project=project)
+        self.assertTrue(remembered_dialog.module_settings_headers[0].isChecked())
+        self.assertFalse(remembered_dialog.module_settings_bodies[0].isHidden())
+        self.assertTrue(
+            all(
+                not remembered_dialog.module_settings_headers[index].isChecked()
+                for index in range(1, 4)
+            )
+        )
+        remembered_dialog.close()
+        detector_header.click()
+        self.assertTrue(detector_body.isHidden())
+        self.assertLess(dialog.height(), expanded_height)
+        self.assertTrue(
+            all(
+                not dialog.settings_sections[index].isHidden()
                 for index in range(4)
             )
         )
@@ -197,6 +252,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(progress.finished_count, 2)
         self.assertTrue(dialog.settings_sections[3].isHidden())
         module_buttons[3].click()
+        self.assertFalse(dialog.settings_sections[3].isHidden())
 
         range_start = dialog.findChild(QSpinBox, 'RunPipelineRangeStart')
         range_end = dialog.findChild(QSpinBox, 'RunPipelineRangeEnd')
@@ -252,51 +308,52 @@ class RunPipelineDialogTests(unittest.TestCase):
         dialog.close_button.click()
         self.assertEqual(dialog.result(), dialog.Rejected)
 
-    def test_page_range_widget_syncs_drag_hover_and_spin_controls(self):
-        widget = PageRangeProgressWidget(
-            ['001.png', '002.png', '003.png', '004.png'],
-            start=2,
-            end=4,
+    def test_pipeline_general_settings_update_config_and_emit_actions(self):
+        dialog = RunPipelineDialog(translator_metadata={
+            'supported_src_list': ['Japanese', 'English'],
+            'supported_tgt_list': ['English', 'Chinese'],
+        })
+        source_changes = []
+        dialog.translate_source_changed.connect(source_changes.append)
+
+        dialog.keep_existing_lines.setChecked(
+            not pcfg.module.keep_exist_textlines
         )
-        widget.resize(400, widget.sizeHint().height())
-        widget.show()
-        self.app.processEvents()
-        bar = widget.range_bar
-        bar.set_finished_pages([True, False, True, False])
-
-        track = bar._track_rect()
-        self.assertGreater(track.left(), bar.HANDLE_RADIUS + 2)
-        self.assertAlmostEqual(bar._page_x(0), track.left())
-        self.assertAlmostEqual(bar._page_x(3), track.right())
-        selection = bar._selection_rect(track)
-        self.assertAlmostEqual(selection.left(), bar._page_x(bar.start_index))
-        self.assertAlmostEqual(selection.right(), bar._page_x(bar.end_index))
-
-        hover_pos = QPoint(int(bar._page_x(2)), bar.TRACK_Y)
-        QTest.mouseMove(bar, hover_pos)
-        self.assertEqual(bar.hover_page_index, 2)
-        self.assertEqual(bar.finished_count, 2)
-
-        start_pos = QPoint(int(bar._page_x(bar.start_index)), bar.TRACK_Y)
-        target_pos = QPoint(int(bar._page_x(2)), bar.TRACK_Y)
-        QTest.mouseMove(bar, start_pos)
-        self.assertEqual(bar._hover_handle_index, bar.start_index)
-        QTest.mousePress(bar, Qt.MouseButton.LeftButton, pos=start_pos)
-        QTest.mouseMove(bar, target_pos)
-        self.assertEqual(bar.hover_page_index, 2)
-        QTest.mouseRelease(bar, Qt.MouseButton.LeftButton, pos=target_pos)
-        self.assertEqual(widget.range_start.value(), 3)
-        self.assertEqual(widget.range_end.value(), 4)
-
-        up_rect, _ = widget.range_start._button_rects()
-        QTest.mouseClick(
-            widget.range_start,
-            Qt.MouseButton.LeftButton,
-            pos=up_rect.center(),
+        self.assertEqual(
+            pcfg.module.keep_exist_textlines,
+            dialog.keep_existing_lines.isChecked(),
         )
-        self.assertEqual(widget.range_start.value(), 4)
-        self.assertEqual(bar.start_index, 3)
-        widget.close()
+        dialog.source_combobox.setCurrentText('English')
+        self.assertEqual(pcfg.module.translate_source, 'English')
+        self.assertEqual(source_changes, ['English'])
+        context_index = dialog.context_combobox.findData('textblock')
+        dialog.context_combobox.setCurrentIndex(context_index)
+        self.assertEqual(pcfg.module.translate_context, 'textblock')
+        self.assertFalse(hasattr(dialog, 'show_MT_keyword_window'))
+        dialog.close()
+
+    def test_keyword_substitution_buttons_live_below_translator_params(self):
+        panel = TranslatorConfigPanel('Translator')
+        actions = []
+        panel.show_OCR_keyword_window.connect(lambda: actions.append('ocr'))
+        panel.show_pre_MT_keyword_window.connect(lambda: actions.append('pre_mt'))
+        panel.show_MT_keyword_window.connect(lambda: actions.append('mt'))
+
+        params_index = next(
+            index
+            for index in range(panel.vlayout.count())
+            if panel.vlayout.itemAt(index).layout() is panel.params_layout
+        )
+        for button in (
+            panel.replaceOCRkeywordBtn,
+            panel.replacePreMTkeywordBtn,
+            panel.replaceMTkeywordBtn,
+        ):
+            self.assertGreater(panel.vlayout.indexOf(button), params_index)
+            button.click()
+        self.assertEqual(actions, ['ocr', 'pre_mt', 'mt'])
+        panel.close()
+
 
     def test_dialog_uses_platform_move_resize_backend(self):
         dialog = RunPipelineDialog()
@@ -372,7 +429,16 @@ class RunPipelineDialogTests(unittest.TestCase):
         owner = SimpleNamespace(
             imgtrans_proj=SimpleNamespace(is_all_pages_no_text=True),
             on_run_imgtrans=lambda **kwargs: calls.append(kwargs),
+            module_manager=SimpleNamespace(
+                translator_metadata=lambda: {},
+            ),
+            on_trans_src_changed=lambda _source: None,
+            on_trans_tgt_changed=lambda _target: None,
         )
+
+        class FakeSignal:
+            def connect(self, _slot):
+                pass
 
         class FakeDialog:
             RUN = RunPipelineDialog.RUN
@@ -382,9 +448,12 @@ class RunPipelineDialogTests(unittest.TestCase):
             preserve_style = False
             pages = ['page-2']
 
-            def __init__(self, parent, project=None):
+            def __init__(self, parent, project=None, translator_metadata=None):
                 self.parent = parent
                 self.project = project
+                self.translator_metadata = translator_metadata
+                self.translate_source_changed = FakeSignal()
+                self.translate_target_changed = FakeSignal()
                 self.render_without_text_style_update = SimpleNamespace(
                     isChecked=lambda: self.preserve_style
                 )

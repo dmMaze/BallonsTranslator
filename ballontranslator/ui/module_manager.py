@@ -1226,8 +1226,6 @@ class ModuleManager(QObject):
         translator_panel.addModulesParamWidgets(translator_params, cfg_module.translator)
         translator_panel.translator_changed.connect(self.selectTranslator)
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
-        translator_panel.translateByTextblockBox.checker_changed.connect(self.on_translatebyblock_checker_changed)
-        translator_panel.translateByTextblockBox.checker.setChecked(cfg_module.translate_by_textblock)
 
         from ballontranslator.modules.translators.hooks import chs2cht
         BaseTranslator.register_preprocess_hooks({'keyword_sub': translate_preprocess})
@@ -2175,7 +2173,3 @@ class ModuleManager(QObject):
             if self.inpaint_thread.inpainting:
                 self.run_canvas_inpaint = False
                 self.inpaint_thread.terminate()
-
-    def on_translatebyblock_checker_changed(self, is_checked: bool):
-        cfg_module.translate_by_textblock = is_checked
-        BaseTranslator.translate_by_textblock = is_checked

@@ -10,6 +10,7 @@ from ..base import BaseModule, DEVICE_SELECTOR
 from ballontranslator.utils.registry import Registry
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.utils.config import TranslateContext, pcfg
 
 
 TRANSLATORS = Registry('translators')
@@ -74,7 +75,6 @@ class BaseTranslator(BaseModule):
 
     concate_text = True
     cht_require_convert = False
-    translate_by_textblock = False
 
     _postprocess_hooks = OrderedDict()
     _preprocess_hooks = OrderedDict()
@@ -145,7 +145,11 @@ class BaseTranslator(BaseModule):
             self.load_model()
 
         is_list = isinstance(text, List)
-        concate_text = is_list and self.concate_text and not self.translate_by_textblock
+        concate_text = (
+            is_list
+            and self.concate_text
+            and pcfg.module.translate_context == TranslateContext.Page
+        )
         text_source = self.textlist2text(text) if concate_text else text
         
         src_is_list = isinstance(text_source, List)

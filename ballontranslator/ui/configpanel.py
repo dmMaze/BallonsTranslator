@@ -8,7 +8,7 @@ from qtpy.QtWidgets import (
     QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem,
     QFrame,
 )
-from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection
+from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection, QTimer
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
 from .custom_widget import ConfigComboBox, ScrollBar, Widget
@@ -21,7 +21,20 @@ from ballontranslator.utils.network_mirrors import (
     mirror_from_display,
     mirror_to_display,
 )
-from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT, CONFIG_FONTSIZE_TABLE, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, ON_MACOS, ON_WINDOWS, PROGRAM_PATH, TITLEBAR_HEIGHT
+from ballontranslator.utils.shared import (
+    CONFIG_COMBOBOX_LONG,
+    CONFIG_COMBOBOX_MIDEAN,
+    CONFIG_COMBOBOX_SHORT,
+    CONFIG_CONTENT_MARGIN,
+    CONFIG_CONTENT_MARGINS,
+    CONFIG_CONTENT_ROW_SPACING,
+    CONFIG_FONTSIZE_CONTENT,
+    CONFIG_FONTSIZE_TABLE,
+    ON_MACOS,
+    ON_WINDOWS,
+    PROGRAM_PATH,
+    TITLEBAR_HEIGHT,
+)
 from ballontranslator.utils.logger import logger as LOGGER
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 from .llm_profile_widgets import LLMProfilesWidget
@@ -34,6 +47,11 @@ PUSHBTN_FIXED_HEIGHT = 32
 SECTION_ALIASES = {
     'startup': 'application',
     'save': 'application',
+    'modules': 'pipeline',
+    'detector': 'pipeline',
+    'ocr': 'pipeline',
+    'inpainter': 'pipeline',
+    'translator': 'pipeline',
 }
 PRESERVE_ACTIVE_WIDGET_CLASS_NAMES = {
     'FrameLessMessageBox',
@@ -123,8 +141,11 @@ class ConfigSubBlock(Widget):
             layout = QVBoxLayout(self)
         else:
             layout = QHBoxLayout(self)
+        layout.setContentsMargins(*content_margins)
 
         tooltip = tooltip or discription
+        self.name_label = None
+        self.description_label = None
         if tooltip is None and isinstance(widget, QWidget):
             tooltip = widget.toolTip()
         if fnt_size is None:
@@ -133,11 +154,13 @@ class ConfigSubBlock(Widget):
                 fnt_size = CONFIG_FONTSIZE_CONTENT-2
         if name is not None:
             textlabel = ConfigTextLabel(name, fnt_size, QFont.Weight.Normal)
+            self.name_label = textlabel
             if tooltip:
                 textlabel.setToolTip(tooltip)
             layout.addWidget(textlabel)
         if discription is not None:
             description_label = ConfigTextLabel(discription, fnt_size)
+            self.description_label = description_label
             if tooltip:
                 description_label.setToolTip(tooltip)
             layout.addWidget(description_label)
@@ -150,7 +173,6 @@ class ConfigSubBlock(Widget):
         else:
             layout.addLayout(widget)
         self.widget = widget
-        self.setContentsMargins(*content_margins)
 
 
 def combobox_with_label(sel: List[str], name: str, discription: str = None, vertical_layout: bool = False, target_block: QWidget = None, fix_size: bool = True, parent: QWidget = None, insert_stretch: bool = False) -> Tuple[ConfigComboBox, QWidget]:
@@ -159,7 +181,19 @@ def combobox_with_label(sel: List[str], name: str, discription: str = None, vert
     if discription:
         combox.setToolTip(discription)
     if target_block is None:
-        sublock = ConfigSubBlock(combox, name, discription, vertical_layout=vertical_layout, insert_stretch=insert_stretch, fnt_size=CONFIG_FONTSIZE_TABLE-2)
+        sublock = ConfigSubBlock(
+            combox,
+            name,
+            discription,
+            vertical_layout=vertical_layout,
+            insert_stretch=insert_stretch,
+            fnt_size=CONFIG_FONTSIZE_CONTENT,
+        )
+        for label in (sublock.name_label, sublock.description_label):
+            if label is not None:
+                font = label.font()
+                font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+                label.setFont(font)
         sublock.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
         sublock.layout().setSpacing(12)
         return combox, sublock
@@ -167,6 +201,9 @@ def combobox_with_label(sel: List[str], name: str, discription: str = None, vert
         layout = target_block.layout()
         layout.addSpacing(12)
         textlabel = ConfigTextLabel(name, CONFIG_FONTSIZE_CONTENT, QFont.Weight.Normal)
+        font = textlabel.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        textlabel.setFont(font)
         if discription:
             textlabel.setToolTip(discription)
         layout.addWidget(textlabel)
@@ -199,7 +236,8 @@ class ConfigBlock(Widget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.vlayout = QVBoxLayout(self)
-        self.vlayout.setSpacing(0)
+        self.vlayout.setContentsMargins(0, 0, 0, 0)
+        self.vlayout.setSpacing(CONFIG_CONTENT_MARGIN)
         self.vlayout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
         self.setContentsMargins(0, 0, 0, 0)
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
@@ -260,7 +298,7 @@ class ConfigContent(QStackedWidget):
         scroll_layout = QHBoxLayout(scroll_content)
         scroll_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         scroll_layout.setSizeConstraint(LAYOUT_SET_MINIMUM_SIZE)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setContentsMargins(*CONFIG_CONTENT_MARGINS)
         scroll_layout.addWidget(block, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         scroll_layout.addStretch()
         scroll_area.setWidget(scroll_content)
@@ -272,6 +310,19 @@ class ConfigContent(QStackedWidget):
         index = self.section_index.get(section_key)
         if index is not None:
             self.setCurrentIndex(index)
+
+    def scrollWidgetToTop(self, section_key: str, widget: QWidget):
+        index = self.section_index.get(section_key)
+        if index is None:
+            return
+        scroll_area = self.widget(index)
+
+        def scroll_to_widget():
+            scroll_content = scroll_area.widget()
+            top = widget.mapTo(scroll_content, widget.rect().topLeft()).y()
+            scroll_area.verticalScrollBar().setValue(max(0, top - 12))
+
+        QTimer.singleShot(0, scroll_to_widget)
 
     def wheelEvent(self, event) -> None:
         widget = self.currentWidget()
@@ -410,35 +461,50 @@ class ConfigPanel(FramelessWindow):
         moduleTableItem = self.configTable.addHeader(self.tr('Modules'))
         generalTableItem = self.configTable.addHeader(self.tr('General'))
         
-        label_modules = self.tr('Module Actions')
         label_text_det = self.tr('Detector')
         label_text_ocr = self.tr('OCR')
         label_inpaint = self.tr('Inpainter')
         label_translator = self.tr('Translator')
+        label_pipeline = self.tr('Pipeline')
         label_llm_profile = self.tr('LLM Profile')
         label_application = self.tr('Application')
         label_typesetting = self.tr('Typesetting')
         label_spellcheck = self.tr('Spell Checker')
 
-        moduleConfigPanel = self.addConfigBlock(label_modules, moduleTableItem, 'modules')
-        dlConfigPanel = self.addConfigBlock(label_text_det, moduleTableItem, 'detector')
-        ocrConfigPanel = self.addConfigBlock(label_text_ocr, moduleTableItem, 'ocr')
-        inpaintConfigPanel = self.addConfigBlock(label_inpaint, moduleTableItem, 'inpainter')
-        translatorConfigPanel = self.addConfigBlock(label_translator, moduleTableItem, 'translator')
+        pipelineConfigPanel = self.addConfigBlock(label_pipeline, moduleTableItem, 'pipeline')
         llmProfileConfigPanel = self.addConfigBlock(label_llm_profile, moduleTableItem, 'llm_profile')
         applicationConfigPanel = self.addConfigBlock(label_application, generalTableItem, 'application')
         typesettingConfigPanel = self.addConfigBlock(label_typesetting, generalTableItem, 'typesetting')
         spellcheckConfigPanel = self.addConfigBlock(label_spellcheck, generalTableItem, 'spellcheck')
         
-        self.empty_runcache_checker, empty_runcache_subblock = checkbox_with_label(self.tr('Empty cache after RUN'), discription=self.tr('Empty cache after RUN to save memory.'))
-        moduleConfigPanel.vlayout.addWidget(empty_runcache_subblock)
+        pipeline_options = QWidget()
+        pipeline_options.setObjectName('PipelineModuleOptions')
+        pipeline_options.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        pipeline_options_layout = QVBoxLayout(pipeline_options)
+        pipeline_options_layout.setContentsMargins(0, 0, 0, 0)
+        pipeline_options_layout.setSpacing(CONFIG_CONTENT_ROW_SPACING)
+
+        self.empty_runcache_checker = QCheckBox(self.tr('Empty cache after RUN'))
+        self.empty_runcache_checker.setObjectName('PipelineModuleActionCheckBox')
+        self.empty_runcache_checker.setToolTip(
+            self.tr('Empty cache after RUN to save memory.')
+        )
+        pipeline_options_layout.addWidget(self.empty_runcache_checker)
         self.empty_runcache_checker.stateChanged.connect(self.on_runcache_changed)
-        self.package_auto_install_checker, msublock = checkbox_with_label(
-            self.tr('Auto install missing packages'),
-            discription=self.tr('Install missing Python packages automatically when a selected module requires them.'),
+        self.package_auto_install_checker = QCheckBox(
+            self.tr('Auto install missing packages')
+        )
+        self.package_auto_install_checker.setObjectName(
+            'PipelineModuleActionCheckBox'
+        )
+        self.package_auto_install_checker.setToolTip(
+            self.tr(
+                'Install missing Python packages automatically when a selected '
+                'module requires them.'
+            )
         )
         self.package_auto_install_checker.stateChanged.connect(self.on_package_auto_install_changed)
-        moduleConfigPanel.vlayout.addWidget(msublock)
+        pipeline_options_layout.addWidget(self.package_auto_install_checker)
         module_actions = QWidget()
         module_actions.setObjectName('ConfigInlineRow')
         module_actions.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -455,24 +521,26 @@ class ConfigPanel(FramelessWindow):
         self.unload_model_btn.clicked.connect(self.unload_models)
         self.unload_model_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
         module_actions_layout.addWidget(self.unload_model_btn)
-        moduleConfigPanel.addBlockWidget(module_actions)
+        pipeline_options_layout.addWidget(module_actions)
+        pipelineConfigPanel.vlayout.addWidget(pipeline_options)
 
         self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'), scrollWidget=self)
-        self.detect_config_panel.module_label.hide()
-        self.detect_sub_block = dlConfigPanel.addBlockWidget(self.detect_config_panel)
-        self.detect_config_panel.keep_existing_checker.clicked.connect(self.on_keepline_clicked)
+        self.detect_sub_block = pipelineConfigPanel.addBlockWidget(self.detect_config_panel)
 
         self.ocr_config_panel = OCRConfigPanel(self.tr('OCR'), scrollWidget=self)
-        self.ocr_config_panel.module_label.hide()
-        self.ocr_sub_block = ocrConfigPanel.addBlockWidget(self.ocr_config_panel)
+        self.ocr_sub_block = pipelineConfigPanel.addBlockWidget(self.ocr_config_panel)
 
         self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'), scrollWidget=self)
-        self.inpaint_config_panel.module_label.hide()
-        self.inpaint_sub_block = inpaintConfigPanel.addBlockWidget(self.inpaint_config_panel)
+        self.inpaint_sub_block = pipelineConfigPanel.addBlockWidget(self.inpaint_config_panel)
 
         self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
-        self.trans_config_panel.module_label.hide()
-        self.trans_sub_block = translatorConfigPanel.addBlockWidget(self.trans_config_panel)
+        self.trans_sub_block = pipelineConfigPanel.addBlockWidget(self.trans_config_panel)
+        self.pipeline_module_panels = {
+            'detector': self.detect_config_panel,
+            'ocr': self.ocr_config_panel,
+            'inpainter': self.inpaint_config_panel,
+            'translator': self.trans_config_panel,
+        }
         self.llm_profiles_panel = LLMProfilesWidget(scrollWidget=self)
         llmProfileConfigPanel.addBlockWidget(self.llm_profiles_panel)
 
@@ -610,7 +678,9 @@ class ConfigPanel(FramelessWindow):
 
         global_fntfmt_widget = Widget()
         global_fntfmt_layout = QGridLayout(global_fntfmt_widget)
-        global_fntfmt_layout.setSpacing(0)
+        global_fntfmt_layout.setContentsMargins(0, 0, 0, 0)
+        global_fntfmt_layout.setHorizontalSpacing(CONFIG_CONTENT_MARGIN)
+        global_fntfmt_layout.setVerticalSpacing(CONFIG_CONTENT_MARGIN)
         global_fntfmt_widget.setContentsMargins(0, 0, 0, 0)
 
         b = typesettingConfigPanel.addBlockWidget(global_fntfmt_widget)
@@ -725,9 +795,6 @@ class ConfigPanel(FramelessWindow):
     def on_package_auto_install_changed(self):
         pcfg.package_manager.auto_install_missing_packages = self.package_auto_install_checker.isChecked()
 
-    def on_keepline_clicked(self):
-        pcfg.module.keep_exist_textlines = self.detect_config_panel.keep_existing_checker.isChecked()
-
     def addConfigBlock(self, header: str, parent_item: TableItem, section_key: str) -> ConfigBlock:
         cb = ConfigBlock(parent=self)
         self.configContent.addConfigBlock(cb, section_key)
@@ -746,8 +813,22 @@ class ConfigPanel(FramelessWindow):
 
     def showSection(self, section_key: str):
         section_key = SECTION_ALIASES.get(section_key, section_key)
+        self._highlightPipelineModule(None)
         self.configContent.showSection(section_key)
         self.configTable.setCurrentSection(section_key)
+
+    def _highlightPipelineModule(self, module_key: str = None):
+        for key, panel in getattr(self, 'pipeline_module_panels', {}).items():
+            panel.setJumpHighlighted(key == module_key)
+
+    def focusPipelineModule(self, module_key: str):
+        panel = self.pipeline_module_panels[module_key]
+        self.showConfigDialog('pipeline')
+        panel.updateModuleParamWidget()
+        if panel.visibleWidget is not None:
+            panel.visibleWidget.show()
+        self._highlightPipelineModule(module_key)
+        self.configContent.scrollWidgetToTop('pipeline', panel.header_widget)
 
     def on_open_onstartup_changed(self):
         pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
@@ -970,22 +1051,23 @@ class ConfigPanel(FramelessWindow):
         self.show_only_custom_font.emit(pcfg.let_show_only_custom_fonts_flag)
 
     def focusOnTranslator(self):
-        self.showConfigDialog('translator')
+        self.focusPipelineModule('translator')
 
     def focusOnLLMProfile(self, profile_id: str, expand_details: bool = True, target: str = 'api_key'):
         self.showConfigDialog('llm_profile')
         self.llm_profiles_panel.focusProfileControl(profile_id, target=target, expand_details=expand_details)
 
     def focusOnInpaint(self):
-        self.showConfigDialog('inpainter')
+        self.focusPipelineModule('inpainter')
 
     def focusOnDetect(self):
-        self.showConfigDialog('detector')
+        self.focusPipelineModule('detector')
 
     def focusOnOCR(self):
-        self.showConfigDialog('ocr')
+        self.focusPipelineModule('ocr')
 
     def hideEvent(self, e) -> None:
+        self._highlightPipelineModule(None)
         if hasattr(self, 'llm_profiles_panel'):
             self.llm_profiles_panel.collapseProfiles()
         self._removeOutsideClickFilter()
@@ -1171,7 +1253,6 @@ class ConfigPanel(FramelessWindow):
             none_label=self.tr('None'),
         ))
 
-        self.detect_config_panel.keep_existing_checker.setChecked(pcfg.module.keep_exist_textlines)
         self.let_effect_combox.setCurrentIndex(pcfg.let_fnteffect_flag)
         self.let_fntsize_combox.setCurrentIndex(pcfg.let_fntsize_flag)
         self.let_fntstroke_combox.setCurrentIndex(pcfg.let_fntstroke_flag)
@@ -1183,15 +1264,11 @@ class ConfigPanel(FramelessWindow):
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
         self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
         self.let_textstyle_indep_checker.setChecked(pcfg.let_textstyle_indep_flag)
-        self.ocr_config_panel.restoreEmptyOCRChecker.setChecked(pcfg.restore_ocr_empty)
         self.rst_imgformat_combobox.setCurrentText(pcfg.imgsave_ext.replace('.', '').upper())
         self.intermediate_imgformat_combobox.setCurrentText(pcfg.intermediate_imgsave_ext.replace('.', '').upper())
         self.rst_imgquality_edit.setText(str(pcfg.imgsave_quality))
         self.empty_runcache_checker.setChecked(pcfg.module.empty_runcache)
         self.package_auto_install_checker.setChecked(pcfg.package_manager.auto_install_missing_packages)
         self.let_show_only_custom_fonts.setChecked(pcfg.let_show_only_custom_fonts_flag)
-
-        self.inpaint_config_panel.needInpaintChecker.setChecked(pcfg.module.check_need_inpaint)
-        self.inpaint_config_panel.filter_mask_by_bboxes_checker.setChecked(pcfg.module.filter_mask_by_bboxes)
 
         self.blockSignals(False)

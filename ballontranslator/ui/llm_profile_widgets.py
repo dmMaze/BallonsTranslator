@@ -1502,7 +1502,7 @@ class LLMProfilesWidget(QWidget):
         self._selected_profile_ids = self._currentSelectedProfileIds()
         self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.layout.setContentsMargins(9, 0, 0, 0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(14)
         self.actions_layout = QHBoxLayout()
         self.actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
