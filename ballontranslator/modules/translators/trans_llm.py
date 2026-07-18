@@ -16,6 +16,7 @@ from ..context.glossary import (
     select_glossary,
 )
 from ..context.history import (
+    ContextAction,
     ContextDiagnostic,
     ContextReason,
     HistoryPage,
@@ -23,9 +24,8 @@ from ..context.history import (
     HistoryWindowKey,
     RenderedHistoryPage,
     RequestContext,
-    history_for_request,
+    eligible_history_for_request,
     recover_context_length,
-    snapshot_eligible_history,
     window_rebuild_reason,
 )
 from ..context.token_usage import (
@@ -308,7 +308,7 @@ class LLMTranslator(BaseTranslator):
             self._history_window = None
             disabled_diagnostic = ContextDiagnostic(
                 page_key=str(page_key or ''),
-                action='disabled',
+                action=ContextAction.DISABLED,
                 page_count=0,
                 token_count=0,
                 token_budget=int(history_budget),
@@ -324,7 +324,11 @@ class LLMTranslator(BaseTranslator):
         window_key = None
         diagnostic = ContextDiagnostic(
             page_key=str(page_key or ''),
-            action='disabled' if not use_history else 'empty',
+            action=(
+                ContextAction.DISABLED
+                if not use_history
+                else ContextAction.EMPTY
+            ),
             page_count=0,
             token_count=0,
             token_budget=int(history_budget),
@@ -360,7 +364,7 @@ class LLMTranslator(BaseTranslator):
                 str(page_key),
                 window_key,
             )
-            eligible_history = ()
+            previous_page = None
             if rebuild_reason is None:
                 # Re-snapshot retained pages so edits cannot leak through cached messages.
                 fresh_retained = tuple(
@@ -388,25 +392,18 @@ class LLMTranslator(BaseTranslator):
                     )
                     if previous_page is None:
                         rebuild_reason = ContextReason.PREVIOUS_INCOMPLETE
-                    else:
-                        eligible_history = fresh_retained + (previous_page,)
-            if rebuild_reason is not None:
-                # Jumps and invalidation rebuild from all authoritative earlier pages.
-                eligible_history = snapshot_eligible_history(
-                    project,
-                    page_key,
-                    lambda candidate_key: self._snapshot_history_page(
-                        project,
-                        candidate_key,
-                        self.lang_target,
-                    ),
-                )
-            history, diagnostic = history_for_request(
+            history, diagnostic = eligible_history_for_request(
                 window=self._history_window,
+                project=project,
                 page_key=str(page_key),
-                eligible_history=eligible_history,
+                previous_page=previous_page,
                 token_budget=history_budget,
                 rebuild_reason=rebuild_reason,
+                snapshot_page=lambda candidate_key: self._snapshot_history_page(
+                    project,
+                    candidate_key,
+                    self.lang_target,
+                ),
                 render_page=lambda page: self._render_history_page(
                     page,
                     model,

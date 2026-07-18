@@ -13,6 +13,22 @@ if TYPE_CHECKING:
 HISTORY_LOW_WATER_RATIO = 0.60
 
 
+class ContextAction(Enum):
+    """How translation history was handled for one request.
+
+    >>> ContextAction.REBUILD.value
+    'rebuild'
+    """
+
+    DISABLED = 'disabled'
+    EMPTY = 'empty'
+    REBUILD = 'rebuild'
+    REUSE = 'reuse'
+    GROW = 'grow'
+    EVICT = 'evict'
+    CONTEXT_RECOVERY = 'context-recovery'
+
+
 class ContextReason(Enum):
     """Why translation history was rebuilt or could not be used normally.
 
@@ -96,12 +112,12 @@ class HistoryWindow:
 class ContextDiagnostic:
     """Safe aggregate context-window details for one request.
 
-    >>> str(ContextDiagnostic('001.png', 'empty', 0, 0, 10))
+    >>> str(ContextDiagnostic('001.png', ContextAction.EMPTY, 0, 0, 10))
     'LLM Context: page=001.png, action=empty, pages=0, tokens=0/10'
     """
 
     page_key: str
-    action: str
+    action: ContextAction
     page_count: int
     token_count: int
     token_budget: int
@@ -115,7 +131,7 @@ class ContextDiagnostic:
         page_key = self.page_key.replace('\r', ' ').replace('\n', ' ')
         details = [
             'LLM Context: page={}'.format(page_key or '-'),
-            'action={}'.format(self.action),
+            'action={}'.format(self.action.value),
             'pages={}'.format(self.page_count),
             'tokens={}/{}'.format(self.token_count, self.token_budget),
         ]
@@ -145,70 +161,63 @@ class RequestContext:
     diagnostic: Optional[ContextDiagnostic] = None
 
 
-def snapshot_eligible_history(
-    project: Optional['ProjImgTrans'],
-    page_key: str,
-    snapshot_page: Callable[[str], Optional[HistoryPage]],
-) -> Tuple[HistoryPage, ...]:
-    """Copy eligible pages preceding ``page_key`` through a modality callback.
-
-    >>> snapshot_eligible_history(None, '001.png', lambda _key: None)
-    ()
-    """
-
-    pages = getattr(project, 'pages', None)
-    if not isinstance(pages, dict) or page_key not in pages:
-        return ()
-
-    history = []
-    for candidate_key in pages:
-        if candidate_key == page_key:
-            break
-        page = snapshot_page(candidate_key)
-        if page is not None:
-            history.append(page)
-    return tuple(history)
-
-
-def history_for_request(
+def eligible_history_for_request(
     *,
     window: Optional[HistoryWindow],
+    project: Optional['ProjImgTrans'],
     page_key: str,
-    eligible_history: Tuple[HistoryPage, ...],
+    previous_page: Optional[HistoryPage],
     token_budget: int,
     rebuild_reason: Optional[ContextReason],
+    snapshot_page: Callable[[str], Optional[HistoryPage]],
     render_page: Callable[[HistoryPage], RenderedHistoryPage],
 ) -> Tuple[Tuple[RenderedHistoryPage, ...], ContextDiagnostic]:
-    """Select a safe rebuild or extend the cache-oriented runtime window.
+    """Select eligible pages and fit them into the runtime history window.
 
-    Rebuilds choose a recent chronological suffix. Adjacent requests append to
-    the committed prefix until bulk eviction is required.
+    Rebuilds choose a recent chronological suffix below the low-water target,
+    leaving room for adjacent requests to extend the provider-cache prefix.
 
     >>> int(10 * HISTORY_LOW_WATER_RATIO)
     6
     """
 
     if rebuild_reason is not None:
-        # Walk newest-first, then restore page order. Stop at the first ordinary
-        # overflow so older small pages cannot create a non-contiguous suffix.
-        remaining = max(0, int(token_budget))
+        pages = getattr(project, 'pages', None)
+        # Rebuilding to the full budget would force the next adjacent request to
+        # evict immediately. Walk backward from the current page and snapshot
+        # only the recent pages needed to reach low water.
+        rebuild_limit = int(token_budget * HISTORY_LOW_WATER_RATIO)
+        remaining = max(0, rebuild_limit)
         selected = []
-        for page in reversed(eligible_history):
-            rendered_page = render_page(page)
-            if rendered_page.token_count > token_budget:
-                if selected:
+        if isinstance(pages, dict) and page_key in pages:
+            reached_current = False
+            for candidate_key in reversed(pages):
+                if not reached_current:
+                    reached_current = candidate_key == page_key
+                    continue
+                page = snapshot_page(candidate_key)
+                if page is None:
+                    continue
+                rendered_page = render_page(page)
+                if rendered_page.token_count > token_budget:
+                    if selected:
+                        break
+                    continue
+                if not selected and rendered_page.token_count > rebuild_limit:
+                    # Retain one recent page that fits the configured budget even
+                    # when that indivisible page alone exceeds the soft target.
+                    selected.append(rendered_page)
                     break
-                continue
-            if rendered_page.token_count > remaining:
-                break
-            selected.append(rendered_page)
-            remaining -= rendered_page.token_count
+                if rendered_page.token_count > remaining:
+                    break
+                selected.append(rendered_page)
+                remaining -= rendered_page.token_count
         selected.reverse()
         history = tuple(selected)
         token_count = sum(page.token_count for page in history)
         return history, ContextDiagnostic(
             page_key=page_key,
-            action='rebuild' if history else 'empty',
+            action=ContextAction.REBUILD if history else ContextAction.EMPTY,
             page_count=len(history),
             token_count=token_count,
             token_budget=token_budget,
@@ -217,31 +226,28 @@ def history_for_request(
 
     if window is None:
         raise RuntimeError('A reusable context window is required.')
-    previous_page = next(
-        page
-        for page in eligible_history
-        if page.page_key == window.request_page_key
-    )
-    rendered_page = render_page(previous_page)
+    if previous_page is None:
+        raise RuntimeError('An eligible previous page is required.')
+    rendered_previous_page = render_page(previous_page)
     history = list(window.history)
     token_count = window.token_count
-    if rendered_page.token_count > token_budget:
+    if rendered_previous_page.token_count > token_budget:
         # Keep the existing prefix stable rather than splitting an oversized page.
         return tuple(history), ContextDiagnostic(
             page_key=page_key,
-            action='reuse',
+            action=ContextAction.REUSE,
             page_count=len(history),
             token_count=token_count,
             token_budget=token_budget,
             rebuild_reason=ContextReason.OVERSIZED_PAGE,
         )
 
-    if token_count + rendered_page.token_count <= token_budget:
-        history.append(rendered_page)
-        token_count += rendered_page.token_count
+    if token_count + rendered_previous_page.token_count <= token_budget:
+        history.append(rendered_previous_page)
+        token_count += rendered_previous_page.token_count
         return tuple(history), ContextDiagnostic(
             page_key=page_key,
-            action='grow',
+            action=ContextAction.GROW,
             page_count=len(history),
             token_count=token_count,
             token_budget=token_budget,
@@ -254,15 +260,15 @@ def history_for_request(
     # invalidating the provider cache on every following page.
     while history and (
         token_count > low_water
-        or token_count + rendered_page.token_count > token_budget
+        or token_count + rendered_previous_page.token_count > token_budget
     ):
         token_count -= history.pop(0).token_count
         evicted += 1
-    history.append(rendered_page)
-    token_count += rendered_page.token_count
+    history.append(rendered_previous_page)
+    token_count += rendered_previous_page.token_count
     return tuple(history), ContextDiagnostic(
         page_key=page_key,
-        action='evict',
+        action=ContextAction.EVICT,
         page_count=len(history),
         token_count=token_count,
         token_budget=token_budget,
@@ -331,7 +337,7 @@ def recover_context_length(
 
     diagnostic = ContextDiagnostic(
         page_key=str(request_context.request_page_key or ''),
-        action='context-recovery',
+        action=ContextAction.CONTEXT_RECOVERY,
         page_count=len(history),
         token_count=token_count,
         token_budget=request_context.history_budget,

@@ -7,11 +7,11 @@ from unittest import mock
 from ballontranslator.modules.context.errors import ContextLengthError
 from ballontranslator.modules.context.glossary import GlossaryEntry
 from ballontranslator.modules.context.history import (
+    ContextAction,
     ContextReason,
     HistoryPage,
     RequestContext,
-    history_for_request,
-    snapshot_eligible_history,
+    eligible_history_for_request,
 )
 from ballontranslator.modules.context.token_usage import (
     MESSAGE_TOKEN_OVERHEAD,
@@ -65,12 +65,18 @@ class LLMTranslationContextTest(unittest.TestCase):
         token_budget=1000,
         model='test-model',
     ):
-        history, _ = history_for_request(
+        pages_by_key = {page.page_key: page for page in pages}
+        project = SimpleNamespace(
+            pages={**{key: [] for key in pages_by_key}, 'current': []}
+        )
+        history, _ = eligible_history_for_request(
             window=None,
+            project=project,
             page_key='current',
-            eligible_history=tuple(pages),
+            previous_page=None,
             token_budget=token_budget,
             rebuild_reason=ContextReason.WINDOW_EMPTY,
+            snapshot_page=pages_by_key.get,
             render_page=lambda page: self.translator._render_history_page(
                 page,
                 model,
@@ -199,15 +205,18 @@ class LLMTranslationContextTest(unittest.TestCase):
             },
         )
 
-        history = snapshot_eligible_history(
-            project,
-            '006.png',
-            lambda page_key: self.translator._snapshot_history_page(
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_glossary_path = ''
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ):
+            context = self.translator._snapshot_request_context(
                 project,
-                page_key,
-                '简体中文',
-            ),
-        )
+                '006.png',
+                self.profile,
+            )
+        history = tuple(page.snapshot for page in context.history)
 
         self.assertEqual([page.page_key for page in history], ['001.png', '002.png'])
         self.assertEqual(history[0].sources, ('one',))
@@ -325,14 +334,15 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertIn('"source":"Mage"', messages[1]['content'])
         self.assertNotIn('GLOSSARY:', messages[2]['content'])
 
-    def test_history_budget_selects_newest_pages_that_fit(self):
+    def test_rebuild_selects_newest_pages_with_growth_headroom(self):
         history = tuple(
             HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',))
             for index in range(1, 4)
         )
         cases = (
-            ((4, 4, 4), 10, ['2', '3']),
-            ((12, 4, 4), 8, ['1', '2']),
+            ((4, 4, 4), 10, ['3']),
+            ((12, 4, 4), 8, ['2']),
+            ((7, 1, 1), 10, ['3']),
         )
         for token_costs, budget, expected in cases:
             with self.subTest(token_costs=token_costs, budget=budget):
@@ -349,6 +359,37 @@ class LLMTranslationContextTest(unittest.TestCase):
                     [page.page_key for page in selected],
                     expected,
                 )
+
+    def test_rebuild_reserves_headroom_for_the_next_adjacent_page(self):
+        project = self._project(7)
+        for page_key in ('001.png', '002.png', '003.png', '004.png', '005.png'):
+            self._complete(project, page_key)
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_glossary_path = ''
+        pcfg.module.llm_prior_context_token_budget = 10
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=2,
+        ):
+            rebuilt = self._successful_request(
+                project,
+                '006.png',
+                self.profile,
+            )
+            self._complete(project, '006.png')
+            adjacent = self._successful_request(
+                project,
+                '007.png',
+                self.profile,
+            )
+
+        self.assertEqual(
+            [page.page_key for page in rebuilt.history],
+            ['003.png', '004.png', '005.png'],
+        )
+        self.assertEqual(adjacent.diagnostic.action, ContextAction.GROW)
+        self.assertEqual(adjacent.history[:-1], rebuilt.history)
 
     def test_stateless_rebuild_stops_at_first_ordinary_overflow(self):
         history = tuple(
@@ -390,9 +431,9 @@ class LLMTranslationContextTest(unittest.TestCase):
                 project, '003.png', self.profile,
             )
 
-        self.assertEqual(first.diagnostic.action, 'empty')
-        self.assertEqual(second.diagnostic.action, 'grow')
-        self.assertEqual(third.diagnostic.action, 'grow')
+        self.assertEqual(first.diagnostic.action, ContextAction.EMPTY)
+        self.assertEqual(second.diagnostic.action, ContextAction.GROW)
+        self.assertEqual(third.diagnostic.action, ContextAction.GROW)
         self.assertEqual(
             [page.page_key for page in third.history],
             ['001.png', '002.png'],
@@ -436,10 +477,10 @@ class LLMTranslationContextTest(unittest.TestCase):
 
         eviction = contexts[6]
         after_eviction = contexts[7]
-        self.assertEqual(eviction.diagnostic.action, 'evict')
+        self.assertEqual(eviction.diagnostic.action, ContextAction.EVICT)
         self.assertEqual(eviction.diagnostic.evicted, 2)
         self.assertEqual(eviction.diagnostic.token_count, 8)
-        self.assertEqual(after_eviction.diagnostic.action, 'grow')
+        self.assertEqual(after_eviction.diagnostic.action, ContextAction.GROW)
         self.assertEqual(after_eviction.history[:-1], eviction.history)
         eviction_messages, _, _ = next(self.translator._assemble_batches(
             ['source-7'], self.profile, request_context=eviction,
@@ -475,7 +516,7 @@ class LLMTranslationContextTest(unittest.TestCase):
             )
 
         self.assertEqual([page.page_key for page in second.history], ['001.png'])
-        self.assertEqual(third.diagnostic.action, 'reuse')
+        self.assertEqual(third.diagnostic.action, ContextAction.REUSE)
         self.assertEqual(
             third.diagnostic.rebuild_reason,
             ContextReason.OVERSIZED_PAGE,
@@ -503,7 +544,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                 project, '005.png', self.profile,
             )
 
-        self.assertEqual(initial.diagnostic.action, 'rebuild')
+        self.assertEqual(initial.diagnostic.action, ContextAction.REBUILD)
         self.assertEqual(
             backward.diagnostic.rebuild_reason,
             ContextReason.NON_ADJACENT,
@@ -633,7 +674,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                 )
 
         self.assertIsNone(context.diagnostic.rebuild_reason)
-        self.assertEqual(context.diagnostic.action, 'grow')
+        self.assertEqual(context.diagnostic.action, ContextAction.GROW)
         self.assertTrue(all(
             'GLOSSARY:' not in content
             for page in context.history
@@ -1029,7 +1070,10 @@ class LLMTranslationContextTest(unittest.TestCase):
                 '007.png',
                 self.profile,
             )
-            self.assertEqual(eviction_context.diagnostic.action, 'evict')
+            self.assertEqual(
+                eviction_context.diagnostic.action,
+                ContextAction.EVICT,
+            )
             self.assertIs(self.translator._history_window, committed_window)
 
             with mock.patch.object(
