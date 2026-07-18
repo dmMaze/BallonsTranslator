@@ -133,8 +133,9 @@ class LLMTranslationContextTest(unittest.TestCase):
             self.translator._snapshot_request_context(None, None, self.profile)
         )
 
-        messages, count, prompt = next(
-            self.translator._assemble_batches(['心'], self.profile)
+        messages, prompt = self.translator._assemble_request(
+            ['心'],
+            self.profile,
         )
 
         expected_system = (
@@ -162,7 +163,6 @@ class LLMTranslationContextTest(unittest.TestCase):
             '  }\n'
             ']'
         )
-        self.assertEqual(count, 1)
         self.assertEqual(prompt, expected_prompt)
         self.assertEqual(
             messages,
@@ -239,12 +239,10 @@ class LLMTranslationContextTest(unittest.TestCase):
             glossary=glossary,
             glossary_mode=LLMGlossaryMode.Matching,
         )
-        messages, _, _ = next(
-            self.translator._assemble_batches(
-                ['Mage speaks'],
-                self.profile,
-                request_context=context,
-            )
+        messages, _ = self.translator._assemble_request(
+            ['Mage speaks'],
+            self.profile,
+            request_context=context,
         )
 
         self.assertEqual(
@@ -285,11 +283,11 @@ class LLMTranslationContextTest(unittest.TestCase):
                 glossary=glossary,
                 glossary_mode=LLMGlossaryMode.Matching,
             )
-            messages, _, _ = next(self.translator._assemble_batches(
+            messages, _ = self.translator._assemble_request(
                 [query],
                 self.profile,
                 request_context=context,
-            ))
+            )
             return messages
 
         first = request_messages('Hero arrives', ())
@@ -318,12 +316,10 @@ class LLMTranslationContextTest(unittest.TestCase):
             glossary=glossary,
             glossary_mode=LLMGlossaryMode.All,
         )
-        messages, _, _ = next(
-            self.translator._assemble_batches(
-                ['No matching term'],
-                self.profile,
-                request_context=context,
-            )
+        messages, _ = self.translator._assemble_request(
+            ['No matching term'],
+            self.profile,
+            request_context=context,
         )
 
         self.assertEqual(
@@ -439,15 +435,15 @@ class LLMTranslationContextTest(unittest.TestCase):
             ['001.png', '002.png'],
         )
         self.assertEqual(third.history[:-1], second.history)
-        first_messages, _, _ = next(self.translator._assemble_batches(
+        first_messages, _ = self.translator._assemble_request(
             ['source-1'], self.profile, request_context=first,
-        ))
-        second_messages, _, _ = next(self.translator._assemble_batches(
+        )
+        second_messages, _ = self.translator._assemble_request(
             ['source-2'], self.profile, request_context=second,
-        ))
-        third_messages, _, _ = next(self.translator._assemble_batches(
+        )
+        third_messages, _ = self.translator._assemble_request(
             ['source-3'], self.profile, request_context=third,
-        ))
+        )
         self.assertIn(
             'When prior translation examples are present',
             first_messages[0]['content'],
@@ -482,12 +478,12 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertEqual(eviction.diagnostic.token_count, 8)
         self.assertEqual(after_eviction.diagnostic.action, ContextAction.GROW)
         self.assertEqual(after_eviction.history[:-1], eviction.history)
-        eviction_messages, _, _ = next(self.translator._assemble_batches(
+        eviction_messages, _ = self.translator._assemble_request(
             ['source-7'], self.profile, request_context=eviction,
-        ))
-        later_messages, _, _ = next(self.translator._assemble_batches(
+        )
+        later_messages, _ = self.translator._assemble_request(
             ['source-8'], self.profile, request_context=after_eviction,
-        ))
+        )
         self.assertEqual(
             later_messages[:len(eviction_messages)],
             eviction_messages,
@@ -680,12 +676,10 @@ class LLMTranslationContextTest(unittest.TestCase):
             for page in context.history
             for _role, content in page.messages
         ))
-        messages, _, _ = next(
-            self.translator._assemble_batches(
-                ['Current page'],
-                self.profile,
-                request_context=context,
-            )
+        messages, _ = self.translator._assemble_request(
+            ['Current page'],
+            self.profile,
+            request_context=context,
         )
         self.assertIn('"source":"Mage"', messages[1]['content'])
         self.assertNotIn(glossary_path, repr(self.translator._history_window.key))
@@ -786,12 +780,10 @@ class LLMTranslationContextTest(unittest.TestCase):
                     '002.png',
                     self.profile,
                 )
-                history_messages, _, _ = next(
-                    self.translator._assemble_batches(
-                        ['Next page'],
-                        self.profile,
-                        request_context=context,
-                    )
+                history_messages, _ = self.translator._assemble_request(
+                    ['Next page'],
+                    self.profile,
+                    request_context=context,
                 )
 
         self.assertEqual(block.get_text(), 'Hero returns')
@@ -922,12 +914,10 @@ class LLMTranslationContextTest(unittest.TestCase):
             [
                 {
                     'usage_page_key': '001.png',
-                    'usage_batch_index': 1,
                     'usage_attempt': 1,
                 },
                 {
                     'usage_page_key': '001.png',
-                    'usage_batch_index': 1,
                     'usage_attempt': 2,
                 },
             ],

@@ -10,7 +10,7 @@ from ballontranslator.modules.translators.trans_llm import (
     LLMTranslator,
 )
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import copy_profile, default_profile
 
 
 class FakeAuthError(Exception):
@@ -84,7 +84,7 @@ class LLMTranslatorTest(unittest.TestCase):
         profile = default_profile('OpenAI')
         profile.prompt = 'Keep JSON example {"x": 1}.'
 
-        messages, _, prompt = next(self.translator._assemble_batches(['心'], profile))
+        messages, prompt = self.translator._assemble_request(['心'], profile)
 
         self.assertIn('Translate every source string into Simplified Chinese.', messages[0]['content'])
         self.assertIn('Additional translation instructions:\nKeep JSON example {"x": 1}.', messages[0]['content'])
@@ -154,7 +154,8 @@ class LLMTranslatorTest(unittest.TestCase):
         self.assertNotIn('frequency_penalty', args)
         self.assertNotIn('presence_penalty', args)
         self.assertEqual(args['response_format'], {'type': 'json_object'})
-        self.assertEqual(args['max_tokens'], 8192)
+        self.assertNotIn('max_tokens', args)
+        self.assertEqual(args['max_completion_tokens'], 8192)
 
         profile.thinking_level = 'none'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
@@ -267,13 +268,12 @@ class LLMTranslatorTest(unittest.TestCase):
         self.translator._log_token_usage(
             SimpleNamespace(usage=openai_usage),
             page_key='001\npage.png',
-            batch_index=2,
             attempt=3,
         )
         self.assertEqual(
             messages,
             [
-                'LLM token usage: page=001 page.png, batch=2, attempt=3, '
+                'LLM token usage: page=001 page.png, attempt=3, '
                 'prompt=100, completion=20, total=120, cache_hit=80'
             ],
         )

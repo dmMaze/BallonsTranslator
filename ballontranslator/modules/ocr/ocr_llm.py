@@ -9,7 +9,13 @@ from ..context.errors import provider_error_message
 from .base import OCRBase, register_OCR
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLMProfile, profile_by_id, profile_from_config, resolve_api_key
+from ballontranslator.utils.llm_profiles import (
+    LLMProfile,
+    completion_token_limit_args,
+    profile_by_id,
+    profile_from_config,
+    resolve_api_key,
+)
 
 DEFAULT_OCR_SYSTEM_PROMPT = (
     "You are an OCR engine for comic and manga image crops. Your job is to recognize visible text only. "
@@ -210,13 +216,14 @@ class LLMOCR(OCRBase):
 
     def _api_args(self, profile: LLMProfile, messages: List[Dict]):
         model = self._vision_model(profile)
-        return {
+        api_args = {
             "model": model,
             "messages": messages,
             "temperature": float(profile.temperature),
             "top_p": float(profile.top_p),
-            "max_tokens": int(profile.max_tokens),
         }
+        api_args.update(completion_token_limit_args(profile, model))
+        return api_args
 
     def _request_ocr(self, profile: LLMProfile, messages: List[Dict]) -> str:
         openai = self._openai_module()

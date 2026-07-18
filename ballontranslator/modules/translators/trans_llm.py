@@ -44,6 +44,7 @@ from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
+    completion_token_limit_args,
     profile_by_id,
     profile_from_config,
     resolve_api_key,
@@ -565,12 +566,12 @@ class LLMTranslator(BaseTranslator):
         }
         return json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
 
-    def _assemble_batches(
+    def _assemble_request(
         self,
         queries: List[str],
         profile: LLMProfile,
         request_context: RequestContext = None,
-    ):
+    ) -> Tuple[List[Dict], str]:
         """Assemble messages in cache-friendly prefix order.
 
         >>> LLMTranslator.__new__(LLMTranslator)._render_assistant_response(('x',))
@@ -618,7 +619,7 @@ class LLMTranslator(BaseTranslator):
             )
         prompt = self._render_user_prompt(tuple(queries), current_glossary)
         messages.append({'role': 'user', 'content': prompt})
-        yield messages, len(queries), prompt
+        return messages, prompt
 
     def build_copy_prompt(self, src_list: List[str]) -> str:
         glossary_path = str(pcfg.module.llm_glossary_path or '')
@@ -684,8 +685,8 @@ class LLMTranslator(BaseTranslator):
             "messages": messages,
             "temperature": float(profile.temperature),
             "top_p": float(profile.top_p),
-            "max_tokens": int(profile.max_tokens),
         }
+        api_args.update(completion_token_limit_args(profile, model))
         if profile.json_schema_response_format:
             api_args["response_format"] = {
                 "type": "json_schema",
@@ -716,7 +717,6 @@ class LLMTranslator(BaseTranslator):
         completion,
         *,
         page_key=None,
-        batch_index: Optional[int] = None,
         attempt: Optional[int] = None,
     ):
         summary = format_completion_token_usage(completion)
@@ -725,8 +725,6 @@ class LLMTranslator(BaseTranslator):
             if page_key is not None:
                 safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
                 details.append(f'page={safe_page_key or "-"}')
-            if batch_index is not None:
-                details.append(f'batch={batch_index}')
             if attempt is not None:
                 details.append(f'attempt={attempt}')
             details.append(summary)
@@ -738,7 +736,6 @@ class LLMTranslator(BaseTranslator):
         messages: List[Dict],
         *,
         usage_page_key=None,
-        usage_batch_index: Optional[int] = None,
         usage_attempt: Optional[int] = None,
     ) -> str:
         openai = self._openai_module()
@@ -757,7 +754,6 @@ class LLMTranslator(BaseTranslator):
         self._log_token_usage(
             completion,
             page_key=usage_page_key,
-            batch_index=usage_batch_index,
             attempt=usage_attempt,
         )
 
@@ -815,81 +811,71 @@ class LLMTranslator(BaseTranslator):
             return []
         if profile is None:
             profile = self.profile
-        translations = []
-        successful_context = request_context
         usage_page_key = (
             request_context.request_page_key
             if request_context is not None
             and request_context.request_page_key is not None
             else page_key
         )
-        batches = self._assemble_batches(
+        messages, prompt = self._assemble_request(
             src_list,
             profile,
             request_context=request_context,
         )
-        for batch_index, (messages, num_src, prompt) in enumerate(batches, start=1):
-            retry_attempt = 0
-            provider_attempt = 0
-            active_context = request_context
-            recovery_limit = len(active_context.history) if active_context else 0
-            recovered_pages = 0
-            while True:
-                if self.stop_event is not None and self.stop_event.is_set():
-                    raise LLMRequestStopped()
-                try:
-                    provider_attempt += 1
-                    raw_response = self._request_translation(
-                        profile,
-                        messages,
-                        usage_page_key=usage_page_key,
-                        usage_batch_index=batch_index,
-                        usage_attempt=provider_attempt,
-                    )
-                    batch_translations = self._parse_response(raw_response, num_src)
-                    translations.extend(batch_translations)
-                    successful_context = active_context
-                    break
-                except ContextLengthError:
-                    # Provider tokenization can exceed our estimate; shrink whole
-                    # history pages without consuming the ordinary retry budget.
-                    if recovered_pages >= recovery_limit:
-                        raise
-                    recovered_context = recover_context_length(active_context)
-                    if recovered_context is None:
-                        raise
-                    self.logger.debug(str(recovered_context.diagnostic))
-                    recovered_pages += (
-                        len(active_context.history) - len(recovered_context.history)
-                    )
-                    active_context = recovered_context
-                    messages, recovered_num_src, recovered_prompt = next(
-                        self._assemble_batches(
-                            src_list,
-                            profile,
-                            request_context=active_context,
-                        )
-                    )
-                    if recovered_num_src != num_src:
-                        raise RuntimeError('Context recovery changed the request size.')
-                    prompt = recovered_prompt
-                    continue
-                except LLMApiKeyRequiredError:
+        retry_attempt = 0
+        provider_attempt = 0
+        active_context = request_context
+        recovery_limit = len(active_context.history) if active_context else 0
+        recovered_pages = 0
+        while True:
+            if self.stop_event is not None and self.stop_event.is_set():
+                raise LLMRequestStopped()
+            try:
+                provider_attempt += 1
+                raw_response = self._request_translation(
+                    profile,
+                    messages,
+                    usage_page_key=usage_page_key,
+                    usage_attempt=provider_attempt,
+                )
+                translations = self._parse_response(raw_response, len(src_list))
+                successful_context = active_context
+                break
+            except ContextLengthError:
+                # Provider tokenization can exceed our estimate; shrink whole
+                # history pages without consuming the ordinary retry budget.
+                if recovered_pages >= recovery_limit:
                     raise
-                except LLMModelRequiredError:
+                recovered_context = recover_context_length(active_context)
+                if recovered_context is None:
                     raise
-                except LLMRequestStopped:
+                self.logger.debug(str(recovered_context.diagnostic))
+                recovered_pages += (
+                    len(active_context.history) - len(recovered_context.history)
+                )
+                active_context = recovered_context
+                messages, prompt = self._assemble_request(
+                    src_list,
+                    profile,
+                    request_context=active_context,
+                )
+                continue
+            except LLMApiKeyRequiredError:
+                raise
+            except LLMModelRequiredError:
+                raise
+            except LLMRequestStopped:
+                raise
+            except Exception as e:
+                if isinstance(e, InvalidNumTranslations):
+                    self.logger.error(f"Failed to parse matching translation count for prompt:\n{prompt}\n{e}")
+                retry_attempt += 1
+                if retry_attempt >= self.get_param_value('retry attempts'):
+                    self.logger.error(f"LLM translation failed: {e}")
+                    self.logger.debug(traceback.format_exc())
                     raise
-                except Exception as e:
-                    if isinstance(e, InvalidNumTranslations):
-                        self.logger.error(f"Failed to parse matching translation count for prompt:\n{prompt}\n{e}")
-                    retry_attempt += 1
-                    if retry_attempt >= self.get_param_value('retry attempts'):
-                        self.logger.error(f"LLM translation failed: {e}")
-                        self.logger.debug(traceback.format_exc())
-                        raise
-                    self.logger.warning(f"LLM translation failed due to {e}. Attempt: {retry_attempt}")
-                    self._wait(self.get_param_value('retry timeout'))
+                self.logger.warning(f"LLM translation failed due to {e}. Attempt: {retry_attempt}")
+                self._wait(self.get_param_value('retry timeout'))
 
         # Keep eviction/growth speculative until every response parsed successfully.
         if (
