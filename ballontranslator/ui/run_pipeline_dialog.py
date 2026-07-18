@@ -1,4 +1,14 @@
-from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QSize, Qt, Signal
+import os
+
+from qtpy.QtCore import (
+    QCoreApplication,
+    QEvent,
+    QPointF,
+    QSize,
+    QSignalBlocker,
+    Qt,
+    Signal,
+)
 from qtpy.QtGui import QIcon, QMouseEvent, QPainter, QPalette, QPen
 from qtpy.QtWidgets import (
     QAbstractButton,
@@ -15,7 +25,6 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSizePolicy,
-    QSpinBox,
     QStackedWidget,
     QStyle,
     QStyleOptionButton,
@@ -36,13 +45,22 @@ from .llm_modality import (
     LLM_MODALITY_VISION_COLOR,
     modality_badge_qcolor,
 )
-from .page_range_progress import PageRangeProgressWidget
+from .page_range_progress import PageRangeProgressWidget, PageRangeSpinBox
 from .custom_widget import ExpandingToolButton
-from ballontranslator.utils.config import LLMGlossaryMode, pcfg, TranslateContext
+from .custom_widget.combobox import BottomBorderComboBox
+from ballontranslator.utils.config import (
+    LLMGlossaryMode,
+    LLMTranslateContext,
+    pcfg,
+    TranslateContext,
+)
+from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
 RUN_PIPELINE_DIALOG_WIDTH = 510
+RUN_PIPELINE_SETTING_CONTROL_WIDTH = 100
+RUN_PIPELINE_GLOSSARY_DISPLAY_WIDTH = 100
 
 
 def _pipeline_text(source: str) -> str:
@@ -186,6 +204,38 @@ class PipelineModuleButton(QAbstractButton):
         return super().changeEvent(event)
 
 
+class GlossaryPathEdit(QLineEdit):
+    """Read-only glossary filename field with an embedded picker button.
+
+    >>> GlossaryPathEdit.__name__
+    'GlossaryPathEdit'
+    """
+
+
+    def __init__(self, parent: QWidget = None, button_size: int = 20):
+        super().__init__(parent)
+        self._button_size = button_size
+        self.select_button = QPushButton(self)
+        self.select_button.setParent(self)
+        self.select_button.setObjectName('RunPipelineGlossaryFileButton')
+        self.select_button.setFixedSize(button_size, button_size)
+        self.select_button.setIcon(QIcon(themed_icon_path('files.svg')))
+        self.select_button.setIconSize(QSize(16, 16))
+        self.setTextMargins(0, 0, button_size + 2, 0)
+        self._position_select_button()
+
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_select_button()
+
+    def _position_select_button(self):
+        self.select_button.move(
+            self.width() - self._button_size,
+            max(0, (self.height() - self.select_button.height()) // 2),
+        )
+
+
 class RunPipelineDialog(QDialog):
     """Choose and configure the pipeline action to run.
 
@@ -245,7 +295,7 @@ class RunPipelineDialog(QDialog):
         self.title_label.setMouseTracking(True)
         title_row.addWidget(self.title_label)
         title_row.addSpacing(12)
-        self.workflow_selector = QComboBox(surface)
+        self.workflow_selector = BottomBorderComboBox(surface)
         self.workflow_selector.setObjectName('RunPipelineWorkflowSelector')
         self.workflow_selector.addItems((self.tr('Pipeline'), self.tr('Rendering')))
         pipeline_mode = str(pcfg.run_pipeline_mode).lower()
@@ -275,7 +325,7 @@ class RunPipelineDialog(QDialog):
         layout.addWidget(self.content_dock)
 
         button_row = QHBoxLayout()
-        button_row.setContentsMargins(0, 4, 0, 0)
+        button_row.setContentsMargins(0, 10, 0, 0)
         button_row.setSpacing(8)
         button_row.addStretch()
 
@@ -318,6 +368,15 @@ class RunPipelineDialog(QDialog):
         super().hideEvent(event)
 
     def eventFilter(self, watched, event):
+        if (
+            watched is getattr(self, 'glossary_path_edit', None)
+            and isinstance(event, QMouseEvent)
+            and event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+            and not pcfg.module.llm_glossary_path.strip()
+        ):
+            self._select_glossary_file()
+            return True
         if (
             not self.isVisible()
             or not isinstance(watched, QWidget)
@@ -580,38 +639,59 @@ class RunPipelineDialog(QDialog):
         return options
 
     def _build_translation_settings(self, section: QWidget, layout: QVBoxLayout):
-        language_row = QWidget(section)
-        language_row.setObjectName('RunPipelineGeneralSettingRow')
-        language_layout = QHBoxLayout(language_row)
-        language_layout.setContentsMargins(0, 0, 0, 0)
-        language_layout.setSpacing(8)
+        self._llm_settings_visible = (
+            self.translator_metadata.get('name') == LLM_TRANSLATOR_KEY
+        )
+        translation_grid = QGridLayout()
+        translation_grid.setContentsMargins(0, 0, 0, 0)
+        translation_grid.setHorizontalSpacing(16)
+        translation_grid.setVerticalSpacing(8)
+        translation_grid.setColumnStretch(0, 1)
+        translation_grid.setColumnStretch(1, 1)
+        layout.addLayout(translation_grid)
 
-        source_label = QLabel(self.tr('Source'), language_row)
+        source_row = QWidget(section)
+        source_row.setObjectName('RunPipelineGeneralSettingRow')
+        source_layout = QHBoxLayout(source_row)
+        source_layout.setContentsMargins(0, 0, 0, 0)
+        source_layout.setSpacing(8)
+        source_label = QLabel(self.tr('Source'), source_row)
         source_label.setObjectName('RunPipelineSettingLabel')
-        language_layout.addWidget(source_label)
-        self.source_combobox = QComboBox(language_row)
+        source_layout.addWidget(source_label)
+        source_layout.addStretch()
+        self.source_combobox = BottomBorderComboBox(source_row)
         self.source_combobox.setObjectName('RunPipelineSourceComboBox')
         self.source_combobox.addItems(self._translation_options(
             'supported_src_list',
             pcfg.module.translate_source,
         ))
         self.source_combobox.setCurrentText(pcfg.module.translate_source)
-        language_layout.addWidget(self.source_combobox, 1)
+        self.source_combobox.setFixedWidth(RUN_PIPELINE_SETTING_CONTROL_WIDTH)
+        source_layout.addWidget(self.source_combobox)
 
-        target_label = QLabel(self.tr('Target'), language_row)
+        target_row = QWidget(section)
+        target_row.setObjectName('RunPipelineGeneralSettingRow')
+        target_layout = QHBoxLayout(target_row)
+        target_layout.setContentsMargins(0, 0, 0, 0)
+        target_layout.setSpacing(8)
+        target_label = QLabel(self.tr('Target'), target_row)
         target_label.setObjectName('RunPipelineSettingLabel')
-        language_layout.addWidget(target_label)
-        self.target_combobox = QComboBox(language_row)
+        target_layout.addWidget(target_label)
+        target_layout.addStretch()
+        self.target_combobox = BottomBorderComboBox(target_row)
         self.target_combobox.setObjectName('RunPipelineTargetComboBox')
         self.target_combobox.addItems(self._translation_options(
             'supported_tgt_list',
             pcfg.module.translate_target,
         ))
         self.target_combobox.setCurrentText(pcfg.module.translate_target)
-        language_layout.addWidget(self.target_combobox, 1)
-        layout.addWidget(language_row)
+        self.target_combobox.setFixedWidth(RUN_PIPELINE_SETTING_CONTROL_WIDTH)
+        target_layout.addWidget(self.target_combobox)
+        translation_grid.addWidget(source_row, 0, 0)
+        translation_grid.addWidget(target_row, 0, 1)
 
         context_row = QWidget(section)
+        self.context_row = context_row
         context_row.setObjectName('RunPipelineGeneralSettingRow')
         context_layout = QHBoxLayout(context_row)
         context_layout.setContentsMargins(0, 0, 0, 0)
@@ -619,43 +699,70 @@ class RunPipelineDialog(QDialog):
         context_label = QLabel(self.tr('Context'), context_row)
         context_label.setObjectName('RunPipelineSettingLabel')
         context_layout.addWidget(context_label)
-        self.context_combobox = QComboBox(context_row)
+        context_layout.addStretch()
+        self.context_combobox = BottomBorderComboBox(context_row)
         self.context_combobox.setObjectName('RunPipelineContextComboBox')
         self.context_combobox.addItem(self.tr('textblock'), TranslateContext.TextBlock)
         self.context_combobox.addItem(self.tr('page'), TranslateContext.Page)
         context_index = self.context_combobox.findData(pcfg.module.translate_context)
         self.context_combobox.setCurrentIndex(max(context_index, 0))
+        self.context_combobox.setFixedWidth(RUN_PIPELINE_SETTING_CONTROL_WIDTH)
         context_layout.addWidget(self.context_combobox)
-        context_layout.addStretch()
-        layout.addWidget(context_row)
 
-        self.use_prior_translations = self._add_checkbox_setting(
-            section,
-            layout,
-            'RunPipelineUsePriorTranslations',
-            self.tr('Translation history'),
-            pcfg.module.llm_use_prior_translations,
-            self._on_use_prior_translations_toggled,
+        llm_context_row = QWidget(section)
+        self.llm_context_row = llm_context_row
+        llm_context_row.setObjectName('RunPipelineGeneralSettingRow')
+        llm_context_layout = QHBoxLayout(llm_context_row)
+        llm_context_layout.setContentsMargins(0, 0, 0, 0)
+        llm_context_layout.setSpacing(8)
+        llm_context_label = QLabel(self.tr('LLM Context'), llm_context_row)
+        llm_context_label.setObjectName('RunPipelineSettingLabel')
+        llm_context_layout.addWidget(llm_context_label)
+        llm_context_layout.addStretch()
+        self.llm_context_combobox = BottomBorderComboBox(llm_context_row)
+        self.llm_context_combobox.setObjectName('RunPipelineLLMContextComboBox')
+        self.llm_context_combobox.addItem(
+            self.tr('page'),
+            LLMTranslateContext.PAGE,
         )
+        self.llm_context_combobox.addItem(
+            self.tr('+history'),
+            LLMTranslateContext.HISTORY,
+        )
+        llm_context_index = self.llm_context_combobox.findData(
+            pcfg.module.llm_translate_context
+        )
+        self.llm_context_combobox.setCurrentIndex(max(llm_context_index, 0))
+        self.llm_context_combobox.setFixedWidth(
+            RUN_PIPELINE_SETTING_CONTROL_WIDTH
+        )
+        llm_context_layout.addWidget(self.llm_context_combobox)
+        llm_context_row.setVisible(self._llm_settings_visible)
 
-        budget_row = QWidget(section)
-        budget_row.setObjectName('RunPipelineGeneralSettingRow')
-        budget_layout = QHBoxLayout(budget_row)
-        budget_layout.setContentsMargins(0, 0, 0, 0)
-        budget_layout.setSpacing(8)
-        budget_label = QLabel(self.tr('History limit (tokens)'), budget_row)
+        history_budget_row = QWidget(section)
+        self.history_budget_row = history_budget_row
+        history_budget_row.setObjectName('RunPipelineGeneralSettingRow')
+        history_budget_layout = QHBoxLayout(history_budget_row)
+        history_budget_layout.setContentsMargins(0, 0, 0, 0)
+        history_budget_layout.setSpacing(8)
+        budget_label = QLabel(
+            self.tr('Token budget'),
+            history_budget_row,
+        )
         budget_label.setObjectName('RunPipelineSettingLabel')
-        budget_layout.addWidget(budget_label)
-        self.prior_context_token_budget = QSpinBox(budget_row)
+        history_budget_layout.addWidget(budget_label)
+        history_budget_layout.addStretch()
+        self.prior_context_token_budget = PageRangeSpinBox(history_budget_row)
         self.prior_context_token_budget.setObjectName(
             'RunPipelinePriorContextTokenBudget'
         )
-        self.prior_context_token_budget.setRange(1, 2_147_483_647)
-        self.prior_context_token_budget.setValue(
-            pcfg.module.llm_prior_context_token_budget
+        self.prior_context_token_budget.setRange(128, 2_147_483_647)
+        self.prior_context_token_budget.setSingleStep(128)
+        self.prior_context_token_budget.setFixedWidth(
+            RUN_PIPELINE_SETTING_CONTROL_WIDTH
         )
-        self.prior_context_token_budget.setEnabled(
-            pcfg.module.llm_use_prior_translations
+        self.prior_context_token_budget.setValue(
+            max(128, pcfg.module.llm_prior_context_token_budget)
         )
         history_limit_help = self.tr(
             'Maximum translation history sent to the model. The current page, '
@@ -663,40 +770,40 @@ class RunPipelineDialog(QDialog):
         )
         budget_label.setToolTip(history_limit_help)
         self.prior_context_token_budget.setToolTip(history_limit_help)
-        budget_layout.addWidget(self.prior_context_token_budget)
-        budget_layout.addStretch()
-        layout.addWidget(budget_row)
+        history_budget_layout.addWidget(self.prior_context_token_budget)
+        history_budget_row.setVisible(
+            self._llm_settings_visible
+            and pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY
+        )
+        translation_grid.addWidget(
+            llm_context_row if self._llm_settings_visible else context_row,
+            1,
+            0,
+        )
+        translation_grid.addWidget(history_budget_row, 1, 1)
 
         glossary_row = QWidget(section)
+        self.glossary_row = glossary_row
         glossary_row.setObjectName('RunPipelineGeneralSettingRow')
         glossary_layout = QHBoxLayout(glossary_row)
         glossary_layout.setContentsMargins(0, 0, 0, 0)
         glossary_layout.setSpacing(8)
-        glossary_label = QLabel(self.tr('Glossary File'), glossary_row)
+        glossary_label = QLabel(self.tr('Glossary'), glossary_row)
         glossary_label.setObjectName('RunPipelineSettingLabel')
         glossary_layout.addWidget(glossary_label)
-        self.glossary_path_edit = QLineEdit(glossary_row)
+        glossary_layout.addStretch()
+        self.glossary_path_edit = GlossaryPathEdit(glossary_row)
         self.glossary_path_edit.setObjectName('RunPipelineGlossaryPath')
-        self.glossary_path_edit.setText(pcfg.module.llm_glossary_path)
-        glossary_layout.addWidget(self.glossary_path_edit, 1)
-        self.glossary_file_button = QPushButton('...', glossary_row)
-        self.glossary_file_button.setObjectName('RunPipelineGlossaryFileButton')
-        self.glossary_file_button.setFixedWidth(30)
+        self.glossary_path_edit.setReadOnly(True)
+        self.glossary_path_edit.setFixedWidth(RUN_PIPELINE_GLOSSARY_DISPLAY_WIDTH)
+        self._set_glossary_path_display(pcfg.module.llm_glossary_path)
+        glossary_layout.addWidget(self.glossary_path_edit)
+        self.glossary_file_button = self.glossary_path_edit.select_button
         select_glossary_text = self.tr('Select Glossary File')
         self.glossary_file_button.setToolTip(select_glossary_text)
         self.glossary_file_button.setAccessibleName(select_glossary_text)
-        glossary_layout.addWidget(self.glossary_file_button)
-        layout.addWidget(glossary_row)
 
-        glossary_mode_row = QWidget(section)
-        glossary_mode_row.setObjectName('RunPipelineGeneralSettingRow')
-        glossary_mode_layout = QHBoxLayout(glossary_mode_row)
-        glossary_mode_layout.setContentsMargins(0, 0, 0, 0)
-        glossary_mode_layout.setSpacing(8)
-        glossary_mode_label = QLabel(self.tr('Glossary Mode'), glossary_mode_row)
-        glossary_mode_label.setObjectName('RunPipelineSettingLabel')
-        glossary_mode_layout.addWidget(glossary_mode_label)
-        self.glossary_mode_combobox = QComboBox(glossary_mode_row)
+        self.glossary_mode_combobox = BottomBorderComboBox(glossary_row)
         self.glossary_mode_combobox.setObjectName(
             'RunPipelineGlossaryModeComboBox'
         )
@@ -715,9 +822,25 @@ class RunPipelineDialog(QDialog):
         self.glossary_mode_combobox.setEnabled(
             bool(pcfg.module.llm_glossary_path.strip())
         )
-        glossary_mode_layout.addWidget(self.glossary_mode_combobox)
-        glossary_mode_layout.addStretch()
-        layout.addWidget(glossary_mode_row)
+        self.glossary_mode_combobox.setFixedWidth(
+            RUN_PIPELINE_SETTING_CONTROL_WIDTH
+        )
+        glossary_row.setVisible(self._llm_settings_visible)
+        mode_row = QWidget(section)
+        mode_row.setObjectName('RunPipelineGeneralSettingRow')
+        mode_layout = QHBoxLayout(mode_row)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(8)
+        mode_label = QLabel(self.tr('Mode'), mode_row)
+        mode_label.setObjectName('RunPipelineSettingLabel')
+        mode_layout.addWidget(mode_label)
+        mode_layout.addStretch()
+        mode_layout.addWidget(self.glossary_mode_combobox)
+        mode_row.setVisible(self._llm_settings_visible)
+        translation_grid.addWidget(glossary_row, 2, 0)
+        translation_grid.addWidget(mode_row, 2, 1)
+
+        self.context_row.setVisible(not self._llm_settings_visible)
 
         self.source_combobox.currentTextChanged.connect(
             self._on_translate_source_changed
@@ -727,6 +850,9 @@ class RunPipelineDialog(QDialog):
         )
         self.context_combobox.currentIndexChanged.connect(
             self._on_translate_context_changed
+        )
+        self.llm_context_combobox.currentIndexChanged.connect(
+            self._on_llm_context_changed
         )
         self.prior_context_token_budget.valueChanged.connect(
             self._on_prior_context_token_budget_changed
@@ -751,16 +877,27 @@ class RunPipelineDialog(QDialog):
         context = self.context_combobox.currentData()
         pcfg.module.translate_context = context
 
-    def _on_use_prior_translations_toggled(self, enabled: bool):
-        pcfg.module.llm_use_prior_translations = enabled
-        self.prior_context_token_budget.setEnabled(enabled)
+    def _on_llm_context_changed(self):
+        context = self.llm_context_combobox.currentData()
+        pcfg.module.llm_translate_context = context
+        self.history_budget_row.setVisible(
+            self._llm_settings_visible
+            and context == LLMTranslateContext.HISTORY
+        )
 
     def _on_prior_context_token_budget_changed(self, budget: int):
         pcfg.module.llm_prior_context_token_budget = budget
 
     def _on_glossary_path_changed(self, path: str):
+        self._set_glossary_path_display(path)
+
+    def _set_glossary_path_display(self, path: str):
         pcfg.module.llm_glossary_path = path
-        self.glossary_mode_combobox.setEnabled(bool(path.strip()))
+        blocker = QSignalBlocker(self.glossary_path_edit)
+        self.glossary_path_edit.setText(os.path.basename(path) if path else '')
+        del blocker
+        if hasattr(self, 'glossary_mode_combobox'):
+            self.glossary_mode_combobox.setEnabled(bool(path.strip()))
 
     def _on_glossary_mode_changed(self):
         pcfg.module.llm_glossary_mode = self.glossary_mode_combobox.currentData()
@@ -773,7 +910,7 @@ class RunPipelineDialog(QDialog):
             self.tr('Glossary Files (*.json *.txt *.tsv)'),
         )
         if path:
-            self.glossary_path_edit.setText(path)
+            self._set_glossary_path_display(path)
 
     def _add_settings_section(
         self,
@@ -807,7 +944,7 @@ class RunPipelineDialog(QDialog):
             body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
             body_layout = QVBoxLayout(body)
             body_layout.setContentsMargins(18, 0, 0, 0)
-            body_layout.setSpacing(6)
+            body_layout.setSpacing(8)
             section_layout.addWidget(body)
             body.setVisible(header.isChecked())
             self.module_settings_headers[key] = header

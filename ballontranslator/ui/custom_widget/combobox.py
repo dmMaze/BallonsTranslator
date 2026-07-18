@@ -2,10 +2,12 @@ from typing import List, Callable
 
 from qtpy.QtWidgets import QComboBox, QWidget
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QDoubleValidator
+from qtpy.QtGui import QDoubleValidator, QPainter
 
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from .push_button import NoBorderPushBtn
+from ..icon_rendering import render_svg_pixmap
+from ..misc import themed_icon_path
 
 
 class ComboBox(QComboBox):
@@ -29,6 +31,34 @@ class ComboBox(QComboBox):
 
 class SmallComboBox(ComboBox):
     pass
+
+
+class BottomBorderComboBox(QComboBox):
+    """Combo box with the app's compact bottom-border selector treatment.
+
+    >>> BottomBorderComboBox.__name__
+    'BottomBorderComboBox'
+    """
+
+    ARROW_SIZE = 12
+
+    def __init__(self, parent: QWidget = None):
+        super().__init__(parent)
+        self.setProperty('bottomBorderSelector', True)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        pixmap = render_svg_pixmap(
+            themed_icon_path('chevron-down.svg'),
+            self.ARROW_SIZE,
+            self.ARROW_SIZE,
+            self.devicePixelRatioF(),
+        )
+        x = self.width() - self.ARROW_SIZE - 5
+        y = (self.height() - self.ARROW_SIZE) // 2
+        painter.drawPixmap(x, y, pixmap)
+        painter.end()
 
 
 class ConfigComboBox(ComboBox):

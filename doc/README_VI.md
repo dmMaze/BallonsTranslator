@@ -35,14 +35,14 @@
 
   **Lịch sử bản dịch**
 
-  - Bật **Translation history** để cho `LLMTranslator` xem ví dụ từ các trang trước đã hoàn thành. Điều này giúp tên, thuật ngữ và giọng điệu nhất quán hơn. Khi tiếp tục hoặc dịch một phạm vi, các trang đủ điều kiện trước đó cũng có thể được dùng.
-  - **History limit (tokens)** kiểm soát lượng văn bản dịch trước đó được đưa vào và ưu tiên các trang mới hơn. Trang hiện tại, chỉ dẫn, bảng thuật ngữ và phản hồi được tạo cần thêm không gian. Mặc định là `4096`.
+  - Đặt **LLM Context** thành **+history** để cho `LLMTranslator` xem ví dụ từ các trang trước đã hoàn thành. Điều này giúp tên, thuật ngữ và giọng điệu nhất quán hơn. Khi tiếp tục hoặc dịch một phạm vi, các trang đủ điều kiện trước đó cũng có thể được dùng.
+  - **Token budget** kiểm soát lượng văn bản dịch trước đó được đưa vào và ưu tiên các trang mới hơn. Trang hiện tại, chỉ dẫn, bảng thuật ngữ và phản hồi được tạo cần thêm không gian. Mặc định là `4096`.
   - Ngân sách lớn hơn cung cấp nhiều ngữ cảnh câu chuyện hơn và ít loại bỏ trang cũ hơn, nhưng gửi nhiều văn bản hơn và có thể chậm hơn. Mô hình cục bộ cũng có thể cần nhiều RAM/VRAM hơn đáng kể. Mặc định `4096` được cố ý đặt ở mức thận trọng; các nhà cung cấp phổ biến có cửa sổ ngữ cảnh lớn như DeepSeek thường có thể dùng giới hạn cao hơn. Khoảng 70% giới hạn ngữ cảnh của mô hình là mức trần hợp lý (`90000` cho 128K).
   - Ngân sách lịch sử cũng ảnh hưởng đến bộ nhớ đệm lời nhắc. Khi lịch sử tăng trong giới hạn ngân sách, các yêu cầu liên tiếp giữ nguyên phần đầu để nhà cung cấp như OpenAI và DeepSeek có thể tái sử dụng với giá token đầu vào thấp hơn và đôi khi giảm độ trễ. Khi ngân sách buộc phải loại bỏ trang cũ, phần đầu đó thay đổi và việc tái sử dụng bộ nhớ đệm được đặt lại. Ngân sách lớn hơn giúp giảm số lần đặt lại nhưng gửi nhiều lịch sử hơn, nên không đảm bảo tổng chi phí thấp hơn.
 
   Bảng dưới đây là ước tính sơ bộ cho các trang manga khi dùng DeepSeek, trong đó token đầu vào đã lưu đệm có giá bằng 10% token đầu vào thông thường. Kết quả thực tế thay đổi theo dự án, mô hình và nhà cung cấp.
 
-  | History limit (tokens) | Lịch sử ước tính được giữ lại (trang) | Tổng chi phí ước tính so với không dùng lịch sử |
+  | Token budget | Lịch sử ước tính được giữ lại (trang) | Tổng chi phí ước tính so với không dùng lịch sử |
   |---:|---:|---:|
   | `2048` | 3–4 | 1.65× |
   | `4096` | 6–9 | 1.79× |

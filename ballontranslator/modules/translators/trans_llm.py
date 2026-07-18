@@ -14,7 +14,12 @@ from .glossary import (
 )
 from .token_usage import format_completion_token_usage, messages_token_count
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
-from ballontranslator.utils.config import LLMGlossaryMode, RunStatus, pcfg
+from ballontranslator.utils.config import (
+    LLMGlossaryMode,
+    LLMTranslateContext,
+    RunStatus,
+    pcfg,
+)
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.llm_profiles import (
@@ -329,7 +334,9 @@ class LLMTranslator(BaseTranslator):
         page_key,
         profile: LLMProfile,
     ):
-        use_history = bool(pcfg.module.llm_use_prior_translations)
+        use_history = (
+            pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY
+        )
         history_budget = pcfg.module.llm_prior_context_token_budget
         glossary_path = str(pcfg.module.llm_glossary_path or '')
         glossary_mode = pcfg.module.llm_glossary_mode
@@ -581,7 +588,7 @@ class LLMTranslator(BaseTranslator):
     def _log_context_diagnostic(self, diagnostic: _ContextDiagnostic):
         page_key = diagnostic.page_key.replace('\r', ' ').replace('\n', ' ')
         details = [
-            f'LLM context: page={page_key or "-"}',
+            f'LLM Context: page={page_key or "-"}',
             f'action={diagnostic.action}',
             f'pages={diagnostic.page_count}',
             f'tokens={diagnostic.token_count}/{diagnostic.token_budget}',
@@ -726,7 +733,7 @@ class LLMTranslator(BaseTranslator):
     def _system_prompt(self, profile: LLMProfile, to_lang: str) -> str:
         prompt = str(profile.prompt or '').strip()
         history_rule = ''
-        if pcfg.module.llm_use_prior_translations:
+        if pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY:
             history_rule = (
                 "- When prior translation examples are present, use them to infer context "
                 "and keep names, terminology, and tone consistent. If they conflict, "

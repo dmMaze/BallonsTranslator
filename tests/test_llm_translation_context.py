@@ -17,7 +17,12 @@ from ballontranslator.modules.translators.trans_llm import (
     _RequestContext,
 )
 from ballontranslator.ui.module_manager import TranslateThread
-from ballontranslator.utils.config import LLMGlossaryMode, RunStatus, pcfg
+from ballontranslator.utils.config import (
+    LLMGlossaryMode,
+    LLMTranslateContext,
+    RunStatus,
+    pcfg,
+)
 from ballontranslator.utils.llm_profiles import default_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.textblock import TextBlock
@@ -34,7 +39,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.profile = default_profile('OpenAI')
         self.profile.api_key = 'sk-test'
         self._settings = {
-            'llm_use_prior_translations': pcfg.module.llm_use_prior_translations,
+            'llm_translate_context': pcfg.module.llm_translate_context,
             'llm_prior_context_token_budget': pcfg.module.llm_prior_context_token_budget,
             'llm_glossary_path': pcfg.module.llm_glossary_path,
             'llm_glossary_mode': pcfg.module.llm_glossary_mode,
@@ -106,7 +111,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         return context
 
     def test_disabled_features_preserve_current_message_sequence(self):
-        pcfg.module.llm_use_prior_translations = False
+        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_glossary_path = ''
         self.assertIsNone(
             self.translator._snapshot_request_context(None, None, self.profile)
@@ -304,7 +309,7 @@ class LLMTranslationContextTest(unittest.TestCase):
 
     def test_adjacent_requests_grow_append_only(self):
         project = self._project(4)
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         pcfg.module.llm_prior_context_token_budget = 10
 
@@ -332,20 +337,25 @@ class LLMTranslationContextTest(unittest.TestCase):
             ['001.png', '002.png'],
         )
         self.assertEqual(third.history[:-1], second.history)
+        first_messages, _, _ = next(self.translator._assemble_batches(
+            ['source-1'], self.profile, request_context=first,
+        ))
         second_messages, _, _ = next(self.translator._assemble_batches(
             ['source-2'], self.profile, request_context=second,
         ))
         third_messages, _, _ = next(self.translator._assemble_batches(
             ['source-3'], self.profile, request_context=third,
         ))
-        self.assertEqual(
-            third_messages[:len(second_messages)],
-            second_messages,
+        self.assertIn(
+            'When prior translation examples are present',
+            first_messages[0]['content'],
         )
+        self.assertEqual(second_messages[:len(first_messages)], first_messages)
+        self.assertEqual(third_messages[:len(second_messages)], second_messages)
 
     def test_overflow_bulk_evicts_and_later_prefix_grows_stably(self):
         project = self._project(8)
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         pcfg.module.llm_prior_context_token_budget = 10
         contexts = []
@@ -383,7 +393,7 @@ class LLMTranslationContextTest(unittest.TestCase):
 
     def test_oversized_adjacent_page_is_skipped_without_splitting_window(self):
         project = self._project(3)
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         pcfg.module.llm_prior_context_token_budget = 5
 
@@ -412,7 +422,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         project = self._project(5)
         for page_key in ('001.png', '002.png', '003.png'):
             self._complete(project, page_key)
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
 
         with mock.patch(
@@ -458,7 +468,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.translator._history_window = None
         self.translator.set_source('日本語')
         self.translator.set_target('简体中文')
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         pcfg.module.llm_glossary_mode = LLMGlossaryMode.Matching
         pcfg.module.llm_prior_context_token_budget = 10
@@ -535,7 +545,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                 glossary_file.write('Hero\t勇者\n')
             pcfg.module.llm_glossary_path = glossary_path
             pcfg.module.llm_glossary_mode = LLMGlossaryMode.All
-            pcfg.module.llm_use_prior_translations = True
+            pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
             project = self._project(3)
             self._complete(project, '001.png')
 
@@ -558,7 +568,7 @@ class LLMTranslationContextTest(unittest.TestCase):
 
     def test_runtime_window_retains_only_immutable_snapshots(self):
         project = self._project(3)
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         self._complete(project, '001.png')
         with mock.patch(
@@ -596,7 +606,7 @@ class LLMTranslationContextTest(unittest.TestCase):
             captured_messages.append(messages)
             return '{"translations":[{"id":1,"translation":"勇者归来"}]}'
 
-        pcfg.module.llm_use_prior_translations = False
+        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_glossary_path = ''
         with mock.patch.object(
             self.translator,
@@ -636,7 +646,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                     '002.png': {'finish_code': 0},
                 },
             )
-            pcfg.module.llm_use_prior_translations = True
+            pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
             with mock.patch.object(
                 self.translator,
                 '_render_history_messages',
@@ -700,7 +710,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                     substitute=lambda text: text.replace('未処理', '完了'),
                 )
 
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         with mock.patch.object(
             self.translator,
@@ -806,7 +816,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         project = self._project(4)
         for page_key in ('001.png', '002.png', '003.png'):
             self._complete(project, page_key)
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_prior_context_token_budget = 5
         pcfg.module.llm_glossary_mode = LLMGlossaryMode.All
 
@@ -886,7 +896,7 @@ class LLMTranslationContextTest(unittest.TestCase):
 
     def test_unrelated_request_failure_does_not_shrink_window(self):
         project = self._project(3)
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         self.translator.set_param_value('retry attempts', 1)
         self._complete(project, '001.png')
@@ -919,7 +929,7 @@ class LLMTranslationContextTest(unittest.TestCase):
 
     def test_failed_eviction_preserves_committed_window_and_retry_messages(self):
         project = self._project(8)
-        pcfg.module.llm_use_prior_translations = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         pcfg.module.llm_prior_context_token_budget = 10
         self.translator.set_param_value('retry attempts', 1)

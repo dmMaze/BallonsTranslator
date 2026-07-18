@@ -35,14 +35,14 @@
 
   **Riwayat terjemahan**
 
-  - Aktifkan **Translation history** agar `LLMTranslator` melihat contoh dari halaman sebelumnya yang telah selesai. Ini dapat menjaga konsistensi nama, istilah, dan nada. Proses lanjutan dan rentang terpilih juga dapat memakai halaman sebelumnya yang memenuhi syarat.
-  - **History limit (tokens)** mengatur jumlah teks terjemahan sebelumnya yang disertakan, dengan prioritas pada halaman yang lebih baru. Halaman saat ini, instruksi, glosarium, dan respons yang dihasilkan membutuhkan ruang tambahan. Nilai defaultnya `4096`.
+  - Atur **LLM Context** ke **+history** agar `LLMTranslator` melihat contoh dari halaman sebelumnya yang telah selesai. Ini dapat menjaga konsistensi nama, istilah, dan nada. Proses lanjutan dan rentang terpilih juga dapat memakai halaman sebelumnya yang memenuhi syarat.
+  - **Token budget** mengatur jumlah teks terjemahan sebelumnya yang disertakan, dengan prioritas pada halaman yang lebih baru. Halaman saat ini, instruksi, glosarium, dan respons yang dihasilkan membutuhkan ruang tambahan. Nilai defaultnya `4096`.
   - Anggaran yang lebih besar memberi lebih banyak konteks cerita dan lebih jarang membuang halaman lama, tetapi mengirim lebih banyak teks dan dapat berjalan lebih lambat. Model lokal juga dapat membutuhkan jauh lebih banyak RAM/VRAM. Nilai default `4096` sengaja dibuat konservatif; penyedia umum dengan jendela konteks besar, seperti DeepSeek, sering dapat memakai batas yang lebih tinggi. Sekitar 70% dari batas konteks model adalah batas atas yang wajar (`90000` untuk 128K).
   - Anggaran riwayat juga memengaruhi cache prompt. Selama riwayat bertambah dalam batas anggaran, permintaan berurutan mempertahankan bagian awal yang sama; penyedia seperti OpenAI dan DeepSeek dapat memakainya kembali dengan harga token input yang lebih murah dan terkadang latensi lebih rendah. Ketika anggaran memaksa halaman lama dibuang, bagian awal itu berubah dan penggunaan cache direset. Anggaran lebih besar mengurangi reset, tetapi mengirim lebih banyak riwayat sehingga tidak menjamin biaya total lebih rendah.
 
   Tabel berikut adalah perkiraan kasar untuk halaman manga menggunakan DeepSeek, dengan harga token input cache sebesar 10% dari token input biasa. Hasil sebenarnya berbeda menurut proyek, model, dan penyedia.
 
-  | History limit (tokens) | Perkiraan riwayat yang dipertahankan (halaman) | Perkiraan biaya total dibanding tanpa riwayat |
+  | Token budget | Perkiraan riwayat yang dipertahankan (halaman) | Perkiraan biaya total dibanding tanpa riwayat |
   |---:|---:|---:|
   | `2048` | 3–4 | 1.65× |
   | `4096` | 6–9 | 1.79× |

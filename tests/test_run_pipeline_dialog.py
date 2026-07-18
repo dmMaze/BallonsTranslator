@@ -38,6 +38,7 @@ from ballontranslator.ui.mainwindowbars import TitleBar
 from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.utils.config import (
     LLMGlossaryMode,
+    LLMTranslateContext,
     ProgramConfig,
     RunStatus,
     json_dump_program_config,
@@ -90,7 +91,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.translate_source,
             pcfg.module.translate_target,
             pcfg.module.translate_context,
-            pcfg.module.llm_use_prior_translations,
+            pcfg.module.llm_translate_context,
             pcfg.module.llm_prior_context_token_budget,
             pcfg.module.llm_glossary_path,
             pcfg.module.llm_glossary_mode,
@@ -136,7 +137,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.translate_source,
             pcfg.module.translate_target,
             pcfg.module.translate_context,
-            pcfg.module.llm_use_prior_translations,
+            pcfg.module.llm_translate_context,
             pcfg.module.llm_prior_context_token_budget,
             pcfg.module.llm_glossary_path,
             pcfg.module.llm_glossary_mode,
@@ -340,19 +341,42 @@ class RunPipelineDialogTests(unittest.TestCase):
         context_index = dialog.context_combobox.findData('textblock')
         dialog.context_combobox.setCurrentIndex(context_index)
         self.assertEqual(pcfg.module.translate_context, 'textblock')
+        self.assertFalse(dialog.context_row.isHidden())
+        self.assertTrue(dialog.llm_context_row.isHidden())
+        self.assertTrue(dialog.history_budget_row.isHidden())
         self.assertFalse(hasattr(dialog, 'show_MT_keyword_window'))
         dialog.close()
 
     def test_llm_context_and_glossary_controls_persist_disabled_values(self):
-        pcfg.module.llm_use_prior_translations = False
+        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_prior_context_token_budget = 8192
         pcfg.module.llm_glossary_path = ''
         pcfg.module.llm_glossary_mode = LLMGlossaryMode.Matching
-        dialog = RunPipelineDialog()
+        translate_context = pcfg.module.translate_context
+        dialog = RunPipelineDialog(
+            translator_metadata={'name': 'LLMTranslator'},
+        )
 
-        dialog.use_prior_translations.setChecked(True)
+        self.assertTrue(dialog.context_row.isHidden())
+        self.assertFalse(dialog.llm_context_row.isHidden())
+        self.assertTrue(dialog.history_budget_row.isHidden())
+        self.assertEqual(
+            [
+                dialog.llm_context_combobox.itemText(index)
+                for index in range(dialog.llm_context_combobox.count())
+            ],
+            ['page', '+history'],
+        )
+        history_index = dialog.llm_context_combobox.findData(
+            LLMTranslateContext.HISTORY
+        )
+        dialog.llm_context_combobox.setCurrentIndex(history_index)
+        self.assertFalse(dialog.history_budget_row.isHidden())
         dialog.prior_context_token_budget.setValue(16384)
-        dialog.use_prior_translations.setChecked(False)
+        page_index = dialog.llm_context_combobox.findData(
+            LLMTranslateContext.PAGE
+        )
+        dialog.llm_context_combobox.setCurrentIndex(page_index)
         dialog.glossary_path_edit.setText('/tmp/glossary.tsv')
         all_index = dialog.glossary_mode_combobox.findData(LLMGlossaryMode.All)
         dialog.glossary_mode_combobox.setCurrentIndex(all_index)
@@ -360,15 +384,21 @@ class RunPipelineDialogTests(unittest.TestCase):
 
         self.assertEqual(
             (
-                pcfg.module.llm_use_prior_translations,
+                pcfg.module.llm_translate_context,
                 pcfg.module.llm_prior_context_token_budget,
                 pcfg.module.llm_glossary_path,
                 pcfg.module.llm_glossary_mode,
             ),
-            (False, 16384, '', LLMGlossaryMode.All),
+            (
+                LLMTranslateContext.PAGE,
+                16384,
+                '',
+                LLMGlossaryMode.All,
+            ),
         )
+        self.assertEqual(pcfg.module.translate_context, translate_context)
         self.assertEqual(dialog.prior_context_token_budget.value(), 16384)
-        self.assertFalse(dialog.prior_context_token_budget.isEnabled())
+        self.assertTrue(dialog.history_budget_row.isHidden())
         self.assertFalse(dialog.glossary_mode_combobox.isEnabled())
         dialog.close()
 

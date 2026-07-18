@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from ballontranslator.utils.config import (
     LLMGlossaryMode,
+    LLMTranslateContext,
     ModuleConfig,
     ProgramConfig,
     RunStatus,
@@ -30,18 +31,22 @@ class LLMContextConfigTest(unittest.TestCase):
 
         self.assertEqual(
             (
-                loaded.module.llm_use_prior_translations,
+                loaded.module.llm_translate_context,
                 loaded.module.llm_prior_context_token_budget,
                 loaded.module.llm_glossary_path,
                 loaded.module.llm_glossary_mode,
             ),
-            (False, 4096, '', LLMGlossaryMode.Matching),
+            (LLMTranslateContext.PAGE, 4096, '', LLMGlossaryMode.Matching),
         )
 
         invalid_cases = (
             ('llm_glossary_mode', (None, '', 'everything'), LLMGlossaryMode.Matching),
             ('llm_prior_context_token_budget', (0, -1, False, '4096'), 4096),
-            ('llm_use_prior_translations', (None, 0, 1, 'false', [], {}), False),
+            (
+                'llm_translate_context',
+                (None, '', True, 'textblock', [], {}),
+                LLMTranslateContext.PAGE,
+            ),
             ('llm_glossary_path', (None, False, 1, [], {}), ''),
         )
         for field, values, expected in invalid_cases:
@@ -54,7 +59,7 @@ class LLMContextConfigTest(unittest.TestCase):
 
     def test_llm_context_settings_roundtrip_directly_under_module(self):
         cfg = ProgramConfig(module=_module_config(
-            llm_use_prior_translations=True,
+            llm_translate_context=LLMTranslateContext.HISTORY,
             llm_prior_context_token_budget=2048,
             llm_glossary_path='glossaries/terms.tsv',
             llm_glossary_mode=LLMGlossaryMode.All,
@@ -65,14 +70,14 @@ class LLMContextConfigTest(unittest.TestCase):
             {
                 key: raw['module'][key]
                 for key in (
-                    'llm_use_prior_translations',
+                    'llm_translate_context',
                     'llm_prior_context_token_budget',
                     'llm_glossary_path',
                     'llm_glossary_mode',
                 )
             },
             {
-                'llm_use_prior_translations': True,
+                'llm_translate_context': LLMTranslateContext.HISTORY,
                 'llm_prior_context_token_budget': 2048,
                 'llm_glossary_path': 'glossaries/terms.tsv',
                 'llm_glossary_mode': LLMGlossaryMode.All,
@@ -84,7 +89,10 @@ class LLMContextConfigTest(unittest.TestCase):
             temp.flush()
             loaded = ProgramConfig.load(temp.name)
 
-        self.assertTrue(loaded.module.llm_use_prior_translations)
+        self.assertEqual(
+            loaded.module.llm_translate_context,
+            LLMTranslateContext.HISTORY,
+        )
         self.assertEqual(loaded.module.llm_prior_context_token_budget, 2048)
         self.assertEqual(
             loaded.module.llm_glossary_path,
