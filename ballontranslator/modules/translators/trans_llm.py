@@ -17,14 +17,13 @@ from ..context.glossary import (
 )
 from ..context.history import (
     ContextDiagnostic,
+    ContextReason,
     HistoryPage,
     HistoryWindow,
     HistoryWindowKey,
     RenderedHistoryPage,
     RequestContext,
-    get_context_diagnostic,
     history_for_request,
-    history_window_from_context,
     recover_context_length,
     snapshot_eligible_history,
     window_rebuild_reason,
@@ -49,6 +48,7 @@ from ballontranslator.utils.llm_profiles import (
     profile_from_config,
     resolve_api_key,
 )
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
 class InvalidNumTranslations(Exception):
@@ -165,8 +165,8 @@ class LLMTranslator(BaseTranslator):
         self,
         text,
         *,
-        project=None,
-        page_key=None,
+        project: Optional[ProjImgTrans] = None,
+        page_key: Optional[str] = None,
     ):
         """Translate one request with an immutable project-context snapshot.
 
@@ -282,10 +282,10 @@ class LLMTranslator(BaseTranslator):
 
     def _snapshot_request_context(
         self,
-        project,
-        page_key,
+        project: Optional[ProjImgTrans],
+        page_key: Optional[str],
         profile: LLMProfile,
-    ):
+    ) -> Optional[RequestContext]:
         """Freeze the glossary and eligible page history for one request.
 
         The returned messages remain immutable across ordinary provider retries;
@@ -306,15 +306,14 @@ class LLMTranslator(BaseTranslator):
         if not use_history and not glossary_path:
             # Preserve the legacy prompt shape when both optional features are off.
             self._history_window = None
-            self.logger.debug(get_context_diagnostic(
-                ContextDiagnostic(
-                    page_key=str(page_key or ''),
-                    action='disabled',
-                    page_count=0,
-                    token_count=0,
-                    token_budget=int(history_budget),
-                )
-            ))
+            disabled_diagnostic = ContextDiagnostic(
+                page_key=str(page_key or ''),
+                action='disabled',
+                page_count=0,
+                token_count=0,
+                token_budget=int(history_budget),
+            )
+            self.logger.debug(str(disabled_diagnostic))
             return None
 
         glossary = load_glossary(glossary_path)
@@ -329,18 +328,35 @@ class LLMTranslator(BaseTranslator):
             page_count=0,
             token_count=0,
             token_budget=int(history_budget),
-            rebuild_reason='history-disabled' if not use_history else 'missing-project-page',
+            rebuild_reason=(
+                ContextReason.HISTORY_DISABLED
+                if not use_history
+                else ContextReason.MISSING_PROJECT_PAGE
+            ),
         )
         if use_history and project is not None and page_key is not None:
             history_budget = max(0, int(history_budget))
             model = self._text_model(profile)
-            window_key = self._history_window_key(
-                project,
-                profile,
-                glossary,
-                glossary_mode,
-                history_budget,
-                model,
+            # A reload gets a new identity even at the same path; all remaining
+            # fields can change the exact provider-cache prefix.
+            window_key = HistoryWindowKey(
+                load_identity=getattr(project, 'load_identity', None),
+                settings=(
+                    ('profile_id', str(profile.id)),
+                    ('source_language', str(self.lang_source)),
+                    ('target_language', str(self.lang_target)),
+                    ('model', str(model)),
+                    (
+                        'system_prompt',
+                        self._system_prompt(
+                            profile,
+                            self._translated_lang(self.lang_target),
+                        ),
+                    ),
+                    ('glossary', tuple(glossary)),
+                    ('glossary_mode', str(glossary_mode)),
+                    ('token_budget', int(history_budget)),
+                ),
             )
             rebuild_reason = window_rebuild_reason(
                 self._history_window,
@@ -349,7 +365,7 @@ class LLMTranslator(BaseTranslator):
                 window_key,
             )
             eligible_history = ()
-            if not rebuild_reason:
+            if rebuild_reason is None:
                 # Re-snapshot retained pages so edits cannot leak through cached messages.
                 fresh_retained = tuple(
                     self._snapshot_history_page(
@@ -366,7 +382,7 @@ class LLMTranslator(BaseTranslator):
                         self._history_window.history,
                     )
                 ):
-                    rebuild_reason = 'snapshot-changed'
+                    rebuild_reason = ContextReason.SNAPSHOT_CHANGED
                 else:
                     # Only an adjacent page that finished successfully may extend the window.
                     previous_page = self._snapshot_history_page(
@@ -375,10 +391,10 @@ class LLMTranslator(BaseTranslator):
                         self.lang_target,
                     )
                     if previous_page is None:
-                        rebuild_reason = 'previous-incomplete'
+                        rebuild_reason = ContextReason.PREVIOUS_INCOMPLETE
                     else:
                         eligible_history = fresh_retained + (previous_page,)
-            if rebuild_reason:
+            if rebuild_reason is not None:
                 # Jumps and invalidation rebuild from all authoritative earlier pages.
                 eligible_history = snapshot_eligible_history(
                     project,
@@ -403,7 +419,7 @@ class LLMTranslator(BaseTranslator):
                 ),
             )
 
-        self.logger.debug(get_context_diagnostic(diagnostic))
+        self.logger.debug(str(diagnostic))
         return RequestContext(
             history=history,
             glossary=glossary,
@@ -414,46 +430,10 @@ class LLMTranslator(BaseTranslator):
             diagnostic=diagnostic,
         )
 
-    def _history_window_key(
-        self,
-        project,
-        profile: LLMProfile,
-        glossary: Tuple[GlossaryEntry, ...],
-        glossary_mode: str,
-        token_budget: int,
-        model: str,
-    ) -> HistoryWindowKey:
-        """Identify every setting that can change rendered history messages.
-
-        ``load_identity`` deliberately distinguishes reloading the same project path.
-
-        >>> isinstance(HistoryWindowKey(None, ()), HistoryWindowKey)
-        True
-        """
-        return HistoryWindowKey(
-            load_identity=getattr(project, 'load_identity', None),
-            settings=(
-                ('profile_id', str(profile.id)),
-                ('source_language', str(self.lang_source)),
-                ('target_language', str(self.lang_target)),
-                ('model', str(model)),
-                (
-                    'system_prompt',
-                    self._system_prompt(
-                        profile,
-                        self._translated_lang(self.lang_target),
-                    ),
-                ),
-                ('glossary', tuple(glossary)),
-                ('glossary_mode', str(glossary_mode)),
-                ('token_budget', int(token_budget)),
-            ),
-        )
-
     def _snapshot_history_page(
         self,
-        project,
-        page_key,
+        project: Optional[ProjImgTrans],
+        page_key: str,
         target_language: str,
     ) -> Optional[HistoryPage]:
         """Copy one eligible page without retaining its mutable text blocks.
@@ -516,11 +496,23 @@ class LLMTranslator(BaseTranslator):
         >>> HistoryPage('001.png', ('a',), ('b',)).page_key
         '001.png'
         """
-        messages = self._render_history_messages(
-            page,
-            glossary,
-            glossary_mode,
-        )
+        page_glossary = ()
+        if glossary and glossary_mode == LLMGlossaryMode.Matching:
+            page_glossary = select_glossary(
+                glossary,
+                page.sources,
+                glossary_mode,
+            )
+        messages = [
+            {
+                'role': 'user',
+                'content': self._render_user_prompt(page.sources, page_glossary),
+            },
+            {
+                'role': 'assistant',
+                'content': self._render_assistant_response(page.translations),
+            },
+        ]
         return RenderedHistoryPage(
             snapshot=page,
             messages=tuple(
@@ -591,30 +583,6 @@ class LLMTranslator(BaseTranslator):
             ]
         }
         return json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
-
-    def _render_history_messages(
-        self,
-        page: HistoryPage,
-        glossary: Tuple[GlossaryEntry, ...],
-        glossary_mode: str,
-    ) -> List[Dict]:
-        page_glossary = ()
-        if glossary and glossary_mode == LLMGlossaryMode.Matching:
-            page_glossary = select_glossary(
-                glossary,
-                page.sources,
-                glossary_mode,
-            )
-        return [
-            {
-                'role': 'user',
-                'content': self._render_user_prompt(page.sources, page_glossary),
-            },
-            {
-                'role': 'assistant',
-                'content': self._render_assistant_response(page.translations),
-            },
-        ]
 
     def _assemble_batches(
         self,
@@ -909,9 +877,7 @@ class LLMTranslator(BaseTranslator):
                     recovered_context = recover_context_length(active_context)
                     if recovered_context is None:
                         raise
-                    self.logger.debug(get_context_diagnostic(
-                        recovered_context.diagnostic,
-                    ))
+                    self.logger.debug(str(recovered_context.diagnostic))
                     recovered_pages += (
                         len(active_context.history) - len(recovered_context.history)
                     )
@@ -945,7 +911,17 @@ class LLMTranslator(BaseTranslator):
                     self._wait(self.get_param_value('retry timeout'))
 
         # Keep eviction/growth speculative until every response parsed successfully.
-        committed_window = history_window_from_context(successful_context)
-        if committed_window is not None:
-            self._history_window = committed_window
+        if (
+            successful_context is not None
+            and successful_context.window_key is not None
+            and successful_context.request_page_key is not None
+        ):
+            self._history_window = HistoryWindow(
+                key=successful_context.window_key,
+                request_page_key=successful_context.request_page_key,
+                history=successful_context.history,
+                token_count=sum(
+                    page.token_count for page in successful_context.history
+                ),
+            )
         return translations

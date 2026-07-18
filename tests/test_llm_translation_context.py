@@ -7,6 +7,7 @@ from unittest import mock
 from ballontranslator.modules.context.errors import ContextLengthError
 from ballontranslator.modules.context.glossary import GlossaryEntry
 from ballontranslator.modules.context.history import (
+    ContextReason,
     HistoryPage,
     RequestContext,
     history_for_request,
@@ -72,7 +73,7 @@ class LLMTranslationContextTest(unittest.TestCase):
             page_key='current',
             eligible_history=tuple(pages),
             token_budget=token_budget,
-            rebuild_reason='test-rebuild',
+            rebuild_reason=ContextReason.WINDOW_EMPTY,
             render_page=lambda page: self.translator._render_history_page(
                 page,
                 glossary,
@@ -440,7 +441,10 @@ class LLMTranslationContextTest(unittest.TestCase):
 
         self.assertEqual([page.page_key for page in second.history], ['001.png'])
         self.assertEqual(third.diagnostic.action, 'reuse')
-        self.assertEqual(third.diagnostic.rebuild_reason, 'oversized-page')
+        self.assertEqual(
+            third.diagnostic.rebuild_reason,
+            ContextReason.OVERSIZED_PAGE,
+        )
         self.assertEqual(third.history, second.history)
 
     def test_page_jumps_and_failed_previous_page_rebuild(self):
@@ -465,8 +469,14 @@ class LLMTranslationContextTest(unittest.TestCase):
             )
 
         self.assertEqual(initial.diagnostic.action, 'rebuild')
-        self.assertEqual(backward.diagnostic.rebuild_reason, 'non-adjacent')
-        self.assertEqual(forward.diagnostic.rebuild_reason, 'non-adjacent')
+        self.assertEqual(
+            backward.diagnostic.rebuild_reason,
+            ContextReason.NON_ADJACENT,
+        )
+        self.assertEqual(
+            forward.diagnostic.rebuild_reason,
+            ContextReason.NON_ADJACENT,
+        )
         self.assertEqual(
             [page.page_key for page in forward.history],
             ['001.png', '002.png', '003.png'],
@@ -485,7 +495,7 @@ class LLMTranslationContextTest(unittest.TestCase):
             )
         self.assertEqual(
             failed_previous.diagnostic.rebuild_reason,
-            'previous-incomplete',
+            ContextReason.PREVIOUS_INCOMPLETE,
         )
 
     def _primed_window(self):
@@ -554,9 +564,10 @@ class LLMTranslationContextTest(unittest.TestCase):
                 )
 
                 expected_reason = (
-                    'project-changed' if change == 'project'
-                    else 'snapshot-changed' if change in ('source', 'translation')
-                    else 'settings-changed'
+                    ContextReason.PROJECT_CHANGED if change == 'project'
+                    else ContextReason.SNAPSHOT_CHANGED
+                    if change in ('source', 'translation')
+                    else ContextReason.SETTINGS_CHANGED
                 )
                 self.assertEqual(context.diagnostic.rebuild_reason, expected_reason)
 
@@ -588,7 +599,10 @@ class LLMTranslationContextTest(unittest.TestCase):
                     project, '003.png', self.profile,
                 )
 
-        self.assertEqual(context.diagnostic.rebuild_reason, 'settings-changed')
+        self.assertEqual(
+            context.diagnostic.rebuild_reason,
+            ContextReason.SETTINGS_CHANGED,
+        )
         self.assertNotIn(glossary_path, repr(self.translator._history_window.key))
 
     def test_runtime_window_retains_only_immutable_snapshots(self):
@@ -674,8 +688,8 @@ class LLMTranslationContextTest(unittest.TestCase):
             pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
             with mock.patch.object(
                 self.translator,
-                '_render_history_messages',
-                wraps=self.translator._render_history_messages,
+                '_render_history_page',
+                wraps=self.translator._render_history_page,
             ) as render_history, mock.patch(
                 'ballontranslator.modules.translators.trans_llm.messages_token_count',
                 return_value=1,

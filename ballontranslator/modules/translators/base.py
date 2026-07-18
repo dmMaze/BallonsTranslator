@@ -1,6 +1,6 @@
 import urllib.request
 from ordered_set import OrderedSet
-from typing import Dict, List, Union, Set, Callable
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Union
 import time, requests, re, uuid, base64, hmac, functools, json, copy
 from collections import OrderedDict
 
@@ -11,6 +11,9 @@ from ballontranslator.utils.registry import Registry
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.config import TranslateContext, pcfg
+
+if TYPE_CHECKING:
+    from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
 TRANSLATORS = Registry('translators')
@@ -142,8 +145,8 @@ class BaseTranslator(BaseModule):
         self,
         text: Union[str, List],
         *,
-        project=None,
-        page_key=None,
+        project: Optional['ProjImgTrans'] = None,
+        page_key: Optional[str] = None,
     ) -> Union[str, List]:
         """Translate text while accepting optional page context from the UI boundary.
 
@@ -204,8 +207,8 @@ class BaseTranslator(BaseModule):
         self,
         textblk_lst: List[TextBlock],
         *,
-        project=None,
-        page_key=None,
+        project: Optional['ProjImgTrans'] = None,
+        page_key: Optional[str] = None,
         full_page: bool = False,
     ):
         """Translate non-empty blocks and run context-aware postprocessing.
