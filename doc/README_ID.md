@@ -35,11 +35,10 @@
 
   **Riwayat terjemahan**
 
-  - Aktifkan **Use Prior Translations as Context** agar `LLMTranslator` memakai halaman sebelumnya yang telah selesai sebagai contoh. Proses lanjutan dan rentang terpilih dapat memakai halaman yang memenuhi syarat sebelumnya, dan halaman yang baru selesai menjadi konteks bagi halaman berikutnya.
-  - **Prior Context Token Budget** hanya membatasi riwayat. Halaman selesai yang lebih baru diprioritaskan; halaman saat ini, instruksi sistem, glosarium, dan respons yang dihasilkan memakai konteks tambahan.
-  - Nilai default `4096` bersifat konservatif. Jika jendela konteks yang diumumkan model diketahui, sekitar 70% adalah batas atas praktis (`90000` untuk 128K), bukan nilai awal wajib. Tingkatkan hanya bila perlu: konteks tambahan memakai token, waktu, dan biaya; inferensi lokal juga dapat membutuhkan jauh lebih banyak RAM/VRAM untuk cache KV dan berjalan lebih lambat. Penyedia dapat menerapkan batas lebih rendah.
-  - Pengeditan manual teks sumber atau terjemahan tidak mengubah status penyelesaian. Terjemahkan ulang halaman jika terjemahan tersimpan tidak lagi sesuai dengan sumber.
-  - Penyedia dengan cache prompt, seperti OpenAI dan DeepSeek, dapat memakai ulang prefiks yang terus bertambah antarhalaman berurutan. Pembuangan riwayat secara massal serta perubahan profil, glosarium, atau isi prompt sebelumnya akan mereset penggunaan ulang, yang kemudian bertambah lagi. Cache bergantung pada penyedia dan tidak mengubah perilaku terjemahan.
+  - Aktifkan **Use Prior Translations as Context** agar `LLMTranslator` melihat contoh dari halaman sebelumnya yang telah selesai. Ini dapat menjaga konsistensi nama, istilah, dan nada. Proses lanjutan dan rentang terpilih juga dapat memakai halaman sebelumnya yang memenuhi syarat.
+  - **Prior Context Token Budget** mengatur jumlah teks terjemahan sebelumnya yang disertakan, dengan prioritas pada halaman yang lebih baru. Halaman saat ini, instruksi, glosarium, dan respons yang dihasilkan membutuhkan ruang tambahan. Nilai defaultnya `4096`.
+  - Anggaran yang lebih besar memberi lebih banyak konteks cerita dan lebih jarang membuang halaman lama, tetapi mengirim lebih banyak teks dan dapat berjalan lebih lambat. Model lokal juga dapat membutuhkan jauh lebih banyak RAM/VRAM. Mulailah dari nilai default dan naikkan hanya jika bermanfaat; sekitar 70% dari batas konteks adalah batas atas yang wajar (`90000` untuk 128K).
+  - Anggaran riwayat juga memengaruhi cache prompt. Selama riwayat bertambah dalam batas anggaran, permintaan berurutan mempertahankan bagian awal yang sama; penyedia seperti OpenAI dan DeepSeek dapat memakainya kembali dengan harga token input yang lebih murah dan terkadang latensi lebih rendah. Ketika anggaran memaksa halaman lama dibuang, bagian awal itu berubah dan penggunaan cache direset. Anggaran lebih besar mengurangi reset, tetapi mengirim lebih banyak riwayat sehingga tidak menjamin biaya total lebih rendah.
 
   **Glosarium yang dapat digunakan kembali**
 

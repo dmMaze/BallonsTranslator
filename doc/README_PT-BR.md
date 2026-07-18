@@ -35,11 +35,10 @@
 
   **Histórico de traduções**
 
-  - Ative **Use Prior Translations as Context** para o `LLMTranslator` usar páginas anteriores concluídas como exemplos. Execuções continuadas ou por intervalo podem usar páginas elegíveis anteriores, e as páginas recém-concluídas tornam-se contexto para as seguintes.
-  - **Prior Context Token Budget** limita apenas o histórico. As páginas concluídas mais recentes têm prioridade; a página atual, as instruções do sistema, o glossário e a resposta gerada usam contexto adicional.
-  - O padrão `4096` é conservador. Quando a janela de contexto divulgada é conhecida, cerca de 70% é um limite superior prático (`90000` para 128K), não um valor inicial obrigatório. Aumente somente quando necessário: mais contexto consome tokens, tempo e dinheiro; a inferência local também pode exigir muito mais RAM/VRAM para o cache KV e ficar mais lenta. O provedor pode impor limites menores.
-  - Editar manualmente o original ou a tradução não muda o estado de conclusão. Traduza novamente a página quando a tradução salva não corresponder mais ao original.
-  - Provedores com cache de prompt, como OpenAI e DeepSeek, podem reutilizar o prefixo crescente entre páginas consecutivas. A remoção em massa do histórico e alterações no perfil, glossário ou conteúdo anterior do prompt reiniciam esse reaproveitamento, que volta a crescer. O cache depende do provedor e não altera o comportamento da tradução.
+  - Ative **Use Prior Translations as Context** para mostrar ao `LLMTranslator` exemplos de páginas anteriores concluídas. Isso pode manter nomes, terminologia e tom mais consistentes. Execuções continuadas ou por intervalo também podem usar páginas anteriores elegíveis.
+  - **Prior Context Token Budget** controla quanto texto traduzido anterior é incluído, priorizando páginas mais recentes. A página atual, as instruções, o glossário e a resposta gerada precisam de espaço adicional. O padrão é `4096`.
+  - Um orçamento maior oferece mais contexto da história e remove páginas antigas com menos frequência, mas envia mais texto e pode demorar mais. Modelos locais também podem exigir muito mais RAM/VRAM. Comece com o padrão e aumente apenas se ajudar; cerca de 70% do limite de contexto é um limite superior razoável (`90000` para 128K).
+  - O orçamento do histórico também afeta o cache de prompt. Enquanto o histórico cresce dentro do orçamento, solicitações consecutivas mantêm o mesmo início, que provedores como OpenAI e DeepSeek podem reutilizar com preço reduzido por token de entrada e, às vezes, menor latência. Quando o orçamento exige remover páginas antigas, esse início muda e o reaproveitamento do cache é reiniciado. Um orçamento maior reduz as reinicializações, mas envia mais histórico e, portanto, não garante menor custo total.
 
   **Glossários reutilizáveis**
 

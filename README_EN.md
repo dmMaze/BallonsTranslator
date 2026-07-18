@@ -38,11 +38,10 @@
 
   **Translation history**
 
-  - Enable **Use Prior Translations as Context** to let `LLMTranslator` use completed earlier pages as examples. Continue and selected-range runs can use eligible pages before the range, and newly completed pages become context for later pages.
-  - **Prior Context Token Budget** limits history only. Newer completed pages are preferred; the current page, system instructions, glossary, and generated response use additional context.
-  - The default `4096` is conservative. If the model's advertised context window is known, about 70% is a practical upper bound (`90000` for 128K), not a required starting value. Increase it only as needed: more context costs tokens, time, and money; local inference may also use substantially more RAM/VRAM for the KV cache and run more slowly. Providers may enforce lower limits.
-  - Manual source or translation edits do not change a page's completion state. Retranslate the page when its saved translation no longer matches the source.
-  - Prompt caching providers such as OpenAI and DeepSeek can reuse the growing prefix between consecutive pages. Bulk history eviction and changes to the profile, glossary, or earlier prompt content reset that reuse; it then grows again. Caching is provider-dependent and does not change translation behavior.
+  - Enable **Use Prior Translations as Context** to show `LLMTranslator` examples from earlier completed pages. This can keep names, terminology, and tone more consistent. Continue and selected-range runs can also use eligible earlier pages.
+  - **Prior Context Token Budget** controls how much earlier translated text is included. Newer pages are kept first. The current page, instructions, glossary, and generated reply need additional space. The default is `4096`.
+  - A larger budget gives the model more story context and drops old pages less often, but sends more input and may take longer. Local models may also need substantially more RAM/VRAM. Start with the default and increase it only when useful; about 70% of the model's context limit is a reasonable upper bound (`90000` for a 128K model).
+  - The history budget also affects prompt caching. While history grows within the budget, consecutive requests keep the same beginning; OpenAI and DeepSeek can reuse these input tokens at a discount and may respond faster. Dropping old pages changes the beginning and resets the cache. A larger budget means fewer resets but sends more history, so it is not guaranteed to cost less.
 
   **Reusable glossaries**
 

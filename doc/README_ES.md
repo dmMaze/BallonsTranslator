@@ -38,11 +38,10 @@
 
   **Historial de traducciones**
 
-  - Active **Use Prior Translations as Context** para que `LLMTranslator` use páginas anteriores completadas como ejemplos. Las ejecuciones continuadas o por intervalo pueden usar páginas aptas anteriores, y las páginas recién completadas sirven de contexto para las siguientes.
-  - **Prior Context Token Budget** limita solo el historial. Se prefieren las páginas completadas más recientes; la página actual, las instrucciones del sistema, el glosario y la respuesta generada consumen contexto adicional.
-  - El valor predeterminado `4096` es conservador. Si se conoce la ventana de contexto anunciada, alrededor del 70 % es un límite superior práctico (`90000` para 128K), no un valor inicial obligatorio. Auméntelo solo cuando sea necesario: más contexto consume tokens, tiempo y dinero; la inferencia local también puede requerir mucha más RAM/VRAM para la caché KV y ejecutarse más lentamente. El proveedor puede imponer límites menores.
-  - La edición manual del original o la traducción no cambia el estado de finalización. Vuelva a traducir la página cuando la traducción guardada ya no corresponda al original.
-  - Los proveedores con caché de prompts, como OpenAI y DeepSeek, pueden reutilizar el prefijo creciente entre páginas consecutivas. La eliminación masiva del historial y los cambios en el perfil, el glosario o el contenido anterior del prompt reinician esa reutilización, que después vuelve a crecer. La caché depende del proveedor y no cambia el comportamiento de la traducción.
+  - Active **Use Prior Translations as Context** para que `LLMTranslator` vea ejemplos de páginas anteriores completadas. Esto puede mantener más coherentes los nombres, la terminología y el tono. Las ejecuciones continuadas o por intervalo también pueden usar páginas anteriores aptas.
+  - **Prior Context Token Budget** controla cuánto texto traducido anterior se incluye, dando prioridad a las páginas más recientes. La página actual, las instrucciones, el glosario y la respuesta generada necesitan espacio adicional. El valor predeterminado es `4096`.
+  - Un presupuesto mayor aporta más contexto de la historia y descarta páginas antiguas con menos frecuencia, pero envía más texto y puede tardar más. Los modelos locales también pueden necesitar mucha más RAM/VRAM. Empiece con el valor predeterminado y auméntelo solo si resulta útil; cerca del 70 % del límite de contexto es un límite superior razonable (`90000` para 128K).
+  - El presupuesto del historial también afecta a la caché de prompts. Mientras el historial crece dentro del presupuesto, las solicitudes consecutivas conservan el mismo inicio, que proveedores como OpenAI y DeepSeek pueden reutilizar con un precio reducido por token de entrada y, a veces, menor latencia. Cuando el presupuesto obliga a descartar páginas antiguas, ese inicio cambia y la reutilización de caché se reinicia. Un presupuesto mayor reduce los reinicios, pero envía más historial, por lo que no garantiza un coste total menor.
 
   **Glosarios reutilizables**
 

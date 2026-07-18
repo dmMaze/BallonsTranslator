@@ -35,11 +35,10 @@
 
   **Lịch sử bản dịch**
 
-  - Bật **Use Prior Translations as Context** để `LLMTranslator` dùng các trang trước đã hoàn thành làm ví dụ. Khi tiếp tục hoặc dịch một phạm vi, các trang đủ điều kiện trước đó vẫn có thể được dùng, và trang mới hoàn thành sẽ trở thành ngữ cảnh cho trang sau.
-  - **Prior Context Token Budget** chỉ giới hạn lịch sử. Các trang hoàn thành gần đây được ưu tiên; trang hiện tại, chỉ dẫn hệ thống, bảng thuật ngữ và phản hồi dùng thêm ngữ cảnh.
-  - Mặc định `4096` khá thận trọng. Nếu biết cửa sổ ngữ cảnh công bố của mô hình, khoảng 70% là giới hạn trên thực tế (`90000` cho 128K), không phải giá trị khởi đầu bắt buộc. Chỉ tăng khi cần: nhiều ngữ cảnh tốn token, thời gian và chi phí; suy luận cục bộ cũng có thể cần nhiều RAM/VRAM hơn đáng kể cho bộ nhớ đệm KV và chạy chậm hơn. Nhà cung cấp có thể áp dụng giới hạn thấp hơn.
-  - Chỉnh sửa thủ công văn bản nguồn hoặc bản dịch không thay đổi trạng thái hoàn thành. Hãy dịch lại trang khi bản dịch đã lưu không còn khớp với nguồn.
-  - Nhà cung cấp có bộ nhớ đệm lời nhắc như OpenAI và DeepSeek có thể tái sử dụng tiền tố tăng dần giữa các trang liên tiếp. Việc loại bỏ hàng loạt lịch sử hoặc thay đổi hồ sơ, bảng thuật ngữ hay nội dung trước đó của lời nhắc sẽ đặt lại khả năng tái sử dụng, rồi nó sẽ tăng lại. Bộ nhớ đệm phụ thuộc vào nhà cung cấp và không thay đổi hành vi dịch.
+  - Bật **Use Prior Translations as Context** để cho `LLMTranslator` xem ví dụ từ các trang trước đã hoàn thành. Điều này giúp tên, thuật ngữ và giọng điệu nhất quán hơn. Khi tiếp tục hoặc dịch một phạm vi, các trang đủ điều kiện trước đó cũng có thể được dùng.
+  - **Prior Context Token Budget** kiểm soát lượng văn bản dịch trước đó được đưa vào và ưu tiên các trang mới hơn. Trang hiện tại, chỉ dẫn, bảng thuật ngữ và phản hồi được tạo cần thêm không gian. Mặc định là `4096`.
+  - Ngân sách lớn hơn cung cấp nhiều ngữ cảnh câu chuyện hơn và ít loại bỏ trang cũ hơn, nhưng gửi nhiều văn bản hơn và có thể chậm hơn. Mô hình cục bộ cũng có thể cần nhiều RAM/VRAM hơn đáng kể. Hãy bắt đầu với mặc định và chỉ tăng khi có ích; khoảng 70% giới hạn ngữ cảnh của mô hình là mức trần hợp lý (`90000` cho 128K).
+  - Ngân sách lịch sử cũng ảnh hưởng đến bộ nhớ đệm lời nhắc. Khi lịch sử tăng trong giới hạn ngân sách, các yêu cầu liên tiếp giữ nguyên phần đầu để nhà cung cấp như OpenAI và DeepSeek có thể tái sử dụng với giá token đầu vào thấp hơn và đôi khi giảm độ trễ. Khi ngân sách buộc phải loại bỏ trang cũ, phần đầu đó thay đổi và việc tái sử dụng bộ nhớ đệm được đặt lại. Ngân sách lớn hơn giúp giảm số lần đặt lại nhưng gửi nhiều lịch sử hơn, nên không đảm bảo tổng chi phí thấp hơn.
 
   **Bảng thuật ngữ có thể tái sử dụng**
 
