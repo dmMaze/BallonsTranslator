@@ -3,7 +3,6 @@ import re
 import time
 import traceback
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Dict, List, Tuple
 
 from .base import BaseTranslator, register_translator
@@ -13,6 +12,7 @@ from .glossary import (
     render_glossary,
     select_glossary,
 )
+from .token_usage import format_completion_token_usage, messages_token_count
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import LLMGlossaryMode, RunStatus, pcfg
 from ballontranslator.utils.io_utils import text_is_empty
@@ -49,25 +49,6 @@ class _RequestContext:
     glossary_mode: str
 
 
-@lru_cache(maxsize=64)
-def _cached_token_encoding_for_model(model: str):
-    import tiktoken  # type: ignore
-
-    try:
-        return tiktoken.encoding_for_model(model)
-    except KeyError:
-        # Unknown model names are stable and safe to cache as fallbacks.
-        return None
-
-
-def _token_encoding_for_model(model: str):
-    try:
-        return _cached_token_encoding_for_model(model)
-    except Exception:
-        # Import/initialization failures may be transient; do not cache them.
-        return None
-
-
 @register_translator("LLMTranslator")
 class LLMTranslator(BaseTranslator):
     """Profile-backed OpenAI-compatible translator.
@@ -80,7 +61,6 @@ class LLMTranslator(BaseTranslator):
 
     dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
     dummy_api_key = 'dummy-key'
-    message_token_overhead = 4
 
     concate_text = False
     cht_require_convert = True
@@ -140,8 +120,6 @@ class LLMTranslator(BaseTranslator):
 
         self.client = None
         self.client_cache_key = None
-        self.token_count = 0
-        self.token_count_last = 0
         self.last_request_time = 0
         self.request_count_minute = 0
         self.minute_start_time = time.time()
@@ -401,7 +379,7 @@ class LLMTranslator(BaseTranslator):
                 glossary,
                 glossary_mode,
             )
-            page_tokens = self._messages_token_count(messages, model)
+            page_tokens = messages_token_count(messages, model)
             if page_tokens > remaining:
                 continue
             selected.append(
@@ -416,43 +394,6 @@ class LLMTranslator(BaseTranslator):
             remaining -= page_tokens
         selected.reverse()
         return tuple(selected)
-
-    @classmethod
-    def _messages_token_count(cls, messages: List[Dict], model: str) -> int:
-        encoding = _token_encoding_for_model(model)
-        total = 0
-        for message in messages:
-            content = str(message.get('content', ''))
-            if encoding is None:
-                content_tokens = cls._fallback_token_count(content)
-            else:
-                try:
-                    content_tokens = len(encoding.encode(content))
-                except Exception:
-                    content_tokens = cls._fallback_token_count(content)
-            total += cls.message_token_overhead + content_tokens
-        return total
-
-    @staticmethod
-    def _fallback_token_count(text: str) -> int:
-        """Estimate tokens deterministically without assuming a model encoding.
-
-        >>> LLMTranslator._fallback_token_count('abcdefgh你')
-        3
-        """
-        total = 0
-        ascii_run = 0
-        for character in text:
-            if ord(character) < 128:
-                ascii_run += 1
-                continue
-            if ascii_run:
-                total += (ascii_run + 3) // 4
-                ascii_run = 0
-            total += 1
-        if ascii_run:
-            total += (ascii_run + 3) // 4
-        return total
 
     def _system_prompt(self, profile: LLMProfile, to_lang: str) -> str:
         prompt = str(profile.prompt or '').strip()
@@ -698,6 +639,11 @@ class LLMTranslator(BaseTranslator):
                 return str(text)
         return str(error)
 
+    def _log_token_usage(self, completion):
+        summary = format_completion_token_usage(completion)
+        if summary:
+            self.logger.info(f'LLM token usage: {summary}')
+
     def _request_translation(self, profile: LLMProfile, messages: List[Dict]) -> str:
         openai = self._openai_module()
         client = self._initialize_client(profile)
@@ -709,13 +655,7 @@ class LLMTranslator(BaseTranslator):
         except getattr(openai, 'APIStatusError') as e:
             raise RuntimeError(self._status_error_message(e)) from e
 
-        usage = getattr(completion, 'usage', None)
-        if usage is not None:
-            total_tokens = getattr(usage, 'total_tokens', 0) or 0
-            self.token_count += total_tokens
-            self.token_count_last = total_tokens
-        else:
-            self.token_count_last = 0
+        self._log_token_usage(completion)
 
         for choice in completion.choices:
             message = getattr(choice, 'message', None)
@@ -797,8 +737,4 @@ class LLMTranslator(BaseTranslator):
                     self.logger.warning(f"LLM translation failed due to {e}. Attempt: {retry_attempt}")
                     self._wait(self.get_param_value('retry timeout'))
 
-        if self.token_count_last:
-            self.logger.info(
-                f'Used {self.token_count_last} tokens (Total: {self.token_count})'
-            )
         return translations

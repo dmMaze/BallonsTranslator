@@ -3,6 +3,7 @@ import unittest
 from types import SimpleNamespace
 
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
+from ballontranslator.modules.translators.token_usage import format_token_usage
 from ballontranslator.modules.translators.trans_llm import InvalidNumTranslations, LLMTranslator
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import default_profile
@@ -197,6 +198,50 @@ class LLMTranslatorTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, 'provider says no'):
             translator._request_translation(translator.profile, [{'role': 'user', 'content': 'x'}])
+
+    def test_token_usage_supports_openai_and_deepseek_cache_fields(self):
+        openai_usage = SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=20,
+            total_tokens=120,
+            prompt_tokens_details=SimpleNamespace(cached_tokens=80),
+        )
+        deepseek_usage = {
+            'prompt_tokens': 100,
+            'completion_tokens': 20,
+            'total_tokens': 120,
+            'prompt_cache_hit_tokens': 70,
+            'prompt_cache_miss_tokens': 30,
+        }
+        messages = []
+        self.translator.logger = SimpleNamespace(info=messages.append)
+
+        self.translator._log_token_usage(
+            SimpleNamespace(usage=openai_usage),
+        )
+        self.assertEqual(
+            messages,
+            ['LLM token usage: prompt=100, completion=20, total=120, cache_hit=80'],
+        )
+        self.assertEqual(
+            format_token_usage(deepseek_usage),
+            'prompt=100, completion=20, total=120, cache_hit=70, cache_miss=30',
+        )
+
+    def test_token_usage_omits_missing_or_invalid_fields(self):
+        class IncompleteUsage:
+            total_tokens = 3
+
+            @property
+            def prompt_tokens(self):
+                raise RuntimeError('not available')
+
+        self.assertEqual(
+            format_token_usage(IncompleteUsage()),
+            'total=3',
+        )
+        self.assertEqual(format_token_usage(None), '')
+        self.translator._log_token_usage(SimpleNamespace())
 
 
 if __name__ == '__main__':

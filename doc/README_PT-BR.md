@@ -40,6 +40,7 @@
   - Ao continuar uma execução ou traduzir um intervalo selecionado, podem ser usadas páginas elegíveis anteriores ao intervalo. Uma página traduzida com sucesso fica disponível como contexto para páginas posteriores na mesma execução.
   - A edição manual do texto original ou da tradução não altera automaticamente o estado de conclusão da página. Após modificar o texto original, traduza novamente a página caso a tradução salva já não corresponda a ele.
   - Mais contexto pode melhorar a consistência, mas também aumenta o uso de tokens de entrada, o tempo das solicitações e o custo. Comece com um orçamento modesto e aumente-o somente quando necessário.
+  - Em provedores e modelos com cache de prompt, como OpenAI e DeepSeek, o histórico crescente normalmente preserva um prefixo compartilhado idêntico entre páginas consecutivas; assim, acertos no cache podem reduzir o custo de entrada e a latência. O reaproveitamento do cache pode ser reiniciado quando o orçamento do histórico remove páginas antigas ou quando o perfil, o glossário ou outro conteúdo anterior do prompt muda; o suporte a cache depende do provedor e não altera o comportamento da tradução.
 
   **Glossários reutilizáveis**
 

@@ -6,6 +6,10 @@ from unittest import mock
 
 from ballontranslator.modules.translators.base import BaseTranslator
 from ballontranslator.modules.translators.glossary import GlossaryEntry
+from ballontranslator.modules.translators.token_usage import (
+    MESSAGE_TOKEN_OVERHEAD,
+    messages_token_count,
+)
 from ballontranslator.modules.translators.trans_llm import (
     LLMTranslator,
     _HistoryPage,
@@ -46,9 +50,8 @@ class LLMTranslationContextTest(unittest.TestCase):
             self.translator.set_param_value(name, value)
 
     def _rendered_history(self, pages, glossary, glossary_mode):
-        with mock.patch.object(
-            self.translator,
-            '_messages_token_count',
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
             return_value=1,
         ):
             return self.translator._select_history_within_budget(
@@ -220,9 +223,8 @@ class LLMTranslationContextTest(unittest.TestCase):
         )
         for token_costs, budget, expected in cases:
             with self.subTest(token_costs=token_costs, budget=budget):
-                with mock.patch.object(
-                    self.translator,
-                    '_messages_token_count',
+                with mock.patch(
+                    'ballontranslator.modules.translators.trans_llm.messages_token_count',
                     side_effect=token_costs,
                 ):
                     selected = self.translator._select_history_within_budget(
@@ -294,9 +296,8 @@ class LLMTranslationContextTest(unittest.TestCase):
                 self.translator,
                 '_render_history_messages',
                 wraps=self.translator._render_history_messages,
-            ) as render_history, mock.patch.object(
-                self.translator,
-                '_messages_token_count',
+            ) as render_history, mock.patch(
+                'ballontranslator.modules.translators.trans_llm.messages_token_count',
                 return_value=1,
             ):
                 context = self.translator._snapshot_request_context(
@@ -400,26 +401,26 @@ class LLMTranslationContextTest(unittest.TestCase):
         messages = [{'role': 'user', 'content': 'abcdefgh你'}]
         encoding = SimpleNamespace(encode=lambda _text: [1, 2])
         with mock.patch(
-            'ballontranslator.modules.translators.trans_llm.'
+            'ballontranslator.modules.translators.token_usage.'
             '_token_encoding_for_model',
             return_value=encoding,
         ):
-            recognized = self.translator._messages_token_count(
+            recognized = messages_token_count(
                 messages,
                 'known-model',
             )
         with mock.patch(
-            'ballontranslator.modules.translators.trans_llm.'
+            'ballontranslator.modules.translators.token_usage.'
             '_token_encoding_for_model',
             return_value=None,
         ):
-            fallback = self.translator._messages_token_count(
+            fallback = messages_token_count(
                 messages,
                 'custom-model',
             )
 
-        self.assertEqual(recognized, self.translator.message_token_overhead + 2)
-        self.assertEqual(fallback, self.translator.message_token_overhead + 3)
+        self.assertEqual(recognized, MESSAGE_TOKEN_OVERHEAD + 2)
+        self.assertEqual(fallback, MESSAGE_TOKEN_OVERHEAD + 3)
 
     def test_retry_reuses_same_messages_and_raises_final_failure(self):
         self.translator.set_param_value('retry attempts', 2)

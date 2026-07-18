@@ -49,6 +49,7 @@ Prend en charge l’export/import vers/depuis des documents Word
   - La poursuite d’une exécution ou la traduction d’une plage sélectionnée peut utiliser les pages admissibles antérieures à cette plage. Une page traduite avec succès devient disponible comme contexte pour les pages suivantes de la même exécution.
   - La modification manuelle du texte source ou de la traduction ne change pas automatiquement l’état d’achèvement de la page. Après avoir modifié le texte source, retraduisez cette page si la traduction enregistrée ne lui correspond plus.
   - Davantage de contexte peut améliorer la cohérence, mais augmente aussi le nombre de jetons d’entrée, le temps des requêtes et leur coût. Commencez avec un budget modeste et ne l’augmentez qu’en cas de besoin.
+  - Avec les fournisseurs et modèles qui prennent en charge la mise en cache des prompts, comme OpenAI et DeepSeek, l’historique croissant conserve généralement un préfixe commun strictement identique entre les pages consécutives ; les accès au cache peuvent donc réduire le coût des entrées et la latence. La réutilisation du cache peut repartir de zéro lorsque le budget de l’historique élimine d’anciennes pages ou lorsque le profil, le glossaire ou un autre contenu antérieur du prompt change ; la prise en charge du cache dépend du fournisseur et ne modifie pas le comportement de la traduction.
 
   **Glossaires réutilisables**
 

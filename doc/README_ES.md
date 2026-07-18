@@ -43,6 +43,7 @@
   - Al continuar una ejecución o traducir un intervalo seleccionado, se pueden usar páginas aptas anteriores a ese intervalo. Una página traducida correctamente pasa a estar disponible como contexto para las páginas posteriores de la misma ejecución.
   - La edición manual del texto original o de la traducción no cambia automáticamente el estado de finalización de la página. Si modifica el texto original y la traducción guardada deja de corresponderle, vuelva a traducir esa página.
   - Un contexto mayor puede mejorar la coherencia, pero también aumenta el uso de tokens de entrada, el tiempo de las solicitudes y el coste. Empiece con un presupuesto moderado y auméntelo solo cuando sea necesario.
+  - Con proveedores y modelos que admiten caché de prompts, como OpenAI y DeepSeek, el historial creciente suele conservar un prefijo compartido exactamente igual entre páginas consecutivas, por lo que los aciertos de caché pueden reducir el coste de entrada y la latencia. La reutilización de la caché puede reiniciarse cuando el presupuesto del historial elimina páginas antiguas o cuando cambian el perfil, el glosario u otro contenido anterior del prompt; la compatibilidad con caché depende del proveedor y no cambia el comportamiento de la traducción.
 
   **Glosarios reutilizables**
 

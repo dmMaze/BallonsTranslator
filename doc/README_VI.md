@@ -40,6 +40,7 @@
   - Khi tiếp tục chạy hoặc dịch một phạm vi được chọn, các trang đủ điều kiện trước phạm vi đó vẫn có thể được sử dụng. Một trang được dịch thành công sẽ trở thành ngữ cảnh cho các trang sau trong cùng lần chạy.
   - Chỉnh sửa thủ công văn bản nguồn hoặc bản dịch không tự động thay đổi trạng thái hoàn thành của trang. Sau khi sửa văn bản nguồn, hãy dịch lại trang nếu bản dịch đã lưu không còn tương ứng.
   - Nhiều ngữ cảnh hơn có thể cải thiện tính nhất quán nhưng cũng làm tăng lượng token đầu vào, thời gian yêu cầu và chi phí. Hãy bắt đầu với ngân sách vừa phải và chỉ tăng khi cần.
+  - Với nhà cung cấp và mô hình hỗ trợ bộ nhớ đệm lời nhắc, chẳng hạn như OpenAI và DeepSeek, lịch sử tăng dần thường duy trì một tiền tố chung khớp hoàn toàn giữa các trang liên tiếp, nhờ đó lượt trúng bộ nhớ đệm có thể giảm chi phí đầu vào và độ trễ. Việc tái sử dụng bộ nhớ đệm có thể bị đặt lại khi ngân sách lịch sử loại bỏ các trang cũ hoặc khi hồ sơ, bảng thuật ngữ hay nội dung đứng trước khác của lời nhắc thay đổi; khả năng hỗ trợ bộ nhớ đệm phụ thuộc vào nhà cung cấp và không làm thay đổi hành vi dịch.
 
   **Bảng thuật ngữ có thể tái sử dụng**
 

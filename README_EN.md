@@ -43,6 +43,7 @@
   - Continue and selected-range runs may still use eligible pages before the selected range. A successfully translated page becomes available as context for later pages in the same run.
   - Manual source or translation edits do not automatically change a page's completion state. After changing source text, retranslate that page if its saved translation no longer matches.
   - More context can improve consistency but also increases input-token usage, request time, and cost. Start with a modest budget and increase it only when necessary.
+  - On providers and models with prompt caching, such as OpenAI and DeepSeek, growing history usually preserves an exact shared prefix between consecutive pages, so cache hits can reduce input cost and latency. Cache reuse may reset when the history budget drops older pages or when the profile, glossary, or other earlier prompt content changes; caching is provider-dependent and does not change translation behavior.
 
   **Reusable glossaries**
 

@@ -40,6 +40,7 @@
   - Saat melanjutkan proses atau menerjemahkan rentang yang dipilih, halaman yang memenuhi syarat sebelum rentang tersebut masih dapat digunakan. Halaman yang berhasil diterjemahkan akan tersedia sebagai konteks untuk halaman berikutnya dalam proses yang sama.
   - Mengedit teks sumber atau terjemahan secara manual tidak otomatis mengubah status penyelesaian halaman. Setelah mengubah teks sumber, terjemahkan ulang halaman tersebut jika terjemahan yang tersimpan tidak lagi sesuai.
   - Konteks tambahan dapat meningkatkan konsistensi, tetapi juga menambah penggunaan token input, waktu permintaan, dan biaya. Mulailah dengan anggaran yang tidak terlalu besar dan tingkatkan hanya bila perlu.
+  - Pada penyedia dan model yang mendukung cache prompt, seperti OpenAI dan DeepSeek, riwayat yang terus bertambah biasanya mempertahankan prefiks bersama yang sama persis di antara halaman berurutan, sehingga cache hit dapat mengurangi biaya input dan latensi. Penggunaan ulang cache dapat dimulai ulang ketika anggaran riwayat membuang halaman lama atau ketika profil, glosarium, maupun konten prompt sebelumnya berubah; dukungan cache bergantung pada penyedia dan tidak mengubah perilaku penerjemahan.
 
   **Glosarium yang dapat digunakan kembali**
 
