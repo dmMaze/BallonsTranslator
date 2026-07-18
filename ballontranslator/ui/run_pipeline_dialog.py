@@ -819,9 +819,6 @@ class RunPipelineDialog(QDialog):
             pcfg.module.llm_glossary_mode
         )
         self.glossary_mode_combobox.setCurrentIndex(max(glossary_mode_index, 0))
-        self.glossary_mode_combobox.setEnabled(
-            bool(pcfg.module.llm_glossary_path.strip())
-        )
         self.glossary_mode_combobox.setFixedWidth(
             RUN_PIPELINE_SETTING_CONTROL_WIDTH
         )
@@ -896,8 +893,6 @@ class RunPipelineDialog(QDialog):
         blocker = QSignalBlocker(self.glossary_path_edit)
         self.glossary_path_edit.setText(os.path.basename(path) if path else '')
         del blocker
-        if hasattr(self, 'glossary_mode_combobox'):
-            self.glossary_mode_combobox.setEnabled(bool(path.strip()))
 
     def _on_glossary_mode_changed(self):
         pcfg.module.llm_glossary_mode = self.glossary_mode_combobox.currentData()

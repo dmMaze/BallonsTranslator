@@ -1,4 +1,4 @@
-"""Prompt-token estimation and provider-usage formatting for LLM translators."""
+"""Prompt-token estimation and provider-usage formatting for LLM requests."""
 
 from collections.abc import Mapping
 from functools import lru_cache

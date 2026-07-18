@@ -4,17 +4,21 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from ballontranslator.modules.translators.base import BaseTranslator
-from ballontranslator.modules.translators.glossary import GlossaryEntry
-from ballontranslator.modules.translators.token_usage import (
+from ballontranslator.modules.context.errors import ContextLengthError
+from ballontranslator.modules.context.glossary import GlossaryEntry
+from ballontranslator.modules.context.history import (
+    HistoryPage,
+    RequestContext,
+    history_for_request,
+    snapshot_eligible_history,
+)
+from ballontranslator.modules.context.token_usage import (
     MESSAGE_TOKEN_OVERHEAD,
     messages_token_count,
 )
+from ballontranslator.modules.translators.base import BaseTranslator
 from ballontranslator.modules.translators.trans_llm import (
     LLMTranslator,
-    _ContextLengthError,
-    _HistoryPage,
-    _RequestContext,
 )
 from ballontranslator.ui.module_manager import TranslateThread
 from ballontranslator.utils.config import (
@@ -55,18 +59,35 @@ class LLMTranslationContextTest(unittest.TestCase):
         for name, value in self._retry_settings.items():
             self.translator.set_param_value(name, value)
 
+    def _history_for_rebuild(
+        self,
+        pages,
+        glossary,
+        glossary_mode,
+        token_budget=1000,
+        model='test-model',
+    ):
+        history, _ = history_for_request(
+            window=None,
+            page_key='current',
+            eligible_history=tuple(pages),
+            token_budget=token_budget,
+            rebuild_reason='test-rebuild',
+            render_page=lambda page: self.translator._render_history_page(
+                page,
+                glossary,
+                glossary_mode,
+                model,
+            ),
+        )
+        return history
+
     def _rendered_history(self, pages, glossary, glossary_mode):
         with mock.patch(
             'ballontranslator.modules.translators.trans_llm.messages_token_count',
             return_value=1,
         ):
-            return self.translator._select_history_within_budget(
-                tuple(pages),
-                glossary,
-                glossary_mode,
-                1000,
-                'test-model',
-            )
+            return self._history_for_rebuild(pages, glossary, glossary_mode)
 
     @staticmethod
     def _project(page_count):
@@ -189,10 +210,14 @@ class LLMTranslationContextTest(unittest.TestCase):
             },
         )
 
-        history = self.translator._snapshot_eligible_history(
+        history = snapshot_eligible_history(
             project,
             '006.png',
-            '简体中文',
+            lambda page_key: self.translator._snapshot_history_page(
+                project,
+                page_key,
+                '简体中文',
+            ),
         )
 
         self.assertEqual([page.page_key for page in history], ['001.png', '002.png'])
@@ -204,9 +229,9 @@ class LLMTranslationContextTest(unittest.TestCase):
             GlossaryEntry('Hero', '勇者', 'title'),
             GlossaryEntry('Mage', '法师'),
         )
-        context = _RequestContext(
+        context = RequestContext(
             history=self._rendered_history(
-                (_HistoryPage('001.png', ('Hero arrives',), ('勇者到来',)),),
+                (HistoryPage('001.png', ('Hero arrives',), ('勇者到来',)),),
                 glossary,
                 LLMGlossaryMode.Matching,
             ),
@@ -239,7 +264,7 @@ class LLMTranslationContextTest(unittest.TestCase):
             GlossaryEntry('Hero', '勇者'),
             GlossaryEntry('Mage', '法师'),
         )
-        context = _RequestContext(
+        context = RequestContext(
             history=(),
             glossary=glossary,
             glossary_mode=LLMGlossaryMode.All,
@@ -262,7 +287,7 @@ class LLMTranslationContextTest(unittest.TestCase):
 
     def test_history_budget_selects_newest_pages_that_fit(self):
         history = tuple(
-            _HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',))
+            HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',))
             for index in range(1, 4)
         )
         cases = (
@@ -275,7 +300,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                     'ballontranslator.modules.translators.trans_llm.messages_token_count',
                     side_effect=token_costs,
                 ):
-                    selected = self.translator._select_history_within_budget(
+                    selected = self._history_for_rebuild(
                         history,
                         (),
                         LLMGlossaryMode.Matching,
@@ -289,14 +314,14 @@ class LLMTranslationContextTest(unittest.TestCase):
 
     def test_stateless_rebuild_stops_at_first_ordinary_overflow(self):
         history = tuple(
-            _HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',))
+            HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',))
             for index in range(1, 4)
         )
         with mock.patch(
             'ballontranslator.modules.translators.trans_llm.messages_token_count',
             side_effect=(4, 8, 1),
         ) as token_count:
-            selected = self.translator._select_history_within_budget(
+            selected = self._history_for_rebuild(
                 history,
                 (),
                 LLMGlossaryMode.Matching,
@@ -583,7 +608,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertIs(window.key.load_identity, project.load_identity)
         self.assertEqual(
             window.history[0].snapshot,
-            _HistoryPage('001.png', ('source-1',), ('target-1',)),
+            HistoryPage('001.png', ('source-1',), ('target-1',)),
         )
         self.assertTrue(all(
             isinstance(text, str)
@@ -756,7 +781,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         messages = [{'role': 'user', 'content': 'abcdefgh你'}]
         encoding = SimpleNamespace(encode=lambda _text: [1, 2])
         with mock.patch(
-            'ballontranslator.modules.translators.token_usage.'
+            'ballontranslator.modules.context.token_usage.'
             '_token_encoding_for_model',
             return_value=encoding,
         ):
@@ -765,7 +790,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                 'known-model',
             )
         with mock.patch(
-            'ballontranslator.modules.translators.token_usage.'
+            'ballontranslator.modules.context.token_usage.'
             '_token_encoding_for_model',
             return_value=None,
         ):
@@ -845,7 +870,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                 self.translator,
                 '_request_translation',
                 side_effect=(
-                    _ContextLengthError('maximum context length exceeded'),
+                    ContextLengthError('maximum context length exceeded'),
                     '{"translations":[{"id":1,"translation":"translated"}]}',
                 ),
             ) as request:
@@ -872,7 +897,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertNotIn('SecretTranslation', diagnostic_text)
 
     def test_context_overflow_without_history_is_reraised(self):
-        context = _RequestContext(
+        context = RequestContext(
             history=(),
             glossary=(),
             glossary_mode=LLMGlossaryMode.Matching,
@@ -881,10 +906,10 @@ class LLMTranslationContextTest(unittest.TestCase):
         with mock.patch.object(
             self.translator,
             '_request_translation',
-            side_effect=_ContextLengthError('maximum context length exceeded'),
+            side_effect=ContextLengthError('maximum context length exceeded'),
         ) as request:
             with self.assertRaisesRegex(
-                _ContextLengthError,
+                ContextLengthError,
                 'maximum context length exceeded',
             ):
                 self.translator._translate(

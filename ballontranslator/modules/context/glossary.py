@@ -158,7 +158,7 @@ def render_glossary(entries: Sequence[GlossaryEntry]) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=16)
 def _load_glossary_cached(
     normalized_path: str,
     _mtime_ns: int,

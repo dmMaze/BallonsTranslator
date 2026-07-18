@@ -233,25 +233,6 @@ class LLMInpaint(InpainterBase):
         self.request_count_minute += 1
 
     @staticmethod
-    def _status_error_message(error) -> str:
-        response = getattr(error, 'response', None)
-        if response is not None:
-            try:
-                data = response.json()
-                if isinstance(data, dict):
-                    err = data.get('error')
-                    if isinstance(err, dict) and err.get('message'):
-                        return str(err['message'])
-                    if data.get('message'):
-                        return str(data['message'])
-            except Exception:
-                pass
-            text = getattr(response, 'text', '')
-            if text:
-                return str(text)
-        return str(error)
-
-    @staticmethod
     def _response_error_message(response) -> str:
         try:
             data = response.json()

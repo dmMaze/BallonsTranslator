@@ -14,7 +14,7 @@ GLOSSARY_PATH = (
     Path(__file__).resolve().parents[1]
     / "ballontranslator"
     / "modules"
-    / "translators"
+    / "context"
     / "glossary.py"
 )
 GLOSSARY_SPEC = importlib.util.spec_from_file_location(

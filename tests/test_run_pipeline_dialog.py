@@ -399,7 +399,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(pcfg.module.translate_context, translate_context)
         self.assertEqual(dialog.prior_context_token_budget.value(), 16384)
         self.assertTrue(dialog.history_budget_row.isHidden())
-        self.assertFalse(dialog.glossary_mode_combobox.isEnabled())
+        self.assertTrue(dialog.glossary_mode_combobox.isEnabled())
         dialog.close()
 
     def test_copy_source_glossary_error_preserves_clipboard(self):

@@ -5,6 +5,7 @@ from typing import Dict, List
 import cv2
 import numpy as np
 
+from ..context.errors import provider_error_message
 from .base import OCRBase, register_OCR
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import pcfg
@@ -178,25 +179,6 @@ class LLMOCR(OCRBase):
         self.request_count_minute += 1
 
     @staticmethod
-    def _status_error_message(error) -> str:
-        response = getattr(error, 'response', None)
-        if response is not None:
-            try:
-                data = response.json()
-                if isinstance(data, dict):
-                    err = data.get('error')
-                    if isinstance(err, dict) and err.get('message'):
-                        return str(err['message'])
-                    if data.get('message'):
-                        return str(data['message'])
-            except Exception:
-                pass
-            text = getattr(response, 'text', '')
-            if text:
-                return str(text)
-        return str(error)
-
-    @staticmethod
     def _normalized_text(text: str) -> str:
         return ' '.join(str(text or '').replace('\r', '\n').split()).strip()
 
@@ -245,7 +227,7 @@ class LLMOCR(OCRBase):
         except getattr(openai, 'AuthenticationError') as e:
             raise LLMApiKeyRequiredError(profile.id, profile.name) from e
         except getattr(openai, 'APIStatusError') as e:
-            raise RuntimeError(self._status_error_message(e)) from e
+            raise RuntimeError(provider_error_message(e)) from e
 
         if getattr(completion, 'usage', None) is not None:
             self.token_count += completion.usage.total_tokens

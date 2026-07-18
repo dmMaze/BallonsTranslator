@@ -3,11 +3,11 @@ import unittest
 from types import SimpleNamespace
 
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
-from ballontranslator.modules.translators.token_usage import format_token_usage
+from ballontranslator.modules.context.errors import ContextLengthError
+from ballontranslator.modules.context.token_usage import format_token_usage
 from ballontranslator.modules.translators.trans_llm import (
     InvalidNumTranslations,
     LLMTranslator,
-    _ContextLengthError,
 )
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import default_profile
@@ -74,7 +74,6 @@ class LLMTranslatorTest(unittest.TestCase):
 
     def test_json_response_parser_accepts_schema(self):
         result = self.translator._parse_response(
-            {},
             '{"translations": [{"id": 1, "translation": "心"}, {"id": 2, "translation": "精神"}]}',
             2,
         )
@@ -191,7 +190,6 @@ class LLMTranslatorTest(unittest.TestCase):
         self.translator.set_param_value('max requests per minute', 7)
         self.translator.set_param_value('proxy', 'http://127.0.0.1:7890')
 
-        self.assertEqual(self.translator.delay(), 0.8)
         self.assertEqual(self.translator.get_param_value('retry attempts'), 2)
         self.assertEqual(self.translator.get_param_value('retry timeout'), 3.0)
         self.assertEqual(self.translator.get_param_value('max requests per minute'), 7)
@@ -216,7 +214,7 @@ class LLMTranslatorTest(unittest.TestCase):
         )
         translator = FakeTranslator(FakeStatusError(provider_message))
 
-        with self.assertRaisesRegex(_ContextLengthError, 'maximum context length'):
+        with self.assertRaisesRegex(ContextLengthError, 'maximum context length'):
             translator._request_translation(
                 translator.profile,
                 [{'role': 'user', 'content': 'x'}],
@@ -227,7 +225,7 @@ class LLMTranslatorTest(unittest.TestCase):
             'input rejected',
             code='context_length_exceeded',
         ))
-        with self.assertRaises(_ContextLengthError):
+        with self.assertRaises(ContextLengthError):
             coded._request_translation(
                 coded.profile,
                 [{'role': 'user', 'content': 'x'}],
@@ -247,7 +245,7 @@ class LLMTranslatorTest(unittest.TestCase):
                         translator.profile,
                         [{'role': 'user', 'content': 'x'}],
                     )
-                self.assertNotIsInstance(caught.exception, _ContextLengthError)
+                self.assertNotIsInstance(caught.exception, ContextLengthError)
 
     def test_token_usage_supports_openai_and_deepseek_cache_fields(self):
         openai_usage = SimpleNamespace(
