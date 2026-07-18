@@ -10,9 +10,12 @@ from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
+    ModuleRunError,
 )
 from ballontranslator.ui import module_manager
 from ballontranslator.utils import shared
+from ballontranslator.utils.config import RunStatus, pcfg
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -37,7 +40,14 @@ class MissingKeyTranslator:
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
 
-    def translate_textblk_lst(self, _blk_list):
+    def translate_textblk_lst(
+        self,
+        _blk_list,
+        *,
+        project=None,
+        page_key=None,
+        full_page=False,
+    ):
         raise LLMApiKeyRequiredError('profile-1', 'Profile 1')
 
 
@@ -45,8 +55,89 @@ class MissingModelTranslator:
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
 
-    def translate_textblk_lst(self, _blk_list):
+    def translate_textblk_lst(
+        self,
+        _blk_list,
+        *,
+        project=None,
+        page_key=None,
+        full_page=False,
+    ):
         raise LLMModelRequiredError('profile-1', 'Profile 1')
+
+
+class SuccessfulTranslator:
+    lang_source = 'English'
+    lang_target = 'English'
+
+    def __init__(self):
+        self.calls = []
+        self.full_page_calls = []
+
+    def set_stop_event(self, stop_event):
+        self.stop_event = stop_event
+
+    def translate_textblk_lst(
+        self,
+        blk_list,
+        *,
+        project=None,
+        page_key=None,
+        full_page=False,
+    ):
+        self.calls.append((blk_list, project, page_key))
+        self.full_page_calls.append(full_page)
+        for block in blk_list:
+            block.translation = 'ａ! hero'
+
+
+class FailingTranslator(SuccessfulTranslator):
+    def translate_textblk_lst(
+        self,
+        blk_list,
+        *,
+        project=None,
+        page_key=None,
+        full_page=False,
+    ):
+        self.calls.append((blk_list, project, page_key))
+        self.full_page_calls.append(full_page)
+        raise RuntimeError('translation failed')
+
+
+class PartiallyFailingOCR:
+    def set_stop_event(self, stop_event):
+        self.stop_event = stop_event
+
+    def run_ocr(self, _img, blk_list, **_kwargs):
+        blk_list[0].text = ['partially changed']
+        raise ModuleRunError('ocr', 'partial', 'failed')
+
+
+class UnchangedOCR:
+    def set_stop_event(self, stop_event):
+        self.stop_event = stop_event
+
+    def run_ocr(self, _img, _blk_list, **_kwargs):
+        return None
+
+
+class EmptyingOCR:
+    def set_stop_event(self, stop_event):
+        self.stop_event = stop_event
+
+    def run_ocr(self, _img, blk_list, **_kwargs):
+        blk_list[0].text = []
+
+
+class FailingDetector:
+    def detect(self, _img, _project):
+        raise ModuleRunError('textdetector', 'failing', 'failed')
+
+
+class FakeTextDetectThread:
+    def __init__(self, detector):
+        self.textdetector = detector
 
 
 class MissingKeyOCR(OCRBase):
@@ -79,6 +170,7 @@ class MissingBaseURLInpainter:
 class FakeOCRThread:
     def __init__(self, ocr):
         self.module = ocr
+        self.ocr = ocr
 
 
 class LLMKeyDialogDedupTest(unittest.TestCase):
@@ -236,11 +328,231 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
     def test_standalone_translate_page_clears_stale_pipeline_stop_event(self):
         thread = module_manager.TranslateThread()
         thread.pipeline_stop_event = threading.Event()
+        project = SimpleNamespace(pages={'page-1': []})
 
         with mock.patch.object(module_manager.TranslateThread, 'start', lambda self: None):
-            thread.translatePage({'page-1': []}, 'page-1')
+            thread.translatePage(project, 'page-1')
 
         self.assertIsNone(thread.pipeline_stop_event)
+
+    def test_full_page_completion_reflects_translation_outcome(self):
+        for translator_type, expected_success in (
+            (SuccessfulTranslator, True),
+            (FailingTranslator, False),
+        ):
+            with self.subTest(translator=translator_type.__name__):
+                translator = translator_type()
+                thread = module_manager.TranslateThread()
+                thread.translator = translator
+                page = [TextBlock(text=['source'], translation='old')]
+                project = ProjImgTrans()
+                project.pages = {'page-1': page}
+                project._image_info = {'page-1': {'finish_code': 0}}
+                project.mark_translation_finished('page-1', 'English')
+
+                with mock.patch(
+                    'ballontranslator.ui.module_manager.create_error_dialog',
+                ):
+                    success = thread._translate_page(
+                        project,
+                        'page-1',
+                        emit_finished=False,
+                    )
+
+                self.assertIs(success, expected_success)
+                self.assertEqual(translator.calls, [(page, project, 'page-1')])
+                self.assertEqual(translator.full_page_calls, [True])
+                info = project._image_info['page-1']
+                self.assertIs(
+                    bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
+                    expected_success,
+                )
+                if expected_success:
+                    self.assertEqual(info['translation_target'], 'English')
+                else:
+                    self.assertNotIn('translation_target', info)
+
+    def test_selected_translation_preserves_only_matching_completed_target(self):
+        for saved_target, compatible in (
+            ('English', True),
+            ('简体中文', False),
+            (None, False),
+        ):
+            with self.subTest(saved_target=saved_target):
+                translator = SuccessfulTranslator()
+                thread = module_manager.ImgtransThread(
+                    None,
+                    None,
+                    FakeTranslateThread(translator),
+                    None,
+                )
+                block = TextBlock(text=['source'], translation='old')
+                project = ProjImgTrans()
+                project.pages = {'page-1': [block]}
+                project._image_info = {'page-1': {'finish_code': 0}}
+                project.current_img = 'page-1'
+                project.img_array = np.zeros((12, 12, 3), dtype=np.uint8)
+                project.mask_array = None
+                project.mark_translation_finished('page-1', 'English')
+                if saved_target is None:
+                    project._image_info['page-1'].pop('translation_target')
+                else:
+                    project._image_info['page-1'][
+                        'translation_target'
+                    ] = saved_target
+                thread.imgtrans_proj = project
+
+                thread._blktrans_pipeline(
+                    [block],
+                    -1,
+                    [0],
+                    page_key='page-1',
+                    source_signature=('source',),
+                )
+
+                info = project._image_info['page-1']
+                self.assertEqual(block.translation, 'ａ! hero')
+                self.assertEqual(translator.full_page_calls, [False])
+                self.assertIs(
+                    bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
+                    compatible,
+                )
+                if compatible:
+                    self.assertEqual(info['translation_target'], 'English')
+                else:
+                    self.assertNotIn('translation_target', info)
+
+    def test_selected_ocr_reconciles_changed_and_unchanged_sources(self):
+        cases = (
+            (PartiallyFailingOCR, 'original source', 'partially changed', False),
+            (UnchangedOCR, 'same source', 'same source', True),
+        )
+        for ocr_type, source, expected_source, expected_complete in cases:
+            with self.subTest(ocr=ocr_type.__name__):
+                block = TextBlock(
+                    xyxy=[0, 0, 10, 10],
+                    text=[source],
+                    translation='old',
+                )
+                project = ProjImgTrans()
+                project.pages = {'page-1': [block]}
+                project._image_info = {'page-1': {'finish_code': 0}}
+                project.current_img = 'page-1'
+                project.img_array = np.zeros((12, 12, 3), dtype=np.uint8)
+                project.mask_array = None
+                project.mark_translation_finished('page-1', 'English')
+                thread = module_manager.ImgtransThread(
+                    None,
+                    FakeOCRThread(ocr_type()),
+                    FakeTranslateThread(None),
+                    None,
+                )
+                thread.imgtrans_proj = project
+
+                with mock.patch(
+                    'ballontranslator.ui.module_manager.create_error_dialog',
+                ):
+                    thread._blktrans_pipeline(
+                        [block],
+                        0,
+                        [0],
+                        page_key='page-1',
+                        source_signature=(source,),
+                    )
+
+                self.assertEqual(block.get_text(), expected_source)
+                info = project._image_info['page-1']
+                self.assertIs(
+                    bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
+                    expected_complete,
+                )
+                if expected_complete:
+                    self.assertEqual(info['translation_target'], 'English')
+                else:
+                    self.assertNotIn('translation_target', info)
+
+    def test_post_ocr_cleanup_exception_still_reconciles_source(self):
+        block = TextBlock(text=['source'], translation='old')
+        project = ProjImgTrans()
+        project.pages = {'page-1': [block]}
+        project._image_info = {'page-1': {'finish_code': 0}}
+        project.read_img = lambda _page: np.zeros(
+            (12, 12, 3),
+            dtype=np.uint8,
+        )
+        project.load_mask_by_imgname = mock.Mock(
+            side_effect=RuntimeError('cleanup failed'),
+        )
+        project.mark_translation_finished('page-1', 'English')
+
+        thread = module_manager.ImgtransThread(
+            SimpleNamespace(textdetector=None),
+            FakeOCRThread(EmptyingOCR()),
+            FakeTranslateThread(None),
+            SimpleNamespace(inpainter=None),
+        )
+        thread.imgtrans_proj = project
+        thread.source_signatures = {'page-1': ('source',)}
+        thread.process_idx_to_page_idx = {}
+
+        old_stages = [pcfg.module.stage_enabled(index) for index in range(4)]
+        old_restore_ocr_empty = pcfg.restore_ocr_empty
+        try:
+            for index in range(4):
+                pcfg.module.set_stage_enabled(index, index == 1)
+            pcfg.restore_ocr_empty = True
+            with mock.patch.object(
+                project,
+                'reconcile_translation_source_signature',
+                wraps=project.reconcile_translation_source_signature,
+            ) as reconcile:
+                with self.assertRaisesRegex(RuntimeError, 'cleanup failed'):
+                    thread._imgtrans_pipeline()
+        finally:
+            pcfg.restore_ocr_empty = old_restore_ocr_empty
+            for index, enabled in enumerate(old_stages):
+                pcfg.module.set_stage_enabled(index, enabled)
+
+        reconcile.assert_called_once_with('page-1', ('source',))
+        info = project._image_info['page-1']
+        self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
+        self.assertNotIn('translation_target', info)
+
+    def test_detection_failure_still_invalidates_translation(self):
+        block = TextBlock(text=['source'], translation='old')
+        project = ProjImgTrans()
+        project.pages = {'page-1': [block]}
+        project._image_info = {'page-1': {'finish_code': 0}}
+        project.read_img = lambda _page: np.zeros(
+            (12, 12, 3),
+            dtype=np.uint8,
+        )
+        project.mark_translation_finished('page-1', 'English')
+        ocr_thread = SimpleNamespace(ocr=None)
+        inpaint_thread = SimpleNamespace(inpainter=None)
+        thread = module_manager.ImgtransThread(
+            FakeTextDetectThread(FailingDetector()),
+            ocr_thread,
+            FakeTranslateThread(None),
+            inpaint_thread,
+        )
+        thread.imgtrans_proj = project
+        thread.process_idx_to_page_idx = {}
+        old_stages = [pcfg.module.stage_enabled(index) for index in range(4)]
+        try:
+            for index in range(4):
+                pcfg.module.set_stage_enabled(index, index == 0)
+            with mock.patch(
+                'ballontranslator.ui.module_manager.create_error_dialog',
+            ):
+                thread._imgtrans_pipeline()
+        finally:
+            for index, enabled in enumerate(old_stages):
+                pcfg.module.set_stage_enabled(index, enabled)
+
+        info = project._image_info['page-1']
+        self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
+        self.assertNotIn('translation_target', info)
 
     def test_missing_llm_key_stops_ocr_block_pipeline(self):
         ocr = MissingKeyOCR()

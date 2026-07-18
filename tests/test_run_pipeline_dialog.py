@@ -1,8 +1,9 @@
 import os
 import json
+import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
@@ -36,6 +37,7 @@ from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.mainwindowbars import TitleBar
 from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.utils.config import (
+    LLMGlossaryMode,
     ProgramConfig,
     RunStatus,
     json_dump_program_config,
@@ -46,6 +48,7 @@ from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.shared import CONFIG_MODULE_PARAM_BODY_MIN_WIDTH
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS
+from ballontranslator.modules.translators.trans_llm import LLMTranslator
 
 
 def get_app():
@@ -87,6 +90,10 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.translate_source,
             pcfg.module.translate_target,
             pcfg.module.translate_context,
+            pcfg.module.llm_use_prior_translations,
+            pcfg.module.llm_prior_context_token_budget,
+            pcfg.module.llm_glossary_path,
+            pcfg.module.llm_glossary_mode,
         )
         self._visibility_states = (
             pcfg.show_textdetector_tool,
@@ -129,6 +136,10 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.translate_source,
             pcfg.module.translate_target,
             pcfg.module.translate_context,
+            pcfg.module.llm_use_prior_translations,
+            pcfg.module.llm_prior_context_token_budget,
+            pcfg.module.llm_glossary_path,
+            pcfg.module.llm_glossary_mode,
         ) = self._pipeline_general_settings
 
     def test_dialog_initializes_pipeline_controls(self):
@@ -331,6 +342,96 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(pcfg.module.translate_context, 'textblock')
         self.assertFalse(hasattr(dialog, 'show_MT_keyword_window'))
         dialog.close()
+
+    def test_llm_context_and_glossary_controls_persist_disabled_values(self):
+        pcfg.module.llm_use_prior_translations = False
+        pcfg.module.llm_prior_context_token_budget = 8192
+        pcfg.module.llm_glossary_path = ''
+        pcfg.module.llm_glossary_mode = LLMGlossaryMode.Matching
+        dialog = RunPipelineDialog()
+
+        dialog.use_prior_translations.setChecked(True)
+        dialog.prior_context_token_budget.setValue(16384)
+        dialog.use_prior_translations.setChecked(False)
+        dialog.glossary_path_edit.setText('/tmp/glossary.tsv')
+        all_index = dialog.glossary_mode_combobox.findData(LLMGlossaryMode.All)
+        dialog.glossary_mode_combobox.setCurrentIndex(all_index)
+        dialog.glossary_path_edit.clear()
+
+        self.assertEqual(
+            (
+                pcfg.module.llm_use_prior_translations,
+                pcfg.module.llm_prior_context_token_budget,
+                pcfg.module.llm_glossary_path,
+                pcfg.module.llm_glossary_mode,
+            ),
+            (False, 16384, '', LLMGlossaryMode.All),
+        )
+        self.assertEqual(dialog.prior_context_token_budget.value(), 16384)
+        self.assertFalse(dialog.prior_context_token_budget.isEnabled())
+        self.assertFalse(dialog.glossary_mode_combobox.isEnabled())
+        dialog.close()
+
+    def test_copy_source_glossary_error_preserves_clipboard(self):
+        clipboard = SimpleNamespace(setText=Mock())
+        translator = LLMTranslator('日本語', '简体中文')
+        owner = SimpleNamespace(
+            canvas=SimpleNamespace(
+                selected_text_items=lambda: [SimpleNamespace(idx=0)],
+            ),
+            module_manager=SimpleNamespace(translator=translator),
+            st_manager=SimpleNamespace(
+                pairwidget_list=[
+                    SimpleNamespace(
+                        e_source=SimpleNamespace(toPlainText=lambda: 'Hero'),
+                    )
+                ],
+                app_clipborad=clipboard,
+            ),
+            tr=lambda text: text,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            pcfg.module.llm_glossary_path = os.path.join(
+                directory,
+                'deleted-glossary.json',
+            )
+            with patch(
+                'ballontranslator.ui.mainwindow.create_error_dialog',
+            ) as show_error:
+                MainWindow.on_copy_src(owner)
+
+        clipboard.setText.assert_not_called()
+        show_error.assert_called_once()
+        error, message = show_error.call_args.args
+        self.assertIn('Glossary file not found', str(error))
+        self.assertEqual(message, 'Failed to copy source text')
+
+    def test_translation_hook_preserves_selected_and_full_page_ordering(self):
+        owner = SimpleNamespace(
+            mtSubWidget=SimpleNamespace(
+                sub_text=lambda text: text.replace('A', 'X'),
+            ),
+        )
+        translator = SimpleNamespace(
+            lang_source='English',
+            lang_target='English',
+        )
+        cases = (
+            (False, 'Ａ', 'Ａ'),
+            (False, 'A', 'X'),
+            (True, 'Ａ', 'X'),
+        )
+        with patch.object(pcfg, 'let_uppercase_flag', False):
+            for full_page, source, expected in cases:
+                with self.subTest(full_page=full_page, source=source):
+                    translations = [source]
+                    MainWindow.translate_postprocess(
+                        owner,
+                        translations=translations,
+                        translator=translator,
+                        full_page=full_page,
+                    )
+                    self.assertEqual(translations, [expected])
 
     def test_keyword_substitution_buttons_live_below_translator_params(self):
         panel = TranslatorConfigPanel('Translator')
@@ -602,7 +703,6 @@ class RunPipelineDialogTests(unittest.TestCase):
             bottomBar=SimpleNamespace(
                 textblockChecker=SimpleNamespace(isChecked=lambda: False)
             ),
-            postprocess_mt_toggle=True,
             imgtrans_proj=project,
             st_manager=SimpleNamespace(updateTextBlkList=lambda: None),
             module_manager=SimpleNamespace(
@@ -639,7 +739,18 @@ class RunPipelineDialogTests(unittest.TestCase):
             project._image_info['002.png']['finish_code'],
             RunStatus.FIN_DET | RunStatus.FIN_INPAINT,
         )
-        self.assertEqual(calls, [((['002.png'],), {'render_only': False})])
+        self.assertEqual(
+            calls,
+            [
+                (
+                    (['002.png'],),
+                    {
+                        'render_only': False,
+                        'source_signatures': {'002.png': ('second',)},
+                    },
+                )
+            ],
+        )
 
     def test_continue_dispatches_all_unfinished_pages_ignoring_selected_range(self):
         pcfg.module.set_stage_enabled(0, False)
@@ -663,7 +774,6 @@ class RunPipelineDialogTests(unittest.TestCase):
             bottomBar=SimpleNamespace(
                 textblockChecker=SimpleNamespace(isChecked=lambda: False)
             ),
-            postprocess_mt_toggle=True,
             imgtrans_proj=project,
             st_manager=SimpleNamespace(updateTextBlkList=lambda: None),
             module_manager=SimpleNamespace(
@@ -684,51 +794,69 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(len(owner.backup_blkstyles), 2)
         self.assertEqual(
             calls,
-            [((['001.png', '003.png'],), {'render_only': False})],
+            [
+                (
+                    (['001.png', '003.png'],),
+                    {
+                        'render_only': False,
+                        'source_signatures': {
+                            '001.png': ('',),
+                            '003.png': ('',),
+                        },
+                    },
+                )
+            ],
         )
 
-    def test_successful_translation_import_sets_translation_progress(self):
+    def test_selected_run_commits_only_selected_source_edits(self):
+        selected = TextBlock(xyxy=[0, 0, 10, 10], text=['selected old'])
+        unselected = TextBlock(text=['unselected old'])
         project = ProjImgTrans()
-        project.pages = {
-            '001.png': [TextBlock(), TextBlock()],
-            '002.png': [TextBlock()],
-        }
-        project._image_info = {
-            '001.png': {'finish_code': RunStatus.FIN_DET},
-            '002.png': {'finish_code': RunStatus.FIN_OCR},
-        }
-        imported_pages = [
-            {'page_name': '001.png', 'blk_list': ['one', 'two']},
-            {'page_name': '002.png', 'blk_list': ['three']},
-        ]
-
-        with patch(
-            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
-            return_value=imported_pages,
-        ):
-            all_matched, _ = project.load_translation_from_txt('translation.md')
-
-        self.assertTrue(all_matched)
-        self.assertEqual(
-            project._image_info['001.png']['finish_code'],
-            RunStatus.FIN_DET | RunStatus.FIN_TRANSLATE,
+        project.pages = {'001.png': [selected, unselected]}
+        project.current_img = '001.png'
+        project.img_array = SimpleNamespace(shape=(12, 12, 3))
+        calls = []
+        owner = SimpleNamespace(
+            imgtrans_proj=project,
+            global_search_widget=SimpleNamespace(
+                set_document_edited=lambda: None,
+            ),
+            st_manager=SimpleNamespace(
+                pairwidget_list=[
+                    SimpleNamespace(
+                        e_source=SimpleNamespace(
+                            toPlainText=lambda: 'selected new',
+                        ),
+                    ),
+                    SimpleNamespace(
+                        e_source=SimpleNamespace(
+                            toPlainText=lambda: 'unselected unsaved',
+                        ),
+                    ),
+                ],
+            ),
+            module_manager=SimpleNamespace(
+                runBlktransPipeline=lambda *args, **kwargs: calls.append(
+                    (args, kwargs)
+                ),
+            ),
         )
-        self.assertEqual(
-            project._image_info['002.png']['finish_code'],
-            RunStatus.FIN_OCR | RunStatus.FIN_TRANSLATE,
+        selected_item = SimpleNamespace(
+            blk=selected,
+            idx=0,
+            absBoundingRect=lambda: [0, 0, 10, 10],
         )
 
-        project._image_info['001.png']['finish_code'] = 0
-        project._image_info['002.png']['finish_code'] = 0
-        with patch(
-            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
-            return_value=imported_pages[:1],
-        ):
-            all_matched, _ = project.load_translation_from_txt('partial.md')
+        self.assertTrue(MainWindow.translateBlkitemList(owner, [selected_item], 0))
 
-        self.assertFalse(all_matched)
-        self.assertEqual(project._image_info['001.png']['finish_code'], 0)
-        self.assertEqual(project._image_info['002.png']['finish_code'], 0)
+        self.assertEqual(project.page_source_signature('001.png'), (
+            'selected new',
+            'unselected old',
+        ))
+        self.assertEqual(calls[0][1]['source_signature'], (
+            'selected new',
+            'unselected old',
+        ))
 
     def test_render_only_snapshots_complete_global_format(self):
         global_format = FontFormat(
@@ -753,7 +881,6 @@ class RunPipelineDialogTests(unittest.TestCase):
             bottomBar=SimpleNamespace(
                 textblockChecker=SimpleNamespace(isChecked=lambda: False)
             ),
-            postprocess_mt_toggle=True,
             imgtrans_proj=SimpleNamespace(pages={}),
             st_manager=SimpleNamespace(updateTextBlkList=lambda: None),
             module_manager=SimpleNamespace(

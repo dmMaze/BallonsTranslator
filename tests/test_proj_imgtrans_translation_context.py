@@ -1,0 +1,317 @@
+import json
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from ballontranslator.utils.config import (
+    LLMGlossaryMode,
+    ModuleConfig,
+    ProgramConfig,
+    RunStatus,
+    json_dump_program_config,
+)
+from ballontranslator.utils.llm_profiles import LLMProfile
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.textblock import TextBlock
+
+
+def _module_config(**kwargs):
+    kwargs.setdefault('llm_profiles', [LLMProfile(id='test-profile')])
+    return ModuleConfig(**kwargs)
+
+
+class LLMContextConfigTest(unittest.TestCase):
+
+    def test_llm_context_defaults_and_invalid_values_are_safe(self):
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            json.dump({'module': {}}, temp)
+            temp.flush()
+            loaded = ProgramConfig.load(temp.name)
+
+        self.assertEqual(
+            (
+                loaded.module.llm_use_prior_translations,
+                loaded.module.llm_prior_context_token_budget,
+                loaded.module.llm_glossary_path,
+                loaded.module.llm_glossary_mode,
+            ),
+            (False, 4096, '', LLMGlossaryMode.Matching),
+        )
+
+        invalid_cases = (
+            ('llm_glossary_mode', (None, '', 'everything'), LLMGlossaryMode.Matching),
+            ('llm_prior_context_token_budget', (0, -1, False, '4096'), 4096),
+            ('llm_use_prior_translations', (None, 0, 1, 'false', [], {}), False),
+            ('llm_glossary_path', (None, False, 1, [], {}), ''),
+        )
+        for field, values, expected in invalid_cases:
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    self.assertEqual(
+                        getattr(_module_config(**{field: value}), field),
+                        expected,
+                    )
+
+    def test_llm_context_settings_roundtrip_directly_under_module(self):
+        cfg = ProgramConfig(module=_module_config(
+            llm_use_prior_translations=True,
+            llm_prior_context_token_budget=2048,
+            llm_glossary_path='glossaries/terms.tsv',
+            llm_glossary_mode=LLMGlossaryMode.All,
+        ))
+        raw = json.loads(json_dump_program_config(cfg))
+
+        self.assertEqual(
+            {
+                key: raw['module'][key]
+                for key in (
+                    'llm_use_prior_translations',
+                    'llm_prior_context_token_budget',
+                    'llm_glossary_path',
+                    'llm_glossary_mode',
+                )
+            },
+            {
+                'llm_use_prior_translations': True,
+                'llm_prior_context_token_budget': 2048,
+                'llm_glossary_path': 'glossaries/terms.tsv',
+                'llm_glossary_mode': LLMGlossaryMode.All,
+            },
+        )
+
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            json.dump(raw, temp)
+            temp.flush()
+            loaded = ProgramConfig.load(temp.name)
+
+        self.assertTrue(loaded.module.llm_use_prior_translations)
+        self.assertEqual(loaded.module.llm_prior_context_token_budget, 2048)
+        self.assertEqual(
+            loaded.module.llm_glossary_path,
+            'glossaries/terms.tsv',
+        )
+        self.assertEqual(loaded.module.llm_glossary_mode, LLMGlossaryMode.All)
+
+
+class ProjectTranslationTargetTest(unittest.TestCase):
+
+    @staticmethod
+    def _project(*page_names):
+        project = ProjImgTrans()
+        project.pages = {
+            page_name: [TextBlock()]
+            for page_name in page_names
+        }
+        project._image_info = {
+            page_name: {'finish_code': 0}
+            for page_name in page_names
+        }
+        return project
+
+    def test_mark_and_progress_updates_manage_translation_target(self):
+        project = self._project('001.png')
+        info = project._image_info['001.png']
+        info['finish_code'] = RunStatus.FIN_DET
+
+        project.mark_translation_finished('001.png', '简体中文')
+
+        self.assertEqual(
+            info['finish_code'],
+            RunStatus.FIN_DET | RunStatus.FIN_TRANSLATE,
+        )
+        self.assertEqual(info['translation_target'], '简体中文')
+        self.assertEqual(
+            project.to_dict()['image_info']['001.png']['translation_target'],
+            '简体中文',
+        )
+
+        project.clear_page_progress('001.png', RunStatus.FIN_DET)
+        self.assertEqual(info['translation_target'], '简体中文')
+
+        project.set_page_progress(
+            '001.png',
+            RunStatus.FIN_OCR | RunStatus.FIN_TRANSLATE,
+        )
+        self.assertEqual(info['translation_target'], '简体中文')
+
+        project.set_page_progress('001.png', RunStatus.FIN_OCR)
+        self.assertNotIn('translation_target', info)
+
+        project.mark_translation_finished('001.png', 'English')
+        project.clear_page_progress('001.png', RunStatus.FIN_TRANSLATE)
+        self.assertNotIn('translation_target', info)
+
+    def test_source_signature_reconciliation_preserves_only_unchanged_page(self):
+        project = self._project('001.png')
+        project.pages['001.png'] = [
+            TextBlock(text=['first']),
+            TextBlock(text=['second']),
+        ]
+        project.mark_translation_finished('001.png', 'English')
+        signature = project.page_source_signature('001.png')
+
+        self.assertTrue(
+            project.reconcile_translation_source_signature(
+                '001.png',
+                signature,
+            )
+        )
+        self.assertEqual(
+            project._image_info['001.png']['translation_target'],
+            'English',
+        )
+
+        changed_pages = (
+            [TextBlock(text=['changed']), TextBlock(text=['second'])],
+            [TextBlock(text=['second']), TextBlock(text=['first'])],
+            [TextBlock(text=['first'])],
+        )
+        for changed_page in changed_pages:
+            with self.subTest(
+                signature=project.source_signature(changed_page),
+            ):
+                project.pages['001.png'] = changed_page
+                project.mark_translation_finished('001.png', 'English')
+                self.assertFalse(
+                    project.reconcile_translation_source_signature(
+                        '001.png',
+                        signature,
+                    )
+                )
+                self.assertFalse(
+                    project._image_info['001.png']['finish_code']
+                    & RunStatus.FIN_TRANSLATE
+                )
+                self.assertNotIn(
+                    'translation_target',
+                    project._image_info['001.png'],
+                )
+
+    def test_missing_source_signature_invalidates_translation(self):
+        project = self._project('001.png')
+        project.pages['001.png'] = [TextBlock(text=['source'])]
+        project.mark_translation_finished('001.png', 'English')
+
+        self.assertFalse(
+            project.reconcile_translation_source_signature('001.png', None)
+        )
+        info = project._image_info['001.png']
+        self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
+        self.assertNotIn('translation_target', info)
+
+    def test_selected_translation_requires_known_matching_target(self):
+        for saved_target, active_target, compatible in (
+            ('English', 'English', True),
+            ('简体中文', 'English', False),
+            (None, 'English', False),
+        ):
+            with self.subTest(saved_target=saved_target):
+                project = self._project('001.png')
+                project.mark_translation_finished('001.png', 'English')
+                info = project._image_info['001.png']
+                if saved_target is None:
+                    info.pop('translation_target')
+                else:
+                    info['translation_target'] = saved_target
+
+                self.assertIs(
+                    project.prepare_selected_translation(
+                        '001.png',
+                        active_target,
+                    ),
+                    compatible,
+                )
+                self.assertIs(
+                    bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
+                    compatible,
+                )
+                if compatible:
+                    self.assertEqual(info['translation_target'], 'English')
+                else:
+                    self.assertNotIn('translation_target', info)
+
+    def test_load_from_dict_preserves_target_and_legacy_absence(self):
+        for expected_target, image_info in (
+            ('English', {
+                'finish_code': RunStatus.FIN_TRANSLATE,
+                'translation_target': 'English',
+            }),
+            (None, {'finish_code': RunStatus.FIN_TRANSLATE}),
+        ):
+            with self.subTest(target=expected_target):
+                project = ProjImgTrans()
+                project.directory = '/unused'
+                raw = {
+                    'pages': {'001.png': []},
+                    'image_info': {'001.png': image_info},
+                }
+                with patch(
+                    'ballontranslator.utils.proj_imgtrans.find_all_imgs',
+                    return_value=['001.png'],
+                ), patch.object(project, 'set_current_img'):
+                    project.load_from_dict(raw)
+
+                loaded_info = project._image_info['001.png']
+                if expected_target is None:
+                    self.assertNotIn('translation_target', loaded_info)
+                else:
+                    self.assertEqual(
+                        loaded_info['translation_target'],
+                        expected_target,
+                    )
+
+    def test_complete_import_marks_target_and_partial_import_does_not(self):
+        imported_pages = [
+            {'page_name': '001.png', 'blk_list': ['one']},
+            {'page_name': '002.png', 'blk_list': ['two']},
+        ]
+        project = self._project('001.png', '002.png')
+
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
+            return_value=imported_pages,
+        ):
+            all_matched, _ = project.load_translation_from_txt(
+                'translation.md',
+                target_language='English',
+            )
+
+        self.assertTrue(all_matched)
+        for info in project._image_info.values():
+            self.assertTrue(info['finish_code'] & RunStatus.FIN_TRANSLATE)
+            self.assertEqual(info['translation_target'], 'English')
+
+        legacy_project = self._project('001.png', '002.png')
+        for info in legacy_project._image_info.values():
+            info['translation_target'] = 'stale-target'
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
+            return_value=imported_pages,
+        ):
+            all_matched, _ = legacy_project.load_translation_from_txt(
+                'translation.md',
+            )
+
+        self.assertTrue(all_matched)
+        for info in legacy_project._image_info.values():
+            self.assertTrue(info['finish_code'] & RunStatus.FIN_TRANSLATE)
+            self.assertNotIn('translation_target', info)
+
+        partial_project = self._project('001.png', '002.png')
+        partial_project.mark_translation_finished('001.png', 'stale-target')
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
+            return_value=imported_pages[:1],
+        ):
+            all_matched, _ = partial_project.load_translation_from_txt(
+                'partial.md',
+                target_language='English',
+            )
+
+        self.assertFalse(all_matched)
+        for info in partial_project._image_info.values():
+            self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
+            self.assertNotIn('translation_target', info)
+
+if __name__ == '__main__':
+    unittest.main()

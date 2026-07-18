@@ -7,12 +7,15 @@ from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
     QDockWidget,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QStyle,
     QStyleOptionButton,
@@ -35,7 +38,7 @@ from .llm_modality import (
 )
 from .page_range_progress import PageRangeProgressWidget
 from .custom_widget import ExpandingToolButton
-from ballontranslator.utils.config import pcfg, TranslateContext
+from ballontranslator.utils.config import LLMGlossaryMode, pcfg, TranslateContext
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -626,6 +629,90 @@ class RunPipelineDialog(QDialog):
         context_layout.addStretch()
         layout.addWidget(context_row)
 
+        self.use_prior_translations = self._add_checkbox_setting(
+            section,
+            layout,
+            'RunPipelineUsePriorTranslations',
+            self.tr('Use Prior Translations as Context'),
+            pcfg.module.llm_use_prior_translations,
+            self._on_use_prior_translations_toggled,
+        )
+
+        budget_row = QWidget(section)
+        budget_row.setObjectName('RunPipelineGeneralSettingRow')
+        budget_layout = QHBoxLayout(budget_row)
+        budget_layout.setContentsMargins(0, 0, 0, 0)
+        budget_layout.setSpacing(8)
+        budget_label = QLabel(self.tr('Prior Context Token Budget'), budget_row)
+        budget_label.setObjectName('RunPipelineSettingLabel')
+        budget_layout.addWidget(budget_label)
+        self.prior_context_token_budget = QSpinBox(budget_row)
+        self.prior_context_token_budget.setObjectName(
+            'RunPipelinePriorContextTokenBudget'
+        )
+        self.prior_context_token_budget.setRange(1, 2_147_483_647)
+        self.prior_context_token_budget.setValue(
+            pcfg.module.llm_prior_context_token_budget
+        )
+        self.prior_context_token_budget.setEnabled(
+            pcfg.module.llm_use_prior_translations
+        )
+        budget_layout.addWidget(self.prior_context_token_budget)
+        budget_layout.addStretch()
+        layout.addWidget(budget_row)
+
+        glossary_row = QWidget(section)
+        glossary_row.setObjectName('RunPipelineGeneralSettingRow')
+        glossary_layout = QHBoxLayout(glossary_row)
+        glossary_layout.setContentsMargins(0, 0, 0, 0)
+        glossary_layout.setSpacing(8)
+        glossary_label = QLabel(self.tr('Glossary File'), glossary_row)
+        glossary_label.setObjectName('RunPipelineSettingLabel')
+        glossary_layout.addWidget(glossary_label)
+        self.glossary_path_edit = QLineEdit(glossary_row)
+        self.glossary_path_edit.setObjectName('RunPipelineGlossaryPath')
+        self.glossary_path_edit.setText(pcfg.module.llm_glossary_path)
+        glossary_layout.addWidget(self.glossary_path_edit, 1)
+        self.glossary_file_button = QPushButton('...', glossary_row)
+        self.glossary_file_button.setObjectName('RunPipelineGlossaryFileButton')
+        self.glossary_file_button.setFixedWidth(30)
+        select_glossary_text = self.tr('Select Glossary File')
+        self.glossary_file_button.setToolTip(select_glossary_text)
+        self.glossary_file_button.setAccessibleName(select_glossary_text)
+        glossary_layout.addWidget(self.glossary_file_button)
+        layout.addWidget(glossary_row)
+
+        glossary_mode_row = QWidget(section)
+        glossary_mode_row.setObjectName('RunPipelineGeneralSettingRow')
+        glossary_mode_layout = QHBoxLayout(glossary_mode_row)
+        glossary_mode_layout.setContentsMargins(0, 0, 0, 0)
+        glossary_mode_layout.setSpacing(8)
+        glossary_mode_label = QLabel(self.tr('Glossary Mode'), glossary_mode_row)
+        glossary_mode_label.setObjectName('RunPipelineSettingLabel')
+        glossary_mode_layout.addWidget(glossary_mode_label)
+        self.glossary_mode_combobox = QComboBox(glossary_mode_row)
+        self.glossary_mode_combobox.setObjectName(
+            'RunPipelineGlossaryModeComboBox'
+        )
+        self.glossary_mode_combobox.addItem(
+            self.tr('Matching'),
+            LLMGlossaryMode.Matching,
+        )
+        self.glossary_mode_combobox.addItem(
+            self.tr('All'),
+            LLMGlossaryMode.All,
+        )
+        glossary_mode_index = self.glossary_mode_combobox.findData(
+            pcfg.module.llm_glossary_mode
+        )
+        self.glossary_mode_combobox.setCurrentIndex(max(glossary_mode_index, 0))
+        self.glossary_mode_combobox.setEnabled(
+            bool(pcfg.module.llm_glossary_path.strip())
+        )
+        glossary_mode_layout.addWidget(self.glossary_mode_combobox)
+        glossary_mode_layout.addStretch()
+        layout.addWidget(glossary_mode_row)
+
         self.source_combobox.currentTextChanged.connect(
             self._on_translate_source_changed
         )
@@ -634,6 +721,16 @@ class RunPipelineDialog(QDialog):
         )
         self.context_combobox.currentIndexChanged.connect(
             self._on_translate_context_changed
+        )
+        self.prior_context_token_budget.valueChanged.connect(
+            self._on_prior_context_token_budget_changed
+        )
+        self.glossary_path_edit.textChanged.connect(
+            self._on_glossary_path_changed
+        )
+        self.glossary_file_button.clicked.connect(self._select_glossary_file)
+        self.glossary_mode_combobox.currentIndexChanged.connect(
+            self._on_glossary_mode_changed
         )
 
     def _on_translate_source_changed(self, source: str):
@@ -647,6 +744,30 @@ class RunPipelineDialog(QDialog):
     def _on_translate_context_changed(self):
         context = self.context_combobox.currentData()
         pcfg.module.translate_context = context
+
+    def _on_use_prior_translations_toggled(self, enabled: bool):
+        pcfg.module.llm_use_prior_translations = enabled
+        self.prior_context_token_budget.setEnabled(enabled)
+
+    def _on_prior_context_token_budget_changed(self, budget: int):
+        pcfg.module.llm_prior_context_token_budget = budget
+
+    def _on_glossary_path_changed(self, path: str):
+        pcfg.module.llm_glossary_path = path
+        self.glossary_mode_combobox.setEnabled(bool(path.strip()))
+
+    def _on_glossary_mode_changed(self):
+        pcfg.module.llm_glossary_mode = self.glossary_mode_combobox.currentData()
+
+    def _select_glossary_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr('Select Glossary File'),
+            self.glossary_path_edit.text(),
+            self.tr('Glossary Files (*.json *.txt *.tsv)'),
+        )
+        if path:
+            self.glossary_path_edit.setText(path)
 
     def _add_settings_section(
         self,

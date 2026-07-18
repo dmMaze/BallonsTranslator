@@ -833,7 +833,10 @@ QLabel#RunPipelineSettingLabel {
 
 QComboBox#RunPipelineSourceComboBox,
 QComboBox#RunPipelineTargetComboBox,
-QComboBox#RunPipelineContextComboBox {
+QComboBox#RunPipelineContextComboBox,
+QComboBox#RunPipelineGlossaryModeComboBox,
+QSpinBox#RunPipelinePriorContextTokenBudget,
+QLineEdit#RunPipelineGlossaryPath {
     min-height: 24px;
     font-size: 13px;
     border: none;
@@ -847,19 +850,35 @@ QComboBox#RunPipelineSourceComboBox:focus,
 QComboBox#RunPipelineTargetComboBox:hover,
 QComboBox#RunPipelineTargetComboBox:focus,
 QComboBox#RunPipelineContextComboBox:hover,
-QComboBox#RunPipelineContextComboBox:focus {
+QComboBox#RunPipelineContextComboBox:focus,
+QComboBox#RunPipelineGlossaryModeComboBox:hover,
+QComboBox#RunPipelineGlossaryModeComboBox:focus,
+QSpinBox#RunPipelinePriorContextTokenBudget:hover,
+QSpinBox#RunPipelinePriorContextTokenBudget:focus,
+QLineEdit#RunPipelineGlossaryPath:hover,
+QLineEdit#RunPipelineGlossaryPath:focus {
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
 QComboBox#RunPipelineSourceComboBox::drop-down,
 QComboBox#RunPipelineTargetComboBox::drop-down,
-QComboBox#RunPipelineContextComboBox::drop-down {
+QComboBox#RunPipelineContextComboBox::drop-down,
+QComboBox#RunPipelineGlossaryModeComboBox::drop-down {
     border: none;
 }
 
 QWidget#RunPipelineSettingsSection QPushButton {
     min-height: 26px;
     border-radius: 4px;
+}
+
+QWidget#RunPipelineSettingsSection QPushButton#RunPipelineGlossaryFileButton {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 24px;
+    max-height: 24px;
+    height: 24px;
+    padding: 0px;
 }
 
 QWidget#RunPipelineSettingsSection QCheckBox {

@@ -39,6 +39,42 @@ Prend en charge l’export/import vers/depuis des documents Word
   - Prend en charge rechercher & remplacer
   - Prend en charge l’export/import vers/depuis des documents Word
 
+* <details>
+  <summary><i>Traduction LLM sensible au contexte</i></summary>
+
+  **Historique des traductions**
+
+  - `LLMTranslator` peut utiliser comme exemples les paires source/traduction de pages antérieures terminées. Activez **Use Prior Translations as Context** dans la section Traduction de la boîte de dialogue d’exécution.
+  - **Prior Context Token Budget** est une limite souple réservée aux exemples de l’historique. Les pages terminées les plus récentes sont prioritaires, puis les pages retenues sont insérées dans l’ordre. La page actuelle, les instructions système, le glossaire et la réponse générée consomment également du contexte en dehors de ce budget.
+  - La poursuite d’une exécution ou la traduction d’une plage sélectionnée peut utiliser les pages admissibles antérieures à cette plage. Une page traduite avec succès devient disponible comme contexte pour les pages suivantes de la même exécution.
+  - La modification manuelle du texte source ou de la traduction ne change pas automatiquement l’état d’achèvement de la page. Après avoir modifié le texte source, retraduisez cette page si la traduction enregistrée ne lui correspond plus.
+  - Davantage de contexte peut améliorer la cohérence, mais augmente aussi le nombre de jetons d’entrée, le temps des requêtes et leur coût. Commencez avec un budget modeste et ne l’augmentez qu’en cas de besoin.
+
+  **Glossaires réutilisables**
+
+  - Définissez **Glossary File** dans la boîte de dialogue d’exécution sur un fichier UTF-8 `.json`, `.txt` ou `.tsv`. Ce fichier est en lecture seule et peut être réutilisé dans plusieurs projets.
+  - **Matching** envoie uniquement les entrées dont les termes sources figurent sur la page concernée. **All** envoie toutes les entrées et peut consommer beaucoup plus de jetons.
+  - Les formats pris en charge comprennent :
+
+    ```text
+    # Texte au format Sakura
+    source->traduction # note facultative
+
+    # Texte séparé par des tabulations
+    source<TAB>traduction<TAB>note facultative
+    ```
+
+    ```json
+    [
+      {"src": "source", "dst": "traduction", "info": "note facultative"}
+    ]
+    ```
+
+  - La correspondance est littérale et insensible à la casse. Les entrées conflictuelles, les fichiers mal formés, les formats non pris en charge et les fichiers manquants interrompent la traduction avant l’envoi d’une requête au LLM.
+  - Le contexte des pages antérieures et l’injection du glossaire ne concernent que `LLMTranslator` ; les autres traducteurs ignorent ces paramètres.
+
+  </details>
+
 # Installation
 
 ## Sous Windows

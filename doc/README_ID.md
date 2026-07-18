@@ -30,6 +30,42 @@
   - Mendukung pencarian & penggantian kata
   - Mendukung ekspor/impor ke/dari dokumen word
 
+* <details>
+  <summary><i>Terjemahan LLM yang peka terhadap konteks</i></summary>
+
+  **Riwayat terjemahan**
+
+  - `LLMTranslator` dapat menggunakan pasangan teks sumber dan terjemahan dari halaman sebelumnya yang sudah selesai sebagai contoh. Aktifkan **Use Prior Translations as Context** di bagian terjemahan pada dialog Run.
+  - **Prior Context Token Budget** adalah batas lunak khusus untuk contoh riwayat. Halaman selesai yang lebih baru diprioritaskan, lalu halaman riwayat yang dipilih dimasukkan sesuai urutan halaman. Halaman saat ini, instruksi sistem, glosarium, dan respons yang dihasilkan juga memakai konteks di luar anggaran ini.
+  - Saat melanjutkan proses atau menerjemahkan rentang yang dipilih, halaman yang memenuhi syarat sebelum rentang tersebut masih dapat digunakan. Halaman yang berhasil diterjemahkan akan tersedia sebagai konteks untuk halaman berikutnya dalam proses yang sama.
+  - Mengedit teks sumber atau terjemahan secara manual tidak otomatis mengubah status penyelesaian halaman. Setelah mengubah teks sumber, terjemahkan ulang halaman tersebut jika terjemahan yang tersimpan tidak lagi sesuai.
+  - Konteks tambahan dapat meningkatkan konsistensi, tetapi juga menambah penggunaan token input, waktu permintaan, dan biaya. Mulailah dengan anggaran yang tidak terlalu besar dan tingkatkan hanya bila perlu.
+
+  **Glosarium yang dapat digunakan kembali**
+
+  - Atur **Glossary File** pada dialog Run ke berkas UTF-8 `.json`, `.txt`, atau `.tsv`. Berkas hanya dibaca dan dapat digunakan kembali di berbagai proyek.
+  - **Matching** hanya mengirim entri yang istilah sumbernya terdapat pada halaman terkait. **All** mengirim semua entri dan dapat memakai jauh lebih banyak token.
+  - Format yang didukung meliputi:
+
+    ```text
+    # Teks bergaya Sakura
+    sumber->terjemahan # catatan opsional
+
+    # Teks yang dipisahkan tab
+    sumber<TAB>terjemahan<TAB>catatan opsional
+    ```
+
+    ```json
+    [
+      {"src": "sumber", "dst": "terjemahan", "info": "catatan opsional"}
+    ]
+    ```
+
+  - Pencocokan bersifat literal dan tidak membedakan huruf besar-kecil. Entri yang bertentangan, berkas dengan format yang salah, format yang tidak didukung, dan berkas yang tidak ditemukan akan menghentikan terjemahan sebelum permintaan dikirim ke LLM.
+  - Konteks halaman sebelumnya dan penyisipan glosarium hanya berlaku untuk `LLMTranslator`; penerjemah lain mengabaikan pengaturan ini.
+
+  </details>
+
 # Instalasi
 
 ### Di Windows

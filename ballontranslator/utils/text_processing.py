@@ -1,7 +1,8 @@
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 import json
 import os.path as osp
 import os
+import re
 
 HALF2FULL = {i: i + 0xFEE0 for i in range(0x21, 0x7F)}
 HALF2FULL[0x20] = 0x3000
@@ -33,6 +34,38 @@ def half_len(s):
     Convert full-width characters to ASCII counterpart
     '''
     return s.translate(FULL2HALF)
+
+
+def finalize_translation_text(
+    text: str,
+    source_language: str,
+    target_language: str,
+    substitute: Callable[[str], str] = None,
+    uppercase: bool = False,
+) -> str:
+    """Apply pure text finalization before translation completion is recorded.
+
+    >>> finalize_translation_text('Ａ! B', 'English', '简体中文')
+    'A!B'
+    >>> finalize_translation_text('ａｂｃ', '日本語', 'English', str.upper)
+    'ABC'
+    """
+    source_is_cjk = source_language in LANGSET_CJK
+    target_is_cjk = target_language in LANGSET_CJK
+    if target_is_cjk:
+        if source_is_cjk:
+            text = full_len(text)
+        else:
+            text = half_len(text)
+            text = re.sub(r'([?.!"])\s+', r'\1', text)
+    else:
+        text = half_len(text)
+
+    if substitute is not None:
+        text = substitute(text)
+    if uppercase:
+        text = text.upper()
+    return text
 
 def seg_to_chars(text: str) -> List[str]:
     text = text.replace('\n', '')

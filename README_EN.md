@@ -33,6 +33,42 @@
   - Support search & replace
   - Support export/import to/from word documents
 
+* <details>
+  <summary><i>Context-aware LLM translation</i></summary>
+
+  **Translation history**
+
+  - `LLMTranslator` can use completed earlier pages as source/translation examples. Enable **Use Prior Translations as Context** in the Run dialog's Translation section.
+  - **Prior Context Token Budget** is a soft limit for historical examples only. Newer complete pages are preferred, and selected history pages are inserted in page order. The current page, system instructions, glossary, and generated response also consume context outside this budget.
+  - Continue and selected-range runs may still use eligible pages before the selected range. A successfully translated page becomes available as context for later pages in the same run.
+  - Manual source or translation edits do not automatically change a page's completion state. After changing source text, retranslate that page if its saved translation no longer matches.
+  - More context can improve consistency but also increases input-token usage, request time, and cost. Start with a modest budget and increase it only when necessary.
+
+  **Reusable glossaries**
+
+  - Set **Glossary File** in the Run dialog to a UTF-8 `.json`, `.txt`, or `.tsv` file. The file is read-only and can be reused across projects.
+  - **Matching** sends only entries whose source terms occur on the relevant page. **All** sends every entry and may use considerably more tokens.
+  - Supported formats include:
+
+    ```text
+    # Sakura-style text
+    source->translation # optional note
+
+    # Tab-separated text
+    source<TAB>translation<TAB>optional note
+    ```
+
+    ```json
+    [
+      {"src": "source", "dst": "translation", "info": "optional note"}
+    ]
+    ```
+
+  - Matching is case-insensitive and literal. Conflicting entries, malformed files, unsupported formats, and missing files stop the translation before an LLM request is sent.
+  - Prior-page context and glossary injection affect only `LLMTranslator`; other translators ignore these settings.
+
+  </details>
+
 # Installation
 
 ## On Windows

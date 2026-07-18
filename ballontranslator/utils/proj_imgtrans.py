@@ -228,14 +228,82 @@ class ProjImgTrans:
 
     def set_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] = code
+        if not (code & RunStatus.FIN_TRANSLATE):
+            self._image_info[pagename].pop('translation_target', None)
 
     def clear_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] &= ~code
+        if code & RunStatus.FIN_TRANSLATE:
+            self._image_info[pagename].pop('translation_target', None)
 
     def update_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] |= code
 
-    def load_translation_from_txt(self, file_path: str):
+    @staticmethod
+    def source_signature(blocks):
+        """Return the ordered source text used to validate translation reuse.
+
+        >>> ProjImgTrans.source_signature([TextBlock(text=['one'])])
+        ('one',)
+        """
+        return tuple(block.get_text() for block in blocks)
+
+    def page_source_signature(self, page_key):
+        return self.source_signature(self.pages[page_key])
+
+    def invalidate_translation(self, page_key):
+        self.clear_page_progress(page_key, RunStatus.FIN_TRANSLATE)
+
+    def begin_detection(self, page_key):
+        """Invalidate translation before detection can replace page blocks."""
+        self.invalidate_translation(page_key)
+
+    def begin_full_page_translation(self, page_key):
+        """Invalidate old completion until a full translation succeeds."""
+        self.invalidate_translation(page_key)
+
+    def reconcile_translation_source_signature(
+        self,
+        page_key,
+        previous_signature,
+    ) -> bool:
+        """Invalidate completed translation when page source identity changed.
+
+        ``None`` means the caller had no reliable pre-operation snapshot, so
+        completed translation cannot be preserved safely.
+
+        >>> project = ProjImgTrans()
+        >>> project.pages = {'page': [TextBlock(text=['new'])]}
+        >>> project._image_info = {'page': {'finish_code': RunStatus.FIN_TRANSLATE}}
+        >>> project.reconcile_translation_source_signature('page', ('old',))
+        False
+        >>> project._image_info['page']['finish_code'] = RunStatus.FIN_TRANSLATE
+        >>> project.reconcile_translation_source_signature('page', None)
+        False
+        """
+        unchanged = (
+            previous_signature is not None
+            and tuple(previous_signature) == self.page_source_signature(page_key)
+        )
+        if not unchanged:
+            self.invalidate_translation(page_key)
+        return unchanged
+
+    def prepare_selected_translation(self, page_key, target_language) -> bool:
+        """Preserve completion only for a known, matching existing target."""
+        info = self._image_info[page_key]
+        compatible = bool(
+            int(info.get('finish_code', 0)) & RunStatus.FIN_TRANSLATE
+        ) and info.get('translation_target') == target_language
+        if not compatible:
+            self.invalidate_translation(page_key)
+        return compatible
+
+    def mark_translation_finished(self, page_key, target_language):
+        self.update_page_progress(page_key, RunStatus.FIN_TRANSLATE)
+        self._image_info[page_key]['translation_target'] = target_language
+
+    def load_translation_from_txt(self, file_path: str, target_language=None):
         page_list = parse_txt_translation(file_path)
         missing_pages = []
         unmatched_pages = []
@@ -273,7 +341,16 @@ class ProjImgTrans:
         )
         if all_matched:
             for page_name in matched_pages:
-                self.update_page_progress(page_name, RunStatus.FIN_TRANSLATE)
+                if target_language is None:
+                    self.update_page_progress(page_name, RunStatus.FIN_TRANSLATE)
+                    self._image_info[page_name].pop('translation_target', None)
+                else:
+                    self.mark_translation_finished(page_name, target_language)
+        else:
+            # A partial import may have replaced only some translations; none of
+            # its touched pages should remain eligible as completed LLM history.
+            for page_name in matched_pages:
+                self.clear_page_progress(page_name, RunStatus.FIN_TRANSLATE)
         return all_matched, {
             'missing_pages': missing_pages,
             'unmatched_pages': unmatched_pages,

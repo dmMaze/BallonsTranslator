@@ -30,6 +30,42 @@
   - Permite localizar e substituir.
   - Permite exportar/importar para/de documentos do Word.
 
+* <details>
+  <summary><i>Tradução por LLM sensível ao contexto</i></summary>
+
+  **Histórico de traduções**
+
+  - O `LLMTranslator` pode usar como exemplos os pares de texto original e tradução de páginas anteriores concluídas. Ative **Use Prior Translations as Context** na seção de tradução da caixa de diálogo de execução.
+  - **Prior Context Token Budget** é um limite flexível apenas para os exemplos do histórico. As páginas concluídas mais recentes têm prioridade, e as páginas selecionadas são inseridas na ordem das páginas. A página atual, as instruções do sistema, o glossário e a resposta gerada também consomem contexto fora desse orçamento.
+  - Ao continuar uma execução ou traduzir um intervalo selecionado, podem ser usadas páginas elegíveis anteriores ao intervalo. Uma página traduzida com sucesso fica disponível como contexto para páginas posteriores na mesma execução.
+  - A edição manual do texto original ou da tradução não altera automaticamente o estado de conclusão da página. Após modificar o texto original, traduza novamente a página caso a tradução salva já não corresponda a ele.
+  - Mais contexto pode melhorar a consistência, mas também aumenta o uso de tokens de entrada, o tempo das solicitações e o custo. Comece com um orçamento modesto e aumente-o somente quando necessário.
+
+  **Glossários reutilizáveis**
+
+  - Defina **Glossary File** na caixa de diálogo de execução como um arquivo UTF-8 `.json`, `.txt` ou `.tsv`. O arquivo é somente para leitura e pode ser reutilizado entre projetos.
+  - **Matching** envia apenas as entradas cujos termos de origem aparecem na página correspondente. **All** envia todas as entradas e pode usar consideravelmente mais tokens.
+  - Os formatos compatíveis incluem:
+
+    ```text
+    # Texto no formato Sakura
+    origem->tradução # observação opcional
+
+    # Texto separado por tabulações
+    origem<TAB>tradução<TAB>observação opcional
+    ```
+
+    ```json
+    [
+      {"src": "origem", "dst": "tradução", "info": "observação opcional"}
+    ]
+    ```
+
+  - A correspondência é literal e não diferencia maiúsculas de minúsculas. Entradas conflitantes, arquivos malformados, formatos incompatíveis e arquivos ausentes interrompem a tradução antes que uma solicitação seja enviada ao LLM.
+  - O contexto de páginas anteriores e a inclusão do glossário afetam apenas o `LLMTranslator`; os outros tradutores ignoram essas configurações.
+
+  </details>
+
 ## Instalação
 
 ### No Windows

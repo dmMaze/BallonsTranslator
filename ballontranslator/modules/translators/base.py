@@ -138,7 +138,21 @@ class BaseTranslator(BaseModule):
     def _translate(self, src_list: List[str]) -> List[str]:
         raise NotImplementedError
 
-    def translate(self, text: Union[str, List]) -> Union[str, List]:
+    def translate(
+        self,
+        text: Union[str, List],
+        *,
+        project=None,
+        page_key=None,
+    ) -> Union[str, List]:
+        """Translate text while accepting optional page context from the UI boundary.
+
+        Base translators intentionally ignore ``project`` and ``page_key``. Third-party
+        translators that override this public method should accept the same keywords.
+
+        >>> TransSource('日本語', 'English').translate('text', page_key='001.png')
+        'text'
+        """
         if text_is_empty(text):
             return text
         if not self.all_model_loaded():
@@ -186,10 +200,71 @@ class BaseTranslator(BaseModule):
         text_list = text.split(breaker)
         return [text.lstrip().rstrip() for text in text_list]
 
-    def translate_textblk_lst(self, textblk_lst: List[TextBlock]):
-        '''
-        only textblks with non-empty source text would be passed to translator
-        '''
+    def translate_textblk_lst(
+        self,
+        textblk_lst: List[TextBlock],
+        *,
+        project=None,
+        page_key=None,
+        full_page: bool = False,
+    ):
+        """Translate non-empty blocks and run context-aware postprocessing.
+
+        ``full_page`` is forwarded only to postprocessing hooks so selected
+        translations can retain their narrower compatibility behavior.
+        """
+        non_empty_ids, text_list, translations = (
+            BaseTranslator._prepare_textblock_sources(self, textblk_lst)
+        )
+
+        # non_empty_txtlst_str = ',\n'.join(text_list)
+        # LOGGER.debug(f'non empty src text list: \n[{non_empty_txtlst_str}]')
+
+        if len(text_list) > 0:
+            _translations = self.translate(
+                text_list,
+                project=project,
+                page_key=page_key,
+            )
+            for ii, idx in enumerate(non_empty_ids):
+                translations[idx] = _translations[ii]
+
+        for callback_name, callback in self._postprocess_hooks.items():
+            callback(
+                translations=translations,
+                textblocks=textblk_lst,
+                translator=self,
+                full_page=full_page,
+            )
+
+        for tr, blk in zip(translations, textblk_lst):
+            blk.translation = tr
+
+    def _prepare_textblock_sources(
+        self,
+        textblk_lst: List[TextBlock],
+        *,
+        copy_textblocks: bool = False,
+    ):
+        """Collect non-empty sources and run the registered preprocessing hooks.
+
+        Copied blocks let history reconstruction reuse the live hook path without
+        allowing ordinary hook assignments to mutate project blocks.
+
+        >>> translator = TransSource('日本語', 'English')
+        >>> translator._prepare_textblock_sources([TextBlock(text=['text'])])[:2]
+        ([0], ['text'])
+        """
+        if copy_textblocks:
+            # Shallow block copies avoid duplicating large masks while isolating
+            # the attribute assignments used by source preprocessing hooks.
+            copied_blocks = []
+            for block in textblk_lst:
+                copied_block = copy.copy(block)
+                copied_block.text = copy.copy(block.text)
+                copied_blocks.append(copied_block)
+            textblk_lst = copied_blocks
+
         non_empty_ids = []
         text_list = []
         translations = []
@@ -205,17 +280,7 @@ class BaseTranslator(BaseModule):
 
         for callback_name, callback in self._preprocess_hooks.items():
             callback(translations = translations, textblocks = textblk_lst, translator = self, source_text = text_list)
-
-        if len(text_list) > 0:
-            _translations = self.translate(text_list)
-            for ii, idx in enumerate(non_empty_ids):
-                translations[idx] = _translations[ii]
-
-        for callback_name, callback in self._postprocess_hooks.items():
-            callback(translations = translations, textblocks = textblk_lst, translator = self)
-
-        for tr, blk in zip(translations, textblk_lst):
-            blk.translation = tr
+        return non_empty_ids, text_list, translations
 
     def supported_languages(self) -> List[str]:
         return self.valid_lang_list

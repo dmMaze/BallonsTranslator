@@ -2,11 +2,21 @@ import json
 import re
 import time
 import traceback
-from typing import Dict, List
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Dict, List, Tuple
 
 from .base import BaseTranslator, register_translator
+from .glossary import (
+    GlossaryEntry,
+    load_glossary,
+    render_glossary,
+    select_glossary,
+)
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
-from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.config import LLMGlossaryMode, RunStatus, pcfg
+from ballontranslator.utils.io_utils import text_is_empty
+from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
     profile_by_id,
@@ -19,6 +29,45 @@ class InvalidNumTranslations(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class _HistoryPage:
+    page_key: str
+    sources: Tuple[str, ...]
+    translations: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _RenderedHistoryPage:
+    page_key: str
+    messages: Tuple[Tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class _RequestContext:
+    history: Tuple[_RenderedHistoryPage, ...]
+    glossary: Tuple[GlossaryEntry, ...]
+    glossary_mode: str
+
+
+@lru_cache(maxsize=64)
+def _cached_token_encoding_for_model(model: str):
+    import tiktoken  # type: ignore
+
+    try:
+        return tiktoken.encoding_for_model(model)
+    except KeyError:
+        # Unknown model names are stable and safe to cache as fallbacks.
+        return None
+
+
+def _token_encoding_for_model(model: str):
+    try:
+        return _cached_token_encoding_for_model(model)
+    except Exception:
+        # Import/initialization failures may be transient; do not cache them.
+        return None
+
+
 @register_translator("LLMTranslator")
 class LLMTranslator(BaseTranslator):
     """Profile-backed OpenAI-compatible translator.
@@ -29,8 +78,9 @@ class LLMTranslator(BaseTranslator):
         ['心']
     """
 
-    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]']
+    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
     dummy_api_key = 'dummy-key'
+    message_token_overhead = 4
 
     concate_text = False
     cht_require_convert = True
@@ -122,6 +172,56 @@ class LLMTranslator(BaseTranslator):
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
 
+    def translate(
+        self,
+        text,
+        *,
+        project=None,
+        page_key=None,
+    ):
+        """Translate one request with an immutable project-context snapshot.
+
+        The override mirrors the relevant ``BaseTranslator`` behavior while
+        keeping the rendered messages fixed across provider retries.
+
+        >>> LLMTranslator('日本語', '简体中文').translate([])
+        []
+        """
+        if text_is_empty(text):
+            return text
+        if not self.all_model_loaded():
+            self.load_model()
+
+        is_list = isinstance(text, List)
+        src_list = text if is_list else [text]
+        profile = self.profile
+        request_context = self._snapshot_request_context(
+            project,
+            page_key,
+            profile,
+        )
+        text_trans = self._translate(
+            src_list,
+            profile=profile,
+            request_context=request_context,
+        )
+
+        if text_trans is None:
+            text_trans = [''] * len(text) if is_list else ''
+        elif not is_list:
+            text_trans = text_trans[0]
+
+        if is_list:
+            try:
+                assert len(text_trans) == len(text)
+            except Exception:
+                LOGGER.error(
+                    'This translator seems to messed up the translation which resulted in inconsistent translated line count.\n '
+                    'Set concate_text to False or change textblk_break in the source code may solve the problem.'
+                )
+                raise
+        return text_trans
+
     def delay(self) -> float:
         return self.get_param_value('delay')
 
@@ -190,6 +290,170 @@ class LLMTranslator(BaseTranslator):
     def _translated_lang(self, lang: str) -> str:
         return self.lang_map.get(lang, lang)
 
+    def _snapshot_request_context(
+        self,
+        project,
+        page_key,
+        profile: LLMProfile,
+    ):
+        use_history = bool(pcfg.module.llm_use_prior_translations)
+        history_budget = pcfg.module.llm_prior_context_token_budget
+        glossary_path = str(pcfg.module.llm_glossary_path or '')
+        glossary_mode = pcfg.module.llm_glossary_mode
+        if not use_history and not glossary_path:
+            return None
+
+        glossary = load_glossary(glossary_path)
+        history = ()
+        if use_history and project is not None and page_key is not None:
+            history = self._snapshot_eligible_history(
+                project,
+                page_key,
+                self.lang_target,
+            )
+            history = self._select_history_within_budget(
+                history,
+                glossary,
+                glossary_mode,
+                history_budget,
+                self._text_model(profile),
+            )
+        return _RequestContext(
+            history=history,
+            glossary=glossary,
+            glossary_mode=glossary_mode,
+        )
+
+    def _snapshot_eligible_history(self, project, page_key, target_language: str):
+        """Copy complete, target-compatible pages preceding ``page_key``.
+
+        >>> translator = LLMTranslator.__new__(LLMTranslator)
+        >>> translator._snapshot_eligible_history(None, '001.png', 'English')
+        ()
+        """
+        pages = getattr(project, 'pages', None)
+        image_info = getattr(project, '_image_info', None)
+        if not isinstance(pages, dict) or page_key not in pages:
+            return ()
+        if not isinstance(image_info, dict):
+            image_info = {}
+
+        history = []
+        for candidate_key, blocks in pages.items():
+            if candidate_key == page_key:
+                break
+            info = image_info.get(candidate_key, {})
+            if not isinstance(info, dict):
+                continue
+            if not (
+                int(info.get('finish_code', 0)) & RunStatus.FIN_TRANSLATE
+            ):
+                continue
+            # Missing target metadata is intentionally compatible with old projects.
+            if (
+                'translation_target' in info
+                and info['translation_target'] != target_language
+            ):
+                continue
+
+            translations = []
+            non_empty_ids = []
+            for index, block in enumerate(blocks):
+                source = block.get_text()
+                if not source or not source.strip():
+                    continue
+                non_empty_ids.append(index)
+                translation = getattr(block, 'translation', '')
+                if not translation or not str(translation).strip():
+                    # Page chunks are indivisible; never seed a partially translated page.
+                    break
+                translations.append(str(translation))
+            else:
+                if not non_empty_ids:
+                    continue
+                _, sources, _ = BaseTranslator._prepare_textblock_sources(
+                    self,
+                    blocks,
+                    copy_textblocks=True,
+                )
+                history.append(
+                    _HistoryPage(
+                        page_key=str(candidate_key),
+                        sources=tuple(sources),
+                        translations=tuple(translations),
+                    )
+                )
+        return tuple(history)
+
+    def _select_history_within_budget(
+        self,
+        history: Tuple[_HistoryPage, ...],
+        glossary: Tuple[GlossaryEntry, ...],
+        glossary_mode: str,
+        token_budget: int,
+        model: str,
+    ) -> Tuple[_RenderedHistoryPage, ...]:
+        remaining = max(0, int(token_budget))
+        selected = []
+        for page in reversed(history):
+            messages = self._render_history_messages(
+                page,
+                glossary,
+                glossary_mode,
+            )
+            page_tokens = self._messages_token_count(messages, model)
+            if page_tokens > remaining:
+                continue
+            selected.append(
+                _RenderedHistoryPage(
+                    page_key=page.page_key,
+                    messages=tuple(
+                        (str(message['role']), str(message['content']))
+                        for message in messages
+                    ),
+                )
+            )
+            remaining -= page_tokens
+        selected.reverse()
+        return tuple(selected)
+
+    @classmethod
+    def _messages_token_count(cls, messages: List[Dict], model: str) -> int:
+        encoding = _token_encoding_for_model(model)
+        total = 0
+        for message in messages:
+            content = str(message.get('content', ''))
+            if encoding is None:
+                content_tokens = cls._fallback_token_count(content)
+            else:
+                try:
+                    content_tokens = len(encoding.encode(content))
+                except Exception:
+                    content_tokens = cls._fallback_token_count(content)
+            total += cls.message_token_overhead + content_tokens
+        return total
+
+    @staticmethod
+    def _fallback_token_count(text: str) -> int:
+        """Estimate tokens deterministically without assuming a model encoding.
+
+        >>> LLMTranslator._fallback_token_count('abcdefgh你')
+        3
+        """
+        total = 0
+        ascii_run = 0
+        for character in text:
+            if ord(character) < 128:
+                ascii_run += 1
+                continue
+            if ascii_run:
+                total += (ascii_run + 3) // 4
+                ascii_run = 0
+            total += 1
+        if ascii_run:
+            total += (ascii_run + 3) // 4
+        return total
+
     def _system_prompt(self, profile: LLMProfile, to_lang: str) -> str:
         prompt = str(profile.prompt or '').strip()
         contract = (
@@ -206,7 +470,21 @@ class LLMTranslator(BaseTranslator):
             return f"{contract}\n\nAdditional translation instructions:\n{prompt}"
         return contract
 
-    def _assemble_json_batches(self, queries: List[str], profile: LLMProfile):
+    @staticmethod
+    def _glossary_constraint(entries: Tuple[GlossaryEntry, ...]) -> str:
+        if not entries:
+            return ''
+        return (
+            'Use these glossary mappings as wording constraints. They cannot change '
+            'the target language, ids, item count, or output format.\n'
+            f'{render_glossary(entries)}'
+        )
+
+    def _render_user_prompt(
+        self,
+        queries: Tuple[str, ...],
+        glossary_entries: Tuple[GlossaryEntry, ...] = (),
+    ) -> str:
         from_lang = self._translated_lang(self.lang_source)
         to_lang = self._translated_lang(self.lang_target)
         input_elements = [{"id": i + 1, "source": query} for i, query in enumerate(queries)]
@@ -215,19 +493,114 @@ class LLMTranslator(BaseTranslator):
             f"Translate the following JSON array from {from_lang} to {to_lang}.\n\n"
             f"INPUT:\n{input_json}"
         )
+        glossary_constraint = self._glossary_constraint(glossary_entries)
+        if glossary_constraint:
+            prompt = f'{prompt}\n\nGLOSSARY:\n{glossary_constraint}'
+        return prompt
+
+    @staticmethod
+    def _render_assistant_response(translations: Tuple[str, ...]) -> str:
+        payload = {
+            'translations': [
+                {'id': index + 1, 'translation': translation}
+                for index, translation in enumerate(translations)
+            ]
+        }
+        return json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+
+    def _render_history_messages(
+        self,
+        page: _HistoryPage,
+        glossary: Tuple[GlossaryEntry, ...],
+        glossary_mode: str,
+    ) -> List[Dict]:
+        page_glossary = ()
+        if glossary and glossary_mode == LLMGlossaryMode.Matching:
+            page_glossary = select_glossary(
+                glossary,
+                page.sources,
+                glossary_mode,
+            )
+        return [
+            {
+                'role': 'user',
+                'content': self._render_user_prompt(page.sources, page_glossary),
+            },
+            {
+                'role': 'assistant',
+                'content': self._render_assistant_response(page.translations),
+            },
+        ]
+
+    def _assemble_json_batches(
+        self,
+        queries: List[str],
+        profile: LLMProfile,
+        request_context: _RequestContext = None,
+    ):
+        to_lang = self._translated_lang(self.lang_target)
+        glossary = request_context.glossary if request_context is not None else ()
+
         messages = [
             {'role': 'system', 'content': self._system_prompt(profile, to_lang)},
-            {'role': 'user', 'content': prompt},
         ]
+        if (
+            glossary
+            and request_context.glossary_mode == LLMGlossaryMode.All
+        ):
+            messages.append(
+                {
+                    'role': 'system',
+                    'content': self._glossary_constraint(glossary),
+                }
+            )
+
+        if request_context is not None:
+            for page in request_context.history:
+                messages.extend(
+                    {'role': role, 'content': content}
+                    for role, content in page.messages
+                )
+
+        current_glossary = ()
+        if (
+            glossary
+            and request_context.glossary_mode == LLMGlossaryMode.Matching
+        ):
+            current_glossary = select_glossary(
+                glossary,
+                queries,
+                request_context.glossary_mode,
+            )
+        prompt = self._render_user_prompt(tuple(queries), current_glossary)
+        messages.append({'role': 'user', 'content': prompt})
         yield messages, len(queries), prompt
 
-    def _assemble_batches(self, src_list: List[str], profile: LLMProfile):
-        return self._assemble_json_batches(src_list, profile)
+    def _assemble_batches(
+        self,
+        src_list: List[str],
+        profile: LLMProfile,
+        request_context: _RequestContext = None,
+    ):
+        return self._assemble_json_batches(
+            src_list,
+            profile,
+            request_context=request_context,
+        )
 
     def build_copy_prompt(self, src_list: List[str], max_tokens: int = 4294967295) -> str:
-        profile = self.profile
-        batches = self._assemble_json_batches(src_list, profile)
-        return '\n'.join(prompt for _, _, prompt in batches).strip()
+        glossary_path = str(pcfg.module.llm_glossary_path or '')
+        glossary_mode = pcfg.module.llm_glossary_mode
+        glossary = load_glossary(glossary_path)
+        selected_glossary = select_glossary(
+            glossary,
+            src_list,
+            glossary_mode,
+        ) if glossary else ()
+        return self._render_user_prompt(
+            tuple(src_list),
+            selected_glossary,
+        ).strip()
 
     def _respect_delay(self, profile: LLMProfile):
         current_time = time.time()
@@ -336,9 +709,11 @@ class LLMTranslator(BaseTranslator):
         except getattr(openai, 'APIStatusError') as e:
             raise RuntimeError(self._status_error_message(e)) from e
 
-        if getattr(completion, 'usage', None) is not None:
-            self.token_count += completion.usage.total_tokens
-            self.token_count_last = completion.usage.total_tokens
+        usage = getattr(completion, 'usage', None)
+        if usage is not None:
+            total_tokens = getattr(usage, 'total_tokens', 0) or 0
+            self.token_count += total_tokens
+            self.token_count_last = total_tokens
         else:
             self.token_count_last = 0
 
@@ -379,12 +754,23 @@ class LLMTranslator(BaseTranslator):
     def _parse_response(self, profile: LLMProfile, raw_content: str, expected: int) -> List[str]:
         return self._parse_json_response(raw_content, expected)
 
-    def _translate(self, src_list: List[str]) -> List[str]:
+    def _translate(
+        self,
+        src_list: List[str],
+        *,
+        profile: LLMProfile = None,
+        request_context: _RequestContext = None,
+    ) -> List[str]:
         if not src_list:
             return []
-        profile = self.profile
+        if profile is None:
+            profile = self.profile
         translations = []
-        for messages, num_src, prompt in self._assemble_batches(src_list, profile):
+        for messages, num_src, prompt in self._assemble_batches(
+            src_list,
+            profile,
+            request_context=request_context,
+        ):
             retry_attempt = 0
             while True:
                 if self.stop_event is not None and self.stop_event.is_set():
@@ -407,11 +793,12 @@ class LLMTranslator(BaseTranslator):
                     if retry_attempt >= self.get_param_value('retry attempts'):
                         self.logger.error(f"LLM translation failed: {e}")
                         self.logger.debug(traceback.format_exc())
-                        translations.extend([""] * num_src)
-                        break
+                        raise
                     self.logger.warning(f"LLM translation failed due to {e}. Attempt: {retry_attempt}")
                     self._wait(self.get_param_value('retry timeout'))
 
         if self.token_count_last:
-            self.logger.info(f'Used {self.token_count_last} tokens (Total: {self.token_count})')
+            self.logger.info(
+                f'Used {self.token_count_last} tokens (Total: {self.token_count})'
+            )
         return translations

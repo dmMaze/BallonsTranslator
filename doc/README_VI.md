@@ -30,6 +30,42 @@
   - Hỗ trợ Tìm kiếm & Thay thế
   - Hỗ trợ cả import từ dạng word hoặc export ra dạng đó nữa
 
+* <details>
+  <summary><i>Dịch bằng LLM có nhận biết ngữ cảnh</i></summary>
+
+  **Lịch sử bản dịch**
+
+  - `LLMTranslator` có thể dùng các cặp văn bản nguồn/bản dịch từ những trang trước đã hoàn thành làm ví dụ. Bật **Use Prior Translations as Context** trong phần Dịch của hộp thoại Run.
+  - **Prior Context Token Budget** là giới hạn mềm chỉ dành cho các ví dụ trong lịch sử. Các trang hoàn thành gần đây hơn được ưu tiên, sau đó những trang lịch sử đã chọn được chèn theo thứ tự trang. Trang hiện tại, chỉ dẫn hệ thống, bảng thuật ngữ và phản hồi được tạo cũng tiêu thụ ngữ cảnh ngoài ngân sách này.
+  - Khi tiếp tục chạy hoặc dịch một phạm vi được chọn, các trang đủ điều kiện trước phạm vi đó vẫn có thể được sử dụng. Một trang được dịch thành công sẽ trở thành ngữ cảnh cho các trang sau trong cùng lần chạy.
+  - Chỉnh sửa thủ công văn bản nguồn hoặc bản dịch không tự động thay đổi trạng thái hoàn thành của trang. Sau khi sửa văn bản nguồn, hãy dịch lại trang nếu bản dịch đã lưu không còn tương ứng.
+  - Nhiều ngữ cảnh hơn có thể cải thiện tính nhất quán nhưng cũng làm tăng lượng token đầu vào, thời gian yêu cầu và chi phí. Hãy bắt đầu với ngân sách vừa phải và chỉ tăng khi cần.
+
+  **Bảng thuật ngữ có thể tái sử dụng**
+
+  - Đặt **Glossary File** trong hộp thoại Run thành một tệp UTF-8 `.json`, `.txt` hoặc `.tsv`. Tệp chỉ được đọc và có thể tái sử dụng trong nhiều dự án.
+  - **Matching** chỉ gửi các mục có thuật ngữ nguồn xuất hiện trên trang liên quan. **All** gửi mọi mục và có thể sử dụng nhiều token hơn đáng kể.
+  - Các định dạng được hỗ trợ gồm:
+
+    ```text
+    # Văn bản kiểu Sakura
+    nguồn->bản dịch # ghi chú tùy chọn
+
+    # Văn bản phân tách bằng tab
+    nguồn<TAB>bản dịch<TAB>ghi chú tùy chọn
+    ```
+
+    ```json
+    [
+      {"src": "nguồn", "dst": "bản dịch", "info": "ghi chú tùy chọn"}
+    ]
+    ```
+
+  - Việc đối chiếu là đối chiếu theo nghĩa đen và không phân biệt chữ hoa chữ thường. Các mục xung đột, tệp sai định dạng, định dạng không được hỗ trợ và tệp bị thiếu sẽ dừng quá trình dịch trước khi gửi yêu cầu đến LLM.
+  - Ngữ cảnh từ các trang trước và việc chèn bảng thuật ngữ chỉ áp dụng cho `LLMTranslator`; các trình dịch khác bỏ qua những cài đặt này.
+
+  </details>
+
 # Cài đặt
 
 ## Trên Windows
