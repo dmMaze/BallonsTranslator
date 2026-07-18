@@ -35,10 +35,19 @@
 
   **Histórico de traduções**
 
-  - Ative **Use Prior Translations as Context** para mostrar ao `LLMTranslator` exemplos de páginas anteriores concluídas. Isso pode manter nomes, terminologia e tom mais consistentes. Execuções continuadas ou por intervalo também podem usar páginas anteriores elegíveis.
-  - **Prior Context Token Budget** controla quanto texto traduzido anterior é incluído, priorizando páginas mais recentes. A página atual, as instruções, o glossário e a resposta gerada precisam de espaço adicional. O padrão é `4096`.
-  - Um orçamento maior oferece mais contexto da história e remove páginas antigas com menos frequência, mas envia mais texto e pode demorar mais. Modelos locais também podem exigir muito mais RAM/VRAM. Comece com o padrão e aumente apenas se ajudar; cerca de 70% do limite de contexto é um limite superior razoável (`90000` para 128K).
+  - Ative **Translation history** para mostrar ao `LLMTranslator` exemplos de páginas anteriores concluídas. Isso pode manter nomes, terminologia e tom mais consistentes. Execuções continuadas ou por intervalo também podem usar páginas anteriores elegíveis.
+  - **History limit (tokens)** controla quanto texto traduzido anterior é incluído, priorizando páginas mais recentes. A página atual, as instruções, o glossário e a resposta gerada precisam de espaço adicional. O padrão é `4096`.
+  - Um orçamento maior oferece mais contexto da história e remove páginas antigas com menos frequência, mas envia mais texto e pode demorar mais. Modelos locais também podem exigir muito mais RAM/VRAM. O padrão `4096` é deliberadamente conservador; provedores comuns com janelas de contexto grandes, como a DeepSeek, muitas vezes permitem um limite maior. Cerca de 70% do limite de contexto do modelo é um limite superior razoável (`90000` para 128K).
   - O orçamento do histórico também afeta o cache de prompt. Enquanto o histórico cresce dentro do orçamento, solicitações consecutivas mantêm o mesmo início, que provedores como OpenAI e DeepSeek podem reutilizar com preço reduzido por token de entrada e, às vezes, menor latência. Quando o orçamento exige remover páginas antigas, esse início muda e o reaproveitamento do cache é reiniciado. Um orçamento maior reduz as reinicializações, mas envia mais histórico e, portanto, não garante menor custo total.
+
+  A tabela abaixo é uma estimativa aproximada para páginas de mangá usando a DeepSeek, em que tokens de entrada em cache custam 10% do preço dos tokens de entrada comuns. Os resultados reais variam conforme o projeto, o modelo e o provedor.
+
+  | History limit (tokens) | Histórico estimado mantido (páginas) | Custo total estimado em relação a não usar histórico |
+  |---:|---:|---:|
+  | `2048` | 3–4 | 1.65× |
+  | `4096` | 6–9 | 1.79× |
+  | `8192` | 12–19 | 2.10× |
+  | `16384` | 23–38 | 2.66× |
 
   **Glossários reutilizáveis**
 

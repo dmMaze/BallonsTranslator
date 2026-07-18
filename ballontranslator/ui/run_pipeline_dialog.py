@@ -633,7 +633,7 @@ class RunPipelineDialog(QDialog):
             section,
             layout,
             'RunPipelineUsePriorTranslations',
-            self.tr('Use Prior Translations as Context'),
+            self.tr('Translation history'),
             pcfg.module.llm_use_prior_translations,
             self._on_use_prior_translations_toggled,
         )
@@ -643,7 +643,7 @@ class RunPipelineDialog(QDialog):
         budget_layout = QHBoxLayout(budget_row)
         budget_layout.setContentsMargins(0, 0, 0, 0)
         budget_layout.setSpacing(8)
-        budget_label = QLabel(self.tr('Prior Context Token Budget'), budget_row)
+        budget_label = QLabel(self.tr('History limit (tokens)'), budget_row)
         budget_label.setObjectName('RunPipelineSettingLabel')
         budget_layout.addWidget(budget_label)
         self.prior_context_token_budget = QSpinBox(budget_row)
@@ -657,6 +657,12 @@ class RunPipelineDialog(QDialog):
         self.prior_context_token_budget.setEnabled(
             pcfg.module.llm_use_prior_translations
         )
+        history_limit_help = self.tr(
+            'Maximum translation history sent to the model. The current page, '
+            'instructions, glossary, and generated reply are not included.'
+        )
+        budget_label.setToolTip(history_limit_help)
+        self.prior_context_token_budget.setToolTip(history_limit_help)
         budget_layout.addWidget(self.prior_context_token_budget)
         budget_layout.addStretch()
         layout.addWidget(budget_row)

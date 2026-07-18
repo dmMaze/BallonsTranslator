@@ -44,10 +44,19 @@ Prend en charge l’export/import vers/depuis des documents Word
 
   **Historique des traductions**
 
-  - Activez **Use Prior Translations as Context** pour montrer à `LLMTranslator` des exemples tirés des pages antérieures terminées. Cela peut améliorer la cohérence des noms, de la terminologie et du ton. Les reprises et plages sélectionnées peuvent aussi utiliser les pages antérieures admissibles.
-  - **Prior Context Token Budget** contrôle la quantité de texte traduit antérieur incluse, en privilégiant les pages récentes. La page actuelle, les instructions, le glossaire et la réponse générée nécessitent de l’espace supplémentaire. La valeur par défaut est `4096`.
-  - Un budget plus élevé fournit davantage de contexte narratif et supprime moins souvent les anciennes pages, mais envoie plus de texte et peut être plus lent. Les modèles locaux peuvent aussi nécessiter beaucoup plus de RAM/VRAM. Commencez par la valeur par défaut et augmentez-la seulement si cela aide ; environ 70 % de la limite de contexte est une limite supérieure raisonnable (`90000` pour 128K).
+  - Activez **Translation history** pour montrer à `LLMTranslator` des exemples tirés des pages antérieures terminées. Cela peut améliorer la cohérence des noms, de la terminologie et du ton. Les reprises et plages sélectionnées peuvent aussi utiliser les pages antérieures admissibles.
+  - **History limit (tokens)** contrôle la quantité de texte traduit antérieur incluse, en privilégiant les pages récentes. La page actuelle, les instructions, le glossaire et la réponse générée nécessitent de l’espace supplémentaire. La valeur par défaut est `4096`.
+  - Un budget plus élevé fournit davantage de contexte narratif et supprime moins souvent les anciennes pages, mais envoie plus de texte et peut être plus lent. Les modèles locaux peuvent aussi nécessiter beaucoup plus de RAM/VRAM. La valeur par défaut `4096` est volontairement prudente ; les fournisseurs courants dotés d’une grande fenêtre de contexte, comme DeepSeek, acceptent souvent une limite supérieure. Environ 70 % de la limite de contexte du modèle constitue une limite supérieure raisonnable (`90000` pour 128K).
   - Le budget de l’historique influe aussi sur le cache de prompts. Tant que l’historique augmente sans dépasser ce budget, les requêtes consécutives gardent le même début, que des fournisseurs comme OpenAI et DeepSeek peuvent réutiliser à un tarif réduit par jeton d’entrée et parfois avec moins de latence. Lorsque le budget impose de supprimer d’anciennes pages, ce début change et la réutilisation du cache est réinitialisée. Un budget plus élevé réduit ces réinitialisations, mais envoie davantage d’historique et ne garantit donc pas un coût total inférieur.
+
+  Le tableau ci-dessous donne une estimation approximative pour des pages de manga avec DeepSeek, où les jetons d’entrée mis en cache coûtent 10 % du prix des jetons d’entrée ordinaires. Les résultats réels varient selon le projet, le modèle et le fournisseur.
+
+  | History limit (tokens) | Historique conservé estimé (pages) | Coût total estimé par rapport à l’absence d’historique |
+  |---:|---:|---:|
+  | `2048` | 3–4 | 1.65× |
+  | `4096` | 6–9 | 1.79× |
+  | `8192` | 12–19 | 2.10× |
+  | `16384` | 23–38 | 2.66× |
 
   **Glossaires réutilisables**
 

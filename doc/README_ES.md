@@ -38,10 +38,19 @@
 
   **Historial de traducciones**
 
-  - Active **Use Prior Translations as Context** para que `LLMTranslator` vea ejemplos de páginas anteriores completadas. Esto puede mantener más coherentes los nombres, la terminología y el tono. Las ejecuciones continuadas o por intervalo también pueden usar páginas anteriores aptas.
-  - **Prior Context Token Budget** controla cuánto texto traducido anterior se incluye, dando prioridad a las páginas más recientes. La página actual, las instrucciones, el glosario y la respuesta generada necesitan espacio adicional. El valor predeterminado es `4096`.
-  - Un presupuesto mayor aporta más contexto de la historia y descarta páginas antiguas con menos frecuencia, pero envía más texto y puede tardar más. Los modelos locales también pueden necesitar mucha más RAM/VRAM. Empiece con el valor predeterminado y auméntelo solo si resulta útil; cerca del 70 % del límite de contexto es un límite superior razonable (`90000` para 128K).
+  - Active **Translation history** para que `LLMTranslator` vea ejemplos de páginas anteriores completadas. Esto puede mantener más coherentes los nombres, la terminología y el tono. Las ejecuciones continuadas o por intervalo también pueden usar páginas anteriores aptas.
+  - **History limit (tokens)** controla cuánto texto traducido anterior se incluye, dando prioridad a las páginas más recientes. La página actual, las instrucciones, el glosario y la respuesta generada necesitan espacio adicional. El valor predeterminado es `4096`.
+  - Un presupuesto mayor aporta más contexto de la historia y descarta páginas antiguas con menos frecuencia, pero envía más texto y puede tardar más. Los modelos locales también pueden necesitar mucha más RAM/VRAM. El valor predeterminado `4096` es deliberadamente conservador; los proveedores habituales con ventanas de contexto grandes, como DeepSeek, suelen permitir un límite mayor. Cerca del 70 % del límite de contexto del modelo es un límite superior razonable (`90000` para 128K).
   - El presupuesto del historial también afecta a la caché de prompts. Mientras el historial crece dentro del presupuesto, las solicitudes consecutivas conservan el mismo inicio, que proveedores como OpenAI y DeepSeek pueden reutilizar con un precio reducido por token de entrada y, a veces, menor latencia. Cuando el presupuesto obliga a descartar páginas antiguas, ese inicio cambia y la reutilización de caché se reinicia. Un presupuesto mayor reduce los reinicios, pero envía más historial, por lo que no garantiza un coste total menor.
+
+  La tabla siguiente es una estimación aproximada para páginas de manga usando DeepSeek, donde los tokens de entrada en caché cuestan el 10 % de los tokens de entrada normales. Los resultados reales varían según el proyecto, el modelo y el proveedor.
+
+  | History limit (tokens) | Historial estimado conservado (páginas) | Coste total estimado frente a no usar historial |
+  |---:|---:|---:|
+  | `2048` | 3–4 | 1.65× |
+  | `4096` | 6–9 | 1.79× |
+  | `8192` | 12–19 | 2.10× |
+  | `16384` | 23–38 | 2.66× |
 
   **Glosarios reutilizables**
 
