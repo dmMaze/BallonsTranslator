@@ -700,7 +700,6 @@ class ImgtransThread(QThread):
         self.stop_event = threading.Event()
         self._pipeline_stop_emitted = False
         self.pages_to_process = None
-        self.source_signatures = {}
         register_global_callback('user_request_stop', self.isStopRequested)
 
     def on_module_thread_stopped(self):
@@ -741,11 +740,9 @@ class ImgtransThread(QThread):
         self,
         imgtrans_proj: ProjImgTrans,
         pages_to_process=None,
-        source_signatures=None,
     ):
         self.imgtrans_proj = imgtrans_proj
         self.pages_to_process = pages_to_process  # 保存需要处理的页面列表
-        self.source_signatures = dict(source_signatures or {})
         self.num_pages = len(self.imgtrans_proj.pages)
         self.clearStopRequest()
         # 创建处理索引到实际页面索引的映射
@@ -768,7 +765,6 @@ class ImgtransThread(QThread):
         blk_ids: List[int],
         *,
         page_key: str = None,
-        source_signature=None,
     ):
         self.clearStopRequest()
         self.job = lambda : self._blktrans_pipeline(
@@ -776,7 +772,6 @@ class ImgtransThread(QThread):
             mode,
             blk_ids,
             page_key=page_key,
-            source_signature=source_signature,
         )
         self.start()
 
@@ -844,7 +839,6 @@ class ImgtransThread(QThread):
         blk_ids: List[int],
         *,
         page_key: str = None,
-        source_signature=None,
     ):
         tgt_img = self.imgtrans_proj.img_array if self.imgtrans_proj is not None else None
         tgt_mask = self.imgtrans_proj.mask_array if self.imgtrans_proj is not None else None
@@ -858,14 +852,7 @@ class ImgtransThread(QThread):
             if hasattr(ocr_module, 'set_stop_event'):
                 ocr_module.set_stop_event(self.stop_event)
             try:
-                try:
-                    ocr_module.run_ocr(tgt_img, blk_list, split_textblk=True)
-                finally:
-                    if page_key is not None:
-                        self.imgtrans_proj.reconcile_translation_source_signature(
-                            page_key,
-                            source_signature,
-                        )
+                ocr_module.run_ocr(tgt_img, blk_list, split_textblk=True)
             except LLMApiKeyRequiredError as e:
                 _show_llm_key_required_dialog(e)
                 self.requestStop()
@@ -1036,53 +1023,46 @@ class ImgtransThread(QThread):
                 blk_list = self.imgtrans_proj.pages[imgname] if imgname in self.imgtrans_proj.pages else []
 
             if cfg_module.enable_ocr:
-                source_signature = self.source_signatures.get(imgname)
                 if hasattr(self.ocr, 'set_stop_event'):
                     self.ocr.set_stop_event(self.stop_event)
                 try:
-                    try:
-                        self.ocr.run_ocr(img, blk_list)
-                        self.ocr_counter += 1
+                    self.ocr.run_ocr(img, blk_list)
+                    self.ocr_counter += 1
 
-                        if pcfg.restore_ocr_empty:
-                            blk_list_updated = []
-                            for blk in blk_list:
-                                text = blk.get_text()
-                                if text_is_empty(text):
-                                    blk_removed.append(blk)
-                                else:
-                                    blk_list_updated.append(blk)
+                    if pcfg.restore_ocr_empty:
+                        blk_list_updated = []
+                        for blk in blk_list:
+                            text = blk.get_text()
+                            if text_is_empty(text):
+                                blk_removed.append(blk)
+                            else:
+                                blk_list_updated.append(blk)
 
-                            if len(blk_removed) > 0:
-                                blk_list.clear()
-                                blk_list += blk_list_updated
+                        if len(blk_removed) > 0:
+                            blk_list.clear()
+                            blk_list += blk_list_updated
 
-                                if mask is None:
-                                    mask = self.imgtrans_proj.load_mask_by_imgname(imgname)
-                                if mask is not None:
-                                    inpainted = None
-                                    if not cfg_module.enable_inpaint:
-                                        inpainted = self.imgtrans_proj.load_inpainted_by_imgname(imgname)
-                                    for blk in blk_removed:
-                                        xywh = blk.bounding_rect()
-                                        blk_mask, xyxy = get_block_mask(xywh, mask, blk.angle)
-                                        x1, y1, x2, y2 = xyxy
-                                        if blk_mask is not None:
-                                            mask[y1: y2, x1: x2] = 0
-                                            if inpainted is not None:
-                                                mskpnt = np.where(blk_mask)
-                                                inpainted[y1: y2, x1: x2][mskpnt] = img[y1: y2, x1: x2][mskpnt]
-                                            need_save_mask = True
-                                    if inpainted is not None and need_save_mask:
-                                        self.imgtrans_proj.save_inpainted(imgname, inpainted)
-                                    if need_save_mask:
-                                        self.imgtrans_proj.save_mask(imgname, mask)
-                                        need_save_mask = False
-                    finally:
-                        self.imgtrans_proj.reconcile_translation_source_signature(
-                            imgname,
-                            source_signature,
-                        )
+                            if mask is None:
+                                mask = self.imgtrans_proj.load_mask_by_imgname(imgname)
+                            if mask is not None:
+                                inpainted = None
+                                if not cfg_module.enable_inpaint:
+                                    inpainted = self.imgtrans_proj.load_inpainted_by_imgname(imgname)
+                                for blk in blk_removed:
+                                    xywh = blk.bounding_rect()
+                                    blk_mask, xyxy = get_block_mask(xywh, mask, blk.angle)
+                                    x1, y1, x2, y2 = xyxy
+                                    if blk_mask is not None:
+                                        mask[y1: y2, x1: x2] = 0
+                                        if inpainted is not None:
+                                            mskpnt = np.where(blk_mask)
+                                            inpainted[y1: y2, x1: x2][mskpnt] = img[y1: y2, x1: x2][mskpnt]
+                                        need_save_mask = True
+                                if inpainted is not None and need_save_mask:
+                                    self.imgtrans_proj.save_inpainted(imgname, inpainted)
+                                if need_save_mask:
+                                    self.imgtrans_proj.save_mask(imgname, mask)
+                                    need_save_mask = False
                 except LLMApiKeyRequiredError as e:
                     _show_llm_key_required_dialog(e)
                     self.requestStop()
@@ -1952,7 +1932,6 @@ class ModuleManager(QObject):
         self,
         pages_to_process=None,
         render_only=False,
-        source_signatures=None,
     ):
         _reset_llm_key_required_dialogs()
         if self.imgtrans_proj.is_empty:
@@ -1995,7 +1974,6 @@ class ModuleManager(QObject):
             required_modules,
             lambda: self._startImgtransPipeline(
                 pages_to_process,
-                source_signatures=source_signatures,
             ),
             on_failure=lambda: self.imgtrans_pipeline_finished.emit() if shared.HEADLESS else None,
         )
@@ -2003,7 +1981,6 @@ class ModuleManager(QObject):
     def _startImgtransPipeline(
         self,
         pages_to_process=None,
-        source_signatures=None,
     ):
         if self.prepare_msgbox is not None and self.prepare_msgbox.isVisible():
             self.prepare_msgbox.done(0)
@@ -2016,7 +1993,6 @@ class ModuleManager(QObject):
         self.imgtrans_thread.runImgtransPipeline(
             self.imgtrans_proj,
             pages_to_process,
-            source_signatures=source_signatures,
         )
     
     def stopImgtransPipeline(self):
@@ -2031,7 +2007,6 @@ class ModuleManager(QObject):
         blk_ids: List[int],
         *,
         page_key: str = None,
-        source_signature=None,
     ):
         _reset_llm_key_required_dialogs()
         self.terminateRunningThread()
@@ -2049,7 +2024,6 @@ class ModuleManager(QObject):
                 mode,
                 blk_ids,
                 page_key=page_key,
-                source_signature=source_signature,
             ),
         )
 
@@ -2060,7 +2034,6 @@ class ModuleManager(QObject):
         blk_ids: List[int],
         *,
         page_key: str = None,
-        source_signature=None,
     ):
         if self.prepare_msgbox is not None and self.prepare_msgbox.isVisible():
             self.prepare_msgbox.done(0)
@@ -2078,7 +2051,6 @@ class ModuleManager(QObject):
             mode,
             blk_ids,
             page_key=page_key,
-            source_signature=source_signature,
         )
 
     def on_finish_blktrans_stage(self, stage: str, progress: int):

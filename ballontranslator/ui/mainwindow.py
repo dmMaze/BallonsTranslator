@@ -1486,13 +1486,11 @@ class MainWindow(mainwindow_cls):
             blk_list.append(blk)
 
         page_key = self.imgtrans_proj.current_img
-        source_signature = self.imgtrans_proj.page_source_signature(page_key)
         self.module_manager.runBlktransPipeline(
             blk_list,
             mode,
             blk_ids,
             page_key=page_key,
-            source_signature=source_signature,
         )
         return True
 
@@ -1763,12 +1761,6 @@ class MainWindow(mainwindow_cls):
                     self.imgtrans_proj.pages[page].clear()
         else:
             self.st_manager.updateTextBlkList()
-            source_signatures = {
-                page_name: ProjImgTrans.source_signature(
-                    self.imgtrans_proj.pages[page_name]
-                )
-                for page_name in requested_pages
-            } if enable_ocr else {}
             for page_name in requested_pages:
                 blklist = self.imgtrans_proj.pages[page_name]
                 ffmt_list = []
@@ -1782,15 +1774,9 @@ class MainWindow(mainwindow_cls):
                         textblk.rich_text = ''
                     textblk.vertical = textblk.src_is_vertical
 
-        if enable_detect:
-            source_signatures = {}
-
-        pipeline_kwargs = {'render_only': render_only}
-        if source_signatures:
-            pipeline_kwargs['source_signatures'] = source_signatures
         self.module_manager.runImgtransPipeline(
             pipeline_pages,
-            **pipeline_kwargs,
+            render_only=render_only,
         )
 
     def on_transpanel_changed(self):

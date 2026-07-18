@@ -793,10 +793,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             [
                 (
                     (['002.png'],),
-                    {
-                        'render_only': False,
-                        'source_signatures': {'002.png': ('second',)},
-                    },
+                    {'render_only': False},
                 )
             ],
         )
@@ -846,13 +843,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             [
                 (
                     (['001.png', '003.png'],),
-                    {
-                        'render_only': False,
-                        'source_signatures': {
-                            '001.png': ('',),
-                            '003.png': ('',),
-                        },
-                    },
+                    {'render_only': False},
                 )
             ],
         )
@@ -898,14 +889,8 @@ class RunPipelineDialogTests(unittest.TestCase):
 
         self.assertTrue(MainWindow.translateBlkitemList(owner, [selected_item], 0))
 
-        self.assertEqual(project.page_source_signature('001.png'), (
-            'selected new',
-            'unselected old',
-        ))
-        self.assertEqual(calls[0][1]['source_signature'], (
-            'selected new',
-            'unselected old',
-        ))
+        self.assertEqual(selected.get_text(), 'selected new')
+        self.assertEqual(unselected.get_text(), 'unselected old')
 
     def test_render_only_snapshots_complete_global_format(self):
         global_format = FontFormat(

@@ -251,18 +251,6 @@ class ProjImgTrans:
     def update_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] |= code
 
-    @staticmethod
-    def source_signature(blocks):
-        """Return the ordered source text used to validate translation reuse.
-
-        >>> ProjImgTrans.source_signature([TextBlock(text=['one'])])
-        ('one',)
-        """
-        return tuple(block.get_text() for block in blocks)
-
-    def page_source_signature(self, page_key):
-        return self.source_signature(self.pages[page_key])
-
     def invalidate_translation(self, page_key):
         self.clear_page_progress(page_key, RunStatus.FIN_TRANSLATE)
 
@@ -273,33 +261,6 @@ class ProjImgTrans:
     def begin_full_page_translation(self, page_key):
         """Invalidate old completion until a full translation succeeds."""
         self.invalidate_translation(page_key)
-
-    def reconcile_translation_source_signature(
-        self,
-        page_key,
-        previous_signature,
-    ) -> bool:
-        """Invalidate completed translation when page source identity changed.
-
-        ``None`` means the caller had no reliable pre-operation snapshot, so
-        completed translation cannot be preserved safely.
-
-        >>> project = ProjImgTrans()
-        >>> project.pages = {'page': [TextBlock(text=['new'])]}
-        >>> project._image_info = {'page': {'finish_code': RunStatus.FIN_TRANSLATE}}
-        >>> project.reconcile_translation_source_signature('page', ('old',))
-        False
-        >>> project._image_info['page']['finish_code'] = RunStatus.FIN_TRANSLATE
-        >>> project.reconcile_translation_source_signature('page', None)
-        False
-        """
-        unchanged = (
-            previous_signature is not None
-            and tuple(previous_signature) == self.page_source_signature(page_key)
-        )
-        if not unchanged:
-            self.invalidate_translation(page_key)
-        return unchanged
 
     def prepare_selected_translation(self, page_key, target_language) -> bool:
         """Preserve completion only for a known, matching existing target."""

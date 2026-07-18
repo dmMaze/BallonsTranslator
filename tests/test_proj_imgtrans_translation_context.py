@@ -186,64 +186,6 @@ class ProjectTranslationTargetTest(unittest.TestCase):
         project.clear_page_progress('001.png', RunStatus.FIN_TRANSLATE)
         self.assertNotIn('translation_target', info)
 
-    def test_source_signature_reconciliation_preserves_only_unchanged_page(self):
-        project = self._project('001.png')
-        project.pages['001.png'] = [
-            TextBlock(text=['first']),
-            TextBlock(text=['second']),
-        ]
-        project.mark_translation_finished('001.png', 'English')
-        signature = project.page_source_signature('001.png')
-
-        self.assertTrue(
-            project.reconcile_translation_source_signature(
-                '001.png',
-                signature,
-            )
-        )
-        self.assertEqual(
-            project._image_info['001.png']['translation_target'],
-            'English',
-        )
-
-        changed_pages = (
-            [TextBlock(text=['changed']), TextBlock(text=['second'])],
-            [TextBlock(text=['second']), TextBlock(text=['first'])],
-            [TextBlock(text=['first'])],
-        )
-        for changed_page in changed_pages:
-            with self.subTest(
-                signature=project.source_signature(changed_page),
-            ):
-                project.pages['001.png'] = changed_page
-                project.mark_translation_finished('001.png', 'English')
-                self.assertFalse(
-                    project.reconcile_translation_source_signature(
-                        '001.png',
-                        signature,
-                    )
-                )
-                self.assertFalse(
-                    project._image_info['001.png']['finish_code']
-                    & RunStatus.FIN_TRANSLATE
-                )
-                self.assertNotIn(
-                    'translation_target',
-                    project._image_info['001.png'],
-                )
-
-    def test_missing_source_signature_invalidates_translation(self):
-        project = self._project('001.png')
-        project.pages['001.png'] = [TextBlock(text=['source'])]
-        project.mark_translation_finished('001.png', 'English')
-
-        self.assertFalse(
-            project.reconcile_translation_source_signature('001.png', None)
-        )
-        info = project._image_info['001.png']
-        self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
-        self.assertNotIn('translation_target', info)
-
     def test_selected_translation_requires_known_matching_target(self):
         for saved_target, active_target, compatible in (
             ('English', 'English', True),
