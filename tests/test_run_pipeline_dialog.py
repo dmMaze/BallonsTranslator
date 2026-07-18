@@ -49,6 +49,8 @@ from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.shared import CONFIG_MODULE_PARAM_BODY_MIN_WIDTH
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS
+from ballontranslator.modules.translators import base as translator_base
+from ballontranslator.modules.translators.base import postprocess_translation_text
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
 
 
@@ -436,32 +438,49 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertIn('Glossary file not found', str(error))
         self.assertEqual(message, 'Failed to copy source text')
 
-    def test_translation_hook_preserves_selected_and_full_page_ordering(self):
-        owner = SimpleNamespace(
-            mtSubWidget=SimpleNamespace(
-                sub_text=lambda text: text.replace('A', 'X'),
-            ),
-        )
-        translator = SimpleNamespace(
-            lang_source='English',
-            lang_target='English',
-        )
+    def test_translation_processing_preserves_selected_and_full_page_ordering(self):
+        substitutions = ({
+            'keyword': 'A',
+            'sub': 'X',
+            'use_reg': False,
+            'case_sens': True,
+        },)
         cases = (
             (False, 'Ａ', 'Ａ'),
             (False, 'A', 'X'),
             (True, 'Ａ', 'X'),
         )
-        with patch.object(pcfg, 'let_uppercase_flag', False):
-            for full_page, source, expected in cases:
-                with self.subTest(full_page=full_page, source=source):
-                    translations = [source]
-                    MainWindow.translate_postprocess(
-                        owner,
-                        translations=translations,
-                        translator=translator,
-                        full_page=full_page,
-                    )
-                    self.assertEqual(translations, [expected])
+        for full_page, source, expected in cases:
+            with self.subTest(full_page=full_page, source=source):
+                result = postprocess_translation_text(
+                    source,
+                    'English',
+                    'English',
+                    substitutions,
+                    full_page=full_page,
+                )
+                self.assertEqual(result, expected)
+
+    def test_translation_processing_converts_before_substitution(self):
+        converter = SimpleNamespace(
+            convert=lambda text: text.replace('后台', '後台')
+        )
+        substitutions = ({
+            'keyword': '後台',
+            'sub': '後臺',
+            'use_reg': False,
+            'case_sens': True,
+        },)
+        with patch.object(translator_base, '_CHS2CHT_CONVERTER', converter):
+            result = postprocess_translation_text(
+                '后台',
+                '简体中文',
+                '繁體中文',
+                substitutions,
+                convert_to_traditional=True,
+                full_page=True,
+            )
+        self.assertEqual(result, '後臺')
 
     def test_keyword_substitution_buttons_live_below_translator_params(self):
         panel = TranslatorConfigPanel('Translator')

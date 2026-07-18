@@ -1291,7 +1291,13 @@ class ModuleManager(QObject):
         self.config_panel: ConfigPanel = None
         self.parent_widget = None
 
-    def setupThread(self, config_panel: ConfigPanel, imgtrans_progress_msgbox: ImgtransProgressMessageBox, ocr_postprocess: Callable = None, translate_preprocess: Callable = None, translate_postprocess: Callable = None, parent_widget=None):
+    def setupThread(
+        self,
+        config_panel: ConfigPanel,
+        imgtrans_progress_msgbox: ImgtransProgressMessageBox,
+        ocr_postprocess: Callable = None,
+        parent_widget=None,
+    ):
         self.config_panel = config_panel
         self.parent_widget = parent_widget
         self.textdetect_thread = TextDetectThread()
@@ -1335,10 +1341,6 @@ class ModuleManager(QObject):
         translator_panel.addModulesParamWidgets(translator_params, cfg_module.translator)
         translator_panel.translator_changed.connect(self.selectTranslator)
         translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
-
-        from ballontranslator.modules.translators.hooks import chs2cht
-        BaseTranslator.register_preprocess_hooks({'keyword_sub': translate_preprocess})
-        BaseTranslator.register_postprocess_hooks({'chs2cht': chs2cht, 'keyword_sub': translate_postprocess})
 
         self.inpaint_panel = inpainter_panel = config_panel.inpaint_config_panel
         inpainter_params = merge_config_module_params(

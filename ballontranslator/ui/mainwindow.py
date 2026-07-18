@@ -12,10 +12,7 @@ from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QTimer
 from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QPainter, QClipboard
 
 from ballontranslator.utils.logger import logger as LOGGER
-from ballontranslator.utils.text_processing import (
-    finalize_translation_text,
-    is_cjk,
-)
+from ballontranslator.utils.text_processing import is_cjk
 from ballontranslator.utils.textblock import TextBlock, TextAlignment
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
@@ -402,7 +399,12 @@ class MainWindow(mainwindow_cls):
         module_manager.finish_translate_page.connect(self.finishTranslatePage)
         module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         module_manager.page_trans_finished.connect(self.on_pagtrans_finished)
-        module_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox, self.ocr_postprocess, self.translate_preprocess, self.translate_postprocess, parent_widget=self)
+        module_manager.setupThread(
+            self.configPanel,
+            self.imgtrans_progress_msgbox,
+            self.ocr_postprocess,
+            parent_widget=self,
+        )
         module_manager.module_selection_changed.connect(self.on_module_selection_changed)
         module_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         # Preparation and RUN dialogs share placement so the first RUN is stable.
@@ -1967,29 +1969,6 @@ class MainWindow(mainwindow_cls):
                     pass
         except Exception:
             pass
-
-    def translate_preprocess(self, translations: List[str] = None, textblocks: List[TextBlock] = None, translator = None, source_text:list = []):
-        for i in range(len(source_text)):
-            source_text[i] = self.mtPreSubWidget.sub_text(source_text[i])
-
-    def translate_postprocess(
-        self,
-        translations: List[str] = None,
-        textblocks: List[TextBlock] = None,
-        translator=None,
-        full_page: bool = False,
-    ):
-        for ii, tr in enumerate(translations):
-            if full_page:
-                translations[ii] = finalize_translation_text(
-                    tr,
-                    translator.lang_source,
-                    translator.lang_target,
-                    substitute=self.mtSubWidget.sub_text,
-                    uppercase=pcfg.let_uppercase_flag,
-                )
-            else:
-                translations[ii] = self.mtSubWidget.sub_text(tr)
 
     def on_copy_src(self):
         blks = self.canvas.selected_text_items()

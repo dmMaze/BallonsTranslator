@@ -337,14 +337,12 @@ class LLMTranslator(BaseTranslator):
         if use_history and project is not None and page_key is not None:
             history_budget = max(0, int(history_budget))
             model = self._text_model(profile)
-            # A reload gets a new identity even at the same path; all remaining
-            # fields can change the exact provider-cache prefix.
+            # A reload gets a new identity even at the same path; the remaining
+            # fields define how the reusable history window is rendered or sized.
             window_key = HistoryWindowKey(
                 load_identity=getattr(project, 'load_identity', None),
                 settings=(
-                    ('profile_id', str(profile.id)),
                     ('source_language', str(self.lang_source)),
-                    ('target_language', str(self.lang_target)),
                     ('model', str(model)),
                     (
                         'system_prompt',
@@ -353,8 +351,6 @@ class LLMTranslator(BaseTranslator):
                             self._translated_lang(self.lang_target),
                         ),
                     ),
-                    ('glossary', tuple(glossary)),
-                    ('glossary_mode', str(glossary_mode)),
                     ('token_budget', int(history_budget)),
                 ),
             )
@@ -413,8 +409,6 @@ class LLMTranslator(BaseTranslator):
                 rebuild_reason=rebuild_reason,
                 render_page=lambda page: self._render_history_page(
                     page,
-                    glossary,
-                    glossary_mode,
                     model,
                 ),
             )
@@ -476,7 +470,6 @@ class LLMTranslator(BaseTranslator):
         _, sources, _ = BaseTranslator._prepare_textblock_sources(
             self,
             blocks,
-            copy_textblocks=True,
         )
         return HistoryPage(
             page_key=str(page_key),
@@ -487,26 +480,17 @@ class LLMTranslator(BaseTranslator):
     def _render_history_page(
         self,
         page: HistoryPage,
-        glossary: Tuple[GlossaryEntry, ...],
-        glossary_mode: str,
         model: str,
     ) -> RenderedHistoryPage:
-        """Render and count one page once for stable reuse in later prompts.
+        """Render a stable glossary-free pair for reuse in later prompts.
 
         >>> HistoryPage('001.png', ('a',), ('b',)).page_key
         '001.png'
         """
-        page_glossary = ()
-        if glossary and glossary_mode == LLMGlossaryMode.Matching:
-            page_glossary = select_glossary(
-                glossary,
-                page.sources,
-                glossary_mode,
-            )
         messages = [
             {
                 'role': 'user',
-                'content': self._render_user_prompt(page.sources, page_glossary),
+                'content': self._render_user_prompt(page.sources),
             },
             {
                 'role': 'assistant',

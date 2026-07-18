@@ -1,12 +1,10 @@
-import re, traceback
-
 from qtpy.QtWidgets import QHeaderView, QTableView, QWidget, QVBoxLayout, QDialog
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QStandardItem, QStandardItemModel
 from typing import List, Dict
 
-from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.text_processing import substitute_keywords
 from .custom_widget import NoBorderPushBtn
 
 class KeywordSubWidget(QDialog):
@@ -111,22 +109,4 @@ class KeywordSubWidget(QDialog):
             subpair['case_sens'] = item.checkState() == Qt.CheckState.Checked
 
     def sub_text(self, text: str) -> str:
-        for ii, subpair in enumerate(self.sublist):
-            k = subpair['keyword']
-            if k == '':
-                continue
-            
-            regexr = k
-            flag = re.DOTALL
-            if not subpair['case_sens']:
-                flag |= re.IGNORECASE
-            if not subpair['use_reg']:
-                regexr = re.escape(regexr)
-            try: 
-                text = re.sub(regexr, subpair['sub'], text)
-            except Exception as e:
-                LOGGER.error(f'Invalid regex expression {regexr} at {ii+1}:')
-                LOGGER.error(traceback.format_exc())
-                continue
-
-        return text
+        return substitute_keywords(text, self.sublist)

@@ -1,8 +1,7 @@
 import urllib.request
 from ordered_set import OrderedSet
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence, Set, Union
 import time, requests, re, uuid, base64, hmac, functools, json, copy
-from collections import OrderedDict
 
 from .exceptions import InvalidSourceOrTargetLanguage, TranslatorSetupFailure, MissingTranslatorParams, TranslatorNotValid
 from ballontranslator.utils.textblock import TextBlock
@@ -11,6 +10,10 @@ from ballontranslator.utils.registry import Registry
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.config import TranslateContext, pcfg
+from ballontranslator.utils.text_processing import (
+    finalize_translation_text,
+    substitute_keywords,
+)
 
 if TYPE_CHECKING:
     from ballontranslator.utils.proj_imgtrans import ProjImgTrans
@@ -55,6 +58,66 @@ SYSTEM_LANGMAP = {
     'zh-CN': '简体中文'        
 }
 
+_CHS2CHT_CONVERTER = None
+
+
+def preprocess_translation_text(
+    text: str,
+    substitutions: Sequence[Mapping],
+) -> str:
+    """Apply source substitutions before sending text to a translator.
+
+    >>> rules = [{'keyword': 'Hero', 'sub': 'Champion', 'use_reg': False,
+    ...           'case_sens': True}]
+    >>> preprocess_translation_text('Hero returns', rules)
+    'Champion returns'
+    """
+
+    return substitute_keywords(text, substitutions)
+
+
+def postprocess_translation_text(
+    text: str,
+    source_language: str,
+    target_language: str,
+    substitutions: Sequence[Mapping],
+    *,
+    uppercase: bool = False,
+    convert_to_traditional: bool = False,
+    full_page: bool = False,
+) -> str:
+    """Apply the fixed translation finalization order for one result.
+
+    Selected-block translation retains its historical substitution-only behavior.
+
+    >>> rules = [{'keyword': 'A', 'sub': 'X', 'use_reg': False,
+    ...           'case_sens': True}]
+    >>> postprocess_translation_text(
+    ...     'Ａ', 'English', 'English', rules, full_page=True)
+    'X'
+    >>> postprocess_translation_text(
+    ...     'Ａ', 'English', 'English', rules, full_page=False)
+    'Ａ'
+    """
+
+    if convert_to_traditional and target_language == '繁體中文':
+        global _CHS2CHT_CONVERTER
+        if _CHS2CHT_CONVERTER is None:
+            import opencc
+
+            _CHS2CHT_CONVERTER = opencc.OpenCC('s2t')
+        text = _CHS2CHT_CONVERTER.convert(text)
+
+    if full_page:
+        return finalize_translation_text(
+            text,
+            source_language,
+            target_language,
+            substitute=lambda value: substitute_keywords(value, substitutions),
+            uppercase=uppercase,
+        )
+    return substitute_keywords(text, substitutions)
+
 
 def check_language_support(check_type: str = 'source'):
     
@@ -79,9 +142,6 @@ class BaseTranslator(BaseModule):
     concate_text = True
     cht_require_convert = False
 
-    _postprocess_hooks = OrderedDict()
-    _preprocess_hooks = OrderedDict()
-    
     def __init__(self,
                  lang_source: str, 
                  lang_target: str,
@@ -211,17 +271,10 @@ class BaseTranslator(BaseModule):
         page_key: Optional[str] = None,
         full_page: bool = False,
     ):
-        """Translate non-empty blocks and run context-aware postprocessing.
-
-        ``full_page`` is forwarded only to postprocessing hooks so selected
-        translations can retain their narrower compatibility behavior.
-        """
+        """Translate non-empty blocks and apply the fixed finalization rules."""
         non_empty_ids, text_list, translations = (
             BaseTranslator._prepare_textblock_sources(self, textblk_lst)
         )
-
-        # non_empty_txtlst_str = ',\n'.join(text_list)
-        # LOGGER.debug(f'non empty src text list: \n[{non_empty_txtlst_str}]')
 
         if len(text_list) > 0:
             _translations = self.translate(
@@ -232,13 +285,18 @@ class BaseTranslator(BaseModule):
             for ii, idx in enumerate(non_empty_ids):
                 translations[idx] = _translations[ii]
 
-        for callback_name, callback in self._postprocess_hooks.items():
-            callback(
-                translations=translations,
-                textblocks=textblk_lst,
-                translator=self,
+        translations = [
+            postprocess_translation_text(
+                translation,
+                self.lang_source,
+                self.lang_target,
+                pcfg.mt_sublist,
+                uppercase=pcfg.let_uppercase_flag,
+                convert_to_traditional=self.cht_require_convert,
                 full_page=full_page,
             )
+            for translation in translations
+        ]
 
         for tr, blk in zip(translations, textblk_lst):
             blk.translation = tr
@@ -246,28 +304,13 @@ class BaseTranslator(BaseModule):
     def _prepare_textblock_sources(
         self,
         textblk_lst: List[TextBlock],
-        *,
-        copy_textblocks: bool = False,
     ):
-        """Collect non-empty sources and run the registered preprocessing hooks.
-
-        Copied blocks let history reconstruction reuse the live hook path without
-        allowing ordinary hook assignments to mutate project blocks.
+        """Collect non-empty sources after applying configured substitutions.
 
         >>> translator = TransSource('日本語', 'English')
         >>> translator._prepare_textblock_sources([TextBlock(text=['text'])])[:2]
         ([0], ['text'])
         """
-        if copy_textblocks:
-            # Shallow block copies avoid duplicating large masks while isolating
-            # the attribute assignments used by source preprocessing hooks.
-            copied_blocks = []
-            for block in textblk_lst:
-                copied_block = copy.copy(block)
-                copied_block.text = copy.copy(block.text)
-                copied_blocks.append(copied_block)
-            textblk_lst = copied_blocks
-
         non_empty_ids = []
         text_list = []
         translations = []
@@ -275,14 +318,11 @@ class BaseTranslator(BaseModule):
             text = blk.get_text()
             if text.strip() != '':
                 non_empty_ids.append(ii)
-                text_list.append(text)
+                text_list.append(
+                    preprocess_translation_text(text, pcfg.pre_mt_sublist)
+                )
             translations.append(text)
 
-        # non_empty_txtlst_str = ',\n'.join(text_list)
-        # LOGGER.debug(f'non empty src text list: \n[{non_empty_txtlst_str}]')
-
-        for callback_name, callback in self._preprocess_hooks.items():
-            callback(translations = translations, textblocks = textblk_lst, translator = self, source_text = text_list)
         return non_empty_ids, text_list, translations
 
     def supported_languages(self) -> List[str]:
@@ -318,7 +358,6 @@ class TransSource(BaseTranslator):
     def _setup_translator(self):
         for k in self.lang_map.keys():
             self.lang_map[k] = 'dummy language'
-        self.register_preprocess_hooks
         
     def _translate(self, src_list: List[str]) -> List[str]:
         return copy.copy(src_list)

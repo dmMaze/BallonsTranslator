@@ -31,7 +31,6 @@ from ballontranslator.utils.config import (
 from ballontranslator.utils.llm_profiles import default_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.textblock import TextBlock
-from ballontranslator.utils.text_processing import finalize_translation_text
 
 
 def _block(source, translation=''):
@@ -63,8 +62,6 @@ class LLMTranslationContextTest(unittest.TestCase):
     def _history_for_rebuild(
         self,
         pages,
-        glossary,
-        glossary_mode,
         token_budget=1000,
         model='test-model',
     ):
@@ -76,19 +73,10 @@ class LLMTranslationContextTest(unittest.TestCase):
             rebuild_reason=ContextReason.WINDOW_EMPTY,
             render_page=lambda page: self.translator._render_history_page(
                 page,
-                glossary,
-                glossary_mode,
                 model,
             ),
         )
         return history
-
-    def _rendered_history(self, pages, glossary, glossary_mode):
-        with mock.patch(
-            'ballontranslator.modules.translators.trans_llm.messages_token_count',
-            return_value=1,
-        ):
-            return self._history_for_rebuild(pages, glossary, glossary_mode)
 
     @staticmethod
     def _project(page_count):
@@ -225,17 +213,20 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertEqual(history[0].sources, ('one',))
         self.assertEqual(history[0].translations, ('一',))
 
-    def test_matching_glossary_is_rendered_per_history_and_current_page(self):
+    def test_matching_glossary_is_rendered_for_current_page_only(self):
         glossary = (
             GlossaryEntry('Hero', '勇者', 'title'),
             GlossaryEntry('Mage', '法师'),
         )
-        context = RequestContext(
-            history=self._rendered_history(
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ):
+            history = self._history_for_rebuild(
                 (HistoryPage('001.png', ('Hero arrives',), ('勇者到来',)),),
-                glossary,
-                LLMGlossaryMode.Matching,
-            ),
+            )
+        context = RequestContext(
+            history=history,
             glossary=glossary,
             glossary_mode=LLMGlossaryMode.Matching,
         )
@@ -251,14 +242,62 @@ class LLMTranslationContextTest(unittest.TestCase):
             [message['role'] for message in messages],
             ['system', 'user', 'assistant', 'user'],
         )
-        self.assertIn('"source":"Hero"', messages[1]['content'])
-        self.assertNotIn('"source":"Mage"', messages[1]['content'])
+        self.assertIn('"source": "Hero arrives"', messages[1]['content'])
+        self.assertNotIn('GLOSSARY:', messages[1]['content'])
         self.assertEqual(
             messages[2]['content'],
             '{"translations":[{"id":1,"translation":"勇者到来"}]}',
         )
         self.assertIn('"source":"Mage"', messages[3]['content'])
         self.assertNotIn('"source":"Hero"', messages[3]['content'])
+
+    def test_matching_glossary_preserves_only_the_clean_history_prefix(self):
+        glossary = (
+            GlossaryEntry('Hero', '勇者'),
+            GlossaryEntry('Mage', '法师'),
+        )
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ):
+            hero_page = self.translator._render_history_page(
+                HistoryPage('001.png', ('Hero arrives',), ('勇者到来',)),
+                'test-model',
+            )
+            mage_page = self.translator._render_history_page(
+                HistoryPage('002.png', ('Mage speaks',), ('法师说话',)),
+                'test-model',
+            )
+
+        def request_messages(query, history):
+            context = RequestContext(
+                history=history,
+                glossary=glossary,
+                glossary_mode=LLMGlossaryMode.Matching,
+            )
+            messages, _, _ = next(self.translator._assemble_batches(
+                [query],
+                self.profile,
+                request_context=context,
+            ))
+            return messages
+
+        first = request_messages('Hero arrives', ())
+        second = request_messages('Mage speaks', (hero_page,))
+        third = request_messages('No glossary term', (hero_page, mage_page))
+
+        # The previous current-page prompt had a glossary suffix, whereas its
+        # historical form is clean, so the exact message prefix ends before it.
+        self.assertEqual(first[0], second[0])
+        self.assertNotEqual(first[1], second[1])
+        self.assertTrue(first[1]['content'].startswith(second[1]['content']))
+
+        # On the next page, the older clean pair is reusable in full; matching
+        # stops again at the immediately preceding page's former glossary suffix.
+        self.assertEqual(second[:3], third[:3])
+        self.assertNotEqual(second[3], third[3])
+        self.assertTrue(second[3]['content'].startswith(third[3]['content']))
 
     def test_all_glossary_uses_stable_system_message(self):
         glossary = (
@@ -303,8 +342,6 @@ class LLMTranslationContextTest(unittest.TestCase):
                 ):
                     selected = self._history_for_rebuild(
                         history,
-                        (),
-                        LLMGlossaryMode.Matching,
                         budget,
                         'unknown-model',
                     )
@@ -324,8 +361,6 @@ class LLMTranslationContextTest(unittest.TestCase):
         ) as token_count:
             selected = self._history_for_rebuild(
                 history,
-                (),
-                LLMGlossaryMode.Matching,
                 10,
                 'test-model',
             )
@@ -526,7 +561,6 @@ class LLMTranslationContextTest(unittest.TestCase):
             'target',
             'model',
             'prompt',
-            'glossary-mode',
             'budget',
         )
         for change in cases:
@@ -552,8 +586,6 @@ class LLMTranslationContextTest(unittest.TestCase):
                     profile.model_options.append('changed-model')
                 elif change == 'prompt':
                     profile.prompt = 'Changed instructions.'
-                elif change == 'glossary-mode':
-                    pcfg.module.llm_glossary_mode = LLMGlossaryMode.All
                 elif change == 'budget':
                     pcfg.module.llm_prior_context_token_budget = 9
 
@@ -574,13 +606,13 @@ class LLMTranslationContextTest(unittest.TestCase):
             self.profile = default_profile('OpenAI')
             self.profile.api_key = 'sk-test'
 
-    def test_glossary_edit_invalidates_window_without_retaining_path(self):
+    def test_glossary_changes_do_not_rebuild_clean_history(self):
         with tempfile.TemporaryDirectory() as directory:
             glossary_path = os.path.join(directory, 'terms.tsv')
             with open(glossary_path, 'w', encoding='utf-8') as glossary_file:
                 glossary_file.write('Hero\t勇者\n')
             pcfg.module.llm_glossary_path = glossary_path
-            pcfg.module.llm_glossary_mode = LLMGlossaryMode.All
+            pcfg.module.llm_glossary_mode = LLMGlossaryMode.Matching
             pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
             project = self._project(3)
             self._complete(project, '001.png')
@@ -595,14 +627,26 @@ class LLMTranslationContextTest(unittest.TestCase):
                 self._complete(project, '002.png')
                 with open(glossary_path, 'w', encoding='utf-8') as glossary_file:
                     glossary_file.write('Hero\t勇者\nMage\t法师\n')
+                pcfg.module.llm_glossary_mode = LLMGlossaryMode.All
                 context = self.translator._snapshot_request_context(
                     project, '003.png', self.profile,
                 )
 
-        self.assertEqual(
-            context.diagnostic.rebuild_reason,
-            ContextReason.SETTINGS_CHANGED,
+        self.assertIsNone(context.diagnostic.rebuild_reason)
+        self.assertEqual(context.diagnostic.action, 'grow')
+        self.assertTrue(all(
+            'GLOSSARY:' not in content
+            for page in context.history
+            for _role, content in page.messages
+        ))
+        messages, _, _ = next(
+            self.translator._assemble_batches(
+                ['Current page'],
+                self.profile,
+                request_context=context,
+            )
         )
+        self.assertIn('"source":"Mage"', messages[1]['content'])
         self.assertNotIn(glossary_path, repr(self.translator._history_window.key))
 
     def test_runtime_window_retains_only_immutable_snapshots(self):
@@ -636,10 +680,12 @@ class LLMTranslationContextTest(unittest.TestCase):
     def test_reconstructed_history_matches_preprocessed_current_prompt(self):
         block = _block('Hero returns')
         captured_messages = []
-
-        def substitute_sources(*, source_text, **_kwargs):
-            for index, source in enumerate(source_text):
-                source_text[index] = source.replace('Hero', 'Champion')
+        source_substitutions = [{
+            'keyword': 'Hero',
+            'sub': 'Champion',
+            'use_reg': False,
+            'case_sens': True,
+        }]
 
         def request_translation(_profile, messages, **_usage):
             captured_messages.append(messages)
@@ -648,13 +694,13 @@ class LLMTranslationContextTest(unittest.TestCase):
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_glossary_path = ''
         with mock.patch.object(
-            self.translator,
-            '_preprocess_hooks',
-            {'substitution': substitute_sources},
+            pcfg,
+            'pre_mt_sublist',
+            source_substitutions,
         ), mock.patch.object(
-            self.translator,
-            '_postprocess_hooks',
-            {},
+            pcfg,
+            'mt_sublist',
+            [],
         ), mock.patch.object(
             type(self.translator),
             'profile',
@@ -733,32 +779,27 @@ class LLMTranslationContextTest(unittest.TestCase):
         def request_translation(_profile, messages, **_usage):
             captured_messages.append(messages)
             return next(responses)
-
-        def finalize_translations(
-            translations,
-            translator,
-            full_page=False,
-            **_kwargs,
-        ):
-            self.assertTrue(full_page)
-            for index, translation in enumerate(translations):
-                translations[index] = finalize_translation_text(
-                    translation,
-                    translator.lang_source,
-                    translator.lang_target,
-                    substitute=lambda text: text.replace('未処理', '完了'),
-                )
+        result_substitutions = [{
+            'keyword': '未処理',
+            'sub': '完了',
+            'use_reg': False,
+            'case_sens': True,
+        }]
 
         pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         with mock.patch.object(
-            self.translator,
-            '_preprocess_hooks',
-            {},
+            pcfg,
+            'pre_mt_sublist',
+            [],
         ), mock.patch.object(
-            self.translator,
-            '_postprocess_hooks',
-            {'finalize': finalize_translations},
+            pcfg,
+            'mt_sublist',
+            result_substitutions,
+        ), mock.patch.object(
+            pcfg,
+            'let_uppercase_flag',
+            False,
         ), mock.patch.object(
             type(self.translator),
             'profile',
@@ -1049,18 +1090,28 @@ class LLMTranslationContextTest(unittest.TestCase):
     def test_textblock_boundary_forwards_project_and_page_unchanged(self):
         project = object()
         translator = SimpleNamespace(
-            _preprocess_hooks={},
-            _postprocess_hooks={},
+            lang_source='日本語',
+            lang_target='简体中文',
+            cht_require_convert=False,
             translate=mock.Mock(return_value=['translated']),
         )
         block = _block('source')
 
-        BaseTranslator.translate_textblk_lst(
-            translator,
-            [block],
-            project=project,
-            page_key='001.png',
-        )
+        with mock.patch.object(
+            pcfg,
+            'pre_mt_sublist',
+            [],
+        ), mock.patch.object(
+            pcfg,
+            'mt_sublist',
+            [],
+        ):
+            BaseTranslator.translate_textblk_lst(
+                translator,
+                [block],
+                project=project,
+                page_key='001.png',
+            )
 
         translator.translate.assert_called_once_with(
             ['source'],
