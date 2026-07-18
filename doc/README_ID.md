@@ -35,12 +35,11 @@
 
   **Riwayat terjemahan**
 
-  - `LLMTranslator` dapat menggunakan pasangan teks sumber dan terjemahan dari halaman sebelumnya yang sudah selesai sebagai contoh. Aktifkan **Use Prior Translations as Context** di bagian terjemahan pada dialog Run.
-  - **Prior Context Token Budget** adalah batas lunak khusus untuk contoh riwayat. Halaman selesai yang lebih baru diprioritaskan, lalu halaman riwayat yang dipilih dimasukkan sesuai urutan halaman. Halaman saat ini, instruksi sistem, glosarium, dan respons yang dihasilkan juga memakai konteks di luar anggaran ini.
-  - Saat melanjutkan proses atau menerjemahkan rentang yang dipilih, halaman yang memenuhi syarat sebelum rentang tersebut masih dapat digunakan. Halaman yang berhasil diterjemahkan akan tersedia sebagai konteks untuk halaman berikutnya dalam proses yang sama.
-  - Mengedit teks sumber atau terjemahan secara manual tidak otomatis mengubah status penyelesaian halaman. Setelah mengubah teks sumber, terjemahkan ulang halaman tersebut jika terjemahan yang tersimpan tidak lagi sesuai.
-  - Konteks tambahan dapat meningkatkan konsistensi, tetapi juga menambah penggunaan token input, waktu permintaan, dan biaya. Mulailah dengan anggaran yang tidak terlalu besar dan tingkatkan hanya bila perlu.
-  - Pada penyedia dan model yang mendukung cache prompt, seperti OpenAI dan DeepSeek, riwayat yang terus bertambah biasanya mempertahankan prefiks bersama yang sama persis di antara halaman berurutan, sehingga cache hit dapat mengurangi biaya input dan latensi. Penggunaan ulang cache dapat dimulai ulang ketika anggaran riwayat membuang halaman lama atau ketika profil, glosarium, maupun konten prompt sebelumnya berubah; dukungan cache bergantung pada penyedia dan tidak mengubah perilaku penerjemahan.
+  - Aktifkan **Use Prior Translations as Context** agar `LLMTranslator` memakai halaman sebelumnya yang telah selesai sebagai contoh. Proses lanjutan dan rentang terpilih dapat memakai halaman yang memenuhi syarat sebelumnya, dan halaman yang baru selesai menjadi konteks bagi halaman berikutnya.
+  - **Prior Context Token Budget** hanya membatasi riwayat. Halaman selesai yang lebih baru diprioritaskan; halaman saat ini, instruksi sistem, glosarium, dan respons yang dihasilkan memakai konteks tambahan.
+  - Nilai default `4096` bersifat konservatif. Jika jendela konteks yang diumumkan model diketahui, sekitar 70% adalah batas atas praktis (`90000` untuk 128K), bukan nilai awal wajib. Tingkatkan hanya bila perlu: konteks tambahan memakai token, waktu, dan biaya; inferensi lokal juga dapat membutuhkan jauh lebih banyak RAM/VRAM untuk cache KV dan berjalan lebih lambat. Penyedia dapat menerapkan batas lebih rendah.
+  - Pengeditan manual teks sumber atau terjemahan tidak mengubah status penyelesaian. Terjemahkan ulang halaman jika terjemahan tersimpan tidak lagi sesuai dengan sumber.
+  - Penyedia dengan cache prompt, seperti OpenAI dan DeepSeek, dapat memakai ulang prefiks yang terus bertambah antarhalaman berurutan. Pembuangan riwayat secara massal serta perubahan profil, glosarium, atau isi prompt sebelumnya akan mereset penggunaan ulang, yang kemudian bertambah lagi. Cache bergantung pada penyedia dan tidak mengubah perilaku terjemahan.
 
   **Glosarium yang dapat digunakan kembali**
 

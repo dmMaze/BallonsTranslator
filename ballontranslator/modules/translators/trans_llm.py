@@ -3,7 +3,7 @@ import re
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .base import BaseTranslator, register_translator
 from .glossary import (
@@ -29,6 +29,13 @@ class InvalidNumTranslations(Exception):
     pass
 
 
+class _ContextLengthError(RuntimeError):
+    """A provider rejected the request because its input context is too long."""
+
+
+HISTORY_LOW_WATER_RATIO = 0.60
+
+
 @dataclass(frozen=True)
 class _HistoryPage:
     page_key: str
@@ -38,8 +45,46 @@ class _HistoryPage:
 
 @dataclass(frozen=True)
 class _RenderedHistoryPage:
-    page_key: str
+    snapshot: _HistoryPage
     messages: Tuple[Tuple[str, str], ...]
+    token_count: int
+
+    @property
+    def page_key(self) -> str:
+        return self.snapshot.page_key
+
+
+@dataclass(frozen=True)
+class _HistoryWindowKey:
+    load_identity: object
+    profile_id: str
+    source_language: str
+    target_language: str
+    model: str
+    system_prompt: str
+    glossary: Tuple[GlossaryEntry, ...]
+    glossary_mode: str
+    token_budget: int
+
+
+@dataclass(frozen=True)
+class _HistoryWindow:
+    key: _HistoryWindowKey
+    request_page_key: str
+    history: Tuple[_RenderedHistoryPage, ...]
+    token_count: int
+
+
+@dataclass(frozen=True)
+class _ContextDiagnostic:
+    page_key: str
+    action: str
+    page_count: int
+    token_count: int
+    token_budget: int
+    appended: int = 0
+    evicted: int = 0
+    rebuild_reason: str = ''
 
 
 @dataclass(frozen=True)
@@ -47,6 +92,10 @@ class _RequestContext:
     history: Tuple[_RenderedHistoryPage, ...]
     glossary: Tuple[GlossaryEntry, ...]
     glossary_mode: str
+    history_budget: int = 0
+    window_key: Optional[_HistoryWindowKey] = None
+    request_page_key: Optional[str] = None
+    diagnostic: Optional[_ContextDiagnostic] = None
 
 
 @register_translator("LLMTranslator")
@@ -124,6 +173,7 @@ class LLMTranslator(BaseTranslator):
         self.request_count_minute = 0
         self.minute_start_time = time.time()
         self.stop_event = None
+        self._history_window: Optional[_HistoryWindow] = None
 
     @property
     def profile(self) -> LLMProfile:
@@ -149,6 +199,10 @@ class LLMTranslator(BaseTranslator):
 
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
+
+    def unload_model(self, empty_cache=False):
+        self._history_window = None
+        return super().unload_model(empty_cache=empty_cache)
 
     def translate(
         self,
@@ -182,6 +236,7 @@ class LLMTranslator(BaseTranslator):
             src_list,
             profile=profile,
             request_context=request_context,
+            page_key=page_key,
         )
 
         if text_trans is None:
@@ -279,28 +334,265 @@ class LLMTranslator(BaseTranslator):
         glossary_path = str(pcfg.module.llm_glossary_path or '')
         glossary_mode = pcfg.module.llm_glossary_mode
         if not use_history and not glossary_path:
+            self._history_window = None
+            self._log_context_diagnostic(_ContextDiagnostic(
+                page_key=str(page_key or ''),
+                action='disabled',
+                page_count=0,
+                token_count=0,
+                token_budget=int(history_budget),
+            ))
             return None
 
         glossary = load_glossary(glossary_path)
+        if not use_history:
+            self._history_window = None
         history = ()
+        window_key = None
+        diagnostic = _ContextDiagnostic(
+            page_key=str(page_key or ''),
+            action='disabled' if not use_history else 'empty',
+            page_count=0,
+            token_count=0,
+            token_budget=int(history_budget),
+            rebuild_reason='history-disabled' if not use_history else 'missing-project-page',
+        )
         if use_history and project is not None and page_key is not None:
-            history = self._snapshot_eligible_history(
+            history_budget = max(0, int(history_budget))
+            model = self._text_model(profile)
+            window_key = self._history_window_key(
                 project,
-                page_key,
-                self.lang_target,
-            )
-            history = self._select_history_within_budget(
-                history,
+                profile,
                 glossary,
                 glossary_mode,
                 history_budget,
-                self._text_model(profile),
+                model,
             )
+            rebuild_reason = self._window_rebuild_reason(
+                project,
+                str(page_key),
+                window_key,
+            )
+            eligible_history = ()
+            if not rebuild_reason:
+                fresh_retained = tuple(
+                    self._snapshot_history_page(
+                        project,
+                        page.page_key,
+                        self.lang_target,
+                    )
+                    for page in self._history_window.history
+                )
+                if any(
+                    fresh != rendered.snapshot
+                    for fresh, rendered in zip(
+                        fresh_retained,
+                        self._history_window.history,
+                    )
+                ):
+                    rebuild_reason = 'snapshot-changed'
+                else:
+                    previous_page = self._snapshot_history_page(
+                        project,
+                        self._history_window.request_page_key,
+                        self.lang_target,
+                    )
+                    if previous_page is None:
+                        rebuild_reason = 'previous-incomplete'
+                    else:
+                        eligible_history = fresh_retained + (previous_page,)
+            if rebuild_reason:
+                eligible_history = self._snapshot_eligible_history(
+                    project,
+                    page_key,
+                    self.lang_target,
+                )
+            history, diagnostic = self._history_for_request(
+                page_key=str(page_key),
+                eligible_history=eligible_history,
+                glossary=glossary,
+                glossary_mode=glossary_mode,
+                token_budget=history_budget,
+                model=model,
+                rebuild_reason=rebuild_reason,
+            )
+
+        self._log_context_diagnostic(diagnostic)
         return _RequestContext(
             history=history,
             glossary=glossary,
             glossary_mode=glossary_mode,
+            history_budget=int(history_budget),
+            window_key=window_key,
+            request_page_key=str(page_key) if page_key is not None else None,
+            diagnostic=diagnostic,
         )
+
+    def _history_window_key(
+        self,
+        project,
+        profile: LLMProfile,
+        glossary: Tuple[GlossaryEntry, ...],
+        glossary_mode: str,
+        token_budget: int,
+        model: str,
+    ) -> _HistoryWindowKey:
+        return _HistoryWindowKey(
+            load_identity=getattr(project, 'load_identity', None),
+            profile_id=str(profile.id),
+            source_language=str(self.lang_source),
+            target_language=str(self.lang_target),
+            model=str(model),
+            system_prompt=self._system_prompt(
+                profile,
+                self._translated_lang(self.lang_target),
+            ),
+            glossary=tuple(glossary),
+            glossary_mode=str(glossary_mode),
+            token_budget=int(token_budget),
+        )
+
+    def _history_for_request(
+        self,
+        *,
+        page_key: str,
+        eligible_history: Tuple[_HistoryPage, ...],
+        glossary: Tuple[GlossaryEntry, ...],
+        glossary_mode: str,
+        token_budget: int,
+        model: str,
+        rebuild_reason: str,
+    ) -> Tuple[Tuple[_RenderedHistoryPage, ...], _ContextDiagnostic]:
+        """Select a safe rebuild or append to the current runtime window.
+
+        >>> int(10 * HISTORY_LOW_WATER_RATIO)
+        6
+        """
+        if rebuild_reason:
+            history = self._select_history_within_budget(
+                eligible_history,
+                glossary,
+                glossary_mode,
+                token_budget,
+                model,
+            )
+            token_count = sum(page.token_count for page in history)
+            return history, _ContextDiagnostic(
+                page_key=page_key,
+                action='rebuild' if history else 'empty',
+                page_count=len(history),
+                token_count=token_count,
+                token_budget=token_budget,
+                rebuild_reason=rebuild_reason,
+            )
+
+        window = self._history_window
+        previous_page = next(
+            page
+            for page in eligible_history
+            if page.page_key == window.request_page_key
+        )
+        rendered_page = self._render_history_page(
+            previous_page,
+            glossary,
+            glossary_mode,
+            model,
+        )
+        history = list(window.history)
+        token_count = window.token_count
+        if rendered_page.token_count > token_budget:
+            return tuple(history), _ContextDiagnostic(
+                page_key=page_key,
+                action='reuse',
+                page_count=len(history),
+                token_count=token_count,
+                token_budget=token_budget,
+                rebuild_reason='oversized-page',
+            )
+
+        if token_count + rendered_page.token_count <= token_budget:
+            history.append(rendered_page)
+            token_count += rendered_page.token_count
+            return tuple(history), _ContextDiagnostic(
+                page_key=page_key,
+                action='grow',
+                page_count=len(history),
+                token_count=token_count,
+                token_budget=token_budget,
+                appended=1,
+            )
+
+        low_water = int(token_budget * HISTORY_LOW_WATER_RATIO)
+        evicted = 0
+        while history and (
+            token_count > low_water
+            or token_count + rendered_page.token_count > token_budget
+        ):
+            token_count -= history.pop(0).token_count
+            evicted += 1
+        history.append(rendered_page)
+        token_count += rendered_page.token_count
+        return tuple(history), _ContextDiagnostic(
+            page_key=page_key,
+            action='evict',
+            page_count=len(history),
+            token_count=token_count,
+            token_budget=token_budget,
+            appended=1,
+            evicted=evicted,
+        )
+
+    def _window_rebuild_reason(
+        self,
+        project,
+        page_key: str,
+        window_key: _HistoryWindowKey,
+    ) -> str:
+        """Return an enum-like reason when the current window is unsafe to reuse.
+
+        >>> LLMTranslator.__new__(LLMTranslator)._history_window = None
+        """
+        window = self._history_window
+        if window is None:
+            return 'window-empty'
+        if window_key.load_identity is None:
+            return 'missing-load-identity'
+        if window.key.load_identity is not window_key.load_identity:
+            return 'project-changed'
+        if window.key != window_key:
+            return 'settings-changed'
+
+        pages = getattr(project, 'pages', None)
+        if not isinstance(pages, dict):
+            return 'missing-pages'
+        page_keys = list(pages)
+        try:
+            page_index = page_keys.index(page_key)
+        except ValueError:
+            return 'missing-page'
+        if (
+            page_index == 0
+            or page_keys[page_index - 1] != window.request_page_key
+        ):
+            return 'non-adjacent'
+
+        return ''
+
+    def _log_context_diagnostic(self, diagnostic: _ContextDiagnostic):
+        page_key = diagnostic.page_key.replace('\r', ' ').replace('\n', ' ')
+        details = [
+            f'LLM context: page={page_key or "-"}',
+            f'action={diagnostic.action}',
+            f'pages={diagnostic.page_count}',
+            f'tokens={diagnostic.token_count}/{diagnostic.token_budget}',
+        ]
+        if diagnostic.appended:
+            details.append(f'appended={diagnostic.appended}')
+        if diagnostic.evicted:
+            details.append(f'evicted={diagnostic.evicted}')
+        if diagnostic.rebuild_reason:
+            details.append(f'reason={diagnostic.rebuild_reason}')
+        self.logger.debug(', '.join(details))
 
     def _snapshot_eligible_history(self, project, page_key, target_language: str):
         """Copy complete, target-compatible pages preceding ``page_key``.
@@ -310,58 +602,77 @@ class LLMTranslator(BaseTranslator):
         ()
         """
         pages = getattr(project, 'pages', None)
-        image_info = getattr(project, '_image_info', None)
         if not isinstance(pages, dict) or page_key not in pages:
             return ()
-        if not isinstance(image_info, dict):
-            image_info = {}
 
         history = []
-        for candidate_key, blocks in pages.items():
+        for candidate_key in pages:
             if candidate_key == page_key:
                 break
-            info = image_info.get(candidate_key, {})
-            if not isinstance(info, dict):
-                continue
-            if not (
-                int(info.get('finish_code', 0)) & RunStatus.FIN_TRANSLATE
-            ):
-                continue
-            # Missing target metadata is intentionally compatible with old projects.
-            if (
-                'translation_target' in info
-                and info['translation_target'] != target_language
-            ):
-                continue
-
-            translations = []
-            non_empty_ids = []
-            for index, block in enumerate(blocks):
-                source = block.get_text()
-                if not source or not source.strip():
-                    continue
-                non_empty_ids.append(index)
-                translation = getattr(block, 'translation', '')
-                if not translation or not str(translation).strip():
-                    # Page chunks are indivisible; never seed a partially translated page.
-                    break
-                translations.append(str(translation))
-            else:
-                if not non_empty_ids:
-                    continue
-                _, sources, _ = BaseTranslator._prepare_textblock_sources(
-                    self,
-                    blocks,
-                    copy_textblocks=True,
-                )
-                history.append(
-                    _HistoryPage(
-                        page_key=str(candidate_key),
-                        sources=tuple(sources),
-                        translations=tuple(translations),
-                    )
-                )
+            page = self._snapshot_history_page(
+                project,
+                candidate_key,
+                target_language,
+            )
+            if page is not None:
+                history.append(page)
         return tuple(history)
+
+    def _snapshot_history_page(
+        self,
+        project,
+        page_key,
+        target_language: str,
+    ) -> Optional[_HistoryPage]:
+        """Copy one eligible page without retaining its mutable text blocks.
+
+        >>> LLMTranslator.__new__(LLMTranslator)._snapshot_history_page(
+        ...     None, '001.png', 'English') is None
+        True
+        """
+        pages = getattr(project, 'pages', None)
+        image_info = getattr(project, '_image_info', None)
+        if not isinstance(pages, dict) or page_key not in pages:
+            return None
+        if not isinstance(image_info, dict):
+            return None
+        info = image_info.get(page_key, {})
+        if not isinstance(info, dict) or not (
+            int(info.get('finish_code', 0)) & RunStatus.FIN_TRANSLATE
+        ):
+            return None
+        # Missing target metadata is intentionally compatible with old projects.
+        if (
+            'translation_target' in info
+            and info['translation_target'] != target_language
+        ):
+            return None
+
+        blocks = pages[page_key]
+        translations = []
+        non_empty_ids = []
+        for index, block in enumerate(blocks):
+            source = block.get_text()
+            if not source or not source.strip():
+                continue
+            non_empty_ids.append(index)
+            translation = getattr(block, 'translation', '')
+            if not translation or not str(translation).strip():
+                # Page chunks are indivisible; never seed a partially translated page.
+                return None
+            translations.append(str(translation))
+        if not non_empty_ids:
+            return None
+        _, sources, _ = BaseTranslator._prepare_textblock_sources(
+            self,
+            blocks,
+            copy_textblocks=True,
+        )
+        return _HistoryPage(
+            page_key=str(page_key),
+            sources=tuple(sources),
+            translations=tuple(translations),
+        )
 
     def _select_history_within_budget(
         self,
@@ -374,26 +685,43 @@ class LLMTranslator(BaseTranslator):
         remaining = max(0, int(token_budget))
         selected = []
         for page in reversed(history):
-            messages = self._render_history_messages(
+            rendered_page = self._render_history_page(
                 page,
                 glossary,
                 glossary_mode,
+                model,
             )
-            page_tokens = messages_token_count(messages, model)
-            if page_tokens > remaining:
+            if rendered_page.token_count > token_budget:
+                if selected:
+                    break
                 continue
-            selected.append(
-                _RenderedHistoryPage(
-                    page_key=page.page_key,
-                    messages=tuple(
-                        (str(message['role']), str(message['content']))
-                        for message in messages
-                    ),
-                )
-            )
-            remaining -= page_tokens
+            if rendered_page.token_count > remaining:
+                break
+            selected.append(rendered_page)
+            remaining -= rendered_page.token_count
         selected.reverse()
         return tuple(selected)
+
+    def _render_history_page(
+        self,
+        page: _HistoryPage,
+        glossary: Tuple[GlossaryEntry, ...],
+        glossary_mode: str,
+        model: str,
+    ) -> _RenderedHistoryPage:
+        messages = self._render_history_messages(
+            page,
+            glossary,
+            glossary_mode,
+        )
+        return _RenderedHistoryPage(
+            snapshot=page,
+            messages=tuple(
+                (str(message['role']), str(message['content']))
+                for message in messages
+            ),
+            token_count=messages_token_count(messages, model),
+        )
 
     def _system_prompt(self, profile: LLMProfile, to_lang: str) -> str:
         prompt = str(profile.prompt or '').strip()
@@ -639,12 +967,107 @@ class LLMTranslator(BaseTranslator):
                 return str(text)
         return str(error)
 
-    def _log_token_usage(self, completion):
+    @staticmethod
+    def _status_error_code(error) -> str:
+        values = [getattr(error, 'code', '')]
+        body = getattr(error, 'body', None)
+        if isinstance(body, dict):
+            values.extend((body.get('code', ''), body.get('type', '')))
+            nested = body.get('error')
+            if isinstance(nested, dict):
+                values.extend((nested.get('code', ''), nested.get('type', '')))
+
+        response = getattr(error, 'response', None)
+        if response is not None:
+            try:
+                data = response.json()
+            except Exception:
+                data = None
+            if isinstance(data, dict):
+                values.extend((data.get('code', ''), data.get('type', '')))
+                nested = data.get('error')
+                if isinstance(nested, dict):
+                    values.extend((nested.get('code', ''), nested.get('type', '')))
+        return ' '.join(str(value).lower() for value in values if value)
+
+    @classmethod
+    def _is_context_length_error(cls, error) -> bool:
+        """Recognize only provider errors that clearly describe oversized input.
+
+        >>> LLMTranslator._is_context_length_error(
+        ...     RuntimeError('maximum context length exceeded'))
+        True
+        >>> LLMTranslator._is_context_length_error(RuntimeError('max_tokens is invalid'))
+        False
+        """
+        response = getattr(error, 'response', None)
+        status_code = getattr(error, 'status_code', None)
+        if status_code is None and response is not None:
+            status_code = getattr(response, 'status_code', None)
+        if status_code is not None:
+            try:
+                status_code = int(status_code)
+            except (TypeError, ValueError):
+                status_code = None
+        if status_code is not None and status_code not in (400, 413, 422):
+            return False
+
+        normalized_code = re.sub(
+            r'[^a-z0-9]+',
+            '_',
+            cls._status_error_code(error),
+        ).strip('_')
+        recognized_codes = (
+            'context_length_exceeded',
+            'context_window_exceeded',
+            'input_too_long',
+            'prompt_too_long',
+            'too_many_input_tokens',
+        )
+        if any(code in normalized_code for code in recognized_codes):
+            return True
+
+        message = cls._status_error_message(error).lower()
+        patterns = (
+            r'\b(?:maximum|max)\s+context\s+(?:length|window)\b',
+            r'\bcontext\s+(?:length|window)\b.{0,80}\b(?:exceed|overflow|too\s+long)',
+            r'\b(?:exceed|overflow|too\s+long).{0,80}\bcontext\s+(?:length|window)\b',
+            r'\b(?:maximum|max)\s+input\s+tokens?\b',
+            r'\binput\s+tokens?\b.{0,80}\b(?:exceed|too\s+many)\b',
+            r'\bprompt\s+(?:is\s+)?too\s+long\b',
+        )
+        return any(re.search(pattern, message) for pattern in patterns)
+
+    def _log_token_usage(
+        self,
+        completion,
+        *,
+        page_key=None,
+        batch_index: Optional[int] = None,
+        attempt: Optional[int] = None,
+    ):
         summary = format_completion_token_usage(completion)
         if summary:
-            self.logger.info(f'LLM token usage: {summary}')
+            details = []
+            if page_key is not None:
+                safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
+                details.append(f'page={safe_page_key or "-"}')
+            if batch_index is not None:
+                details.append(f'batch={batch_index}')
+            if attempt is not None:
+                details.append(f'attempt={attempt}')
+            details.append(summary)
+            self.logger.info(f'LLM token usage: {", ".join(details)}')
 
-    def _request_translation(self, profile: LLMProfile, messages: List[Dict]) -> str:
+    def _request_translation(
+        self,
+        profile: LLMProfile,
+        messages: List[Dict],
+        *,
+        usage_page_key=None,
+        usage_batch_index: Optional[int] = None,
+        usage_attempt: Optional[int] = None,
+    ) -> str:
         openai = self._openai_module()
         client = self._initialize_client(profile)
         self._respect_delay(profile)
@@ -653,9 +1076,17 @@ class LLMTranslator(BaseTranslator):
         except getattr(openai, 'AuthenticationError') as e:
             raise LLMApiKeyRequiredError(profile.id, profile.name) from e
         except getattr(openai, 'APIStatusError') as e:
-            raise RuntimeError(self._status_error_message(e)) from e
+            message = self._status_error_message(e)
+            if self._is_context_length_error(e):
+                raise _ContextLengthError(message) from e
+            raise RuntimeError(message) from e
 
-        self._log_token_usage(completion)
+        self._log_token_usage(
+            completion,
+            page_key=usage_page_key,
+            batch_index=usage_batch_index,
+            attempt=usage_attempt,
+        )
 
         for choice in completion.choices:
             message = getattr(choice, 'message', None)
@@ -700,26 +1131,68 @@ class LLMTranslator(BaseTranslator):
         *,
         profile: LLMProfile = None,
         request_context: _RequestContext = None,
+        page_key=None,
     ) -> List[str]:
         if not src_list:
             return []
         if profile is None:
             profile = self.profile
         translations = []
-        for messages, num_src, prompt in self._assemble_batches(
+        successful_context = request_context
+        usage_page_key = (
+            request_context.request_page_key
+            if request_context is not None
+            and request_context.request_page_key is not None
+            else page_key
+        )
+        batches = self._assemble_batches(
             src_list,
             profile,
             request_context=request_context,
-        ):
+        )
+        for batch_index, (messages, num_src, prompt) in enumerate(batches, start=1):
             retry_attempt = 0
+            provider_attempt = 0
+            active_context = request_context
+            recovery_limit = len(active_context.history) if active_context else 0
+            recovered_pages = 0
             while True:
                 if self.stop_event is not None and self.stop_event.is_set():
                     raise LLMRequestStopped()
                 try:
-                    raw_response = self._request_translation(profile, messages)
+                    provider_attempt += 1
+                    raw_response = self._request_translation(
+                        profile,
+                        messages,
+                        usage_page_key=usage_page_key,
+                        usage_batch_index=batch_index,
+                        usage_attempt=provider_attempt,
+                    )
                     batch_translations = self._parse_response(profile, raw_response, num_src)
                     translations.extend(batch_translations)
+                    successful_context = active_context
                     break
+                except _ContextLengthError:
+                    if recovered_pages >= recovery_limit:
+                        raise
+                    recovered_context = self._recover_context_length(active_context)
+                    if recovered_context is None:
+                        raise
+                    recovered_pages += (
+                        len(active_context.history) - len(recovered_context.history)
+                    )
+                    active_context = recovered_context
+                    messages, recovered_num_src, recovered_prompt = next(
+                        self._assemble_batches(
+                            src_list,
+                            profile,
+                            request_context=active_context,
+                        )
+                    )
+                    if recovered_num_src != num_src:
+                        raise RuntimeError('Context recovery changed the request size.')
+                    prompt = recovered_prompt
+                    continue
                 except LLMApiKeyRequiredError:
                     raise
                 except LLMModelRequiredError:
@@ -737,4 +1210,62 @@ class LLMTranslator(BaseTranslator):
                     self.logger.warning(f"LLM translation failed due to {e}. Attempt: {retry_attempt}")
                     self._wait(self.get_param_value('retry timeout'))
 
+        # Keep eviction/growth speculative until every response parsed successfully.
+        self._commit_history_window(successful_context)
         return translations
+
+    def _recover_context_length(
+        self,
+        request_context: Optional[_RequestContext],
+    ) -> Optional[_RequestContext]:
+        """Remove whole oldest pages toward the shared low-water target.
+
+        >>> int(4096 * HISTORY_LOW_WATER_RATIO)
+        2457
+        """
+        if request_context is None or not request_context.history:
+            return None
+
+        history = list(request_context.history)
+        token_count = sum(page.token_count for page in history)
+        low_water = int(request_context.history_budget * HISTORY_LOW_WATER_RATIO)
+        evicted = 0
+        while history and (token_count > low_water or evicted == 0):
+            token_count -= history.pop(0).token_count
+            evicted += 1
+
+        diagnostic = _ContextDiagnostic(
+            page_key=str(request_context.request_page_key or ''),
+            action='context-recovery',
+            page_count=len(history),
+            token_count=token_count,
+            token_budget=request_context.history_budget,
+            evicted=evicted,
+        )
+        self._log_context_diagnostic(diagnostic)
+        return _RequestContext(
+            history=tuple(history),
+            glossary=request_context.glossary,
+            glossary_mode=request_context.glossary_mode,
+            history_budget=request_context.history_budget,
+            window_key=request_context.window_key,
+            request_page_key=request_context.request_page_key,
+            diagnostic=diagnostic,
+        )
+
+    def _commit_history_window(
+        self,
+        request_context: Optional[_RequestContext],
+    ):
+        if (
+            request_context is None
+            or request_context.window_key is None
+            or request_context.request_page_key is None
+        ):
+            return
+        self._history_window = _HistoryWindow(
+            key=request_context.window_key,
+            request_page_key=request_context.request_page_key,
+            history=request_context.history,
+            token_count=sum(page.token_count for page in request_context.history),
+        )

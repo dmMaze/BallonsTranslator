@@ -1109,6 +1109,7 @@ class ImgtransThread(QThread):
                 self.imgtrans_proj.save_mask(imgname, mask)
                 need_save_mask = False
 
+            # Headless mode uses this same router; it has no translation-only branch.
             if cfg_module.enable_translate:
                 if self.parallel_trans:
                     self.translate_thread.push_pagekey_queue(imgname)

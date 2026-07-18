@@ -31,9 +31,18 @@ class FakeTranslateThread:
     def __init__(self, translator):
         self.module = translator
         self.translator = translator
+        self.pipeline_calls = []
+        self.queued_page_keys = []
+        self.finished_counter = 0
 
     def isRunning(self):
         return False
+
+    def runTranslatePipeline(self, project, stop_event):
+        self.pipeline_calls.append((project, stop_event))
+
+    def push_pagekey_queue(self, page_key):
+        self.queued_page_keys.append(page_key)
 
 
 class MissingKeyTranslator:
@@ -69,10 +78,14 @@ class MissingModelTranslator:
 class SuccessfulTranslator:
     lang_source = 'English'
     lang_target = 'English'
+    low_vram_mode = False
 
     def __init__(self):
         self.calls = []
-        self.full_page_calls = []
+        self.computational_intensive = False
+
+    def is_computational_intensive(self):
+        return self.computational_intensive
 
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
@@ -85,8 +98,7 @@ class SuccessfulTranslator:
         page_key=None,
         full_page=False,
     ):
-        self.calls.append((blk_list, project, page_key))
-        self.full_page_calls.append(full_page)
+        self.calls.append((blk_list, project, page_key, full_page))
         for block in blk_list:
             block.translation = 'ａ! hero'
 
@@ -100,8 +112,7 @@ class FailingTranslator(SuccessfulTranslator):
         page_key=None,
         full_page=False,
     ):
-        self.calls.append((blk_list, project, page_key))
-        self.full_page_calls.append(full_page)
+        self.calls.append((blk_list, project, page_key, full_page))
         raise RuntimeError('translation failed')
 
 
@@ -360,8 +371,10 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                     )
 
                 self.assertIs(success, expected_success)
-                self.assertEqual(translator.calls, [(page, project, 'page-1')])
-                self.assertEqual(translator.full_page_calls, [True])
+                self.assertEqual(
+                    translator.calls,
+                    [(page, project, 'page-1', True)],
+                )
                 info = project._image_info['page-1']
                 self.assertIs(
                     bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
@@ -371,6 +384,112 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                     self.assertEqual(info['translation_target'], 'English')
                 else:
                     self.assertNotIn('translation_target', info)
+
+    def test_imgtrans_full_page_forwards_context_and_marks_only_success(self):
+        for translator_type, expected_success in (
+            (SuccessfulTranslator, True),
+            (FailingTranslator, False),
+        ):
+            with self.subTest(translator=translator_type.__name__):
+                translator = translator_type()
+                thread = module_manager.ImgtransThread(
+                    SimpleNamespace(textdetector=None),
+                    FakeOCRThread(None),
+                    FakeTranslateThread(translator),
+                    SimpleNamespace(inpainter=None),
+                )
+                page = [TextBlock(text=['source'], translation='old')]
+                project = ProjImgTrans()
+                project.pages = {'page-1': page}
+                project._image_info = {'page-1': {'finish_code': 0}}
+                project.mark_translation_finished('page-1', 'English')
+
+                with mock.patch(
+                    'ballontranslator.ui.module_manager.create_error_dialog',
+                ):
+                    success = thread._translate_full_page(
+                        project,
+                        'page-1',
+                        page,
+                    )
+
+                self.assertIs(success, expected_success)
+                self.assertEqual(
+                    translator.calls,
+                    [(page, project, 'page-1', True)],
+                )
+                info = project._image_info['page-1']
+                self.assertIs(
+                    bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
+                    expected_success,
+                )
+                if expected_success:
+                    self.assertEqual(info['translation_target'], 'English')
+                else:
+                    self.assertNotIn('translation_target', info)
+
+    def test_pipeline_translation_modes_share_the_expected_boundaries(self):
+        """Headless runs this same router; there is no headless-only boundary."""
+        old_stages = [pcfg.module.stage_enabled(index) for index in range(4)]
+        try:
+            for index in range(4):
+                pcfg.module.set_stage_enabled(index, index == 2)
+
+            for mode in ('parallel', 'direct', 'low-vram'):
+                with self.subTest(mode=mode):
+                    translator = SuccessfulTranslator()
+                    translator.computational_intensive = mode == 'direct'
+                    translator.low_vram_mode = mode == 'low-vram'
+                    translate_thread = FakeTranslateThread(translator)
+                    thread = module_manager.ImgtransThread(
+                        SimpleNamespace(textdetector=None),
+                        FakeOCRThread(None),
+                        translate_thread,
+                        SimpleNamespace(inpainter=None),
+                    )
+                    block = TextBlock(text=['source'], translation='old')
+                    project = ProjImgTrans()
+                    project.pages = {'page-1': [block]}
+                    project._image_info = {'page-1': {'finish_code': 0}}
+                    project.read_img = lambda _page: np.zeros(
+                        (12, 12, 3),
+                        dtype=np.uint8,
+                    )
+                    thread.imgtrans_proj = project
+                    thread.pages_to_process = None
+                    thread.source_signatures = {}
+                    thread.process_idx_to_page_idx = {}
+
+                    with mock.patch.object(
+                        thread,
+                        '_translate_full_page',
+                        return_value=True,
+                    ) as full_page, mock.patch(
+                        'ballontranslator.ui.module_manager.unload_modules',
+                    ):
+                        thread._imgtrans_pipeline()
+
+                    if mode == 'parallel':
+                        self.assertEqual(
+                            translate_thread.pipeline_calls,
+                            [(project, thread.stop_event)],
+                        )
+                        self.assertEqual(
+                            translate_thread.queued_page_keys,
+                            ['page-1'],
+                        )
+                        full_page.assert_not_called()
+                    else:
+                        self.assertEqual(translate_thread.pipeline_calls, [])
+                        self.assertEqual(translate_thread.queued_page_keys, [])
+                        full_page.assert_called_once_with(
+                            project,
+                            'page-1',
+                            [block],
+                        )
+        finally:
+            for index, enabled in enumerate(old_stages):
+                pcfg.module.set_stage_enabled(index, enabled)
 
     def test_selected_translation_preserves_only_matching_completed_target(self):
         for saved_target, compatible in (
@@ -412,7 +531,10 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
 
                 info = project._image_info['page-1']
                 self.assertEqual(block.translation, 'ａ! hero')
-                self.assertEqual(translator.full_page_calls, [False])
+                self.assertEqual(
+                    translator.calls,
+                    [([block], project, 'page-1', False)],
+                )
                 self.assertIs(
                     bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
                     compatible,

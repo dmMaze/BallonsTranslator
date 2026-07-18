@@ -38,12 +38,11 @@
 
   **Translation history**
 
-  - `LLMTranslator` can use completed earlier pages as source/translation examples. Enable **Use Prior Translations as Context** in the Run dialog's Translation section.
-  - **Prior Context Token Budget** is a soft limit for historical examples only. Newer complete pages are preferred, and selected history pages are inserted in page order. The current page, system instructions, glossary, and generated response also consume context outside this budget.
-  - Continue and selected-range runs may still use eligible pages before the selected range. A successfully translated page becomes available as context for later pages in the same run.
-  - Manual source or translation edits do not automatically change a page's completion state. After changing source text, retranslate that page if its saved translation no longer matches.
-  - More context can improve consistency but also increases input-token usage, request time, and cost. Start with a modest budget and increase it only when necessary.
-  - On providers and models with prompt caching, such as OpenAI and DeepSeek, growing history usually preserves an exact shared prefix between consecutive pages, so cache hits can reduce input cost and latency. Cache reuse may reset when the history budget drops older pages or when the profile, glossary, or other earlier prompt content changes; caching is provider-dependent and does not change translation behavior.
+  - Enable **Use Prior Translations as Context** to let `LLMTranslator` use completed earlier pages as examples. Continue and selected-range runs can use eligible pages before the range, and newly completed pages become context for later pages.
+  - **Prior Context Token Budget** limits history only. Newer completed pages are preferred; the current page, system instructions, glossary, and generated response use additional context.
+  - The default `4096` is conservative. If the model's advertised context window is known, about 70% is a practical upper bound (`90000` for 128K), not a required starting value. Increase it only as needed: more context costs tokens, time, and money; local inference may also use substantially more RAM/VRAM for the KV cache and run more slowly. Providers may enforce lower limits.
+  - Manual source or translation edits do not change a page's completion state. Retranslate the page when its saved translation no longer matches the source.
+  - Prompt caching providers such as OpenAI and DeepSeek can reuse the growing prefix between consecutive pages. Bulk history eviction and changes to the profile, glossary, or earlier prompt content reset that reuse; it then grows again. Caching is provider-dependent and does not change translation behavior.
 
   **Reusable glossaries**
 

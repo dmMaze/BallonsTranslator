@@ -35,12 +35,11 @@
 
   **Lịch sử bản dịch**
 
-  - `LLMTranslator` có thể dùng các cặp văn bản nguồn/bản dịch từ những trang trước đã hoàn thành làm ví dụ. Bật **Use Prior Translations as Context** trong phần Dịch của hộp thoại Run.
-  - **Prior Context Token Budget** là giới hạn mềm chỉ dành cho các ví dụ trong lịch sử. Các trang hoàn thành gần đây hơn được ưu tiên, sau đó những trang lịch sử đã chọn được chèn theo thứ tự trang. Trang hiện tại, chỉ dẫn hệ thống, bảng thuật ngữ và phản hồi được tạo cũng tiêu thụ ngữ cảnh ngoài ngân sách này.
-  - Khi tiếp tục chạy hoặc dịch một phạm vi được chọn, các trang đủ điều kiện trước phạm vi đó vẫn có thể được sử dụng. Một trang được dịch thành công sẽ trở thành ngữ cảnh cho các trang sau trong cùng lần chạy.
-  - Chỉnh sửa thủ công văn bản nguồn hoặc bản dịch không tự động thay đổi trạng thái hoàn thành của trang. Sau khi sửa văn bản nguồn, hãy dịch lại trang nếu bản dịch đã lưu không còn tương ứng.
-  - Nhiều ngữ cảnh hơn có thể cải thiện tính nhất quán nhưng cũng làm tăng lượng token đầu vào, thời gian yêu cầu và chi phí. Hãy bắt đầu với ngân sách vừa phải và chỉ tăng khi cần.
-  - Với nhà cung cấp và mô hình hỗ trợ bộ nhớ đệm lời nhắc, chẳng hạn như OpenAI và DeepSeek, lịch sử tăng dần thường duy trì một tiền tố chung khớp hoàn toàn giữa các trang liên tiếp, nhờ đó lượt trúng bộ nhớ đệm có thể giảm chi phí đầu vào và độ trễ. Việc tái sử dụng bộ nhớ đệm có thể bị đặt lại khi ngân sách lịch sử loại bỏ các trang cũ hoặc khi hồ sơ, bảng thuật ngữ hay nội dung đứng trước khác của lời nhắc thay đổi; khả năng hỗ trợ bộ nhớ đệm phụ thuộc vào nhà cung cấp và không làm thay đổi hành vi dịch.
+  - Bật **Use Prior Translations as Context** để `LLMTranslator` dùng các trang trước đã hoàn thành làm ví dụ. Khi tiếp tục hoặc dịch một phạm vi, các trang đủ điều kiện trước đó vẫn có thể được dùng, và trang mới hoàn thành sẽ trở thành ngữ cảnh cho trang sau.
+  - **Prior Context Token Budget** chỉ giới hạn lịch sử. Các trang hoàn thành gần đây được ưu tiên; trang hiện tại, chỉ dẫn hệ thống, bảng thuật ngữ và phản hồi dùng thêm ngữ cảnh.
+  - Mặc định `4096` khá thận trọng. Nếu biết cửa sổ ngữ cảnh công bố của mô hình, khoảng 70% là giới hạn trên thực tế (`90000` cho 128K), không phải giá trị khởi đầu bắt buộc. Chỉ tăng khi cần: nhiều ngữ cảnh tốn token, thời gian và chi phí; suy luận cục bộ cũng có thể cần nhiều RAM/VRAM hơn đáng kể cho bộ nhớ đệm KV và chạy chậm hơn. Nhà cung cấp có thể áp dụng giới hạn thấp hơn.
+  - Chỉnh sửa thủ công văn bản nguồn hoặc bản dịch không thay đổi trạng thái hoàn thành. Hãy dịch lại trang khi bản dịch đã lưu không còn khớp với nguồn.
+  - Nhà cung cấp có bộ nhớ đệm lời nhắc như OpenAI và DeepSeek có thể tái sử dụng tiền tố tăng dần giữa các trang liên tiếp. Việc loại bỏ hàng loạt lịch sử hoặc thay đổi hồ sơ, bảng thuật ngữ hay nội dung trước đó của lời nhắc sẽ đặt lại khả năng tái sử dụng, rồi nó sẽ tăng lại. Bộ nhớ đệm phụ thuộc vào nhà cung cấp và không thay đổi hành vi dịch.
 
   **Bảng thuật ngữ có thể tái sử dụng**
 

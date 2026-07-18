@@ -102,6 +102,7 @@ class TextBlkEncoder(NumpyEncoder):
 class ProjImgTrans:
 
     def __init__(self, directory: str = None):
+        self._load_identity = object()
         self.type = 'imgtrans'
         self.directory: str = None
         self.pages: Dict[str, List[TextBlock]] = {}
@@ -121,6 +122,16 @@ class ProjImgTrans:
         self.inpainted_array: np.ndarray = None
         if directory is not None:
             self.load(directory)
+
+    @property
+    def load_identity(self):
+        """Return the opaque identity of the currently loaded project contents.
+
+        >>> project = ProjImgTrans()
+        >>> project.load_identity is project.load_identity
+        True
+        """
+        return self._load_identity
 
     def idx2pagename(self, idx: int) -> str:
         return self._idx2pagename[idx]
@@ -221,6 +232,7 @@ class ProjImgTrans:
         if set_img_failed:
             if len(self.pages) > 0:
                 self.set_current_img_byidx(0)
+        self._load_identity = object()
 
     def get_page_progress(self, pagename: str):
         fin_code = self._image_info[pagename]['finish_code']
@@ -430,6 +442,7 @@ class ProjImgTrans:
             self._image_info[imgname] = {'finish_code': 0}
         self.set_current_img_byidx(0)
         self.save()
+        self._load_identity = object()
         
     def save(self, keep_exist_as_backup=False):
         if not osp.exists(self.directory):
@@ -445,7 +458,7 @@ class ProjImgTrans:
             os.replace(tmp_save_tgt, self.proj_path)
         else:
             os.replace(tmp_save_tgt, self.proj_path)
-        LOGGER.debug(f'project saved to {self.proj_path}')
+        LOGGER.debug(f'project saved')
 
     def to_dict(self) -> Dict:
         pages = self.pages.copy()

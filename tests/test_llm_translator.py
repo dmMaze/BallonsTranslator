@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.modules.translators.token_usage import format_token_usage
-from ballontranslator.modules.translators.trans_llm import InvalidNumTranslations, LLMTranslator
+from ballontranslator.modules.translators.trans_llm import (
+    InvalidNumTranslations,
+    LLMTranslator,
+    _ContextLengthError,
+)
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import default_profile
 
@@ -14,8 +18,14 @@ class FakeAuthError(Exception):
 
 
 class FakeStatusError(Exception):
-    def __init__(self):
-        self.response = SimpleNamespace(json=lambda: {'error': {'message': 'provider says no'}}, text='raw')
+    def __init__(self, message='provider says no', status_code=400, code=''):
+        self.status_code = status_code
+        self.code = code
+        self.response = SimpleNamespace(
+            json=lambda: {'error': {'message': message, 'code': code}},
+            text='raw',
+            status_code=status_code,
+        )
         super().__init__('status')
 
 
@@ -199,6 +209,46 @@ class LLMTranslatorTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'provider says no'):
             translator._request_translation(translator.profile, [{'role': 'user', 'content': 'x'}])
 
+    def test_context_status_error_is_typed_and_preserves_provider_message(self):
+        provider_message = (
+            "This model's maximum context length is 4096 tokens, but the "
+            'request used 5000 tokens.'
+        )
+        translator = FakeTranslator(FakeStatusError(provider_message))
+
+        with self.assertRaisesRegex(_ContextLengthError, 'maximum context length'):
+            translator._request_translation(
+                translator.profile,
+                [{'role': 'user', 'content': 'x'}],
+            )
+
+    def test_context_error_code_is_recognized_but_unrelated_errors_are_not(self):
+        coded = FakeTranslator(FakeStatusError(
+            'input rejected',
+            code='context_length_exceeded',
+        ))
+        with self.assertRaises(_ContextLengthError):
+            coded._request_translation(
+                coded.profile,
+                [{'role': 'user', 'content': 'x'}],
+            )
+
+        unrelated_errors = (
+            FakeStatusError('max_tokens must be less than 8192'),
+            FakeStatusError('maximum context length exceeded', status_code=404),
+            FakeStatusError('maximum context length exceeded', status_code=500),
+            FakeStatusError('rate limit exceeded', status_code=429),
+        )
+        for error in unrelated_errors:
+            with self.subTest(error=error.response.json()['error']['message']):
+                translator = FakeTranslator(error)
+                with self.assertRaises(RuntimeError) as caught:
+                    translator._request_translation(
+                        translator.profile,
+                        [{'role': 'user', 'content': 'x'}],
+                    )
+                self.assertNotIsInstance(caught.exception, _ContextLengthError)
+
     def test_token_usage_supports_openai_and_deepseek_cache_fields(self):
         openai_usage = SimpleNamespace(
             prompt_tokens=100,
@@ -218,10 +268,16 @@ class LLMTranslatorTest(unittest.TestCase):
 
         self.translator._log_token_usage(
             SimpleNamespace(usage=openai_usage),
+            page_key='001\npage.png',
+            batch_index=2,
+            attempt=3,
         )
         self.assertEqual(
             messages,
-            ['LLM token usage: prompt=100, completion=20, total=120, cache_hit=80'],
+            [
+                'LLM token usage: page=001 page.png, batch=2, attempt=3, '
+                'prompt=100, completion=20, total=120, cache_hit=80'
+            ],
         )
         self.assertEqual(
             format_token_usage(deepseek_usage),

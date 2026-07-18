@@ -35,12 +35,11 @@
 
   **Histórico de traduções**
 
-  - O `LLMTranslator` pode usar como exemplos os pares de texto original e tradução de páginas anteriores concluídas. Ative **Use Prior Translations as Context** na seção de tradução da caixa de diálogo de execução.
-  - **Prior Context Token Budget** é um limite flexível apenas para os exemplos do histórico. As páginas concluídas mais recentes têm prioridade, e as páginas selecionadas são inseridas na ordem das páginas. A página atual, as instruções do sistema, o glossário e a resposta gerada também consomem contexto fora desse orçamento.
-  - Ao continuar uma execução ou traduzir um intervalo selecionado, podem ser usadas páginas elegíveis anteriores ao intervalo. Uma página traduzida com sucesso fica disponível como contexto para páginas posteriores na mesma execução.
-  - A edição manual do texto original ou da tradução não altera automaticamente o estado de conclusão da página. Após modificar o texto original, traduza novamente a página caso a tradução salva já não corresponda a ele.
-  - Mais contexto pode melhorar a consistência, mas também aumenta o uso de tokens de entrada, o tempo das solicitações e o custo. Comece com um orçamento modesto e aumente-o somente quando necessário.
-  - Em provedores e modelos com cache de prompt, como OpenAI e DeepSeek, o histórico crescente normalmente preserva um prefixo compartilhado idêntico entre páginas consecutivas; assim, acertos no cache podem reduzir o custo de entrada e a latência. O reaproveitamento do cache pode ser reiniciado quando o orçamento do histórico remove páginas antigas ou quando o perfil, o glossário ou outro conteúdo anterior do prompt muda; o suporte a cache depende do provedor e não altera o comportamento da tradução.
+  - Ative **Use Prior Translations as Context** para o `LLMTranslator` usar páginas anteriores concluídas como exemplos. Execuções continuadas ou por intervalo podem usar páginas elegíveis anteriores, e as páginas recém-concluídas tornam-se contexto para as seguintes.
+  - **Prior Context Token Budget** limita apenas o histórico. As páginas concluídas mais recentes têm prioridade; a página atual, as instruções do sistema, o glossário e a resposta gerada usam contexto adicional.
+  - O padrão `4096` é conservador. Quando a janela de contexto divulgada é conhecida, cerca de 70% é um limite superior prático (`90000` para 128K), não um valor inicial obrigatório. Aumente somente quando necessário: mais contexto consome tokens, tempo e dinheiro; a inferência local também pode exigir muito mais RAM/VRAM para o cache KV e ficar mais lenta. O provedor pode impor limites menores.
+  - Editar manualmente o original ou a tradução não muda o estado de conclusão. Traduza novamente a página quando a tradução salva não corresponder mais ao original.
+  - Provedores com cache de prompt, como OpenAI e DeepSeek, podem reutilizar o prefixo crescente entre páginas consecutivas. A remoção em massa do histórico e alterações no perfil, glossário ou conteúdo anterior do prompt reiniciam esse reaproveitamento, que volta a crescer. O cache depende do provedor e não altera o comportamento da tradução.
 
   **Glossários reutilizáveis**
 

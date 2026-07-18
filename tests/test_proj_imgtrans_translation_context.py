@@ -93,6 +93,43 @@ class LLMContextConfigTest(unittest.TestCase):
         self.assertEqual(loaded.module.llm_glossary_mode, LLMGlossaryMode.All)
 
 
+class ProjectLoadIdentityTest(unittest.TestCase):
+
+    def test_identity_is_stable_until_project_contents_are_replaced(self):
+        project = ProjImgTrans()
+        initial_identity = project.load_identity
+
+        self.assertIs(initial_identity, project.load_identity)
+        project.directory = '/unused'
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.find_all_imgs',
+            return_value=[],
+        ):
+            project.load_from_dict({'pages': {}, 'image_info': {}})
+            first_load_identity = project.load_identity
+            project.load_from_dict({'pages': {}, 'image_info': {}})
+
+        self.assertIsNot(first_load_identity, initial_identity)
+        self.assertIsNot(project.load_identity, first_load_identity)
+        self.assertNotIn('load_identity', project.to_dict())
+        self.assertNotIn('_load_identity', project.to_dict())
+
+    def test_reloading_same_path_and_new_project_replace_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = ProjImgTrans(directory)
+            new_project_identity = project.load_identity
+            project.load(directory)
+            first_reload_identity = project.load_identity
+            project.load(directory)
+
+            self.assertIsNot(first_reload_identity, new_project_identity)
+            self.assertIsNot(project.load_identity, first_reload_identity)
+
+            before_new_project = project.load_identity
+            project.new_project()
+            self.assertIsNot(project.load_identity, before_new_project)
+
+
 class ProjectTranslationTargetTest(unittest.TestCase):
 
     @staticmethod

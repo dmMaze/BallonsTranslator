@@ -44,12 +44,11 @@ Prend en charge l’export/import vers/depuis des documents Word
 
   **Historique des traductions**
 
-  - `LLMTranslator` peut utiliser comme exemples les paires source/traduction de pages antérieures terminées. Activez **Use Prior Translations as Context** dans la section Traduction de la boîte de dialogue d’exécution.
-  - **Prior Context Token Budget** est une limite souple réservée aux exemples de l’historique. Les pages terminées les plus récentes sont prioritaires, puis les pages retenues sont insérées dans l’ordre. La page actuelle, les instructions système, le glossaire et la réponse générée consomment également du contexte en dehors de ce budget.
-  - La poursuite d’une exécution ou la traduction d’une plage sélectionnée peut utiliser les pages admissibles antérieures à cette plage. Une page traduite avec succès devient disponible comme contexte pour les pages suivantes de la même exécution.
-  - La modification manuelle du texte source ou de la traduction ne change pas automatiquement l’état d’achèvement de la page. Après avoir modifié le texte source, retraduisez cette page si la traduction enregistrée ne lui correspond plus.
-  - Davantage de contexte peut améliorer la cohérence, mais augmente aussi le nombre de jetons d’entrée, le temps des requêtes et leur coût. Commencez avec un budget modeste et ne l’augmentez qu’en cas de besoin.
-  - Avec les fournisseurs et modèles qui prennent en charge la mise en cache des prompts, comme OpenAI et DeepSeek, l’historique croissant conserve généralement un préfixe commun strictement identique entre les pages consécutives ; les accès au cache peuvent donc réduire le coût des entrées et la latence. La réutilisation du cache peut repartir de zéro lorsque le budget de l’historique élimine d’anciennes pages ou lorsque le profil, le glossaire ou un autre contenu antérieur du prompt change ; la prise en charge du cache dépend du fournisseur et ne modifie pas le comportement de la traduction.
+  - Activez **Use Prior Translations as Context** pour que `LLMTranslator` utilise les pages antérieures terminées comme exemples. Les reprises et plages sélectionnées peuvent utiliser les pages admissibles précédentes, et les nouvelles pages terminées servent de contexte aux suivantes.
+  - **Prior Context Token Budget** limite uniquement l’historique. Les pages terminées les plus récentes sont prioritaires ; la page actuelle, les instructions système, le glossaire et la réponse générée consomment du contexte supplémentaire.
+  - La valeur par défaut `4096` est prudente. Si la fenêtre annoncée du modèle est connue, environ 70 % constitue une limite supérieure pratique (`90000` pour 128K), et non un point de départ obligatoire. Ne l’augmentez qu’en cas de besoin : davantage de contexte coûte des jetons, du temps et de l’argent ; l’inférence locale peut aussi nécessiter beaucoup plus de RAM/VRAM pour le cache KV et ralentir. Le fournisseur peut imposer une limite plus basse.
+  - La modification manuelle de la source ou de la traduction ne change pas l’état d’achèvement. Retraduisez la page lorsque sa traduction enregistrée ne correspond plus à la source.
+  - Les fournisseurs avec cache de prompts, comme OpenAI et DeepSeek, peuvent réutiliser le préfixe croissant entre pages consécutives. La suppression groupée de l’historique et les changements du profil, du glossaire ou du contenu antérieur du prompt réinitialisent cette réutilisation, qui augmente ensuite à nouveau. Le cache dépend du fournisseur et ne modifie pas la traduction.
 
   **Glossaires réutilisables**
 
