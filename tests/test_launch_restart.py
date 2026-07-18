@@ -11,6 +11,27 @@ from ballontranslator import launch
 
 class LaunchRestartTests(unittest.TestCase):
 
+    def test_default_display_language_uses_simplified_chinese_ui_language(self):
+        system_locale = mock.Mock()
+        system_locale.name.return_value = 'zh_TW'
+        system_locale.uiLanguages.return_value = ['zh-Hans-CN', 'en-US']
+
+        self.assertEqual(launch.default_display_language(system_locale), 'zh_CN')
+
+    def test_default_display_language_uses_traditional_chinese_ui_language(self):
+        system_locale = mock.Mock()
+        system_locale.name.return_value = 'zh_CN'
+        system_locale.uiLanguages.return_value = ['zh-Hant-TW', 'en-US']
+
+        self.assertEqual(launch.default_display_language(system_locale), 'zh_TW')
+
+    def test_default_display_language_keeps_non_chinese_locale(self):
+        system_locale = mock.Mock()
+        system_locale.name.return_value = 'fr_FR'
+        system_locale.uiLanguages.return_value = ['fr-FR']
+
+        self.assertEqual(launch.default_display_language(system_locale), 'fr_FR')
+
     def test_restart_preserves_module_launch(self):
         main_path = str(Path(launch.__file__).resolve().parent / '__main__.py')
         with mock.patch.object(sys, 'argv', [main_path, '--debug']), \

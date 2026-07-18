@@ -207,6 +207,32 @@ def core_requirements_env(config_path: str) -> dict:
     return installer_env_with_pypi_mirror(os.environ.copy(), read_saved_pypi_mirror(config_path))
 
 
+def default_display_language(system_locale) -> str:
+    """Return the UI locale, preserving the user's Chinese script choice.
+
+    >>> locale = type('Locale', (), {
+    ...     'name': lambda self: 'zh_TW',
+    ...     'uiLanguages': lambda self: ['zh-Hans-CN'],
+    ... })()
+    >>> default_display_language(locale)
+    'zh_CN'
+    """
+
+    locale_name = system_locale.name().replace('en_CN', 'zh_CN')
+    try:
+        ui_languages = system_locale.uiLanguages()
+    except (AttributeError, TypeError):
+        return locale_name
+
+    for language in ui_languages:
+        normalized = language.replace('-', '_').lower()
+        if normalized.startswith('zh_hans') or normalized.startswith(('zh_cn', 'zh_sg')):
+            return 'zh_CN'
+        if normalized.startswith('zh_hant') or normalized.startswith(('zh_tw', 'zh_hk', 'zh_mo')):
+            return 'zh_TW'
+    return locale_name
+
+
 def main():
 
     if args.debug:
@@ -244,7 +270,7 @@ def main():
 
     from qtpy.QtCore import QTranslator, QLocale, Qt, QTimer
     shared.args = args
-    shared.DEFAULT_DISPLAY_LANG = QLocale.system().name().replace('en_CN', 'zh_CN')
+    shared.DEFAULT_DISPLAY_LANG = default_display_language(QLocale.system())
     shared.HEADLESS = args.headless
     shared.load_cache()
     program_config.load_config(args.config_path)
