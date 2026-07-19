@@ -232,12 +232,6 @@ MODULE_PARAM_CATALOG = {
     ('ocr', 'mit48px_ctc', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'device'),
     },
-    ('ocr', 'none_ocr', '', 'description'): {
-        "source": 'Not a OCR, just return original text.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Not a OCR, just return original text.'),
-    },
-    ('ocr', 'none_ocr', 'NOTICE', 'display_name'): {
-        "source": 'NOTICE', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'NOTICE'),
-    },
     ('ocr', 'paddle_vl', '', 'description'): {
         "source": '本地部署的 Paddle OCR-VL 服务 (POST /layout-parsing)', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', '本地部署的 Paddle OCR-VL 服务 (POST /layout-parsing)'),
     },

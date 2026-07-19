@@ -1,7 +1,6 @@
 import os
 
 from qtpy.QtCore import (
-    QCoreApplication,
     QEvent,
     QPointF,
     QSize,
@@ -61,12 +60,6 @@ from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 RUN_PIPELINE_DIALOG_WIDTH = 510
 RUN_PIPELINE_SETTING_CONTROL_WIDTH = 100
 RUN_PIPELINE_GLOSSARY_DISPLAY_WIDTH = 100
-
-
-def _pipeline_text(source: str) -> str:
-    # Keep using the existing translation catalog entries after moving the UI
-    # out of MainWindow.
-    return QCoreApplication.translate('MainWindow', source)
 
 
 class DialogCloseButton(QAbstractButton):
@@ -329,11 +322,11 @@ class RunPipelineDialog(QDialog):
         button_row.setSpacing(8)
         button_row.addStretch()
 
-        self.run_button = QPushButton(_pipeline_text('Run'), surface)
+        self.run_button = QPushButton(self.tr('Run'), surface)
         self.run_button.setObjectName('RunPipelinePrimaryButton')
         self.run_button.clicked.connect(lambda: self.done(self.RUN))
 
-        self.continue_button = QPushButton(_pipeline_text('Continue'), surface)
+        self.continue_button = QPushButton(self.tr('Continue'), surface)
         self.continue_button.setObjectName('RunPipelineSecondaryButton')
         self.continue_button.setDefault(True)
         self.continue_button.clicked.connect(lambda: self.done(self.CONTINUE))
