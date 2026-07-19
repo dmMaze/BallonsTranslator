@@ -31,6 +31,30 @@ class TranslateContext:
     Valid = (TextBlock, Page)
 
 
+class LLMTranslateContext:
+    """Canonical LLM translation-context modes stored in module config.
+
+    >>> LLMTranslateContext.HISTORY
+    'history'
+    """
+
+    PAGE = 'page'
+    HISTORY = 'history'
+    Valid = (PAGE, HISTORY)
+
+
+class LLMGlossaryMode:
+    """Canonical glossary selection modes stored in module config.
+
+    >>> LLMGlossaryMode.Matching
+    'matching'
+    """
+
+    Matching = 'matching'
+    All = 'all'
+    Valid = (Matching, All)
+
+
 @nested_dataclass
 class ModuleConfig(Config):
     textdetector: str = 'ctd'
@@ -56,6 +80,10 @@ class ModuleConfig(Config):
     translate_source: str = '日本語'
     translate_target: str = '简体中文'
     translate_context: str = TranslateContext.Page
+    llm_translate_context: str = LLMTranslateContext.PAGE
+    llm_prior_context_token_budget: int = 4096
+    llm_glossary_path: str = ''
+    llm_glossary_mode: str = LLMGlossaryMode.Matching
 
     check_need_inpaint: bool = True
     empty_runcache: bool = False
@@ -138,6 +166,18 @@ class ModuleConfig(Config):
     def __post_init__(self):
         if self.translate_context not in TranslateContext.Valid:
             self.translate_context = TranslateContext.Page
+        if self.llm_translate_context not in LLMTranslateContext.Valid:
+            self.llm_translate_context = LLMTranslateContext.PAGE
+        if not isinstance(self.llm_glossary_path, str):
+            self.llm_glossary_path = ''
+        if self.llm_glossary_mode not in LLMGlossaryMode.Valid:
+            self.llm_glossary_mode = LLMGlossaryMode.Matching
+        if (
+            not isinstance(self.llm_prior_context_token_budget, int)
+            or isinstance(self.llm_prior_context_token_budget, bool)
+            or self.llm_prior_context_token_budget <= 0
+        ):
+            self.llm_prior_context_token_budget = 4096
         if not self.llm_profiles:
             self.llm_profiles = default_profiles()
         else:

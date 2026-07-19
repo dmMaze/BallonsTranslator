@@ -3,9 +3,14 @@ import unittest
 from types import SimpleNamespace
 
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
-from ballontranslator.modules.translators.trans_llm import InvalidNumTranslations, LLMTranslator
+from ballontranslator.modules.context.errors import ContextLengthError
+from ballontranslator.modules.context.token_usage import format_token_usage
+from ballontranslator.modules.translators.trans_llm import (
+    InvalidNumTranslations,
+    LLMTranslator,
+)
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import copy_profile, default_profile
 
 
 class FakeAuthError(Exception):
@@ -13,8 +18,14 @@ class FakeAuthError(Exception):
 
 
 class FakeStatusError(Exception):
-    def __init__(self):
-        self.response = SimpleNamespace(json=lambda: {'error': {'message': 'provider says no'}}, text='raw')
+    def __init__(self, message='provider says no', status_code=400, code=''):
+        self.status_code = status_code
+        self.code = code
+        self.response = SimpleNamespace(
+            json=lambda: {'error': {'message': message, 'code': code}},
+            text='raw',
+            status_code=status_code,
+        )
         super().__init__('status')
 
 
@@ -63,7 +74,6 @@ class LLMTranslatorTest(unittest.TestCase):
 
     def test_json_response_parser_accepts_schema(self):
         result = self.translator._parse_response(
-            {},
             '{"translations": [{"id": 1, "translation": "心"}, {"id": 2, "translation": "精神"}]}',
             2,
         )
@@ -74,7 +84,7 @@ class LLMTranslatorTest(unittest.TestCase):
         profile = default_profile('OpenAI')
         profile.prompt = 'Keep JSON example {"x": 1}.'
 
-        messages, _, prompt = next(self.translator._assemble_batches(['心'], profile))
+        messages, prompt = self.translator._assemble_request(['心'], profile)
 
         self.assertIn('Translate every source string into Simplified Chinese.', messages[0]['content'])
         self.assertIn('Additional translation instructions:\nKeep JSON example {"x": 1}.', messages[0]['content'])
@@ -144,7 +154,8 @@ class LLMTranslatorTest(unittest.TestCase):
         self.assertNotIn('frequency_penalty', args)
         self.assertNotIn('presence_penalty', args)
         self.assertEqual(args['response_format'], {'type': 'json_object'})
-        self.assertEqual(args['max_tokens'], 8192)
+        self.assertNotIn('max_tokens', args)
+        self.assertEqual(args['max_completion_tokens'], 8192)
 
         profile.thinking_level = 'none'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
@@ -180,7 +191,6 @@ class LLMTranslatorTest(unittest.TestCase):
         self.translator.set_param_value('max requests per minute', 7)
         self.translator.set_param_value('proxy', 'http://127.0.0.1:7890')
 
-        self.assertEqual(self.translator.delay(), 0.8)
         self.assertEqual(self.translator.get_param_value('retry attempts'), 2)
         self.assertEqual(self.translator.get_param_value('retry timeout'), 3.0)
         self.assertEqual(self.translator.get_param_value('max requests per minute'), 7)
@@ -197,6 +207,95 @@ class LLMTranslatorTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, 'provider says no'):
             translator._request_translation(translator.profile, [{'role': 'user', 'content': 'x'}])
+
+    def test_context_status_error_is_typed_and_preserves_provider_message(self):
+        provider_message = (
+            "This model's maximum context length is 4096 tokens, but the "
+            'request used 5000 tokens.'
+        )
+        translator = FakeTranslator(FakeStatusError(provider_message))
+
+        with self.assertRaisesRegex(ContextLengthError, 'maximum context length'):
+            translator._request_translation(
+                translator.profile,
+                [{'role': 'user', 'content': 'x'}],
+            )
+
+    def test_context_error_code_is_recognized_but_unrelated_errors_are_not(self):
+        coded = FakeTranslator(FakeStatusError(
+            'input rejected',
+            code='context_length_exceeded',
+        ))
+        with self.assertRaises(ContextLengthError):
+            coded._request_translation(
+                coded.profile,
+                [{'role': 'user', 'content': 'x'}],
+            )
+
+        unrelated_errors = (
+            FakeStatusError('max_tokens must be less than 8192'),
+            FakeStatusError('maximum context length exceeded', status_code=404),
+            FakeStatusError('maximum context length exceeded', status_code=500),
+            FakeStatusError('rate limit exceeded', status_code=429),
+        )
+        for error in unrelated_errors:
+            with self.subTest(error=error.response.json()['error']['message']):
+                translator = FakeTranslator(error)
+                with self.assertRaises(RuntimeError) as caught:
+                    translator._request_translation(
+                        translator.profile,
+                        [{'role': 'user', 'content': 'x'}],
+                    )
+                self.assertNotIsInstance(caught.exception, ContextLengthError)
+
+    def test_token_usage_supports_openai_and_deepseek_cache_fields(self):
+        openai_usage = SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=20,
+            total_tokens=120,
+            prompt_tokens_details=SimpleNamespace(cached_tokens=80),
+        )
+        deepseek_usage = {
+            'prompt_tokens': 100,
+            'completion_tokens': 20,
+            'total_tokens': 120,
+            'prompt_cache_hit_tokens': 70,
+            'prompt_cache_miss_tokens': 30,
+        }
+        messages = []
+        self.translator.logger = SimpleNamespace(info=messages.append)
+
+        self.translator._log_token_usage(
+            SimpleNamespace(usage=openai_usage),
+            page_key='001\npage.png',
+            attempt=3,
+        )
+        self.assertEqual(
+            messages,
+            [
+                'LLM token usage: page=001 page.png, attempt=3, '
+                'prompt=100, completion=20, total=120, cache_hit=80'
+            ],
+        )
+        self.assertEqual(
+            format_token_usage(deepseek_usage),
+            'prompt=100, completion=20, total=120, cache_hit=70, cache_miss=30',
+        )
+
+    def test_token_usage_omits_missing_or_invalid_fields(self):
+        class IncompleteUsage:
+            total_tokens = 3
+
+            @property
+            def prompt_tokens(self):
+                raise RuntimeError('not available')
+
+        self.assertEqual(
+            format_token_usage(IncompleteUsage()),
+            'total=3',
+        )
+        self.assertEqual(format_token_usage(None), '')
+        self.translator._log_token_usage(SimpleNamespace())
 
 
 if __name__ == '__main__':

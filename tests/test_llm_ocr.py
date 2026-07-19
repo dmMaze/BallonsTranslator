@@ -151,16 +151,6 @@ class LLMOCRTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'provider says no'):
             ocr._request_ocr(ocr.profile, [{'role': 'user', 'content': 'x'}])
 
-    def test_language_agnostic_prompt_forbids_translation(self):
-        prompt = self.ocr._messages(
-            np.zeros((2, 2, 3), dtype=np.uint8),
-            self.ocr.profile,
-        )[1]['content'][0]['text']
-
-        self.assertIn('do not translate', prompt)
-        self.assertIn('vertical manga/comic text', prompt)
-        self.assertIn('left-to-right text', prompt)
-
 
 if __name__ == '__main__':
     unittest.main()

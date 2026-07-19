@@ -33,6 +33,50 @@
   - Buscar y reemplazar.
   - Exportación/importación a/desde documentos Word.
 
+* <details>
+  <summary><i>Traducción con LLM sensible al contexto</i></summary>
+
+  **Historial de traducciones**
+
+  - Establezca **LLM Context** en **+history** para que `LLMTranslator` vea ejemplos de páginas anteriores completadas. Esto puede mantener más coherentes los nombres, la terminología y el tono. Las ejecuciones continuadas o por intervalo también pueden usar páginas anteriores aptas.
+  - **Token budget** controla cuánto texto traducido anterior se incluye, dando prioridad a las páginas más recientes. La página actual, las instrucciones, el glosario y la respuesta generada necesitan espacio adicional. El valor predeterminado es `4096`.
+  - Un presupuesto mayor aporta más contexto de la historia y descarta páginas antiguas con menos frecuencia, pero envía más texto y puede tardar más. Los modelos locales también pueden necesitar mucha más RAM/VRAM. El valor predeterminado `4096` es deliberadamente conservador; los proveedores habituales con ventanas de contexto grandes, como DeepSeek, suelen permitir un límite mayor. Cerca del 70 % del límite de contexto del modelo es un límite superior razonable (`90000` para 128K).
+  - El presupuesto del historial también afecta a la caché de prompts. Mientras el historial crece dentro del presupuesto, las solicitudes consecutivas conservan el mismo inicio, que proveedores como OpenAI y DeepSeek pueden reutilizar con un precio reducido por token de entrada y, a veces, menor latencia. Cuando el presupuesto obliga a descartar páginas antiguas, ese inicio cambia y la reutilización de caché se reinicia. Un presupuesto mayor reduce los reinicios, pero envía más historial, por lo que no garantiza un coste total menor.
+
+  La tabla siguiente es una estimación aproximada para páginas de manga usando DeepSeek, donde los tokens de entrada en caché cuestan el 10 % de los tokens de entrada normales. Los resultados reales varían según el proyecto, el modelo y el proveedor.
+
+  | Token budget | Historial estimado conservado (páginas) | Coste total estimado frente a no usar historial |
+  |---:|---:|---:|
+  | `2048` | 3–4 | 1.65× |
+  | `4096` | 6–9 | 1.79× |
+  | `8192` | 12–19 | 2.10× |
+  | `16384` | 23–38 | 2.66× |
+
+  **Glosarios reutilizables**
+
+  - Configure **Glossary File** en el cuadro de diálogo de ejecución con un archivo UTF-8 `.json`, `.txt` o `.tsv`. El archivo es de solo lectura y puede reutilizarse en distintos proyectos.
+  - **Matching** envía únicamente las entradas cuyos términos de origen aparecen en la página correspondiente. **All** envía todas las entradas y puede consumir muchos más tokens.
+  - Los formatos admitidos incluyen:
+
+    ```text
+    # Texto con formato Sakura
+    origen->traducción # nota opcional
+
+    # Texto separado por tabulaciones
+    origen<TAB>traducción<TAB>nota opcional
+    ```
+
+    ```json
+    [
+      {"src": "origen", "dst": "traducción", "info": "nota opcional"}
+    ]
+    ```
+
+  - La coincidencia es literal y no distingue entre mayúsculas y minúsculas. Las entradas en conflicto, los archivos mal formados, los formatos no admitidos y los archivos ausentes detienen la traducción antes de enviar una solicitud al LLM.
+  - El contexto de páginas anteriores y la inserción del glosario solo afectan a `LLMTranslator`; los demás traductores ignoran estos ajustes.
+
+  </details>
+
 ## Instalación
 
 ### En Windows

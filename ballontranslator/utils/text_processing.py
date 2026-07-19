@@ -1,7 +1,11 @@
-from typing import List, Tuple
+from typing import Callable, List, Mapping, Sequence, Tuple
 import json
 import os.path as osp
 import os
+import re
+import traceback
+
+from ballontranslator.utils.logger import logger as LOGGER
 
 HALF2FULL = {i: i + 0xFEE0 for i in range(0x21, 0x7F)}
 HALF2FULL[0x20] = 0x3000
@@ -21,6 +25,47 @@ PKUSEGPATH = r'data/pkusegscores.json'
 PKUSEGSCORES = None
 CHSEG = None
 
+
+def substitute_keywords(
+    text: str,
+    substitutions: Sequence[Mapping],
+) -> str:
+    """Apply the persisted keyword-substitution rule format to one string.
+
+    >>> substitute_keywords('Hero and hero', [{
+    ...     'keyword': 'Hero', 'sub': 'Champion',
+    ...     'use_reg': False, 'case_sens': True,
+    ... }])
+    'Champion and hero'
+    >>> substitute_keywords('Hero returns', [{
+    ...     'keyword': 'hero', 'sub': 'Champion',
+    ...     'use_reg': False, 'case_sens': False,
+    ... }])
+    'Champion returns'
+    """
+
+    for index, substitution in enumerate(substitutions):
+        keyword = substitution['keyword']
+        if keyword == '':
+            continue
+
+        pattern = keyword
+        # Preserve the editor's regex, multiline, and case-sensitivity semantics.
+        flags = re.DOTALL
+        if not substitution['case_sens']:
+            flags |= re.IGNORECASE
+        if not substitution['use_reg']:
+            pattern = re.escape(pattern)
+        try:
+            text = re.sub(pattern, substitution['sub'], text, flags=flags)
+        except Exception:
+            LOGGER.error(
+                f'Invalid regex expression {pattern} at {index + 1}:'
+            )
+            LOGGER.error(traceback.format_exc())
+    return text
+
+
 def full_len(s: str):
     """
     Convert all ASCII characters to their full-width counterpart.
@@ -33,6 +78,38 @@ def half_len(s):
     Convert full-width characters to ASCII counterpart
     '''
     return s.translate(FULL2HALF)
+
+
+def finalize_translation_text(
+    text: str,
+    source_language: str,
+    target_language: str,
+    substitute: Callable[[str], str] = None,
+    uppercase: bool = False,
+) -> str:
+    """Apply pure text finalization before translation completion is recorded.
+
+    >>> finalize_translation_text('Ａ! B', 'English', '简体中文')
+    'A!B'
+    >>> finalize_translation_text('ａｂｃ', '日本語', 'English', str.upper)
+    'ABC'
+    """
+    source_is_cjk = source_language in LANGSET_CJK
+    target_is_cjk = target_language in LANGSET_CJK
+    if target_is_cjk:
+        if source_is_cjk:
+            text = full_len(text)
+        else:
+            text = half_len(text)
+            text = re.sub(r'([?.!"])\s+', r'\1', text)
+    else:
+        text = half_len(text)
+
+    if substitute is not None:
+        text = substitute(text)
+    if uppercase:
+        text = text.upper()
+    return text
 
 def seg_to_chars(text: str) -> List[str]:
     text = text.replace('\n', '')

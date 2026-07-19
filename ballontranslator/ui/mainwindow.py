@@ -12,7 +12,7 @@ from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QTimer
 from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QPainter, QClipboard
 
 from ballontranslator.utils.logger import logger as LOGGER
-from ballontranslator.utils.text_processing import is_cjk, full_len, half_len
+from ballontranslator.utils.text_processing import is_cjk
 from ballontranslator.utils.textblock import TextBlock, TextAlignment
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
@@ -76,7 +76,6 @@ class MainWindow(mainwindow_cls):
     save_on_page_changed = True
     opening_dir = False
     page_changing = False
-    postprocess_mt_toggle = True
 
     translator = None
 
@@ -397,10 +396,14 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
 
         self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
-        module_manager.finish_translate_page.connect(self.finishTranslatePage)
         module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         module_manager.page_trans_finished.connect(self.on_pagtrans_finished)
-        module_manager.setupThread(self.configPanel, self.imgtrans_progress_msgbox, self.ocr_postprocess, self.translate_preprocess, self.translate_postprocess, parent_widget=self)
+        module_manager.setupThread(
+            self.configPanel,
+            self.imgtrans_progress_msgbox,
+            self.ocr_postprocess,
+            parent_widget=self,
+        )
         module_manager.module_selection_changed.connect(self.on_module_selection_changed)
         module_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         # Preparation and RUN dialogs share placement so the first RUN is stable.
@@ -1474,25 +1477,27 @@ class MainWindow(mainwindow_cls):
         for blkitem in blkitem_list:
             blk: TextBlock = blkitem.blk
             blk._bounding_rect = blkitem.absBoundingRect()
-            blk.text = self.st_manager.pairwidget_list[blkitem.idx].e_source.toPlainText()
+            blk.text = self.st_manager.pairwidget_list[
+                blkitem.idx
+            ].e_source.toPlainText()
             blk_ids.append(blkitem.idx)
             blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
             blk_list.append(blk)
 
-        self.module_manager.runBlktransPipeline(blk_list, mode, blk_ids)
+        page_key = self.imgtrans_proj.current_img
+        self.module_manager.runBlktransPipeline(
+            blk_list,
+            mode,
+            blk_ids,
+            page_key=page_key,
+        )
         return True
-
-
-    def finishTranslatePage(self, page_key):
-        if page_key == self.imgtrans_proj.current_img:
-            self.st_manager.updateTranslation()
 
     def on_imgtrans_pipeline_finished(self):
         self.backup_blkstyles.clear()
         self._run_imgtrans_wo_textstyle_update = False
         self._render_only = False
         self._render_global_format = None
-        self.postprocess_mt_toggle = True
         if pcfg.module.empty_runcache and not shared.HEADLESS:
             self.module_manager.unload_all_models()
         if shared.args.export_translation_txt:
@@ -1503,26 +1508,11 @@ class MainWindow(mainwindow_cls):
             self.run_next_dir()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
-        src_is_cjk = is_cjk(pcfg.module.translate_source)
-        tgt_is_cjk = is_cjk(pcfg.module.translate_target)
-        if tgt_is_cjk:
-            for blk in blk_list:
-                if src_is_cjk:
-                    blk.translation = full_len(blk.translation)
-                else:
-                    blk.translation = half_len(blk.translation)
-                    blk.translation = re.sub(r'([?.!"])\s+', r'\1', blk.translation)    # remove spaces following punctuations
-        else:
+        if not is_cjk(pcfg.module.translate_target):
             for blk in blk_list:
                 if blk.vertical:
                     blk.alignment = TextAlignment.Center
-                blk.translation = half_len(blk.translation)
                 blk.vertical = False
-
-        for blk in blk_list:
-            blk.translation = self.mtSubWidget.sub_text(blk.translation)
-            if pcfg.let_uppercase_flag:
-                blk.translation = blk.translation.upper()
 
     def on_pagtrans_finished(self, page_index: int):
         blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
@@ -1711,8 +1701,6 @@ class MainWindow(mainwindow_cls):
 
         if self.bottomBar.textblockChecker.isChecked():
             self.bottomBar.textblockChecker.click()
-        self.postprocess_mt_toggle = False
-
         enable_detect = pcfg.module.enable_detect and not render_only
         enable_ocr = pcfg.module.enable_ocr and not render_only
         enable_translate = pcfg.module.enable_translate and not render_only
@@ -1862,7 +1850,10 @@ class MainWindow(mainwindow_cls):
             if not osp.exists(selected_file):
                 return
 
-            all_matched, match_rst = self.imgtrans_proj.load_translation_from_txt(selected_file)
+            all_matched, match_rst = self.imgtrans_proj.load_translation_from_txt(
+                selected_file,
+                target_language=pcfg.module.translate_target,
+            )
             matched_pages = match_rst['matched_pages']
 
             if self.imgtrans_proj.current_img in matched_pages:
@@ -1959,28 +1950,24 @@ class MainWindow(mainwindow_cls):
         except Exception:
             pass
 
-    def translate_preprocess(self, translations: List[str] = None, textblocks: List[TextBlock] = None, translator = None, source_text:list = []):
-        for i in range(len(source_text)):
-            source_text[i] = self.mtPreSubWidget.sub_text(source_text[i])
-
-    def translate_postprocess(self, translations: List[str] = None, textblocks: List[TextBlock] = None, translator = None):
-        if not self.postprocess_mt_toggle:
-            return
-        
-        for ii, tr in enumerate(translations):
-            translations[ii] = self.mtSubWidget.sub_text(tr)
-
     def on_copy_src(self):
         blks = self.canvas.selected_text_items()
         if len(blks) == 0:
             return
-        
-        if self.module_manager.translator is not None and hasattr(self.module_manager.translator, 'build_copy_prompt'):
-            src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText() for blk in blks]
-            src_txt = self.module_manager.translator.build_copy_prompt(src_list)
-        else:
-            src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText().strip().replace('\n', ' ') for blk in blks]
-            src_txt = '\n'.join(src_list)
+
+        try:
+            if self.module_manager.translator is not None and hasattr(self.module_manager.translator, 'build_copy_prompt'):
+                src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText() for blk in blks]
+                src_txt = self.module_manager.translator.build_copy_prompt(src_list)
+            else:
+                src_list = [self.st_manager.pairwidget_list[blk.idx].e_source.toPlainText().strip().replace('\n', ' ') for blk in blks]
+                src_txt = '\n'.join(src_list)
+        except Exception as e:
+            create_error_dialog(
+                e,
+                self.tr('Failed to copy source text'),
+            )
+            return
 
         self.st_manager.app_clipborad.setText(src_txt, QClipboard.Mode.Clipboard)
 

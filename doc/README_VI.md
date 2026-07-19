@@ -30,6 +30,50 @@
   - Hỗ trợ Tìm kiếm & Thay thế
   - Hỗ trợ cả import từ dạng word hoặc export ra dạng đó nữa
 
+* <details>
+  <summary><i>Dịch bằng LLM có nhận biết ngữ cảnh</i></summary>
+
+  **Lịch sử bản dịch**
+
+  - Đặt **LLM Context** thành **+history** để cho `LLMTranslator` xem ví dụ từ các trang trước đã hoàn thành. Điều này giúp tên, thuật ngữ và giọng điệu nhất quán hơn. Khi tiếp tục hoặc dịch một phạm vi, các trang đủ điều kiện trước đó cũng có thể được dùng.
+  - **Token budget** kiểm soát lượng văn bản dịch trước đó được đưa vào và ưu tiên các trang mới hơn. Trang hiện tại, chỉ dẫn, bảng thuật ngữ và phản hồi được tạo cần thêm không gian. Mặc định là `4096`.
+  - Ngân sách lớn hơn cung cấp nhiều ngữ cảnh câu chuyện hơn và ít loại bỏ trang cũ hơn, nhưng gửi nhiều văn bản hơn và có thể chậm hơn. Mô hình cục bộ cũng có thể cần nhiều RAM/VRAM hơn đáng kể. Mặc định `4096` được cố ý đặt ở mức thận trọng; các nhà cung cấp phổ biến có cửa sổ ngữ cảnh lớn như DeepSeek thường có thể dùng giới hạn cao hơn. Khoảng 70% giới hạn ngữ cảnh của mô hình là mức trần hợp lý (`90000` cho 128K).
+  - Ngân sách lịch sử cũng ảnh hưởng đến bộ nhớ đệm lời nhắc. Khi lịch sử tăng trong giới hạn ngân sách, các yêu cầu liên tiếp giữ nguyên phần đầu để nhà cung cấp như OpenAI và DeepSeek có thể tái sử dụng với giá token đầu vào thấp hơn và đôi khi giảm độ trễ. Khi ngân sách buộc phải loại bỏ trang cũ, phần đầu đó thay đổi và việc tái sử dụng bộ nhớ đệm được đặt lại. Ngân sách lớn hơn giúp giảm số lần đặt lại nhưng gửi nhiều lịch sử hơn, nên không đảm bảo tổng chi phí thấp hơn.
+
+  Bảng dưới đây là ước tính sơ bộ cho các trang manga khi dùng DeepSeek, trong đó token đầu vào đã lưu đệm có giá bằng 10% token đầu vào thông thường. Kết quả thực tế thay đổi theo dự án, mô hình và nhà cung cấp.
+
+  | Token budget | Lịch sử ước tính được giữ lại (trang) | Tổng chi phí ước tính so với không dùng lịch sử |
+  |---:|---:|---:|
+  | `2048` | 3–4 | 1.65× |
+  | `4096` | 6–9 | 1.79× |
+  | `8192` | 12–19 | 2.10× |
+  | `16384` | 23–38 | 2.66× |
+
+  **Bảng thuật ngữ có thể tái sử dụng**
+
+  - Đặt **Glossary File** trong hộp thoại Run thành một tệp UTF-8 `.json`, `.txt` hoặc `.tsv`. Tệp chỉ được đọc và có thể tái sử dụng trong nhiều dự án.
+  - **Matching** chỉ gửi các mục có thuật ngữ nguồn xuất hiện trên trang liên quan. **All** gửi mọi mục và có thể sử dụng nhiều token hơn đáng kể.
+  - Các định dạng được hỗ trợ gồm:
+
+    ```text
+    # Văn bản kiểu Sakura
+    nguồn->bản dịch # ghi chú tùy chọn
+
+    # Văn bản phân tách bằng tab
+    nguồn<TAB>bản dịch<TAB>ghi chú tùy chọn
+    ```
+
+    ```json
+    [
+      {"src": "nguồn", "dst": "bản dịch", "info": "ghi chú tùy chọn"}
+    ]
+    ```
+
+  - Việc đối chiếu là đối chiếu theo nghĩa đen và không phân biệt chữ hoa chữ thường. Các mục xung đột, tệp sai định dạng, định dạng không được hỗ trợ và tệp bị thiếu sẽ dừng quá trình dịch trước khi gửi yêu cầu đến LLM.
+  - Ngữ cảnh từ các trang trước và việc chèn bảng thuật ngữ chỉ áp dụng cho `LLMTranslator`; các trình dịch khác bỏ qua những cài đặt này.
+
+  </details>
+
 # Cài đặt
 
 ## Trên Windows

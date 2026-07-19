@@ -39,6 +39,50 @@ Prend en charge l’export/import vers/depuis des documents Word
   - Prend en charge rechercher & remplacer
   - Prend en charge l’export/import vers/depuis des documents Word
 
+* <details>
+  <summary><i>Traduction LLM sensible au contexte</i></summary>
+
+  **Historique des traductions**
+
+  - Réglez **LLM Context** sur **+history** pour montrer à `LLMTranslator` des exemples tirés des pages antérieures terminées. Cela peut améliorer la cohérence des noms, de la terminologie et du ton. Les reprises et plages sélectionnées peuvent aussi utiliser les pages antérieures admissibles.
+  - **Token budget** contrôle la quantité de texte traduit antérieur incluse, en privilégiant les pages récentes. La page actuelle, les instructions, le glossaire et la réponse générée nécessitent de l’espace supplémentaire. La valeur par défaut est `4096`.
+  - Un budget plus élevé fournit davantage de contexte narratif et supprime moins souvent les anciennes pages, mais envoie plus de texte et peut être plus lent. Les modèles locaux peuvent aussi nécessiter beaucoup plus de RAM/VRAM. La valeur par défaut `4096` est volontairement prudente ; les fournisseurs courants dotés d’une grande fenêtre de contexte, comme DeepSeek, acceptent souvent une limite supérieure. Environ 70 % de la limite de contexte du modèle constitue une limite supérieure raisonnable (`90000` pour 128K).
+  - Le budget de l’historique influe aussi sur le cache de prompts. Tant que l’historique augmente sans dépasser ce budget, les requêtes consécutives gardent le même début, que des fournisseurs comme OpenAI et DeepSeek peuvent réutiliser à un tarif réduit par jeton d’entrée et parfois avec moins de latence. Lorsque le budget impose de supprimer d’anciennes pages, ce début change et la réutilisation du cache est réinitialisée. Un budget plus élevé réduit ces réinitialisations, mais envoie davantage d’historique et ne garantit donc pas un coût total inférieur.
+
+  Le tableau ci-dessous donne une estimation approximative pour des pages de manga avec DeepSeek, où les jetons d’entrée mis en cache coûtent 10 % du prix des jetons d’entrée ordinaires. Les résultats réels varient selon le projet, le modèle et le fournisseur.
+
+  | Token budget | Historique conservé estimé (pages) | Coût total estimé par rapport à l’absence d’historique |
+  |---:|---:|---:|
+  | `2048` | 3–4 | 1.65× |
+  | `4096` | 6–9 | 1.79× |
+  | `8192` | 12–19 | 2.10× |
+  | `16384` | 23–38 | 2.66× |
+
+  **Glossaires réutilisables**
+
+  - Définissez **Glossary File** dans la boîte de dialogue d’exécution sur un fichier UTF-8 `.json`, `.txt` ou `.tsv`. Ce fichier est en lecture seule et peut être réutilisé dans plusieurs projets.
+  - **Matching** envoie uniquement les entrées dont les termes sources figurent sur la page concernée. **All** envoie toutes les entrées et peut consommer beaucoup plus de jetons.
+  - Les formats pris en charge comprennent :
+
+    ```text
+    # Texte au format Sakura
+    source->traduction # note facultative
+
+    # Texte séparé par des tabulations
+    source<TAB>traduction<TAB>note facultative
+    ```
+
+    ```json
+    [
+      {"src": "source", "dst": "traduction", "info": "note facultative"}
+    ]
+    ```
+
+  - La correspondance est littérale et insensible à la casse. Les entrées conflictuelles, les fichiers mal formés, les formats non pris en charge et les fichiers manquants interrompent la traduction avant l’envoi d’une requête au LLM.
+  - Le contexte des pages antérieures et l’injection du glossaire ne concernent que `LLMTranslator` ; les autres traducteurs ignorent ces paramètres.
+
+  </details>
+
 # Installation
 
 ## Sous Windows

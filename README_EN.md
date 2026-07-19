@@ -33,6 +33,50 @@
   - Support search & replace
   - Support export/import to/from word documents
 
+* <details>
+  <summary><i>Context-aware LLM translation</i></summary>
+
+  **Translation history**
+
+  - Set **LLM Context** to **+history** to show `LLMTranslator` examples from earlier completed pages. This can keep names, terminology, and tone more consistent. Continue and selected-range runs can also use eligible earlier pages.
+  - **Token budget** controls how much earlier translated text is included. Newer pages are kept first. The current page, instructions, glossary, and generated reply need additional space. The default is `4096`.
+  - A larger budget gives the model more story context and drops old pages less often, but sends more input and may take longer. Local models may also need substantially more RAM/VRAM. The `4096` default is deliberately conservative; mainstream providers with large context windows, such as DeepSeek, can often use a higher limit. About 70% of the model's context limit is a reasonable upper bound (`90000` for a 128K model).
+  - The history budget also affects prompt caching. While history grows within the budget, consecutive requests keep the same beginning; OpenAI and DeepSeek can reuse these input tokens at a discount and may respond faster. Dropping old pages changes the beginning and resets the cache. A larger budget means fewer resets but sends more history, so it is not guaranteed to cost less.
+
+  The table below is a rough manga-page example using DeepSeek, where cached input tokens cost 10% of regular input tokens. Actual results vary by project, model, and provider.
+
+  | Token budget | Estimated history kept (pages) | Estimated total cost vs. no history |
+  |---:|---:|---:|
+  | `2048` | 3–4 | 1.65× |
+  | `4096` | 6–9 | 1.79× |
+  | `8192` | 12–19 | 2.10× |
+  | `16384` | 23–38 | 2.66× |
+
+  **Reusable glossaries**
+
+  - Set **Glossary File** in the Run dialog to a UTF-8 `.json`, `.txt`, or `.tsv` file. The file is read-only and can be reused across projects.
+  - **Matching** sends only entries whose source terms occur on the relevant page. **All** sends every entry and may use considerably more tokens.
+  - Supported formats include:
+
+    ```text
+    # Sakura-style text
+    source->translation # optional note
+
+    # Tab-separated text
+    source<TAB>translation<TAB>optional note
+    ```
+
+    ```json
+    [
+      {"src": "source", "dst": "translation", "info": "optional note"}
+    ]
+    ```
+
+  - Matching is case-insensitive and literal. Conflicting entries, malformed files, unsupported formats, and missing files stop the translation before an LLM request is sent.
+  - Prior-page context and glossary injection affect only `LLMTranslator`; other translators ignore these settings.
+
+  </details>
+
 # Installation
 
 ## On Windows

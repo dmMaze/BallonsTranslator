@@ -20,6 +20,12 @@ VISION_DETAIL_LEVEL_OPTIONS = ["None", "auto", "low", "high"]
 PROVIDER_ALIASES = {
     "Google": "Gemini",
 }
+OPENAI_MAX_TOKENS_MODELS = frozenset({
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-4o",
+    "gpt-4o-mini",
+})
 
 PROVIDER_DEFAULTS = {
     "OpenAI": {
@@ -193,6 +199,33 @@ class LLMProfile(Config):
 
     def to_dict(self) -> Dict:
         return copy.deepcopy(self.__dict__)
+
+
+def completion_token_limit_args(profile: LLMProfile, model: str) -> Dict[str, int]:
+    """Map the provider-neutral token limit to the chat API's wire key.
+
+    Native OpenAI models default to ``max_completion_tokens`` so future model
+    names do not need version-pattern guesses. Only explicitly listed older
+    models and compatibility endpoints retain ``max_tokens``.
+
+    Example:
+        >>> profile = LLMProfile.from_provider('OpenAI')
+        >>> completion_token_limit_args(profile, 'gpt-5.5')
+        {'max_completion_tokens': 8192}
+        >>> completion_token_limit_args(profile, 'gpt-4o')
+        {'max_tokens': 8192}
+    """
+
+    base_url = _normal_url(profile.base_url)
+    openai_base_url = _normal_url(PROVIDER_DEFAULTS["OpenAI"]["base_url"])
+    model_name = str(model or "").rsplit("/", 1)[-1].lower()
+    is_native_openai = not base_url or base_url == openai_base_url
+    api_key = (
+        "max_completion_tokens"
+        if is_native_openai and model_name not in OPENAI_MAX_TOKENS_MODELS
+        else "max_tokens"
+    )
+    return {api_key: int(profile.max_tokens)}
 
 
 def profile_from_config(profile: Any) -> LLMProfile:

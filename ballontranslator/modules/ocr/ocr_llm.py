@@ -5,10 +5,17 @@ from typing import Dict, List
 import cv2
 import numpy as np
 
+from ..context.errors import provider_error_message
 from .base import OCRBase, register_OCR
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLMProfile, profile_by_id, profile_from_config, resolve_api_key
+from ballontranslator.utils.llm_profiles import (
+    LLMProfile,
+    completion_token_limit_args,
+    profile_by_id,
+    profile_from_config,
+    resolve_api_key,
+)
 
 DEFAULT_OCR_SYSTEM_PROMPT = (
     "You are an OCR engine for comic and manga image crops. Your job is to recognize visible text only. "
@@ -178,25 +185,6 @@ class LLMOCR(OCRBase):
         self.request_count_minute += 1
 
     @staticmethod
-    def _status_error_message(error) -> str:
-        response = getattr(error, 'response', None)
-        if response is not None:
-            try:
-                data = response.json()
-                if isinstance(data, dict):
-                    err = data.get('error')
-                    if isinstance(err, dict) and err.get('message'):
-                        return str(err['message'])
-                    if data.get('message'):
-                        return str(data['message'])
-            except Exception:
-                pass
-            text = getattr(response, 'text', '')
-            if text:
-                return str(text)
-        return str(error)
-
-    @staticmethod
     def _normalized_text(text: str) -> str:
         return ' '.join(str(text or '').replace('\r', '\n').split()).strip()
 
@@ -228,13 +216,14 @@ class LLMOCR(OCRBase):
 
     def _api_args(self, profile: LLMProfile, messages: List[Dict]):
         model = self._vision_model(profile)
-        return {
+        api_args = {
             "model": model,
             "messages": messages,
             "temperature": float(profile.temperature),
             "top_p": float(profile.top_p),
-            "max_tokens": int(profile.max_tokens),
         }
+        api_args.update(completion_token_limit_args(profile, model))
+        return api_args
 
     def _request_ocr(self, profile: LLMProfile, messages: List[Dict]) -> str:
         openai = self._openai_module()
@@ -245,7 +234,7 @@ class LLMOCR(OCRBase):
         except getattr(openai, 'AuthenticationError') as e:
             raise LLMApiKeyRequiredError(profile.id, profile.name) from e
         except getattr(openai, 'APIStatusError') as e:
-            raise RuntimeError(self._status_error_message(e)) from e
+            raise RuntimeError(provider_error_message(e)) from e
 
         if getattr(completion, 'usage', None) is not None:
             self.token_count += completion.usage.total_tokens

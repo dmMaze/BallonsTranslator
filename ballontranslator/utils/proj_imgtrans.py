@@ -102,6 +102,7 @@ class TextBlkEncoder(NumpyEncoder):
 class ProjImgTrans:
 
     def __init__(self, directory: str = None):
+        self._load_identity = object()
         self.type = 'imgtrans'
         self.directory: str = None
         self.pages: Dict[str, List[TextBlock]] = {}
@@ -121,6 +122,16 @@ class ProjImgTrans:
         self.inpainted_array: np.ndarray = None
         if directory is not None:
             self.load(directory)
+
+    @property
+    def load_identity(self):
+        """Return the opaque identity of the currently loaded project contents.
+
+        >>> project = ProjImgTrans()
+        >>> project.load_identity is project.load_identity
+        True
+        """
+        return self._load_identity
 
     def idx2pagename(self, idx: int) -> str:
         return self._idx2pagename[idx]
@@ -221,6 +232,7 @@ class ProjImgTrans:
         if set_img_failed:
             if len(self.pages) > 0:
                 self.set_current_img_byidx(0)
+        self._load_identity = object()
 
     def get_page_progress(self, pagename: str):
         fin_code = self._image_info[pagename]['finish_code']
@@ -228,14 +240,33 @@ class ProjImgTrans:
 
     def set_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] = code
+        if not (code & RunStatus.FIN_TRANSLATE):
+            self._image_info[pagename].pop('translation_target', None)
 
     def clear_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] &= ~code
+        if code & RunStatus.FIN_TRANSLATE:
+            self._image_info[pagename].pop('translation_target', None)
 
     def update_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] |= code
 
-    def load_translation_from_txt(self, file_path: str):
+    def invalidate_translation(self, page_key):
+        self.clear_page_progress(page_key, RunStatus.FIN_TRANSLATE)
+
+    def begin_detection(self, page_key):
+        """Invalidate translation before detection can replace page blocks."""
+        self.invalidate_translation(page_key)
+
+    def begin_full_page_translation(self, page_key):
+        """Invalidate old completion until a full translation succeeds."""
+        self.invalidate_translation(page_key)
+
+    def mark_translation_finished(self, page_key, target_language):
+        self.update_page_progress(page_key, RunStatus.FIN_TRANSLATE)
+        self._image_info[page_key]['translation_target'] = target_language
+
+    def load_translation_from_txt(self, file_path: str, target_language=None):
         page_list = parse_txt_translation(file_path)
         missing_pages = []
         unmatched_pages = []
@@ -271,9 +302,18 @@ class ProjImgTrans:
             and len(unmatched_pages) == 0
             and len(unexpected_pages) == 0
         )
-        if all_matched:
-            for page_name in matched_pages:
+        unmatched_page_set = set(unmatched_pages)
+        for page_name in matched_pages - unmatched_page_set:
+            if target_language is None:
                 self.update_page_progress(page_name, RunStatus.FIN_TRANSLATE)
+                self._image_info[page_name].pop('translation_target', None)
+            else:
+                self.mark_translation_finished(page_name, target_language)
+
+        # Completion is page-specific: malformed imported pages are invalidated,
+        # while project pages absent from the import retain their existing state.
+        for page_name in unmatched_page_set:
+            self.clear_page_progress(page_name, RunStatus.FIN_TRANSLATE)
         return all_matched, {
             'missing_pages': missing_pages,
             'unmatched_pages': unmatched_pages,
@@ -353,6 +393,7 @@ class ProjImgTrans:
             self._image_info[imgname] = {'finish_code': 0}
         self.set_current_img_byidx(0)
         self.save()
+        self._load_identity = object()
         
     def save(self, keep_exist_as_backup=False):
         if not osp.exists(self.directory):
@@ -368,7 +409,7 @@ class ProjImgTrans:
             os.replace(tmp_save_tgt, self.proj_path)
         else:
             os.replace(tmp_save_tgt, self.proj_path)
-        LOGGER.debug(f'project saved to {self.proj_path}')
+        LOGGER.debug(f'project saved')
 
     def to_dict(self) -> Dict:
         pages = self.pages.copy()

@@ -831,30 +831,57 @@ QLabel#RunPipelineSettingLabel {
     font-size: 12px;
 }
 
-QComboBox#RunPipelineSourceComboBox,
-QComboBox#RunPipelineTargetComboBox,
-QComboBox#RunPipelineContextComboBox {
-    min-height: 24px;
-    font-size: 13px;
+QComboBox[bottomBorderSelector="true"] {
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
     border: none;
     border-bottom: 1px solid @borderColor;
-    border-radius: 4px;
-    padding-left: 6px;
+    border-radius: 0px;
+    padding-left: 4px;
 }
 
-QComboBox#RunPipelineSourceComboBox:hover,
-QComboBox#RunPipelineSourceComboBox:focus,
-QComboBox#RunPipelineTargetComboBox:hover,
-QComboBox#RunPipelineTargetComboBox:focus,
-QComboBox#RunPipelineContextComboBox:hover,
-QComboBox#RunPipelineContextComboBox:focus {
+QComboBox[bottomBorderSelector="true"]:hover,
+QComboBox[bottomBorderSelector="true"]:focus {
+    border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
-QComboBox#RunPipelineSourceComboBox::drop-down,
-QComboBox#RunPipelineTargetComboBox::drop-down,
-QComboBox#RunPipelineContextComboBox::drop-down {
+QComboBox[bottomBorderSelector="true"]::drop-down {
+    width: 20px;
     border: none;
+}
+
+QComboBox[bottomBorderSelector="true"]::down-arrow {
+    width: 0px;
+    height: 0px;
+    image: none;
+}
+
+QComboBox#RunPipelineSourceComboBox,
+QComboBox#RunPipelineTargetComboBox,
+QComboBox#RunPipelineContextComboBox,
+QComboBox#RunPipelineLLMContextComboBox,
+QComboBox#RunPipelineGlossaryModeComboBox,
+QLineEdit#RunPipelineGlossaryPath {
+    height: 20px;
+    min-height: 20px;
+    max-height: 20px;
+    font-size: 12px;
+}
+
+QLineEdit#RunPipelineGlossaryPath {
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    padding-left: 4px;
+}
+
+QLineEdit#RunPipelineGlossaryPath:hover,
+QLineEdit#RunPipelineGlossaryPath:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
 }
 
 QWidget#RunPipelineSettingsSection QPushButton {
@@ -862,12 +889,29 @@ QWidget#RunPipelineSettingsSection QPushButton {
     border-radius: 4px;
 }
 
+QWidget#RunPipelineSettingsSection QPushButton#RunPipelineGlossaryFileButton {
+    min-width: 22px;
+    max-width: 22px;
+    min-height: 20px;
+    max-height: 20px;
+    height: 20px;
+    padding: 0px;
+    border: none;
+    background-color: transparent;
+}
+
+QWidget#RunPipelineSettingsSection QPushButton#RunPipelineGlossaryFileButton:hover {
+    background-color: rgba(30, 147, 229, 20%);
+    border: none;
+}
+
 QWidget#RunPipelineSettingsSection QCheckBox {
     font-size: 13px;
 }
 
 QSpinBox#RunPipelineRangeStart,
-QSpinBox#RunPipelineRangeEnd {
+QSpinBox#RunPipelineRangeEnd,
+QSpinBox#RunPipelinePriorContextTokenBudget {
     min-height: 24px;
     max-height: 24px;
     padding-left: 8px;
@@ -883,7 +927,9 @@ QSpinBox#RunPipelineRangeEnd {
 QSpinBox#RunPipelineRangeStart:hover,
 QSpinBox#RunPipelineRangeStart:focus,
 QSpinBox#RunPipelineRangeEnd:hover,
-QSpinBox#RunPipelineRangeEnd:focus {
+QSpinBox#RunPipelineRangeEnd:focus,
+QSpinBox#RunPipelinePriorContextTokenBudget:hover,
+QSpinBox#RunPipelinePriorContextTokenBudget:focus {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
@@ -891,7 +937,9 @@ QSpinBox#RunPipelineRangeEnd:focus {
 QSpinBox#RunPipelineRangeStart::up-button,
 QSpinBox#RunPipelineRangeStart::down-button,
 QSpinBox#RunPipelineRangeEnd::up-button,
-QSpinBox#RunPipelineRangeEnd::down-button {
+QSpinBox#RunPipelineRangeEnd::down-button,
+QSpinBox#RunPipelinePriorContextTokenBudget::up-button,
+QSpinBox#RunPipelinePriorContextTokenBudget::down-button {
     width: 0px;
     height: 0px;
     border: none;
