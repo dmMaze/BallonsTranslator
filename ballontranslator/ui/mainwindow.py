@@ -28,6 +28,7 @@ from ballontranslator.utils.config import (
     save_text_styles,
     text_styles,
 )
+from ballontranslator.utils.fontformat import normalize_text_transform
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -70,6 +71,27 @@ class PageListView(QListWidget):
         return super().contextMenuEvent(e)
 
 mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
+
+
+def _apply_global_text_transforms(block: TextBlock, global_format: FontFormat) -> bool:
+    """Copy the normalized global transform quartet as one model update."""
+    target = normalize_text_transform(
+        global_format.horizontal_scale,
+        global_format.vertical_scale,
+        global_format.slant_angle,
+        global_format.glyph_slant_angle,
+    )
+    if block.fontformat.text_transform == target:
+        return False
+    (
+        block.fontformat.horizontal_scale,
+        block.fontformat.vertical_scale,
+        block.fontformat.slant_angle,
+        block.fontformat.glyph_slant_angle,
+    ) = target
+    return True
+
+
 class MainWindow(mainwindow_cls):
 
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
@@ -749,6 +771,9 @@ class MainWindow(mainwindow_cls):
         save_config()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        # Pending numeric edits are not dirty until they commit. Resolve them
+        # before the close-time dirty check and final config snapshot.
+        self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
         if not self.imgtrans_proj.is_empty:
             self.conditional_save(keep_exist_as_backup=True)
         while True:
@@ -800,6 +825,10 @@ class MainWindow(mainwindow_cls):
         item = self.pageList.currentItem()
         self.page_changing = True
         if item is not None:
+            if not self.opening_dir:
+                # Typed transform edits belong to the old page and must commit
+                # before its dirty check. Live drags are previews and cancel.
+                self.st_manager.formatpanel.resolve_text_transform_edits_for_page_change()
             if self.save_on_page_changed:
                 self.conditional_save()
             self.imgtrans_proj.set_current_img(item.text())
@@ -961,9 +990,11 @@ class MainWindow(mainwindow_cls):
             self.textPanel.formatpanel.formatBtnGroup.underlineBtn.click()
 
     def on_redo(self):
+        self.st_manager.formatpanel.resolve_text_transform_edits_for_history_change()
         self.canvas.redo()
 
     def on_undo(self):
+        self.st_manager.formatpanel.resolve_text_transform_edits_for_history_change()
         self.canvas.undo()
 
     def on_page_search(self):
@@ -1192,6 +1223,17 @@ class MainWindow(mainwindow_cls):
             self.save_on_page_changed = ori_save 
             return
 
+        # This path disables the normal page-change save callback. Commit the
+        # old page's pending transform before its own dirty check, while
+        # suppressing the search-result invalidation normally caused by a new
+        # text undo command during an in-progress replace/rerender operation.
+        page_changing = self.page_changing
+        self.page_changing = True
+        try:
+            self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
+        finally:
+            self.page_changing = page_changing
+
         if current_img not in self.global_search_widget.page_set:
             if self.canvas.projstate_unsaved: 
                 self.saveCurrentPage()
@@ -1264,7 +1306,13 @@ class MainWindow(mainwindow_cls):
         
         if not self.imgtrans_proj.img_valid:
             return
-        
+
+        if update_scene_text or save_proj:
+            # Resolve text-transform editor state before both the canonical
+            # project snapshot and the result-image render consume it. The
+            # render-only translation completion path saves its project first.
+            self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
+
         if restore_interface:
             set_canvas_focus = self.canvas.hasFocus()
             sel_textitem = self.canvas.selected_text_items()
@@ -1586,6 +1634,7 @@ class MainWindow(mainwindow_cls):
                     sw = blk.stroke_width
                     if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
+                    _apply_global_text_transforms(blk, gf)
 
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (enable_detect or enable_translate)

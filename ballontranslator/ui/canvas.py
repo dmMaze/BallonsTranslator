@@ -13,7 +13,11 @@ except:
 
 from .misc import ndarray2pixmap, QKEY, QNUMERIC_KEYS, ARROWKEY2DIRECTION
 from .textitem import TextBlkItem, TextBlock
-from .texteditshapecontrol import TextBlkShapeControl
+from .texteditshapecontrol import (
+    UI_OVERLAY_ITEM_DATA_KEY,
+    TextBlkShapeControl,
+    TextOverlayManager,
+)
 from .custom_widget import ScrollBar, FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
@@ -26,29 +30,36 @@ CANVAS_SCALE_MIN = 0.01
 CANVAS_SCALE_SPEED = 0.1
 
 class MoveByKeyCommand(QUndoCommand):
-    def __init__(self, blkitems: List[TextBlkItem], direction: QPointF, shape_ctrl: TextBlkShapeControl) -> None:
+    def __init__(
+        self,
+        blkitems: List[TextBlkItem],
+        direction: QPointF,
+        overlay_sync=None,
+    ) -> None:
         super().__init__()
         self.blkitems = blkitems
         self.direction = direction
         self.ori_pos_list = []
         self.end_pos_list = []
-        self.shape_ctrl = shape_ctrl
+        self.overlay_sync = overlay_sync
         for blk in blkitems:
-            pos = blk.pos()
+            pos = blk.logical_position()
             self.ori_pos_list.append(pos)
             self.end_pos_list.append(pos + direction)
 
     def undo(self):
         for blk, pos in zip(self.blkitems, self.ori_pos_list):
-            blk.setPos(pos)
-            if blk.under_ctrl and self.shape_ctrl.blk_item == blk:
-                self.shape_ctrl.updateBoundingRect()
+            blk.set_logical_position(pos)
+            blk.oldPos = blk.pos()
+        if self.overlay_sync is not None:
+            self.overlay_sync()
 
     def redo(self):
         for blk, pos in zip(self.blkitems, self.end_pos_list):
-            blk.setPos(pos)
-            if blk.under_ctrl and self.shape_ctrl.blk_item == blk:
-                self.shape_ctrl.updateBoundingRect()
+            blk.set_logical_position(pos)
+            blk.oldPos = blk.pos()
+        if self.overlay_sync is not None:
+            self.overlay_sync()
 
     def mergeWith(self, other: QUndoCommand) -> bool:
         canmerge = self.blkitems == other.blkitems and self.direction == other.direction
@@ -265,6 +276,13 @@ class Canvas(QGraphicsScene):
         self.drawingLayer.setParentItem(self.baseLayer)
         self.textLayer.setParentItem(self.baseLayer)
         self.txtblkShapeControl.setParentItem(self.baseLayer)
+        self.text_overlay_manager = TextOverlayManager(
+            self, self.baseLayer, self.txtblkShapeControl
+        )
+        self._suspend_text_overlay_sync = False
+        self.txtblkShapeControl.overlay_sync_callback = self.sync_text_overlays
+        self.hscroll_bar.valueChanged.connect(self.sync_text_overlays)
+        self.vscroll_bar.valueChanged.connect(self.sync_text_overlays)
 
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
@@ -337,13 +355,21 @@ class Canvas(QGraphicsScene):
     def scaleBy(self, value: float):
         self.scaleImage(value)
 
-    def _set_scene_scale(self, scale: float):
+    def sync_text_overlays(self, *_args):
+        if self._suspend_text_overlay_sync:
+            return
+        manager = getattr(self, 'text_overlay_manager', None)
+        if manager is not None:
+            manager.sync_overlays()
+
+    def _set_scene_scale(self, scale: float, sync_overlays: bool = True):
         self.scale_factor = scale
         self.baseLayer.setScale(scale)
         self.setSceneRect(0, 0, self.baseLayer.sceneBoundingRect().width(), self.baseLayer.sceneBoundingRect().height())
+        if sync_overlays:
+            self.sync_text_overlays()
 
     def render_result_img(self):
-
         self.inpaintLayer.hide()
         tlayer_opacity_before = self.textLayer.opacity()
         tlayer_visible = self.textLayer.isVisible()
@@ -355,38 +381,69 @@ class Canvas(QGraphicsScene):
         if scale_before != 1:
             hb_pos = self.hscroll_bar.value()
             vb_pos = self.vscroll_bar.value()
-            self._set_scene_scale(1)
+            self._set_scene_scale(1.0, sync_overlays=False)
 
-        self.clearSelection()
-        if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
-            blk_item = self.txtblkShapeControl.blk_item
-            if blk_item.is_editting():
-                blk_item.endEdit(keep_focus=False)
-            if blk_item.isSelected():
-                blk_item.setSelected(False)
+        overlay_visibility = {
+            item: item.isVisible()
+            for item in self.items()
+            if bool(item.data(UI_OVERLAY_ITEM_DATA_KEY))
+        }
+        export_effect_items = [
+            item for item in self.items() if isinstance(item, TextBlkItem)
+        ]
+        enabled_export_effect_items = []
+        painter = None
+        try:
+            self.clearSelection()
+            if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
+                blk_item = self.txtblkShapeControl.blk_item
+                if blk_item.is_editting():
+                    blk_item.endEdit(keep_focus=False)
+                if blk_item.isSelected():
+                    blk_item.setSelected(False)
 
-        result = ndarray2pixmap(self.imgtrans_proj.inpainted_array, return_qimg=True)
-        canvas_sz = self.img_window_size()
-        painter = QPainter(result)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            # Selection changes may have lazily acquired another pooled guide.
+            for item in self.items():
+                if bool(item.data(UI_OVERLAY_ITEM_DATA_KEY)):
+                    overlay_visibility.setdefault(item, False)
+                    item.hide()
 
-        rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
-        self.render(painter, rect, rect)   #  produce blurred result if target/source rect not specified #320
-        painter.end()
-        
-        if tlayer_opacity_before != 1:
-            self.textLayer.setOpacity(tlayer_opacity_before)
-        if not tlayer_visible:
-            self.textLayer.hide()
-        if scale_before != 1:
-            self._set_scene_scale(scale_before)
-            if self.hscroll_bar.value() != hb_pos:
-                self.hscroll_bar.setValue(hb_pos)
-            if self.vscroll_bar.value() != vb_pos:
-                self.vscroll_bar.setValue(vb_pos)
-        self.inpaintLayer.show()
+            for item in export_effect_items:
+                enabled_export_effect_items.append(item)
+                item.set_export_effect_render(True)
 
-        return result
+            result = ndarray2pixmap(
+                self.imgtrans_proj.inpainted_array, return_qimg=True
+            )
+            canvas_sz = self.img_window_size()
+            painter = QPainter(result)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
+            # Explicit source/target rectangles avoid the blurred #320 path.
+            self.render(painter, rect, rect)
+            for item in enabled_export_effect_items:
+                if item.export_effect_error is not None:
+                    raise item.export_effect_error
+            return result
+        finally:
+            if painter is not None and painter.isActive():
+                painter.end()
+            for item in enabled_export_effect_items:
+                item.set_export_effect_render(False)
+            if scale_before != 1:
+                self._set_scene_scale(scale_before, sync_overlays=False)
+                if self.hscroll_bar.value() != hb_pos:
+                    self.hscroll_bar.setValue(hb_pos)
+                if self.vscroll_bar.value() != vb_pos:
+                    self.vscroll_bar.setValue(vb_pos)
+            if tlayer_opacity_before != 1:
+                self.textLayer.setOpacity(tlayer_opacity_before)
+            if not tlayer_visible:
+                self.textLayer.hide()
+            self.inpaintLayer.show()
+            for item, was_visible in overlay_visibility.items():
+                if item.scene() is self:
+                    item.setVisible(was_visible)
     
     def updateLayers(self):
         
@@ -434,19 +491,29 @@ class Canvas(QGraphicsScene):
     def scaleImage(self, factor: float):
         if not self.gv.isVisible() or not self.imgtrans_proj.img_valid:
             return
-        s_f = self.scale_factor * factor
-        s_f = np.clip(s_f, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX)
+        self._suspend_text_overlay_sync = True
+        try:
+            s_f = self.scale_factor * factor
+            s_f = np.clip(s_f, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX)
 
-        scale_changed = self.scale_factor != s_f
-        self.scale_factor = s_f
-        self.baseLayer.setScale(self.scale_factor)
-        self.txtblkShapeControl.updateScale(self.scale_factor)
+            scale_changed = self.scale_factor != s_f
+            self.scale_factor = s_f
+            self.baseLayer.setScale(self.scale_factor)
+            self.txtblkShapeControl.updateScale(self.scale_factor)
 
-        if scale_changed:
-            self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
-            self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
-            self.scalefactor_changed.emit()
-        self.setSceneRect(0, 0, self.baseLayer.sceneBoundingRect().width(), self.baseLayer.sceneBoundingRect().height())
+            if scale_changed:
+                self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
+                self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
+                self.scalefactor_changed.emit()
+            self.setSceneRect(
+                0,
+                0,
+                self.baseLayer.sceneBoundingRect().width(),
+                self.baseLayer.sceneBoundingRect().height(),
+            )
+        finally:
+            self._suspend_text_overlay_sync = False
+            self.sync_text_overlays()
 
     def onViewResized(self):
         gv_w, gv_h = self.gv.geometry().width(), self.gv.geometry().height()
@@ -461,6 +528,7 @@ class Canvas(QGraphicsScene):
         pos = self.search_widget.pos()
         pos.setX(x-30)
         self.search_widget.move(pos)
+        self.sync_text_overlays()
         
     def onScaleFactorChanged(self):
         self.scaleFactorLabel.setText(f'{self.scale_factor*100:2.0f}%')
@@ -472,8 +540,11 @@ class Canvas(QGraphicsScene):
             blk_item = self.txtblkShapeControl.blk_item
             if blk_item is not None and blk_item.isEditing():
                 blk_item.endEdit()
-        if self.hasFocus() and not self.block_selection_signal:
+        if self.block_selection_signal:
+            return
+        if self.hasFocus():
             self.incanvas_selection_changed.emit()
+        self.sync_text_overlays()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
@@ -495,7 +566,11 @@ class Canvas(QGraphicsScene):
             sel_blkitems = self.selected_text_items()
             if len(sel_blkitems) > 0:
                 direction = ARROWKEY2DIRECTION[key]
-                cmd = MoveByKeyCommand(sel_blkitems, direction, self.txtblkShapeControl)
+                cmd = MoveByKeyCommand(
+                    sel_blkitems,
+                    direction,
+                    overlay_sync=self.sync_text_overlays,
+                )
                 self.push_undo_command(cmd)
                 event.setAccepted(True)
                 return
@@ -537,6 +612,7 @@ class Canvas(QGraphicsScene):
         if hide_control:
             self.txtblkShapeControl.hideControls()
         self.txtblkShapeControl.show()
+        self.sync_text_overlays()
 
     def endCreateTextblock(self, btn=0):
         self.creating_textblock = False
@@ -551,6 +627,7 @@ class Canvas(QGraphicsScene):
             if rect.width() > 1 and rect.height() > 1:
                 self.end_create_textblock.emit(rect)
                 textblk_created = True
+        self.sync_text_overlays()
         return textblk_created
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
@@ -563,6 +640,7 @@ class Canvas(QGraphicsScene):
             
         elif self.creating_textblock:
             self.txtblkShapeControl.setRect(QRectF(self.create_block_origin, event.scenePos() / self.scale_factor).normalized())
+            self.sync_text_overlays()
         
         elif self.stroke_img_item is not None:
             if self.stroke_img_item.is_painting:
@@ -937,8 +1015,6 @@ class Canvas(QGraphicsScene):
             return
         if undo_stack is not None:
             undo_stack.redo()
-            if undo_stack == self.text_undo_stack:
-                self.txtblkShapeControl.updateBoundingRect()
 
     def undo(self):
         if self.textEditMode():
@@ -955,8 +1031,6 @@ class Canvas(QGraphicsScene):
             return
         if undo_stack is not None:
             undo_stack.undo()
-            if undo_stack == self.text_undo_stack:
-                self.txtblkShapeControl.updateBoundingRect()
 
     def clear_undostack(self, update_saved_step=False):
         if update_saved_step:

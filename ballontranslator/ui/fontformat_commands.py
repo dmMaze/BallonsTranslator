@@ -181,7 +181,13 @@ def ffmt_change_angle(param_name: str, values: float, act_ffmt: FontFormat, is_g
 
     blkitems = [blkitem for blkitem in blkitems if blkitem is not None]
     if len(blkitems) > 0:
-        SW.canvas.push_undo_command(RotateItemCommand(blkitems, values, SW.canvas.txtblkShapeControl))
+        SW.canvas.push_undo_command(
+            RotateItemCommand(
+                blkitems,
+                values,
+                overlay_sync=SW.canvas.sync_text_overlays,
+            )
+        )
 
     if set_focus and not SW.canvas.hasFocus():
         SW.canvas.setFocus()

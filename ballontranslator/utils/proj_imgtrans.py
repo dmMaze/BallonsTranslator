@@ -1,3 +1,5 @@
+import copy
+import math
 import os, json, shutil, re, docx, docx2txt, piexif, cv2
 from docx.shared import Inches
 from docx import Document
@@ -10,6 +12,16 @@ from PIL import Image
 from .logger import logger as LOGGER
 from .io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
 from .textblock import TextBlock, FontFormat
+from .fontformat import (
+    TEXT_TRANSFORM_BOX_SLANT_MAX,
+    TEXT_TRANSFORM_BOX_SLANT_MIN,
+    TEXT_TRANSFORM_GLYPH_SLANT_MAX,
+    TEXT_TRANSFORM_GLYPH_SLANT_MIN,
+    TEXT_TRANSFORM_SCALE_MAX,
+    TEXT_TRANSFORM_SCALE_MIN,
+    TextTransform,
+    normalize_text_transform,
+)
 from .config import pcfg, RunStatus
 from . import shared
 
@@ -24,6 +36,206 @@ class ProjectNotSupportedException(Exception):
 
 class ImgnameNotInProjectException(Exception):
     pass
+
+
+TEXT_TRANSFORM_SCHEMA_VERSION = 2
+_MISSING = object()
+_CANONICAL_TRANSFORM_FIELDS = (
+    'horizontal_scale',
+    'vertical_scale',
+    'slant_angle',
+    'glyph_slant_angle',
+)
+_TRANSFORM_BOUNDS = {
+    'horizontal_scale': (TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX),
+    'vertical_scale': (TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX),
+    'slant_angle': (TEXT_TRANSFORM_BOX_SLANT_MIN, TEXT_TRANSFORM_BOX_SLANT_MAX),
+    'glyph_slant_angle': (
+        TEXT_TRANSFORM_GLYPH_SLANT_MIN,
+        TEXT_TRANSFORM_GLYPH_SLANT_MAX,
+    ),
+}
+_NONCANONICAL_TRANSFORM_FIELDS = (
+    *_CANONICAL_TRANSFORM_FIELDS,
+    'italic_angle',
+    'rich_text_transform_version',
+)
+_INTERMEDIATE_STRETCH_MARKER = 'ballontranslator-logical-stretch-v1:'
+
+
+class TextTransformPayloadError(ValueError):
+    """Base class for project text-transform payload failures."""
+
+
+class UnsupportedTextTransformVersionError(TextTransformPayloadError):
+    pass
+
+
+class InvalidTextTransformPayloadError(TextTransformPayloadError):
+    pass
+
+
+def _payload_version(value, location: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidTextTransformPayloadError(
+            f"{location} must be an integer schema version"
+        )
+    value = float(value)
+    if not math.isfinite(value) or not value.is_integer() or value < 0:
+        raise InvalidTextTransformPayloadError(
+            f"{location} must be an integer schema version"
+        )
+    return int(value)
+
+
+def _payload_number(value, location: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidTextTransformPayloadError(
+            f"{location} must be a finite number"
+        )
+    value = float(value)
+    if not math.isfinite(value):
+        raise InvalidTextTransformPayloadError(
+            f"{location} must be a finite number"
+        )
+    return value
+
+
+def _canonical_v2_block_transform(
+    block: dict,
+    location: str,
+) -> Tuple[TextTransform, dict]:
+    if 'fontformat' not in block or not isinstance(block['fontformat'], dict):
+        raise InvalidTextTransformPayloadError(
+            f"{location}.fontformat must be an object in schema v2"
+        )
+    fontformat = block['fontformat']
+
+    for field_name in _NONCANONICAL_TRANSFORM_FIELDS:
+        if field_name in block:
+            raise InvalidTextTransformPayloadError(
+                f"{location}.{field_name} is not canonical in schema v2"
+            )
+    for field_name in ('italic_angle', 'rich_text_transform_version'):
+        if field_name in fontformat:
+            raise InvalidTextTransformPayloadError(
+                f"{location}.fontformat.{field_name} is not canonical in schema v2"
+            )
+    rich_text = block.get('rich_text')
+    if isinstance(rich_text, str) and _INTERMEDIATE_STRETCH_MARKER in rich_text:
+        raise InvalidTextTransformPayloadError(
+            f"{location}.rich_text contains unsupported intermediate transform metadata"
+        )
+
+    raw = {}
+    for field_name in _CANONICAL_TRANSFORM_FIELDS:
+        if field_name not in fontformat:
+            raise InvalidTextTransformPayloadError(
+                f"{location}.fontformat.{field_name} is required in schema v2"
+            )
+        value = _payload_number(
+            fontformat[field_name], f"{location}.fontformat.{field_name}"
+        )
+        minimum, maximum = _TRANSFORM_BOUNDS[field_name]
+        if value < minimum or value > maximum:
+            raise InvalidTextTransformPayloadError(
+                f"{location}.fontformat.{field_name} is outside "
+                f"the canonical range [{minimum}, {maximum}]"
+            )
+        raw[field_name] = value
+
+    return (
+        normalize_text_transform(
+            raw['horizontal_scale'],
+            raw['vertical_scale'],
+            raw['slant_angle'],
+            raw['glyph_slant_angle'],
+        ),
+        fontformat,
+    )
+
+
+def _official_legacy_fontformat(block: dict, location: str) -> dict:
+    """Validate an upstream block before adding a neutral quartet."""
+    fontformat = block.get('fontformat', {})
+    if fontformat is None:
+        fontformat = {}
+    if not isinstance(fontformat, dict):
+        raise InvalidTextTransformPayloadError(f"{location}.fontformat must be an object")
+
+    for field_name in _NONCANONICAL_TRANSFORM_FIELDS:
+        if field_name in block or field_name in fontformat:
+            raise InvalidTextTransformPayloadError(
+                f"{location} contains unsupported intermediate transform field "
+                f"{field_name}"
+            )
+    rich_text = block.get('rich_text')
+    if isinstance(rich_text, str) and _INTERMEDIATE_STRETCH_MARKER in rich_text:
+        raise InvalidTextTransformPayloadError(
+            f"{location}.rich_text contains unsupported intermediate transform metadata"
+        )
+    return fontformat
+
+
+def migrate_text_transform_payload(proj_dict: dict) -> dict:
+    """Return a canonical schema-v2 copy without mutating the input payload.
+
+    Only official upstream payloads without transform metadata and canonical
+    schema v2 payloads are accepted. Unmerged intermediate formats are rejected.
+
+    >>> migrate_text_transform_payload({'pages': {}})['text_transform_schema_version']
+    2
+    """
+    if not isinstance(proj_dict, dict):
+        raise InvalidTextTransformPayloadError("project payload must be an object")
+
+    migrated = copy.deepcopy(proj_dict)
+    version_value = migrated.get('text_transform_schema_version', _MISSING)
+    if version_value is _MISSING:
+        root_version = None
+    else:
+        root_version = _payload_version(
+            version_value,
+            'text_transform_schema_version',
+        )
+        if root_version != TEXT_TRANSFORM_SCHEMA_VERSION:
+            raise UnsupportedTextTransformVersionError(
+                f"unsupported text transform schema version {root_version}"
+            )
+
+    for field_name in _NONCANONICAL_TRANSFORM_FIELDS:
+        if field_name in migrated:
+            raise InvalidTextTransformPayloadError(
+                f"project root field {field_name} is not canonical"
+            )
+
+    pages = migrated.get('pages')
+    if not isinstance(pages, dict):
+        raise InvalidTextTransformPayloadError("pages must be an object")
+
+    # Validate the detached copy completely before canonicalizing any block.
+    validated_blocks = []
+    for page_name, blocks in pages.items():
+        if not isinstance(blocks, list):
+            raise InvalidTextTransformPayloadError(f"pages.{page_name} must be a list")
+        for index, block in enumerate(blocks):
+            location = f"pages.{page_name}[{index}]"
+            if not isinstance(block, dict):
+                raise InvalidTextTransformPayloadError(f"{location} must be an object")
+            if root_version is None:
+                fontformat = _official_legacy_fontformat(block, location)
+                transform = TextTransform(1.0, 1.0, 0.0, 0.0)
+            else:
+                transform, fontformat = _canonical_v2_block_transform(block, location)
+            validated_blocks.append((block, fontformat, transform))
+
+    for block, fontformat, transform in validated_blocks:
+        canonical_fontformat = dict(fontformat)
+        canonical_fontformat.update(zip(_CANONICAL_TRANSFORM_FIELDS, transform))
+        block['fontformat'] = canonical_fontformat
+
+    migrated['text_transform_schema_version'] = TEXT_TRANSFORM_SCHEMA_VERSION
+    return migrated
 
 
 def get_last_modified_file(file_prefix, exts, ext_fallback=None):
@@ -145,21 +357,29 @@ class ProjImgTrans:
         return self.type+'_'+osp.basename(self.directory)
 
     def load(self, directory: str, json_path: str = None) -> bool:
-        self.directory = directory
         if json_path is None:
-            self.proj_path = osp.join(self.directory, self.proj_name() + '.json')
+            project_name = self.type + '_' + osp.basename(directory)
+            candidate_proj_path = osp.join(directory, project_name + '.json')
         else:
-            self.proj_path = json_path
+            candidate_proj_path = json_path
         new_proj = False
-        if not osp.exists(self.proj_path):
+        if not osp.exists(candidate_proj_path):
             new_proj = True
-            self.new_project()
         else:
             try:
-                with open(self.proj_path, 'r', encoding='utf8') as f:
+                with open(candidate_proj_path, 'r', encoding='utf8') as f:
                     proj_dict = json.loads(f.read())
             except Exception as e:
                 raise ProjectLoadFailureException(e)
+            # Transform validation happens while the payload and live project
+            # are still detached. General loader behavior remains unchanged.
+            proj_dict = migrate_text_transform_payload(proj_dict)
+
+        self.directory = directory
+        self.proj_path = candidate_proj_path
+        if new_proj:
+            self.new_project()
+        else:
             self.load_from_dict(proj_dict)
         if not osp.exists(self.inpainted_dir()):
             os.makedirs(self.inpainted_dir())
@@ -178,6 +398,8 @@ class ProjImgTrans:
         return osp.join(self.directory, 'result')
 
     def load_from_dict(self, proj_dict: dict):
+        # A transform-specific failure must precede every mutation below.
+        proj_dict = migrate_text_transform_payload(proj_dict)
         self.set_current_img(None)
         try:
             self.pages = {}
@@ -326,6 +548,10 @@ class ProjImgTrans:
         directory = osp.dirname(json_path)
         try:
             self.load(directory, json_path=json_path)
+        except TextTransformPayloadError as e:
+            # load() validates transforms before adopting the new directory,
+            # so reloading the old project would only introduce new mutation.
+            raise ProjectLoadFailureException(e)
         except Exception as e:
             self.load(old_dir)
             raise ProjectLoadFailureException(e)
@@ -416,6 +642,7 @@ class ProjImgTrans:
         pages.update(self.not_found_pages)        
         image_info = self._image_info.copy()
         return {
+            'text_transform_schema_version': TEXT_TRANSFORM_SCHEMA_VERSION,
             'directory': self.directory,
             'pages': pages,
             'current_img': self.current_img,
