@@ -866,11 +866,24 @@ class ImgtransThread(QThread):
             self.finish_blktrans.emit(mode, blk_ids)
 
         if mode != 0 and mode < 3:
-            self._translate_textblocks(
+            success = self._translate_textblocks(
                 blk_list,
                 project=self.imgtrans_proj,
                 page_key=page_key,
             )
+            # A selected run completes the page only when no source-bearing block
+            # is still waiting for a translation.
+            if success and page_key is not None:
+                page = self.imgtrans_proj.pages.get(page_key)
+                if page is not None and all(
+                    not block.get_text().strip()
+                    or bool(str(getattr(block, 'translation', '') or '').strip())
+                    for block in page
+                ):
+                    self.imgtrans_proj.mark_translation_finished(
+                        page_key,
+                        self.translator.lang_target,
+                    )
             self.finish_blktrans.emit(mode, blk_ids)
         if mode > 1:
             if hasattr(self.inpaint_thread.inpainter, 'set_stop_event'):

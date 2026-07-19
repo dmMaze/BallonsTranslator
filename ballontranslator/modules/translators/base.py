@@ -207,10 +207,11 @@ class BaseTranslator(BaseModule):
         *,
         project: Optional['ProjImgTrans'] = None,
         page_key: Optional[str] = None,
+        commit_history_window: bool = False,
     ) -> Union[str, List]:
         """Translate text while accepting optional page context from the UI boundary.
 
-        Base translators intentionally ignore ``project`` and ``page_key``. Third-party
+        Base translators intentionally ignore the context keywords. Third-party
         translators that override this public method should accept the same keywords.
 
         >>> TransSource('日本語', 'English').translate('text', page_key='001.png')
@@ -277,10 +278,32 @@ class BaseTranslator(BaseModule):
         )
 
         if len(text_list) > 0:
+            commit_history_window = full_page
+            if (
+                not commit_history_window
+                and project is not None
+                and page_key is not None
+            ):
+                pages = getattr(project, 'pages', None)
+                page = (
+                    pages.get(page_key)
+                    if isinstance(pages, Mapping)
+                    else None
+                )
+                if page is not None:
+                    # A selected request represents a page only when it includes
+                    # every block that has source text.
+                    selected_blocks = {id(block) for block in textblk_lst}
+                    commit_history_window = all(
+                        not block.get_text().strip()
+                        or id(block) in selected_blocks
+                        for block in page
+                    )
             _translations = self.translate(
                 text_list,
                 project=project,
                 page_key=page_key,
+                commit_history_window=commit_history_window,
             )
             for ii, idx in enumerate(non_empty_ids):
                 translations[idx] = _translations[ii]

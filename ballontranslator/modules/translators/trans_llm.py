@@ -168,11 +168,13 @@ class LLMTranslator(BaseTranslator):
         *,
         project: Optional[ProjImgTrans] = None,
         page_key: Optional[str] = None,
+        commit_history_window: bool = False,
     ):
         """Translate one request with an immutable project-context snapshot.
 
         The override mirrors the relevant ``BaseTranslator`` behavior while
-        keeping the rendered messages fixed across provider retries.
+        keeping the rendered messages fixed across provider retries. The caller
+        decides whether this page-level request may advance the reusable window.
 
         >>> LLMTranslator('日本語', '简体中文').translate([])
         []
@@ -195,6 +197,7 @@ class LLMTranslator(BaseTranslator):
             profile=profile,
             request_context=request_context,
             page_key=page_key,
+            commit_history_window=commit_history_window,
         )
 
         if text_trans is None:
@@ -728,7 +731,7 @@ class LLMTranslator(BaseTranslator):
             if attempt is not None:
                 details.append(f'attempt={attempt}')
             details.append(summary)
-            self.logger.info(f'LLM token usage: {", ".join(details)}')
+            self.logger.debug(f'LLM token usage: {", ".join(details)}')
 
     def _request_translation(
         self,
@@ -798,11 +801,12 @@ class LLMTranslator(BaseTranslator):
         profile: LLMProfile = None,
         request_context: RequestContext = None,
         page_key=None,
+        commit_history_window: bool = True,
     ) -> List[str]:
         """Translate with ordinary retries and history-only overflow recovery.
 
         Context recovery never truncates the current input or glossary, and a
-        window is committed only after every accepted response parses successfully.
+        requested window commit occurs only after the response parses successfully.
 
         >>> LLMTranslator.__new__(LLMTranslator)._translate([])
         []
@@ -879,7 +883,8 @@ class LLMTranslator(BaseTranslator):
 
         # Keep eviction/growth speculative until every response parsed successfully.
         if (
-            successful_context is not None
+            commit_history_window
+            and successful_context is not None
             and successful_context.window_key is not None
             and successful_context.request_page_key is not None
         ):

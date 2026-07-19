@@ -454,7 +454,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             for index, enabled in enumerate(old_stages):
                 pcfg.module.set_stage_enabled(index, enabled)
 
-    def test_selected_translation_preserves_page_completion(self):
+    def test_selected_translation_refreshes_complete_page_target(self):
         for saved_target in ('English', '简体中文', None):
             with self.subTest(saved_target=saved_target):
                 translator = SuccessfulTranslator()
@@ -494,10 +494,53 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                     [([block], project, 'page-1', False)],
                 )
                 self.assertTrue(info['finish_code'] & RunStatus.FIN_TRANSLATE)
-                if saved_target is None:
-                    self.assertNotIn('translation_target', info)
+                self.assertEqual(info['translation_target'], 'English')
+
+    def test_selected_translation_marks_only_complete_page(self):
+        for remaining_translation, expected_complete in (
+            ('', False),
+            ('done', True),
+        ):
+            with self.subTest(remaining_translation=remaining_translation):
+                translator = SuccessfulTranslator()
+                thread = module_manager.ImgtransThread(
+                    None,
+                    None,
+                    FakeTranslateThread(translator),
+                    None,
+                )
+                selected = TextBlock(text=['selected'])
+                remaining = TextBlock(
+                    text=['remaining'],
+                    translation=remaining_translation,
+                )
+                empty_source = TextBlock(text=[''], translation='')
+                project = ProjImgTrans()
+                project.pages = {
+                    'page-1': [selected, remaining, empty_source],
+                }
+                project._image_info = {'page-1': {'finish_code': 0}}
+                project.current_img = 'page-1'
+                project.img_array = np.zeros((12, 12, 3), dtype=np.uint8)
+                project.mask_array = None
+                thread.imgtrans_proj = project
+
+                thread._blktrans_pipeline(
+                    [selected],
+                    -1,
+                    [0],
+                    page_key='page-1',
+                )
+
+                info = project._image_info['page-1']
+                self.assertIs(
+                    bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
+                    expected_complete,
+                )
+                if expected_complete:
+                    self.assertEqual(info['translation_target'], 'English')
                 else:
-                    self.assertEqual(info['translation_target'], saved_target)
+                    self.assertNotIn('translation_target', info)
 
     def test_detection_failure_still_invalidates_translation(self):
         block = TextBlock(text=['source'], translation='old')

@@ -791,6 +791,59 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertEqual(history_messages[1]['content'], current_prompt)
         self.assertEqual(render_history.call_count, 1)
 
+    def test_selected_request_commits_only_when_covering_page_sources(self):
+        project = self._project(2)
+        project.pages['002.png'].extend((
+            _block('second-source', 'second-target'),
+            _block('', ''),
+        ))
+        self._complete(project, '001.png')
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_glossary_path = ''
+        responses = (
+            self.translator._render_assistant_response(('translated',)),
+            self.translator._render_assistant_response(
+                ('translated', 'second-translated'),
+            ),
+        )
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            side_effect=responses,
+        ) as request:
+            self.translator.translate_textblk_lst(
+                project.pages['002.png'][:1],
+                project=project,
+                page_key='002.png',
+            )
+            selected_messages = request.call_args.args[1]
+            self.assertIsNone(self.translator._history_window)
+
+            self.translator.translate_textblk_lst(
+                project.pages['002.png'][:2],
+                project=project,
+                page_key='002.png',
+            )
+
+        self.assertTrue(any(
+            message['role'] == 'assistant'
+            for message in selected_messages
+        ))
+        self.assertEqual(
+            self.translator._history_window.request_page_key,
+            '002.png',
+        )
+
     def test_next_page_history_uses_fully_finalized_previous_translation(self):
         project = ProjImgTrans()
         project.pages = {
@@ -1151,6 +1204,7 @@ class LLMTranslationContextTest(unittest.TestCase):
             ['source'],
             project=project,
             page_key='001.png',
+            commit_history_window=False,
         )
         self.assertEqual(block.translation, 'translated')
 
