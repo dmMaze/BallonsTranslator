@@ -850,10 +850,10 @@ class LLMTranslationContextTest(unittest.TestCase):
             thread = TranslateThread()
             thread.translator = self.translator
             self.assertTrue(
-                thread._translate_page(project, '001.png', emit_finished=False)
+                thread._translate_page(project, '001.png')
             )
             self.assertTrue(
-                thread._translate_page(project, '002.png', emit_finished=False)
+                thread._translate_page(project, '002.png')
             )
 
         self.assertEqual(project.pages['001.png'][0].translation, '完了')

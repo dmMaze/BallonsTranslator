@@ -311,16 +311,6 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         self.assertTrue(stop_event.is_set())
         self.assertEqual(self.base_url_calls, [('profile-1', 'Profile 1', 'image_base_url')])
 
-    def test_standalone_translate_page_clears_stale_pipeline_stop_event(self):
-        thread = module_manager.TranslateThread()
-        thread.pipeline_stop_event = threading.Event()
-        project = SimpleNamespace(pages={'page-1': []})
-
-        with mock.patch.object(module_manager.TranslateThread, 'start', lambda self: None):
-            thread.translatePage(project, 'page-1')
-
-        self.assertIsNone(thread.pipeline_stop_event)
-
     def test_full_page_completion_reflects_translation_outcome(self):
         for translator_type, expected_success in (
             (SuccessfulTranslator, True),
@@ -342,7 +332,6 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                     success = thread._translate_page(
                         project,
                         'page-1',
-                        emit_finished=False,
                     )
 
                 self.assertIs(success, expected_success)
@@ -465,12 +454,8 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             for index, enabled in enumerate(old_stages):
                 pcfg.module.set_stage_enabled(index, enabled)
 
-    def test_selected_translation_preserves_only_matching_completed_target(self):
-        for saved_target, compatible in (
-            ('English', True),
-            ('简体中文', False),
-            (None, False),
-        ):
+    def test_selected_translation_preserves_page_completion(self):
+        for saved_target in ('English', '简体中文', None):
             with self.subTest(saved_target=saved_target):
                 translator = SuccessfulTranslator()
                 thread = module_manager.ImgtransThread(
@@ -508,14 +493,11 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                     translator.calls,
                     [([block], project, 'page-1', False)],
                 )
-                self.assertIs(
-                    bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
-                    compatible,
-                )
-                if compatible:
-                    self.assertEqual(info['translation_target'], 'English')
-                else:
+                self.assertTrue(info['finish_code'] & RunStatus.FIN_TRANSLATE)
+                if saved_target is None:
                     self.assertNotIn('translation_target', info)
+                else:
+                    self.assertEqual(info['translation_target'], saved_target)
 
     def test_detection_failure_still_invalidates_translation(self):
         block = TextBlock(text=['source'], translation='old')

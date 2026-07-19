@@ -262,16 +262,6 @@ class ProjImgTrans:
         """Invalidate old completion until a full translation succeeds."""
         self.invalidate_translation(page_key)
 
-    def prepare_selected_translation(self, page_key, target_language) -> bool:
-        """Preserve completion only for a known, matching existing target."""
-        info = self._image_info[page_key]
-        compatible = bool(
-            int(info.get('finish_code', 0)) & RunStatus.FIN_TRANSLATE
-        ) and info.get('translation_target') == target_language
-        if not compatible:
-            self.invalidate_translation(page_key)
-        return compatible
-
     def mark_translation_finished(self, page_key, target_language):
         self.update_page_progress(page_key, RunStatus.FIN_TRANSLATE)
         self._image_info[page_key]['translation_target'] = target_language
@@ -312,18 +302,18 @@ class ProjImgTrans:
             and len(unmatched_pages) == 0
             and len(unexpected_pages) == 0
         )
-        if all_matched:
-            for page_name in matched_pages:
-                if target_language is None:
-                    self.update_page_progress(page_name, RunStatus.FIN_TRANSLATE)
-                    self._image_info[page_name].pop('translation_target', None)
-                else:
-                    self.mark_translation_finished(page_name, target_language)
-        else:
-            # A partial import may have replaced only some translations; none of
-            # its touched pages should remain eligible as completed LLM history.
-            for page_name in matched_pages:
-                self.clear_page_progress(page_name, RunStatus.FIN_TRANSLATE)
+        unmatched_page_set = set(unmatched_pages)
+        for page_name in matched_pages - unmatched_page_set:
+            if target_language is None:
+                self.update_page_progress(page_name, RunStatus.FIN_TRANSLATE)
+                self._image_info[page_name].pop('translation_target', None)
+            else:
+                self.mark_translation_finished(page_name, target_language)
+
+        # Completion is page-specific: malformed imported pages are invalidated,
+        # while project pages absent from the import retain their existing state.
+        for page_name in unmatched_page_set:
+            self.clear_page_progress(page_name, RunStatus.FIN_TRANSLATE)
         return all_matched, {
             'missing_pages': missing_pages,
             'unmatched_pages': unmatched_pages,

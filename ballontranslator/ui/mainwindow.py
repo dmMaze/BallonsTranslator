@@ -396,7 +396,6 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
 
         self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
-        module_manager.finish_translate_page.connect(self.finishTranslatePage)
         module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
         module_manager.page_trans_finished.connect(self.on_pagtrans_finished)
         module_manager.setupThread(
@@ -1493,11 +1492,6 @@ class MainWindow(mainwindow_cls):
             page_key=page_key,
         )
         return True
-
-
-    def finishTranslatePage(self, page_key):
-        if page_key == self.imgtrans_proj.current_img:
-            self.st_manager.updateTranslation()
 
     def on_imgtrans_pipeline_finished(self):
         self.backup_blkstyles.clear()

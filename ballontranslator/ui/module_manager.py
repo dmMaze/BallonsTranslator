@@ -435,7 +435,6 @@ class OCRThread(ModuleThread):
 
 class TranslateThread(ModuleThread):
 
-    finish_translate_page = Signal(str)
     progress_changed = Signal(int)
 
     def __init__(self, *args, **kwargs) -> None:
@@ -564,7 +563,6 @@ class TranslateThread(ModuleThread):
         self,
         project: ProjImgTrans,
         page_key: str,
-        emit_finished=True,
     ):
         page = project.pages[page_key]
         # A failed or partially completed full-page request must never leave the
@@ -603,14 +601,7 @@ class TranslateThread(ModuleThread):
             create_error_dialog(e, self.tr('Translation Failed.'), 'TranslationFailed')
         if success:
             project.mark_translation_finished(page_key, self.translator.lang_target)
-        if emit_finished:
-            self.finish_translate_page.emit(page_key)
         return success
-
-    def translatePage(self, project: ProjImgTrans, page_key: str):
-        self.pipeline_stop_event = None
-        self.job = lambda: self._translate_page(project, page_key)
-        self.start()
 
     def push_pagekey_queue(self, page_key: str):
         self.pipeline_pagekey_queue.append(page_key)
@@ -637,11 +628,7 @@ class TranslateThread(ModuleThread):
             page_key = self.pipeline_pagekey_queue.pop(0)
             self.blockSignals(True)
             try:
-                self._translate_page(
-                    self.imgtrans_proj,
-                    page_key,
-                    emit_finished=False,
-                )
+                self._translate_page(self.imgtrans_proj, page_key)
             except Exception as e:
                 # TODO: allowing retry/skip/terminate
                 msg = self.tr('Translation Failed.')
@@ -879,11 +866,6 @@ class ImgtransThread(QThread):
             self.finish_blktrans.emit(mode, blk_ids)
 
         if mode != 0 and mode < 3:
-            if page_key is not None:
-                self.imgtrans_proj.prepare_selected_translation(
-                    page_key,
-                    self.translator.lang_target,
-                )
             self._translate_textblocks(
                 blk_list,
                 project=self.imgtrans_proj,
@@ -1238,7 +1220,6 @@ def unload_modules(self, module_names):
 class ModuleManager(QObject):
     imgtrans_proj: ProjImgTrans = None
 
-    finish_translate_page = Signal(str)
     canvas_inpaint_finished = Signal(dict)
     inpaint_th_finished = Signal()
 
@@ -1286,7 +1267,6 @@ class ModuleManager(QObject):
         
         self.translate_thread = TranslateThread()
         self.translate_thread.progress_changed.connect(self.on_update_translate_progress)
-        self.translate_thread.finish_translate_page.connect(self.on_finish_translate_page)  
 
         self.inpaint_thread = InpaintThread()
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
@@ -1856,18 +1836,6 @@ class ModuleManager(QObject):
     def ocr(self) -> OCRBase:
         return self.ocr_thread.ocr
 
-    def translatePage(self, run_target: bool, page_key: str):
-        if not run_target:
-            if self.translate_thread.isRunning():
-                LOGGER.warning('Terminating a running translation thread.')
-                self.translate_thread.terminate()
-            return
-        _reset_llm_key_required_dialogs()
-        self._prepare_modules_then(
-            [('translator', cfg_module.translator)],
-            lambda: self.translate_thread.translatePage(self.imgtrans_proj, page_key),
-        )
-
     def inpainterBusy(self):
         return self.inpaint_thread.isRunning()
 
@@ -2194,9 +2162,6 @@ class ModuleManager(QObject):
         self._show_prepare_dialog(self.ocr_thread, ocr)
         self.ocr_thread.setOCR(ocr)
 
-    def on_finish_translate_page(self, page_key: str):
-        self.finish_translate_page.emit(page_key)
-    
     def on_finish_inpaint(self, inpaint_dict: dict):
         if self.run_canvas_inpaint:
             self.canvas_inpaint_finished.emit(inpaint_dict)

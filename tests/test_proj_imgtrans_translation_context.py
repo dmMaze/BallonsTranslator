@@ -186,37 +186,6 @@ class ProjectTranslationTargetTest(unittest.TestCase):
         project.clear_page_progress('001.png', RunStatus.FIN_TRANSLATE)
         self.assertNotIn('translation_target', info)
 
-    def test_selected_translation_requires_known_matching_target(self):
-        for saved_target, active_target, compatible in (
-            ('English', 'English', True),
-            ('简体中文', 'English', False),
-            (None, 'English', False),
-        ):
-            with self.subTest(saved_target=saved_target):
-                project = self._project('001.png')
-                project.mark_translation_finished('001.png', 'English')
-                info = project._image_info['001.png']
-                if saved_target is None:
-                    info.pop('translation_target')
-                else:
-                    info['translation_target'] = saved_target
-
-                self.assertIs(
-                    project.prepare_selected_translation(
-                        '001.png',
-                        active_target,
-                    ),
-                    compatible,
-                )
-                self.assertIs(
-                    bool(info['finish_code'] & RunStatus.FIN_TRANSLATE),
-                    compatible,
-                )
-                if compatible:
-                    self.assertEqual(info['translation_target'], 'English')
-                else:
-                    self.assertNotIn('translation_target', info)
-
     def test_load_from_dict_preserves_target_and_legacy_absence(self):
         for expected_target, image_info in (
             ('English', {
@@ -247,7 +216,7 @@ class ProjectTranslationTargetTest(unittest.TestCase):
                         expected_target,
                     )
 
-    def test_complete_import_marks_target_and_partial_import_does_not(self):
+    def test_import_updates_completion_per_page(self):
         imported_pages = [
             {'page_name': '001.png', 'blk_list': ['one']},
             {'page_name': '002.png', 'blk_list': ['two']},
@@ -284,11 +253,16 @@ class ProjectTranslationTargetTest(unittest.TestCase):
             self.assertTrue(info['finish_code'] & RunStatus.FIN_TRANSLATE)
             self.assertNotIn('translation_target', info)
 
-        partial_project = self._project('001.png', '002.png')
-        partial_project.mark_translation_finished('001.png', 'stale-target')
+        partial_project = self._project('001.png', '002.png', '003.png')
+        for page_name in partial_project.pages:
+            partial_project.mark_translation_finished(page_name, 'stale-target')
+        partial_pages = [
+            {'page_name': '001.png', 'blk_list': ['one']},
+            {'page_name': '002.png', 'blk_list': ['two', 'extra']},
+        ]
         with patch(
             'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
-            return_value=imported_pages[:1],
+            return_value=partial_pages,
         ):
             all_matched, _ = partial_project.load_translation_from_txt(
                 'partial.md',
@@ -296,9 +270,17 @@ class ProjectTranslationTargetTest(unittest.TestCase):
             )
 
         self.assertFalse(all_matched)
-        for info in partial_project._image_info.values():
-            self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
-            self.assertNotIn('translation_target', info)
+        imported_info = partial_project._image_info['001.png']
+        self.assertTrue(imported_info['finish_code'] & RunStatus.FIN_TRANSLATE)
+        self.assertEqual(imported_info['translation_target'], 'English')
+
+        malformed_info = partial_project._image_info['002.png']
+        self.assertFalse(malformed_info['finish_code'] & RunStatus.FIN_TRANSLATE)
+        self.assertNotIn('translation_target', malformed_info)
+
+        missing_info = partial_project._image_info['003.png']
+        self.assertTrue(missing_info['finish_code'] & RunStatus.FIN_TRANSLATE)
+        self.assertEqual(missing_info['translation_target'], 'stale-target')
 
 if __name__ == '__main__':
     unittest.main()
