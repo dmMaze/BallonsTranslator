@@ -862,6 +862,22 @@ def draw_slanted_line(
     additional_formats = tuple(layout.formats())
     normal_spans = resolve_paint_spans(block, line, additional_formats)
     baseline_y = line.y() + line.ascent() + offset.y()
+    geometry_cache = {}
+
+    def span_geometry(span: PaintSpan) -> GlyphGeometry:
+        key = (span.start, span.length)
+        geometry = geometry_cache.get(key)
+        if geometry is None:
+            geometry = glyph_geometry(
+                line,
+                span.start,
+                span.length,
+                offset,
+                orientation,
+                angle,
+            )
+            geometry_cache[key] = geometry
+        return geometry
 
     effect_selections = tuple(
         selection
@@ -886,17 +902,9 @@ def draw_slanted_line(
                     and span.start < selection_range[1]
                 ):
                     continue
-                geometry = glyph_geometry(
-                    line,
-                    span.start,
-                    span.length,
-                    offset,
-                    orientation,
-                    angle,
-                )
                 draw_glyph_geometry(
                     painter,
-                    geometry,
+                    span_geometry(span),
                     span.char_format,
                     failure_handler,
                 )
@@ -942,11 +950,11 @@ def draw_slanted_line(
     # Paint normal ink once. Selection foreground is a second, logically
     # clipped pass so ligature overhang outside the selection remains normal.
     for span in normal_spans:
-        geometry = glyph_geometry(
-            line, span.start, span.length, offset, orientation, angle
-        )
         draw_glyph_geometry(
-            painter, geometry, span.char_format, failure_handler
+            painter,
+            span_geometry(span),
+            span.char_format,
+            failure_handler,
         )
         _draw_decorations(
             painter,
@@ -962,11 +970,11 @@ def draw_slanted_line(
         painter.save()
         try:
             painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
-            geometry = glyph_geometry(
-                line, span.start, span.length, offset, orientation, angle
-            )
             draw_glyph_geometry(
-                painter, geometry, span.char_format, failure_handler
+                painter,
+                span_geometry(span),
+                span.char_format,
+                failure_handler,
             )
             _draw_decorations(
                 painter,

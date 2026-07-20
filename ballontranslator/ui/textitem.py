@@ -358,7 +358,7 @@ class TextBlkItem(QGraphicsTextItem):
             ) from error
         return pixmap
 
-    def _paint_neutral_stroke(self, painter: QPainter):
+    def _paint_cloned_document_stroke(self, painter: QPainter):
         """Paint stroke through the BASE cloned-document path."""
         doc = QTextDocument()
         doc.setUndoRedoEnabled(False)
@@ -405,55 +405,6 @@ class TextBlkItem(QGraphicsTextItem):
             if self.fontformat.vertical
             else HorizontalTextDocumentLayout(doc, self.fontformat)
         )
-        layout._draw_offset = self.layout._draw_offset
-        layout._is_painting_stroke = True
-        layout.setMaxSize(self.layout.max_width, self.layout.max_height, False)
-        doc.setDocumentLayout(layout)
-        layout.relayout_on_changed = False
-        doc.drawContents(painter)
-
-    def _paint_legacy_vertical_stroke(self, painter: QPainter):
-        """Use the upstream cloned-document stroke path when Glyph Slant is neutral.
-
-        The live glyph-mask renderer below is required for non-zero Glyph
-        Slant.  Keeping it out of the neutral path prevents this feature PR
-        from also carrying the independent vertical rich-text stroke rewrite.
-        """
-        doc = QTextDocument()
-        doc.setUndoRedoEnabled(False)
-        doc.setDocumentMargin(self.layout.documentMargin())
-        doc.setDefaultFont(self.document().defaultFont())
-        doc.setHtml(self.document().toHtml())
-        doc.setDefaultTextOption(self.document().defaultTextOption())
-        cursor = QTextCursor(doc)
-        block = doc.firstBlock()
-        stroke_pen = QPen(
-            self.stroke_qcolor,
-            0,
-            Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap,
-            Qt.PenJoinStyle.RoundJoin,
-        )
-        while block.isValid():
-            it = block.begin()
-            while not it.atEnd():
-                fragment = it.fragment()
-                char_format = fragment.charFormat()
-                stroke_pen.setWidthF(
-                    pt2px(char_format.fontPointSize())
-                    * self.fontformat.stroke_width
-                )
-                cursor.setPosition(fragment.position())
-                cursor.setPosition(
-                    fragment.position() + fragment.length(),
-                    QTextCursor.MoveMode.KeepAnchor,
-                )
-                char_format.setTextOutline(stroke_pen)
-                cursor.mergeCharFormat(char_format)
-                it += 1
-            block = block.next()
-
-        layout = VerticalTextDocumentLayout(doc, self.fontformat)
         layout._draw_offset = self.layout._draw_offset
         layout._is_painting_stroke = True
         layout.setMaxSize(self.layout.max_width, self.layout.max_height, False)
@@ -544,12 +495,12 @@ class TextBlkItem(QGraphicsTextItem):
         surface_rect: QRectF = None,
     ):
         if self._text_transform_is_neutral():
-            self._paint_neutral_stroke(painter)
+            self._paint_cloned_document_stroke(painter)
             return
         active_layout = self.document().documentLayout()
         if isinstance(active_layout, VerticalTextDocumentLayout):
             if self._effective_text_transform().glyph_slant_angle == 0.0:
-                self._paint_legacy_vertical_stroke(painter)
+                self._paint_cloned_document_stroke(painter)
                 return
             self._paint_vertical_stroke(painter, render_scale, surface_rect)
             return
@@ -1037,7 +988,7 @@ class TextBlkItem(QGraphicsTextItem):
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
             if paint_stroke:
-                self._paint_neutral_stroke(painter)
+                self._paint_cloned_document_stroke(painter)
             else:
                 self.document().drawContents(painter)
 

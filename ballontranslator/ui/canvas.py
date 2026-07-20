@@ -383,13 +383,14 @@ class Canvas(QGraphicsScene):
             vb_pos = self.vscroll_bar.value()
             self._set_scene_scale(1.0, sync_overlays=False)
 
+        scene_items = self.items()
         overlay_visibility = {
             item: item.isVisible()
-            for item in self.items()
+            for item in scene_items
             if bool(item.data(UI_OVERLAY_ITEM_DATA_KEY))
         }
         export_effect_items = [
-            item for item in self.items() if isinstance(item, TextBlkItem)
+            item for item in scene_items if isinstance(item, TextBlkItem)
         ]
         enabled_export_effect_items = []
         painter = None

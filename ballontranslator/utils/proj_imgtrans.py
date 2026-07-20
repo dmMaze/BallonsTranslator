@@ -380,7 +380,7 @@ class ProjImgTrans:
         if new_proj:
             self.new_project()
         else:
-            self.load_from_dict(proj_dict)
+            self._load_from_canonical_dict(proj_dict)
         if not osp.exists(self.inpainted_dir()):
             os.makedirs(self.inpainted_dir())
         if not osp.exists(self.mask_dir()):
@@ -400,6 +400,11 @@ class ProjImgTrans:
     def load_from_dict(self, proj_dict: dict):
         # A transform-specific failure must precede every mutation below.
         proj_dict = migrate_text_transform_payload(proj_dict)
+        self._load_from_canonical_dict(proj_dict)
+
+    def _load_from_canonical_dict(self, proj_dict: dict):
+        # Both public load paths validate before handing ownership to this
+        # mutating loader, avoiding a second whole-project migration.
         self.set_current_img(None)
         try:
             self.pages = {}

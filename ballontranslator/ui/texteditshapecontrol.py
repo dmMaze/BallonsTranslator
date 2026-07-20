@@ -186,10 +186,13 @@ class OverlayFootprintInvalidator:
 
     def sync(self, update_geometry: Callable[[], None]) -> None:
         views = tuple(self.scene.views())
-        old_regions = {
-            view: QRegion(self._regions.get(view, self._region_for_view(view)))
-            for view in views
-        }
+        old_regions = {}
+        for view in views:
+            if view in self._regions:
+                old_region = self._regions[view]
+            else:
+                old_region = self._region_for_view(view)
+            old_regions[view] = QRegion(old_region)
         update_geometry()
         new_regions = {view: self._region_for_view(view) for view in views}
         self._regions = new_regions
@@ -305,9 +308,10 @@ class TextOverlayManager:
         control = self.shape_control
         if control.blk_item is not None and control.blk_item.scene() is self.scene:
             control.updateBoundingRect()
-        control.refreshDeviceGeometry()
-        if control.isVisible():
-            control.updateControlBlocks()
+        else:
+            control.refreshDeviceGeometry()
+            if control.isVisible():
+                control.updateControlBlocks()
         active_item = control.blk_item if control.isVisible() else None
 
         for item in tuple(self._items):

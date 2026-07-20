@@ -1483,31 +1483,28 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             bllen = block.length()
             if _block_cursor_position(block, context.cursorPosition) >= 0:
                 cursor_block = block
-            layout = block.layout()
-            blpos = block.position()
-            bllen = block.length()
-            selections = []
-            for sel in context.selections:
-                selStart = sel.cursor.selectionStart() - blpos 
-                selEnd = sel.cursor.selectionEnd() - blpos
-                if selStart < bllen and selEnd > 0 and selEnd > selStart:
-                    o = QTextLayout.FormatRange()
-                    o.start = selStart
-                    o.length = selEnd - selStart
-                    o.format = sel.format
-                    selections.append(o)
-                elif not sel.cursor.hasSelection() \
-                    and sel.format.hasProperty(QTextFormat.FullWidthSelection) \
-                    and block.contains(sel.cursor.position()):
-                    o = QTextLayout.FormatRange()
-                    l = layout.lineForTextPosition(sel.cursor.position() - blpos)
-                    o.start = l.textStart()
-                    o.length = l.textLength()
-                    if o.start + o.length == bllen - 1:
-                        ++o.length
-                    o.format = sel.format
-                    selections.append(o)
             if self._glyph_slant_angle == 0.0:
+                selections = []
+                for sel in context.selections:
+                    selStart = sel.cursor.selectionStart() - blpos
+                    selEnd = sel.cursor.selectionEnd() - blpos
+                    if selStart < bllen and selEnd > 0 and selEnd > selStart:
+                        o = QTextLayout.FormatRange()
+                        o.start = selStart
+                        o.length = selEnd - selStart
+                        o.format = sel.format
+                        selections.append(o)
+                    elif not sel.cursor.hasSelection() \
+                        and sel.format.hasProperty(QTextFormat.FullWidthSelection) \
+                        and block.contains(sel.cursor.position()):
+                        o = QTextLayout.FormatRange()
+                        l = layout.lineForTextPosition(sel.cursor.position() - blpos)
+                        o.start = l.textStart()
+                        o.length = l.textLength()
+                        if o.start + o.length == bllen - 1:
+                            ++o.length
+                        o.format = sel.format
+                        selections.append(o)
                 clip = context.clip if context.clip.isValid() else QRectF()
                 layout.draw(painter, QPointF(0, 0), selections, clip)
             else:
