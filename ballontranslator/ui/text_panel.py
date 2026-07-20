@@ -8,7 +8,7 @@ from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent, QFont
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
-from ballontranslator.utils.fontformat import FontFormat, px2pt, LineSpacingType, normalize_text_transform
+from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, TextTransform, normalize_text_transform, px2pt
 from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel
 from .textitem import TextBlkItem
 from .text_advanced_format import TextAdvancedFormatPanel
@@ -17,12 +17,7 @@ from .textedit_commands import SetTextTransformCommand
 from . import shared_widget as SW
 from . import funcmaps as FM
 
-TEXT_TRANSFORM_FIELDS = (
-    'horizontal_scale',
-    'vertical_scale',
-    'slant_angle',
-    'glyph_slant_angle',
-)
+TEXT_TRANSFORM_FIELDS = TextTransform._fields
 
 
 class LineEdit(QLineEdit):
@@ -503,10 +498,7 @@ class FontFormatPanel(Widget):
         values = dict(zip(TEXT_TRANSFORM_FIELDS, transform))
         values[param_name] = value
         return normalize_text_transform(
-            values['horizontal_scale'],
-            values['vertical_scale'],
-            values['slant_angle'],
-            values['glyph_slant_angle'],
+            *(values[name] for name in TEXT_TRANSFORM_FIELDS)
         )
 
     def _sync_text_transform_overlays(self):

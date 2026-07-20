@@ -779,6 +779,24 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 glyph_runs = line.glyphRuns(run_start, run_end - run_start)
                 if not glyph_runs:
                     continue
+                if self._glyph_slant_angle != 0.0:
+                    placement = self._vertical_line_placement(block, line_number)
+                    # Preserve the selection mask's empty-line skip.
+                    if placement is None or not block_text:
+                        continue
+                    placed_line, offset, orientation = placement
+                    draw_slanted_glyph_mask(
+                        painter,
+                        placed_line,
+                        run_start,
+                        run_end - run_start,
+                        offset,
+                        orientation,
+                        self._glyph_slant_angle,
+                        self._report_glyph_raster_failure,
+                    )
+                    continue
+
                 _, leading_spaces, _, line_position = line_spaces[line_number]
                 char_offset = min(
                     line_position + leading_spaces, block_text_length - 1
@@ -787,22 +805,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     continue
                 char = _utf16_char_at(block_text, char_offset)
                 x_offset, y_offset = self._draw_offset[block_number][line_number]
-
-                if self._glyph_slant_angle != 0.0:
-                    placement = self._vertical_line_placement(block, line_number)
-                    if placement is not None:
-                        placed_line, offset, orientation = placement
-                        draw_slanted_glyph_mask(
-                            painter,
-                            placed_line,
-                            run_start,
-                            run_end - run_start,
-                            offset,
-                            orientation,
-                            self._glyph_slant_angle,
-                            self._report_glyph_raster_failure,
-                        )
-                    continue
 
                 painter.save()
                 try:

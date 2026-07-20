@@ -632,11 +632,7 @@ class TextBlkItem(QGraphicsTextItem):
             )
 
     def _effect_padding(self) -> float:
-        paint_stroke = self.fontformat.stroke_width > 0
-        paint_shadow = (
-            self.fontformat.shadow_radius > 0
-            and self.fontformat.shadow_strength > 0
-        )
+        paint_stroke, paint_shadow = self._effect_flags()
         glyph_slanted = (
             self._effective_text_transform().glyph_slant_angle != 0.0
         )
@@ -969,11 +965,7 @@ class TextBlkItem(QGraphicsTextItem):
         if self.repainting or self.reshaping:
             return
 
-        paint_stroke = self.fontformat.stroke_width > 0
-        paint_shadow = (
-            self.fontformat.shadow_radius > 0
-            and self.fontformat.shadow_strength > 0
-        )
+        paint_stroke, paint_shadow = self._effect_flags()
         if (not paint_shadow and not paint_stroke) or empty:
             self.background_pixmap = None
             self._background_pixmap_scale = None
@@ -1499,22 +1491,14 @@ class TextBlkItem(QGraphicsTextItem):
             and render_format.text_transform != target
         )
         if model_changed:
-            (
-                model_format.horizontal_scale,
-                model_format.vertical_scale,
-                model_format.slant_angle,
-                model_format.glyph_slant_angle,
-            ) = target
+            for name, value in zip(TextTransform._fields, target):
+                setattr(model_format, name, value)
         if render_format_changed:
             # Selection changes can detach the render/UI format cache from the
             # canonical TextBlock owner. Keep its quartet coherent before a
             # neutral stroke/effect surface is rebuilt during Undo/Redo.
-            (
-                render_format.horizontal_scale,
-                render_format.vertical_scale,
-                render_format.slant_angle,
-                render_format.glyph_slant_angle,
-            ) = target
+            for name, value in zip(TextTransform._fields, target):
+                setattr(render_format, name, value)
         self._text_transform_preview = None
         glyph_changed, glyph_padding_changed = self._apply_glyph_slant(
             target.glyph_slant_angle
@@ -2419,12 +2403,8 @@ class TextBlkItem(QGraphicsTextItem):
         # Selection changes can detach the render/UI format cache from the
         # persistent TextBlock owner.  The canonical quartet must always win
         # when producing a save/undo format snapshot.
-        (
-            fontformat.horizontal_scale,
-            fontformat.vertical_scale,
-            fontformat.slant_angle,
-            fontformat.glyph_slant_angle,
-        ) = self.blk.fontformat.text_transform
+        for name, value in zip(TextTransform._fields, self.blk.fontformat.text_transform):
+            setattr(fontformat, name, value)
         return fontformat
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True, set_effect=True):

@@ -40,12 +40,7 @@ class ImgnameNotInProjectException(Exception):
 
 TEXT_TRANSFORM_SCHEMA_VERSION = 2
 _MISSING = object()
-_CANONICAL_TRANSFORM_FIELDS = (
-    'horizontal_scale',
-    'vertical_scale',
-    'slant_angle',
-    'glyph_slant_angle',
-)
+_CANONICAL_TRANSFORM_FIELDS = TextTransform._fields
 _TRANSFORM_BOUNDS = {
     'horizontal_scale': (TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX),
     'vertical_scale': (TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX),
@@ -127,7 +122,7 @@ def _canonical_v2_block_transform(
             f"{location}.rich_text contains unsupported intermediate transform metadata"
         )
 
-    raw = {}
+    raw = []
     for field_name in _CANONICAL_TRANSFORM_FIELDS:
         if field_name not in fontformat:
             raise InvalidTextTransformPayloadError(
@@ -142,17 +137,9 @@ def _canonical_v2_block_transform(
                 f"{location}.fontformat.{field_name} is outside "
                 f"the canonical range [{minimum}, {maximum}]"
             )
-        raw[field_name] = value
+        raw.append(value)
 
-    return (
-        normalize_text_transform(
-            raw['horizontal_scale'],
-            raw['vertical_scale'],
-            raw['slant_angle'],
-            raw['glyph_slant_angle'],
-        ),
-        fontformat,
-    )
+    return normalize_text_transform(*raw), fontformat
 
 
 def _official_legacy_fontformat(block: dict, location: str) -> dict:

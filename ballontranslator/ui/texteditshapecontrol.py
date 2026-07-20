@@ -30,6 +30,7 @@ from .cursor import (
     scene_angle_to_cursor_index,
 )
 from .textitem import TEXTRECT_SELECTED_COLOR, TEXTRECT_SHOW_COLOR, TextBlkItem
+from .text_transform import rect_polygon
 
 
 CBEDGE_WIDTH = 30
@@ -65,15 +66,6 @@ def _device_pixels_to_local(item: QGraphicsItem, pixels: float) -> float:
             delta = inverse.map(QPointF(x, y)) - origin
             radii.append(max(abs(delta.x()), abs(delta.y())))
     return max(radii)
-
-
-def _is_effectively_visible(item: QGraphicsItem) -> bool:
-    current = item
-    while current is not None:
-        if not current.isVisible():
-            return False
-        current = current.parentItem()
-    return True
 
 
 class TextGuideOverlayItem(QGraphicsItem):
@@ -159,7 +151,7 @@ class OverlayFootprintInvalidator:
 
     @staticmethod
     def _item_device_region(item: QGraphicsItem, view) -> QRegion:
-        if not _is_effectively_visible(item):
+        if not item.isVisible():
             return QRegion()
         transform = item.deviceTransform(view.viewportTransform())
         rect = transform.mapRect(item.boundingRect()).toAlignedRect()
@@ -290,10 +282,8 @@ class TextOverlayManager:
 
     def set_textblock_mode(self, enabled: bool) -> None:
         enabled = bool(enabled)
-        if self._textblock_mode == enabled:
-            self.sync_overlays()
-            return
-        self._textblock_mode = enabled
+        if self._textblock_mode != enabled:
+            self._textblock_mode = enabled
         self.sync_overlays()
 
     def overlay_for_item(self, item: TextBlkItem):
@@ -315,7 +305,7 @@ class TextOverlayManager:
         active_item = control.blk_item if control.isVisible() else None
 
         for item in tuple(self._items):
-            if item.scene() is not self.scene or not _is_effectively_visible(item):
+            if item.scene() is not self.scene or not item.isVisible():
                 overlay = self._guides.get(item)
                 if overlay is not None:
                     overlay.hide()
@@ -514,7 +504,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._display_handle_scene_points = []
         self._reported_angle = 0.0
         self._updating_bounds = False
-        self._resize_old_logical_rect = None
         self._resize_opposite_scene = None
         self._resize_opposite_idx = None
         self._proxy_drag_idx = None
@@ -715,15 +704,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if len(self._visual_polygon) == 4:
             true_scene_points = self._item_handle_points_in_scene(self.blk_item)
         else:
-            rect = self.rect()
-            polygon = QPolygonF(
-                [
-                    rect.topLeft(),
-                    rect.topRight(),
-                    rect.bottomRight(),
-                    rect.bottomLeft(),
-                ]
-            )
+            polygon = rect_polygon(self.rect())
             true_scene_points = [
                 self.mapToScene(point) for point in self._handle_points(polygon)
             ]
@@ -824,9 +805,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def beginResize(self, idx: int, pointer_scene: QPointF = None):
         if pointer_scene is not None:
             self._beginProxyDrag(idx, pointer_scene)
-        self._resize_old_logical_rect = QRectF(
-            self.blk_item.logical_unpadded_rect()
-        )
         self._resize_opposite_idx = (idx + 4) % 8
         self._resize_opposite_scene = QPointF(
             self._item_handle_points_in_scene(self.blk_item)[

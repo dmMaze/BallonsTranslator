@@ -28,7 +28,7 @@ from ballontranslator.utils.config import (
     save_text_styles,
     text_styles,
 )
-from ballontranslator.utils.fontformat import normalize_text_transform
+from ballontranslator.utils.fontformat import TextTransform, normalize_text_transform
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -75,20 +75,11 @@ mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
 
 def _apply_global_text_transforms(block: TextBlock, global_format: FontFormat) -> bool:
     """Copy the normalized global transform quartet as one model update."""
-    target = normalize_text_transform(
-        global_format.horizontal_scale,
-        global_format.vertical_scale,
-        global_format.slant_angle,
-        global_format.glyph_slant_angle,
-    )
+    target = normalize_text_transform(*global_format.text_transform)
     if block.fontformat.text_transform == target:
         return False
-    (
-        block.fontformat.horizontal_scale,
-        block.fontformat.vertical_scale,
-        block.fontformat.slant_angle,
-        block.fontformat.glyph_slant_angle,
-    ) = target
+    for name, value in zip(TextTransform._fields, target):
+        setattr(block.fontformat, name, value)
     return True
 
 
