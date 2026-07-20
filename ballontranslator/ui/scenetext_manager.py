@@ -356,7 +356,6 @@ class SceneTextManager(QObject):
         self.hovering_transwidget : TransTextEdit = None
 
         self.prev_blkitem: TextBlkItem = None
-        self._text_move_items: List[TextBlkItem] = []
         self._text_move_snapshot = {}
 
     def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None, current_editing_widget: Union[SourceTextEdit, TransTextEdit] = None):
@@ -598,7 +597,6 @@ class SceneTextManager(QObject):
         selections = self.canvas.selected_text_items(sort=False)
         if blk_item not in selections:
             selections.append(blk_item)
-        self._text_move_items = list(selections)
         self._text_move_snapshot = {
             item: QPointF(item.logical_position()) for item in selections
         }
@@ -635,7 +633,7 @@ class SceneTextManager(QObject):
         self.text_overlay_manager.sync_overlays()
 
     def onTextBlkItemMoved(self):
-        items = [item for item in self._text_move_items if item.scene() is self.canvas]
+        items = [item for item in self._text_move_snapshot if item.scene() is self.canvas]
         if not items:
             items = self.canvas.selected_text_items()
         before = [
@@ -654,7 +652,6 @@ class SceneTextManager(QObject):
             )
         else:
             self.text_overlay_manager.sync_overlays()
-        self._text_move_items = []
         self._text_move_snapshot = {}
         
     def onTextBlkItemReshaped(self, item: TextBlkItem):

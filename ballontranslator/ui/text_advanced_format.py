@@ -740,52 +740,30 @@ class TextAdvancedFormatPanel(PanelArea):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        self.horizontal_scale_control = CommittedTransformControl(
-            self.tr('Horizontal Scale'),
-            'horizontal_scale',
-            100.0,
-            TEXT_TRANSFORM_SCALE_MIN,
-            TEXT_TRANSFORM_SCALE_MAX,
-            '%',
-            1.0,
-            self.transform_section,
+        transform_specs = (
+            ('horizontal_scale_control', 'horizontal_scale',
+             lambda: self.tr('Horizontal Scale'), 100.0,
+             TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX, '%'),
+            ('vertical_scale_control', 'vertical_scale',
+             lambda: self.tr('Vertical Scale'), 100.0,
+             TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX, '%'),
+            ('slant_angle_control', 'slant_angle', lambda: self.tr('Box Slant'), 1.0,
+             TEXT_TRANSFORM_BOX_SLANT_MIN, TEXT_TRANSFORM_BOX_SLANT_MAX,
+             '\N{DEGREE SIGN}'),
+            ('glyph_slant_angle_control', 'glyph_slant_angle',
+             lambda: self.tr('Glyph Slant'), 1.0,
+             TEXT_TRANSFORM_GLYPH_SLANT_MIN, TEXT_TRANSFORM_GLYPH_SLANT_MAX,
+             '\N{DEGREE SIGN}'),
         )
-        self.vertical_scale_control = CommittedTransformControl(
-            self.tr('Vertical Scale'),
-            'vertical_scale',
-            100.0,
-            TEXT_TRANSFORM_SCALE_MIN,
-            TEXT_TRANSFORM_SCALE_MAX,
-            '%',
-            1.0,
-            self.transform_section,
-        )
-        self.slant_angle_control = CommittedTransformControl(
-            self.tr('Box Slant'),
-            'slant_angle',
-            1.0,
-            TEXT_TRANSFORM_BOX_SLANT_MIN,
-            TEXT_TRANSFORM_BOX_SLANT_MAX,
-            '\N{DEGREE SIGN}',
-            1.0,
-            self.transform_section,
-        )
-        self.glyph_slant_angle_control = CommittedTransformControl(
-            self.tr('Glyph Slant'),
-            'glyph_slant_angle',
-            1.0,
-            TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-            TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-            '\N{DEGREE SIGN}',
-            1.0,
-            self.transform_section,
-        )
-        self.transform_controls = {
-            'horizontal_scale': self.horizontal_scale_control,
-            'vertical_scale': self.vertical_scale_control,
-            'slant_angle': self.slant_angle_control,
-            'glyph_slant_angle': self.glyph_slant_angle_control,
-        }
+        transform_controls = {}
+        for attr, name, title_fn, factor, minimum, maximum, suffix in transform_specs:
+            control = CommittedTransformControl(
+                title_fn(), name, factor, minimum, maximum, suffix, 1.0,
+                self.transform_section,
+            )
+            setattr(self, attr, control)
+            transform_controls[name] = control
+        self.transform_controls = transform_controls
         for control in self.transform_controls.values():
             control.commit_requested.connect(self.transform_commit_requested.emit)
             control.preview_requested.connect(self.transform_preview_requested.emit)
