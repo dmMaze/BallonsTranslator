@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 from typing import List
-from collections import OrderedDict
 
 from ballontranslator.utils.registry import Registry
 from ballontranslator.utils.textblock_mask import extract_ballon_mask
@@ -75,9 +74,6 @@ def inpaint_handle_alpha_channel(original_alpha, mask):
 class InpainterBase(BaseModule):
 
     inpaint_by_block = True
-
-    _postprocess_hooks = OrderedDict()
-    _preprocess_hooks = OrderedDict()
 
     def __init__(self, **params) -> None:
         super().__init__(**params)

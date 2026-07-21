@@ -1,14 +1,17 @@
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 from ballontranslator.modules.exceptions import ModuleRunError
-from ballontranslator.modules.ocr.base import OCRBase
+from ballontranslator.modules.ocr.base import OCRBase, postprocess_ocr_text
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError
 from ballontranslator.modules.textdetector.base import TextDetectorBase
 from ballontranslator.ui import module_manager
+from ballontranslator.utils.config import ModuleConfig, OCRTextPostprocess, pcfg
 from ballontranslator.utils.registry import ModuleSpec
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.text_processing import capitalize_sentences
 
 
 class SuccessfulOCR(OCRBase):
@@ -79,13 +82,29 @@ class FakeManager:
 
 
 class ModuleRunErrorTest(unittest.TestCase):
-    def test_ocr_accepts_new_text_only_after_success(self):
+
+    def test_ocr_postprocesses_new_text_only_after_success(self):
         ocr = SuccessfulOCR()
         block = TextBlock(xyxy=[0, 0, 10, 10], text=['old text'])
+        substitutions = [{
+            'keyword': 'new',
+            'sub': 'final',
+            'use_reg': False,
+            'case_sens': True,
+        }]
 
-        ocr.run_ocr(np.zeros((12, 12, 3), dtype=np.uint8), [block])
+        with patch.object(pcfg, 'ocr_sublist', substitutions):
+            with patch.object(
+                pcfg.module,
+                'ocr_text_postprocess',
+                OCRTextPostprocess.UPPERCASE,
+            ):
+                ocr.run_ocr(
+                    np.zeros((12, 12, 3), dtype=np.uint8),
+                    [block],
+                )
 
-        self.assertEqual(block.text, ['new text'])
+        self.assertEqual(block.text, 'FINAL TEXT')
 
     def test_ocr_restores_existing_text_after_failure(self):
         ocr = FailingOCR()

@@ -1269,7 +1269,6 @@ class ModuleManager(QObject):
         self,
         config_panel: ConfigPanel,
         imgtrans_progress_msgbox: ImgtransProgressMessageBox,
-        ocr_postprocess: Callable = None,
         parent_widget=None,
     ):
         self.config_panel = config_panel
@@ -1335,7 +1334,6 @@ class ModuleManager(QObject):
         ocr_panel.addModulesParamWidgets(ocr_params, cfg_module.ocr)
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.selectOCR)
-        OCRBase.register_postprocess_hooks(ocr_postprocess)
 
         config_panel.unload_models.connect(self.unload_all_models)
         config_panel.prepare_selected_modules.connect(self.prepareSelectedModules)

@@ -55,6 +55,19 @@ class LLMGlossaryMode:
     Valid = (Matching, All)
 
 
+class OCRTextPostprocess:
+    """Canonical OCR text postprocessing modes stored in module config.
+
+    >>> OCRTextPostprocess.CAPITALIZE
+    'capitalize'
+    """
+
+    NONE = 'none'
+    CAPITALIZE = 'capitalize'
+    UPPERCASE = 'uppercase'
+    Valid = (NONE, CAPITALIZE, UPPERCASE)
+
+
 @nested_dataclass
 class ModuleConfig(Config):
     textdetector: str = 'ctd'
@@ -69,6 +82,7 @@ class ModuleConfig(Config):
     enable_inpaint: bool = True
     # 是否在 OCR 后进行字体检测（默认不启用）
     ocr_font_detect: bool = False
+    ocr_text_postprocess: str = OCRTextPostprocess.NONE
     textdetector_params: Dict = field(default_factory=lambda: dict())
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
@@ -164,6 +178,8 @@ class ModuleConfig(Config):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
 
     def __post_init__(self):
+        if self.ocr_text_postprocess not in OCRTextPostprocess.Valid:
+            self.ocr_text_postprocess = OCRTextPostprocess.NONE
         if self.translate_context not in TranslateContext.Valid:
             self.translate_context = TranslateContext.Page
         if self.llm_translate_context not in LLMTranslateContext.Valid:

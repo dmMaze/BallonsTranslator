@@ -2,8 +2,7 @@ import base64
 import requests
 import numpy as np
 import cv2
-from typing import Union, List, Tuple
-from collections import OrderedDict
+from typing import List, Tuple
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
@@ -16,9 +15,6 @@ from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR
 from ..exceptions import ModuleRunError
 
 class TextDetectorBase(BaseModule):
-
-    _postprocess_hooks = OrderedDict()
-    _preprocess_hooks = OrderedDict()
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
