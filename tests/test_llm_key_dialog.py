@@ -138,6 +138,11 @@ class MissingModelOCR(OCRBase):
         raise LLMModelRequiredError('profile-1', 'Profile 1', vision=True)
 
 
+class FailingRuntimeOCR(OCRBase):
+    def _ocr_blk_list(self, _img, _blk_list, *args, **kwargs):
+        raise RuntimeError('ocr failed')
+
+
 class MissingKeyInpainter:
     def inpaint(self, _img, _mask):
         raise LLMApiKeyRequiredError('profile-1', 'Profile 1')
@@ -206,6 +211,27 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             self.calls,
             [('profile-1', 'Profile 1'), ('profile-1', 'Profile 1')],
         )
+
+    def test_page_failure_message_is_logged_and_shown(self):
+        with mock.patch(
+            'ballontranslator.utils.message.LOGGER.error',
+        ) as log_error, mock.patch.object(
+            shared,
+            'create_errdialog_in_mainthread',
+        ) as show_error:
+            module_manager._create_page_error_dialog(
+                RuntimeError('ocr failed'),
+                'OCR Failed.',
+                'PageFailureTest',
+                'page-1',
+            )
+
+        logged = '\n'.join(
+            str(call.args[0])
+            for call in log_error.call_args_list
+        )
+        self.assertIn('Page: page-1', logged)
+        self.assertIn('Page: page-1', show_error.call_args.args[0])
 
     def test_missing_llm_model_dialog_emits_once_until_reset(self):
         error = LLMModelRequiredError('profile-1', 'Profile 1', vision=True)
@@ -328,7 +354,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
 
                 with mock.patch(
                     'ballontranslator.ui.module_manager.create_error_dialog',
-                ):
+                ) as show_error:
                     success = thread._translate_page(
                         project,
                         'page-1',
@@ -348,6 +374,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                     self.assertEqual(info['translation_target'], 'English')
                 else:
                     self.assertNotIn('translation_target', info)
+                    self.assertIn('Page: page-1', show_error.call_args.args[1])
 
     def test_imgtrans_full_page_forwards_context_and_marks_only_success(self):
         for translator_type, expected_success in (
@@ -370,7 +397,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
 
                 with mock.patch(
                     'ballontranslator.ui.module_manager.create_error_dialog',
-                ):
+                ) as show_error:
                     success = thread._translate_full_page(
                         project,
                         'page-1',
@@ -391,6 +418,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                     self.assertEqual(info['translation_target'], 'English')
                 else:
                     self.assertNotIn('translation_target', info)
+                    self.assertIn('Page: page-1', show_error.call_args.args[1])
 
     def test_pipeline_translation_modes_share_the_expected_boundaries(self):
         """Headless runs this same router; there is no headless-only boundary."""
@@ -568,7 +596,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                 pcfg.module.set_stage_enabled(index, index == 0)
             with mock.patch(
                 'ballontranslator.ui.module_manager.create_error_dialog',
-            ):
+            ) as show_error:
                 thread._imgtrans_pipeline()
         finally:
             for index, enabled in enumerate(old_stages):
@@ -577,6 +605,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         info = project._image_info['page-1']
         self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
         self.assertNotIn('translation_target', info)
+        self.assertIn('Page: page-1', show_error.call_args.args[1])
 
     def test_missing_llm_key_stops_ocr_block_pipeline(self):
         ocr = MissingKeyOCR()
