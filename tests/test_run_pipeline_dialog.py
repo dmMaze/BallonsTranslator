@@ -17,6 +17,7 @@ from qtpy.QtWidgets import (
     QFrame,
     QLabel,
     QMainWindow,
+    QRadioButton,
     QSpinBox,
     QStackedWidget,
     QToolButton,
@@ -39,6 +40,7 @@ from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.utils.config import (
     LLMGlossaryMode,
     LLMTranslateContext,
+    OCRTextPostprocess,
     ProgramConfig,
     RunStatus,
     json_dump_program_config,
@@ -68,6 +70,10 @@ class RunPipelineDialogTests(unittest.TestCase):
         cls.app = get_app()
 
     def setUp(self):
+        self._save_config_patcher = patch(
+            'ballontranslator.ui.run_pipeline_dialog.save_config',
+        )
+        self.save_config_mock = self._save_config_patcher.start()
         self._module_settings_expanded = (
             RunPipelineDialog._module_settings_expanded
         )
@@ -88,6 +94,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.keep_exist_textlines,
             pcfg.restore_ocr_empty,
             pcfg.module.ocr_font_detect,
+            pcfg.module.ocr_text_postprocess,
             pcfg.module.check_need_inpaint,
             pcfg.module.filter_mask_by_bboxes,
             pcfg.module.translate_source,
@@ -134,6 +141,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.keep_exist_textlines,
             pcfg.restore_ocr_empty,
             pcfg.module.ocr_font_detect,
+            pcfg.module.ocr_text_postprocess,
             pcfg.module.check_need_inpaint,
             pcfg.module.filter_mask_by_bboxes,
             pcfg.module.translate_source,
@@ -144,6 +152,42 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.llm_glossary_path,
             pcfg.module.llm_glossary_mode,
         ) = self._pipeline_general_settings
+        self._save_config_patcher.stop()
+
+    def test_ocr_text_postprocess_radio_buttons_update_module_config(self):
+        pcfg.module.ocr_text_postprocess = OCRTextPostprocess.CAPITALIZE
+        dialog = RunPipelineDialog()
+
+        buttons = dialog.findChildren(
+            QRadioButton,
+            'RunPipelineOCRTextPostprocessOption',
+        )
+
+        self.assertEqual(
+            [button.text() for button in buttons],
+            ['None', 'Captialize', 'To Upper Case'],
+        )
+        self.assertTrue(
+            dialog.ocr_text_postprocess_buttons[
+                OCRTextPostprocess.CAPITALIZE
+            ].isChecked()
+        )
+        postprocess_label = next(
+            label
+            for label in dialog.findChildren(QLabel, 'RunPipelineSettingLabel')
+            if label.text() == 'Letter Case'
+        )
+        ocr_layout = dialog.module_settings_bodies[1].layout()
+        self.assertLess(
+            ocr_layout.indexOf(postprocess_label),
+            ocr_layout.indexOf(buttons[0].parentWidget()),
+        )
+        dialog.ocr_text_postprocess_buttons[OCRTextPostprocess.UPPERCASE].click()
+        self.assertEqual(
+            pcfg.module.ocr_text_postprocess,
+            OCRTextPostprocess.UPPERCASE,
+        )
+        dialog.close()
 
     def test_dialog_initializes_pipeline_controls(self):
         project = SimpleNamespace(
@@ -308,6 +352,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         dialog = RunPipelineDialog()
         dialog.run_button.click()
         self.assertEqual(dialog.result(), RunPipelineDialog.RUN)
+        dialog.close()
 
         dialog = RunPipelineDialog()
         dialog.continue_button.click()
@@ -321,6 +366,11 @@ class RunPipelineDialogTests(unittest.TestCase):
         dialog = RunPipelineDialog()
         dialog.close_button.click()
         self.assertEqual(dialog.result(), dialog.Rejected)
+
+        dialog = RunPipelineDialog()
+        dialog.show()
+        dialog.close()
+        self.assertEqual(self.save_config_mock.call_count, 5)
 
     def test_pipeline_general_settings_update_config_and_emit_actions(self):
         dialog = RunPipelineDialog(translator_metadata={

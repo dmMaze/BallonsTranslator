@@ -788,9 +788,27 @@ class OCR(nn.Module):
             batch_index = batch_index.index_select(0, torch.tensor(remaining_indexs, device=img.device))
 
 
-        # Ensure we have the correct number of finished hypotheses for each sample
-        assert len(finished_hypos) == N
-
+        # A difficult crop may reach the sequence limit before two beams emit
+        # EOS. Preserve the best live beam, matching infer_beam_batch's
+        # fallback, so one non-terminating sample cannot fail the whole batch.
+        if len(finished_hypos) < N:
+            active_log_probs = log_probs.view(N_remaining, beams_k)
+            for active_idx in range(N_remaining):
+                original_idx = batch_index[active_idx * beams_k].item()
+                if original_idx in finished_hypos:
+                    continue
+                best_beam_idx = active_log_probs[active_idx].argmax().item()
+                beam_idx = active_idx * beams_k + best_beam_idx
+                final_idx = out_idx[beam_idx]
+                sequence_length = max(final_idx.numel() - 1, 1)
+                probability = torch.exp(
+                    log_probs[beam_idx] / sequence_length
+                ).item()
+                finished_hypos[original_idx] = (
+                    final_idx,
+                    probability,
+                    cached_activations[beam_idx],
+                )
 
         # Final output processing and color predictions
         result = []

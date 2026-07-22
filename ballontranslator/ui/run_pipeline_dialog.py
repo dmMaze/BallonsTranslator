@@ -12,6 +12,7 @@ from qtpy.QtGui import QIcon, QMouseEvent, QPainter, QPalette, QPen
 from qtpy.QtWidgets import (
     QAbstractButton,
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -23,6 +24,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QRadioButton,
     QSizePolicy,
     QStackedWidget,
     QStyle,
@@ -50,7 +52,9 @@ from .custom_widget.combobox import BottomBorderComboBox
 from ballontranslator.utils.config import (
     LLMGlossaryMode,
     LLMTranslateContext,
+    OCRTextPostprocess,
     pcfg,
+    save_config,
     TranslateContext,
 )
 from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY
@@ -341,6 +345,7 @@ class RunPipelineDialog(QDialog):
         layout.addLayout(button_row)
 
         self.workflow_selector.currentIndexChanged.connect(self._set_pipeline_page)
+        self.finished.connect(lambda _result: save_config())
         self._set_pipeline_page(self.workflow_selector.currentIndex(), persist=False)
         initial_height = self.sizeHint().height()
         self.setMinimumHeight(initial_height)
@@ -606,6 +611,49 @@ class RunPipelineDialog(QDialog):
             pcfg.module.ocr_font_detect,
             lambda checked: setattr(pcfg.module, 'ocr_font_detect', checked),
         )
+
+        postprocess_label = QLabel(self.tr('Letter Case'), section)
+        postprocess_label.setObjectName('RunPipelineSettingLabel')
+        layout.addWidget(postprocess_label)
+
+        postprocess_options_row = QWidget(section)
+        postprocess_options_row.setObjectName('RunPipelineGeneralSettingRow')
+        postprocess_options_row.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+        postprocess_layout = QHBoxLayout(postprocess_options_row)
+        postprocess_layout.setContentsMargins(24, 0, 24, 0)
+        postprocess_layout.setSpacing(8)
+
+        self.ocr_text_postprocess_group = QButtonGroup(postprocess_options_row)
+        self.ocr_text_postprocess_buttons = {}
+        postprocess_options = (
+            (self.tr('None'), OCRTextPostprocess.NONE),
+            (self.tr('Captialize'), OCRTextPostprocess.CAPITALIZE),
+            (self.tr('To Upper Case'), OCRTextPostprocess.UPPERCASE),
+        )
+        for text, mode in postprocess_options:
+            button = QRadioButton(text, postprocess_options_row)
+            button.setObjectName('RunPipelineOCRTextPostprocessOption')
+            button.setChecked(pcfg.module.ocr_text_postprocess == mode)
+            button.toggled.connect(
+                lambda checked, mode=mode: self._on_ocr_text_postprocess_toggled(
+                    mode,
+                    checked,
+                )
+            )
+            self.ocr_text_postprocess_group.addButton(button)
+            self.ocr_text_postprocess_buttons[mode] = button
+            postprocess_layout.addWidget(button)
+            if mode != postprocess_options[-1][1]:
+                postprocess_layout.addStretch()
+        layout.addWidget(postprocess_options_row)
+
+    @staticmethod
+    def _on_ocr_text_postprocess_toggled(mode: str, checked: bool):
+        if checked:
+            pcfg.module.ocr_text_postprocess = mode
 
     def _build_inpainting_settings(self, section: QWidget, layout: QVBoxLayout):
         self.skip_simple_cases = self._add_checkbox_setting(

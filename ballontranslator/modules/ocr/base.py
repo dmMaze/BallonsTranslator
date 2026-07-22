@@ -1,11 +1,16 @@
-from typing import Tuple, List, Dict, Union, Callable
+from typing import List, Mapping, Sequence, Union
 from copy import deepcopy
 import numpy as np
 import cv2
-from collections import OrderedDict
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.registry import Registry
+from ballontranslator.utils.config import OCRTextPostprocess, pcfg
+from ballontranslator.utils.text_processing import (
+    capitalize_sentences,
+    substitute_keywords,
+)
+
 OCR = Registry('OCR')
 register_OCR = OCR.register_module
 
@@ -13,10 +18,37 @@ from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModel
 from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR, LOGGER
 from ..exceptions import ModuleRunError
 
+
+def postprocess_ocr_text(
+    text: str,
+    substitutions: Sequence[Mapping],
+    mode: str = OCRTextPostprocess.NONE,
+) -> str:
+    """Apply OCR substitutions and the selected text finalization mode.
+
+    >>> rules = [{'keyword': 'Hero', 'sub': 'Champion', 'use_reg': False,
+    ...           'case_sens': True}]
+    >>> postprocess_ocr_text('Hero RETURNS', rules)
+    'Champion RETURNS'
+    >>> postprocess_ocr_text(
+    ...     'hero RETURNS. next ONE!', (), OCRTextPostprocess.CAPITALIZE)
+    'Hero returns. Next one!'
+    >>> postprocess_ocr_text('Hero returns', rules, OCRTextPostprocess.UPPERCASE)
+    'CHAMPION RETURNS'
+    >>> postprocess_ocr_text('Hero returns', rules, 'invalid')
+    'Champion returns'
+    """
+
+    text = substitute_keywords(text, substitutions)
+    if mode == OCRTextPostprocess.CAPITALIZE:
+        return capitalize_sentences(text)
+    if mode == OCRTextPostprocess.UPPERCASE:
+        return text.upper()
+    return text
+
+
 class OCRBase(BaseModule):
 
-    _postprocess_hooks = OrderedDict()
-    _preprocess_hooks = OrderedDict()
     _line_only: bool = False
 
     def __init__(self, **params) -> None:
@@ -48,8 +80,15 @@ class OCRBase(BaseModule):
                     blk.text = []
 
             self._ocr_blk_list(img, blk_list, *args, **kwargs)
-            for callback_name, callback in self._postprocess_hooks.items():
-                callback(textblocks=blk_list, img=img, ocr_module=self)
+            for blk in blk_list:
+                blk.text = postprocess_ocr_text(
+                    blk.get_text(),
+                    pcfg.ocr_sublist,
+                    pcfg.module.ocr_text_postprocess,
+                )
+
+            if pcfg.module.ocr_font_detect:
+                self._detect_fonts(img, blk_list)
 
             return blk_list
         except (ModuleRunError, LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped):
@@ -62,6 +101,25 @@ class OCRBase(BaseModule):
                 for blk, text in original_text:
                     blk.text = text
             raise ModuleRunError('ocr', self.name, str(e)) from e
+
+    @staticmethod
+    def _detect_fonts(img: np.ndarray, blk_list: List[TextBlock]) -> None:
+        """Best-effort font detection after OCR text has been finalized."""
+
+        try:
+            from ballontranslator.utils import font_detect
+        except Exception:
+            return
+
+        for blk in blk_list:
+            try:
+                name, confidence = font_detect.detect_font_from_block(img, blk)
+                blk._detected_font_name = name
+                blk._detected_font_confidence = float(confidence)
+            except Exception:
+                # Font metadata is optional and must not break OCR completion.
+                blk._detected_font_name = ''
+                blk._detected_font_confidence = 0.0
 
     def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs) -> None:
         """Processes a list of text blocks on the image."""

@@ -55,6 +55,24 @@ _llm_base_url_dialog_lock = threading.Lock()
 _shown_llm_base_url_dialog_profiles = set()
 
 
+def _create_page_error_dialog(
+    exception: Exception,
+    error_msg: str,
+    exception_type: str,
+    page_key: str = None,
+    page_label: str = 'Page',
+):
+
+    if page_key:
+        error_msg = f'{error_msg}\n{page_label}: {page_key}'
+
+    create_error_dialog(
+        exception,
+        error_msg,
+        exception_type,
+    )
+
+
 def _show_llm_key_required_dialog(error: LLMApiKeyRequiredError):
     profile_key = error.profile_id or error.profile_name
     with _llm_key_dialog_lock:
@@ -598,7 +616,13 @@ class TranslateThread(ModuleThread):
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
             success = False
-            create_error_dialog(e, self.tr('Translation Failed.'), 'TranslationFailed')
+            _create_page_error_dialog(
+                e,
+                self.tr('Translation Failed.'),
+                'TranslationFailed',
+                page_key,
+                self.tr('Page'),
+            )
         if success:
             project.mark_translation_finished(page_key, self.translator.lang_target)
         return success
@@ -631,7 +655,11 @@ class TranslateThread(ModuleThread):
                 self._translate_page(self.imgtrans_proj, page_key)
             except Exception as e:
                 # TODO: allowing retry/skip/terminate
-                msg = self.tr('Translation Failed.')
+                msg = _failure_message_for_page(
+                    self.tr('Translation Failed.'),
+                    page_key,
+                    self.tr('Page'),
+                )
                 if isinstance(e, MissingTranslatorParams):
                     msg = msg + '\n' + self.tr('{param} is required for {translator}').format(
                         param=str(e),
@@ -741,8 +769,20 @@ class ImgtransThread(QThread):
         """请求停止当前任务"""
         self.stop_event.set()
 
-    def _stop_on_stage_failure(self, exception: ModuleRunError, error_msg: str, exception_type: str):
-        create_error_dialog(exception, error_msg, exception_type)
+    def _stop_on_stage_failure(
+        self,
+        exception: ModuleRunError,
+        error_msg: str,
+        exception_type: str,
+        page_key: str = None,
+    ):
+        _create_page_error_dialog(
+            exception,
+            error_msg,
+            exception_type,
+            page_key,
+            self.tr('Page'),
+        )
         self.requestStop()
 
     def runBlktransPipeline(
@@ -772,7 +812,13 @@ class ImgtransThread(QThread):
     ) -> bool:
         translator = self.translate_thread.module or self.translate_thread.translator
         if translator is None:
-            create_error_dialog(RuntimeError('Translator is not loaded.'), self.tr('Translation Failed.'), 'TranslationFailed')
+            _create_page_error_dialog(
+                RuntimeError('Translator is not loaded.'),
+                self.tr('Translation Failed.'),
+                'TranslationFailed',
+                page_key,
+                self.tr('Page'),
+            )
             return False
         if hasattr(translator, 'set_stop_event'):
             translator.set_stop_event(self.stop_event)
@@ -796,7 +842,13 @@ class ImgtransThread(QThread):
         except LLMRequestStopped:
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
-            create_error_dialog(e, self.tr('Translation Failed.'), 'TranslationFailed')
+            _create_page_error_dialog(
+                e,
+                self.tr('Translation Failed.'),
+                'TranslationFailed',
+                page_key,
+                self.tr('Page'),
+            )
         return False
 
     def _translate_full_page(
@@ -860,7 +912,13 @@ class ImgtransThread(QThread):
                 self.finish_blktrans.emit(mode, blk_ids)
                 return
             except ModuleRunError as e:
-                create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
+                _create_page_error_dialog(
+                    e,
+                    self.tr('OCR Failed.'),
+                    'OCRFailed',
+                    page_key,
+                    self.tr('Page'),
+                )
                 self.finish_blktrans.emit(mode, blk_ids)
                 return
             self.finish_blktrans.emit(mode, blk_ids)
@@ -996,7 +1054,12 @@ class ImgtransThread(QThread):
                     mask, blk_list = self.textdetector.detect(img, self.imgtrans_proj)
                     need_save_mask = True
                 except ModuleRunError as e:
-                    self._stop_on_stage_failure(e, self.tr('Text Detection Failed.'), 'TextDetectFailed')
+                    self._stop_on_stage_failure(
+                        e,
+                        self.tr('Text Detection Failed.'),
+                        'TextDetectFailed',
+                        imgname,
+                    )
                     break
                 self.detect_counter += 1
                 if pcfg.module.keep_exist_textlines:
@@ -1075,7 +1138,12 @@ class ImgtransThread(QThread):
                     self.requestStop()
                     break
                 except ModuleRunError as e:
-                    self._stop_on_stage_failure(e, self.tr('OCR Failed.'), 'OCRFailed')
+                    self._stop_on_stage_failure(
+                        e,
+                        self.tr('OCR Failed.'),
+                        'OCRFailed',
+                        imgname,
+                    )
                     break
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_OCR)
                 self.update_ocr_progress.emit(self.ocr_counter)
@@ -1269,7 +1337,6 @@ class ModuleManager(QObject):
         self,
         config_panel: ConfigPanel,
         imgtrans_progress_msgbox: ImgtransProgressMessageBox,
-        ocr_postprocess: Callable = None,
         parent_widget=None,
     ):
         self.config_panel = config_panel
@@ -1335,7 +1402,6 @@ class ModuleManager(QObject):
         ocr_panel.addModulesParamWidgets(ocr_params, cfg_module.ocr)
         ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
         ocr_panel.ocr_changed.connect(self.selectOCR)
-        OCRBase.register_postprocess_hooks(ocr_postprocess)
 
         config_panel.unload_models.connect(self.unload_all_models)
         config_panel.prepare_selected_modules.connect(self.prepareSelectedModules)

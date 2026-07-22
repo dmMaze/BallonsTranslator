@@ -831,6 +831,32 @@ QLabel#RunPipelineSettingLabel {
     font-size: 12px;
 }
 
+QRadioButton#RunPipelineOCRTextPostprocessOption {
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    spacing: 5px;
+    font-size: 12px;
+}
+
+QRadioButton#RunPipelineOCRTextPostprocessOption::indicator {
+    width: 12px;
+    height: 12px;
+    border: 1px solid @borderColor;
+    border-radius: 7px;
+    background-color: transparent;
+}
+
+QRadioButton#RunPipelineOCRTextPostprocessOption::indicator:checked {
+    background: qradialgradient(
+        cx: 0.5, cy: 0.5,
+        radius: 0.5, fx: 0.5, fy: 0.5,
+        stop: 0 rgb(30, 147, 229),
+        stop: 0.42 rgb(30, 147, 229),
+        stop: 0.43 rgba(0, 0, 0, 0),
+        stop: 1 rgba(0, 0, 0, 0)
+    );
+}
+
 QComboBox[bottomBorderSelector="true"] {
     color: @qwidgetForegroundColor;
     background-color: transparent;

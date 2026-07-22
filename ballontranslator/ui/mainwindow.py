@@ -401,7 +401,6 @@ class MainWindow(mainwindow_cls):
         module_manager.setupThread(
             self.configPanel,
             self.imgtrans_progress_msgbox,
-            self.ocr_postprocess,
             parent_widget=self,
         )
         module_manager.module_selection_changed.connect(self.on_module_selection_changed)
@@ -1924,31 +1923,6 @@ class MainWindow(mainwindow_cls):
         pcfg.darkmode = self.titleBar.darkModeAction.isChecked()
         self.resetStyleSheet()
         self.save_config()
-
-    def ocr_postprocess(self, textblocks: List[TextBlock], img, ocr_module=None, **kwargs):
-        for blk in textblocks:
-            text = blk.get_text()
-            blk.text = self.ocrSubWidget.sub_text(text)
-
-        # 字体检测：在 OCR 完成后按配置执行（按需导入以减少启动开销）
-        try:
-            if pcfg.module.ocr_font_detect:
-                try:
-                    from ballontranslator.utils import font_detect
-                    for blk in textblocks:
-                        try:
-                            name, conf = font_detect.detect_font_from_block(img, blk)
-                            blk._detected_font_name = name
-                            blk._detected_font_confidence = float(conf)
-                        except Exception:
-                            # don't break the pipeline on detector errors
-                            blk._detected_font_name = ''
-                            blk._detected_font_confidence = 0.0
-                except Exception:
-                    # failed to import or run detector
-                    pass
-        except Exception:
-            pass
 
     def on_copy_src(self):
         blks = self.canvas.selected_text_items()

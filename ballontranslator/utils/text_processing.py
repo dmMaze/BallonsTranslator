@@ -19,6 +19,7 @@ LANGSET_CH = {'简体中文', '繁體中文'}
 
 PUNSET_RIGHT_ENG = {'.', '?', '!', ':', ';', ')', '}', "\""}
 PUNCTUATION_L = {'「', '『', '【', '《', '〈', '〔', '［', '｛', '（', '(', '[', '{', '“', '‘'}
+SENTENCE_TERMINATORS = frozenset('.!?。！？')
 
 PKUSEG_PUNCSET = {' ', '.', '　'}
 PKUSEGPATH = r'data/pkusegscores.json'
@@ -64,6 +65,27 @@ def substitute_keywords(
             )
             LOGGER.error(traceback.format_exc())
     return text
+
+
+def capitalize_sentences(text: str) -> str:
+    """Lowercase text, then uppercase each sentence's first letter.
+
+    >>> capitalize_sentences('hello WORLD. "next ONE!" final?')
+    'Hello world. "Next one!" Final?'
+    """
+
+    text = text.lower()
+    capitalize_next = True
+    result = []
+    for char in text:
+        if capitalize_next and char.isalnum():
+            if char.isalpha():
+                char = char.upper()
+            capitalize_next = False
+        result.append(char)
+        if char in SENTENCE_TERMINATORS:
+            capitalize_next = True
+    return ''.join(result)
 
 
 def full_len(s: str):
