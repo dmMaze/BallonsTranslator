@@ -713,6 +713,16 @@ class LLMTranslator(BaseTranslator):
         thinking_level = str(profile.thinking_level or 'None')
         if thinking_level.lower() != 'none':
             api_args["reasoning_effort"] = thinking_level
+
+        extra_params = (
+            (getattr(profile, 'top_k', 0), 'top_k', int),
+
+        )
+        for value, api_key, cast_type in extra_params:
+            value = cast_type(value or 0)
+            if value > 0:
+                api_args.setdefault("extra_body", {})[api_key] = value
+
         return api_args
 
     def _log_token_usage(

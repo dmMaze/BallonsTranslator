@@ -186,6 +186,7 @@ class LLMProfile(Config):
     max_tokens: int = 8192
     temperature: float = 0.1
     top_p: float = 1.0
+    top_k: int = 0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
     json_schema_response_format: bool = False
