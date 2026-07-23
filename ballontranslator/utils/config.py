@@ -394,6 +394,9 @@ def json_dump_program_config(obj, **kwargs):
             return serialize_np(obj)
         elif isinstance(obj, ModuleConfig):
             return obj.get_saving_params()
+        serializer = getattr(obj, 'to_serializable_dict', None)
+        if serializer is not None:
+            return serializer()
         return obj.__dict__
     return json.dumps(obj, default=lambda o: _default(o), ensure_ascii=False, **kwargs)
 

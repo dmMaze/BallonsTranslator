@@ -14,10 +14,9 @@ except:
 from .misc import ndarray2pixmap, QKEY, QNUMERIC_KEYS, ARROWKEY2DIRECTION
 from .textitem import TextBlkItem, TextBlock
 from .texteditshapecontrol import (
-    UI_OVERLAY_ITEM_DATA_KEY,
     TextBlkShapeControl,
-    TextOverlayManager,
 )
+from .text_overlay import UI_OVERLAY_ITEM_DATA_KEY, TextOverlayManager
 from .custom_widget import ScrollBar, FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
@@ -281,8 +280,8 @@ class Canvas(QGraphicsScene):
         )
         self._suspend_text_overlay_sync = False
         self.txtblkShapeControl.overlay_sync_callback = self.sync_text_overlays
-        self.hscroll_bar.valueChanged.connect(self.sync_text_overlays)
-        self.vscroll_bar.valueChanged.connect(self.sync_text_overlays)
+        self.hscroll_bar.valueChanged.connect(self.sync_text_overlay_viewport)
+        self.vscroll_bar.valueChanged.connect(self.sync_text_overlay_viewport)
 
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
@@ -361,6 +360,13 @@ class Canvas(QGraphicsScene):
         manager = getattr(self, 'text_overlay_manager', None)
         if manager is not None:
             manager.sync_overlays()
+
+    def sync_text_overlay_viewport(self, *_args):
+        if self._suspend_text_overlay_sync:
+            return
+        manager = getattr(self, 'text_overlay_manager', None)
+        if manager is not None:
+            manager.sync_viewport()
 
     def _set_scene_scale(self, scale: float, sync_overlays: bool = True):
         self.scale_factor = scale
@@ -1064,4 +1070,3 @@ class Canvas(QGraphicsScene):
         self.blockSignals(True)
         self.text_undo_stack.blockSignals(True)
         self.draw_undo_stack.blockSignals(True)
-

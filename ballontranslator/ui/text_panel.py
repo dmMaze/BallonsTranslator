@@ -8,7 +8,7 @@ from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent, QFont
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
-from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, TextTransform, normalize_text_transform, px2pt
+from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, SlantTextTransform, px2pt
 from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel
 from .textitem import TextBlkItem
 from .text_advanced_format import TextAdvancedFormatPanel
@@ -17,7 +17,7 @@ from .textedit_commands import SetTextTransformCommand
 from . import shared_widget as SW
 from . import funcmaps as FM
 
-TEXT_TRANSFORM_FIELDS = TextTransform._fields
+TEXT_TRANSFORM_FIELDS = SlantTextTransform.component_fields
 
 
 class LineEdit(QLineEdit):
@@ -495,11 +495,7 @@ class FontFormatPanel(Widget):
 
     @staticmethod
     def _transform_with_value(transform, param_name, value):
-        values = dict(zip(TEXT_TRANSFORM_FIELDS, transform))
-        values[param_name] = value
-        return normalize_text_transform(
-            *(values[name] for name in TEXT_TRANSFORM_FIELDS)
-        )
+        return transform.with_value(param_name, value)
 
     def _sync_text_transform_overlays(self):
         SW.canvas.sync_text_overlays()
@@ -509,8 +505,7 @@ class FontFormatPanel(Widget):
             self.textadvancedfmt_panel.set_transform_items(self._transform_items)
             if len(self._transform_items) == 1 and C.active_format is not None:
                 transform = self._transform_items[0].blk.fontformat.text_transform
-                for name, value in zip(TEXT_TRANSFORM_FIELDS, transform):
-                    setattr(C.active_format, name, value)
+                C.active_format.text_transform = transform
         else:
             active_format = (
                 self.global_format if self.global_mode() else C.active_format
@@ -518,7 +513,9 @@ class FontFormatPanel(Widget):
             if active_format is None:
                 return
             for name, control in self.textadvancedfmt_panel.transform_controls.items():
-                control.set_model_value(getattr(active_format, name))
+                control.set_model_value(
+                    getattr(active_format.text_transform, name)
+                )
         if refresh_shape:
             self._sync_text_transform_overlays()
 
@@ -527,8 +524,7 @@ class FontFormatPanel(Widget):
             before = self.global_format.text_transform
             after = self._transform_with_value(before, param_name, value)
             if before != after:
-                for name, component in zip(TEXT_TRANSFORM_FIELDS, after):
-                    setattr(self.global_format, name, component)
+                self.global_format.text_transform = after
                 self.update_text_style_label()
             self._refresh_text_transform_controls(refresh_shape=False)
             return
@@ -573,12 +569,11 @@ class FontFormatPanel(Widget):
             self._transform_drag_before = [
                 item.blk.fontformat.text_transform for item in self._transform_items
             ]
-        field_index = TEXT_TRANSFORM_FIELDS.index(param_name)
         preview_after = [
             self._transform_with_value(
                 transform,
                 param_name,
-                transform[field_index] + canonical_delta,
+                getattr(transform, param_name) + canonical_delta,
             )
             for transform in self._transform_drag_before
         ]
@@ -589,7 +584,7 @@ class FontFormatPanel(Widget):
             # unless the effective preview would actually change.
             if item._effective_text_transform() == transform:
                 continue
-            if item.set_text_transform(*transform, preview=True):
+            if item.set_text_transform(transform, preview=True):
                 changed_items.append(item)
         if changed_items:
             self._sync_text_transform_overlays()
@@ -600,13 +595,12 @@ class FontFormatPanel(Widget):
             or self._transform_drag_before is None
         ):
             return
-        field_index = TEXT_TRANSFORM_FIELDS.index(param_name)
         before = self._transform_drag_before
         after = [
             self._transform_with_value(
                 transform,
                 param_name,
-                transform[field_index] + canonical_delta,
+                getattr(transform, param_name) + canonical_delta,
             )
             for transform in before
         ]
@@ -617,8 +611,7 @@ class FontFormatPanel(Widget):
             global_before = before[0]
             global_after = after[0]
             if global_before != global_after:
-                for name, component in zip(TEXT_TRANSFORM_FIELDS, global_after):
-                    setattr(self.global_format, name, component)
+                self.global_format.text_transform = global_after
                 self.update_text_style_label()
             self._refresh_text_transform_controls(refresh_shape=False)
             return

@@ -1,120 +1,27 @@
-import math, re
-from contextlib import contextmanager
-import cv2
+import math
 import numpy as np
-from typing import List, NamedTuple, Optional, Union, Tuple
+from typing import List, Union, Tuple
 
-from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent
-from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
-from qtpy.QtGui import (QGradient, QKeyEvent, QFont, QTextCursor, QImage, QPixmap, QPainterPath, QTextDocument,
-                       QInputMethodEvent, QPainter, QPen, QColor, QTextCharFormat, QLinearGradient,
-                       QBrush, QPalette, QAbstractTextDocumentLayout, QPolygonF, QTextLayout)
+from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
+from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF
+from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath,
+                       QInputMethodEvent, QPainter, QColor, QTextCharFormat,
+                       QPolygonF)
 
-from ballontranslator.utils.textblock import TextBlock, FontFormat, TextAlignment, LineSpacingType
-from ballontranslator.utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
-from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.utils.textblock import TextBlock, TextAlignment
+from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
     FontFormat,
     TextTransform,
-    normalize_text_transform,
-    px2pt,
     pt2px,
 )
-from .misc import td_pattern, table_pattern, pixmap2ndarray, ndarray2pixmap
-from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout, SceneTextLayout
-from .text_glyph_renderer import (
-    GLYPH_STROKE_FORMAT_PROPERTY,
-    GlyphRasterAllocationError,
-)
-from .text_graphical_effect import apply_shadow_effect
-from .text_transform import compensated_text_transform_matrix, rect_polygon
+from .misc import td_pattern, table_pattern
+from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
+from .text_effects.renderer import TextEffectRenderer
+from .text_item_transform import TextItemTransformController
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
-# At the minimum cache DPR (1), one logical pixel contains the final
-# antialias/kernel sample and one further pixel guarantees a transparent
-# texture-sampling border. Higher DPR tiers receive at least the same two
-# device rows. These are raster invariants, not transform-dependent padding.
-EFFECT_ANTIALIAS_GUARD = 1.0
-EFFECT_CLEAR_BORDER_GUARD = 1.0
-EFFECT_RASTER_GUARD = EFFECT_ANTIALIAS_GUARD + EFFECT_CLEAR_BORDER_GUARD
-EFFECT_CACHE_MAX_SCALE = 8.0
-EFFECT_CACHE_MAX_PIXELS = 4_194_304
-EFFECT_CACHE_MAX_DIMENSION = 8192
-EFFECT_CACHE_MAX_BYTES = 32 * 1024 * 1024
-EFFECT_TILE_MAX_EDGE = 2048
-# QTextLayout additional formats are derived paint state, not document state.
-# The marker lets us replace only our block-gradient override while preserving
-# any unrelated highlighter ranges attached to the same live layout.
-GRADIENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1238
-
-
-class EffectRasterPlan(NamedTuple):
-    mode: str
-    tier: float
-    pixel_width: int
-    pixel_height: int
-    tile_edge: int
-
-
-class EffectRasterAllocationError(RuntimeError):
-    pass
-
-
-EFFECT_RASTER_FAILURES = (
-    EffectRasterAllocationError,
-    GlyphRasterAllocationError,
-    MemoryError,
-    OverflowError,
-    cv2.error,
-)
-RASTER_BRIDGE_FAILURES = (
-    RuntimeError,
-    ValueError,
-    TypeError,
-    BufferError,
-)
-RASTER_BOUNDARY_FAILURES = (
-    EFFECT_RASTER_FAILURES + RASTER_BRIDGE_FAILURES
-)
-
-
-def plan_effect_raster(
-    width: float,
-    height: float,
-    requested_scale: float,
-) -> EffectRasterPlan:
-    """Choose a bounded full-surface tier or visible-tile plan.
-
-    >>> plan_effect_raster(100, 80, 99).tier
-    8.0
-    >>> plan_effect_raster(10000, 10000, 8).mode
-    'tiles'
-    """
-    width = max(0.0, float(width))
-    height = max(0.0, float(height))
-    requested_scale = max(1.0, min(float(requested_scale), EFFECT_CACHE_MAX_SCALE))
-    for tier in (8.0, 4.0, 2.0, 1.0):
-        if tier > requested_scale:
-            continue
-        pixel_width = max(1, math.ceil(width * tier))
-        pixel_height = max(1, math.ceil(height * tier))
-        pixels = pixel_width * pixel_height
-        if (
-            pixel_width <= EFFECT_CACHE_MAX_DIMENSION
-            and pixel_height <= EFFECT_CACHE_MAX_DIMENSION
-            and pixels <= EFFECT_CACHE_MAX_PIXELS
-            and pixels * 4 <= EFFECT_CACHE_MAX_BYTES
-        ):
-            return EffectRasterPlan(
-                'full', tier, pixel_width, pixel_height, 0
-            )
-    tile_edge = min(
-        EFFECT_TILE_MAX_EDGE,
-        EFFECT_CACHE_MAX_DIMENSION,
-        int(math.sqrt(EFFECT_CACHE_MAX_PIXELS)),
-    )
-    return EffectRasterPlan('tiles', 1.0, 0, 0, tile_edge)
 
 
 class TextBlkItem(QGraphicsTextItem):
@@ -137,27 +44,11 @@ class TextBlkItem(QGraphicsTextItem):
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._installing_text_transform = False
-        self._text_transform_update_depth = 1
-        self._text_transform_update_dirty = False
+        self.transform_controller = TextItemTransformController(self)
+        self.effect_renderer = TextEffectRenderer(self)
         self.pre_editing = False
         self.blk: TextBlock = None
         self.fontformat: FontFormat = None
-        self._text_transform_preview: Optional[TextTransform] = None
-        self._text_transform_entry_padding: Optional[float] = None
-        self._effect_cache_generation = 0
-        self._effect_cache_rendered_generation = -1
-        self._effect_cache_dirty = False
-        self._effect_tile_cache = {}
-        self._effect_allocation_warning_generation = -1
-        self._export_effect_render = False
-        self._export_effect_error = None
-        self._in_graphics_paint = False
-        self._capturing_effect_surface = False
-        self._effect_surface_raster_error = None
-        self._force_effect_tiles = False
-        self._effect_direct_stroke = False
-        self._refreshing_gradient_geometry = False
         self.repainting = False
         self.reshaping = False
         self.under_ctrl = False
@@ -167,8 +58,6 @@ class TextBlkItem(QGraphicsTextItem):
         
         self.idx = idx
         
-        self.background_pixmap: QPixmap = None
-        self._background_pixmap_scale = None
         self.stroke_qcolor = QColor(0, 0, 0)
         self.oldPos = QPointF()
         self.oldRect = QRectF()
@@ -197,9 +86,7 @@ class TextBlkItem(QGraphicsTextItem):
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
             | QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
         )
-        self._request_text_transform_update()
-        self._text_transform_update_depth = 0
-        self._flush_text_transform_update()
+        self.transform_controller.finish_initialization()
 
     def inputMethodEvent(self, e: QInputMethodEvent):
         if self.pre_editing == False:
@@ -252,836 +139,28 @@ class TextBlkItem(QGraphicsTextItem):
                     self.repaint_background()
             self.update()
 
-    def _effect_paint_context(self):
-        context = QAbstractTextDocumentLayout.PaintContext()
-        context.cursorPosition = -1
-        context.selections = []
-        return context
-
-    def _paint_live_layout(self, painter: QPainter, context=None):
-        layout = self.document().documentLayout()
-        if context is None:
-            context = self._effect_paint_context()
-        layout.draw(painter, context)
-
-    def _stroke_paint_context(self):
-        context = self._effect_paint_context()
-        doc = self.document()
-        selections = []
-        block = doc.firstBlock()
-        while block.isValid():
-            it = block.begin()
-            while not it.atEnd():
-                fragment = it.fragment()
-                char_format = fragment.charFormat()
-                point_size = char_format.fontPointSize()
-                if point_size <= 0:
-                    point_size = char_format.font().pointSizeF()
-                if point_size <= 0:
-                    point_size = doc.defaultFont().pointSizeF()
-
-                pen = QPen(
-                    self.stroke_qcolor,
-                    pt2px(point_size) * self.fontformat.stroke_width,
-                    Qt.PenStyle.SolidLine,
-                    Qt.PenCapStyle.RoundCap,
-                    Qt.PenJoinStyle.RoundJoin,
-                )
-                effect_format = QTextCharFormat()
-                effect_format.setProperty(
-                    GLYPH_STROKE_FORMAT_PROPERTY, True
-                )
-                # The later normal fill restores glyph interiors. Keeping this
-                # pass opaque also avoids bindings that suppress textOutline
-                # when the selection foreground itself is transparent.
-                effect_format.setForeground(self.stroke_qcolor)
-                effect_format.setTextOutline(pen)
-
-                selection = QAbstractTextDocumentLayout.Selection()
-                selection.cursor = QTextCursor(doc)
-                selection.cursor.setPosition(fragment.position())
-                selection.cursor.setPosition(
-                    fragment.position() + fragment.length(),
-                    QTextCursor.MoveMode.KeepAnchor,
-                )
-                selection.format = effect_format
-                selections.append(selection)
-                it += 1
-            block = block.next()
-        context.selections = selections
-        return context
-
-    def _stroke_outset(self) -> float:
-        if self.fontformat.stroke_width <= 0:
-            return 0.0
-        return (
-            self.layout.max_font_size(to_px=True)
-            * self.fontformat.stroke_width
-            / 2
-        )
-
-    def _new_effect_pixmap(
-        self,
-        render_scale: float = 1.0,
-        surface_rect: QRectF = None,
-    ) -> QPixmap:
-        rect = self.boundingRect() if surface_rect is None else surface_rect
-        pixel_width = max(1, math.ceil(rect.width() * render_scale))
-        pixel_height = max(1, math.ceil(rect.height() * render_scale))
-        if (
-            pixel_width > EFFECT_CACHE_MAX_DIMENSION
-            or pixel_height > EFFECT_CACHE_MAX_DIMENSION
-            or pixel_width * pixel_height > EFFECT_CACHE_MAX_PIXELS
-            or pixel_width * pixel_height * 4 > EFFECT_CACHE_MAX_BYTES
-        ):
-            raise EffectRasterAllocationError(
-                f'effect surface {pixel_width}x{pixel_height} exceeds policy'
-            )
-        try:
-            pixmap = QPixmap(pixel_width, pixel_height)
-        except RASTER_BOUNDARY_FAILURES as error:
-            raise EffectRasterAllocationError(
-                f'unable to allocate effect surface '
-                f'{pixel_width}x{pixel_height}'
-            ) from error
-        if pixmap.isNull():
-            raise EffectRasterAllocationError(
-                f'unable to allocate effect surface {pixel_width}x{pixel_height}'
-            )
-        try:
-            pixmap.setDevicePixelRatio(render_scale)
-            pixmap.fill(Qt.GlobalColor.transparent)
-        except RASTER_BOUNDARY_FAILURES as error:
-            raise EffectRasterAllocationError(
-                f'unable to initialize effect surface '
-                f'{pixel_width}x{pixel_height}'
-            ) from error
-        return pixmap
-
-    def _paint_cloned_document_stroke(self, painter: QPainter):
-        """Paint stroke through the BASE cloned-document path."""
-        doc = QTextDocument()
-        doc.setUndoRedoEnabled(False)
-        doc.setDocumentMargin(self.layout.documentMargin())
-        doc.setDefaultFont(self.document().defaultFont())
-        doc.setHtml(self.document().toHtml())
-        doc.setDefaultTextOption(self.document().defaultTextOption())
-        cursor = QTextCursor(doc)
-        block = doc.firstBlock()
-        stroke_pen = QPen(
-            self.stroke_qcolor,
-            0,
-            Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap,
-            Qt.PenJoinStyle.RoundJoin,
-        )
-        letter_spacing = self.fontformat.letter_spacing * 100
-        while block.isValid():
-            it = block.begin()
-            while not it.atEnd():
-                fragment = it.fragment()
-                char_format = fragment.charFormat()
-                stroke_pen.setWidthF(
-                    pt2px(char_format.fontPointSize())
-                    * self.fontformat.stroke_width
-                )
-                cursor.setPosition(fragment.position())
-                cursor.setPosition(
-                    fragment.position() + fragment.length(),
-                    QTextCursor.MoveMode.KeepAnchor,
-                )
-                char_format.setTextOutline(stroke_pen)
-                if letter_spacing != 100 and not self.fontformat.vertical:
-                    char_format.setFontLetterSpacingType(
-                        QFont.SpacingType.PercentageSpacing
-                    )
-                    char_format.setFontLetterSpacing(letter_spacing)
-                cursor.mergeCharFormat(char_format)
-                it += 1
-            block = block.next()
-
-        layout = (
-            VerticalTextDocumentLayout(doc, self.fontformat)
-            if self.fontformat.vertical
-            else HorizontalTextDocumentLayout(doc, self.fontformat)
-        )
-        layout._draw_offset = self.layout._draw_offset
-        layout._is_painting_stroke = True
-        layout.setMaxSize(self.layout.max_width, self.layout.max_height, False)
-        doc.setDocumentLayout(layout)
-        layout.relayout_on_changed = False
-        doc.drawContents(painter)
-
-    def _paint_vertical_stroke(
-        self,
-        painter: QPainter,
-        render_scale: float = 1.0,
-        surface_rect: QRectF = None,
-    ):
-        """Stroke vertical glyphs per rich-text fragment on every binding."""
-        stroke_alpha = None
-        rgba = None
-        stroke_context = self._stroke_paint_context()
-        selections_by_radius = {}
-        for selection in stroke_context.selections:
-            logical_radius = selection.format.textOutline().widthF() / 2
-            selections_by_radius.setdefault(logical_radius, []).append(selection)
-
-        for logical_radius, selections in selections_by_radius.items():
-            rect = self.boundingRect() if surface_rect is None else surface_rect
-            source = self._new_effect_pixmap(render_scale, rect)
-            source_painter = QPainter(source)
-            if not source_painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin vertical stroke source painter'
-                )
-            try:
-                source_painter.translate(-rect.topLeft())
-                fragment_context = self._effect_paint_context()
-                fragment_context.selections = selections
-                self.layout.draw_glyph_selection_mask(
-                    source_painter, fragment_context
-                )
-            finally:
-                source_painter.end()
-
-            try:
-                rgba = pixmap2ndarray(source, keep_alpha=True)
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to access vertical stroke source pixels'
-                ) from error
-            if rgba is None:
-                raise EffectRasterAllocationError(
-                    'unable to access vertical stroke source pixels'
-                )
-            alpha = rgba[..., 3]
-            radius = math.ceil(logical_radius * render_scale)
-            if radius > 0:
-                diameter = radius * 2 + 1
-                kernel = cv2.getStructuringElement(
-                    cv2.MORPH_ELLIPSE, (diameter, diameter)
-                )
-                alpha = cv2.dilate(alpha, kernel)
-            if stroke_alpha is None:
-                stroke_alpha = alpha
-            else:
-                np.maximum(stroke_alpha, alpha, out=stroke_alpha)
-
-        if stroke_alpha is None or rgba is None:
-            return
-        stroke = np.empty_like(rgba)
-        stroke[..., 0] = self.stroke_qcolor.red()
-        stroke[..., 1] = self.stroke_qcolor.green()
-        stroke[..., 2] = self.stroke_qcolor.blue()
-        stroke[..., 3] = stroke_alpha
-        try:
-            stroke_pixmap = ndarray2pixmap(stroke)
-        except RASTER_BOUNDARY_FAILURES as error:
-            raise EffectRasterAllocationError(
-                'unable to allocate vertical stroke result'
-            ) from error
-        if stroke_pixmap is None or stroke_pixmap.isNull():
-            raise EffectRasterAllocationError(
-                'unable to allocate vertical stroke result'
-            )
-        stroke_pixmap.setDevicePixelRatio(render_scale)
-        painter.drawPixmap(rect.topLeft(), stroke_pixmap)
-
-    def paint_stroke(
-        self,
-        painter: QPainter,
-        render_scale: float = 1.0,
-        surface_rect: QRectF = None,
-    ):
-        if self._text_transform_is_neutral():
-            self._paint_cloned_document_stroke(painter)
-            return
-        active_layout = self.document().documentLayout()
-        if isinstance(active_layout, VerticalTextDocumentLayout):
-            if self._effective_text_transform().glyph_slant_angle == 0.0:
-                self._paint_cloned_document_stroke(painter)
-                return
-            self._paint_vertical_stroke(painter, render_scale, surface_rect)
-            return
-        self._paint_live_layout(painter, self._stroke_paint_context())
-
-    def _shadow_metrics(self):
-        font_size = self.layout.max_font_size(to_px=True)
-        radius = max(0.0, self.fontformat.shadow_radius * font_size)
-        xoffset = self.fontformat.shadow_offset[0] * font_size
-        yoffset = self.fontformat.shadow_offset[1] * font_size
-        return radius, xoffset, yoffset
-
-    def _logical_ink_bounds(self) -> QRectF:
-        logical_rect = self.logical_unpadded_rect()
-        if self.document().isEmpty():
-            return QRectF()
-
-        # Non-zero glyph slant has an exact vector envelope derived from the
-        # same live glyph runs and orientation transforms as paint.  Avoid the
-        # legacy expanding scratch-image loop for this path.
-        if self._effective_text_transform().glyph_slant_angle != 0.0:
-            return self.layout.glyphInkBounds()
-
-        # QTextLayout.boundingRect() includes bookkeeping lines and does not
-        # include every custom vertical rotation/offset. Paint the attached
-        # live layout into an expanding scratch envelope and measure its actual
-        # alpha instead. No document, layout, or format is cloned. Expansion
-        # stops only after all four raster borders are clear, so arbitrary
-        # combining-mark overhang is measured rather than hidden by a fixed
-        # padding guess. Align the logical origin to an integer pixel so the
-        # result is independent of the current fractional document margin.
-        font_guard = max(
-            1,
-            math.ceil(
-                self.layout.max_font_size(to_px=True)
-                + EFFECT_RASTER_GUARD
-            ),
-        )
-
-        def bounded_vector_fallback(error: Exception) -> QRectF:
-            self._warn_effect_allocation_once(error)
-            bounds = self.layout.glyphInkBounds()
-            return bounds.translated(-logical_rect.topLeft())
-
-        while True:
-            pixel_width = max(
-                1, math.ceil(logical_rect.width()) + font_guard * 2
-            )
-            pixel_height = max(
-                1, math.ceil(logical_rect.height()) + font_guard * 2
-            )
-            pixels = pixel_width * pixel_height
-            if (
-                pixel_width > EFFECT_CACHE_MAX_DIMENSION
-                or pixel_height > EFFECT_CACHE_MAX_DIMENSION
-                or pixels > EFFECT_CACHE_MAX_PIXELS
-                or pixels * 4 > EFFECT_CACHE_MAX_BYTES
-            ):
-                return bounded_vector_fallback(
-                    EffectRasterAllocationError(
-                        'text ink measurement surface exceeds policy'
-                    )
-                )
-            try:
-                image = QImage(
-                    pixel_width,
-                    pixel_height,
-                    QImage.Format.Format_ARGB32,
-                )
-            except RASTER_BOUNDARY_FAILURES as error:
-                return bounded_vector_fallback(error)
-            if image.isNull():
-                return bounded_vector_fallback(
-                    EffectRasterAllocationError(
-                        'unable to allocate text ink measurement image'
-                    )
-                )
-            try:
-                image.fill(Qt.GlobalColor.transparent)
-                painter = QPainter(image)
-            except RASTER_BOUNDARY_FAILURES as error:
-                return bounded_vector_fallback(error)
-            if not painter.isActive():
-                return bounded_vector_fallback(
-                    EffectRasterAllocationError(
-                        'unable to begin text ink measurement painter'
-                    )
-                )
-            paint_error = None
-            try:
-                painter.translate(
-                    font_guard - logical_rect.left(),
-                    font_guard - logical_rect.top(),
-                )
-                self._paint_live_layout(painter, self._effect_paint_context())
-            except EFFECT_RASTER_FAILURES as error:
-                paint_error = error
-            finally:
-                painter.end()
-            if paint_error is not None:
-                return bounded_vector_fallback(paint_error)
-            try:
-                rgba = pixmap2ndarray(image, keep_alpha=True)
-            except RASTER_BOUNDARY_FAILURES as error:
-                return bounded_vector_fallback(error)
-            if rgba is None:
-                return bounded_vector_fallback(
-                    EffectRasterAllocationError(
-                        'unable to access text ink measurement pixels'
-                    )
-                )
-            alpha = rgba[..., 3]
-            ys, xs = np.nonzero(alpha)
-            if len(xs) == 0:
-                return QRectF()
-            if (
-                xs.min() == 0
-                or ys.min() == 0
-                or xs.max() == image.width() - 1
-                or ys.max() == image.height() - 1
-            ):
-                font_guard *= 2
-                continue
-            return QRectF(
-                xs.min() - font_guard,
-                ys.min() - font_guard,
-                xs.max() - xs.min() + 1,
-                ys.max() - ys.min() + 1,
-            )
-
-    def _effect_padding(self) -> float:
-        paint_stroke, paint_shadow = self._effect_flags()
-        glyph_slanted = (
-            self._effective_text_transform().glyph_slant_angle != 0.0
-        )
-        if not paint_stroke and not paint_shadow and not glyph_slanted:
-            return 0.0
-        ink_bounds = self._logical_ink_bounds()
-        if ink_bounds.isEmpty():
-            return 0.0
-        stroke_outset = self._stroke_outset()
-        logical_rect = (
-            self.logical_unpadded_rect()
-            if glyph_slanted
-            else QRectF(QPointF(), self.logical_unpadded_rect().size())
-        )
-        effect_bounds = ink_bounds.adjusted(
-            -stroke_outset if paint_stroke else 0.0,
-            -stroke_outset if paint_stroke else 0.0,
-            stroke_outset if paint_stroke else 0.0,
-            stroke_outset if paint_stroke else 0.0,
-        )
-        if paint_shadow:
-            radius, xoffset, yoffset = self._shadow_metrics()
-            shadow_bounds = effect_bounds.translated(xoffset, yoffset).adjusted(
-                -radius, -radius, radius, radius
-            )
-            effect_bounds = effect_bounds.united(shadow_bounds)
-        effect_bounds = effect_bounds.adjusted(
-            -EFFECT_RASTER_GUARD,
-            -EFFECT_RASTER_GUARD,
-            EFFECT_RASTER_GUARD,
-            EFFECT_RASTER_GUARD,
-        )
-        return max(
-            0.0,
-            logical_rect.left() - effect_bounds.left(),
-            effect_bounds.right() - logical_rect.right(),
-            logical_rect.top() - effect_bounds.top(),
-            effect_bounds.bottom() - logical_rect.bottom(),
-        )
-
-    def _neutral_effect_padding_floor(self) -> float:
-        """Return the grow-only effect padding requested by the BASE path."""
-        if self.layout is None:
-            return 0.0
-        max_font_size = self.layout.max_font_size(to_px=True)
-        padding = 0.0
-        if self.fontformat.shadow_radius > 0:
-            padding = max(padding, max_font_size)
-        if self.fontformat.stroke_width > 0:
-            padding = max(
-                padding,
-                max_font_size * (self.fontformat.stroke_width + 0.05) / 2,
-            )
-        return padding
-
-    def _commit_effect_padding(
-        self,
-        padding: float,
-        *,
-        allow_neutral_shrink: bool = False,
-    ) -> bool:
-        changed = (
-            self.setPadding(
-                padding,
-                allow_neutral_shrink=allow_neutral_shrink,
-            )
-            if self.padding() != padding
-            else False
-        )
-        if changed and self.fontformat.gradient_enabled:
-            was_repainting = self.repainting
-            self.repainting = True
-            try:
-                self._refresh_gradient_geometry()
-            finally:
-                self.repainting = was_repainting
-        return changed
-
-    def _update_effect_padding(self):
-        if self._text_transform_entry_padding is not None:
-            # Preserve the BASE grow-only high-water mark if an effect or font
-            # change raises it while any text transform is active. The
-            # transformed envelope may later shrink before neutral restore.
-            self._text_transform_entry_padding = max(
-                self._text_transform_entry_padding,
-                self._neutral_effect_padding_floor(),
-            )
-        padding = self._effect_padding()
-        # QTextLayout stores coordinates at 26.6 fixed-point precision. Use the
-        # same grid as the canonical envelope and round outward so repeated
-        # relayout/undo cycles converge without ever undersizing the effects.
-        if padding > 0.0:
-            layout_units = math.nextafter(padding * 64.0, -math.inf)
-            padding = math.ceil(layout_units) / 64.0
-        return self._commit_effect_padding(padding)
-
-    def _finalize_neutral_text_transform(
-        self,
-        was_visual_neutral: bool,
-        target: TextTransform,
-    ) -> bool:
-        neutral = TextTransform(1.0, 1.0, 0.0, 0.0)
-        if was_visual_neutral or target != neutral:
-            return False
-        entry_padding = self._text_transform_entry_padding
-        if entry_padding is None:
-            # Loaded or externally merged active state may not have an
-            # in-session neutral entry point.
-            entry_padding = self._neutral_effect_padding_floor()
-        padding = max(
-            entry_padding,
-            self._neutral_effect_padding_floor(),
-        )
-        self._text_transform_entry_padding = None
-        self._commit_effect_padding(
-            padding,
-            allow_neutral_shrink=True,
-        )
-
-        # Padding can already equal the neutral target, so cleanup must be
-        # driven by the transform transition rather than by a margin change.
-        self._refresh_gradient_geometry()
-        self._effect_tile_cache.clear()
-        self._force_effect_tiles = False
-        self._effect_direct_stroke = False
-        self._effect_cache_dirty = False
-        # The rebuilt BASE-neutral pixmap is not an active-transform effect
-        # surface. Keep the active cache generation stale so a later Box-only
-        # re-entry cannot reuse the neutral pixmap at the same raster tier.
-        self._effect_cache_rendered_generation = -1
-        if any(self._effect_flags()):
-            self.repaint_background()
-        else:
-            self.background_pixmap = None
-            self._background_pixmap_scale = None
-        self.update()
-        return True
-
-    def _effect_flags(self) -> Tuple[bool, bool]:
-        return (
-            self.fontformat.stroke_width > 0,
-            self.fontformat.shadow_radius > 0
-            and self.fontformat.shadow_strength > 0,
-        )
-
-    def _warn_effect_allocation_once(self, error: Exception):
-        if self._effect_allocation_warning_generation == self._effect_cache_generation:
-            return
-        self._effect_allocation_warning_generation = self._effect_cache_generation
-        LOGGER.warning(
-            'Text effect raster allocation failed for item %s; '
-            'using the bounded interactive fallback for this frame: %s',
-            self.idx,
-            error,
-        )
-
-    def _on_glyph_raster_failure(
-        self, error: Exception, effect_pass: bool = False
-    ):
-        """Bridge renderer degradation into item/export failure policy."""
-        failure = EffectRasterAllocationError(str(error))
-        self._warn_effect_allocation_once(failure)
-        if self._capturing_effect_surface:
-            self._effect_surface_raster_error = failure
-        if effect_pass:
-            self._effect_cache_dirty = True
-        if self._capturing_effect_surface:
-            return
-        if self._export_effect_render:
-            if self._in_graphics_paint:
-                self._export_effect_error = failure
-            else:
-                raise failure from error
+    def repaint_background(self, render_scale: float = 1.0):
+        return self.effect_renderer.repaint_background(render_scale)
 
     def set_export_effect_render(self, enabled: bool):
-        """Make effect allocation failures fatal during a render transaction."""
-        enabled = bool(enabled)
-        if enabled:
-            self._export_effect_error = None
-            self._force_effect_tiles = False
-        else:
-            self._force_effect_tiles = False
-        self._export_effect_render = enabled
+        self.effect_renderer.set_export_effect_render(enabled)
 
     @property
     def export_effect_error(self):
-        return self._export_effect_error
+        return self.effect_renderer.export_effect_error
 
-    def _raise_or_defer_export_effect_error(self, error: Exception) -> bool:
-        """Raise at a Python boundary or defer across Qt's paint callback.
+    def _update_effect_padding(self):
+        return self.effect_renderer._update_effect_padding()
 
-        PyQt treats an exception escaping a virtual ``QGraphicsItem.paint``
-        callback as fatal. Canvas checks the deferred error immediately after
-        ``QGraphicsScene.render`` and raises before returning its image.
-        """
-        if not self._export_effect_render:
-            return False
-        failure = EffectRasterAllocationError(str(error))
-        if self._in_graphics_paint:
-            self._export_effect_error = failure
-            return True
-        raise failure from error
+    def _refresh_gradient_geometry(self):
+        self.effect_renderer._refresh_gradient_geometry()
 
-    def _render_effect_surface(
-        self,
-        surface_rect: QRectF,
-        render_scale: float,
-        *,
-        shadow_rect: QRectF = None,
-        shadow_scale: float = None,
-        target_stroke: bool = True,
-    ) -> QPixmap:
-        """Render one bounded effect surface in item-local coordinates."""
-        paint_stroke, paint_shadow = self._effect_flags()
-        target_map = self._new_effect_pixmap(render_scale, surface_rect)
+    def get_text_gradient(self, fontformat=None, persistent=False):
+        return self.effect_renderer.get_text_gradient(
+            fontformat,
+            persistent=persistent,
+        )
 
-        if paint_shadow:
-            shadow_rect = QRectF(surface_rect if shadow_rect is None else shadow_rect)
-            shadow_scale = render_scale if shadow_scale is None else shadow_scale
-            silhouette = self._new_effect_pixmap(shadow_scale, shadow_rect)
-            try:
-                silhouette_painter = QPainter(silhouette)
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to begin shadow silhouette painter'
-                ) from error
-            if not silhouette_painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin shadow silhouette painter'
-                )
-            previous_capture = self._capturing_effect_surface
-            previous_raster_error = self._effect_surface_raster_error
-            self._capturing_effect_surface = True
-            self._effect_surface_raster_error = None
-            try:
-                silhouette_painter.translate(-shadow_rect.topLeft())
-                self._paint_live_layout(
-                    silhouette_painter, self._effect_paint_context()
-                )
-                if paint_stroke:
-                    self.paint_stroke(
-                        silhouette_painter, shadow_scale, shadow_rect
-                    )
-                if self._effect_surface_raster_error is not None:
-                    raise self._effect_surface_raster_error
-            finally:
-                silhouette_painter.end()
-                self._capturing_effect_surface = previous_capture
-                self._effect_surface_raster_error = previous_raster_error
-
-            radius, xoffset, yoffset = self._shadow_metrics()
-            try:
-                shadow_source = pixmap2ndarray(
-                    silhouette, keep_alpha=True
-                )
-                if shadow_source is None:
-                    raise EffectRasterAllocationError(
-                        'unable to access shadow silhouette pixels'
-                    )
-                shadow_map, _ = apply_shadow_effect(
-                    shadow_source,
-                    self.fontformat.shadow_color,
-                    self.fontformat.shadow_strength,
-                    max(0, int(round(radius * shadow_scale))),
-                )
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to allocate blurred shadow surface: '
-                    f'{error}'
-                ) from error
-            if shadow_map is None or shadow_map.isNull():
-                raise EffectRasterAllocationError(
-                    'unable to allocate blurred shadow surface'
-                )
-            try:
-                shadow_map.setDevicePixelRatio(shadow_scale)
-                target_painter = QPainter(target_map)
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to begin effect target painter'
-                ) from error
-            if not target_painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin effect target painter'
-                )
-            try:
-                target_painter.setRenderHint(
-                    QPainter.RenderHint.SmoothPixmapTransform
-                )
-                target_painter.drawPixmap(
-                    shadow_rect.topLeft()
-                    - surface_rect.topLeft()
-                    + QPointF(xoffset, yoffset),
-                    shadow_map,
-                )
-            finally:
-                target_painter.end()
-
-        if paint_stroke and target_stroke:
-            try:
-                stroke_painter = QPainter(target_map)
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to begin stroke target painter'
-                ) from error
-            if not stroke_painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin stroke target painter'
-                )
-            previous_capture = self._capturing_effect_surface
-            previous_raster_error = self._effect_surface_raster_error
-            self._capturing_effect_surface = True
-            self._effect_surface_raster_error = None
-            try:
-                stroke_painter.translate(-surface_rect.topLeft())
-                self.paint_stroke(
-                    stroke_painter, render_scale, surface_rect
-                )
-                if self._effect_surface_raster_error is not None:
-                    raise self._effect_surface_raster_error
-            finally:
-                stroke_painter.end()
-                self._capturing_effect_surface = previous_capture
-                self._effect_surface_raster_error = previous_raster_error
-        return target_map
-
-    def _repaint_neutral_background(self):
-        """Rebuild effects with the BASE pixmap and composition path."""
-        empty = self.document().isEmpty()
-        if self.repainting or self.reshaping:
-            return
-
-        paint_stroke, paint_shadow = self._effect_flags()
-        if (not paint_shadow and not paint_stroke) or empty:
-            self.background_pixmap = None
-            self._background_pixmap_scale = None
-            return
-
-        self.repainting = True
-        try:
-            font_size = self.layout.max_font_size(to_px=True)
-            target_map = QPixmap(self.boundingRect().size().toSize())
-            target_map.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(target_map)
-            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-
-            if paint_stroke:
-                self._paint_cloned_document_stroke(painter)
-            else:
-                self.document().drawContents(painter)
-
-            if paint_shadow:
-                radius = int(round(self.fontformat.shadow_radius * font_size))
-                xoffset = int(self.fontformat.shadow_offset[0] * font_size)
-                yoffset = int(self.fontformat.shadow_offset[1] * font_size)
-                shadow_map, _ = apply_shadow_effect(
-                    target_map,
-                    self.fontformat.shadow_color,
-                    self.fontformat.shadow_strength,
-                    radius,
-                )
-                composition = painter.compositionMode()
-                painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_DestinationOver
-                )
-                painter.drawPixmap(xoffset, yoffset, shadow_map)
-                painter.setCompositionMode(composition)
-
-            painter.end()
-            self.background_pixmap = target_map
-            self._background_pixmap_scale = 1.0
-        finally:
-            self.repainting = False
-
-    def repaint_background(self, render_scale: float = 1.0):
-        if self._text_transform_is_neutral():
-            self._repaint_neutral_background()
-            return
-        empty = self.document().isEmpty()
-        if self.repainting or self.reshaping or self.pre_editing:
-            # Avoid reshape/reentrant work. During IME, reuse the preedit-free
-            # cache because PaintContext cannot exclude active preedit glyphs.
-            return
-
-        self._update_effect_padding()
-
-        paint_stroke, paint_shadow = self._effect_flags()
-        if not paint_shadow and not paint_stroke or empty:
-            self.background_pixmap = None
-            self._background_pixmap_scale = None
-            self._effect_tile_cache.clear()
-            self._effect_direct_stroke = False
-            self._force_effect_tiles = False
-            self._effect_cache_dirty = False
-            self._effect_cache_rendered_generation = self._effect_cache_generation
-            return
-
-        self._effect_tile_cache.clear()
-        self.repainting = True
-        try:
-            br = self.boundingRect()
-            plan = plan_effect_raster(
-                br.width(), br.height(), render_scale
-            )
-            if plan.mode == 'tiles':
-                self.background_pixmap = None
-                self._background_pixmap_scale = None
-                self._effect_direct_stroke = False
-                # Visible tiles are intentionally deferred until QPainter's
-                # exposed/clip rectangle is available.
-                return
-            try:
-                target_map = self._render_effect_surface(br, plan.tier)
-            except EFFECT_RASTER_FAILURES as error:
-                # A higher tier may fail despite satisfying the deterministic
-                # caps. Retry the smallest full tier before degrading.
-                retry = plan_effect_raster(br.width(), br.height(), 1.0)
-                if plan.tier != 1.0 and retry.mode == 'full':
-                    try:
-                        target_map = self._render_effect_surface(br, 1.0)
-                        plan = retry
-                    except EFFECT_RASTER_FAILURES as retry_error:
-                        error = retry_error
-                        target_map = None
-                else:
-                    target_map = None
-                if target_map is None:
-                    self.background_pixmap = None
-                    self._background_pixmap_scale = None
-                    if self._export_effect_render:
-                        # A policy-valid full allocation can still fail at
-                        # runtime. Export gets one bounded visible-tile retry
-                        # before the transaction is failed.
-                        self._effect_direct_stroke = False
-                        self._force_effect_tiles = True
-                        return
-                    self._effect_direct_stroke = paint_stroke
-                    self._warn_effect_allocation_once(error)
-                    return
-
-            self.background_pixmap = target_map
-            self._background_pixmap_scale = plan.tier
-            self._effect_direct_stroke = False
-            self._force_effect_tiles = False
-            self._effect_cache_dirty = False
-            self._effect_cache_rendered_generation = self._effect_cache_generation
-        finally:
-            self.repainting = False
-        
     def docSizeChanged(self):
         self.setCenterTransform()
         self.doc_size_changed.emit(self.idx)
@@ -1096,21 +175,19 @@ class TextBlkItem(QGraphicsTextItem):
             bx1, by1, bx2, by2 = xyxy
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
-        self._text_transform_preview = None
+        self.transform_controller.preview = None
 
         self.setVertical(blk.vertical)
         self.setRect(blk.bounding_rect(), update_blk_rect=False)
 
         try:
-            block_angle = self._validated_rotation_angle(blk.angle)
+            block_angle = self.transform_controller.validate_rotation_angle(
+                blk.angle
+            )
         except ValueError as error:
-            try:
-                LOGGER.warning(
-                    f'Reset invalid TextBlock rotation to 0 during load: '
-                    f'{error}'
-                )
-            except Exception:
-                pass
+            self.transform_controller.report_rejected_change(
+                'load rotation', error
+            )
             block_angle = 0.0
         blk.angle = block_angle
         
@@ -1122,7 +199,7 @@ class TextBlkItem(QGraphicsTextItem):
             set_char_fmt = True
 
         font_fmt = blk.fontformat
-        self._text_transform_entry_padding = None
+        self.transform_controller.entry_padding = None
         if set_format:
             self.set_fontformat(font_fmt, set_char_format=set_char_fmt, set_stroke_width=False, set_effect=False)
 
@@ -1147,226 +224,37 @@ class TextBlkItem(QGraphicsTextItem):
             # Loaded active transforms have no in-session neutral entry point.
             # Seed the fallback after effects/text are initialized so later
             # style changes cannot erase the BASE neutral minimum.
-            floor = self._neutral_effect_padding_floor()
-            self._text_transform_entry_padding = max(
-                self._text_transform_entry_padding or 0.0,
+            floor = self.effect_renderer._neutral_effect_padding_floor()
+            self.transform_controller.entry_padding = max(
+                self.transform_controller.entry_padding or 0.0,
                 floor,
             )
         self.setCenterTransform()
         self.repaint_background()
 
-    def _canonical_text_transform(self) -> TextTransform:
-        return normalize_text_transform(*self.blk.fontformat.text_transform)
-
     def _effective_text_transform(self) -> TextTransform:
-        if self._text_transform_preview is not None:
-            return self._text_transform_preview
-        return self._canonical_text_transform()
+        return self.transform_controller.effective()
 
     def _text_transform_is_neutral(self) -> bool:
-        return self._effective_text_transform() == TextTransform(
-            1.0, 1.0, 0.0, 0.0
-        )
+        return self.transform_controller.is_neutral()
 
-    def _visual_text_transform_is_neutral(self) -> bool:
-        return (
-            self.transform().isIdentity()
-            and (self.layout is None or self.layout.glyph_slant_angle == 0.0)
-        )
-
-    @contextmanager
     def _text_transform_update(self):
-        """Batch cache and input-method work across nested Qt changes."""
-        self._text_transform_update_depth += 1
-        try:
-            yield
-        finally:
-            self._text_transform_update_depth -= 1
-            if self._text_transform_update_depth == 0:
-                self._flush_text_transform_update()
+        return self.transform_controller.update_transaction()
 
     def _request_text_transform_update(self) -> None:
-        self._text_transform_update_dirty = True
-        if self._text_transform_update_depth == 0:
-            self._flush_text_transform_update()
-
-    def _flush_text_transform_update(self) -> None:
-        if not self._text_transform_update_dirty:
-            return
-        self._text_transform_update_dirty = False
-        self.refresh_cache_policy()
-        if self.is_editting():
-            self.updateMicroFocus()
-
-    def _compensated_text_transform(
-        self,
-        values: TextTransform,
-        *,
-        angle: Optional[float] = None,
-        box_pivot: Optional[QPointF] = None,
-        rotation_pivot: Optional[QPointF] = None,
-    ):
-        """Build the derived Qt base transform for the current item state.
-
-        ``transformations()`` must stay empty: arbitrary QGraphicsTransform
-        entries add another non-commuting stage that this conjugation does not
-        model.
-        """
-        if angle is None:
-            angle = self.rotation()
-        if box_pivot is None:
-            box_pivot = self.logical_unpadded_rect().center()
-        if rotation_pivot is None:
-            rotation_pivot = self.transformOriginPoint()
-        return compensated_text_transform_matrix(
-            values.horizontal_scale,
-            values.vertical_scale,
-            values.slant_angle,
-            box_pivot,
-            angle,
-            rotation_pivot,
-        )
-
-    def _install_compensated_text_transform(
-        self,
-        values: TextTransform,
-        *,
-        angle: Optional[float] = None,
-        box_pivot: Optional[QPointF] = None,
-        rotation_pivot: Optional[QPointF] = None,
-    ) -> bool:
-        """Install the derived Qt base transform without lifecycle effects."""
-        matrix = self._compensated_text_transform(
-            values,
-            angle=angle,
-            box_pivot=box_pivot,
-            rotation_pivot=rotation_pivot,
-        )
-        if self.transform() == matrix:
-            return False
-        self._installing_text_transform = True
-        try:
-            self.setTransform(matrix, combine=False)
-        finally:
-            self._installing_text_transform = False
-        return True
-
-    @staticmethod
-    def _finite_point(point: QPointF) -> bool:
-        return math.isfinite(point.x()) and math.isfinite(point.y())
-
-    @staticmethod
-    def _validated_rotation_angle(angle) -> float:
-        if isinstance(angle, bool):
-            raise ValueError('rotation angle must be a finite number')
-        try:
-            angle = float(angle)
-        except (TypeError, ValueError, OverflowError) as error:
-            raise ValueError(
-                'rotation angle must be a finite number'
-            ) from error
-        if not math.isfinite(angle):
-            raise ValueError('rotation angle must be a finite number')
-        return angle
-
-    def _report_rejected_item_change(self, change, error) -> None:
-        try:
-            LOGGER.warning(
-                f'Rejected unsafe TextBlkItem graphics change {change}: '
-                f'{error}'
-            )
-        except Exception:
-            # Logging must never turn a rejected Qt virtual callback into an
-            # exception crossing the C++/Python boundary.
-            pass
-
-    def _item_change(self, change, value):
-        if getattr(self, '_installing_text_transform', False):
-            return super().itemChange(change, value)
-
-        if change in (
-            QGraphicsItem.GraphicsItemChange.ItemRotationChange,
-            QGraphicsItem.GraphicsItemChange.ItemTransformOriginPointChange,
-        ):
-            candidate = super().itemChange(change, value)
-            try:
-                if change == QGraphicsItem.GraphicsItemChange.ItemRotationChange:
-                    angle = float(candidate)
-                    if not math.isfinite(angle):
-                        raise ValueError('rotation angle must be finite')
-                    rotation_pivot = self.transformOriginPoint()
-                else:
-                    rotation_pivot = QPointF(candidate)
-                    if not self._finite_point(rotation_pivot):
-                        raise ValueError(
-                            'transform origin coordinates must be finite'
-                        )
-                    angle = self.rotation()
-
-                if self.blk is not None:
-                    # Validate every derived input while Qt can still reject
-                    # the property write by returning the current value.
-                    self._compensated_text_transform(
-                        self._effective_text_transform(),
-                        angle=angle,
-                        box_pivot=self.logical_unpadded_rect().center(),
-                        rotation_pivot=rotation_pivot,
-                    )
-            except Exception as error:
-                self._report_rejected_item_change(change, error)
-                if change == QGraphicsItem.GraphicsItemChange.ItemRotationChange:
-                    return self.rotation()
-                return QPointF(self.transformOriginPoint())
-            return candidate
-
-        if change in (
-            QGraphicsItem.GraphicsItemChange.ItemRotationHasChanged,
-            QGraphicsItem.GraphicsItemChange.ItemTransformOriginPointHasChanged,
-        ) and self.blk is not None:
-            # At HasChanged the Qt property already contains its final value.
-            # Installing here makes nested transform notifications and the
-            # later public rotationChanged signal observe one coherent map.
-            with self._text_transform_update():
-                self._install_compensated_text_transform(
-                    self._effective_text_transform(),
-                    angle=self.rotation(),
-                    box_pivot=self.logical_unpadded_rect().center(),
-                    rotation_pivot=self.transformOriginPoint(),
-                )
-                result = super().itemChange(change, value)
-                self._request_text_transform_update()
-            return result
-
-        result = super().itemChange(change, value)
-        if change in (
-            QGraphicsItem.GraphicsItemChange.ItemScaleHasChanged,
-            QGraphicsItem.GraphicsItemChange.ItemTransformHasChanged,
-        ):
-            self._request_text_transform_update()
-        return result
+        self.transform_controller.request_update()
 
     def itemChange(self, change, value):
-        """Keep all exceptions inside Qt's C++ virtual-call boundary."""
-        try:
-            return self._item_change(change, value)
-        except Exception as error:
-            self._report_rejected_item_change(change, error)
-            try:
-                return super().itemChange(change, value)
-            except Exception:
-                return value
+        controller = getattr(self, 'transform_controller', None)
+        if controller is None:
+            return super().itemChange(change, value)
+        return controller.item_change(change, value, super().itemChange)
 
     def refresh_cache_policy(self) -> bool:
         """Apply the sole QGraphicsItem cache policy for live text items."""
-        transform = self._effective_text_transform()
-        active_box_transform = (
-            transform.horizontal_scale != 1.0
-            or transform.vertical_scale != 1.0
-            or transform.slant_angle != 0.0
-        )
         use_no_cache = (
             self.is_editting()
-            or active_box_transform
+            or self.transform_controller.requires_no_cache()
         )
         cache_mode = (
             QGraphicsItem.CacheMode.NoCache
@@ -1378,198 +266,20 @@ class TextBlkItem(QGraphicsTextItem):
         self.setCacheMode(cache_mode)
         return True
 
-    def _mark_effect_cache_dirty(self):
-        self._effect_cache_generation += 1
-        self._effect_cache_dirty = True
-        self._effect_tile_cache.clear()
-        # Never combine a previous glyph silhouette with a new fill angle.
-        self.background_pixmap = None
-        self._background_pixmap_scale = None
-
-    def _apply_text_transform(self, values: TextTransform) -> bool:
-        with self._text_transform_update():
-            changed = self._install_compensated_text_transform(values)
-            if changed:
-                self._request_text_transform_update()
-        return changed
-
-    def _apply_glyph_slant(self, angle: float) -> Tuple[bool, bool]:
-        if self.layout is None:
-            return False, False
-        if not self.layout.setGlyphSlantAngle(angle):
-            return False, False
-        self._mark_effect_cache_dirty()
-        padding_changed = self._update_effect_padding()
-        self.refresh_cache_policy()
-        self.update()
-        return True, padding_changed
-
-    def _reconcile_active_text_transform_state(
-        self,
-        was_visual_neutral: bool,
-        target: TextTransform,
-        glyph_changed: bool,
-        glyph_padding_changed: bool,
-    ) -> bool:
-        neutral = TextTransform(1.0, 1.0, 0.0, 0.0)
-        if not was_visual_neutral or target == neutral:
-            return False
-        # Box-only transforms do not change the glyph silhouette and can have
-        # no raster effects to enter _draw_effects(). Reconcile geometry here
-        # so retained BASE padding and the active gradient range cannot leak
-        # across a neutral-to-active transition.
-        padding_changed = glyph_padding_changed
-        if not glyph_changed:
-            padding_changed = self._update_effect_padding()
-        if self.fontformat.gradient_enabled and not padding_changed:
-            self._refresh_gradient_geometry()
-        return padding_changed
 
     def set_text_transform(
         self,
-        horizontal_scale: float = None,
-        vertical_scale: float = None,
-        slant_angle: float = None,
-        glyph_slant_angle: float = None,
+        transform: TextTransform = None,
         *,
         preview: bool = False,
     ) -> bool:
-        """Apply the canonical item-local transform, optionally as a preview.
-
-        ``preview`` is transient item state; only a committed call writes the
-        existing ``TextBlock.fontformat`` owner.
-        """
-        raw_canonical = self.blk.fontformat.text_transform
-        canonical = normalize_text_transform(*raw_canonical)
-        current = self._effective_text_transform()
-        base = current if preview else canonical
-        target = normalize_text_transform(
-            base[0] if horizontal_scale is None else horizontal_scale,
-            base[1] if vertical_scale is None else vertical_scale,
-            base[2] if slant_angle is None else slant_angle,
-            base[3] if glyph_slant_angle is None else glyph_slant_angle,
-        )
-        was_visual_neutral = self._visual_text_transform_is_neutral()
-        if (
-            was_visual_neutral
-            and target != TextTransform(1.0, 1.0, 0.0, 0.0)
-            and self._text_transform_entry_padding is None
-        ):
-            self._text_transform_entry_padding = self.padding()
-
-        if preview:
-            if target == current:
-                return False
-            self._text_transform_preview = None if target == canonical else target
-            glyph_changed, glyph_padding_changed = self._apply_glyph_slant(
-                target.glyph_slant_angle
-            )
-            active_state_changed = self._reconcile_active_text_transform_state(
-                was_visual_neutral,
-                target,
-                glyph_changed,
-                glyph_padding_changed,
-            )
-            box_changed = self._apply_text_transform(target)
-            finalized = self._finalize_neutral_text_transform(
-                was_visual_neutral,
-                target,
-            )
-            return (
-                glyph_changed
-                or active_state_changed
-                or box_changed
-                or finalized
-            )
-
-        model_format = self.blk.fontformat
-        render_format = self.fontformat
-        model_changed = raw_canonical != target
-        render_format_changed = (
-            render_format is not None
-            and render_format is not model_format
-            and render_format.text_transform != target
-        )
-        if model_changed:
-            for name, value in zip(TextTransform._fields, target):
-                setattr(model_format, name, value)
-        if render_format_changed:
-            # Selection changes can detach the render/UI format cache from the
-            # canonical TextBlock owner. Keep its quartet coherent before a
-            # neutral stroke/effect surface is rebuilt during Undo/Redo.
-            for name, value in zip(TextTransform._fields, target):
-                setattr(render_format, name, value)
-        self._text_transform_preview = None
-        glyph_changed, glyph_padding_changed = self._apply_glyph_slant(
-            target.glyph_slant_angle
-        )
-        active_state_changed = self._reconcile_active_text_transform_state(
-            was_visual_neutral,
-            target,
-            glyph_changed,
-            glyph_padding_changed,
-        )
-        visual_changed = self._apply_text_transform(target)
-        finalized = self._finalize_neutral_text_transform(
-            was_visual_neutral,
-            target,
-        )
-        return (
-            model_changed
-            or render_format_changed
-            or glyph_changed
-            or active_state_changed
-            or visual_changed
-            or finalized
-        )
+        return self.transform_controller.set(transform, preview=preview)
 
     def clear_text_transform_preview(self) -> bool:
-        if self._text_transform_preview is None:
-            return False
-        was_visual_neutral = self._visual_text_transform_is_neutral()
-        self._text_transform_preview = None
-        target = self._canonical_text_transform()
-        if (
-            was_visual_neutral
-            and target != TextTransform(1.0, 1.0, 0.0, 0.0)
-            and self._text_transform_entry_padding is None
-        ):
-            self._text_transform_entry_padding = self.padding()
-        glyph_changed, glyph_padding_changed = self._apply_glyph_slant(
-            target.glyph_slant_angle
-        )
-        active_state_changed = self._reconcile_active_text_transform_state(
-            was_visual_neutral,
-            target,
-            glyph_changed,
-            glyph_padding_changed,
-        )
-        box_changed = self._apply_text_transform(target)
-        finalized = self._finalize_neutral_text_transform(
-            was_visual_neutral,
-            target,
-        )
-        return (
-            glyph_changed
-            or active_state_changed
-            or box_changed
-            or finalized
-        )
+        return self.transform_controller.clear_preview()
 
     def setCenterTransform(self) -> bool:
-        center = self.logical_unpadded_rect().center()
-        with self._text_transform_update():
-            origin_changed = self.transformOriginPoint() != center
-            if origin_changed:
-                self.setTransformOriginPoint(center)
-            transform_changed = self._install_compensated_text_transform(
-                self._effective_text_transform(),
-                box_pivot=center,
-                rotation_pivot=self.transformOriginPoint(),
-            )
-            if transform_changed:
-                self._request_text_transform_update()
-        return origin_changed or transform_changed
+        return self.transform_controller.recenter()
 
     def logical_unpadded_rect(self) -> QRectF:
         """Return the untransformed, effect-free block rect in item coordinates."""
@@ -1577,8 +287,8 @@ class TextBlkItem(QGraphicsTextItem):
 
     def visual_polygon_in_scene(self) -> QPolygonF:
         """Return the exact transformed logical block polygon in scene space."""
-        return QPolygonF(
-            [self.mapToScene(point) for point in rect_polygon(self.logical_unpadded_rect())]
+        return self.transform_controller.visual_polygon(
+            self.logical_unpadded_rect()
         )
 
     def visual_bounds_in_scene(self) -> QRectF:
@@ -1605,8 +315,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.oldRect = self.absBoundingRect(qrect=True)
         self.reshaping = True
         # disable background repainting to avoid heavy redrawing in the whole process
-        self.background_pixmap = None
-        self._background_pixmap_scale = None
+        self.effect_renderer.clear_cached_surface()
 
     def endReshape(self):
         self.reshaped.emit(self)
@@ -1747,7 +456,7 @@ class TextBlkItem(QGraphicsTextItem):
         raise NotImplementedError
 
     def setAngle(self, angle: int):
-        angle = self._validated_rotation_angle(angle)
+        angle = self.transform_controller.validate_rotation_angle(angle)
 
         with self._text_transform_update():
             self.setCenterTransform()
@@ -1815,10 +524,13 @@ class TextBlkItem(QGraphicsTextItem):
             layout = HorizontalTextDocumentLayout(doc, self.fontformat)
         self.layout = layout
         layout.glyph_raster_failure_handler = (
-            self._on_glyph_raster_failure
+            self.effect_renderer._on_glyph_raster_failure
         )
         doc.setDocumentLayout(layout)
-        layout.setGlyphSlantAngle(self._effective_text_transform().glyph_slant_angle)
+        layout.setGlyphSlantAngle(
+            self._effective_text_transform().glyph_slant_angle,
+            persistent_cache=self.transform_controller.preview is None,
+        )
         layout.updateDocumentMargin(document_margin)
         layout.size_enlarged.connect(self.on_document_enlarged)
         layout.documentSizeChanged.connect(self.docSizeChanged)
@@ -1906,359 +618,13 @@ class TextBlkItem(QGraphicsTextItem):
             return self.scale()
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
-        if self._text_transform_is_neutral():
-            editing = self.is_editting()
-            if editing and self.background_pixmap is not None:
-                painter.save()
-                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-                painter.drawPixmap(
-                    self.boundingRect().toRect(), self.background_pixmap
-                )
-                painter.restore()
-
-            option.state = QStyle.State_None
-            super().paint(painter, option, widget)
-
-            if not editing and self.background_pixmap is not None:
-                painter.save()
-                painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_DestinationOver
-                )
-                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-                painter.drawPixmap(
-                    self.boundingRect().toRect(), self.background_pixmap
-                )
-                painter.restore()
-            return
-
-        # Effects must be composited inside the item before its normal fill.
-        # DestinationOver against an already opaque scene would discard them.
-        was_in_graphics_paint = self._in_graphics_paint
-        self._in_graphics_paint = True
-        try:
-            self._draw_effects(painter, option.exposedRect)
-            option.state = QStyle.State_None
-            super().paint(painter, option, widget)
-        finally:
-            self._in_graphics_paint = was_in_graphics_paint
-
-    def _tile_shadow_scale(
-        self, shadow_rect: QRectF, requested_scale: float
-    ) -> float:
-        """Bound a shadow-only context while preserving vector stroke tier."""
-        width = max(shadow_rect.width(), 1.0)
-        height = max(shadow_rect.height(), 1.0)
-        scale = min(
-            requested_scale,
-            EFFECT_TILE_MAX_EDGE / width,
-            EFFECT_TILE_MAX_EDGE / height,
-            EFFECT_CACHE_MAX_DIMENSION / width,
-            EFFECT_CACHE_MAX_DIMENSION / height,
-            math.sqrt(EFFECT_CACHE_MAX_PIXELS / (width * height)),
-            math.sqrt((EFFECT_CACHE_MAX_BYTES / 4) / (width * height)),
-        )
-        # QPixmap accepts a fractional DPR. The one-pixel floor keeps even an
-        # extreme blur context representable without an unbounded allocation.
-        return max(scale, 1.0 / max(width, height))
-
-    def _visible_effect_rect(
-        self, painter: QPainter, exposed_rect: QRectF = None
-    ) -> QRectF:
-        visible = QRectF(self.boundingRect())
-        if exposed_rect is not None and not exposed_rect.isEmpty():
-            visible = visible.intersected(exposed_rect)
-        if painter.hasClipping():
-            clip = painter.clipBoundingRect()
-            if not clip.isEmpty():
-                visible = visible.intersected(clip)
-        return visible
-
-    def _draw_tiled_effects(
-        self,
-        painter: QPainter,
-        plan: EffectRasterPlan,
-        exposed_rect: QRectF = None,
-    ):
-        br = self.boundingRect()
-        visible = self._visible_effect_rect(painter, exposed_rect)
-        if visible.isEmpty():
-            return
-
-        paint_stroke, paint_shadow = self._effect_flags()
-        stroke_overlap = (
-            self._stroke_outset() + EFFECT_RASTER_GUARD
-            if paint_stroke
-            else EFFECT_RASTER_GUARD
-        )
-        vector_stroke_direct = (
-            paint_stroke
-            and 2 * math.ceil(stroke_overlap * plan.tier)
-            >= plan.tile_edge
-        )
-        target_overlap = (
-            EFFECT_RASTER_GUARD
-            if vector_stroke_direct
-            else stroke_overlap
-        )
-        if vector_stroke_direct and not paint_shadow:
-            self._effect_tile_cache.clear()
-            self._effect_direct_stroke = True
-            self._effect_cache_dirty = False
-            self._effect_cache_rendered_generation = self._effect_cache_generation
-            self._force_effect_tiles = False
-            return
-        overlap_px = math.ceil(target_overlap * plan.tier)
-        core_edge_px = plan.tile_edge - 2 * overlap_px
-        if core_edge_px < 1:
-            error = EffectRasterAllocationError(
-                'stroke overlap exceeds bounded tile surface'
-            )
-            if self._raise_or_defer_export_effect_error(error):
-                return
-            self._warn_effect_allocation_once(error)
-            self._effect_direct_stroke = paint_stroke
-            return
-        core_edge = core_edge_px / plan.tier
-
-        first_x = max(
-            0, int(math.floor((visible.left() - br.left()) / core_edge))
-        )
-        first_y = max(
-            0, int(math.floor((visible.top() - br.top()) / core_edge))
-        )
-        last_x = max(
-            first_x,
-            int(
-                math.floor(
-                    (math.nextafter(visible.right(), -math.inf) - br.left())
-                    / core_edge
-                )
-            ),
-        )
-        last_y = max(
-            first_y,
-            int(
-                math.floor(
-                    (math.nextafter(visible.bottom(), -math.inf) - br.top())
-                    / core_edge
-                )
-            ),
+        self.effect_renderer.paint_item(
+            painter,
+            option,
+            widget,
+            super().paint,
         )
 
-        active_keys = set()
-        staging_pixmap = None
-        staging_painter = None
-        tile_painter = painter
-        try:
-            if not self._export_effect_render:
-                staging_plan = plan_effect_raster(
-                    visible.width(), visible.height(), plan.tier
-                )
-                if (
-                    staging_plan.mode != 'full'
-                    or staging_plan.tier != plan.tier
-                ):
-                    raise EffectRasterAllocationError(
-                        'visible effect staging surface exceeds policy'
-                    )
-                staging_pixmap = self._new_effect_pixmap(
-                    plan.tier, visible
-                )
-                staging_painter = QPainter(staging_pixmap)
-                if not staging_painter.isActive():
-                    raise EffectRasterAllocationError(
-                        'unable to begin visible effect staging painter'
-                    )
-                staging_painter.translate(-visible.topLeft())
-                tile_painter = staging_painter
-            tile_painter.setRenderHint(
-                QPainter.RenderHint.SmoothPixmapTransform
-            )
-            for tile_y in range(first_y, last_y + 1):
-                for tile_x in range(first_x, last_x + 1):
-                    core = QRectF(
-                        br.left() + tile_x * core_edge,
-                        br.top() + tile_y * core_edge,
-                        core_edge,
-                        core_edge,
-                    ).intersected(br)
-                    if core.isEmpty():
-                        continue
-                    surface = core.adjusted(
-                        -target_overlap,
-                        -target_overlap,
-                        target_overlap,
-                        target_overlap,
-                    ).intersected(br)
-                    key = (
-                        self._effect_cache_generation,
-                        plan.tier,
-                        tile_x,
-                        tile_y,
-                        round(surface.left(), 6),
-                        round(surface.top(), 6),
-                        round(surface.width(), 6),
-                        round(surface.height(), 6),
-                        vector_stroke_direct,
-                    )
-                    active_keys.add(key)
-                    cached = self._effect_tile_cache.get(key)
-                    if cached is None:
-                        shadow_rect = None
-                        shadow_scale = None
-                        if paint_shadow:
-                            radius, xoffset, yoffset = self._shadow_metrics()
-                            shadow_rect = (
-                                core.translated(-xoffset, -yoffset)
-                                .adjusted(
-                                    -radius - stroke_overlap,
-                                    -radius - stroke_overlap,
-                                    radius + stroke_overlap,
-                                    radius + stroke_overlap,
-                                )
-                                .intersected(br)
-                            )
-                            shadow_scale = self._tile_shadow_scale(
-                                shadow_rect, plan.tier
-                            )
-                        pixmap = self._render_effect_surface(
-                            surface,
-                            plan.tier,
-                            shadow_rect=shadow_rect,
-                            shadow_scale=shadow_scale,
-                            target_stroke=not vector_stroke_direct,
-                        )
-                        cached = (QRectF(surface), pixmap)
-                        self._effect_tile_cache[key] = cached
-                        while len(self._effect_tile_cache) > 2:
-                            oldest = next(iter(self._effect_tile_cache))
-                            if oldest == key and len(self._effect_tile_cache) > 1:
-                                oldest = next(
-                                    candidate
-                                    for candidate in self._effect_tile_cache
-                                    if candidate != key
-                                )
-                            self._effect_tile_cache.pop(oldest, None)
-                    tile_painter.save()
-                    try:
-                        tile_painter.setClipRect(
-                            core, Qt.ClipOperation.IntersectClip
-                        )
-                        tile_painter.drawPixmap(
-                            cached[0].topLeft(), cached[1]
-                        )
-                    finally:
-                        tile_painter.restore()
-        except EFFECT_RASTER_FAILURES as error:
-            self._effect_tile_cache.clear()
-            self._effect_direct_stroke = paint_stroke
-            if self._raise_or_defer_export_effect_error(error):
-                return
-            self._warn_effect_allocation_once(error)
-            return
-        finally:
-            if staging_painter is not None and staging_painter.isActive():
-                staging_painter.end()
-
-        if staging_pixmap is not None:
-            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-            painter.drawPixmap(visible.topLeft(), staging_pixmap)
-
-        # Retain no cache from a viewport that is no longer exposed.
-        for key in list(self._effect_tile_cache):
-            if key not in active_keys:
-                self._effect_tile_cache.pop(key, None)
-
-        self._effect_direct_stroke = vector_stroke_direct
-        self._effect_cache_dirty = False
-        self._effect_cache_rendered_generation = self._effect_cache_generation
-        self._force_effect_tiles = False
-
-    def _draw_direct_stroke(self, painter: QPainter):
-        if not self._effect_flags()[0]:
-            return
-        # This path intentionally avoids every intermediate allocation. The
-        # attached layout consumes the same per-fragment outline selections,
-        # preserving vector geometry while shadow is omitted for this frame.
-        self._paint_live_layout(painter, self._stroke_paint_context())
-
-    def _draw_effects(
-        self, painter: QPainter, exposed_rect: QRectF = None
-    ):
-        painter.save()
-        try:
-            paint_stroke, paint_shadow = self._effect_flags()
-            if not paint_stroke and not paint_shadow:
-                return
-            br = self.boundingRect()
-            requested_scale = self._paint_device_scale(painter)
-            plan = plan_effect_raster(
-                br.width(), br.height(), requested_scale
-            )
-            if self._force_effect_tiles:
-                plan = EffectRasterPlan(
-                    'tiles', 1.0, 0, 0, EFFECT_TILE_MAX_EDGE
-                )
-            stale = (
-                self._effect_cache_rendered_generation
-                != self._effect_cache_generation
-            )
-            if plan.mode == 'full':
-                if (
-                    not self.pre_editing
-                    and (
-                        self.background_pixmap is None
-                        or self._background_pixmap_scale != plan.tier
-                        or self._effect_cache_dirty
-                        or stale
-                    )
-                ):
-                    self.repaint_background(requested_scale)
-                if self._force_effect_tiles:
-                    tile_plan = EffectRasterPlan(
-                        'tiles', 1.0, 0, 0, EFFECT_TILE_MAX_EDGE
-                    )
-                    self._draw_tiled_effects(
-                        painter, tile_plan, exposed_rect
-                    )
-                    if self._effect_direct_stroke:
-                        self._draw_direct_stroke(painter)
-                    return
-                if (
-                    self.background_pixmap is not None
-                    and self._background_pixmap_scale == plan.tier
-                    and self._effect_cache_rendered_generation
-                    == self._effect_cache_generation
-                ):
-                    painter.setRenderHint(
-                        QPainter.RenderHint.SmoothPixmapTransform
-                    )
-                    painter.drawPixmap(br.topLeft(), self.background_pixmap)
-                elif self._effect_direct_stroke:
-                    self._draw_direct_stroke(painter)
-            else:
-                # A previous ordinary-size fast cache must never be stretched
-                # over a new huge local surface.
-                self.background_pixmap = None
-                self._background_pixmap_scale = None
-                self._draw_tiled_effects(painter, plan, exposed_rect)
-                if self._effect_direct_stroke:
-                    self._draw_direct_stroke(painter)
-        finally:
-            painter.restore()
-
-    @staticmethod
-    def _paint_device_scale(painter: QPainter) -> float:
-        transform = painter.deviceTransform()
-        a, b = transform.m11(), transform.m21()
-        c, d = transform.m12(), transform.m22()
-        trace = a * a + b * b + c * c + d * d
-        determinant_squared = (a * d - b * c) ** 2
-        discriminant = max(0.0, trace * trace - 4 * determinant_squared)
-        scale = math.sqrt((trace + math.sqrt(discriminant)) / 2)
-        if scale <= 0:
-            return 1.0
-        return min(max(1.0, scale), EFFECT_CACHE_MAX_SCALE)
 
 
     def startEdit(self, pos: QPointF = None) -> None:
@@ -2403,8 +769,7 @@ class TextBlkItem(QGraphicsTextItem):
         # Selection changes can detach the render/UI format cache from the
         # persistent TextBlock owner.  The canonical quartet must always win
         # when producing a save/undo format snapshot.
-        for name, value in zip(TextTransform._fields, self.blk.fontformat.text_transform):
-            setattr(fontformat, name, value)
+        fontformat.text_transform = self.blk.fontformat.text_transform
         return fontformat
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True, set_effect=True):
@@ -2477,7 +842,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.fontformat.gradient_size = ffmat.gradient_size
         
         self.fontformat.merge(ffmat)
-        self.set_text_transform(*self.fontformat.text_transform)
+        self.set_text_transform(self.fontformat.text_transform)
 
         self.repainting = False
         if self.fontformat.gradient_enabled:
@@ -2625,114 +990,6 @@ class TextBlkItem(QGraphicsTextItem):
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
         self._refresh_gradient_geometry()
 
-    def _refresh_gradient_geometry(self):
-        """Refresh the block-local gradient as non-document layout state."""
-        if self._refreshing_gradient_geometry:
-            return
-        neutral = self._text_transform_is_neutral()
-        if neutral:
-            block = self.document().firstBlock()
-            has_transient_range = False
-            while block.isValid() and not has_transient_range:
-                has_transient_range = any(
-                    bool(
-                        format_range.format.property(
-                            GRADIENT_LAYOUT_FORMAT_PROPERTY
-                        )
-                    )
-                    for format_range in block.layout().formats()
-                )
-                block = block.next()
-            if not has_transient_range:
-                return
-        self._refreshing_gradient_geometry = True
-        gradient_format = None
-        if not neutral and self.fontformat.gradient_enabled:
-            gradient_format = QTextCharFormat()
-            gradient_format.setForeground(self.get_text_gradient())
-            gradient_format.setProperty(GRADIENT_LAYOUT_FORMAT_PROPERTY, True)
-        try:
-            formats_changed = False
-            block = self.document().firstBlock()
-            while block.isValid():
-                layout = block.layout()
-                old_ranges = layout.formats()
-                ranges = []
-                removed_transient = False
-                for format_range in old_ranges:
-                    if bool(
-                        format_range.format.property(
-                            GRADIENT_LAYOUT_FORMAT_PROPERTY
-                        )
-                    ):
-                        removed_transient = True
-                    else:
-                        ranges.append(format_range)
-                text_length = block.length() - 1
-                add_transient = gradient_format is not None and text_length > 0
-                if add_transient:
-                    format_range = QTextLayout.FormatRange()
-                    format_range.start = 0
-                    format_range.length = text_length
-                    format_range.format = gradient_format
-                    ranges.append(format_range)
-                if removed_transient or add_transient:
-                    layout.setFormats(ranges)
-                    formats_changed = True
-                block = block.next()
-            if formats_changed:
-                # setFormats invalidates QTextLine objects. Rebuild them through
-                # the attached custom layout; this changes no document state.
-                self.layout.reLayout()
-                self.update()
-        finally:
-            self._refreshing_gradient_geometry = False
-
-    def get_text_gradient(
-        self,
-        fontformat: FontFormat = None,
-        *,
-        persistent: bool = False,
-    ):
-        gradient = QLinearGradient()
-        if fontformat is None:
-            fontformat = self.fontformat
-        angle = fontformat.gradient_angle
-        rad = math.radians(angle)
-        dx = math.cos(rad)
-        dy = math.sin(rad)
-        
-        # Set gradient points with size adjustment
-        if persistent and not self._text_transform_is_neutral():
-            # The document foreground is the BASE-neutral fallback underneath
-            # the active layout-only gradient range. Reconstruct the neutral
-            # entry rectangle so removing that range cannot reveal coordinates
-            # derived from an active Box transform or its exact effect padding.
-            logical_rect = self.logical_unpadded_rect()
-            entry_padding = self._text_transform_entry_padding or 0.0
-            rect = QRectF(
-                0.0,
-                0.0,
-                logical_rect.width() + entry_padding * 2,
-                logical_rect.height() + entry_padding * 2,
-            )
-        else:
-            rect = (
-                self.boundingRect()
-                if self._text_transform_is_neutral()
-                else self.logical_unpadded_rect()
-            )
-        center = rect.center()
-        radius = max(rect.width(), rect.height()) * fontformat.gradient_size
-        gradient.setStart(center.x() - dx * radius, center.y() - dy * radius)
-        gradient.setFinalStop(center.x() + dx * radius, center.y() + dy * radius)
-        
-        # Set gradient colors
-        start_color = QColor(*fontformat.gradient_start_color)
-        end_color = QColor(*fontformat.gradient_end_color)
-        gradient.setColorAt(0, start_color)
-        gradient.setColorAt(1, end_color)
-        return gradient
 
     def setLineSpacing(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
         self.is_formatting = True
@@ -2994,13 +1251,7 @@ class TextBlkItem(QGraphicsTextItem):
         Active affine geometry blocks the layout signal until the display rect,
         transform, anchor, and document size agree.
         """
-        transform = self._effective_text_transform()
-        active_box_transform = (
-            transform.horizontal_scale != 1.0
-            or transform.vertical_scale != 1.0
-            or transform.slant_angle != 0.0
-        )
-        if not active_box_transform:
+        if not self.transform_controller.requires_custom_resize():
             if set_layout_maxsize:
                 self.layout.setMaxSize(w, h)
 

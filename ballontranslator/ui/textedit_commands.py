@@ -12,7 +12,7 @@ from .textedit_area import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
     FontFormat,
     TextTransform,
-    normalize_text_transform,
+    coerce_text_transform,
 )
 import ballontranslator.utils.config as C
 from .misc import doc_replace, doc_replace_no_shift
@@ -54,8 +54,8 @@ class SetTextTransformCommand(QUndoCommand):
         self.items = tuple(items)
         if len(self.items) != len(before) or len(self.items) != len(after):
             raise ValueError("items, before, and after must have the same length")
-        self.before = tuple(normalize_text_transform(*values) for values in before)
-        self.after = tuple(normalize_text_transform(*values) for values in after)
+        self.before = tuple(coerce_text_transform(values) for values in before)
+        self.after = tuple(coerce_text_transform(values) for values in after)
         self.refresh_callback = refresh_callback
 
     @classmethod
@@ -72,7 +72,7 @@ class SetTextTransformCommand(QUndoCommand):
 
     def _apply(self, transforms: Sequence[TextTransform]):
         for item, transform in zip(self.items, transforms):
-            item.set_text_transform(*transform, preview=False)
+            item.set_text_transform(transform, preview=False)
         if self.refresh_callback is not None:
             self.refresh_callback()
 

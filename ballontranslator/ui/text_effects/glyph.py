@@ -8,8 +8,9 @@ through the glyph-local shear and the placement/orientation supplied by
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import math
-from typing import Iterable, List, NamedTuple, Optional, Sequence, Tuple
+from typing import List, NamedTuple, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
@@ -51,6 +52,12 @@ FALLBACK_RASTER_MAX_BYTES = 32 * 1024 * 1024
 _COLOR_FONT_TABLES = ('COLR', 'CBDT', 'sbix', 'SVG ')
 _COLOR_FONT_CACHE = {}
 _COLOR_FONT_CACHE_MAX_ENTRIES = 128
+_GLYPH_PATH_CACHE = {}
+_GLYPH_PATH_CACHE_MAX_ENTRIES = 4096
+GLYPH_GEOMETRY_CACHE_MAX_ENTRIES = 16384
+GLYPH_GEOMETRY_CACHE_MAX_BYTES = 64 * 1024 * 1024
+GLYPH_PREVIEW_GEOMETRY_CACHE_MAX_ENTRIES = 4096
+GLYPH_PREVIEW_GEOMETRY_CACHE_MAX_BYTES = 16 * 1024 * 1024
 
 
 class GlyphRasterAllocationError(RuntimeError):
@@ -91,6 +98,106 @@ class GlyphGeometry(NamedTuple):
                 else combined.united(glyph_path)
             )
         return combined
+
+
+def _glyph_geometry_cache_weight(geometry: GlyphGeometry) -> int:
+    """Conservatively estimate Python and C++ path storage for eviction."""
+    path_bytes = sum(
+        256 + path.elementCount() * 96
+        for path in geometry.paths
+    )
+    fallback_bytes = len(geometry.fallbacks) * 512
+    return 512 + path_bytes + fallback_bytes
+
+
+class WeightedGlyphGeometryCache:
+    """Process-wide LRU bounded by both entries and estimated path bytes.
+
+    >>> cache = WeightedGlyphGeometryCache(max_entries=2, max_weight=10)
+    >>> cache.store('a', 1, weight=6)
+    >>> cache.store('b', 2, weight=6)
+    >>> cache.get('a') is None
+    True
+    >>> cache.get('b')
+    2
+    """
+
+    def __init__(self, max_entries: int, max_weight: int) -> None:
+        self.max_entries = max(1, int(max_entries))
+        self.max_weight = max(1, int(max_weight))
+        self._entries = OrderedDict()
+        self._weights = {}
+        self._key_namespaces = {}
+        self._namespace_keys = {}
+        self.total_weight = 0
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def get(self, key):
+        value = self._entries.get(key)
+        if value is not None:
+            self._entries.move_to_end(key)
+        return value
+
+    def _remove(self, key) -> None:
+        if key not in self._entries:
+            return
+        self._entries.pop(key)
+        self.total_weight -= self._weights.pop(key)
+        namespace = self._key_namespaces.pop(key, None)
+        if namespace is not None:
+            namespace_keys = self._namespace_keys[namespace]
+            namespace_keys.discard(key)
+            if not namespace_keys:
+                self._namespace_keys.pop(namespace)
+
+    def store(
+        self,
+        key,
+        value,
+        weight: Optional[int] = None,
+        namespace=None,
+    ) -> None:
+        if weight is None:
+            weight = _glyph_geometry_cache_weight(value)
+        weight = max(1, int(weight))
+        if weight > self.max_weight:
+            return
+        if key in self._entries:
+            self._remove(key)
+        while self._entries and (
+            len(self._entries) >= self.max_entries
+            or self.total_weight + weight > self.max_weight
+        ):
+            self._remove(next(iter(self._entries)))
+        self._entries[key] = value
+        self._weights[key] = weight
+        if namespace is not None:
+            self._key_namespaces[key] = namespace
+            self._namespace_keys.setdefault(namespace, set()).add(key)
+        self.total_weight += weight
+
+    def discard_namespace(self, namespace) -> None:
+        for key in tuple(self._namespace_keys.get(namespace, ())):
+            self._remove(key)
+
+    def clear(self) -> None:
+        self._entries.clear()
+        self._weights.clear()
+        self._key_namespaces.clear()
+        self._namespace_keys.clear()
+        self.total_weight = 0
+
+
+GLOBAL_GLYPH_GEOMETRY_CACHE = WeightedGlyphGeometryCache(
+    GLYPH_GEOMETRY_CACHE_MAX_ENTRIES,
+    GLYPH_GEOMETRY_CACHE_MAX_BYTES,
+)
+GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE = WeightedGlyphGeometryCache(
+    GLYPH_PREVIEW_GEOMETRY_CACHE_MAX_ENTRIES,
+    GLYPH_PREVIEW_GEOMETRY_CACHE_MAX_BYTES,
+)
 
 
 def glyph_slant_x(x: float, y: float, baseline_y: float, angle: float) -> float:
@@ -350,6 +457,23 @@ def _raw_font_has_color_glyphs(raw_font: QRawFont) -> bool:
     return has_color
 
 
+def _raw_glyph_path(raw_font: QRawFont, glyph_index: int) -> QPainterPath:
+    """Return a bounded shared cache entry for immutable raw glyph outlines."""
+    try:
+        key = (type(raw_font), raw_font, int(glyph_index))
+        hash(key)
+    except (RuntimeError, TypeError, ValueError):
+        return raw_font.pathForGlyph(glyph_index)
+    cached = _GLYPH_PATH_CACHE.get(key)
+    if cached is not None:
+        return QPainterPath(cached)
+    path = raw_font.pathForGlyph(glyph_index)
+    while len(_GLYPH_PATH_CACHE) >= _GLYPH_PATH_CACHE_MAX_ENTRIES:
+        _GLYPH_PATH_CACHE.pop(next(iter(_GLYPH_PATH_CACHE)))
+    _GLYPH_PATH_CACHE[key] = QPainterPath(path)
+    return path
+
+
 def glyph_geometry(
     line: QTextLine,
     start: int,
@@ -375,7 +499,7 @@ def glyph_geometry(
                 position.x() + offset.x(), position.y() + offset.y()
             )
             glyph_to_item = _composed_transform(translation, shear, orientation)
-            glyph_path = raw_font.pathForGlyph(glyph_index)
+            glyph_path = _raw_glyph_path(raw_font, glyph_index)
             if not native_color_glyphs and not glyph_path.isEmpty():
                 mapped_path = glyph_to_item.map(glyph_path)
                 # Preserve the raw font's per-glyph fill rule. Drawing glyphs
@@ -847,6 +971,40 @@ def _draw_decorations(
         painter.restore()
 
 
+def _geometry_cache_key(
+    namespace,
+    start: int,
+    length: int,
+    offset: QPointF,
+    orientation: QTransform,
+    angle: float,
+):
+    return (
+        namespace,
+        start,
+        length,
+        offset.x(),
+        offset.y(),
+        orientation.m11(),
+        orientation.m12(),
+        orientation.m21(),
+        orientation.m22(),
+        orientation.dx(),
+        orientation.dy(),
+        angle,
+    )
+
+
+def _store_geometry(cache, key, geometry) -> None:
+    store = getattr(cache, 'store', None)
+    if store is not None:
+        store(key, geometry)
+        return
+    while len(cache) >= GLYPH_GEOMETRY_CACHE_MAX_ENTRIES:
+        cache.pop(next(iter(cache)))
+    cache[key] = geometry
+
+
 def draw_slanted_line(
     painter: QPainter,
     block: QTextBlock,
@@ -856,6 +1014,8 @@ def draw_slanted_line(
     angle: float,
     context: QAbstractTextDocumentLayout.PaintContext,
     failure_handler=None,
+    persistent_geometry_cache=None,
+    cache_namespace=None,
 ) -> None:
     """Paint one already-laid-out line without changing logical geometry."""
     layout = block.layout()
@@ -868,14 +1028,29 @@ def draw_slanted_line(
         key = (span.start, span.length)
         geometry = geometry_cache.get(key)
         if geometry is None:
-            geometry = glyph_geometry(
-                line,
+            persistent_key = _geometry_cache_key(
+                cache_namespace,
                 span.start,
                 span.length,
                 offset,
                 orientation,
                 angle,
             )
+            if persistent_geometry_cache is not None:
+                geometry = persistent_geometry_cache.get(persistent_key)
+            if geometry is None:
+                geometry = glyph_geometry(
+                    line,
+                    span.start,
+                    span.length,
+                    offset,
+                    orientation,
+                    angle,
+                )
+                if persistent_geometry_cache is not None:
+                    _store_geometry(
+                        persistent_geometry_cache, persistent_key, geometry
+                    )
             geometry_cache[key] = geometry
         return geometry
 
@@ -998,11 +1173,24 @@ def draw_slanted_glyph_mask(
     orientation: QTransform,
     angle: float,
     failure_handler=None,
+    persistent_geometry_cache=None,
+    cache_namespace=None,
 ) -> None:
     """Draw only slanted glyph alpha for stroke/shadow mask construction."""
     char_format = QTextCharFormat()
     char_format.setForeground(QColor(Qt.GlobalColor.white))
-    geometry = glyph_geometry(line, start, length, offset, orientation, angle)
+    key = _geometry_cache_key(
+        cache_namespace, start, length, offset, orientation, angle
+    )
+    geometry = (
+        None
+        if persistent_geometry_cache is None
+        else persistent_geometry_cache.get(key)
+    )
+    if geometry is None:
+        geometry = glyph_geometry(line, start, length, offset, orientation, angle)
+        if persistent_geometry_cache is not None:
+            _store_geometry(persistent_geometry_cache, key, geometry)
     draw_glyph_geometry(
         painter, geometry, char_format, failure_handler
     )
@@ -1013,14 +1201,24 @@ def slanted_line_ink_bounds(
     offset: QPointF,
     orientation: QTransform,
     angle: float,
+    persistent_geometry_cache=None,
+    cache_namespace=None,
 ) -> QRectF:
     """Return vector ink bounds for one live line, including pathless glyphs."""
-    geometry = glyph_geometry(
-        line,
-        line.textStart(),
-        line.textLength(),
-        offset,
-        orientation,
-        angle,
+    start = line.textStart()
+    length = line.textLength()
+    key = _geometry_cache_key(
+        cache_namespace, start, length, offset, orientation, angle
     )
+    geometry = (
+        None
+        if persistent_geometry_cache is None
+        else persistent_geometry_cache.get(key)
+    )
+    if geometry is None:
+        geometry = glyph_geometry(
+            line, start, length, offset, orientation, angle
+        )
+        if persistent_geometry_cache is not None:
+            _store_geometry(persistent_geometry_cache, key, geometry)
     return QRectF(geometry.bounds)

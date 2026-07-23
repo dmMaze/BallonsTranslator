@@ -11,7 +11,7 @@ from typing import Optional
 from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import QPolygonF, QTransform
 
-from ballontranslator.utils.fontformat import normalize_text_transform
+from ballontranslator.utils.fontformat import TextTransform, normalize_text_transform
 
 
 def _text_transform_coefficients(
@@ -20,13 +20,13 @@ def _text_transform_coefficients(
     slant_angle: float,
 ):
     """Return canonical scale and the Box Slant shear coefficient."""
-    horizontal_scale, vertical_scale, slant_angle, _ = normalize_text_transform(
+    transform = normalize_text_transform(
         horizontal_scale, vertical_scale, slant_angle
     )
     return (
-        horizontal_scale,
-        vertical_scale,
-        -math.tan(math.radians(slant_angle)),
+        transform.horizontal_scale,
+        transform.vertical_scale,
+        -math.tan(math.radians(transform.slant_angle)),
     )
 
 
@@ -182,3 +182,116 @@ def rect_polygon(rect: QRectF) -> QPolygonF:
     return QPolygonF(
         [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
     )
+
+
+class TextTransformStrategy:
+    """Rendering/geometry boundary implemented by each transform variant."""
+
+    transform_type = 'base'
+
+    def compensated_matrix(
+        self,
+        transform: TextTransform,
+        box_pivot: QPointF,
+        rotation_angle: float,
+        rotation_pivot: QPointF,
+    ) -> QTransform:
+        raise NotImplementedError
+
+    def visual_polygon(self, item, logical_rect: QRectF) -> QPolygonF:
+        return QPolygonF(
+            [item.mapToScene(point) for point in rect_polygon(logical_rect)]
+        )
+
+    def visual_is_neutral(self, item) -> bool:
+        return item.transform().isIdentity()
+
+    def apply_layout(
+        self,
+        item,
+        transform: TextTransform,
+        persistent_cache: bool = True,
+    ):
+        """Apply variant-specific layout paint state.
+
+        The return value is ``(rendering_changed, padding_changed)``.  A
+        non-layout transform can keep this neutral implementation.
+        """
+        return False, False
+
+    def requires_no_cache(self, transform: TextTransform) -> bool:
+        return False
+
+    def requires_custom_resize(self, transform: TextTransform) -> bool:
+        return False
+
+
+class SlantTextTransformStrategy(TextTransformStrategy):
+    """Current affine box and glyph-slant implementation."""
+
+    transform_type = 'slant'
+
+    def compensated_matrix(
+        self,
+        transform: TextTransform,
+        box_pivot: QPointF,
+        rotation_angle: float,
+        rotation_pivot: QPointF,
+    ) -> QTransform:
+        return compensated_text_transform_matrix(
+            transform.horizontal_scale,
+            transform.vertical_scale,
+            transform.slant_angle,
+            box_pivot,
+            rotation_angle,
+            rotation_pivot,
+        )
+
+    def visual_is_neutral(self, item) -> bool:
+        return (
+            super().visual_is_neutral(item)
+            and (item.layout is None or item.layout.glyph_slant_angle == 0.0)
+        )
+
+    def apply_layout(
+        self,
+        item,
+        transform: TextTransform,
+        persistent_cache: bool = True,
+    ):
+        if item.layout is None:
+            return False, False
+        if not item.layout.setGlyphSlantAngle(
+            transform.glyph_slant_angle,
+            persistent_cache,
+        ):
+            return False, False
+        item.effect_renderer._mark_effect_cache_dirty()
+        padding_changed = item.effect_renderer._update_effect_padding()
+        item.refresh_cache_policy()
+        item.update()
+        return True, padding_changed
+
+    def requires_no_cache(self, transform: TextTransform) -> bool:
+        return (
+            transform.horizontal_scale != 1.0
+            or transform.vertical_scale != 1.0
+            or transform.slant_angle != 0.0
+        )
+
+    def requires_custom_resize(self, transform: TextTransform) -> bool:
+        return self.requires_no_cache(transform)
+
+
+TEXT_TRANSFORM_STRATEGIES = {
+    SlantTextTransformStrategy.transform_type: SlantTextTransformStrategy(),
+}
+
+
+def text_transform_strategy(transform: TextTransform) -> TextTransformStrategy:
+    try:
+        return TEXT_TRANSFORM_STRATEGIES[transform.transform_type]
+    except KeyError as error:
+        raise ValueError(
+            f'unsupported live text transform type {transform.transform_type}'
+        ) from error

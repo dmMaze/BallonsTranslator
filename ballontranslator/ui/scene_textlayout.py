@@ -1,15 +1,6 @@
 import re
-from bisect import bisect_left, bisect_right
 
-from qtpy.QtCore import (
-    Qt,
-    QRectF,
-    QPointF,
-    Signal,
-    QSizeF,
-    QSize,
-    QTextBoundaryFinder,
-)
+from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF
 from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetricsF, QTextOption, QTextLine, QTextFormat
 
 import cv2
@@ -19,19 +10,14 @@ from functools import lru_cache, cached_property
 
 from .misc import pixmap2ndarray, LruIgnoreArg
 from ballontranslator.utils import shared as C
-from ballontranslator.utils.fontformat import (
-    FontFormat,
-    LineSpacingType,
-    TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-    TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-    normalize_text_transform_value,
-    pt2px,
+from ballontranslator.utils.fontformat import pt2px, FontFormat, LineSpacingType
+from .text_effects.indexing import (
+    _grapheme_count,
+    _utf16_char_at,
+    _utf16_length,
+    _utf16_slice,
 )
-from .text_glyph_renderer import (
-    draw_slanted_glyph_mask,
-    draw_slanted_line,
-    slanted_line_ink_bounds,
-)
+from .text_effects.transform_layout import TextLayoutTransformRenderer
 
 def print_transform(tr: QTransform):
     print(f'[[{tr.m11(), tr.m12(), tr.m13()}]\n [{tr.m21(), tr.m22(), tr.m23()}]\n [{tr.m31(), tr.m32(), tr.m33()}]]')
@@ -127,63 +113,6 @@ def _block_cursor_position(block: QTextBlock, cursor_position: int) -> int:
     return -1
 
 
-@lru_cache(maxsize=1024)
-def _utf16_boundaries(text: str):
-    """Return each Python character boundary in Qt's UTF-16 coordinates."""
-    boundaries = [0]
-    offset = 0
-    for char in text:
-        offset += 2 if ord(char) > 0xFFFF else 1
-        boundaries.append(offset)
-    return tuple(boundaries)
-
-
-def _utf16_length(text: str) -> int:
-    return _utf16_boundaries(text)[-1]
-
-
-def _utf16_slice(text: str, start: int, length: int) -> str:
-    """Slice without allowing a Qt offset inside a surrogate pair to split it."""
-    boundaries = _utf16_boundaries(text)
-    start = max(0, min(start, boundaries[-1]))
-    end = max(start, min(start + length, boundaries[-1]))
-    py_start = max(0, bisect_right(boundaries, start) - 1)
-    py_end = min(len(text), bisect_left(boundaries, end))
-    return text[py_start:py_end]
-
-
-def _utf16_char_at(text: str, offset: int) -> str:
-    if not text:
-        return ''
-    boundaries = _utf16_boundaries(text)
-    offset = max(0, min(offset, boundaries[-1] - 1))
-    return text[bisect_right(boundaries, offset) - 1]
-
-
-def _grapheme_count(text: str) -> int:
-    """Count Qt grapheme clusters for the vertical one-column layout."""
-    if not text:
-        return 0
-    finder = QTextBoundaryFinder(
-        QTextBoundaryFinder.BoundaryType.Grapheme,
-        text,
-    )
-    finder.toStart()
-    previous = 0
-    join_next = False
-    count = 0
-    while True:
-        boundary = finder.toNextBoundary()
-        if boundary == -1:
-            break
-        segment = _utf16_slice(text, previous, boundary - previous)
-        if not join_next and not segment.startswith('\u200d'):
-            count += 1
-        join_next = segment.endswith('\u200d')
-        previous = boundary
-    return count
-
-
 class CharFontFormat:
     def __init__(self, fcmt: QTextCharFormat) -> None:
         font = fcmt.font()
@@ -277,14 +206,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.letter_spacing = fontformat.letter_spacing
         self.linespacing_type = fontformat.line_spacing_type
         self.fontformat = fontformat
-        self._glyph_slant_angle = normalize_text_transform_value(
-            getattr(fontformat, 'glyph_slant_angle', 0.0),
-            TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-            TEXT_TRANSFORM_GLYPH_SLANT_MAX,
+        self.transform_renderer = TextLayoutTransformRenderer(
+            self, fontformat.text_transform.glyph_slant_angle
         )
         self.glyph_raster_failure_handler = None
-        self._layout_generation = 0
-        self._glyph_bounds_cache = {}
 
         self.x_offset_lst = []
         self.y_offset_lst = []
@@ -323,23 +248,19 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
     @property
     def glyph_slant_angle(self) -> float:
-        return self._glyph_slant_angle
+        return self.transform_renderer.glyph_slant_angle
 
-    @property
-    def layout_generation(self) -> int:
-        return self._layout_generation
-
-    def setGlyphSlantAngle(self, angle: float) -> bool:
+    def setGlyphSlantAngle(
+        self,
+        angle: float,
+        persistent_cache: bool = True,
+    ) -> bool:
         """Set transient glyph ink slant without changing document geometry."""
-        angle = normalize_text_transform_value(
+        if not self.transform_renderer.set_glyph_slant_angle(
             angle,
-            TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-            TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-        )
-        if angle == self._glyph_slant_angle:
+            persistent_cache,
+        ):
             return False
-        self._glyph_slant_angle = angle
-        self._glyph_bounds_cache.clear()
         if C.USE_PYSIDE6:
             self.update.emit()
         else:
@@ -347,8 +268,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         return True
 
     def _begin_layout_generation(self):
-        self._layout_generation += 1
-        self._glyph_bounds_cache.clear()
+        self.transform_renderer.begin_layout_generation()
 
     def _report_glyph_raster_failure(self, error, effect_pass=False):
         handler = self.glyph_raster_failure_handler
@@ -361,30 +281,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
     def glyphInkBounds(self) -> QRectF:
         """Return live shaped ink bounds for the effective glyph slant."""
-        if self.document().isEmpty():
-            return QRectF()
-        key = (
-            self.document().revision(),
-            self._layout_generation,
-            type(self),
-            self._glyph_slant_angle,
+        return self.transform_renderer.ink_bounds(
+            self._iter_glyph_line_placements()
         )
-        cached = self._glyph_bounds_cache.get(key)
-        if cached is not None:
-            return QRectF(cached)
-        bounds = QRectF()
-        for line, offset, orientation in self._iter_glyph_line_placements():
-            line_bounds = slanted_line_ink_bounds(
-                line,
-                offset,
-                orientation,
-                self._glyph_slant_angle,
-            )
-            if line_bounds.isEmpty():
-                continue
-            bounds = line_bounds if bounds.isNull() else bounds.united(line_bounds)
-        self._glyph_bounds_cache = {key: QRectF(bounds)}
-        return bounds
 
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
@@ -511,6 +410,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     
 
 class VerticalTextDocumentLayout(SceneTextLayout):
+    vertical_rotation_chars = PUNSET_VERNEEDROTATE
 
     def __init__(self, doc: QTextDocument, fontformat: FontFormat):
         super().__init__(doc, fontformat)
@@ -590,7 +490,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             layout = block.layout()
             blk_text = block.text()
-            glyph_slanted = self._glyph_slant_angle != 0.0
+            glyph_slanted = self.glyph_slant_angle != 0.0
             blk_text_len = (
                 _utf16_length(blk_text) if glyph_slanted else len(blk_text)
             )
@@ -677,166 +577,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
 
-    def _vertical_line_placement(self, block: QTextBlock, line_number: int):
-        layout = block.layout()
-        line = layout.lineAt(line_number)
-        if not line.isValid() or line.textLength() <= 0:
-            return None
-        block_number = block.blockNumber()
-        block_text = block.text()
-        block_text_length = _utf16_length(block_text)
-        _, leading_spaces, _, line_position = self.line_spaces_lst[block_number][
-            line_number
-        ]
-        char_offset = min(line_position + leading_spaces, block_text_length - 1)
-        if char_offset < 0:
-            return line, QPointF(), QTransform()
-        char = _utf16_char_at(block_text, char_offset)
-        x_offset, y_offset = self._draw_offset[block_number][line_number]
-        orientation = QTransform()
-        if char in PUNSET_VERNEEDROTATE:
-            line_x, line_y = line.x(), line.y()
-            orientation = QTransform(
-                0,
-                1,
-                0,
-                -1,
-                0,
-                0,
-                line_y + line_x,
-                line_y - line_x,
-                1,
-            )
-        return line, QPointF(x_offset, y_offset), orientation
-
     def _iter_glyph_line_placements(self):
-        block = self.document().firstBlock()
-        while block.isValid():
-            layout = block.layout()
-            for line_number in range(layout.lineCount()):
-                placement = self._vertical_line_placement(block, line_number)
-                if placement is not None:
-                    yield placement
-            block = block.next()
+        return self.transform_renderer._iter_glyph_line_placements()
 
-    def draw_glyph_selection_mask(
-        self,
-        painter: QPainter,
-        context: QAbstractTextDocumentLayout.PaintContext,
-    ) -> None:
-        """Draw only glyphs named by temporary document-layout selections.
-
-        This is the Qt 5/6 common path used to build vertical effect masks.
-        It reads glyph runs from the attached QTextLayout objects, preserving
-        their established positions and rotations without changing document
-        formats. QText decorations are intentionally excluded from the mask.
-        """
-        painter.save()
-        try:
-            painter.setPen(Qt.GlobalColor.white)
-            if context.clip.isValid():
-                painter.setClipRect(context.clip)
-            for selection in context.selections:
-                selection_start = selection.cursor.selectionStart()
-                selection_end = selection.cursor.selectionEnd()
-                if selection_end <= selection_start:
-                    continue
-                self._draw_glyph_range(
-                    painter, selection_start, selection_end
-                )
-        finally:
-            painter.restore()
-
-    def _draw_glyph_range(
-        self, painter: QPainter, selection_start: int, selection_end: int
-    ) -> None:
-        block = self.document().firstBlock()
-        while block.isValid():
-            block_start = block.position()
-            block_end = block_start + block.length() - 1
-            if selection_start >= block_end:
-                block = block.next()
-                continue
-            if selection_end <= block_start:
-                break
-
-            local_start = max(0, selection_start - block_start)
-            local_end = min(block_end - block_start, selection_end - block_start)
-            block_number = block.blockNumber()
-            block_text = block.text()
-            block_text_length = _utf16_length(block_text)
-            layout = block.layout()
-            line_spaces = self.line_spaces_lst[block_number]
-            for line_number in range(layout.lineCount()):
-                line = layout.lineAt(line_number)
-                line_start = line.textStart()
-                line_end = line_start + line.textLength()
-                run_start = max(line_start, local_start)
-                run_end = min(line_end, local_end)
-                if run_end <= run_start:
-                    continue
-
-                glyph_runs = line.glyphRuns(run_start, run_end - run_start)
-                if not glyph_runs:
-                    continue
-                if self._glyph_slant_angle != 0.0:
-                    placement = self._vertical_line_placement(block, line_number)
-                    # Preserve the selection mask's empty-line skip.
-                    if placement is None or not block_text:
-                        continue
-                    placed_line, offset, orientation = placement
-                    draw_slanted_glyph_mask(
-                        painter,
-                        placed_line,
-                        run_start,
-                        run_end - run_start,
-                        offset,
-                        orientation,
-                        self._glyph_slant_angle,
-                        self._report_glyph_raster_failure,
-                    )
-                    continue
-
-                _, leading_spaces, _, line_position = line_spaces[line_number]
-                char_offset = min(
-                    line_position + leading_spaces, block_text_length - 1
-                )
-                if char_offset < 0:
-                    continue
-                char = _utf16_char_at(block_text, char_offset)
-                x_offset, y_offset = self._draw_offset[block_number][line_number]
-
-                painter.save()
-                try:
-                    if char in PUNSET_VERNEEDROTATE:
-                        line_x, line_y = line.x(), line.y()
-                        painter.setTransform(
-                            QTransform(
-                                0,
-                                1,
-                                0,
-                                -1,
-                                0,
-                                0,
-                                line_y + line_x,
-                                line_y - line_x,
-                                1,
-                            ),
-                            True,
-                        )
-                    for glyph_run in glyph_runs:
-                        # QGlyphRun carries decoration flags independently of
-                        # its glyph indexes. They belong to the normal text
-                        # pass and must not be expanded into a thick outline.
-                        glyph_run.setUnderline(False)
-                        glyph_run.setOverline(False)
-                        glyph_run.setStrikeOut(False)
-                        painter.drawGlyphRun(
-                            QPointF(x_offset, y_offset), glyph_run
-                        )
-                finally:
-                    painter.restore()
-            block = block.next()
 
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
@@ -857,7 +600,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blpos, bllen = block.position(), block.length()
             layout = block.layout()
             blk_text = block.text()
-            glyph_slanted = self._glyph_slant_angle != 0.0
+            glyph_slanted = self.glyph_slant_angle != 0.0
             blk_text_len = (
                 _utf16_length(blk_text) if glyph_slanted else len(blk_text)
             )
@@ -875,20 +618,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
                 char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
                 if char_idx < 0:
-                    if self._glyph_slant_angle != 0.0:
-                        placement = self._vertical_line_placement(block, ii)
-                        if placement is not None:
-                            placed_line, offset, orientation = placement
-                            draw_slanted_line(
-                                painter,
-                                block,
-                                placed_line,
-                                offset,
-                                orientation,
-                                self._glyph_slant_angle,
-                                context,
-                                self._report_glyph_raster_failure,
-                            )
+                    if self.glyph_slant_angle != 0.0:
+                        self.transform_renderer.draw_vertical_line(
+                            painter, block, ii, context
+                        )
                     else:
                         line.draw(painter, QPointF(0, 0))
                     continue
@@ -902,20 +635,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 )
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 fm = cfmt.font_metrics
-                if self._glyph_slant_angle != 0.0:
-                    placement = self._vertical_line_placement(block, ii)
-                    if placement is not None:
-                        placed_line, offset, orientation = placement
-                        draw_slanted_line(
-                            painter,
-                            block,
-                            placed_line,
-                            offset,
-                            orientation,
-                            self._glyph_slant_angle,
-                            context,
-                            self._report_glyph_raster_failure,
-                        )
+                if self.glyph_slant_angle != 0.0:
+                    self.transform_renderer.draw_vertical_line(
+                        painter, block, ii, context
+                    )
                     continue
                 selected = False
                 if has_selection:
@@ -1021,7 +744,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         else:
                             ntr = line.naturalTextRect()
                             off = line.textStart()
-                            if self._glyph_slant_angle != 0.0:
+                            if self.glyph_slant_angle != 0.0:
                                 # The feature path consumes Qt UTF-16 glyph
                                 # runs, so never return a caret inside a
                                 # transformed grapheme.
@@ -1061,7 +784,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         block_no = block.blockNumber()
         is_final_block = block == doc.lastBlock()
         blk_text = block.text()
-        glyph_slanted = self._glyph_slant_angle != 0.0
+        glyph_slanted = self.glyph_slant_angle != 0.0
         blk_text_len = (
             _utf16_length(blk_text) if glyph_slanted else len(blk_text)
         )
@@ -1470,7 +1193,12 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             for line_number in range(layout.lineCount()):
                 line = layout.lineAt(line_number)
                 if line.isValid() and line.textLength() > 0:
-                    yield line, QPointF(), QTransform()
+                    yield (
+                        (block.blockNumber(), line_number),
+                        line,
+                        QPointF(),
+                        QTransform(),
+                    )
             block = block.next()
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
@@ -1485,7 +1213,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             bllen = block.length()
             if _block_cursor_position(block, context.cursorPosition) >= 0:
                 cursor_block = block
-            if self._glyph_slant_angle == 0.0:
+            if self.glyph_slant_angle == 0.0:
                 selections = []
                 for sel in context.selections:
                     selStart = sel.cursor.selectionStart() - blpos
@@ -1514,19 +1242,9 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                     painter.save()
                     painter.setClipRect(context.clip, Qt.ClipOperation.IntersectClip)
                 try:
-                    for line_number in range(layout.lineCount()):
-                        line = layout.lineAt(line_number)
-                        if line.isValid() and line.textLength() > 0:
-                            draw_slanted_line(
-                                painter,
-                                block,
-                                line,
-                                QPointF(),
-                                QTransform(),
-                                self._glyph_slant_angle,
-                                context,
-                                self._report_glyph_raster_failure,
-                            )
+                    self.transform_renderer.draw_horizontal_block(
+                        painter, block, context
+                    )
                 finally:
                     if context.clip.isValid():
                         painter.restore()

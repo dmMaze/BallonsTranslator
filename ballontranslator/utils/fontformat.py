@@ -1,4 +1,5 @@
-from typing import NamedTuple, Union
+from dataclasses import dataclass, field as dataclass_field, replace
+from typing import ClassVar, Union
 import enum
 import math
 import re
@@ -19,16 +20,69 @@ TEXT_TRANSFORM_GLYPH_SLANT_MAX = 45.0
 TEXT_TRANSFORM_PRECISION = 6
 
 
-class TextTransform(NamedTuple):
-    """Canonical post-layout box transform plus glyph-local slant."""
+@dataclass(frozen=True)
+class TextTransform:
+    """Immutable base value for a persisted text-transform variant.
 
-    horizontal_scale: float
-    vertical_scale: float
-    slant_angle: float
-    glyph_slant_angle: float
+    Subclasses expose stable component names and normalization.  Persistence
+    adapters use ``transform_type`` as the future discriminant while the
+    current flat config/project representation remains unchanged.
+
+    >>> SlantTextTransform().transform_type
+    'slant'
+    """
+
+    transform_type: str = dataclass_field(init=False, default='base')
+    component_fields: ClassVar[tuple] = ()
+
+    def normalized(self) -> "TextTransform":
+        raise NotImplementedError
+
+    def with_value(self, name: str, value: float) -> "TextTransform":
+        if name not in self.component_fields:
+            raise ValueError(
+                f'unknown {self.transform_type} transform field {name}'
+            )
+        return replace(self, **{name: value}).normalized()
+
+    def component_values(self) -> tuple:
+        return tuple(getattr(self, name) for name in self.component_fields)
+
+    def flat_dict(self) -> dict:
+        return dict(zip(self.component_fields, self.component_values()))
+
+    def is_neutral(self) -> bool:
+        raise NotImplementedError
 
 
-def normalize_text_transform_value(value: float, minimum: float, maximum: float) -> float:
+@dataclass(frozen=True)
+class SlantTextTransform(TextTransform):
+    """Current affine box transform plus glyph-local slant."""
+
+    horizontal_scale: float = 1.0
+    vertical_scale: float = 1.0
+    slant_angle: float = 0.0
+    glyph_slant_angle: float = 0.0
+    transform_type: str = dataclass_field(init=False, default='slant')
+    component_fields: ClassVar[tuple] = (
+        'horizontal_scale',
+        'vertical_scale',
+        'slant_angle',
+        'glyph_slant_angle',
+    )
+
+    def normalized(self) -> "SlantTextTransform":
+        return normalize_text_transform(*self.component_values())
+
+    def is_neutral(self) -> bool:
+        return self == SlantTextTransform()
+
+
+def normalize_text_transform_value(
+    value: float,
+    minimum: float,
+    maximum: float,
+) -> float:
     """Return a finite, clamped canonical text-transform component.
 
     Persistence validates stored values before normalization; this pure helper
@@ -57,16 +111,16 @@ def normalize_text_transform(
     vertical_scale: float,
     slant_angle: float,
     glyph_slant_angle: float = 0.0,
-) -> TextTransform:
+) -> SlantTextTransform:
     """Normalize the canonical four-component text transform.
 
     Existing three-argument callers remain source-compatible and receive a
     neutral glyph slant.
 
-    >>> tuple(normalize_text_transform(1.23456789, 0.01, -90))
+    >>> normalize_text_transform(1.23456789, 0.01, -90).component_values()
     (1.234568, 0.1, -85.0, 0.0)
     """
-    return TextTransform(
+    return SlantTextTransform(
         normalize_text_transform_value(
             horizontal_scale, TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX
         ),
@@ -84,6 +138,50 @@ def normalize_text_transform(
             TEXT_TRANSFORM_GLYPH_SLANT_MAX,
         ),
     )
+
+
+TEXT_TRANSFORM_TYPES = {
+    SlantTextTransform().transform_type: SlantTextTransform,
+}
+
+
+def coerce_text_transform(value=None, **legacy_values) -> TextTransform:
+    """Return a normalized transform from direct or legacy flat data.
+
+    Old configs need no migration: their flat quartet is consumed during the
+    ordinary ``FontFormat`` construction path and remains the saved shape.
+
+    >>> coerce_text_transform(horizontal_scale=2).horizontal_scale
+    2.0
+    >>> transform = coerce_text_transform(
+    ...     {'transform_type': 'slant', 'slant_angle': 5}
+    ... )
+    >>> transform.slant_angle
+    5.0
+    """
+    if isinstance(value, TextTransform):
+        if legacy_values:
+            updates = {
+                name: component
+                for name, component in legacy_values.items()
+                if name in value.component_fields
+            }
+            value = replace(value, **updates)
+        return value.normalized()
+    payload = {} if value is None else dict(value)
+    transform_type = payload.pop('transform_type', 'slant')
+    transform_class = TEXT_TRANSFORM_TYPES.get(transform_type)
+    if transform_class is None:
+        raise ValueError(f'unsupported text transform type {transform_type}')
+    for name in transform_class.component_fields:
+        if name in legacy_values:
+            payload[name] = legacy_values[name]
+    unexpected = set(payload) - set(transform_class.component_fields)
+    if unexpected:
+        raise ValueError(
+            f'unsupported {transform_type} transform fields: {sorted(unexpected)}'
+        )
+    return transform_class(**payload).normalized()
 
 
 def pt2px(pt, to_int=False) -> float:
@@ -161,12 +259,11 @@ class FontFormat(Config):
     _style_name: str = ''
     line_spacing_type: int = LineSpacingType.Proportional
 
-    # Post-layout visual geometry. These factors never alter document fonts or
-    # wrapping; TextBlock.fontformat is their sole persistent owner.
-    horizontal_scale: float = 1.0
-    vertical_scale: float = 1.0
-    slant_angle: float = 0.0
-    glyph_slant_angle: float = 0.0
+    # Direct in-memory owner. Serializers deliberately retain the older flat
+    # quartet so existing configs and projects require no migration.
+    text_transform: Union[TextTransform, dict] = field(
+        default_factory=SlantTextTransform
+    )
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())
 
@@ -185,27 +282,23 @@ class FontFormat(Config):
                 self.font_family = da['family']
 
         self.font_weight = fix_fontweight_qt(self.font_weight)
-        (
-            self.horizontal_scale,
-            self.vertical_scale,
-            self.slant_angle,
-            self.glyph_slant_angle,
-        ) = normalize_text_transform(
-            self.horizontal_scale,
-            self.vertical_scale,
-            self.slant_angle,
-            self.glyph_slant_angle,
+        legacy_transform = {
+            name: da.pop(name)
+            for name in SlantTextTransform.component_fields
+            if name in da
+        }
+        self.text_transform = coerce_text_transform(
+            self.text_transform,
+            **legacy_transform,
         )
         self.deprecated_attributes = {}
 
-    @property
-    def text_transform(self) -> TextTransform:
-        return TextTransform(
-            self.horizontal_scale,
-            self.vertical_scale,
-            self.slant_angle,
-            self.glyph_slant_angle,
-        )
+    def to_serializable_dict(self) -> dict:
+        """Return the stable flat config/project representation."""
+        serialized = vars(self).copy()
+        serialized.pop('text_transform', None)
+        serialized.update(self.text_transform.flat_dict())
+        return serialized
 
     def deepcopy(self):
         fmt_copyed: FontFormat = None
