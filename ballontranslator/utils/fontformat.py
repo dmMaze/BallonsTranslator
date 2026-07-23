@@ -1,5 +1,11 @@
-from dataclasses import dataclass, field as dataclass_field, replace
-from typing import ClassVar, Union
+from dataclasses import (
+    asdict,
+    dataclass,
+    field as dataclass_field,
+    fields,
+    replace,
+)
+from typing import Union
 import enum
 import math
 import re
@@ -20,36 +26,33 @@ TEXT_TRANSFORM_GLYPH_SLANT_MAX = 45.0
 TEXT_TRANSFORM_PRECISION = 6
 
 
+def _transform_value_field_names(transform) -> tuple:
+    """Return constructor fields, excluding derived fields such as the type."""
+    return tuple(field.name for field in fields(transform) if field.init)
+
+
 @dataclass(frozen=True)
 class TextTransform:
     """Immutable base value for a persisted text-transform variant.
 
-    Subclasses expose stable component names and normalization.  Persistence
-    adapters use ``transform_type`` as the future discriminant while the
-    current flat config/project representation remains unchanged.
+    Subclasses expose stable component names and normalization. Persistence
+    stores ``transform_type`` with the variant-specific component payload.
 
     >>> SlantTextTransform().transform_type
     'slant'
     """
 
     transform_type: str = dataclass_field(init=False, default='base')
-    component_fields: ClassVar[tuple] = ()
 
     def normalized(self) -> "TextTransform":
         raise NotImplementedError
 
     def with_value(self, name: str, value: float) -> "TextTransform":
-        if name not in self.component_fields:
+        if name not in _transform_value_field_names(self):
             raise ValueError(
                 f'unknown {self.transform_type} transform field {name}'
             )
         return replace(self, **{name: value}).normalized()
-
-    def component_values(self) -> tuple:
-        return tuple(getattr(self, name) for name in self.component_fields)
-
-    def flat_dict(self) -> dict:
-        return dict(zip(self.component_fields, self.component_values()))
 
     def is_neutral(self) -> bool:
         raise NotImplementedError
@@ -64,15 +67,14 @@ class SlantTextTransform(TextTransform):
     slant_angle: float = 0.0
     glyph_slant_angle: float = 0.0
     transform_type: str = dataclass_field(init=False, default='slant')
-    component_fields: ClassVar[tuple] = (
-        'horizontal_scale',
-        'vertical_scale',
-        'slant_angle',
-        'glyph_slant_angle',
-    )
 
     def normalized(self) -> "SlantTextTransform":
-        return normalize_text_transform(*self.component_values())
+        return normalize_text_transform(
+            self.horizontal_scale,
+            self.vertical_scale,
+            self.slant_angle,
+            self.glyph_slant_angle,
+        )
 
     def is_neutral(self) -> bool:
         return self == SlantTextTransform()
@@ -117,8 +119,8 @@ def normalize_text_transform(
     Existing three-argument callers remain source-compatible and receive a
     neutral glyph slant.
 
-    >>> normalize_text_transform(1.23456789, 0.01, -90).component_values()
-    (1.234568, 0.1, -85.0, 0.0)
+    >>> normalize_text_transform(1.23456789, 0.01, -90)
+    SlantTextTransform(transform_type='slant', horizontal_scale=1.234568, vertical_scale=0.1, slant_angle=-85.0, glyph_slant_angle=0.0)
     """
     return SlantTextTransform(
         normalize_text_transform_value(
@@ -148,8 +150,8 @@ TEXT_TRANSFORM_TYPES = {
 def coerce_text_transform(value=None, **flat_values) -> TextTransform:
     """Return a normalized transform from direct or persisted flat data.
 
-    Old configs need no migration: their flat quartet is consumed during the
-    ordinary ``FontFormat`` construction path and remains the saved shape.
+    Old flat configs are consumed during ordinary ``FontFormat`` construction;
+    no migration pass is required.
 
     >>> coerce_text_transform(horizontal_scale=2).horizontal_scale
     2.0
@@ -160,11 +162,12 @@ def coerce_text_transform(value=None, **flat_values) -> TextTransform:
     5.0
     """
     if isinstance(value, TextTransform):
+        value_fields = _transform_value_field_names(value)
         if flat_values:
             updates = {
                 name: component
                 for name, component in flat_values.items()
-                if name in value.component_fields
+                if name in value_fields
             }
             value = replace(value, **updates)
         return value.normalized()
@@ -173,10 +176,11 @@ def coerce_text_transform(value=None, **flat_values) -> TextTransform:
     transform_class = TEXT_TRANSFORM_TYPES.get(transform_type)
     if transform_class is None:
         raise ValueError(f'unsupported text transform type {transform_type}')
-    for name in transform_class.component_fields:
+    value_fields = _transform_value_field_names(transform_class)
+    for name in value_fields:
         if name in flat_values:
             payload[name] = flat_values[name]
-    unexpected = set(payload) - set(transform_class.component_fields)
+    unexpected = set(payload) - set(value_fields)
     if unexpected:
         raise ValueError(
             f'unsupported {transform_type} transform fields: {sorted(unexpected)}'
@@ -259,8 +263,8 @@ class FontFormat(Config):
     _style_name: str = ''
     line_spacing_type: int = LineSpacingType.Proportional
 
-    # Direct in-memory owner. Serializers deliberately retain the older flat
-    # quartet so existing configs and projects require no migration.
+    # Direct in-memory owner. Construction also accepts the previous flat
+    # quartet through ``deprecated_attributes`` below.
     text_transform: Union[TextTransform, dict] = field(
         default_factory=SlantTextTransform
     )
@@ -284,7 +288,7 @@ class FontFormat(Config):
         self.font_weight = fix_fontweight_qt(self.font_weight)
         flat_transform = {
             name: da.pop(name)
-            for name in SlantTextTransform.component_fields
+            for name in _transform_value_field_names(SlantTextTransform)
             if name in da
         }
         self.text_transform = coerce_text_transform(
@@ -294,10 +298,9 @@ class FontFormat(Config):
         self.deprecated_attributes = {}
 
     def to_serializable_dict(self) -> dict:
-        """Return the stable flat config/project representation."""
+        """Return config/project data with a typed transform payload."""
         serialized = vars(self).copy()
-        serialized.pop('text_transform', None)
-        serialized.update(self.text_transform.flat_dict())
+        serialized['text_transform'] = asdict(self.text_transform)
         return serialized
 
     def deepcopy(self):

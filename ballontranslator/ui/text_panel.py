@@ -8,7 +8,7 @@ from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent, QFont
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
-from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, SlantTextTransform, px2pt
+from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, px2pt
 from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel
 from .textitem import TextBlkItem
 from .text_advanced_format import TextAdvancedFormatPanel
@@ -16,9 +16,6 @@ from .text_style_presets import TextStylePresetPanel
 from .textedit_commands import SetTextTransformCommand
 from . import shared_widget as SW
 from . import funcmaps as FM
-
-TEXT_TRANSFORM_FIELDS = SlantTextTransform.component_fields
-
 
 class LineEdit(QLineEdit):
 
