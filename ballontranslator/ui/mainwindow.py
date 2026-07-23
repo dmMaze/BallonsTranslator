@@ -74,7 +74,7 @@ mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
 
 
 def _apply_global_text_transforms(block: TextBlock, global_format: FontFormat) -> bool:
-    """Copy the normalized global transform quartet as one model update."""
+    """Copy the normalized global transform as one model update."""
     target = coerce_text_transform(global_format.text_transform)
     if block.fontformat.text_transform == target:
         return False

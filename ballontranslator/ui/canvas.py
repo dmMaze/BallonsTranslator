@@ -279,7 +279,9 @@ class Canvas(QGraphicsScene):
             self, self.baseLayer, self.txtblkShapeControl
         )
         self._suspend_text_overlay_sync = False
-        self.txtblkShapeControl.overlay_sync_callback = self.sync_text_overlays
+        self.txtblkShapeControl.overlay_sync_callback = (
+            self.sync_active_text_overlay
+        )
         self.hscroll_bar.valueChanged.connect(self.sync_text_overlay_viewport)
         self.vscroll_bar.valueChanged.connect(self.sync_text_overlay_viewport)
 
@@ -361,6 +363,20 @@ class Canvas(QGraphicsScene):
         if manager is not None:
             manager.sync_overlays()
 
+    def sync_text_item_overlays(self, items):
+        if self._suspend_text_overlay_sync:
+            return
+        manager = getattr(self, 'text_overlay_manager', None)
+        if manager is not None:
+            manager.sync_items(items)
+
+    def sync_active_text_overlay(self):
+        item = self.txtblkShapeControl.blk_item
+        if item is None:
+            self.sync_text_overlays()
+            return
+        self.sync_text_item_overlays((item,))
+
     def sync_text_overlay_viewport(self, *_args):
         if self._suspend_text_overlay_sync:
             return
@@ -396,7 +412,10 @@ class Canvas(QGraphicsScene):
             if bool(item.data(UI_OVERLAY_ITEM_DATA_KEY))
         }
         export_effect_items = [
-            item for item in scene_items if isinstance(item, TextBlkItem)
+            item
+            for item in scene_items
+            if isinstance(item, TextBlkItem)
+            and not item._text_transform_is_neutral()
         ]
         enabled_export_effect_items = []
         painter = None

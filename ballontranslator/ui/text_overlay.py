@@ -279,23 +279,26 @@ class TextOverlayManager:
         active_item = control.blk_item if control.isVisible() else None
 
         for item in tuple(self._items):
-            if item.scene() is not self.scene or not item.isVisible():
-                overlay = self._guides.get(item)
-                if overlay is not None:
-                    overlay.hide()
-                continue
-            selected = item.isSelected()
-            should_show = item is not active_item and (
-                selected or self._textblock_mode
-            )
-            if not should_show:
-                overlay = self._guides.get(item)
-                if overlay is not None:
-                    overlay.hide()
-                continue
-            overlay = self._acquire_overlay(item)
-            overlay.setGuide(self._item_parent_polygon(item), selected)
-            overlay.show()
+            self._update_item_geometry(item, active_item)
+
+    def _update_item_geometry(self, item, active_item) -> None:
+        if item.scene() is not self.scene or not item.isVisible():
+            overlay = self._guides.get(item)
+            if overlay is not None:
+                overlay.hide()
+            return
+        selected = item.isSelected()
+        should_show = item is not active_item and (
+            selected or self._textblock_mode
+        )
+        if not should_show:
+            overlay = self._guides.get(item)
+            if overlay is not None:
+                overlay.hide()
+            return
+        overlay = self._acquire_overlay(item)
+        overlay.setGuide(self._item_parent_polygon(item), selected)
+        overlay.show()
 
     def _sync(self, update_geometry: Callable[[], None]) -> None:
         if self._batch_depth:
@@ -316,6 +319,27 @@ class TextOverlayManager:
 
     def sync_viewport(self, *_args, **_kwargs) -> None:
         self._sync(self._update_viewport_geometry)
+
+    def sync_items(self, items, *, update_control=True) -> None:
+        """Refresh only changed items during interactive geometry updates."""
+        items = tuple(dict.fromkeys(items))
+
+        def update_geometry():
+            control = self.shape_control
+            if update_control:
+                if (
+                    control.blk_item is not None
+                    and control.blk_item.scene() is self.scene
+                ):
+                    control.updateBoundingRect()
+                else:
+                    self._update_viewport_geometry()
+            active_item = control.blk_item if control.isVisible() else None
+            for item in items:
+                if item in self._items:
+                    self._update_item_geometry(item, active_item)
+
+        self._sync(update_geometry)
 
     def sync_overlays(self, *_args, **_kwargs) -> None:
         self._sync(self._update_geometry)

@@ -59,6 +59,23 @@ class TextTransform:
 
 
 @dataclass(frozen=True)
+class NoTextTransform(TextTransform):
+    """Explicit absence of a text transform effect.
+
+    >>> NoTextTransform().is_neutral()
+    True
+    """
+
+    transform_type: str = dataclass_field(init=False, default='none')
+
+    def normalized(self) -> "NoTextTransform":
+        return self
+
+    def is_neutral(self) -> bool:
+        return True
+
+
+@dataclass(frozen=True)
 class SlantTextTransform(TextTransform):
     """Current affine box transform plus glyph-local slant."""
 
@@ -112,14 +129,11 @@ def normalize_text_transform(
     horizontal_scale: float,
     vertical_scale: float,
     slant_angle: float,
-    glyph_slant_angle: float = 0.0,
+    glyph_slant_angle: float,
 ) -> SlantTextTransform:
     """Normalize the canonical four-component text transform.
 
-    Existing three-argument callers remain source-compatible and receive a
-    neutral glyph slant.
-
-    >>> normalize_text_transform(1.23456789, 0.01, -90)
+    >>> normalize_text_transform(1.23456789, 0.01, -90, 0.0)
     SlantTextTransform(transform_type='slant', horizontal_scale=1.234568, vertical_scale=0.1, slant_angle=-85.0, glyph_slant_angle=0.0)
     """
     return SlantTextTransform(
@@ -143,18 +157,30 @@ def normalize_text_transform(
 
 
 TEXT_TRANSFORM_TYPES = {
-    SlantTextTransform().transform_type: SlantTextTransform,
+    'none': NoTextTransform,
+    'slant': SlantTextTransform,
 }
 
 
-def coerce_text_transform(value=None, **flat_values) -> TextTransform:
-    """Return a normalized transform from direct or persisted flat data.
+def create_text_transform(transform_type: str) -> TextTransform:
+    """Create the neutral initial value for a registered transform type.
 
-    Old flat configs are consumed during ordinary ``FontFormat`` construction;
-    no migration pass is required.
+    UI-selectable variants must provide constructor defaults. Persisted
+    payloads may still supply required variant fields through
+    :func:`coerce_text_transform`.
 
-    >>> coerce_text_transform(horizontal_scale=2).horizontal_scale
-    2.0
+    >>> create_text_transform('none')
+    NoTextTransform(transform_type='none')
+    """
+    transform_class = TEXT_TRANSFORM_TYPES.get(transform_type)
+    if transform_class is None:
+        raise ValueError(f'unsupported text transform type {transform_type}')
+    return transform_class().normalized()
+
+
+def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
+    """Return a normalized transform value or typed persisted payload.
+
     >>> transform = coerce_text_transform(
     ...     {'transform_type': 'slant', 'slant_angle': 5}
     ... )
@@ -162,24 +188,17 @@ def coerce_text_transform(value=None, **flat_values) -> TextTransform:
     5.0
     """
     if isinstance(value, TextTransform):
-        value_fields = _transform_value_field_names(value)
-        if flat_values:
-            updates = {
-                name: component
-                for name, component in flat_values.items()
-                if name in value_fields
-            }
-            value = replace(value, **updates)
         return value.normalized()
-    payload = {} if value is None else dict(value)
-    transform_type = payload.pop('transform_type', 'slant')
+    if not isinstance(value, dict):
+        raise ValueError('text transform must be a value or typed payload')
+    payload = dict(value)
+    if 'transform_type' not in payload:
+        raise ValueError('text transform payload requires transform_type')
+    transform_type = payload.pop('transform_type')
     transform_class = TEXT_TRANSFORM_TYPES.get(transform_type)
     if transform_class is None:
         raise ValueError(f'unsupported text transform type {transform_type}')
     value_fields = _transform_value_field_names(transform_class)
-    for name in value_fields:
-        if name in flat_values:
-            payload[name] = flat_values[name]
     unexpected = set(payload) - set(value_fields)
     if unexpected:
         raise ValueError(
@@ -263,10 +282,9 @@ class FontFormat(Config):
     _style_name: str = ''
     line_spacing_type: int = LineSpacingType.Proportional
 
-    # Direct in-memory owner. Construction also accepts the previous flat
-    # quartet through ``deprecated_attributes`` below.
+    # Direct in-memory owner; persisted dictionaries carry a transform type.
     text_transform: Union[TextTransform, dict] = field(
-        default_factory=SlantTextTransform
+        default_factory=NoTextTransform
     )
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())
@@ -286,15 +304,7 @@ class FontFormat(Config):
                 self.font_family = da['family']
 
         self.font_weight = fix_fontweight_qt(self.font_weight)
-        flat_transform = {
-            name: da.pop(name)
-            for name in _transform_value_field_names(SlantTextTransform)
-            if name in da
-        }
-        self.text_transform = coerce_text_transform(
-            self.text_transform,
-            **flat_transform,
-        )
+        self.text_transform = coerce_text_transform(self.text_transform)
         self.deprecated_attributes = {}
 
     def to_serializable_dict(self) -> dict:

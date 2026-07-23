@@ -12,6 +12,7 @@ from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import QPolygonF, QTransform
 
 from ballontranslator.utils.fontformat import TextTransform, normalize_text_transform
+from .text_effects.transform_layout import GlyphSlantLayoutRenderer
 
 
 def _text_transform_coefficients(
@@ -21,7 +22,7 @@ def _text_transform_coefficients(
 ):
     """Return canonical scale and the Box Slant shear coefficient."""
     transform = normalize_text_transform(
-        horizontal_scale, vertical_scale, slant_angle
+        horizontal_scale, vertical_scale, slant_angle, 0.0
     )
     return (
         transform.horizontal_scale,
@@ -219,11 +220,47 @@ class TextTransformStrategy:
         """
         return False, False
 
+    def deactivate_layout(
+        self,
+        item,
+        transform: TextTransform,
+        persistent_cache: bool = True,
+    ):
+        """Remove layout state owned by this strategy before a type switch."""
+        return False, False
+
+    def glyph_slant_angle(self, transform: TextTransform) -> float:
+        return 0.0
+
+    def initialize_layout(
+        self,
+        item,
+        transform: TextTransform,
+        persistent_cache: bool = True,
+    ) -> bool:
+        """Install variant state into a newly attached text layout."""
+        return False
+
     def requires_no_cache(self, transform: TextTransform) -> bool:
         return False
 
     def requires_custom_resize(self, transform: TextTransform) -> bool:
         return False
+
+
+class NoTextTransformStrategy(TextTransformStrategy):
+    """Identity geometry and layout for the explicit no-effect variant."""
+
+    transform_type = 'none'
+
+    def compensated_matrix(
+        self,
+        transform: TextTransform,
+        box_pivot: QPointF,
+        rotation_angle: float,
+        rotation_pivot: QPointF,
+    ) -> QTransform:
+        return QTransform()
 
 
 class SlantTextTransformStrategy(TextTransformStrategy):
@@ -250,7 +287,7 @@ class SlantTextTransformStrategy(TextTransformStrategy):
     def visual_is_neutral(self, item) -> bool:
         return (
             super().visual_is_neutral(item)
-            and (item.layout is None or item.layout.glyph_slant_angle == 0.0)
+            and item.transform_controller.glyph_slant_angle() == 0.0
         )
 
     def apply_layout(
@@ -261,16 +298,63 @@ class SlantTextTransformStrategy(TextTransformStrategy):
     ):
         if item.layout is None:
             return False, False
-        if not item.layout.setGlyphSlantAngle(
-            transform.glyph_slant_angle,
-            persistent_cache,
-        ):
+        if transform.glyph_slant_angle == 0.0:
+            return self._finish_layout_change(
+                item,
+                item.transform_controller.detach_layout_renderer(),
+            )
+        renderer = item.transform_controller.attach_layout_renderer(
+            self.transform_type,
+            GlyphSlantLayoutRenderer,
+        )
+        return self._finish_layout_change(
+            item,
+            renderer.apply(transform, persistent_cache),
+        )
+
+    def deactivate_layout(
+        self,
+        item,
+        transform: TextTransform,
+        persistent_cache: bool = True,
+    ):
+        if item.layout is None:
+            return False, False
+        return self._finish_layout_change(
+            item,
+            item.transform_controller.detach_layout_renderer(),
+        )
+
+    @staticmethod
+    def _finish_layout_change(
+        item,
+        changed: bool,
+    ):
+        if not changed:
             return False, False
         item.effect_renderer._mark_effect_cache_dirty()
-        padding_changed = item.effect_renderer._update_effect_padding()
         item.refresh_cache_policy()
         item.update()
-        return True, padding_changed
+        return True, False
+
+    def initialize_layout(
+        self,
+        item,
+        transform: TextTransform,
+        persistent_cache: bool = True,
+    ) -> bool:
+        if item.layout is None:
+            return False
+        if transform.glyph_slant_angle == 0.0:
+            return item.transform_controller.detach_layout_renderer()
+        renderer = item.transform_controller.attach_layout_renderer(
+            self.transform_type,
+            GlyphSlantLayoutRenderer,
+        )
+        return renderer.apply(transform, persistent_cache)
+
+    def glyph_slant_angle(self, transform: TextTransform) -> float:
+        return transform.glyph_slant_angle
 
     def requires_no_cache(self, transform: TextTransform) -> bool:
         return (
@@ -284,6 +368,7 @@ class SlantTextTransformStrategy(TextTransformStrategy):
 
 
 TEXT_TRANSFORM_STRATEGIES = {
+    NoTextTransformStrategy.transform_type: NoTextTransformStrategy(),
     SlantTextTransformStrategy.transform_type: SlantTextTransformStrategy(),
 }
 

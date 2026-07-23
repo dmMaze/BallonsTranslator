@@ -1,12 +1,13 @@
 import os
 import unittest
+from types import SimpleNamespace
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from qtpy.QtCore import QRectF
 from qtpy.QtGui import QColor, QImage, QInputMethodEvent, QPainter, QTextCursor
-from qtpy.QtWidgets import QApplication, QGraphicsScene
+from qtpy.QtWidgets import QApplication, QGraphicsItem, QGraphicsScene
 
 try:
     from qtpy.QtGui import QUndoStack
@@ -16,6 +17,7 @@ except ImportError:
 from ballontranslator.ui.textedit_area import TransPairWidget
 from ballontranslator.ui.textedit_commands import (
     MultiPasteCommand,
+    ReshapeItemCommand,
     SetTextTransformCommand,
     TextEditCommand,
     propagate_user_edit,
@@ -28,9 +30,9 @@ from ballontranslator.ui.text_effects.glyph import (
     WeightedGlyphGeometryCache,
 )
 from ballontranslator.ui.text_effects.transform_layout import (
-    TextLayoutTransformRenderer,
+    GlyphSlantLayoutRenderer,
 )
-from ballontranslator.utils.fontformat import SlantTextTransform
+from ballontranslator.utils.fontformat import NoTextTransform, SlantTextTransform
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -42,7 +44,7 @@ TEST_LINES = (
     "벼는 익을수록 고개를 숙인다.",
     "☀ ☁ ☂ ☃ ★ ☆ ☎ ☯ ♠ ♥ ♦ ♣ ⚠ ⚽ ⚾ ㊗ ㊙ ! @ # $",
 )
-NEUTRAL = SlantTextTransform()
+NEUTRAL = NoTextTransform()
 FIRST_TRANSFORM = SlantTextTransform(1.2, 0.9, 12.0, 5.0)
 FINAL_TRANSFORMS = (
     SlantTextTransform(0.8, 1.1, -9.0, -4.0),
@@ -284,8 +286,10 @@ class TextTransformUndoTest(unittest.TestCase):
         self.addCleanup(GLOBAL_GLYPH_GEOMETRY_CACHE.clear)
         self.addCleanup(GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE.clear)
         geometry = GlyphGeometry((), (), QRectF(0, 0, 1, 1))
-        first = TextLayoutTransformRenderer(object())
-        second = TextLayoutTransformRenderer(object())
+        first_layout = SimpleNamespace(layout_generation=0)
+        second_layout = SimpleNamespace(layout_generation=0)
+        first = GlyphSlantLayoutRenderer(first_layout)
+        second = GlyphSlantLayoutRenderer(second_layout)
         first.geometry_cache.store('same-local-key', geometry)
         self.assertEqual(
             first.geometry_cache.get('same-local-key'),
@@ -294,7 +298,7 @@ class TextTransformUndoTest(unittest.TestCase):
         self.assertIsNone(second.geometry_cache.get('same-local-key'))
 
         self.assertGreater(len(GLOBAL_GLYPH_GEOMETRY_CACHE), 0)
-        first.begin_layout_generation()
+        first_layout.layout_generation += 1
         self.assertIsNone(first.geometry_cache.get('same-local-key'))
         self.assertEqual(len(GLOBAL_GLYPH_GEOMETRY_CACHE), 0)
         global_entries = len(GLOBAL_GLYPH_GEOMETRY_CACHE)
@@ -309,7 +313,7 @@ class TextTransformUndoTest(unittest.TestCase):
 
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.set_text_transform(FIRST_TRANSFORM)
-        geometry_cache = item.layout.transform_renderer.geometry_cache
+        geometry_cache = item.transform_controller.layout_renderer.geometry_cache
         self.assertTrue(geometry_cache.persistent)
         box_preview = FIRST_TRANSFORM.with_value('horizontal_scale', 1.4)
         item.set_text_transform(box_preview, preview=True)
@@ -327,6 +331,128 @@ class TextTransformUndoTest(unittest.TestCase):
         item.set_text_transform(glyph_preview)
         self.assertTrue(geometry_cache.persistent)
         self.assertEqual(len(GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE), 0)
+
+    def test_effect_padding_is_shrinkable_and_not_document_history(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item, _ = self._make_pair(0, TEST_LINES[0], vertical)
+                item.document().clearUndoRedoStacks()
+
+                item.setStrokeWidth(0.2, repaint_background=False)
+                wide_stroke_padding = item.padding()
+                item.setStrokeWidth(0.05, repaint_background=False)
+                self.assertLess(item.padding(), wide_stroke_padding)
+
+                item.setFontSize(40, repaint_background=False)
+                large_font_padding = item.padding()
+                item.setFontSize(10, repaint_background=False)
+                self.assertLess(item.padding(), large_font_padding)
+
+                item.setRelFontSize(2.0, repaint_background=False)
+                relative_large_padding = item.padding()
+                item.setRelFontSize(0.5, repaint_background=False)
+                self.assertLess(item.padding(), relative_large_padding)
+
+                item.setStrokeWidth(0.0, repaint_background=False)
+                shadow = item.fontformat.deepcopy()
+                shadow.shadow_radius = 0.2
+                shadow.shadow_strength = 0.8
+                shadow.shadow_offset = [0.0, 0.0]
+                item.setShadow(shadow, repaint=False)
+                centered_shadow_padding = item.padding()
+                self.assertGreater(centered_shadow_padding, 0.0)
+                shadow.shadow_offset = [0.8, -0.4]
+                item.setShadow(shadow, repaint=False)
+                self.assertGreater(item.padding(), centered_shadow_padding)
+                shadow.shadow_strength = 0.0
+                item.setShadow(shadow, repaint=False)
+                self.assertEqual(item.padding(), 0.0)
+
+                item.document().clearUndoRedoStacks()
+                logical_rect = item.absBoundingRect(qrect=True)
+                item.setPadding(7.0)
+                item.setPadding(0.0)
+                self.assertEqual(item.document().availableUndoSteps(), 0)
+                self.assertEqual(item.document().documentMargin(), 0.0)
+                self.assertEqual(item.absBoundingRect(qrect=True), logical_rect)
+
+    def test_none_and_box_only_paths_do_not_create_glyph_renderer(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                GLOBAL_GLYPH_GEOMETRY_CACHE.clear()
+                GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE.clear()
+                item, _ = self._make_pair(0, TEST_LINES[1], vertical)
+
+                self.assertIsNone(item._transform_controller)
+                self.assertIsNone(item.layout.render_delegate)
+                self.assertIsNone(
+                    item.effect_renderer._transformed_effect_state
+                )
+                self.assertFalse(
+                    bool(
+                        item.flags()
+                        & QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
+                    )
+                )
+                item.layout.reLayout()
+                self.assertEqual(len(GLOBAL_GLYPH_GEOMETRY_CACHE), 0)
+
+                box_only = SlantTextTransform(1.2, 0.9, 8.0, 0.0)
+                item.set_text_transform(box_only)
+                self.assertIsNotNone(item._transform_controller)
+                self.assertIsNone(item.layout.render_delegate)
+                self.assertTrue(
+                    bool(
+                        item.flags()
+                        & QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
+                    )
+                )
+
+                item.set_text_transform(FIRST_TRANSFORM)
+                self.assertIs(
+                    item.layout.render_delegate,
+                    item.transform_controller.layout_renderer,
+                )
+
+                item.set_text_transform(NEUTRAL)
+                self.assertIsNone(item._transform_controller)
+                self.assertIsNone(item.layout.render_delegate)
+                self.assertFalse(
+                    bool(
+                        item.flags()
+                        & QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
+                    )
+                )
+
+    def test_resize_undo_stores_alternating_logical_rectangles(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item, _ = self._make_pair(0, TEST_LINES[2], vertical)
+                stack = QUndoStack()
+                before = item.absBoundingRect(qrect=True)
+                after = QRectF(
+                    before.x() + 10,
+                    before.y() + 15,
+                    before.width() - 80,
+                    before.height() + 60,
+                )
+                item.oldRect = QRectF(before)
+                item.setRect(after)
+                stack.push(ReshapeItemCommand(item))
+                stack.push(
+                    SetTextTransformCommand.create(
+                        [item], [NEUTRAL], [FIRST_TRANSFORM]
+                    )
+                )
+
+                stack.undo()
+                self.assertEqual(item.absBoundingRect(qrect=True), after)
+                stack.undo()
+                self.assertEqual(item.absBoundingRect(qrect=True), before)
+                stack.redo()
+                self.assertEqual(item.absBoundingRect(qrect=True), after)
+                stack.redo()
+                self.assertEqual(item.absBoundingRect(qrect=True), after)
 
 
 if __name__ == "__main__":

@@ -630,7 +630,8 @@ class SceneTextManager(QObject):
             self.txtblkShapeControl.setBlkItem(blk_item)
 
     def onTextBlkItemMoving(self, item: TextBlkItem):
-        self.text_overlay_manager.sync_overlays()
+        items = self._text_move_snapshot or {item: item.logical_position()}
+        self.text_overlay_manager.sync_items(items)
 
     def onTextBlkItemMoved(self):
         items = [item for item in self._text_move_snapshot if item.scene() is self.canvas]

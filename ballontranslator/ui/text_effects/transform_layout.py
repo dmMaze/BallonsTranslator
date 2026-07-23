@@ -10,7 +10,9 @@ from qtpy.QtGui import (
     QTransform,
 )
 
+from ballontranslator.utils import shared as C
 from ballontranslator.utils.fontformat import (
+    SlantTextTransform,
     TEXT_TRANSFORM_GLYPH_SLANT_MAX,
     TEXT_TRANSFORM_GLYPH_SLANT_MIN,
     normalize_text_transform_value,
@@ -37,6 +39,7 @@ class LayoutGlyphGeometryCache:
         self.persistent = True
 
     def _global_key(self, key):
+        self.renderer.ensure_layout_generation()
         return self.layout_token, self.renderer.generation, key
 
     def get(self, key):
@@ -78,19 +81,39 @@ class LayoutGlyphGeometryCache:
         self.clear_transient()
 
 
-class TextLayoutTransformRenderer:
-    """Own transform rendering and caches without owning neutral layout."""
+class GlyphSlantLayoutRenderer:
+    """Own glyph-slant rendering and caches without owning neutral layout.
 
-    def __init__(self, layout, glyph_slant_angle: float = 0.0) -> None:
+    The constructor owns only the layout boundary. Complete typed transform
+    values enter through :meth:`apply`, matching other variant renderers.
+
+    >>> GlyphSlantLayoutRenderer(object()).glyph_slant_angle
+    0.0
+    """
+
+    def __init__(self, layout) -> None:
         self.layout = layout
-        self.glyph_slant_angle = normalize_text_transform_value(
-            glyph_slant_angle,
-            TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-            TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-        )
-        self.generation = 0
+        self.glyph_slant_angle = 0.0
+        self.generation = getattr(layout, 'layout_generation', 0)
         self.bounds_cache = {}
         self.geometry_cache = LayoutGlyphGeometryCache(self)
+
+    def bind_layout(self, layout) -> None:
+        """Attach a replacement writing-mode layout without leaking caches."""
+        if self.layout is layout:
+            return
+        self.geometry_cache.invalidate_generation()
+        self.layout = layout
+        self.generation = getattr(layout, 'layout_generation', 0)
+        self.bounds_cache.clear()
+
+    def ensure_layout_generation(self) -> None:
+        generation = getattr(self.layout, 'layout_generation', self.generation)
+        if generation == self.generation:
+            return
+        self.geometry_cache.invalidate_generation()
+        self.generation = generation
+        self.bounds_cache.clear()
 
     @property
     def line_spaces_lst(self):
@@ -104,7 +127,7 @@ class TextLayoutTransformRenderer:
         return self.layout.document()
 
     def _report_glyph_raster_failure(self, error, effect_pass=False):
-        self.layout._report_glyph_raster_failure(error, effect_pass)
+        self.layout._report_render_failure(error, effect_pass)
 
     def _vertical_line_placement(self, block: QTextBlock, line_number: int):
         layout = block.layout()
@@ -310,10 +333,22 @@ class TextLayoutTransformRenderer:
         self.bounds_cache.clear()
         self.geometry_cache.clear_transient()
 
-    def set_glyph_slant_angle(
+    def apply(
+        self,
+        transform: SlantTextTransform,
+        persistent_cache: bool = True,
+    ) -> bool:
+        if not isinstance(transform, SlantTextTransform):
+            raise TypeError('glyph slant renderer requires SlantTextTransform')
+        return self._set_angle(transform.glyph_slant_angle, persistent_cache)
+
+    def deactivate(self, persistent_cache: bool = True) -> bool:
+        return self._set_angle(0.0, persistent_cache)
+
+    def _set_angle(
         self,
         angle: float,
-        persistent_cache: bool = True,
+        persistent_cache: bool,
     ) -> bool:
         angle = normalize_text_transform_value(
             angle,
@@ -333,14 +368,31 @@ class TextLayoutTransformRenderer:
             return False
         self.glyph_slant_angle = angle
         self.clear_caches()
+        if C.USE_PYSIDE6:
+            self.layout.update.emit()
+        else:
+            self.layout.update.emit(
+                QRectF(0, 0, self.layout.max_width, self.layout.max_height)
+            )
         return True
 
-    def begin_layout_generation(self) -> None:
-        self.geometry_cache.invalidate_generation()
-        self.generation += 1
-        self.clear_caches()
+    def _iter_horizontal_line_placements(self):
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for line_number in range(layout.lineCount()):
+                line = layout.lineAt(line_number)
+                if line.isValid() and line.textLength() > 0:
+                    yield (
+                        (block.blockNumber(), line_number),
+                        line,
+                        QPointF(),
+                        QTransform(),
+                    )
+            block = block.next()
 
-    def ink_bounds(self, placements) -> QRectF:
+    def ink_bounds(self) -> QRectF:
+        self.ensure_layout_generation()
         document = self.layout.document()
         if document.isEmpty():
             return QRectF()
@@ -354,6 +406,11 @@ class TextLayoutTransformRenderer:
         if cached is not None:
             return QRectF(cached)
         bounds = QRectF()
+        placements = (
+            self._iter_glyph_line_placements()
+            if hasattr(self.layout, 'line_spaces_lst')
+            else self._iter_horizontal_line_placements()
+        )
         for namespace, line, offset, orientation in placements:
             line_bounds = slanted_line_ink_bounds(
                 line,

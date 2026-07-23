@@ -8,7 +8,12 @@ from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent, QFont
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
-from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, px2pt
+from ballontranslator.utils.fontformat import (
+    FontFormat,
+    LineSpacingType,
+    create_text_transform,
+    px2pt,
+)
 from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel
 from .textitem import TextBlkItem
 from .text_advanced_format import TextAdvancedFormatPanel
@@ -397,6 +402,9 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.transform_preview_canceled.connect(
             self.on_text_transform_cancel
         )
+        self.textadvancedfmt_panel.transform_type_change_requested.connect(
+            self.on_text_transform_type_changed
+        )
         color_label = self.textadvancedfmt_panel.shadow_group.color_label
         color_label.changingColor.connect(self.changingColor)
         color_label.colorChanged.connect(self.onColorLabelChanged)
@@ -495,7 +503,10 @@ class FontFormatPanel(Widget):
         return transform.with_value(param_name, value)
 
     def _sync_text_transform_overlays(self):
-        SW.canvas.sync_text_overlays()
+        if self._transform_items:
+            SW.canvas.sync_text_item_overlays(self._transform_items)
+        else:
+            SW.canvas.sync_text_overlays()
 
     def _refresh_text_transform_controls(self, refresh_shape=True):
         if self._transform_items:
@@ -509,10 +520,9 @@ class FontFormatPanel(Widget):
             )
             if active_format is None:
                 return
-            for name, control in self.textadvancedfmt_panel.transform_controls.items():
-                control.set_model_value(
-                    getattr(active_format.text_transform, name)
-                )
+            self.textadvancedfmt_panel.set_transform(
+                active_format.text_transform
+            )
         if refresh_shape:
             self._sync_text_transform_overlays()
 
@@ -531,6 +541,36 @@ class FontFormatPanel(Widget):
             self._transform_with_value(transform, param_name, value)
             for transform in before
         ]
+        command = SetTextTransformCommand.create(
+            self._transform_items,
+            before,
+            after,
+            self._refresh_text_transform_controls,
+        )
+        if command is not None:
+            SW.canvas.push_undo_command(command)
+        else:
+            self._refresh_text_transform_controls(refresh_shape=False)
+
+    def on_text_transform_type_changed(self, transform_type: str):
+        def replacement(transform):
+            if transform.transform_type == transform_type:
+                return transform
+            return create_text_transform(transform_type)
+
+        if not self._transform_items:
+            before = self.global_format.text_transform
+            after = replacement(before)
+            if before != after:
+                self.global_format.text_transform = after
+                self.update_text_style_label()
+            self._refresh_text_transform_controls(refresh_shape=False)
+            return
+
+        before = [
+            item.blk.fontformat.text_transform for item in self._transform_items
+        ]
+        after = [replacement(transform) for transform in before]
         command = SetTextTransformCommand.create(
             self._transform_items,
             before,
@@ -820,7 +860,7 @@ class FontFormatPanel(Widget):
         if textblk_item is None:
             if not preserve_local_owner:
                 # Store the current text block's format before switching to global.
-                # This is BASE behavior and must also preserve the transform quartet.
+                # This existing owner switch must preserve the complete transform.
                 if self.textblk_item is not None:
                     self.textblk_item.fontformat = copy.deepcopy(C.active_format)
                 self.textblk_item = None

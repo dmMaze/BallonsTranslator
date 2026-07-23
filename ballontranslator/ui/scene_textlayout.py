@@ -17,7 +17,6 @@ from .text_effects.indexing import (
     _utf16_length,
     _utf16_slice,
 )
-from .text_effects.transform_layout import TextLayoutTransformRenderer
 
 def print_transform(tr: QTransform):
     print(f'[[{tr.m11(), tr.m12(), tr.m13()}]\n [{tr.m21(), tr.m22(), tr.m23()}]\n [{tr.m31(), tr.m32(), tr.m33()}]]')
@@ -206,10 +205,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.letter_spacing = fontformat.letter_spacing
         self.linespacing_type = fontformat.line_spacing_type
         self.fontformat = fontformat
-        self.transform_renderer = TextLayoutTransformRenderer(
-            self, fontformat.text_transform.glyph_slant_angle
-        )
-        self.glyph_raster_failure_handler = None
+        self.render_delegate = None
+        self.layout_generation = 0
+        self.render_failure_handler = None
 
         self.x_offset_lst = []
         self.y_offset_lst = []
@@ -227,10 +225,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
         self.relayout_on_changed = True
 
-        # Effect padding is view/layout state, not rich-text content. Keeping
-        # it off QTextDocument prevents Glyph Slant preview bounds from adding
-        # unrelated text-edit undo entries.
-        self._document_margin = max(0.0, float(doc.documentMargin()))
+        # Effect padding is derived layout state, not rich-text content.
+        # QTextDocument margins create undo entries in supported Qt bindings.
+        self._effect_padding = max(0.0, float(doc.documentMargin()))
 
         # relative bottom/right
         self.shrink_height = 0 
@@ -246,49 +243,18 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self._draw_offset = []
         self.text_padding = 0
 
-    @property
-    def glyph_slant_angle(self) -> float:
-        return self.transform_renderer.glyph_slant_angle
-
-    def setGlyphSlantAngle(
-        self,
-        angle: float,
-        persistent_cache: bool = True,
-    ) -> bool:
-        """Set transient glyph ink slant without changing document geometry."""
-        if not self.transform_renderer.set_glyph_slant_angle(
-            angle,
-            persistent_cache,
-        ):
-            return False
-        if C.USE_PYSIDE6:
-            self.update.emit()
-        else:
-            self.update.emit(QRectF(0, 0, self.max_width, self.max_height))
-        return True
-
     def _begin_layout_generation(self):
-        self.transform_renderer.begin_layout_generation()
+        self.layout_generation += 1
 
-    def _report_glyph_raster_failure(self, error, effect_pass=False):
-        handler = self.glyph_raster_failure_handler
+    def _report_render_failure(self, error, effect_pass=False):
+        handler = self.render_failure_handler
         if handler is not None:
             handler(error, effect_pass)
-
-    def _iter_glyph_line_placements(self):
-        """Yield ``(line, offset, orientation)`` in item-local paint order."""
-        raise NotImplementedError
-
-    def glyphInkBounds(self) -> QRectF:
-        """Return live shaped ink bounds for the effective glyph slant."""
-        return self.transform_renderer.ink_bounds(
-            self._iter_glyph_line_placements()
-        )
 
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
         self.max_width = max_width
-        doc_margin = self._document_margin * 2
+        doc_margin = self._effect_padding * 2
         self.available_width = max(max_width -  doc_margin, 0)
         self.available_height = max(max_height - doc_margin, 0)
         if relayout:
@@ -327,14 +293,14 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         rect = QRectF(0, 0, br.width(), br.height())
         return rect
 
-    def updateDocumentMargin(self, margin):
-        self._document_margin = max(0.0, float(margin))
-        doubled_margin = self._document_margin * 2
+    def setEffectPadding(self, padding):
+        self._effect_padding = max(0.0, float(padding))
+        doubled_margin = self._effect_padding * 2
         self.max_height = doubled_margin + self.available_height
         self.max_width = doubled_margin + self.available_width
 
-    def documentMargin(self) -> float:
-        return self._document_margin
+    def effectPadding(self) -> float:
+        return self._effect_padding
 
     def documentSize(self) -> QSizeF:
         return QSizeF(self.max_width, self.max_height)
@@ -442,7 +408,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.shrink_width = 0
         self.text_padding = 0
         doc = self.document()
-        doc_margin = self._document_margin
+        doc_margin = self._effect_padding
         block = doc.firstBlock()
         while block.isValid():
             self.layoutBlock(block)
@@ -482,6 +448,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._draw_offset.clear()
         doc = self.document()
         block = doc.firstBlock()
+        custom_rendering = self.render_delegate is not None
 
         while block.isValid():
             blk_no = block.blockNumber()
@@ -490,9 +457,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             layout = block.layout()
             blk_text = block.text()
-            glyph_slanted = self.glyph_slant_angle != 0.0
             blk_text_len = (
-                _utf16_length(blk_text) if glyph_slanted else len(blk_text)
+                _utf16_length(blk_text) if custom_rendering else len(blk_text)
             )
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
@@ -512,7 +478,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 char = (
                     _utf16_char_at(blk_text, char_idx)
-                    if glyph_slanted
+                    if custom_rendering
                     else blk_text[char_idx]
                 )
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
@@ -530,7 +496,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if char in PUNSET_VERNEEDROTATE:
                     char = (
                         _utf16_char_at(blk_text, char_idx)
-                        if glyph_slanted
+                        if custom_rendering
                         else blk_text[char_idx]
                     )
                     if char.isalpha():
@@ -577,11 +543,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
 
-    def _iter_glyph_line_placements(self):
-        return self.transform_renderer._iter_glyph_line_placements()
-
-
-
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
         painter.save()
@@ -590,6 +551,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         context_sel = context.selections
         has_selection = False
         selection = None
+        render_delegate = self.render_delegate
+        custom_rendering = render_delegate is not None
         if len(context_sel) > 0:
             has_selection = True
             selection = context_sel[0]
@@ -600,9 +563,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blpos, bllen = block.position(), block.length()
             layout = block.layout()
             blk_text = block.text()
-            glyph_slanted = self.glyph_slant_angle != 0.0
             blk_text_len = (
-                _utf16_length(blk_text) if glyph_slanted else len(blk_text)
+                _utf16_length(blk_text) if custom_rendering else len(blk_text)
             )
             char_records = self.per_char_records[blk_no]
             
@@ -618,8 +580,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
                 char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
                 if char_idx < 0:
-                    if self.glyph_slant_angle != 0.0:
-                        self.transform_renderer.draw_vertical_line(
+                    if custom_rendering:
+                        render_delegate.draw_vertical_line(
                             painter, block, ii, context
                         )
                     else:
@@ -630,13 +592,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 char = (
                     _utf16_char_at(blk_text, char_idx)
-                    if glyph_slanted
+                    if custom_rendering
                     else blk_text[char_idx]
                 )
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 fm = cfmt.font_metrics
-                if self.glyph_slant_angle != 0.0:
-                    self.transform_renderer.draw_vertical_line(
+                if custom_rendering:
+                    render_delegate.draw_vertical_line(
                         painter, block, ii, context
                     )
                     continue
@@ -710,6 +672,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
         blk = self.document().firstBlock()
+        custom_rendering = self.render_delegate is not None
         x, y = point.x(), point.y()
         off = 0
         while blk.isValid():
@@ -744,7 +707,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         else:
                             ntr = line.naturalTextRect()
                             off = line.textStart()
-                            if self.glyph_slant_angle != 0.0:
+                            if custom_rendering:
                                 # The feature path consumes Qt UTF-16 glyph
                                 # runs, so never return a caret inside a
                                 # transformed grapheme.
@@ -776,7 +739,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         ls = self.letter_spacing
 
         block.clearLayout()
-        doc_margin = self._document_margin
+        doc_margin = self._effect_padding
         line_y_offset = doc_margin
         blk_char_yoffset = []
         blk_line_spaces = []
@@ -784,9 +747,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         block_no = block.blockNumber()
         is_final_block = block == doc.lastBlock()
         blk_text = block.text()
-        glyph_slanted = self.glyph_slant_angle != 0.0
+        custom_rendering = self.render_delegate is not None
         blk_text_len = (
-            _utf16_length(blk_text) if glyph_slanted else len(blk_text)
+            _utf16_length(blk_text) if custom_rendering else len(blk_text)
         )
         if blk_text_len != 0:
             block_width = self.block_ideal_width[block_no]
@@ -838,7 +801,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 continue
 
             num_rspaces, num_lspaces = 0, 0
-            if glyph_slanted:
+            if custom_rendering:
                 text = _utf16_slice(
                     blk_text, char_idx, text_len
                 ).replace('\n', '')
@@ -867,7 +830,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 tbr_h = cfmt.tbr.height() + let_sp_offset
                 char = (
                     _utf16_char_at(blk_text, char_idx)
-                    if glyph_slanted
+                    if custom_rendering
                     else blk_text[char_idx]
                 )
                 is_first_lbracket = char_idx - num_lspaces == 0 and char in PUNSET_BRACKETL
@@ -878,7 +841,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     tbr, br = cfmt.punc_rect(char)
                     single_char_h = tbr.width()
                     tbr_h = tbr.width() * (
-                        _grapheme_count(text) if glyph_slanted else text_len
+                        _grapheme_count(text) if custom_rendering else text_len
                     )
                     if char.isalpha():
                         cw2 = cfmt.punc_rect(char+char)[1].width()
@@ -886,13 +849,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     elif char in {'…', '⋯', '—', '～'}:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                         next_char_idx = char_idx + (
-                            _utf16_length(char) if glyph_slanted else 1
+                            _utf16_length(char) if custom_rendering else 1
                         )
                         if (
                             next_char_idx < blk_text_len
                             and (
                                 _utf16_char_at(blk_text, next_char_idx)
-                                if glyph_slanted
+                                if custom_rendering
                                 else blk_text[next_char_idx]
                             ) == char
                         ):
@@ -1000,7 +963,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             strip_space_textlen = (
                 _grapheme_count(text.lstrip())
-                if glyph_slanted
+                if custom_rendering
                 else text_len - num_lspaces
             )
             if strip_space_textlen > 1 and single_char_h is not None:
@@ -1041,7 +1004,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
     def reLayout(self):
         self._begin_layout_generation()
         doc = self.document()
-        doc_margin = self._document_margin
+        doc_margin = self._effect_padding
         self.text_padding = 0
         self.shrink_height = 0
         self.shrink_width = 0
@@ -1110,7 +1073,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         font = block.charFormat().font()
         
         # fm = QFontMetrics(font)
-        doc_margin = self._document_margin
+        doc_margin = self._effect_padding
 
         block_height = self.block_ideal_height[block.blockNumber()]
         if block_height == 0:
@@ -1186,34 +1149,20 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self.shrink_width = max(shrink_width, self.shrink_width)
         return 1
 
-    def _iter_glyph_line_placements(self):
-        block = self.document().firstBlock()
-        while block.isValid():
-            layout = block.layout()
-            for line_number in range(layout.lineCount()):
-                line = layout.lineAt(line_number)
-                if line.isValid() and line.textLength() > 0:
-                    yield (
-                        (block.blockNumber(), line_number),
-                        line,
-                        QPointF(),
-                        QTransform(),
-                    )
-            block = block.next()
-
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
         painter.save()
         painter.setPen(context.palette.color(QPalette.ColorRole.Text))
         block = doc.firstBlock()
         cursor_block = None
+        render_delegate = self.render_delegate
         while block.isValid():
             blpos = block.position()
             layout = block.layout()
             bllen = block.length()
             if _block_cursor_position(block, context.cursorPosition) >= 0:
                 cursor_block = block
-            if self.glyph_slant_angle == 0.0:
+            if render_delegate is None:
                 selections = []
                 for sel in context.selections:
                     selStart = sel.cursor.selectionStart() - blpos
@@ -1242,7 +1191,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                     painter.save()
                     painter.setClipRect(context.clip, Qt.ClipOperation.IntersectClip)
                 try:
-                    self.transform_renderer.draw_horizontal_block(
+                    render_delegate.draw_horizontal_block(
                         painter, block, context
                     )
                 finally:

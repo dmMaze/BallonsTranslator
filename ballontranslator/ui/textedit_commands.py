@@ -155,8 +155,8 @@ class ApplyFontformatCommand(QUndoCommand):
         self.overlay_sync = overlay_sync
         for item in items:
             self.old_html_lst.append(item.toHtml())
-            # get_fontformat() deep-copies FontFormat, including the canonical
-            # transform quartet, so the legacy undo path restores it as well.
+            # get_fontformat() deep-copies FontFormat, including its complete
+            # typed transform, so whole-format undo restores it as well.
             self.old_fmt_lst.append(item.get_fontformat())
             self.old_rect_lst.append(item.absBoundingRect(qrect=True))
 

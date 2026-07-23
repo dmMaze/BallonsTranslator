@@ -4,7 +4,7 @@ from contextlib import contextmanager
 import math
 from typing import Optional, TYPE_CHECKING
 
-from qtpy.QtCore import QPointF
+from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtWidgets import QGraphicsItem
 
 from ballontranslator.utils.fontformat import TextTransform, coerce_text_transform
@@ -30,7 +30,8 @@ class TextItemTransformController:
     def __init__(self, item: "TextBlkItem") -> None:
         self.item = item
         self.preview: Optional[TextTransform] = None
-        self.entry_padding: Optional[float] = None
+        self.layout_renderer = None
+        self.layout_renderer_type = None
         self.installing = False
         self._update_depth = 1
         self._update_dirty = False
@@ -49,7 +50,8 @@ class TextItemTransformController:
             raise ValueError('rotation angle must be a finite number')
         return angle
 
-    def report_rejected_change(self, change, error) -> None:
+    @staticmethod
+    def report_rejected_change(change, error) -> None:
         try:
             LOGGER.warning(
                 f'Rejected unsafe TextBlkItem graphics change {change}: '
@@ -139,6 +141,10 @@ class TextItemTransformController:
                 return value
 
     def finish_initialization(self) -> None:
+        self.item.setFlag(
+            QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges,
+            self.requires_custom_resize(),
+        )
         self.request_update()
         self._update_depth = 0
         self._flush_update()
@@ -217,16 +223,79 @@ class TextItemTransformController:
         strategy = text_transform_strategy(transform)
         return strategy.requires_custom_resize(transform)
 
-    def _apply_layout(
-        self,
-        transform: TextTransform,
-        *,
-        persistent_cache: bool = True,
-    ):
-        return text_transform_strategy(transform).apply_layout(
+    def glyph_slant_angle(self) -> float:
+        transform = self.effective()
+        return text_transform_strategy(transform).glyph_slant_angle(transform)
+
+    def attach_layout_renderer(self, transform_type, factory):
+        renderer = self.layout_renderer
+        if renderer is None or self.layout_renderer_type != transform_type:
+            self.detach_layout_renderer()
+            renderer = factory(self.item.layout)
+            self.layout_renderer = renderer
+            self.layout_renderer_type = transform_type
+        else:
+            renderer.bind_layout(self.item.layout)
+        self.item.layout.render_delegate = renderer
+        self.item.layout.render_failure_handler = (
+            self.item.effect_renderer._on_glyph_raster_failure
+        )
+        return renderer
+
+    def detach_layout_renderer(self) -> bool:
+        renderer = self.layout_renderer
+        if renderer is None:
+            if self.item.layout is not None:
+                self.item.layout.render_delegate = None
+                self.item.layout.render_failure_handler = None
+            return False
+        renderer.geometry_cache.invalidate_generation()
+        if self.item.layout is not None:
+            self.item.layout.render_delegate = None
+            self.item.layout.render_failure_handler = None
+        self.layout_renderer = None
+        self.layout_renderer_type = None
+        return True
+
+    def layout_ink_bounds(self):
+        renderer = self.layout_renderer
+        return QRectF() if renderer is None else renderer.ink_bounds()
+
+    def initialize_layout(self, *, persistent_cache: bool = True) -> bool:
+        transform = self.effective()
+        return text_transform_strategy(transform).initialize_layout(
             self.item,
             transform,
             persistent_cache,
+        )
+
+    def _apply_layout(
+        self,
+        previous: TextTransform,
+        target: TextTransform,
+        *,
+        persistent_cache: bool = True,
+    ):
+        rendering_changed = False
+        padding_changed = False
+        if previous.transform_type != target.transform_type:
+            rendering_changed, padding_changed = text_transform_strategy(
+                previous
+            ).deactivate_layout(
+                self.item,
+                previous,
+                persistent_cache,
+            )
+        target_changed, target_padding_changed = text_transform_strategy(
+            target
+        ).apply_layout(
+            self.item,
+            target,
+            persistent_cache,
+        )
+        return (
+            rendering_changed or target_changed,
+            padding_changed or target_padding_changed,
         )
 
     def install(
@@ -254,25 +323,22 @@ class TextItemTransformController:
         return True
 
     def _apply_box(self, values: TextTransform) -> bool:
+        self.item.setFlag(
+            QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges,
+            text_transform_strategy(values).requires_custom_resize(values),
+        )
         with self.update_transaction():
             changed = self.install(values)
             if changed:
                 self.request_update()
         return changed
 
-    def _reconcile_active_state(
-        self,
-        was_visual_neutral: bool,
-        target: TextTransform,
-        glyph_changed: bool,
-        glyph_padding_changed: bool,
-    ) -> bool:
+    def _refresh_effect_geometry(self, padding_changed: bool) -> bool:
         item = self.item
-        if not was_visual_neutral or target.is_neutral():
-            return False
-        padding_changed = glyph_padding_changed
-        if not glyph_changed:
-            padding_changed = item.effect_renderer._update_effect_padding()
+        padding_changed = (
+            padding_changed
+            or item.effect_renderer._update_effect_padding()
+        )
         if item.fontformat.gradient_enabled and not padding_changed:
             item.effect_renderer._refresh_gradient_geometry()
         return padding_changed
@@ -285,19 +351,6 @@ class TextItemTransformController:
         item = self.item
         if was_visual_neutral or not target.is_neutral():
             return False
-        entry_padding = self.entry_padding
-        if entry_padding is None:
-            entry_padding = item.effect_renderer._neutral_effect_padding_floor()
-        padding = max(
-            entry_padding,
-            item.effect_renderer._neutral_effect_padding_floor(),
-        )
-        self.entry_padding = None
-        item.effect_renderer._commit_effect_padding(
-            padding,
-            allow_neutral_shrink=True,
-        )
-
         item.effect_renderer.finalize_neutral_cache()
         return True
 
@@ -313,26 +366,18 @@ class TextItemTransformController:
             )
         )
         was_visual_neutral = self.visual_is_neutral()
-        if (
-            was_visual_neutral
-            and not target.is_neutral()
-            and self.entry_padding is None
-        ):
-            self.entry_padding = item.padding()
 
         if preview:
             if target == current:
                 return False
             self.preview = None if target == canonical else target
             glyph_changed, glyph_padding_changed = self._apply_layout(
+                current,
                 target,
                 persistent_cache=False,
             )
-            active_state_changed = self._reconcile_active_state(
-                was_visual_neutral,
-                target,
-                glyph_changed,
-                glyph_padding_changed,
+            active_state_changed = self._refresh_effect_geometry(
+                glyph_padding_changed
             )
             box_changed = self._apply_box(target)
             finalized = self._finalize_neutral(was_visual_neutral, target)
@@ -356,16 +401,13 @@ class TextItemTransformController:
         if render_format_changed:
             render_format.text_transform = target
         self.preview = None
-        glyph_changed, glyph_padding_changed = self._apply_layout(target)
-        active_state_changed = self._reconcile_active_state(
-            was_visual_neutral,
-            target,
-            glyph_changed,
-            glyph_padding_changed,
+        glyph_changed, glyph_padding_changed = self._apply_layout(current, target)
+        active_state_changed = self._refresh_effect_geometry(
+            glyph_padding_changed
         )
         visual_changed = self._apply_box(target)
         finalized = self._finalize_neutral(was_visual_neutral, target)
-        return (
+        changed = (
             model_changed
             or render_format_changed
             or glyph_changed
@@ -373,35 +415,33 @@ class TextItemTransformController:
             or visual_changed
             or finalized
         )
+        if target.transform_type == 'none':
+            item._transform_controller = None
+        return changed
 
     def clear_preview(self) -> bool:
         if self.preview is None:
             return False
         item = self.item
         was_visual_neutral = self.visual_is_neutral()
+        previous = self.preview
         self.preview = None
         target = self.canonical()
-        if (
-            was_visual_neutral
-            and not target.is_neutral()
-            and self.entry_padding is None
-        ):
-            self.entry_padding = item.padding()
-        glyph_changed, glyph_padding_changed = self._apply_layout(target)
-        active_state_changed = self._reconcile_active_state(
-            was_visual_neutral,
-            target,
-            glyph_changed,
-            glyph_padding_changed,
+        glyph_changed, glyph_padding_changed = self._apply_layout(previous, target)
+        active_state_changed = self._refresh_effect_geometry(
+            glyph_padding_changed
         )
         box_changed = self._apply_box(target)
         finalized = self._finalize_neutral(was_visual_neutral, target)
-        return (
+        changed = (
             glyph_changed
             or active_state_changed
             or box_changed
             or finalized
         )
+        if target.transform_type == 'none':
+            item._transform_controller = None
+        return changed
 
     def recenter(self) -> bool:
         item = self.item

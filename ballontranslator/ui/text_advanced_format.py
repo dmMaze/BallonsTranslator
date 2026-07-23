@@ -432,6 +432,7 @@ class TextAdvancedFormatPanel(PanelArea):
     transform_preview_requested = Signal(str, float)
     transform_drag_commit_requested = Signal(str, float)
     transform_preview_canceled = Signal(str)
+    transform_type_change_requested = Signal(str)
 
     def __init__(
         self,
@@ -476,9 +477,28 @@ class TextAdvancedFormatPanel(PanelArea):
             self._schedule_geometry_update
         )
 
-        self.transform_section = QWidget(self.scrollContent)
-        self.transform_section.setSizePolicy(
+        self.transform_group = QGroupBox(
+            self.tr('Transform'), self.scrollContent
+        )
+        self.transform_group.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        self.transform_types = ('none', 'slant')
+        self.transform_effect_selector = SmallComboBox(
+            parent=self.transform_group,
+            options=[self.tr('None'), self.tr('Slant')],
+        )
+        self.transform_effect_selector.activated.connect(
+            self._on_transform_type_activated
+        )
+        self.transform_effect_label = _word_wrap_label(
+            SmallParamLabel(self.tr('Effect'), parent=self.transform_group)
+        )
+        self.transform_effect_unit = _atomic_unit(
+            self.transform_group,
+            self.transform_effect_label,
+            self.transform_effect_selector,
         )
 
         transform_specs = (
@@ -500,7 +520,7 @@ class TextAdvancedFormatPanel(PanelArea):
         for attr, name, title_fn, factor, minimum, maximum, suffix in transform_specs:
             control = CommittedTransformControl(
                 title_fn(), name, factor, minimum, maximum, suffix, 1.0,
-                self.transform_section,
+                self.transform_group,
             )
             setattr(self, attr, control)
             transform_controls[name] = control
@@ -513,9 +533,11 @@ class TextAdvancedFormatPanel(PanelArea):
             )
             control.preview_canceled.connect(self.transform_preview_canceled.emit)
 
-        self.transform_layout = AdaptiveWrapLayout(self.transform_section)
+        self.transform_layout = AdaptiveWrapLayout(self.transform_group)
+        self.transform_layout.addWidget(self.transform_effect_unit)
         for control in self.transform_controls.values():
             self.transform_layout.addWidget(control)
+        self._set_transform_controls_visible(False)
 
         self.top_section = QWidget(self.scrollContent)
         self.top_section.setSizePolicy(
@@ -579,7 +601,7 @@ class TextAdvancedFormatPanel(PanelArea):
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         # Preserve the current panel's section order.
         vlayout.addWidget(self.top_section)
-        vlayout.addWidget(self.transform_section)
+        vlayout.addWidget(self.transform_group)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
 
@@ -806,11 +828,61 @@ class TextAdvancedFormatPanel(PanelArea):
     def on_linespacing_type_changed(self):
         self.on_format_changed('line_spacing_type', self.linespacing_type_combobox.currentIndex())
 
+    def _set_transform_controls_visible(self, visible: bool):
+        changed = any(
+            (not control.isHidden()) != visible
+            for control in self.transform_controls.values()
+        )
+        for control in self.transform_controls.values():
+            control.setVisible(visible)
+        if changed:
+            self.transform_layout.invalidate()
+            self.transform_group.updateGeometry()
+            self._schedule_geometry_update()
+
+    def _set_transform_values(self, transforms):
+        transform_types = [transform.transform_type for transform in transforms]
+        common_type = (
+            transform_types[0]
+            if transform_types
+            and all(value == transform_types[0] for value in transform_types)
+            else None
+        )
+        selector_index = (
+            self.transform_types.index(common_type)
+            if common_type in self.transform_types
+            else -1
+        )
+        self.transform_effect_selector.setCurrentIndex(selector_index)
+
+        show_slant = common_type == 'slant'
+        self._set_transform_controls_visible(show_slant)
+        for name, control in self.transform_controls.items():
+            if not show_slant:
+                control.set_model_value(None)
+                continue
+            values = [getattr(transform, name) for transform in transforms]
+            common = (
+                values[0]
+                if values and all(value == values[0] for value in values)
+                else None
+            )
+            control.set_model_value(common)
+
+    def _on_transform_type_activated(self, index: int):
+        if index < 0 or index >= len(self.transform_types):
+            return
+        for control in self.transform_controls.values():
+            control.cancel_pending()
+            control.cancel_preview()
+        transform_type = self.transform_types[index]
+        self._set_transform_controls_visible(transform_type == 'slant')
+        self.transform_type_change_requested.emit(transform_type)
+
     def set_active_format(self, font_format: FontFormat):
         self.active_format = font_format
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
-        for name, control in self.transform_controls.items():
-            control.set_model_value(getattr(font_format.text_transform, name))
+        self._set_transform_values([font_format.text_transform])
 
         self.shadow_group.color_label.setPickerColor(font_format.shadow_color)
         self.shadow_group.strength_box.setValue(font_format.shadow_strength)
@@ -826,13 +898,12 @@ class TextAdvancedFormatPanel(PanelArea):
         # self.tate_chu_yoko_checker.setChecked(font_format.font)
 
     def set_transform_items(self, items):
-        for name, control in self.transform_controls.items():
-            values = [
-                getattr(item.blk.fontformat.text_transform, name)
-                for item in items
-            ]
-            common = values[0] if values and all(value == values[0] for value in values) else None
-            control.set_model_value(common)
+        self._set_transform_values(
+            [item.blk.fontformat.text_transform for item in items]
+        )
+
+    def set_transform(self, transform):
+        self._set_transform_values([transform])
 
     def finish_pending_transform_edits(self):
         for control in self.transform_controls.values():

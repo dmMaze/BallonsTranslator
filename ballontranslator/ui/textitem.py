@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from contextlib import nullcontext
 from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
@@ -44,7 +45,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.transform_controller = TextItemTransformController(self)
+        self._transform_controller = None
         self.effect_renderer = TextEffectRenderer(self)
         self.pre_editing = False
         self.blk: TextBlock = None
@@ -73,20 +74,17 @@ class TextBlkItem(QGraphicsTextItem):
         self.block_change_signal = False
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
-        # Qt meta-properties can bypass Python setter overrides. Geometry
-        # notifications keep rotation and origin changes on one code path.
-        self.setFlag(
-            QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True
-        )
         self.document().setDocumentMargin(0)
         self.initTextBlock(blk, set_format=set_format)
         self.setBoundingRegionGranularity(0)
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
-            | QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
         )
-        self.transform_controller.finish_initialization()
+        if self._transform_controller is None:
+            self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+        else:
+            self._transform_controller.finish_initialization()
 
     def inputMethodEvent(self, e: QInputMethodEvent):
         if self.pre_editing == False:
@@ -132,6 +130,7 @@ class TextBlkItem(QGraphicsTextItem):
                     self.push_undo_stack.emit(new_steps, self.is_formatting)
 
         if not (self.hasFocus() and self.pre_editing):
+            self._update_effect_padding()
             if self.fontformat.gradient_enabled:
                 self._refresh_gradient_geometry()
             if self.repaint_on_changed:
@@ -162,6 +161,7 @@ class TextBlkItem(QGraphicsTextItem):
         )
 
     def docSizeChanged(self):
+        self._update_effect_padding()
         self.setCenterTransform()
         self.doc_size_changed.emit(self.idx)
 
@@ -175,17 +175,20 @@ class TextBlkItem(QGraphicsTextItem):
             bx1, by1, bx2, by2 = xyxy
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
-        self.transform_controller.preview = None
+        if not self.fontformat.text_transform.is_neutral():
+            self._ensure_transform_controller()
+        if self._transform_controller is not None:
+            self._transform_controller.preview = None
 
         self.setVertical(blk.vertical)
         self.setRect(blk.bounding_rect(), update_blk_rect=False)
 
         try:
-            block_angle = self.transform_controller.validate_rotation_angle(
+            block_angle = TextItemTransformController.validate_rotation_angle(
                 blk.angle
             )
         except ValueError as error:
-            self.transform_controller.report_rejected_change(
+            TextItemTransformController.report_rejected_change(
                 'load rotation', error
             )
             block_angle = 0.0
@@ -199,7 +202,6 @@ class TextBlkItem(QGraphicsTextItem):
             set_char_fmt = True
 
         font_fmt = blk.fontformat
-        self.transform_controller.entry_padding = None
         if set_format:
             self.set_fontformat(font_fmt, set_char_format=set_char_fmt, set_stroke_width=False, set_effect=False)
 
@@ -220,32 +222,43 @@ class TextBlkItem(QGraphicsTextItem):
             self.setGradientEnabled(True)
         self.setShadow(font_fmt, repaint=False)
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
-        if not self._text_transform_is_neutral():
-            # Loaded active transforms have no in-session neutral entry point.
-            # Seed the fallback after effects/text are initialized so later
-            # style changes cannot erase the BASE neutral minimum.
-            floor = self.effect_renderer._neutral_effect_padding_floor()
-            self.transform_controller.entry_padding = max(
-                self.transform_controller.entry_padding or 0.0,
-                floor,
-            )
         self.setCenterTransform()
         self.repaint_background()
 
     def _effective_text_transform(self) -> TextTransform:
-        return self.transform_controller.effective()
+        controller = self._transform_controller
+        if controller is None:
+            return self.blk.fontformat.text_transform
+        return controller.effective()
 
     def _text_transform_is_neutral(self) -> bool:
-        return self.transform_controller.is_neutral()
+        controller = self._transform_controller
+        if controller is None:
+            return self.blk.fontformat.text_transform.is_neutral()
+        return controller.is_neutral()
+
+    @property
+    def transform_controller(self) -> TextItemTransformController:
+        return self._ensure_transform_controller()
+
+    def _ensure_transform_controller(self) -> TextItemTransformController:
+        controller = self._transform_controller
+        if controller is None:
+            controller = TextItemTransformController(self)
+            self._transform_controller = controller
+        return controller
 
     def _text_transform_update(self):
-        return self.transform_controller.update_transaction()
+        controller = self._transform_controller
+        return nullcontext() if controller is None else controller.update_transaction()
 
     def _request_text_transform_update(self) -> None:
-        self.transform_controller.request_update()
+        controller = self._transform_controller
+        if controller is not None:
+            controller.request_update()
 
     def itemChange(self, change, value):
-        controller = getattr(self, 'transform_controller', None)
+        controller = getattr(self, '_transform_controller', None)
         if controller is None:
             return super().itemChange(change, value)
         return controller.item_change(change, value, super().itemChange)
@@ -254,7 +267,10 @@ class TextBlkItem(QGraphicsTextItem):
         """Apply the sole QGraphicsItem cache policy for live text items."""
         use_no_cache = (
             self.is_editting()
-            or self.transform_controller.requires_no_cache()
+            or (
+                self._transform_controller is not None
+                and self._transform_controller.requires_no_cache()
+            )
         )
         cache_mode = (
             QGraphicsItem.CacheMode.NoCache
@@ -273,13 +289,31 @@ class TextBlkItem(QGraphicsTextItem):
         *,
         preview: bool = False,
     ) -> bool:
-        return self.transform_controller.set(transform, preview=preview)
+        if (
+            self._transform_controller is None
+            and (
+                transform is None
+                or transform == self.blk.fontformat.text_transform
+            )
+        ):
+            return False
+        return self._ensure_transform_controller().set(
+            transform, preview=preview
+        )
 
     def clear_text_transform_preview(self) -> bool:
-        return self.transform_controller.clear_preview()
+        controller = self._transform_controller
+        return False if controller is None else controller.clear_preview()
 
     def setCenterTransform(self) -> bool:
-        return self.transform_controller.recenter()
+        controller = self._transform_controller
+        if controller is None:
+            center = self.boundingRect().center()
+            if self.transformOriginPoint() == center:
+                return False
+            self.setTransformOriginPoint(center)
+            return True
+        return controller.recenter()
 
     def logical_unpadded_rect(self) -> QRectF:
         """Return the untransformed, effect-free block rect in item coordinates."""
@@ -287,9 +321,18 @@ class TextBlkItem(QGraphicsTextItem):
 
     def visual_polygon_in_scene(self) -> QPolygonF:
         """Return the exact transformed logical block polygon in scene space."""
-        return self.transform_controller.visual_polygon(
-            self.logical_unpadded_rect()
-        )
+        logical_rect = self.logical_unpadded_rect()
+        controller = self._transform_controller
+        if controller is None:
+            return QPolygonF(
+                [self.mapToScene(point) for point in (
+                    logical_rect.topLeft(),
+                    logical_rect.topRight(),
+                    logical_rect.bottomRight(),
+                    logical_rect.bottomLeft(),
+                )]
+            )
+        return controller.visual_polygon(logical_rect)
 
     def visual_bounds_in_scene(self) -> QRectF:
         return self.visual_polygon_in_scene().boundingRect()
@@ -368,20 +411,11 @@ class TextBlkItem(QGraphicsTextItem):
     def padding(self) -> float:
         if self.layout is None:
             return 0.0
-        return self.layout.documentMargin()
+        return self.layout.effectPadding()
 
-    def setPadding(self, p: float, *, allow_neutral_shrink: bool = False):
+    def setPadding(self, p: float):
         p = max(0.0, float(p))
         _p = self.padding()
-        if self._text_transform_is_neutral() and not allow_neutral_shrink:
-            if _p >= p:
-                return False
-            absolute_rect = self.absBoundingRect(qrect=True)
-            self.layout.relayout_on_changed = False
-            self.layout.updateDocumentMargin(p)
-            self.layout.relayout_on_changed = True
-            self.setRect(absolute_rect, repaint=False)
-            return True
         if _p == p:
             return False
         abr = self.absBoundingRect(qrect=True)
@@ -389,12 +423,11 @@ class TextBlkItem(QGraphicsTextItem):
         self.repainting = True
         signals_were_blocked = self.layout.blockSignals(True)
         try:
-            # The document margin participates in boundingRect(); notify the
-            # scene before mutating it while preserving the absolute logical
-            # rectangle captured above.
+            # Effect padding participates in boundingRect(); preserve the
+            # logical rectangle while notifying the scene of the size change.
             self.prepareGeometryChange()
             self.layout.relayout_on_changed = False
-            self.layout.updateDocumentMargin(p)
+            self.layout.setEffectPadding(p)
             self.layout.relayout_on_changed = True
             self.setRect(
                 abr, repaint=False, update_blk_rect=False
@@ -456,7 +489,7 @@ class TextBlkItem(QGraphicsTextItem):
         raise NotImplementedError
 
     def setAngle(self, angle: int):
-        angle = self.transform_controller.validate_rotation_angle(angle)
+        angle = TextItemTransformController.validate_rotation_angle(angle)
 
         with self._text_transform_update():
             self.setCenterTransform()
@@ -479,7 +512,7 @@ class TextBlkItem(QGraphicsTextItem):
         valid_layout = True
         doc = self.document()
         if self.layout is not None:
-            document_margin = self.layout.documentMargin()
+            effect_padding = self.layout.effectPadding()
             if isinstance(self.layout, VerticalTextDocumentLayout) == vertical:
                 if self.fontformat is not None:
                     self.fontformat.vertical = vertical
@@ -488,7 +521,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.layout.documentSizeChanged.disconnect(self.docSizeChanged)
         else:
             valid_layout = False
-            document_margin = 0.0
+            effect_padding = 0.0
             doc.contentsChanged.connect(self.on_content_changed)
             doc.contentsChange.connect(self.on_content_changing)
 
@@ -523,15 +556,13 @@ class TextBlkItem(QGraphicsTextItem):
         else:
             layout = HorizontalTextDocumentLayout(doc, self.fontformat)
         self.layout = layout
-        layout.glyph_raster_failure_handler = (
-            self.effect_renderer._on_glyph_raster_failure
-        )
         doc.setDocumentLayout(layout)
-        layout.setGlyphSlantAngle(
-            self._effective_text_transform().glyph_slant_angle,
-            persistent_cache=self.transform_controller.preview is None,
-        )
-        layout.updateDocumentMargin(document_margin)
+        controller = self._transform_controller
+        if controller is not None:
+            controller.initialize_layout(
+                persistent_cache=controller.preview is None,
+            )
+        layout.setEffectPadding(effect_padding)
         layout.size_enlarged.connect(self.on_document_enlarged)
         layout.documentSizeChanged.connect(self.docSizeChanged)
         
@@ -1047,16 +1078,7 @@ class TextBlkItem(QGraphicsTextItem):
 
         self.fontformat.stroke_width = stroke_width
         if padding:
-            if self._text_transform_is_neutral():
-                if stroke_width > 0:
-                    effect_padding = (
-                        self.layout.max_font_size(to_px=True)
-                        * (stroke_width + 0.05)
-                        / 2
-                    )
-                    self.setPadding(effect_padding)
-            else:
-                self._update_effect_padding()
+            self._update_effect_padding()
 
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
         if repaint_background:
@@ -1085,7 +1107,8 @@ class TextBlkItem(QGraphicsTextItem):
             block = block.next()
         self.layout.relayout_on_changed = True
         self.layout.reLayoutEverything()
-        if not self._text_transform_is_neutral() and (
+        self._update_effect_padding()
+        if (
             self.fontformat.stroke_width > 0
             or (
                 self.fontformat.shadow_radius > 0
@@ -1106,18 +1129,7 @@ class TextBlkItem(QGraphicsTextItem):
         
         cursor, after_kwargs = self._before_set_ffmt(set_selected=set_selected, restore_cursor=restore_cursor)
         self.layout.relayout_on_changed = False
-        if self._text_transform_is_neutral():
-            if self.fontformat.stroke_width != 0:
-                repaint_background = True
-            if repaint_background:
-                fs = pt2px(max(self.layout.max_font_size(), value))
-                self.layout.relayout_on_changed = False
-                if self.fontformat.stroke_width > 0:
-                    self.setPadding(
-                        fs * (self.fontformat.stroke_width + 0.05) / 2
-                    )
-                self.layout.relayout_on_changed = True
-        elif self.fontformat.stroke_width > 0 or (
+        if self.fontformat.stroke_width > 0 or (
             self.fontformat.shadow_radius > 0
             and self.fontformat.shadow_strength > 0
         ):
@@ -1127,6 +1139,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.set_cursor_cfmt(cursor, cfmt, True)
         self.layout.relayout_on_changed = True
         self.layout.reLayoutEverything()
+        self._update_effect_padding()
         if clip_size:
             self.squeezeBoundingRect(cond_on_alignment=True)
 
@@ -1164,18 +1177,13 @@ class TextBlkItem(QGraphicsTextItem):
         self.fontformat.shadow_strength = fmt.shadow_strength
         self.fontformat.shadow_color = fmt.shadow_color
         self.fontformat.shadow_offset = fmt.shadow_offset
-        if self._text_transform_is_neutral():
-            if self.fontformat.shadow_radius > 0:
-                self.setPadding(self.layout.max_font_size(to_px=True))
-        else:
-            self._update_effect_padding()
+        self._update_effect_padding()
         if repaint:
             self.repaint_background()
 
     def setBGAttribute(self, attr_name: str, value, repaint=True):
         setattr(self.fontformat, attr_name, value)
-        if not self._text_transform_is_neutral():
-            self._update_effect_padding()
+        self._update_effect_padding()
         if repaint:
             self.repaint_background()
             self.update()
@@ -1251,7 +1259,8 @@ class TextBlkItem(QGraphicsTextItem):
         Active affine geometry blocks the layout signal until the display rect,
         transform, anchor, and document size agree.
         """
-        if not self.transform_controller.requires_custom_resize():
+        controller = self._transform_controller
+        if controller is None or not controller.requires_custom_resize():
             if set_layout_maxsize:
                 self.layout.setMaxSize(w, h)
 

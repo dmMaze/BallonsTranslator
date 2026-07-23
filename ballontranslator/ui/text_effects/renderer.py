@@ -46,17 +46,14 @@ from .raster import (
 GRADIENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1238
 
 
-class TextEffectRenderer:
-    """Own all effect cache state and transformed effect rendering.
+class _TransformedEffectState:
+    """Allocate raster/cache state only after a transform needs it.
 
-    >>> hasattr(TextEffectRenderer, 'repaint_background')
-    True
+    >>> _TransformedEffectState().cache_generation
+    0
     """
 
-    def __init__(self, item) -> None:
-        self.item = item
-        self.background_pixmap = None
-        self.background_pixmap_scale = None
+    def __init__(self) -> None:
         self.cache_generation = 0
         self.cache_rendered_generation = -1
         self.cache_dirty = False
@@ -69,7 +66,58 @@ class TextEffectRenderer:
         self.surface_raster_error = None
         self.force_tiles = False
         self.direct_stroke = False
+
+
+class _TransformedEffectField:
+    """Descriptor keeping transformed-only fields lazy at existing call sites."""
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
+        return getattr(instance._transformed_state(), self.name)
+
+    def __set__(self, instance, value):
+        setattr(instance._transformed_state(), self.name, value)
+
+
+class TextEffectRenderer:
+    """Own all effect cache state and transformed effect rendering.
+
+    >>> hasattr(TextEffectRenderer, 'repaint_background')
+    True
+    """
+
+    cache_generation = _TransformedEffectField()
+    cache_rendered_generation = _TransformedEffectField()
+    cache_dirty = _TransformedEffectField()
+    tile_cache = _TransformedEffectField()
+    allocation_warning_generation = _TransformedEffectField()
+    export_render = _TransformedEffectField()
+    export_error = _TransformedEffectField()
+    in_graphics_paint = _TransformedEffectField()
+    capturing_surface = _TransformedEffectField()
+    surface_raster_error = _TransformedEffectField()
+    force_tiles = _TransformedEffectField()
+    direct_stroke = _TransformedEffectField()
+
+    def __init__(self, item) -> None:
+        self.item = item
+        self.background_pixmap = None
+        self.background_pixmap_scale = None
+        self._transformed_effect_state = None
         self.refreshing_gradient_geometry = False
+        self.refreshing_effect_padding = False
+        self.has_transient_gradient_ranges = False
+
+    def _transformed_state(self) -> _TransformedEffectState:
+        state = self._transformed_effect_state
+        if state is None:
+            state = _TransformedEffectState()
+            self._transformed_effect_state = state
+        return state
 
     @property
     def fontformat(self):
@@ -81,7 +129,7 @@ class TextEffectRenderer:
 
     @property
     def transform_controller(self):
-        return self.item.transform_controller
+        return self.item._transform_controller
 
     @property
     def repainting(self):
@@ -120,20 +168,21 @@ class TextEffectRenderer:
     def padding(self):
         return self.item.padding()
 
-    def setPadding(self, padding, *, allow_neutral_shrink=False):
-        return self.item.setPadding(
-            padding,
-            allow_neutral_shrink=allow_neutral_shrink,
-        )
+    def setPadding(self, padding):
+        return self.item.setPadding(padding)
 
     def update(self):
         self.item.update()
 
     def _text_transform_is_neutral(self):
-        return self.transform_controller.is_neutral()
+        return self.item._text_transform_is_neutral()
 
     def _effective_text_transform(self):
-        return self.transform_controller.effective()
+        return self.item._effective_text_transform()
+
+    def _glyph_slant_angle(self) -> float:
+        controller = self.transform_controller
+        return 0.0 if controller is None else controller.glyph_slant_angle()
 
     def clear_cached_surface(self) -> None:
         self.background_pixmap = None
@@ -194,6 +243,7 @@ class TextEffectRenderer:
         else:
             self.clear_cached_surface()
         self.item.update()
+        self._transformed_effect_state = None
 
     def _effect_paint_context(self):
         context = QAbstractTextDocumentLayout.PaintContext()
@@ -305,7 +355,7 @@ class TextEffectRenderer:
         """Paint stroke through the BASE cloned-document path."""
         doc = QTextDocument()
         doc.setUndoRedoEnabled(False)
-        doc.setDocumentMargin(self.layout.documentMargin())
+        doc.setDocumentMargin(self.layout.effectPadding())
         doc.setDefaultFont(self.document().defaultFont())
         doc.setHtml(self.document().toHtml())
         doc.setDefaultTextOption(self.document().defaultTextOption())
@@ -382,7 +432,7 @@ class TextEffectRenderer:
                 source_painter.translate(-rect.topLeft())
                 fragment_context = self._effect_paint_context()
                 fragment_context.selections = selections
-                self.layout.transform_renderer.draw_glyph_selection_mask(
+                self.transform_controller.layout_renderer.draw_glyph_selection_mask(
                     source_painter, fragment_context
                 )
             finally:
@@ -442,7 +492,7 @@ class TextEffectRenderer:
             return
         active_layout = self.document().documentLayout()
         if isinstance(active_layout, VerticalTextDocumentLayout):
-            if self._effective_text_transform().glyph_slant_angle == 0.0:
+            if self._glyph_slant_angle() == 0.0:
                 self._paint_cloned_document_stroke(painter)
                 return
             self._paint_vertical_stroke(painter, render_scale, surface_rect)
@@ -464,8 +514,8 @@ class TextEffectRenderer:
         # Non-zero glyph slant has an exact vector envelope derived from the
         # same live glyph runs and orientation transforms as paint.  Avoid the
         # legacy expanding scratch-image loop for this path.
-        if self._effective_text_transform().glyph_slant_angle != 0.0:
-            return self.layout.glyphInkBounds()
+        if self._glyph_slant_angle() != 0.0:
+            return self.transform_controller.layout_ink_bounds()
 
         # QTextLayout.boundingRect() includes bookkeeping lines and does not
         # include every custom vertical rotation/offset. Paint the attached
@@ -474,7 +524,7 @@ class TextEffectRenderer:
         # stops only after all four raster borders are clear, so arbitrary
         # combining-mark overhang is measured rather than hidden by a fixed
         # padding guess. Align the logical origin to an integer pixel so the
-        # result is independent of the current fractional document margin.
+        # result is independent of the current fractional effect padding.
         font_guard = max(
             1,
             math.ceil(
@@ -485,7 +535,7 @@ class TextEffectRenderer:
 
         def bounded_vector_fallback(error: Exception) -> QRectF:
             self._warn_effect_allocation_once(error)
-            bounds = self.layout.glyphInkBounds()
+            bounds = self.transform_controller.layout_ink_bounds()
             return bounds.translated(-logical_rect.topLeft())
 
         while True:
@@ -577,8 +627,10 @@ class TextEffectRenderer:
     def _effect_padding(self) -> float:
         paint_stroke, paint_shadow = self._effect_flags()
         glyph_slanted = (
-            self._effective_text_transform().glyph_slant_angle != 0.0
+            self._glyph_slant_angle() != 0.0
         )
+        if not glyph_slanted:
+            return self._conservative_effect_padding()
         if not paint_stroke and not paint_shadow and not glyph_slanted:
             return 0.0
         ink_bounds = self._logical_ink_bounds()
@@ -616,32 +668,36 @@ class TextEffectRenderer:
             effect_bounds.bottom() - logical_rect.bottom(),
         )
 
-    def _neutral_effect_padding_floor(self) -> float:
-        """Return the grow-only effect padding requested by the BASE path."""
+    def _conservative_effect_padding(self) -> float:
+        """Return cheap symmetric padding for non-distorting glyph paths."""
         if self.layout is None:
             return 0.0
-        max_font_size = self.layout.max_font_size(to_px=True)
-        padding = 0.0
-        if self.fontformat.shadow_radius > 0:
-            padding = max(padding, max_font_size)
+        max_font_size = max(0.0, self.layout.max_font_size(to_px=True))
+        stroke_outset = 0.0
         if self.fontformat.stroke_width > 0:
+            stroke_outset = (
+                max_font_size * (self.fontformat.stroke_width + 0.05) / 2
+            )
+        padding = stroke_outset
+        if (
+            self.fontformat.shadow_radius > 0
+            and self.fontformat.shadow_strength > 0
+        ):
+            radius = self.fontformat.shadow_radius * max_font_size
+            xoffset = abs(self.fontformat.shadow_offset[0] * max_font_size)
+            yoffset = abs(self.fontformat.shadow_offset[1] * max_font_size)
             padding = max(
                 padding,
-                max_font_size * (self.fontformat.stroke_width + 0.05) / 2,
+                stroke_outset + radius + max(xoffset, yoffset),
             )
         return padding
 
     def _commit_effect_padding(
         self,
         padding: float,
-        *,
-        allow_neutral_shrink: bool = False,
     ) -> bool:
         changed = (
-            self.setPadding(
-                padding,
-                allow_neutral_shrink=allow_neutral_shrink,
-            )
+            self.setPadding(padding)
             if self.padding() != padding
             else False
         )
@@ -655,22 +711,19 @@ class TextEffectRenderer:
         return changed
 
     def _update_effect_padding(self):
-        if self.transform_controller.entry_padding is not None:
-            # Preserve the BASE grow-only high-water mark if an effect or font
-            # change raises it while any text transform is active. The
-            # transformed envelope may later shrink before neutral restore.
-            self.transform_controller.entry_padding = max(
-                self.transform_controller.entry_padding,
-                self._neutral_effect_padding_floor(),
-            )
-        padding = self._effect_padding()
-        # QTextLayout stores coordinates at 26.6 fixed-point precision. Use the
-        # same grid as the canonical envelope and round outward so repeated
-        # relayout/undo cycles converge without ever undersizing the effects.
-        if padding > 0.0:
-            layout_units = math.nextafter(padding * 64.0, -math.inf)
-            padding = math.ceil(layout_units) / 64.0
-        return self._commit_effect_padding(padding)
+        if self.refreshing_effect_padding or self.layout is None:
+            return False
+        self.refreshing_effect_padding = True
+        try:
+            padding = self._effect_padding()
+            # QTextLayout stores coordinates at 26.6 fixed-point precision.
+            # Round outward so relayout and undo cycles converge.
+            if padding > 0.0:
+                layout_units = math.nextafter(padding * 64.0, -math.inf)
+                padding = math.ceil(layout_units) / 64.0
+            return self._commit_effect_padding(padding)
+        finally:
+            self.refreshing_effect_padding = False
 
     def _effect_flags(self) -> Tuple[bool, bool]:
         return (
@@ -1315,21 +1368,8 @@ class TextEffectRenderer:
         if self.refreshing_gradient_geometry:
             return
         neutral = self._text_transform_is_neutral()
-        if neutral:
-            block = self.document().firstBlock()
-            has_transient_range = False
-            while block.isValid() and not has_transient_range:
-                has_transient_range = any(
-                    bool(
-                        format_range.format.property(
-                            GRADIENT_LAYOUT_FORMAT_PROPERTY
-                        )
-                    )
-                    for format_range in block.layout().formats()
-                )
-                block = block.next()
-            if not has_transient_range:
-                return
+        if neutral and not self.has_transient_gradient_ranges:
+            return
         self.refreshing_gradient_geometry = True
         gradient_format = None
         if not neutral and self.fontformat.gradient_enabled:
@@ -1338,6 +1378,7 @@ class TextEffectRenderer:
             gradient_format.setProperty(GRADIENT_LAYOUT_FORMAT_PROPERTY, True)
         try:
             formats_changed = False
+            transient_present = False
             block = self.document().firstBlock()
             while block.isValid():
                 layout = block.layout()
@@ -1356,6 +1397,7 @@ class TextEffectRenderer:
                 text_length = block.length() - 1
                 add_transient = gradient_format is not None and text_length > 0
                 if add_transient:
+                    transient_present = True
                     format_range = QTextLayout.FormatRange()
                     format_range.start = 0
                     format_range.length = text_length
@@ -1370,6 +1412,7 @@ class TextEffectRenderer:
                 # the attached custom layout; this changes no document state.
                 self.layout.reLayout()
                 self.update()
+            self.has_transient_gradient_ranges = transient_present
         finally:
             self.refreshing_gradient_geometry = False
 
@@ -1389,17 +1432,16 @@ class TextEffectRenderer:
 
         # Set gradient points with size adjustment
         if persistent and not self._text_transform_is_neutral():
-            # The document foreground is the BASE-neutral fallback underneath
-            # the active layout-only gradient range. Reconstruct the neutral
-            # entry rectangle so removing that range cannot reveal coordinates
-            # derived from an active Box transform or its exact effect padding.
+            # The document foreground is the neutral fallback underneath the
+            # active layout-only range. Use the current non-distorting padding
+            # so removing the range reveals the same gradient coordinates.
             logical_rect = self.logical_unpadded_rect()
-            entry_padding = self.transform_controller.entry_padding or 0.0
+            neutral_padding = self._conservative_effect_padding()
             rect = QRectF(
                 0.0,
                 0.0,
-                logical_rect.width() + entry_padding * 2,
-                logical_rect.height() + entry_padding * 2,
+                logical_rect.width() + neutral_padding * 2,
+                logical_rect.height() + neutral_padding * 2,
             )
         else:
             rect = (
