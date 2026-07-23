@@ -10,13 +10,6 @@ from PIL import Image
 from .logger import logger as LOGGER
 from .io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
 from .textblock import TextBlock, FontFormat
-from .text_transform_schema import (
-    InvalidTextTransformPayloadError,
-    TEXT_TRANSFORM_SCHEMA_VERSION,
-    TextTransformPayloadError,
-    UnsupportedTextTransformVersionError,
-    migrate_text_transform_payload,
-)
 from .config import pcfg, RunStatus
 from . import shared
 
@@ -152,30 +145,24 @@ class ProjImgTrans:
         return self.type+'_'+osp.basename(self.directory)
 
     def load(self, directory: str, json_path: str = None) -> bool:
+        self.directory = directory
         if json_path is None:
-            project_name = self.type + '_' + osp.basename(directory)
-            candidate_proj_path = osp.join(directory, project_name + '.json')
+            self.proj_path = osp.join(
+                self.directory, self.proj_name() + '.json'
+            )
         else:
-            candidate_proj_path = json_path
+            self.proj_path = json_path
         new_proj = False
-        if not osp.exists(candidate_proj_path):
+        if not osp.exists(self.proj_path):
             new_proj = True
+            self.new_project()
         else:
             try:
-                with open(candidate_proj_path, 'r', encoding='utf8') as f:
+                with open(self.proj_path, 'r', encoding='utf8') as f:
                     proj_dict = json.loads(f.read())
             except Exception as e:
                 raise ProjectLoadFailureException(e)
-            # Transform validation happens while the payload and live project
-            # are still detached. General loader behavior remains unchanged.
-            proj_dict = migrate_text_transform_payload(proj_dict)
-
-        self.directory = directory
-        self.proj_path = candidate_proj_path
-        if new_proj:
-            self.new_project()
-        else:
-            self._load_from_canonical_dict(proj_dict)
+            self.load_from_dict(proj_dict)
         if not osp.exists(self.inpainted_dir()):
             os.makedirs(self.inpainted_dir())
         if not osp.exists(self.mask_dir()):
@@ -193,13 +180,6 @@ class ProjImgTrans:
         return osp.join(self.directory, 'result')
 
     def load_from_dict(self, proj_dict: dict):
-        # A transform-specific failure must precede every mutation below.
-        proj_dict = migrate_text_transform_payload(proj_dict)
-        self._load_from_canonical_dict(proj_dict)
-
-    def _load_from_canonical_dict(self, proj_dict: dict):
-        # Both public load paths validate before handing ownership to this
-        # mutating loader, avoiding a second whole-project migration.
         self.set_current_img(None)
         try:
             self.pages = {}
@@ -348,10 +328,6 @@ class ProjImgTrans:
         directory = osp.dirname(json_path)
         try:
             self.load(directory, json_path=json_path)
-        except TextTransformPayloadError as e:
-            # load() validates transforms before adopting the new directory,
-            # so reloading the old project would only introduce new mutation.
-            raise ProjectLoadFailureException(e)
         except Exception as e:
             self.load(old_dir)
             raise ProjectLoadFailureException(e)
@@ -442,7 +418,6 @@ class ProjImgTrans:
         pages.update(self.not_found_pages)        
         image_info = self._image_info.copy()
         return {
-            'text_transform_schema_version': TEXT_TRANSFORM_SCHEMA_VERSION,
             'directory': self.directory,
             'pages': pages,
             'current_img': self.current_img,

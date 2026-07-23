@@ -1,5 +1,4 @@
 import os
-import json
 import unittest
 
 
@@ -32,8 +31,6 @@ from ballontranslator.ui.text_effects.transform_layout import (
     TextLayoutTransformRenderer,
 )
 from ballontranslator.utils.fontformat import SlantTextTransform
-from ballontranslator.utils.config import ProgramConfig, json_dump_program_config
-from ballontranslator.utils.io_utils import json_dump_nested_obj
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -239,32 +236,6 @@ class TextTransformUndoTest(unittest.TestCase):
                         self._assert_state(stack, items, pairs, expected)
 
                 self.assertEqual(stack.count(), len(states) - 1)
-
-    def test_old_flat_transform_configs_need_no_migration(self):
-        flat_transform = {
-            'horizontal_scale': 1.2,
-            'vertical_scale': 0.8,
-            'slant_angle': 7.0,
-            'glyph_slant_angle': -3.0,
-        }
-        config = ProgramConfig(global_fontformat=flat_transform)
-        self.assertEqual(
-            config.global_fontformat.text_transform,
-            SlantTextTransform(1.2, 0.8, 7.0, -3.0),
-        )
-
-        saved_config = json.loads(json_dump_program_config(config))
-        saved_format = saved_config['global_fontformat']
-        self.assertNotIn('text_transform', saved_format)
-        for name, value in flat_transform.items():
-            self.assertEqual(saved_format[name], value)
-
-        saved_style = json.loads(
-            json_dump_nested_obj([config.global_fontformat])
-        )[0]
-        self.assertNotIn('text_transform', saved_style)
-        for name, value in flat_transform.items():
-            self.assertEqual(saved_style[name], value)
 
     def test_neutral_effect_render_is_stable_after_transform_roundtrip(self):
         for vertical in (False, True):

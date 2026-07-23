@@ -145,8 +145,8 @@ TEXT_TRANSFORM_TYPES = {
 }
 
 
-def coerce_text_transform(value=None, **legacy_values) -> TextTransform:
-    """Return a normalized transform from direct or legacy flat data.
+def coerce_text_transform(value=None, **flat_values) -> TextTransform:
+    """Return a normalized transform from direct or persisted flat data.
 
     Old configs need no migration: their flat quartet is consumed during the
     ordinary ``FontFormat`` construction path and remains the saved shape.
@@ -160,10 +160,10 @@ def coerce_text_transform(value=None, **legacy_values) -> TextTransform:
     5.0
     """
     if isinstance(value, TextTransform):
-        if legacy_values:
+        if flat_values:
             updates = {
                 name: component
-                for name, component in legacy_values.items()
+                for name, component in flat_values.items()
                 if name in value.component_fields
             }
             value = replace(value, **updates)
@@ -174,8 +174,8 @@ def coerce_text_transform(value=None, **legacy_values) -> TextTransform:
     if transform_class is None:
         raise ValueError(f'unsupported text transform type {transform_type}')
     for name in transform_class.component_fields:
-        if name in legacy_values:
-            payload[name] = legacy_values[name]
+        if name in flat_values:
+            payload[name] = flat_values[name]
     unexpected = set(payload) - set(transform_class.component_fields)
     if unexpected:
         raise ValueError(
@@ -282,14 +282,14 @@ class FontFormat(Config):
                 self.font_family = da['family']
 
         self.font_weight = fix_fontweight_qt(self.font_weight)
-        legacy_transform = {
+        flat_transform = {
             name: da.pop(name)
             for name in SlantTextTransform.component_fields
             if name in da
         }
         self.text_transform = coerce_text_transform(
             self.text_transform,
-            **legacy_transform,
+            **flat_transform,
         )
         self.deprecated_attributes = {}
 
