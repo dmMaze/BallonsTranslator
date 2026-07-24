@@ -1,15 +1,12 @@
-import math
 import numpy as np
-from contextlib import nullcontext
-from typing import List, Union, Tuple
+from typing import List, Tuple, Union
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
-from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF
-from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath,
-                       QInputMethodEvent, QPainter, QColor, QTextCharFormat,
-                       QPolygonF)
+from qtpy.QtCore import Qt, QRectF, QPointF, Signal
+from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor, QPixmap,
+                       QInputMethodEvent, QPainter, QColor, QTextCharFormat)
 
-from ballontranslator.utils.textblock import TextBlock, TextAlignment
+from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
     FontFormat,
@@ -19,7 +16,7 @@ from ballontranslator.utils.fontformat import (
 from .misc import td_pattern, table_pattern
 from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
 from .text_effects.renderer import TextEffectRenderer
-from .text_item_transform import TextItemTransformController
+from .text_item_geometry import TextItemGeometryController
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
@@ -45,7 +42,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._transform_controller = None
+        self.geometry_controller = TextItemGeometryController(self)
         self.effect_renderer = TextEffectRenderer(self)
         self.pre_editing = False
         self.blk: TextBlock = None
@@ -54,7 +51,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.reshaping = False
         self.under_ctrl = False
         self.draw_rect = show_rect
-        self._display_rect: QRectF = QRectF(0, 0, 1, 1)
         self.old_ffmt_values = None
         
         self.idx = idx
@@ -81,10 +77,7 @@ class TextBlkItem(QGraphicsTextItem):
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
         )
-        if self._transform_controller is None:
-            self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
-        else:
-            self._transform_controller.finish_initialization()
+        self.geometry_controller.finish_initialization()
 
     def inputMethodEvent(self, e: QInputMethodEvent):
         if self.pre_editing == False:
@@ -161,8 +154,10 @@ class TextBlkItem(QGraphicsTextItem):
         )
 
     def docSizeChanged(self):
-        self._update_effect_padding()
-        self.setCenterTransform()
+        # A padding change routes through setRect(), which synchronizes the
+        # origin after updating the display rectangle.
+        if not self._update_effect_padding():
+            self.geometry_controller.sync_origin()
         self.doc_size_changed.emit(self.idx)
 
     def initTextBlock(self, blk: TextBlock = None, set_format=True):
@@ -175,27 +170,13 @@ class TextBlkItem(QGraphicsTextItem):
             bx1, by1, bx2, by2 = xyxy
             xywh = np.array([[bx1, by1, bx2-bx1, by2-by1]])
             blk.lines = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
-        if not self.fontformat.text_transform.is_neutral():
-            self._ensure_transform_controller()
-        if self._transform_controller is not None:
-            self._transform_controller.preview = None
+        self.geometry_controller.bind_model()
 
         self.setVertical(blk.vertical)
         self.setRect(blk.bounding_rect(), update_blk_rect=False)
 
-        try:
-            block_angle = TextItemTransformController.validate_rotation_angle(
-                blk.angle
-            )
-        except ValueError as error:
-            TextItemTransformController.report_rejected_change(
-                'load rotation', error
-            )
-            block_angle = 0.0
-        blk.angle = block_angle
-        
-        if block_angle != 0:
-            self.setRotation(block_angle)
+        if blk.angle != 0:
+            self.setRotation(blk.angle)
         
         set_char_fmt = False
         if blk.translation:
@@ -222,43 +203,16 @@ class TextBlkItem(QGraphicsTextItem):
             self.setGradientEnabled(True)
         self.setShadow(font_fmt, repaint=False)
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
-        self.setCenterTransform()
         self.repaint_background()
 
     def _effective_text_transform(self) -> TextTransform:
-        controller = self._transform_controller
-        if controller is None:
-            return self.blk.fontformat.text_transform
-        return controller.effective()
+        return self.geometry_controller.effective()
 
     def _text_transform_is_neutral(self) -> bool:
-        controller = self._transform_controller
-        if controller is None:
-            return self.blk.fontformat.text_transform.is_neutral()
-        return controller.is_neutral()
-
-    @property
-    def transform_controller(self) -> TextItemTransformController:
-        return self._ensure_transform_controller()
-
-    def _ensure_transform_controller(self) -> TextItemTransformController:
-        controller = self._transform_controller
-        if controller is None:
-            controller = TextItemTransformController(self)
-            self._transform_controller = controller
-        return controller
-
-    def _text_transform_update(self):
-        controller = self._transform_controller
-        return nullcontext() if controller is None else controller.update_transaction()
-
-    def _request_text_transform_update(self) -> None:
-        controller = self._transform_controller
-        if controller is not None:
-            controller.request_update()
+        return self.geometry_controller.is_neutral()
 
     def itemChange(self, change, value):
-        controller = getattr(self, '_transform_controller', None)
+        controller = getattr(self, 'geometry_controller', None)
         if controller is None:
             return super().itemChange(change, value)
         return controller.item_change(change, value, super().itemChange)
@@ -267,10 +221,7 @@ class TextBlkItem(QGraphicsTextItem):
         """Apply the sole QGraphicsItem cache policy for live text items."""
         use_no_cache = (
             self.is_editting()
-            or (
-                self._transform_controller is not None
-                and self._transform_controller.requires_no_cache()
-            )
+            or self.geometry_controller.requires_no_cache()
         )
         cache_mode = (
             QGraphicsItem.CacheMode.NoCache
@@ -289,70 +240,32 @@ class TextBlkItem(QGraphicsTextItem):
         *,
         preview: bool = False,
     ) -> bool:
-        if (
-            self._transform_controller is None
-            and (
-                transform is None
-                or transform == self.blk.fontformat.text_transform
-            )
-        ):
-            return False
-        return self._ensure_transform_controller().set(
-            transform, preview=preview
-        )
+        return self.geometry_controller.set(transform, preview=preview)
 
     def clear_text_transform_preview(self) -> bool:
-        controller = self._transform_controller
-        return False if controller is None else controller.clear_preview()
-
-    def setCenterTransform(self) -> bool:
-        controller = self._transform_controller
-        if controller is None:
-            center = self.boundingRect().center()
-            if self.transformOriginPoint() == center:
-                return False
-            self.setTransformOriginPoint(center)
-            return True
-        return controller.recenter()
+        return self.geometry_controller.clear_preview()
 
     def logical_unpadded_rect(self) -> QRectF:
         """Return the untransformed, effect-free block rect in item coordinates."""
-        return self.unpadRect(self.boundingRect())
+        return self.geometry_controller.logical_rect()
 
-    def visual_polygon_in_scene(self) -> QPolygonF:
+    def visual_polygon_in_scene(self):
         """Return the exact transformed logical block polygon in scene space."""
-        logical_rect = self.logical_unpadded_rect()
-        controller = self._transform_controller
-        if controller is None:
-            return QPolygonF(
-                [self.mapToScene(point) for point in (
-                    logical_rect.topLeft(),
-                    logical_rect.topRight(),
-                    logical_rect.bottomRight(),
-                    logical_rect.bottomLeft(),
-                )]
-            )
-        return controller.visual_polygon(logical_rect)
+        return self.geometry_controller.visual_polygon_in_scene()
 
     def visual_bounds_in_scene(self) -> QRectF:
-        return self.visual_polygon_in_scene().boundingRect()
+        return self.geometry_controller.visual_bounds_in_scene()
 
     def rect(self) -> QRectF:
         return QRectF(self.pos(), self.boundingRect().size())
 
     def logical_position(self) -> QPointF:
         """Return the persistent logical rectangle's absolute top-left."""
-        return self.absBoundingRect(qrect=True).topLeft()
+        return self.geometry_controller.logical_position()
 
     def set_logical_position(self, point: QPointF) -> bool:
         """Move the logical top-left independently of paint padding."""
-        point = QPointF(point)
-        delta = point - self.logical_position()
-        if delta.isNull():
-            return False
-        self.setPos(self.pos() + delta)
-        self.blk._bounding_rect = self.absBoundingRect()
-        return True
+        return self.geometry_controller.set_logical_position(point)
 
     def startReshape(self):
         self.oldRect = self.absBoundingRect(qrect=True)
@@ -365,48 +278,21 @@ class TextBlkItem(QGraphicsTextItem):
         self.reshaping = False
         self.repaint_background()
 
-    def padRect(self, rect: QRectF) -> QRectF:
-        p = self.padding()
-        P = p * 2
-        return QRectF(rect.x() - p, rect.y() - p, rect.width() + P, rect.height() + P)
-    
-    def unpadRect(self, rect: QRectF) -> QRectF:
-        p = -self.padding()
-        P = p * 2
-        return QRectF(rect.x() - p, rect.y() - p, rect.width() + P, rect.height() + P)
-
     def setRect(self, rect: Union[List, QRectF], padding=True, repaint=True, update_blk_rect=True) -> None:
-        old_logical_rect = self.logical_unpadded_rect()
-        if isinstance(rect, List):
-            rect = QRectF(*rect)
-        if padding:
-            rect = self.padRect(rect)
-        self.setPos(rect.topLeft())
-        self.prepareGeometryChange()
-        self._display_rect = rect
-        self.layout.setMaxSize(rect.width(), rect.height())
-        self.setCenterTransform()
-        if (
-            self.fontformat.gradient_enabled
-            and not self.repainting
-            and self.logical_unpadded_rect() != old_logical_rect
-        ):
-            self._refresh_gradient_geometry()
-        if repaint:
-            self.repaint_background()
-
-        if update_blk_rect:
-            self.blk._bounding_rect = self.absBoundingRect()
+        self.geometry_controller.set_rect(
+            rect,
+            padding=padding,
+            repaint=repaint,
+            update_blk_rect=update_blk_rect,
+        )
 
     def documentSize(self):
         return self.layout.documentSize()
 
     def boundingRect(self) -> QRectF:
-        br = super().boundingRect()
-        if self._display_rect is not None:
-            br.setHeight(self._display_rect.height())
-            br.setWidth(self._display_rect.width())
-        return br
+        controller = getattr(self, 'geometry_controller', None)
+        base_rect = super().boundingRect()
+        return base_rect if controller is None else controller.bounding_rect(base_rect)
 
     def padding(self) -> float:
         if self.layout is None:
@@ -439,41 +325,18 @@ class TextBlkItem(QGraphicsTextItem):
         return True
 
     def absBoundingRect(self, max_h=None, max_w=None, qrect=False) -> Union[List, QRectF]:
-        # This remains the logical, untransformed persistence/layout rectangle.
-        br = self.logical_unpadded_rect()
-        w, h = br.width(), br.height()
-        pos = self.pos()
-        x = pos.x() + br.x()
-        y = pos.y() + br.y()
-        if max_h is not None:
-            y = min(max(0, y), max_h)
-            y1 = y + h
-            h = min(max_h, y1) - y
-        if max_w is not None:
-            x = min(max(0, x), max_w)
-            x1 = x + w
-            w = min(max_w, x1) - x
-        if qrect:
-            return QRectF(x, y, w, h)
-        return [int(round(x)), int(round(y)), math.ceil(w), math.ceil(h)]
+        return self.geometry_controller.absolute_rect(max_h, max_w, qrect)
 
-    def shape(self) -> QPainterPath:
-        path = QPainterPath()
-        path.addRect(
-            self.boundingRect()
-            if self._text_transform_is_neutral()
-            else self.logical_unpadded_rect()
-        )
-        return path
+    def shape(self):
+        return self.geometry_controller.shape()
 
     def setScale(self, scale: float) -> None:
         if self._text_transform_is_neutral():
             self.setTransformOriginPoint(0, 0)
             super().setScale(scale)
-            self.setCenterTransform()
+            self.geometry_controller.sync_origin()
             return
-        with self._text_transform_update():
-            self.setCenterTransform()
+        with self.geometry_controller.update_transaction():
             super().setScale(scale)
 
     def setRotation(self, angle: float) -> None:
@@ -489,16 +352,11 @@ class TextBlkItem(QGraphicsTextItem):
         raise NotImplementedError
 
     def setAngle(self, angle: int):
-        angle = TextItemTransformController.validate_rotation_angle(angle)
-
-        with self._text_transform_update():
-            self.setCenterTransform()
+        with self.geometry_controller.update_transaction():
             # Preview/meta-property paths intentionally do not mutate the
             # model, so the live Qt property is the authoritative comparison.
             if self.rotation() != angle:
                 self.setRotation(angle)
-            if self.rotation() != angle:
-                raise RuntimeError('rotation change was rejected')
             self.blk.angle = angle
 
     def setVertical(self, vertical: bool):
@@ -557,18 +415,16 @@ class TextBlkItem(QGraphicsTextItem):
             layout = HorizontalTextDocumentLayout(doc, self.fontformat)
         self.layout = layout
         doc.setDocumentLayout(layout)
-        controller = self._transform_controller
-        if controller is not None:
-            controller.initialize_layout(
-                persistent_cache=controller.preview is None,
-            )
+        controller = self.geometry_controller
+        controller.initialize_layout(
+            persistent_cache=controller.preview is None,
+        )
         layout.setEffectPadding(effect_padding)
         layout.size_enlarged.connect(self.on_document_enlarged)
         layout.documentSizeChanged.connect(self.docSizeChanged)
         
         if valid_layout:
             layout.setMaxSize(rect.width(), rect.height())
-            self.setCenterTransform()
             self.repaint_background()
         self.doc_size_changed.emit(self.idx)
 
@@ -1228,24 +1084,6 @@ class TextBlkItem(QGraphicsTextItem):
             if repaint:
                 self.repaint_background()
 
-    def _size_alignment_anchor(self, rect: QRectF) -> QPointF:
-        """Return the semantic anchor preserved by automatic resizing."""
-        if (
-            self.fontformat.vertical
-            or self.fontformat.alignment == TextAlignment.Right
-        ):
-            return rect.topRight()
-        if self.fontformat.alignment == TextAlignment.Left:
-            return rect.topLeft()
-        return rect.center()
-
-    def scene_scale_factor(self):
-        """Return the legacy scene scale used by neutral resize positioning."""
-        scale = 1
-        if hasattr(self.scene(), 'scale_factor'):
-            scale = self.scene().scale_factor
-        return scale
-
     def set_size(
         self,
         w: float,
@@ -1253,93 +1091,9 @@ class TextBlkItem(QGraphicsTextItem):
         set_layout_maxsize=False,
         set_blk_size=True,
     ):
-        """Resize with affine anchor correction only for active box transforms.
-
-        Neutral box geometry deliberately follows the BASE implementation.
-        Active affine geometry blocks the layout signal until the display rect,
-        transform, anchor, and document size agree.
-        """
-        controller = self._transform_controller
-        if controller is None or not controller.requires_custom_resize():
-            if set_layout_maxsize:
-                self.layout.setMaxSize(w, h)
-
-            old_w = self._display_rect.width()
-            old_h = self._display_rect.height()
-            old_center = self.sceneBoundingRect().center()
-            self._display_rect.setWidth(w)
-            self._display_rect.setHeight(h)
-            self.setCenterTransform()
-            pos_shift = old_center - self.sceneBoundingRect().center()
-            pos_shift = pos_shift / self.scene_scale_factor()
-
-            align_center = align_top_left = align_top_right = False
-            if self.fontformat.vertical:
-                align_top_right = True
-            else:
-                alignment = self.fontformat.alignment
-                if alignment == TextAlignment.Left:
-                    align_top_left = True
-                elif alignment == TextAlignment.Right:
-                    align_top_right = True
-                else:
-                    align_center = True
-
-            if not align_center:
-                dw, dh = (w - old_w) / 2, (h - old_h) / 2
-                if align_top_right:
-                    dw = -dw
-                rad = -np.deg2rad(self.rotation())
-                c, s = np.cos(rad), np.sin(rad)
-                dx = c * dw + s * dh
-                dy = -s * dw + c * dh
-                pos_shift = pos_shift + QPointF(dx, dy)
-
-            self.setPos(self.pos() + pos_shift)
-            if self.blk is not None and set_blk_size:
-                self.blk._bounding_rect = self.absBoundingRect()
-            return
-
-        if self.transformations():
-            raise RuntimeError(
-                'TextBlkItem requires an empty QGraphicsTransform list'
-            )
-        old_rect = self.logical_unpadded_rect()
-        old_anchor_parent = self.mapToParent(
-            self._size_alignment_anchor(old_rect)
+        self.geometry_controller.resize(
+            w,
+            h,
+            set_layout_maxsize=set_layout_maxsize,
+            set_blk_size=set_blk_size,
         )
-
-        # Both the custom display rect and a synchronous QTextDocument relayout
-        # can change boundingRect(), so notify the scene before either mutation.
-        self.prepareGeometryChange()
-        signals_were_blocked = None
-        final_size = None
-        if set_layout_maxsize:
-            signals_were_blocked = self.layout.blockSignals(True)
-        try:
-            if set_layout_maxsize:
-                self.layout.setMaxSize(w, h)
-                final_size = QSizeF(self.layout.documentSize())
-                w = final_size.width()
-                h = final_size.height()
-
-            with self._text_transform_update():
-                self._display_rect.setWidth(w)
-                self._display_rect.setHeight(h)
-                self.setCenterTransform()
-                new_rect = self.logical_unpadded_rect()
-                new_anchor_parent = self.mapToParent(
-                    self._size_alignment_anchor(new_rect)
-                )
-                self.setPos(
-                    self.pos() + old_anchor_parent - new_anchor_parent
-                )
-
-            if self.blk is not None and set_blk_size:
-                self.blk._bounding_rect = self.absBoundingRect()
-        finally:
-            if set_layout_maxsize:
-                self.layout.blockSignals(signals_were_blocked)
-
-        if set_layout_maxsize and not signals_were_blocked:
-            self.layout.documentSizeChanged.emit(QSizeF(final_size))

@@ -313,7 +313,7 @@ class TextTransformUndoTest(unittest.TestCase):
 
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.set_text_transform(FIRST_TRANSFORM)
-        geometry_cache = item.transform_controller.layout_renderer.geometry_cache
+        geometry_cache = item.geometry_controller.layout_renderer.geometry_cache
         self.assertTrue(geometry_cache.persistent)
         box_preview = FIRST_TRANSFORM.with_value('horizontal_scale', 1.4)
         item.set_text_transform(box_preview, preview=True)
@@ -383,7 +383,7 @@ class TextTransformUndoTest(unittest.TestCase):
                 GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE.clear()
                 item, _ = self._make_pair(0, TEST_LINES[1], vertical)
 
-                self.assertIsNone(item._transform_controller)
+                self.assertIsNone(item.geometry_controller.layout_renderer)
                 self.assertIsNone(item.layout.render_delegate)
                 self.assertIsNone(
                     item.effect_renderer._transformed_effect_state
@@ -399,7 +399,6 @@ class TextTransformUndoTest(unittest.TestCase):
 
                 box_only = SlantTextTransform(1.2, 0.9, 8.0, 0.0)
                 item.set_text_transform(box_only)
-                self.assertIsNotNone(item._transform_controller)
                 self.assertIsNone(item.layout.render_delegate)
                 self.assertTrue(
                     bool(
@@ -411,11 +410,11 @@ class TextTransformUndoTest(unittest.TestCase):
                 item.set_text_transform(FIRST_TRANSFORM)
                 self.assertIs(
                     item.layout.render_delegate,
-                    item.transform_controller.layout_renderer,
+                    item.geometry_controller.layout_renderer,
                 )
 
                 item.set_text_transform(NEUTRAL)
-                self.assertIsNone(item._transform_controller)
+                self.assertIsNone(item.geometry_controller.layout_renderer)
                 self.assertIsNone(item.layout.render_delegate)
                 self.assertFalse(
                     bool(

@@ -128,8 +128,8 @@ class TextEffectRenderer:
         return self.item.layout
 
     @property
-    def transform_controller(self):
-        return self.item._transform_controller
+    def geometry_controller(self):
+        return self.item.geometry_controller
 
     @property
     def repainting(self):
@@ -181,8 +181,7 @@ class TextEffectRenderer:
         return self.item._effective_text_transform()
 
     def _glyph_slant_angle(self) -> float:
-        controller = self.transform_controller
-        return 0.0 if controller is None else controller.glyph_slant_angle()
+        return self.geometry_controller.glyph_slant_angle()
 
     def clear_cached_surface(self) -> None:
         self.background_pixmap = None
@@ -432,7 +431,7 @@ class TextEffectRenderer:
                 source_painter.translate(-rect.topLeft())
                 fragment_context = self._effect_paint_context()
                 fragment_context.selections = selections
-                self.transform_controller.layout_renderer.draw_glyph_selection_mask(
+                self.geometry_controller.layout_renderer.draw_glyph_selection_mask(
                     source_painter, fragment_context
                 )
             finally:
@@ -515,7 +514,7 @@ class TextEffectRenderer:
         # same live glyph runs and orientation transforms as paint.  Avoid the
         # legacy expanding scratch-image loop for this path.
         if self._glyph_slant_angle() != 0.0:
-            return self.transform_controller.layout_ink_bounds()
+            return self.geometry_controller.layout_ink_bounds()
 
         # QTextLayout.boundingRect() includes bookkeeping lines and does not
         # include every custom vertical rotation/offset. Paint the attached
@@ -535,7 +534,7 @@ class TextEffectRenderer:
 
         def bounded_vector_fallback(error: Exception) -> QRectF:
             self._warn_effect_allocation_once(error)
-            bounds = self.transform_controller.layout_ink_bounds()
+            bounds = self.geometry_controller.layout_ink_bounds()
             return bounds.translated(-logical_rect.topLeft())
 
         while True:

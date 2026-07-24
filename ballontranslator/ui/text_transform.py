@@ -287,7 +287,7 @@ class SlantTextTransformStrategy(TextTransformStrategy):
     def visual_is_neutral(self, item) -> bool:
         return (
             super().visual_is_neutral(item)
-            and item.transform_controller.glyph_slant_angle() == 0.0
+            and item.geometry_controller.glyph_slant_angle() == 0.0
         )
 
     def apply_layout(
@@ -301,9 +301,9 @@ class SlantTextTransformStrategy(TextTransformStrategy):
         if transform.glyph_slant_angle == 0.0:
             return self._finish_layout_change(
                 item,
-                item.transform_controller.detach_layout_renderer(),
+                item.geometry_controller.detach_layout_renderer(),
             )
-        renderer = item.transform_controller.attach_layout_renderer(
+        renderer = item.geometry_controller.attach_layout_renderer(
             self.transform_type,
             GlyphSlantLayoutRenderer,
         )
@@ -322,7 +322,7 @@ class SlantTextTransformStrategy(TextTransformStrategy):
             return False, False
         return self._finish_layout_change(
             item,
-            item.transform_controller.detach_layout_renderer(),
+            item.geometry_controller.detach_layout_renderer(),
         )
 
     @staticmethod
@@ -346,8 +346,8 @@ class SlantTextTransformStrategy(TextTransformStrategy):
         if item.layout is None:
             return False
         if transform.glyph_slant_angle == 0.0:
-            return item.transform_controller.detach_layout_renderer()
-        renderer = item.transform_controller.attach_layout_renderer(
+            return item.geometry_controller.detach_layout_renderer()
+        renderer = item.geometry_controller.attach_layout_renderer(
             self.transform_type,
             GlyphSlantLayoutRenderer,
         )

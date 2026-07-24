@@ -179,13 +179,19 @@ def create_text_transform(transform_type: str) -> TextTransform:
 
 
 def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
-    """Return a normalized transform value or typed persisted payload.
+    """Normalize a live value or construct a canonical persisted payload.
 
     >>> transform = coerce_text_transform(
     ...     {'transform_type': 'slant', 'slant_angle': 5}
     ... )
     >>> transform.slant_angle
     5.0
+    >>> coerce_text_transform(
+    ...     {'transform_type': 'slant', 'horizontal_scale': 5}
+    ... )
+    Traceback (most recent call last):
+    ...
+    ValueError: persisted slant transform values must be canonical
     """
     if isinstance(value, TextTransform):
         return value.normalized()
@@ -204,7 +210,13 @@ def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
         raise ValueError(
             f'unsupported {transform_type} transform fields: {sorted(unexpected)}'
         )
-    return transform_class(**payload).normalized()
+    transform = transform_class(**payload)
+    normalized = transform.normalized()
+    if transform != normalized:
+        raise ValueError(
+            f'persisted {transform_type} transform values must be canonical'
+        )
+    return transform
 
 
 def pt2px(pt, to_int=False) -> float:
