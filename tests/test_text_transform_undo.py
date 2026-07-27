@@ -1,3 +1,5 @@
+import copy
+import math
 import os
 import unittest
 from types import SimpleNamespace
@@ -5,9 +7,23 @@ from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QRectF
-from qtpy.QtGui import QColor, QImage, QInputMethodEvent, QPainter, QTextCursor
-from qtpy.QtWidgets import QApplication, QGraphicsItem, QGraphicsScene
+from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtGui import (
+    QColor,
+    QImage,
+    QInputMethodEvent,
+    QPainter,
+    QTextCursor,
+)
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import (
+    QApplication,
+    QGraphicsItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QStyleOptionGraphicsItem,
+)
 
 try:
     from qtpy.QtGui import QUndoStack
@@ -23,6 +39,7 @@ from ballontranslator.ui.textedit_commands import (
     propagate_user_edit,
 )
 from ballontranslator.ui.textitem import TextBlkItem
+from ballontranslator.ui.texteditshapecontrol import TextBlkShapeControl
 from ballontranslator.ui.text_effects.glyph import (
     GLOBAL_GLYPH_GEOMETRY_CACHE,
     GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE,
@@ -271,6 +288,28 @@ class TextTransformUndoTest(unittest.TestCase):
                 self.assertEqual(self._render_scene(scene), neutral_pixels)
                 scene.removeItem(item)
 
+    def test_persisted_box_transform_is_installed_on_fresh_items(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                block = TextBlock([40, 50, 440, 250])
+                block._bounding_rect = [40, 50, 400, 200]
+                block.vertical = vertical
+                block.angle = 17.0
+                block.translation = TEST_LINES[0]
+                block.fontformat.text_transform = FIRST_TRANSFORM
+
+                for source in (block, copy.deepcopy(block)):
+                    item = TextBlkItem(source, 0)
+                    expected = item.geometry_controller.compensated_matrix(
+                        FIRST_TRANSFORM
+                    )
+                    self.assertFalse(item.transform().isIdentity())
+                    self.assertEqual(item.transform(), expected)
+
+                    before = item.transform()
+                    item.setRect(item.absBoundingRect(qrect=True))
+                    self.assertEqual(item.transform(), before)
+
     def test_global_geometry_cache_isolated_by_layout_and_preview(self):
         cache = WeightedGlyphGeometryCache(max_entries=2, max_weight=10)
         cache.store('first', 1, weight=6)
@@ -452,6 +491,239 @@ class TextTransformUndoTest(unittest.TestCase):
                 self.assertEqual(item.absBoundingRect(qrect=True), after)
                 stack.redo()
                 self.assertEqual(item.absBoundingRect(qrect=True), after)
+
+    def test_transformed_control_hitboxes_stay_outside_text_item(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                scene = QGraphicsScene()
+                view = QGraphicsView(scene)
+                view.resize(900, 600)
+                base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+                scene.addItem(base)
+                item, _ = self._make_pair(0, TEST_LINES[0], vertical)
+                item.setParentItem(base)
+                item.set_logical_position(QPointF(100, 100))
+                item.set_text_transform(FIRST_TRANSFORM)
+                item.setRotation(23.0)
+                control = TextBlkShapeControl(view)
+                control.setParentItem(base)
+                control.setBlkItem(item)
+                view.show()
+                self.app.processEvents()
+                control.updateBoundingRect()
+                self.addCleanup(view.close)
+
+                true_points = [
+                    control.handleScenePoint(index) for index in range(8)
+                ]
+                outward_vectors = control._handle_outward_vectors_device(
+                    true_points
+                )
+                viewport_transform = view.viewportTransform()
+                item_transform = item.deviceTransform(viewport_transform)
+                item_origin = item_transform.map(QPointF())
+                item_axis = item_transform.map(QPointF(1, 0)) - item_origin
+                item_angle = math.degrees(
+                    math.atan2(item_axis.y(), item_axis.x())
+                )
+                for index, handle in enumerate(control.ctrlblock_group):
+                    with self.subTest(vertical=vertical, handle=index):
+                        anchor = viewport_transform.map(true_points[index])
+                        hitbox = viewport_transform.map(
+                            handle.mapToScene(handle.rect())
+                        )
+                        visible = viewport_transform.map(
+                            handle.mapToScene(handle.visible_rect)
+                        )
+                        outward = outward_vectors[index]
+                        hitbox_projections = [
+                            (point.x() - anchor.x()) * outward.x()
+                            + (point.y() - anchor.y()) * outward.y()
+                            for point in hitbox
+                        ]
+                        projections = [
+                            (point.x() - anchor.x()) * outward.x()
+                            + (point.y() - anchor.y()) * outward.y()
+                            for point in visible
+                        ]
+                        self.assertGreaterEqual(
+                            min(hitbox_projections), -0.1
+                        )
+                        self.assertAlmostEqual(
+                            min(projections), 0.0, delta=0.1
+                        )
+                        handle_transform = handle.deviceTransform(
+                            viewport_transform
+                        )
+                        handle_origin = handle_transform.map(QPointF())
+                        handle_axis = (
+                            handle_transform.map(QPointF(1, 0))
+                            - handle_origin
+                        )
+                        handle_angle = math.degrees(
+                            math.atan2(handle_axis.y(), handle_axis.x())
+                        )
+                        angle_delta = (
+                            handle_angle - item_angle + 180
+                        ) % 360 - 180
+                        self.assertAlmostEqual(
+                            angle_delta, 0.0, delta=0.01
+                        )
+
+    def test_control_click_preserves_multi_selection(self):
+        for transform in (NEUTRAL, FIRST_TRANSFORM):
+            with self.subTest(transform=transform.transform_type):
+                scene = QGraphicsScene()
+                view = QGraphicsView(scene)
+                view.resize(500, 260)
+                base = QGraphicsRectItem(QRectF(0, 0, 420, 180))
+                scene.addItem(base)
+                items = []
+                for index, x in enumerate((20, 180)):
+                    block = TextBlock(
+                        [x, 30, x + 100, 70],
+                        _bounding_rect=[x, 30, 100, 40],
+                        translation=TEST_LINES[index],
+                    )
+                    item = TextBlkItem(block, index)
+                    item.setParentItem(base)
+                    item.set_text_transform(transform)
+                    items.append(item)
+
+                control = TextBlkShapeControl(view)
+                control.setParentItem(base)
+                control.setBlkItem(items[1])
+                items[0].setSelected(True)
+                view.show()
+                self.app.processEvents()
+                control.updateBoundingRect()
+                self.addCleanup(view.close)
+
+                logical = items[1].logical_unpadded_rect()
+                interior = items[1].mapToScene(
+                    QPointF(logical.center().x(), logical.top() + 4.0)
+                )
+                QTest.mouseClick(
+                    view.viewport(),
+                    Qt.MouseButton.LeftButton,
+                    Qt.KeyboardModifier.ControlModifier,
+                    view.mapFromScene(interior),
+                )
+                self.app.processEvents()
+                self.assertTrue(items[0].isSelected())
+                self.assertTrue(items[1].isSelected())
+
+                handle_center = control.handleDisplayScenePoint(1)
+                QTest.mouseClick(
+                    view.viewport(),
+                    Qt.MouseButton.LeftButton,
+                    Qt.KeyboardModifier.ControlModifier,
+                    view.mapFromScene(handle_center),
+                )
+                self.app.processEvents()
+                self.assertTrue(items[0].isSelected())
+                self.assertFalse(items[1].isSelected())
+
+    def test_shape_controls_reset_across_page_item_boundary(self):
+        for stale_state in ("editing", "reshape"):
+            with self.subTest(stale_state=stale_state):
+                scene = QGraphicsScene()
+                view = QGraphicsView(scene)
+                base = QGraphicsRectItem(QRectF(0, 0, 500, 300))
+                scene.addItem(base)
+                old_item, _ = self._make_pair(0, TEST_LINES[0], False)
+                new_item, _ = self._make_pair(1, TEST_LINES[1], True)
+                new_item.set_text_transform(FIRST_TRANSFORM)
+                old_item.setParentItem(base)
+                new_item.setParentItem(base)
+                control = TextBlkShapeControl(view)
+                control.setParentItem(base)
+                control.setBlkItem(old_item)
+                self.addCleanup(view.close)
+
+                if stale_state == "editing":
+                    old_item.startEdit()
+                    control.startEditing()
+                else:
+                    control.reshaping = True
+                    control.ctrlblock_group[0].drag_mode = (
+                        control.ctrlblock_group[0].DRAG_RESHAPE
+                    )
+                    control.hideControls()
+
+                control.setBlkItem(None)
+                control.setBlkItem(new_item)
+
+                self.assertFalse(control.reshaping)
+                self.assertTrue(control.isVisible())
+                self.assertTrue(
+                    all(
+                        handle.isVisible()
+                        and handle.drag_mode == handle.DRAG_NONE
+                        for handle in control.ctrlblock_group
+                    )
+                )
+
+    def test_shape_control_outline_contrasts_with_background(self):
+        view = QGraphicsView()
+        control = TextBlkShapeControl(view)
+        control.setRect(QRectF(20, 20, 80, 40))
+        self.addCleanup(view.close)
+
+        def render(background):
+            image = QImage(120, 80, QImage.Format.Format_ARGB32)
+            image.fill(background)
+            painter = QPainter(image)
+            control.paint(
+                painter,
+                QStyleOptionGraphicsItem(),
+                None,
+            )
+            painter.end()
+            return image
+
+        on_black = render(QColor(Qt.GlobalColor.black))
+        on_white = render(QColor(Qt.GlobalColor.white))
+        contrast_pixels = []
+        for y in range(on_black.height()):
+            for x in range(on_black.width()):
+                black_pixel = on_black.pixelColor(x, y)
+                white_pixel = on_white.pixelColor(x, y)
+                if (
+                    black_pixel.red() > 220
+                    and black_pixel.green() > 220
+                    and black_pixel.blue() > 220
+                    and white_pixel.red() < 35
+                    and white_pixel.green() < 35
+                    and white_pixel.blue() < 35
+                ):
+                    contrast_pixels.append((x, y))
+        self.assertTrue(contrast_pixels)
+
+    def test_item_owned_selection_guide_can_be_suppressed_for_export(self):
+        for transform in (NEUTRAL, FIRST_TRANSFORM):
+            with self.subTest(transform=transform.transform_type):
+                item, _ = self._make_pair(0, TEST_LINES[3], False)
+                item.set_logical_position(QPointF(50, 50))
+                item.set_text_transform(transform)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                self.app.processEvents()
+
+                unselected = self._render_scene(scene)
+                item.setSelected(True)
+                self.app.processEvents()
+                selected = self._render_scene(scene)
+                self.assertNotEqual(selected, unselected)
+
+                item.under_ctrl = True
+                item.update()
+                self.app.processEvents()
+                self.assertEqual(self._render_scene(scene), selected)
+
+                item.set_ui_guide_suppressed(True)
+                self.app.processEvents()
+                self.assertEqual(self._render_scene(scene), unselected)
 
 
 if __name__ == "__main__":

@@ -502,11 +502,9 @@ class FontFormatPanel(Widget):
     def _transform_with_value(transform, param_name, value):
         return transform.with_value(param_name, value)
 
-    def _sync_text_transform_overlays(self):
-        if self._transform_items:
-            SW.canvas.sync_text_item_overlays(self._transform_items)
-        else:
-            SW.canvas.sync_text_overlays()
+    def _refresh_text_transform_geometry(self):
+        for item in self._transform_items:
+            item.update()
 
     def _refresh_text_transform_controls(self, refresh_shape=True):
         if self._transform_items:
@@ -524,7 +522,7 @@ class FontFormatPanel(Widget):
                 active_format.text_transform
             )
         if refresh_shape:
-            self._sync_text_transform_overlays()
+            self._refresh_text_transform_geometry()
 
     def on_text_transform_commit(self, param_name: str, value: float):
         if not self._transform_items:
@@ -583,6 +581,7 @@ class FontFormatPanel(Widget):
             self._refresh_text_transform_controls(refresh_shape=False)
 
     def on_text_transform_preview(self, param_name: str, canonical_delta: float):
+        # why preview is needed for transform?
         if not self._transform_items:
             if (
                 self._transform_drag_param != param_name
@@ -624,7 +623,7 @@ class FontFormatPanel(Widget):
             if item.set_text_transform(transform, preview=True):
                 changed_items.append(item)
         if changed_items:
-            self._sync_text_transform_overlays()
+            self._refresh_text_transform_geometry()
 
     def on_text_transform_drag_commit(self, param_name: str, canonical_delta: float):
         if (
@@ -662,7 +661,7 @@ class FontFormatPanel(Widget):
                     item.clear_text_transform_preview() or geometry_changed
                 )
             if geometry_changed:
-                self._sync_text_transform_overlays()
+                self._refresh_text_transform_geometry()
         else:
             SW.canvas.push_undo_command(command)
 
@@ -679,7 +678,7 @@ class FontFormatPanel(Widget):
             self._refresh_text_transform_controls(refresh_shape=False)
             return
         if geometry_changed:
-            self._sync_text_transform_overlays()
+            self._refresh_text_transform_geometry()
 
     def _cancel_text_transform_previews(self):
         for control in self.textadvancedfmt_panel.transform_controls.values():

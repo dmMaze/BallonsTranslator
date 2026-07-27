@@ -20,7 +20,7 @@ from qtpy.QtGui import (
     QTextDocument,
     QTextLayout,
 )
-from qtpy.QtWidgets import QStyle
+from qtpy.QtWidgets import QStyle, QWidget
 
 from ballontranslator.utils.fontformat import FontFormat, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
@@ -187,7 +187,22 @@ class TextEffectRenderer:
         self.background_pixmap = None
         self.background_pixmap_scale = None
 
-    def paint_item(self, painter, option, widget, base_paint) -> None:
+    def __paint_flip(self, base_paint, option):
+
+        target_map = QPixmap(self.boundingRect().size().toSize())
+        target_map.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(target_map)
+        painter.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform
+        )
+        painter.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_DestinationOver
+        )
+        base_paint(painter, option, None)
+
+        return target_map
+
+    def paint_item(self, painter: QPainter, option, widget: QWidget, base_paint) -> None:
         """Paint effects around the host item's normal text pass."""
         if self._text_transform_is_neutral():
             editing = self.item.is_editting()

@@ -6,7 +6,7 @@ from typing import Optional, TYPE_CHECKING
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRectF, QSizeF
-from qtpy.QtGui import QPainterPath
+from qtpy.QtGui import QPainterPath, QPolygonF
 from qtpy.QtWidgets import QGraphicsItem
 
 from ballontranslator.utils.fontformat import TextTransform, coerce_text_transform
@@ -81,10 +81,16 @@ class TextItemGeometryController:
         return result
 
     def finish_initialization(self) -> None:
+        transform = self.effective()
         self.item.setFlag(
             QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges,
             self.requires_custom_resize(),
         )
+        # Initial layout construction establishes the final logical rectangle
+        # and transform origin before ItemSendsGeometryChanges is enabled.
+        # Install persisted box geometry explicitly; otherwise it remains
+        # dormant until a later reshape happens to change the origin.
+        self.install(transform)
         self.request_update()
         self._update_depth = 0
         self._flush_update()
@@ -181,6 +187,16 @@ class TextItemGeometryController:
 
     def visual_polygon_in_scene(self):
         return self.visual_polygon(self.logical_rect())
+
+    def visual_polygon_in_item(self):
+        """Return the strategy-owned visual guide in item paint coordinates."""
+        item = self.item
+        return QPolygonF(
+            [
+                item.mapFromScene(point)
+                for point in self.visual_polygon_in_scene()
+            ]
+        )
 
     def visual_bounds_in_scene(self) -> QRectF:
         return self.visual_polygon_in_scene().boundingRect()

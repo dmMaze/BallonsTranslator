@@ -4,7 +4,8 @@ from typing import List, Tuple, Union
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
 from qtpy.QtCore import Qt, QRectF, QPointF, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor, QPixmap,
-                       QInputMethodEvent, QPainter, QColor, QTextCharFormat)
+                       QInputMethodEvent, QPainter, QColor, QTextCharFormat,
+                       QBrush, QPen)
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
@@ -33,12 +34,12 @@ class TextBlkItem(QGraphicsTextItem):
     rotated = Signal(float)
     reshaped = Signal(QGraphicsTextItem)
     leftbutton_pressed = Signal(int)
-    doc_size_changed = Signal(int)
     pasted = Signal(int)
     redo_signal = Signal()
     undo_signal = Signal()
     push_undo_stack = Signal(int, bool)
     propagate_user_edited = Signal(int, str, bool)
+    visual_geometry_changed = Signal()
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -51,6 +52,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.reshaping = False
         self.under_ctrl = False
         self.draw_rect = show_rect
+        self._ui_guide_suppressed = False
         self.old_ffmt_values = None
         
         self.idx = idx
@@ -123,6 +125,7 @@ class TextBlkItem(QGraphicsTextItem):
                     self.push_undo_stack.emit(new_steps, self.is_formatting)
 
         if not (self.hasFocus() and self.pre_editing):
+            # why _update_effect_padding and _refresh_gradient_geometry
             self._update_effect_padding()
             if self.fontformat.gradient_enabled:
                 self._refresh_gradient_geometry()
@@ -156,9 +159,9 @@ class TextBlkItem(QGraphicsTextItem):
     def docSizeChanged(self):
         # A padding change routes through setRect(), which synchronizes the
         # origin after updating the display rectangle.
+        # why _update_effect_padding?
         if not self._update_effect_padding():
             self.geometry_controller.sync_origin()
-        self.doc_size_changed.emit(self.idx)
 
     def initTextBlock(self, blk: TextBlock = None, set_format=True):
         self.blk = blk
@@ -240,10 +243,16 @@ class TextBlkItem(QGraphicsTextItem):
         *,
         preview: bool = False,
     ) -> bool:
-        return self.geometry_controller.set(transform, preview=preview)
+        changed = self.geometry_controller.set(transform, preview=preview)
+        if changed:
+            self.visual_geometry_changed.emit()
+        return changed
 
     def clear_text_transform_preview(self) -> bool:
-        return self.geometry_controller.clear_preview()
+        changed = self.geometry_controller.clear_preview()
+        if changed:
+            self.visual_geometry_changed.emit()
+        return changed
 
     def logical_unpadded_rect(self) -> QRectF:
         """Return the untransformed, effect-free block rect in item coordinates."""
@@ -265,7 +274,10 @@ class TextBlkItem(QGraphicsTextItem):
 
     def set_logical_position(self, point: QPointF) -> bool:
         """Move the logical top-left independently of paint padding."""
-        return self.geometry_controller.set_logical_position(point)
+        changed = self.geometry_controller.set_logical_position(point)
+        if changed:
+            self.visual_geometry_changed.emit()
+        return changed
 
     def startReshape(self):
         self.oldRect = self.absBoundingRect(qrect=True)
@@ -285,6 +297,7 @@ class TextBlkItem(QGraphicsTextItem):
             repaint=repaint,
             update_blk_rect=update_blk_rect,
         )
+        self.visual_geometry_changed.emit()
 
     def documentSize(self):
         return self.layout.documentSize()
@@ -331,18 +344,24 @@ class TextBlkItem(QGraphicsTextItem):
         return self.geometry_controller.shape()
 
     def setScale(self, scale: float) -> None:
+        previous = self.scale()
         if self._text_transform_is_neutral():
             self.setTransformOriginPoint(0, 0)
             super().setScale(scale)
             self.geometry_controller.sync_origin()
-            return
-        with self.geometry_controller.update_transaction():
-            super().setScale(scale)
+        else:
+            with self.geometry_controller.update_transaction():
+                super().setScale(scale)
+        if self.scale() != previous:
+            self.visual_geometry_changed.emit()
 
     def setRotation(self, angle: float) -> None:
         # Qt meta-property writes bypass this Python override; itemChange() is
         # the authoritative compensation and finalization path.
+        previous = self.rotation()
         super().setRotation(angle)
+        if self.rotation() != previous:
+            self.visual_geometry_changed.emit()
 
     @property
     def angle(self) -> int:
@@ -426,8 +445,6 @@ class TextBlkItem(QGraphicsTextItem):
         if valid_layout:
             layout.setMaxSize(rect.width(), rect.height())
             self.repaint_background()
-        self.doc_size_changed.emit(self.idx)
-
         if is_editing:
             self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
             self.setFocus()
@@ -511,7 +528,45 @@ class TextBlkItem(QGraphicsTextItem):
             widget,
             super().paint,
         )
+        self._paint_ui_guide(painter)
 
+    def _paint_ui_guide(self, painter: QPainter) -> None:
+        """Paint selection/block guides outside cached effect surfaces."""
+        if (
+            self._ui_guide_suppressed
+            or self.is_editting()
+        ):
+            return
+        selected = self.isSelected()
+        draw_rect = self.draw_rect and not self.under_ctrl
+        if not selected and not draw_rect:
+            return
+        polygon = self.geometry_controller.visual_polygon_in_item()
+        if polygon.isEmpty():
+            return
+        painter.save()
+        try:
+            pen = QPen(
+                TEXTRECT_SELECTED_COLOR if selected else TEXTRECT_SHOW_COLOR,
+                3.5 if selected else 3.0,
+                Qt.PenStyle.DashLine if selected else Qt.PenStyle.SolidLine,
+            )
+            pen.setCosmetic(True)
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
+            painter.setPen(pen)
+            painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            painter.drawPolygon(polygon)
+        finally:
+            painter.restore()
+
+    def set_ui_guide_suppressed(self, suppressed: bool) -> None:
+        suppressed = bool(suppressed)
+        if self._ui_guide_suppressed == suppressed:
+            return
+        self._ui_guide_suppressed = suppressed
+        self.update()
 
 
     def startEdit(self, pos: QPointF = None) -> None:
@@ -1079,8 +1134,6 @@ class TextBlkItem(QGraphicsTextItem):
             mh += P
             mw += P
             self.set_size(mw, mh, set_layout_maxsize=True, set_blk_size=True)
-            if self._text_transform_is_neutral() and self.under_ctrl:
-                self.doc_size_changed.emit(self.idx)
             if repaint:
                 self.repaint_background()
 
@@ -1097,3 +1150,4 @@ class TextBlkItem(QGraphicsTextItem):
             set_layout_maxsize=set_layout_maxsize,
             set_blk_size=set_blk_size,
         )
+        self.visual_geometry_changed.emit()

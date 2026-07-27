@@ -1,5 +1,4 @@
 import math
-from typing import Callable, Optional
 
 from qtpy.QtWidgets import (
     QGraphicsItem,
@@ -27,18 +26,43 @@ from .cursor import (
     rotateCursorList,
     scene_angle_to_cursor_index,
 )
-from .textitem import TEXTRECT_SELECTED_COLOR, TextBlkItem
-from .text_overlay import (
-    OVERLAY_DEVICE_GUARD,
-    UI_OVERLAY_ITEM_DATA_KEY,
-    device_pixels_to_local,
-)
+from .textitem import TextBlkItem
 from .text_transform import rect_polygon
 
 
 CBEDGE_WIDTH = 30
 VISUALIZE_HITBOX = False
 PROXY_HANDLE_VIEWPORT_INSET = 12.0
+CONTROL_DEVICE_GUARD = 2.0
+CONTROL_ITEM_DATA_KEY = 0x1238
+
+
+def device_pixels_to_local(item: QGraphicsItem, pixels: float) -> float:
+    """Return a conservative item-local radius for a device-pixel radius.
+
+    >>> device_pixels_to_local(QGraphicsRectItem(), 2.0)
+    2.0
+    """
+    radii = [float(pixels)]
+    scene = item.scene()
+    if scene is None:
+        return radii[0]
+    for view in scene.views():
+        inverse, invertible = item.deviceTransform(
+            view.viewportTransform()
+        ).inverted()
+        if not invertible:
+            continue
+        origin = inverse.map(QPointF())
+        for x, y in (
+            (pixels, 0.0),
+            (0.0, pixels),
+            (pixels, pixels),
+            (pixels, -pixels),
+        ):
+            delta = inverse.map(QPointF(x, y)) - origin
+            radii.append(max(abs(delta.x()), abs(delta.y())))
+    return max(radii)
 
 
 class ControlBlockItem(QGraphicsRectItem):
@@ -55,26 +79,72 @@ class ControlBlockItem(QGraphicsRectItem):
         self.drag_mode = self.DRAG_NONE
         self.rotate_start = 0.0
         self.rotate_original = 0.0
+        self._outward_device = QPointF()
+        self._attached_to_item = False
+        self._device_angle = 0.0
         self.setAcceptHoverEvents(True)
         self.setFlag(
             QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations,
             True,
         )
-        self.setData(UI_OVERLAY_ITEM_DATA_KEY, True)
+        # QGraphicsRectItem otherwise expands shape() for its default pen,
+        # making a boundary-attached exterior hitbox overlap the text item.
+        self.setPen(QPen(Qt.PenStyle.NoPen))
+        self.setData(CONTROL_ITEM_DATA_KEY, True)
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
         self.updateEdgeWidth(CBEDGE_WIDTH)
 
     def updateEdgeWidth(self, edge_width: float):
         self.edge_width = edge_width
-        visible_len = edge_width / 2
         self.pen_width = edge_width / CBEDGE_WIDTH * 2
+        self.setRect(-edge_width / 2, -edge_width / 2, edge_width, edge_width)
+        self._updateVisibleRect()
+
+    def setOutwardDeviceVector(
+        self, outward: QPointF, attached_to_item: bool
+    ) -> None:
+        self._outward_device = QPointF(outward)
+        self._attached_to_item = bool(attached_to_item)
+        self._updateVisibleRect()
+
+    def setDeviceAngle(self, angle: float) -> None:
+        self._device_angle = float(angle)
+        self.setRotation(self._device_angle)
+        self._updateVisibleRect()
+
+    def _outwardInLocal(self, outward: QPointF) -> QPointF:
+        radians = math.radians(self._device_angle)
+        cosine = math.cos(radians)
+        sine = math.sin(radians)
+        return QPointF(
+            cosine * outward.x() + sine * outward.y(),
+            -sine * outward.x() + cosine * outward.y(),
+        )
+
+    def supportRadius(self, outward: QPointF) -> float:
+        local = self._outwardInLocal(outward)
+        return self.edge_width / 2 * (
+            abs(local.x()) + abs(local.y())
+        )
+
+    def _updateVisibleRect(self) -> None:
+        visible_len = self.edge_width / 2
+        center = QPointF()
+        if self._attached_to_item:
+            # The hitbox center is shifted by its support radius. Shift the
+            # smaller painted block back by the radius difference so its inner
+            # edge/corner touches the item's border, matching the old control.
+            outward_local = self._outwardInLocal(self._outward_device)
+            support = abs(outward_local.x()) + abs(outward_local.y())
+            center = outward_local * (
+                -(self.edge_width - visible_len) / 2 * support
+            )
         self.visible_rect = QRectF(
-            -visible_len / 2,
-            -visible_len / 2,
+            center.x() - visible_len / 2,
+            center.y() - visible_len / 2,
             visible_len,
             visible_len,
         )
-        self.setRect(-edge_width / 2, -edge_width / 2, edge_width, edge_width)
 
     def paint(
         self,
@@ -125,10 +195,26 @@ class ControlBlockItem(QGraphicsRectItem):
             self.setCursor(Qt.CursorShape.SizeAllCursor)
         return super().hoverLeaveEvent(event)
 
+    def resetInteraction(self) -> None:
+        scene = self.scene()
+        if scene is not None and scene.mouseGrabberItem() is self:
+            self.ungrabMouse()
+        self.drag_mode = self.DRAG_NONE
+        self.rotate_start = 0.0
+        self.rotate_original = 0.0
+        self.CURSOR_IDX = -1
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        self.ctrl.ctrlblockPressed()
         if event.button() == Qt.MouseButton.LeftButton and self.ctrl.blk_item is not None:
             blk_item = self.ctrl.blk_item
+            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                # Control-click is selection input even when the fixed-size
+                # handle happens to be the topmost scene item.
+                blk_item.setSelected(not blk_item.isSelected())
+                event.accept()
+                return
+            self.ctrl.ctrlblockPressed()
             blk_item.setSelected(True)
             if self.visible_rect.contains(event.pos()):
                 self.ctrl.reshaping = True
@@ -191,6 +277,13 @@ class ControlBlockItem(QGraphicsRectItem):
 
 
 class TextBlkShapeControl(QGraphicsRectItem):
+    """Render and manipulate the active text item's visual geometry.
+
+    >>> vector = TextBlkShapeControl._normalized_device_vector(3.0, 4.0)
+    >>> (round(vector.x(), 1), round(vector.y(), 1))
+    (0.6, 0.8)
+    """
+
     blk_item: TextBlkItem = None
     ctrl_block: ControlBlockItem = None
     reshaping: bool = False
@@ -209,15 +302,15 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._proxy_drag_idx = None
         self._proxy_pointer_device_start = None
         self._proxy_actual_scene_start = None
-        self.overlay_sync_callback: Optional[Callable[[], None]] = None
         self.ctrlblock_group = [ControlBlockItem(self, idx) for idx in range(8)]
 
-        pen = QPen(TEXTRECT_SELECTED_COLOR, 3.5, Qt.PenStyle.DashLine)
+        pen = QPen(QColor(69, 71, 87), 2, Qt.PenStyle.SolidLine)
+        pen.setDashPattern([7, 14])
         pen.setCosmetic(True)
         self.setPen(pen)
         self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
-        self.setData(UI_OVERLAY_ITEM_DATA_KEY, True)
+        self.setData(CONTROL_ITEM_DATA_KEY, True)
         self.setVisible(False)
 
         self.angleLabel = QLabel(parent)
@@ -230,14 +323,13 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.need_rescale = False
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
-    def requestOverlaySync(self):
-        if self.overlay_sync_callback is not None:
-            self.overlay_sync_callback()
-        elif self.blk_item is not None:
-            # Standalone/tests may construct the control without a manager.
-            # Production installs the callback and keeps invalidation ownership
-            # in TextOverlayManager.
+    def requestGeometryRefresh(self):
+        if self.blk_item is not None:
             self.updateBoundingRect()
+        else:
+            self.refreshDeviceGeometry()
+            if self.isVisible():
+                self.updateControlBlocks()
 
     def boundingRect(self) -> QRectF:
         outline_bounds = getattr(self, '_outline_bounds', QRectF())
@@ -254,7 +346,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if geometry_bounds.isNull():
             return False
         guard = device_pixels_to_local(
-            self, self.pen().widthF() / 2.0 + OVERLAY_DEVICE_GUARD
+            self, self.pen().widthF() / 2.0 + CONTROL_DEVICE_GUARD
         )
         bounds = geometry_bounds.adjusted(
             -guard, -guard, guard, guard
@@ -286,9 +378,22 @@ class TextBlkShapeControl(QGraphicsRectItem):
         return cls._handle_points(item.visual_polygon_in_scene())
 
     def setBlkItem(self, blk_item: TextBlkItem):
-        if self.blk_item == blk_item and self.isVisible():
+        if (
+            blk_item is not None
+            and self.blk_item == blk_item
+            and self.isVisible()
+        ):
             return
         if self.blk_item is not None:
+            try:
+                self.blk_item.visual_geometry_changed.disconnect(
+                    self._on_item_geometry_changed
+                )
+                self.blk_item.moving.disconnect(
+                    self._on_item_geometry_changed
+                )
+            except (RuntimeError, TypeError):
+                pass
             self.blk_item.under_ctrl = False
             if self.blk_item.isEditing():
                 self.blk_item.endEdit()
@@ -296,18 +401,27 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
         self.blk_item = blk_item
         if blk_item is None:
+            self.resetInteraction()
             self._visual_polygon = QPolygonF()
             self._outline_bounds = QRectF()
             self._true_handle_scene_points = []
             self._display_handle_scene_points = []
             self._reported_angle = 0.0
             self.hide()
-            self.requestOverlaySync()
+            self.requestGeometryRefresh()
             return
+        self.resetInteraction()
         blk_item.under_ctrl = True
+        blk_item.visual_geometry_changed.connect(
+            self._on_item_geometry_changed
+        )
+        blk_item.moving.connect(self._on_item_geometry_changed)
         blk_item.update()
         self.show()
-        self.requestOverlaySync()
+        self.requestGeometryRefresh()
+
+    def _on_item_geometry_changed(self, *_args):
+        self.updateBoundingRect()
 
     def updateBoundingRect(self):
         if self.blk_item is None:
@@ -328,7 +442,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         )
         local_bounds = local_polygon.boundingRect()
         guard = device_pixels_to_local(
-            self, self.pen().widthF() / 2.0 + OVERLAY_DEVICE_GUARD
+            self, self.pen().widthF() / 2.0 + CONTROL_DEVICE_GUARD
         )
         outline_bounds = local_bounds.adjusted(-guard, -guard, guard, guard)
         if (
@@ -376,7 +490,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._visual_polygon = QPolygonF()
         rect = super().rect()
         guard = device_pixels_to_local(
-            self, self.pen().widthF() / 2.0 + OVERLAY_DEVICE_GUARD
+            self, self.pen().widthF() / 2.0 + CONTROL_DEVICE_GUARD
         )
         self.prepareGeometryChange()
         self._outline_bounds = rect.adjusted(-guard, -guard, guard, guard)
@@ -411,37 +525,125 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._true_handle_scene_points = [
             QPointF(point) for point in true_scene_points
         ]
+        outward_vectors = self._handle_outward_vectors_device(
+            self._true_handle_scene_points
+        )
+        device_angle = self._item_device_angle()
+        for ctrlblock in self.ctrlblock_group:
+            ctrlblock.setDeviceAngle(device_angle)
+        handle_placements = [
+            self._outward_handle_scene_point(
+                point,
+                outward,
+                ctrlblock.supportRadius(outward),
+            )
+            for point, outward, ctrlblock in zip(
+                self._true_handle_scene_points,
+                outward_vectors,
+                self.ctrlblock_group,
+            )
+        ]
         self._display_handle_scene_points = [
-            self._clamped_handle_scene_point(point)
-            for point in self._true_handle_scene_points
+            point for point, _attached in handle_placements
         ]
         for ctrlblock, point in zip(
             self.ctrlblock_group, self._display_handle_scene_points
         ):
             ctrlblock.setPos(self.mapFromScene(point))
+        for ctrlblock, outward, (_point, attached) in zip(
+            self.ctrlblock_group,
+            outward_vectors,
+            handle_placements,
+        ):
+            ctrlblock.setOutwardDeviceVector(outward, attached)
 
-    def _clamped_handle_scene_point(self, scene_point: QPointF) -> QPointF:
+    @staticmethod
+    def _normalized_device_vector(x: float, y: float) -> QPointF:
+        length = math.hypot(x, y)
+        if length == 0.0:
+            return QPointF()
+        return QPointF(x / length, y / length)
+
+    def _handle_outward_vectors_device(self, scene_points):
+        """Return supporting outward normals for corner/edge handles."""
+        if len(scene_points) != 8:
+            return [QPointF() for _ in scene_points]
+        transform = self.gv.viewportTransform()
+        corners = [transform.map(scene_points[index]) for index in range(0, 8, 2)]
+        signed_area = sum(
+            point.x() * corners[(index + 1) % 4].y()
+            - point.y() * corners[(index + 1) % 4].x()
+            for index, point in enumerate(corners)
+        )
+        orientation = 1.0 if signed_area >= 0.0 else -1.0
+        edge_normals = []
+        for index, point in enumerate(corners):
+            edge = corners[(index + 1) % 4] - point
+            edge_normals.append(
+                self._normalized_device_vector(
+                    orientation * edge.y(),
+                    -orientation * edge.x(),
+                )
+            )
+
+        center = sum(corners, QPointF()) / 4
+        vectors = []
+        for index in range(4):
+            corner_normal = (
+                edge_normals[(index - 1) % 4] + edge_normals[index]
+            )
+            corner_normal = self._normalized_device_vector(
+                corner_normal.x(), corner_normal.y()
+            )
+            if corner_normal.isNull():
+                radial = corners[index] - center
+                corner_normal = self._normalized_device_vector(
+                    radial.x(), radial.y()
+                )
+            vectors.extend((corner_normal, edge_normals[index]))
+        return vectors
+
+    def _item_device_angle(self) -> float:
+        if self.blk_item is None:
+            return 0.0
+        transform = self.blk_item.deviceTransform(
+            self.gv.viewportTransform()
+        )
+        origin = transform.map(QPointF())
+        local_x = transform.map(QPointF(1.0, 0.0)) - origin
+        if local_x.isNull():
+            return self.blk_item.rotation()
+        return math.degrees(math.atan2(local_x.y(), local_x.x()))
+
+    def _outward_handle_scene_point(
+        self,
+        scene_point: QPointF,
+        outward: QPointF,
+        support_radius: float,
+    ):
+        """Place a device-sized hitbox outside and against its support line."""
         view = self.gv
         viewport = view.viewport()
         if viewport.width() <= 0 or viewport.height() <= 0:
-            return QPointF(scene_point)
+            return QPointF(scene_point), False
         transform = view.viewportTransform()
         inverse, invertible = transform.inverted()
         if not invertible:
-            return QPointF(scene_point)
+            return QPointF(scene_point), False
         device = transform.map(scene_point)
-        if QRectF(viewport.rect()).contains(device):
-            return QPointF(scene_point)
-        inset = PROXY_HANDLE_VIEWPORT_INSET
-        left = inset
-        top = inset
-        right = max(left, viewport.width() - inset)
-        bottom = max(top, viewport.height() - inset)
-        clamped = QPointF(
-            min(max(device.x(), left), right),
-            min(max(device.y(), top), bottom),
-        )
-        return inverse.map(clamped)
+        display = device + outward * support_radius
+        attached = QRectF(viewport.rect()).contains(device)
+        if not attached:
+            inset = PROXY_HANDLE_VIEWPORT_INSET + support_radius
+            left = inset
+            top = inset
+            right = max(left, viewport.width() - inset)
+            bottom = max(top, viewport.height() - inset)
+            display = QPointF(
+                min(max(display.x(), left), right),
+                min(max(display.y(), top), bottom),
+            )
+        return inverse.map(display), attached
 
     def setAngle(self, angle: float) -> None:
         self.setRotation(angle)
@@ -502,6 +704,18 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._proxy_pointer_device_start = None
         self._proxy_actual_scene_start = None
 
+    def resetInteraction(self) -> None:
+        """Clear transient state before the control crosses an item/page boundary."""
+        self.reshaping = False
+        self._resize_opposite_scene = None
+        self._resize_opposite_idx = None
+        self.finishProxyDrag()
+        self.angleLabel.hide()
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+        for ctrlblock in self.ctrlblock_group:
+            ctrlblock.resetInteraction()
+            ctrlblock.show()
+
     def beginResize(self, idx: int, pointer_scene: QPointF = None):
         if pointer_scene is not None:
             self._beginProxyDrag(idx, pointer_scene)
@@ -558,7 +772,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             )
         item.setPos(item.pos() + parent_delta)
         item.blk._bounding_rect = item.absBoundingRect()
-        self.requestOverlaySync()
+        self.requestGeometryRefresh()
 
     def beginRotation(self, scene_pos: QPointF, idx: int = None):
         if idx is not None:
@@ -578,7 +792,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         pointer_angle = math.degrees(math.atan2(rotate_vec.y(), rotate_vec.x()))
         preview_angle = pointer_angle + rotate_start
         self.blk_item.setRotation(preview_angle)
-        self.requestOverlaySync()
+        self.requestGeometryRefresh()
         return preview_angle
 
     def finishRotationPreview(self, original_angle: float) -> float:
@@ -586,8 +800,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         # Keep the model angle as the command's sole owner during preview.
         self.blk_item.setRotation(original_angle)
         self.finishProxyDrag()
-        if self.overlay_sync_callback is None:
-            self.updateBoundingRect()
+        self.updateBoundingRect()
         return preview_angle
 
     def ctrlblockPressed(self):
@@ -602,8 +815,10 @@ class TextBlkShapeControl(QGraphicsRectItem):
         widget=...,
     ) -> None:
         painter.save()
+        # The active/hover outline must remain legible over both light and dark
+        # image regions, as the original rectangular control was.
         painter.setCompositionMode(
-            QPainter.CompositionMode.CompositionMode_SourceOver
+            QPainter.CompositionMode.RasterOp_NotDestination
         )
         painter.setPen(self.pen())
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
@@ -616,12 +831,12 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def hideControls(self):
         for ctrl in self.ctrlblock_group:
             ctrl.hide()
-        self.requestOverlaySync()
+        self.requestGeometryRefresh()
 
     def showControls(self):
         for ctrl in self.ctrlblock_group:
             ctrl.show()
-        self.requestOverlaySync()
+        self.requestGeometryRefresh()
 
     def updateScale(self, scale: float):
         if not self.isVisible():
@@ -634,23 +849,23 @@ class TextBlkShapeControl(QGraphicsRectItem):
         # The handles ignore scene/view transforms, so their device size is stable.
         for ctrl in self.ctrlblock_group:
             ctrl.updateEdgeWidth(CBEDGE_WIDTH)
-        self.requestOverlaySync()
+        self.requestGeometryRefresh()
 
     def show(self) -> None:
         super().show()
         if self.need_rescale:
             self.need_rescale = False
-        self.setZValue(11)
+        self.setZValue(1)
 
     def startEditing(self):
         self.setCursor(Qt.CursorShape.IBeamCursor)
         for ctrlb in self.ctrlblock_group:
             ctrlb.hide()
-        self.requestOverlaySync()
+        self.requestGeometryRefresh()
 
     def endEditing(self):
         self.setCursor(Qt.CursorShape.SizeAllCursor)
         if self.isVisible():
             for ctrlb in self.ctrlblock_group:
                 ctrlb.show()
-        self.requestOverlaySync()
+        self.requestGeometryRefresh()
