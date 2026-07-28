@@ -5,7 +5,6 @@ from dataclasses import (
     fields,
     replace,
 )
-from typing import Union
 import enum
 import math
 import re
@@ -14,7 +13,7 @@ import copy
 import numpy as np
 
 from . import shared
-from .structures import Tuple, Union, List, Dict, Config, field, nested_dataclass
+from .structures import Union, List, Config, field, nested_dataclass
 
 
 TEXT_TRANSFORM_SCALE_MIN = 0.1

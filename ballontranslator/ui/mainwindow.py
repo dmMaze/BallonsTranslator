@@ -35,7 +35,12 @@ from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
 from .textedit_area import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
-from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
+from .scenetext_manager import (
+    PasteSrcItemsCommand,
+    SceneTextManager,
+    SceneTextReplacementReason,
+    TextPanel,
+)
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .menu_style import install_app_style_filters
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
@@ -683,7 +688,10 @@ class MainWindow(mainwindow_cls):
             self.generate_tif_thumbnails(directory)
             # 重新加载项目，此时应该只加载预览图
             self.imgtrans_proj.load(directory)
-            self.st_manager.clearSceneTextitems()
+            self.st_manager.clearSceneTextitems(
+                SceneTextReplacementReason.PROJECT_RELOAD
+            )
+            self.canvas.clear_undostack(update_saved_step=True)
             self.titleBar.setTitleContent(osp.basename(directory))
             self.updatePageList()
             self.opening_dir = False
@@ -724,7 +732,10 @@ class MainWindow(mainwindow_cls):
         try:
             self.opening_dir = True
             self.imgtrans_proj.load_from_json(json_path)
-            self.st_manager.clearSceneTextitems()
+            self.st_manager.clearSceneTextitems(
+                SceneTextReplacementReason.PROJECT_RELOAD
+            )
+            self.canvas.clear_undostack(update_saved_step=True)
             self.leftBar.updateRecentProjList(self.imgtrans_proj.proj_path)
             self.updatePageList()
             self.titleBar.setTitleContent(osp.basename(self.imgtrans_proj.proj_path))
@@ -821,10 +832,13 @@ class MainWindow(mainwindow_cls):
                 self.st_manager.formatpanel.resolve_text_transform_edits_for_page_change()
             if self.save_on_page_changed:
                 self.conditional_save()
+            self.st_manager.clearSceneTextitems(
+                SceneTextReplacementReason.PAGE_CHANGE
+            )
             self.imgtrans_proj.set_current_img(item.text())
             self.canvas.clear_undostack(update_saved_step=True)
             self.canvas.updateCanvas()
-            self.st_manager.updateSceneTextitems()
+            self.st_manager.populateSceneTextitems()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
             self.module_manager.handle_page_changed()
             self.drawingPanel.handle_page_changed()

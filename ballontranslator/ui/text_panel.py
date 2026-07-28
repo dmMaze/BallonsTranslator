@@ -1,24 +1,38 @@
 import copy
-import sys
-from typing import List
 
-from qtpy.QtWidgets import QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QFrame, QFontComboBox, QApplication, QPushButton, QLabel, QGroupBox, QCheckBox, QSlider
+from qtpy.QtWidgets import (
+    QApplication,
+    QFontComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+)
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent, QFont
+from qtpy.QtGui import QFocusEvent, QTextCursor, QKeyEvent, QFont
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import (
     FontFormat,
     LineSpacingType,
-    create_text_transform,
-    px2pt,
 )
-from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel
+from .custom_widget import (
+    AlignmentChecker,
+    CheckableLabel,
+    ColorPickerLabel,
+    QFontChecker,
+    SizeComboBox,
+    SizeControlLabel,
+    TextCheckerLabel,
+    Widget,
+)
 from .textitem import TextBlkItem
 from .text_advanced_format import TextAdvancedFormatPanel
+from .text_transform_editor import TextTransformEditSession
 from .text_style_presets import TextStylePresetPanel
-from .textedit_commands import SetTextTransformCommand
 from . import shared_widget as SW
 from . import funcmaps as FM
 
@@ -267,9 +281,6 @@ class FontFormatPanel(Widget):
     def __init__(self, app: QApplication, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.app = app
-        self._transform_items = []
-        self._transform_drag_before = None
-        self._transform_drag_param = None
 
         self.vlayout = QVBoxLayout(self)
         self.vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -390,20 +401,9 @@ class FontFormatPanel(Widget):
             config_expand_name='expand_tadvanced_panel',
             on_format_changed=self.on_param_changed
         )
-        self.textadvancedfmt_panel.transform_commit_requested.connect(
-            self.on_text_transform_commit
-        )
-        self.textadvancedfmt_panel.transform_preview_requested.connect(
-            self.on_text_transform_preview
-        )
-        self.textadvancedfmt_panel.transform_drag_commit_requested.connect(
-            self.on_text_transform_drag_commit
-        )
-        self.textadvancedfmt_panel.transform_preview_canceled.connect(
-            self.on_text_transform_cancel
-        )
-        self.textadvancedfmt_panel.transform_type_change_requested.connect(
-            self.on_text_transform_type_changed
+        self.text_transform_editor = TextTransformEditSession(
+            self,
+            self.textadvancedfmt_panel,
         )
         color_label = self.textadvancedfmt_panel.shadow_group.color_label
         color_label.changingColor.connect(self.changingColor)
@@ -498,233 +498,17 @@ class FontFormatPanel(Widget):
         else:
             func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True, **func_kwargs)
 
-    @staticmethod
-    def _transform_with_value(transform, param_name, value):
-        return transform.with_value(param_name, value)
-
-    def _refresh_text_transform_geometry(self):
-        for item in self._transform_items:
-            item.update()
-
-    def _refresh_text_transform_controls(self, refresh_shape=True):
-        if self._transform_items:
-            self.textadvancedfmt_panel.set_transform_items(self._transform_items)
-            if len(self._transform_items) == 1 and C.active_format is not None:
-                transform = self._transform_items[0].blk.fontformat.text_transform
-                C.active_format.text_transform = transform
-        else:
-            active_format = (
-                self.global_format if self.global_mode() else C.active_format
-            )
-            if active_format is None:
-                return
-            self.textadvancedfmt_panel.set_transform(
-                active_format.text_transform
-            )
-        if refresh_shape:
-            self._refresh_text_transform_geometry()
-
-    def on_text_transform_commit(self, param_name: str, value: float):
-        if not self._transform_items:
-            before = self.global_format.text_transform
-            after = self._transform_with_value(before, param_name, value)
-            if before != after:
-                self.global_format.text_transform = after
-                self.update_text_style_label()
-            self._refresh_text_transform_controls(refresh_shape=False)
-            return
-
-        before = [item.blk.fontformat.text_transform for item in self._transform_items]
-        after = [
-            self._transform_with_value(transform, param_name, value)
-            for transform in before
-        ]
-        command = SetTextTransformCommand.create(
-            self._transform_items,
-            before,
-            after,
-            self._refresh_text_transform_controls,
-        )
-        if command is not None:
-            SW.canvas.push_undo_command(command)
-        else:
-            self._refresh_text_transform_controls(refresh_shape=False)
-
-    def on_text_transform_type_changed(self, transform_type: str):
-        def replacement(transform):
-            if transform.transform_type == transform_type:
-                return transform
-            return create_text_transform(transform_type)
-
-        if not self._transform_items:
-            before = self.global_format.text_transform
-            after = replacement(before)
-            if before != after:
-                self.global_format.text_transform = after
-                self.update_text_style_label()
-            self._refresh_text_transform_controls(refresh_shape=False)
-            return
-
-        before = [
-            item.blk.fontformat.text_transform for item in self._transform_items
-        ]
-        after = [replacement(transform) for transform in before]
-        command = SetTextTransformCommand.create(
-            self._transform_items,
-            before,
-            after,
-            self._refresh_text_transform_controls,
-        )
-        if command is not None:
-            SW.canvas.push_undo_command(command)
-        else:
-            self._refresh_text_transform_controls(refresh_shape=False)
-
-    def on_text_transform_preview(self, param_name: str, canonical_delta: float):
-        # why preview is needed for transform?
-        if not self._transform_items:
-            if (
-                self._transform_drag_param != param_name
-                or self._transform_drag_before is None
-            ):
-                self._transform_drag_param = param_name
-                self._transform_drag_before = [self.global_format.text_transform]
-            return
-        if (
-            self._transform_drag_param != param_name
-            or self._transform_drag_before is None
-        ):
-            # Starting a drag must not refresh the controls: the emitting
-            # control owns its cumulative display delta until release/Escape.
-            # Only clear a genuinely older item preview if a different control
-            # somehow begins a new session.
-            if self._transform_drag_before is not None:
-                for item in self._transform_items:
-                    item.clear_text_transform_preview()
-            self._transform_drag_param = param_name
-            self._transform_drag_before = [
-                item.blk.fontformat.text_transform for item in self._transform_items
-            ]
-        preview_after = [
-            self._transform_with_value(
-                transform,
-                param_name,
-                getattr(transform, param_name) + canonical_delta,
-            )
-            for transform in self._transform_drag_before
-        ]
-        changed_items = []
-        for item, transform in zip(self._transform_items, preview_after):
-            # A drag can point farther out while the canonical value is already
-            # clamped at its limit. Do not even enter the item transform path
-            # unless the effective preview would actually change.
-            if item._effective_text_transform() == transform:
-                continue
-            if item.set_text_transform(transform, preview=True):
-                changed_items.append(item)
-        if changed_items:
-            self._refresh_text_transform_geometry()
-
-    def on_text_transform_drag_commit(self, param_name: str, canonical_delta: float):
-        if (
-            self._transform_drag_param != param_name
-            or self._transform_drag_before is None
-        ):
-            return
-        before = self._transform_drag_before
-        after = [
-            self._transform_with_value(
-                transform,
-                param_name,
-                getattr(transform, param_name) + canonical_delta,
-            )
-            for transform in before
-        ]
-        items = list(self._transform_items)
-        self._transform_drag_before = None
-        self._transform_drag_param = None
-        if not items:
-            global_before = before[0]
-            global_after = after[0]
-            if global_before != global_after:
-                self.global_format.text_transform = global_after
-                self.update_text_style_label()
-            self._refresh_text_transform_controls(refresh_shape=False)
-            return
-        command = SetTextTransformCommand.create(
-            items, before, after, self._refresh_text_transform_controls
-        )
-        if command is None:
-            geometry_changed = False
-            for item in items:
-                geometry_changed = (
-                    item.clear_text_transform_preview() or geometry_changed
-                )
-            if geometry_changed:
-                self._refresh_text_transform_geometry()
-        else:
-            SW.canvas.push_undo_command(command)
-
-    def on_text_transform_cancel(self, param_name=None):
-        geometry_changed = False
-        if self._transform_drag_before is not None:
-            for item in self._transform_items:
-                geometry_changed = (
-                    item.clear_text_transform_preview() or geometry_changed
-                )
-        self._transform_drag_before = None
-        self._transform_drag_param = None
-        if not self._transform_items:
-            self._refresh_text_transform_controls(refresh_shape=False)
-            return
-        if geometry_changed:
-            self._refresh_text_transform_geometry()
-
-    def _cancel_text_transform_previews(self):
-        for control in self.textadvancedfmt_panel.transform_controls.values():
-            control.cancel_preview()
-        # Keep programmatic preview callers safe even when no control owns the
-        # session and therefore emitted no preview_canceled signal above.
-        if self._transform_drag_before is not None:
-            self.on_text_transform_cancel(self._transform_drag_param)
-
     def resolve_text_transform_edits_for_save(self):
-        """Resolve transient transform editors before snapshot and render."""
-        # Typed input is complete form state, while a drag whose mouse button is
-        # still down remains a preview under the existing selection-boundary
-        # policy. Commit the former and cancel the latter before either save
-        # consumer runs.
-        self.textadvancedfmt_panel.finish_pending_transform_edits()
-        self._cancel_text_transform_previews()
+        self.text_transform_editor.resolve_for_save()
 
     def resolve_text_transform_edits_for_history_change(self):
-        """Cancel an active preview before moving the application undo stack."""
-        # Pending text remains owned by its line editor. A held drag, however,
-        # must not survive the model refresh performed by undo/redo.
-        self._cancel_text_transform_previews()
+        self.text_transform_editor.resolve_for_history_change()
 
     def resolve_text_transform_edits_for_page_change(self):
-        """End old-page transform ownership before its scene is discarded."""
-        self.resolve_text_transform_edits_for_save()
-        self._detach_text_transform_scene_owner()
+        self.text_transform_editor.resolve_for_page_change()
 
     def cancel_text_transform_edits_for_scene_change(self):
-        """Discard transient transform state before scene items are removed."""
-        for control in self.textadvancedfmt_panel.transform_controls.values():
-            control.cancel_pending()
-            control.cancel_preview()
-        self.on_text_transform_cancel(self._transform_drag_param)
-        self._detach_text_transform_scene_owner()
-
-    def _detach_text_transform_scene_owner(self):
-        # A format control can keep the old local owner while it has focus.
-        # Scene replacement is a real ownership boundary, so bypass that policy.
-        if self.textblk_item is not None:
-            self.textblk_item.fontformat = copy.deepcopy(C.active_format)
-        self.textblk_item = None
-        self._transform_items = []
-        self.set_active_format(self.global_format)
-        self.set_globalfmt_title()
+        self.text_transform_editor.cancel_for_scene_change()
 
     def update_text_style_label(self):
         if self.global_mode():
@@ -819,7 +603,7 @@ class FontFormatPanel(Widget):
     def set_textblk_item(self, textblk_item: TextBlkItem = None, multi_select:bool=False):
         # A selection transition is a transaction boundary for transform text.
         # Commit against the old target list before replacing it.
-        self.textadvancedfmt_panel.finish_pending_transform_edits()
+        self.text_transform_editor.finish_pending_edits()
         if textblk_item is not None:
             transform_items = [textblk_item]
         elif multi_select:
@@ -844,17 +628,7 @@ class FontFormatPanel(Widget):
                 # the retained local item when comparing effective owners.
                 transform_items = [self.textblk_item]
 
-        targets_changed = len(transform_items) != len(self._transform_items) or any(
-            current is not replacement
-            for current, replacement in zip(self._transform_items, transform_items)
-        )
-        if targets_changed:
-            self._cancel_text_transform_previews()
-        else:
-            # Preserve the physical press for a focus-only refresh, but clear
-            # the item-local preview and panel snapshot as before.
-            self.on_text_transform_cancel(self._transform_drag_param)
-        self._transform_items = transform_items
+        self.text_transform_editor.replace_targets(transform_items)
 
         if textblk_item is None:
             if not preserve_local_owner:

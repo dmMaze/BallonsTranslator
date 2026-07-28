@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Sequence, Tuple, Union
+from typing import Callable, List, Optional, Sequence, Union
 
 from qtpy.QtGui import QTextCursor
 from qtpy.QtCore import QPointF
@@ -14,12 +14,10 @@ from ballontranslator.utils.fontformat import (
     TextTransform,
     coerce_text_transform,
 )
-import ballontranslator.utils.config as C
 from .misc import doc_replace, doc_replace_no_shift
 from .texteditshapecontrol import TextBlkShapeControl
 from .page_search_widget import PageSearchWidget, Matched
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
-from .scene_textlayout import PUNSET_HALF
 
 
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, joint_previous: bool = False):

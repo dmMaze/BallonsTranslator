@@ -10,7 +10,6 @@ from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
     QFont,
-    QImage,
     QLinearGradient,
     QPainter,
     QPen,
@@ -180,25 +179,12 @@ class TextEffectRenderer:
     def _effective_text_transform(self):
         return self.item._effective_text_transform()
 
-    def _glyph_slant_angle(self) -> float:
-        return self.geometry_controller.glyph_slant_angle()
+    def _has_layout_distortion(self) -> bool:
+        return self.geometry_controller.has_layout_distortion()
 
     def clear_cached_surface(self) -> None:
         self.background_pixmap = None
         self.background_pixmap_scale = None
-
-    def release_cached_resources(self) -> None:
-        """Drop layout-derived raster resources without allocating lazy state."""
-        self.clear_cached_surface()
-        state = self._transformed_effect_state
-        if state is None:
-            return
-        state.tile_cache.clear()
-        state.cache_dirty = True
-        state.cache_rendered_generation = -1
-        state.force_tiles = False
-        state.direct_stroke = False
-        state.surface_raster_error = None
 
     def __paint_flip(self, base_paint, option):
 
@@ -459,7 +445,7 @@ class TextEffectRenderer:
                 source_painter.translate(-rect.topLeft())
                 fragment_context = self._effect_paint_context()
                 fragment_context.selections = selections
-                self.geometry_controller.layout_renderer.draw_glyph_selection_mask(
+                self.geometry_controller.draw_layout_selection_mask(
                     source_painter, fragment_context
                 )
             finally:
@@ -519,7 +505,7 @@ class TextEffectRenderer:
             return
         active_layout = self.document().documentLayout()
         if isinstance(active_layout, VerticalTextDocumentLayout):
-            if self._glyph_slant_angle() == 0.0:
+            if not self._has_layout_distortion():
                 self._paint_cloned_document_stroke(painter)
                 return
             self._paint_vertical_stroke(painter, render_scale, surface_rect)
@@ -534,141 +520,20 @@ class TextEffectRenderer:
         return radius, xoffset, yoffset
 
     def _logical_ink_bounds(self) -> QRectF:
-        logical_rect = self.logical_unpadded_rect()
-        if self.document().isEmpty():
+        if self.document().isEmpty() or not self._has_layout_distortion():
             return QRectF()
-
-        # Non-zero glyph slant has an exact vector envelope derived from the
-        # same live glyph runs and orientation transforms as paint.  Avoid the
-        # legacy expanding scratch-image loop for this path.
-        if self._glyph_slant_angle() != 0.0:
-            return self.geometry_controller.layout_ink_bounds()
-
-        # QTextLayout.boundingRect() includes bookkeeping lines and does not
-        # include every custom vertical rotation/offset. Paint the attached
-        # live layout into an expanding scratch envelope and measure its actual
-        # alpha instead. No document, layout, or format is cloned. Expansion
-        # stops only after all four raster borders are clear, so arbitrary
-        # combining-mark overhang is measured rather than hidden by a fixed
-        # padding guess. Align the logical origin to an integer pixel so the
-        # result is independent of the current fractional effect padding.
-        font_guard = max(
-            1,
-            math.ceil(
-                self.layout.max_font_size(to_px=True)
-                + EFFECT_RASTER_GUARD
-            ),
-        )
-
-        def bounded_vector_fallback(error: Exception) -> QRectF:
-            self._warn_effect_allocation_once(error)
-            bounds = self.geometry_controller.layout_ink_bounds()
-            return bounds.translated(-logical_rect.topLeft())
-
-        while True:
-            pixel_width = max(
-                1, math.ceil(logical_rect.width()) + font_guard * 2
-            )
-            pixel_height = max(
-                1, math.ceil(logical_rect.height()) + font_guard * 2
-            )
-            pixels = pixel_width * pixel_height
-            if (
-                pixel_width > EFFECT_CACHE_MAX_DIMENSION
-                or pixel_height > EFFECT_CACHE_MAX_DIMENSION
-                or pixels > EFFECT_CACHE_MAX_PIXELS
-                or pixels * 4 > EFFECT_CACHE_MAX_BYTES
-            ):
-                return bounded_vector_fallback(
-                    EffectRasterAllocationError(
-                        'text ink measurement surface exceeds policy'
-                    )
-                )
-            try:
-                image = QImage(
-                    pixel_width,
-                    pixel_height,
-                    QImage.Format.Format_ARGB32,
-                )
-            except RASTER_BOUNDARY_FAILURES as error:
-                return bounded_vector_fallback(error)
-            if image.isNull():
-                return bounded_vector_fallback(
-                    EffectRasterAllocationError(
-                        'unable to allocate text ink measurement image'
-                    )
-                )
-            try:
-                image.fill(Qt.GlobalColor.transparent)
-                painter = QPainter(image)
-            except RASTER_BOUNDARY_FAILURES as error:
-                return bounded_vector_fallback(error)
-            if not painter.isActive():
-                return bounded_vector_fallback(
-                    EffectRasterAllocationError(
-                        'unable to begin text ink measurement painter'
-                    )
-                )
-            paint_error = None
-            try:
-                painter.translate(
-                    font_guard - logical_rect.left(),
-                    font_guard - logical_rect.top(),
-                )
-                self._paint_live_layout(painter, self._effect_paint_context())
-            except EFFECT_RASTER_FAILURES as error:
-                paint_error = error
-            finally:
-                painter.end()
-            if paint_error is not None:
-                return bounded_vector_fallback(paint_error)
-            try:
-                rgba = pixmap2ndarray(image, keep_alpha=True)
-            except RASTER_BOUNDARY_FAILURES as error:
-                return bounded_vector_fallback(error)
-            if rgba is None:
-                return bounded_vector_fallback(
-                    EffectRasterAllocationError(
-                        'unable to access text ink measurement pixels'
-                    )
-                )
-            alpha = rgba[..., 3]
-            ys, xs = np.nonzero(alpha)
-            if len(xs) == 0:
-                return QRectF()
-            if (
-                xs.min() == 0
-                or ys.min() == 0
-                or xs.max() == image.width() - 1
-                or ys.max() == image.height() - 1
-            ):
-                font_guard *= 2
-                continue
-            return QRectF(
-                xs.min() - font_guard,
-                ys.min() - font_guard,
-                xs.max() - xs.min() + 1,
-                ys.max() - ys.min() + 1,
-            )
+        return self.geometry_controller.layout_ink_bounds()
 
     def _effect_padding(self) -> float:
         paint_stroke, paint_shadow = self._effect_flags()
-        glyph_slanted = (
-            self._glyph_slant_angle() != 0.0
-        )
-        if not glyph_slanted:
+        layout_distorted = self._has_layout_distortion()
+        if not layout_distorted:
             return self._conservative_effect_padding()
-        if not paint_stroke and not paint_shadow and not glyph_slanted:
-            return 0.0
         ink_bounds = self._logical_ink_bounds()
         if ink_bounds.isEmpty():
             return 0.0
         stroke_outset = self._stroke_outset()
-        logical_rect = (
-            self.logical_unpadded_rect()
-            if glyph_slanted
-            else QRectF(QPointF(), self.logical_unpadded_rect().size())
-        )
+        logical_rect = self.logical_unpadded_rect()
         effect_bounds = ink_bounds.adjusted(
             -stroke_outset if paint_stroke else 0.0,
             -stroke_outset if paint_stroke else 0.0,

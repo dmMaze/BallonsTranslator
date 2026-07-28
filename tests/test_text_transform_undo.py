@@ -40,6 +40,8 @@ from ballontranslator.ui.textedit_commands import (
 )
 from ballontranslator.ui.textitem import TextBlkItem
 from ballontranslator.ui.texteditshapecontrol import TextBlkShapeControl
+from ballontranslator.ui.text_transform_editor import TextTransformEditSession
+from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.text_effects.glyph import (
     GLOBAL_GLYPH_GEOMETRY_CACHE,
     GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE,
@@ -69,7 +71,7 @@ FINAL_TRANSFORMS = (
 )
 
 
-class TextTransformUndoTest(unittest.TestCase):
+class TextTransformTestBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -181,6 +183,8 @@ class TextTransformUndoTest(unittest.TestCase):
         self.assertEqual(edit.toPlainText(), text_before + commit_text)
         self.assertEqual(item.toPlainText(), text_before + commit_text)
 
+
+class TextTransformUndoTest(TextTransformTestBase):
     def test_mixed_text_transforms_keep_undo_and_pair_widgets_in_sync(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
@@ -256,6 +260,63 @@ class TextTransformUndoTest(unittest.TestCase):
 
                 self.assertEqual(stack.count(), len(states) - 1)
 
+    def test_type_switch_restores_each_items_last_slant_transform(self):
+        versions = (
+            SlantTextTransform(1.15, 0.85, 11.0, 4.0),
+            SlantTextTransform(0.75, 1.25, -7.0, -3.0),
+        )
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                items = [
+                    self._make_pair(index, TEST_LINES[index], vertical)[0]
+                    for index in range(2)
+                ]
+                for item, transform in zip(items, versions):
+                    item.set_text_transform(transform)
+
+                stack = QUndoStack()
+                SW.canvas = SimpleNamespace(push_undo_command=stack.push)
+                session = object.__new__(TextTransformEditSession)
+                session.items = items
+                session.controls = SimpleNamespace(
+                    set_transform_items=lambda _items: None
+                )
+                session.drag_before = None
+                session.drag_param = None
+
+                session.change_type('none')
+                self.assertEqual(
+                    [item.blk.fontformat.text_transform for item in items],
+                    [NEUTRAL, NEUTRAL],
+                )
+                session.change_type('slant')
+                self.assertEqual(
+                    [item.blk.fontformat.text_transform for item in items],
+                    list(versions),
+                )
+
+                stack.undo()
+                self.assertEqual(
+                    [item.blk.fontformat.text_transform for item in items],
+                    [NEUTRAL, NEUTRAL],
+                )
+                stack.undo()
+                self.assertEqual(
+                    [item.blk.fontformat.text_transform for item in items],
+                    list(versions),
+                )
+                stack.redo()
+                stack.redo()
+                self.assertEqual(
+                    [item.blk.fontformat.text_transform for item in items],
+                    list(versions),
+                )
+
+
+class TextTransformRenderingTest(TextTransformTestBase):
     def test_neutral_effect_render_is_stable_after_transform_roundtrip(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
@@ -462,6 +523,8 @@ class TextTransformUndoTest(unittest.TestCase):
                     )
                 )
 
+
+class TextTransformGeometryTest(TextTransformTestBase):
     def test_resize_undo_stores_alternating_logical_rectangles(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
@@ -570,6 +633,8 @@ class TextTransformUndoTest(unittest.TestCase):
                             angle_delta, 0.0, delta=0.01
                         )
 
+
+class TextTransformShapeControlTest(TextTransformTestBase):
     def test_control_click_preserves_multi_selection(self):
         for transform in (NEUTRAL, FIRST_TRANSFORM):
             with self.subTest(transform=transform.transform_type):
@@ -594,6 +659,10 @@ class TextTransformUndoTest(unittest.TestCase):
                 control.setParentItem(base)
                 control.setBlkItem(items[1])
                 items[0].setSelected(True)
+                move_interactions = []
+                items[1].move_interaction_finished.connect(
+                    lambda: move_interactions.append(True)
+                )
                 view.show()
                 self.app.processEvents()
                 control.updateBoundingRect()
@@ -612,6 +681,7 @@ class TextTransformUndoTest(unittest.TestCase):
                 self.app.processEvents()
                 self.assertTrue(items[0].isSelected())
                 self.assertTrue(items[1].isSelected())
+                self.assertEqual(move_interactions, [True])
 
                 handle_center = control.handleDisplayScenePoint(1)
                 QTest.mouseClick(

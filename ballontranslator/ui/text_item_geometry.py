@@ -9,9 +9,13 @@ from qtpy.QtCore import QPointF, QRectF, QSizeF
 from qtpy.QtGui import QPainterPath, QPolygonF
 from qtpy.QtWidgets import QGraphicsItem
 
-from ballontranslator.utils.fontformat import TextTransform, coerce_text_transform
+from ballontranslator.utils.fontformat import (
+    TextTransform,
+    coerce_text_transform,
+    create_text_transform,
+)
 from ballontranslator.utils.textblock import TextAlignment
-from .text_transform import text_transform_strategy
+from .text_transform_variants import text_transform_strategy
 
 if TYPE_CHECKING:
     from .textitem import TextBlkItem
@@ -35,6 +39,7 @@ class TextItemGeometryController:
         self.preview: Optional[TextTransform] = None
         self.layout_renderer = None
         self.layout_renderer_type = None
+        self._transform_values_by_type = {}
         self.installing = False
         self._box_geometry_active = False
         self._update_depth = 1
@@ -44,6 +49,9 @@ class TextItemGeometryController:
         """Reset transient state after the item adopts a ``TextBlock``."""
         self.preview = None
         transform = self.canonical()
+        self._transform_values_by_type = {
+            transform.transform_type: transform
+        }
         self._box_geometry_active = text_transform_strategy(
             transform
         ).requires_custom_resize(transform)
@@ -96,10 +104,28 @@ class TextItemGeometryController:
         self._flush_update()
 
     def canonical(self) -> TextTransform:
-        return coerce_text_transform(self.item.blk.fontformat.text_transform)
+        transform = self.item.blk.fontformat.text_transform
+        if not isinstance(transform, TextTransform):
+            raise ValueError('live font format requires a typed text transform')
+        return transform
 
     def effective(self) -> TextTransform:
         return self.preview if self.preview is not None else self.canonical()
+
+    def transform_for_type(self, transform_type: str) -> TextTransform:
+        """Return this item's last committed value for a transform variant."""
+        current = self.canonical()
+        if current.transform_type == transform_type:
+            return current
+        remembered = self._transform_values_by_type.get(transform_type)
+        return (
+            remembered
+            if remembered is not None
+            else create_text_transform(transform_type)
+        )
+
+    def _remember_transform(self, transform: TextTransform) -> None:
+        self._transform_values_by_type[transform.transform_type] = transform
 
     def is_neutral(self) -> bool:
         return self.effective().is_neutral()
@@ -411,10 +437,6 @@ class TextItemGeometryController:
     def requires_custom_resize(self) -> bool:
         return self._box_geometry_active
 
-    def glyph_slant_angle(self) -> float:
-        transform = self.effective()
-        return text_transform_strategy(transform).glyph_slant_angle(transform)
-
     def attach_layout_renderer(self, transform_type, factory):
         renderer = self.layout_renderer
         if renderer is None or self.layout_renderer_type != transform_type:
@@ -445,18 +467,26 @@ class TextItemGeometryController:
         self.layout_renderer_type = None
         return True
 
-    def release_scene_caches(self) -> None:
-        """Release derived rendering data before the item leaves its page."""
+    def release_layout_cache_namespace(self) -> None:
+        """Release global entries namespaced to this item's text layout."""
         renderer = self.layout_renderer
         if renderer is not None:
-            # Keep the renderer usable if another owner still retains the
-            # item; only its layout-specific derived data is being released.
             renderer.release_caches()
-        self.item.effect_renderer.release_cached_resources()
 
     def layout_ink_bounds(self):
         renderer = self.layout_renderer
         return QRectF() if renderer is None else renderer.ink_bounds()
+
+    def has_layout_distortion(self) -> bool:
+        """Return whether glyph painting is delegated to a transform renderer."""
+        return self.layout_renderer is not None
+
+    def draw_layout_selection_mask(self, painter, context) -> None:
+        """Draw an effect mask through the active transform renderer."""
+        renderer = self.layout_renderer
+        if renderer is None:
+            raise RuntimeError('no custom text layout renderer is active')
+        renderer.draw_glyph_selection_mask(painter, context)
 
     def initialize_layout(self, *, persistent_cache: bool = True) -> bool:
         transform = self.effective()
@@ -472,28 +502,20 @@ class TextItemGeometryController:
         target: TextTransform,
         *,
         persistent_cache: bool = True,
-    ):
+    ) -> bool:
         rendering_changed = False
-        padding_changed = False
         if previous.transform_type != target.transform_type:
-            rendering_changed, padding_changed = text_transform_strategy(
-                previous
-            ).deactivate_layout(
+            rendering_changed = text_transform_strategy(previous).deactivate_layout(
                 self.item,
                 previous,
                 persistent_cache,
             )
-        target_changed, target_padding_changed = text_transform_strategy(
-            target
-        ).apply_layout(
+        target_changed = text_transform_strategy(target).apply_layout(
             self.item,
             target,
             persistent_cache,
         )
-        return (
-            rendering_changed or target_changed,
-            padding_changed or target_padding_changed,
-        )
+        return rendering_changed or target_changed
 
     def install(
         self,
@@ -533,12 +555,13 @@ class TextItemGeometryController:
                 self.request_update()
         return changed
 
-    def _refresh_effect_geometry(self, padding_changed: bool) -> bool:
+    def _refresh_effect_geometry(self, rendering_changed: bool) -> bool:
         item = self.item
-        padding_changed = (
-            padding_changed
-            or item.effect_renderer._update_effect_padding()
-        )
+        if rendering_changed:
+            item.effect_renderer._mark_effect_cache_dirty()
+            item.refresh_cache_policy()
+            item.update()
+        padding_changed = item.effect_renderer._update_effect_padding()
         if item.fontformat.gradient_enabled and not padding_changed:
             item.effect_renderer._refresh_gradient_geometry()
         return padding_changed
@@ -554,11 +577,30 @@ class TextItemGeometryController:
         item.effect_renderer.finalize_neutral_cache()
         return True
 
+    def _apply_effective_transition(
+        self,
+        previous: TextTransform,
+        target: TextTransform,
+        *,
+        was_visual_neutral: bool,
+        persistent_cache: bool = True,
+    ) -> bool:
+        """Apply all layout, effect, and box consequences of one transition."""
+        layout_changed = self._apply_layout(
+            previous,
+            target,
+            persistent_cache=persistent_cache,
+        )
+        padding_changed = self._refresh_effect_geometry(layout_changed)
+        box_changed = self._apply_box(target)
+        finalized = self._finalize_neutral(was_visual_neutral, target)
+        return layout_changed or padding_changed or box_changed or finalized
+
     def set(self, transform: TextTransform = None, *, preview: bool = False) -> bool:
         """Apply a complete transform, optionally as transient preview state."""
         item = self.item
         raw_canonical = item.blk.fontformat.text_transform
-        canonical = coerce_text_transform(raw_canonical)
+        canonical = self.canonical()
         current = self.effective()
         target = coerce_text_transform(
             current if transform is None and preview else (
@@ -571,21 +613,11 @@ class TextItemGeometryController:
                 return False
             was_visual_neutral = self.visual_is_neutral()
             self.preview = None if target == canonical else target
-            glyph_changed, glyph_padding_changed = self._apply_layout(
+            return self._apply_effective_transition(
                 current,
                 target,
+                was_visual_neutral=was_visual_neutral,
                 persistent_cache=False,
-            )
-            active_state_changed = self._refresh_effect_geometry(
-                glyph_padding_changed
-            )
-            box_changed = self._apply_box(target)
-            finalized = self._finalize_neutral(was_visual_neutral, target)
-            return (
-                glyph_changed
-                or active_state_changed
-                or box_changed
-                or finalized
             )
 
         model_format = item.blk.fontformat
@@ -597,50 +629,40 @@ class TextItemGeometryController:
             and render_format.text_transform != target
         )
         if target == current and not model_changed and not render_format_changed:
+            self._remember_transform(target)
             return False
         was_visual_neutral = self.visual_is_neutral()
+        self._remember_transform(canonical)
         if model_changed:
             model_format.text_transform = target
         if render_format_changed:
             render_format.text_transform = target
+        self._remember_transform(target)
         self.preview = None
-        glyph_changed, glyph_padding_changed = self._apply_layout(current, target)
-        active_state_changed = self._refresh_effect_geometry(
-            glyph_padding_changed
+        visual_changed = self._apply_effective_transition(
+            current,
+            target,
+            was_visual_neutral=was_visual_neutral,
         )
-        visual_changed = self._apply_box(target)
-        finalized = self._finalize_neutral(was_visual_neutral, target)
         changed = (
             model_changed
             or render_format_changed
-            or glyph_changed
-            or active_state_changed
             or visual_changed
-            or finalized
         )
         return changed
 
     def clear_preview(self) -> bool:
         if self.preview is None:
             return False
-        item = self.item
         was_visual_neutral = self.visual_is_neutral()
         previous = self.preview
         self.preview = None
         target = self.canonical()
-        glyph_changed, glyph_padding_changed = self._apply_layout(previous, target)
-        active_state_changed = self._refresh_effect_geometry(
-            glyph_padding_changed
+        return self._apply_effective_transition(
+            previous,
+            target,
+            was_visual_neutral=was_visual_neutral,
         )
-        box_changed = self._apply_box(target)
-        finalized = self._finalize_neutral(was_visual_neutral, target)
-        changed = (
-            glyph_changed
-            or active_state_changed
-            or box_changed
-            or finalized
-        )
-        return changed
 
     def sync_origin(self) -> bool:
         """Keep the Qt transform origin aligned with logical geometry.

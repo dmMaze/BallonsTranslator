@@ -1,12 +1,10 @@
-from typing import Callable, Sequence
+from typing import Callable
 
 from qtpy.QtWidgets import (
     QApplication,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLayout,
-    QLayoutItem,
     QSizePolicy,
     QStyle,
     QVBoxLayout,
@@ -24,192 +22,10 @@ from .custom_widget import (
     TextCheckerLabel,
 )
 from .custom_widget.scrollbar import ScrollBar
+from .adaptive_wrap_layout import AdaptiveWrapLayout
 from .text_transform_controls import CommittedTransformControl
-from ballontranslator.utils.fontformat import (
-    FontFormat,
-    TEXT_TRANSFORM_BOX_SLANT_MAX,
-    TEXT_TRANSFORM_BOX_SLANT_MIN,
-    TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-    TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-    TEXT_TRANSFORM_SCALE_MAX,
-    TEXT_TRANSFORM_SCALE_MIN,
-)
-
-
-def _pack_preferred_widths(
-    preferred_widths: Sequence[int],
-    available_width: int,
-    spacing: int,
-):
-    """Return greedy rows of indexes without splitting an atomic item.
-
-    An over-wide item occupies a row by itself; geometry assignment later gives
-    it the available width instead of allowing horizontal overflow.
-
-    >>> _pack_preferred_widths([40, 30, 50], 75, 5)
-    [(0, 1), (2,)]
-    >>> _pack_preferred_widths([100, 20], 60, 5)
-    [(0,), (1,)]
-    """
-    available_width = max(0, int(available_width))
-    spacing = max(0, int(spacing))
-    rows = []
-    row = []
-    used_width = 0
-    for index, preferred_width in enumerate(preferred_widths):
-        preferred_width = max(0, int(preferred_width))
-        next_width = preferred_width if not row else used_width + spacing + preferred_width
-        if row and next_width > available_width:
-            rows.append(tuple(row))
-            row = [index]
-            used_width = preferred_width
-        else:
-            row.append(index)
-            used_width = next_width
-    if row:
-        rows.append(tuple(row))
-    return rows
-
-
-class AdaptiveWrapLayout(QLayout):
-    """Panel-local height-for-width layout for indivisible control units.
-
-    The layout owns only ``QLayoutItem`` objects and changes only their
-    geometries. It never reparents, recreates, or delays movement of widgets.
-
-    >>> _pack_preferred_widths([30, 30, 30], 65, 5)
-    [(0, 1), (2,)]
-    """
-
-    def __init__(self, parent=None, horizontal_spacing=-1, vertical_spacing=-1):
-        super().__init__(parent)
-        self._items = []
-        self._horizontal_spacing = horizontal_spacing
-        self._vertical_spacing = vertical_spacing
-
-    def addItem(self, item: QLayoutItem):
-        self._items.append(item)
-
-    def count(self):
-        return len(self._items)
-
-    def itemAt(self, index):
-        if 0 <= index < len(self._items):
-            return self._items[index]
-        return None
-
-    def takeAt(self, index):
-        if 0 <= index < len(self._items):
-            return self._items.pop(index)
-        return None
-
-    def hasHeightForWidth(self):
-        return True
-
-    def _style_spacing(self, horizontal):
-        explicit = (
-            self._horizontal_spacing if horizontal else self._vertical_spacing
-        )
-        if explicit >= 0:
-            return explicit
-        inherited = self.spacing()
-        if inherited >= 0:
-            return inherited
-        parent = self.parentWidget()
-        if parent is not None:
-            metric_name = (
-                'PM_LayoutHorizontalSpacing'
-                if horizontal
-                else 'PM_LayoutVerticalSpacing'
-            )
-            pixel_metrics = getattr(QStyle, 'PixelMetric', QStyle)
-            metric = getattr(pixel_metrics, metric_name)
-            value = parent.style().pixelMetric(metric)
-            if value >= 0:
-                return value
-        return 6
-
-    def horizontalSpacing(self):
-        return self._style_spacing(True)
-
-    def verticalSpacing(self):
-        return self._style_spacing(False)
-
-    @staticmethod
-    def _item_height(item, width):
-        if item.hasHeightForWidth():
-            height = item.heightForWidth(width)
-        else:
-            height = item.sizeHint().height()
-        return max(item.minimumSize().height(), height)
-
-    def _visible_items(self):
-        return [item for item in self._items if not item.isEmpty()]
-
-    def _do_layout(self, rect: QRect, test_only: bool):
-        left, top, right, bottom = self.getContentsMargins()
-        content_x = rect.x() + left
-        content_y = rect.y() + top
-        available_width = max(0, rect.width() - left - right)
-        items = self._visible_items()
-        if not items:
-            return top + bottom
-
-        horizontal_spacing = self.horizontalSpacing()
-        vertical_spacing = self.verticalSpacing()
-        preferred_widths = [
-            max(item.minimumSize().width(), item.sizeHint().width())
-            for item in items
-        ]
-        rows = _pack_preferred_widths(
-            preferred_widths, available_width, horizontal_spacing
-        )
-
-        y = content_y
-        for row_index, row in enumerate(rows):
-            widths = [min(preferred_widths[index], available_width) for index in row]
-            heights = [
-                self._item_height(items[index], width)
-                for index, width in zip(row, widths)
-            ]
-            row_height = max(heights, default=0)
-            x = content_x
-            for index, width in zip(row, widths):
-                if not test_only:
-                    items[index].setGeometry(QRect(x, y, width, row_height))
-                x += width + horizontal_spacing
-            y += row_height
-            if row_index + 1 < len(rows):
-                y += vertical_spacing
-        return (y - rect.y()) + bottom
-
-    def heightForWidth(self, width):
-        return self._do_layout(QRect(0, 0, max(0, width), 0), True)
-
-    def setGeometry(self, rect):
-        super().setGeometry(rect)
-        self._do_layout(rect, False)
-
-    def minimumSize(self):
-        items = self._visible_items()
-        left, top, right, bottom = self.getContentsMargins()
-        width = max((item.minimumSize().width() for item in items), default=0)
-        width += left + right
-        return QSize(width, self.heightForWidth(width))
-
-    def sizeHint(self):
-        items = self._visible_items()
-        left, _top, right, _bottom = self.getContentsMargins()
-        spacing = self.horizontalSpacing()
-        width = sum(
-            max(item.minimumSize().width(), item.sizeHint().width())
-            for item in items
-        )
-        if items:
-            width += spacing * (len(items) - 1)
-        width += left + right
-        return QSize(width, self.heightForWidth(width))
-
+from .text_transform_variants import TEXT_TRANSFORM_VARIANTS
+from ballontranslator.utils.fontformat import FontFormat
 
 def _word_wrap_label(label: QLabel):
     label.setWordWrap(True)
@@ -484,10 +300,13 @@ class TextAdvancedFormatPanel(PanelArea):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        self.transform_types = ('none', 'slant')
+        self.transform_variants = TEXT_TRANSFORM_VARIANTS
+        self.transform_types = tuple(
+            variant.transform_type for variant in self.transform_variants
+        )
         self.transform_effect_selector = SmallComboBox(
             parent=self.transform_group,
-            options=[self.tr('None'), self.tr('Slant')],
+            options=[variant.label() for variant in self.transform_variants],
         )
         self.transform_effect_selector.activated.connect(
             self._on_transform_type_activated
@@ -501,29 +320,29 @@ class TextAdvancedFormatPanel(PanelArea):
             self.transform_effect_selector,
         )
 
-        transform_specs = (
-            ('horizontal_scale_control', 'horizontal_scale',
-             lambda: self.tr('Horizontal Scale'), 100.0,
-             TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX, '%'),
-            ('vertical_scale_control', 'vertical_scale',
-             lambda: self.tr('Vertical Scale'), 100.0,
-             TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX, '%'),
-            ('slant_angle_control', 'slant_angle', lambda: self.tr('Box Slant'), 1.0,
-             TEXT_TRANSFORM_BOX_SLANT_MIN, TEXT_TRANSFORM_BOX_SLANT_MAX,
-             '\N{DEGREE SIGN}'),
-            ('glyph_slant_angle_control', 'glyph_slant_angle',
-             lambda: self.tr('Glyph Slant'), 1.0,
-             TEXT_TRANSFORM_GLYPH_SLANT_MIN, TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-             '\N{DEGREE SIGN}'),
-        )
         transform_controls = {}
-        for attr, name, title_fn, factor, minimum, maximum, suffix in transform_specs:
-            control = CommittedTransformControl(
-                title_fn(), name, factor, minimum, maximum, suffix, 1.0,
-                self.transform_group,
+        self._transform_control_names_by_type = {}
+        for variant in self.transform_variants:
+            control_names = []
+            for spec in variant.controls:
+                control = transform_controls.get(spec.attribute_name)
+                if control is None:
+                    control = CommittedTransformControl(
+                        spec.label(),
+                        spec.attribute_name,
+                        spec.factor,
+                        spec.minimum,
+                        spec.maximum,
+                        spec.suffix,
+                        1.0,
+                        self.transform_group,
+                    )
+                    setattr(self, spec.name, control)
+                    transform_controls[spec.attribute_name] = control
+                control_names.append(spec.attribute_name)
+            self._transform_control_names_by_type[variant.transform_type] = frozenset(
+                control_names
             )
-            setattr(self, attr, control)
-            transform_controls[name] = control
         self.transform_controls = transform_controls
         for control in self.transform_controls.values():
             control.commit_requested.connect(self.transform_commit_requested.emit)
@@ -537,7 +356,7 @@ class TextAdvancedFormatPanel(PanelArea):
         self.transform_layout.addWidget(self.transform_effect_unit)
         for control in self.transform_controls.values():
             self.transform_layout.addWidget(control)
-        self._set_transform_controls_visible(False)
+        self._set_transform_controls_visible(None)
 
         self.top_section = QWidget(self.scrollContent)
         self.top_section.setSizePolicy(
@@ -828,13 +647,16 @@ class TextAdvancedFormatPanel(PanelArea):
     def on_linespacing_type_changed(self):
         self.on_format_changed('line_spacing_type', self.linespacing_type_combobox.currentIndex())
 
-    def _set_transform_controls_visible(self, visible: bool):
-        changed = any(
-            (not control.isHidden()) != visible
-            for control in self.transform_controls.values()
+    def _set_transform_controls_visible(self, transform_type):
+        visible_names = self._transform_control_names_by_type.get(
+            transform_type, ()
         )
-        for control in self.transform_controls.values():
-            control.setVisible(visible)
+        changed = any(
+            (not control.isHidden()) != (name in visible_names)
+            for name, control in self.transform_controls.items()
+        )
+        for name, control in self.transform_controls.items():
+            control.setVisible(name in visible_names)
         if changed:
             self.transform_layout.invalidate()
             self.transform_group.updateGeometry()
@@ -855,10 +677,12 @@ class TextAdvancedFormatPanel(PanelArea):
         )
         self.transform_effect_selector.setCurrentIndex(selector_index)
 
-        show_slant = common_type == 'slant'
-        self._set_transform_controls_visible(show_slant)
+        visible_names = self._transform_control_names_by_type.get(
+            common_type, ()
+        )
+        self._set_transform_controls_visible(common_type)
         for name, control in self.transform_controls.items():
-            if not show_slant:
+            if name not in visible_names:
                 control.set_model_value(None)
                 continue
             values = [getattr(transform, name) for transform in transforms]
@@ -876,7 +700,7 @@ class TextAdvancedFormatPanel(PanelArea):
             control.cancel_pending()
             control.cancel_preview()
         transform_type = self.transform_types[index]
-        self._set_transform_controls_visible(transform_type == 'slant')
+        self._set_transform_controls_visible(transform_type)
         self.transform_type_change_requested.emit(transform_type)
 
     def set_active_format(self, font_format: FontFormat):

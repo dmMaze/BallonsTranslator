@@ -29,7 +29,7 @@ class TextBlkItem(QGraphicsTextItem):
     end_edit = Signal(int)
     hover_enter = Signal(int)
     hover_move = Signal(int)
-    moved = Signal()
+    move_interaction_finished = Signal()
     moving = Signal(QGraphicsTextItem)
     rotated = Signal(float)
     reshaped = Signal(QGraphicsTextItem)
@@ -125,7 +125,8 @@ class TextBlkItem(QGraphicsTextItem):
                     self.push_undo_stack.emit(new_steps, self.is_formatting)
 
         if not (self.hasFocus() and self.pre_editing):
-            # why _update_effect_padding and _refresh_gradient_geometry
+            # Text edits can change glyph overhang, effect extents, and the
+            # logical gradient envelope without changing the FontFormat.
             self._update_effect_padding()
             if self.fontformat.gradient_enabled:
                 self._refresh_gradient_geometry()
@@ -158,8 +159,8 @@ class TextBlkItem(QGraphicsTextItem):
 
     def docSizeChanged(self):
         # A padding change routes through setRect(), which synchronizes the
-        # origin after updating the display rectangle.
-        # why _update_effect_padding?
+        # origin after updating the display rectangle. If padding is unchanged,
+        # line reflow can still move the logical center, so sync it directly.
         if not self._update_effect_padding():
             self.geometry_controller.sync_origin()
 
@@ -657,8 +658,10 @@ class TextBlkItem(QGraphicsTextItem):
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            if self.oldPos != self.pos():
-                self.moved.emit()
+            # The manager owns the multi-item movement snapshot. Finish every
+            # press/release interaction so a click without movement cannot keep
+            # the clicked items alive after their scene is replaced.
+            self.move_interaction_finished.emit()
         super().mouseReleaseEvent(event)
 
     def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
