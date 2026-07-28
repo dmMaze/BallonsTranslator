@@ -187,6 +187,19 @@ class TextEffectRenderer:
         self.background_pixmap = None
         self.background_pixmap_scale = None
 
+    def release_cached_resources(self) -> None:
+        """Drop layout-derived raster resources without allocating lazy state."""
+        self.clear_cached_surface()
+        state = self._transformed_effect_state
+        if state is None:
+            return
+        state.tile_cache.clear()
+        state.cache_dirty = True
+        state.cache_rendered_generation = -1
+        state.force_tiles = False
+        state.direct_stroke = False
+        state.surface_raster_error = None
+
     def __paint_flip(self, base_paint, option):
 
         target_map = QPixmap(self.boundingRect().size().toSize())

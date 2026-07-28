@@ -437,13 +437,22 @@ class TextItemGeometryController:
                 self.item.layout.render_delegate = None
                 self.item.layout.render_failure_handler = None
             return False
-        renderer.geometry_cache.invalidate_generation()
+        renderer.release_caches()
         if self.item.layout is not None:
             self.item.layout.render_delegate = None
             self.item.layout.render_failure_handler = None
         self.layout_renderer = None
         self.layout_renderer_type = None
         return True
+
+    def release_scene_caches(self) -> None:
+        """Release derived rendering data before the item leaves its page."""
+        renderer = self.layout_renderer
+        if renderer is not None:
+            # Keep the renderer usable if another owner still retains the
+            # item; only its layout-specific derived data is being released.
+            renderer.release_caches()
+        self.item.effect_renderer.release_cached_resources()
 
     def layout_ink_bounds(self):
         renderer = self.layout_renderer

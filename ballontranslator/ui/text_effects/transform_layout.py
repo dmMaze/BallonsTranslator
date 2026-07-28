@@ -333,6 +333,11 @@ class GlyphSlantLayoutRenderer:
         self.bounds_cache.clear()
         self.geometry_cache.clear_transient()
 
+    def release_caches(self) -> None:
+        """Drop every cache entry derived from the attached layout."""
+        self.bounds_cache.clear()
+        self.geometry_cache.invalidate_generation()
+
     def apply(
         self,
         transform: SlantTextTransform,
