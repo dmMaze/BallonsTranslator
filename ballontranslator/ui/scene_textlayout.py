@@ -208,6 +208,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.render_delegate = None
         self.layout_generation = 0
         self.render_failure_handler = None
+        # QWidgetTextControl routes its mouse and drag hit tests through this
+        # layout.  Nonlinear visual effects can therefore restore source
+        # coordinates here without replacing Qt's editing state machine.
+        self.input_point_mapper = None
 
         self.x_offset_lst = []
         self.y_offset_lst = []
@@ -245,6 +249,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
     def _begin_layout_generation(self):
         self.layout_generation += 1
+
+    def map_input_point(self, point: QPointF) -> QPointF:
+        mapper = self.input_point_mapper
+        return QPointF(point) if mapper is None else mapper(QPointF(point))
 
     def _report_render_failure(self, error, effect_pass=False):
         handler = self.render_failure_handler
@@ -671,6 +679,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         painter.restore()
 
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
+        point = self.map_input_point(point)
         blk = self.document().firstBlock()
         custom_rendering = self.render_delegate is not None
         x, y = point.x(), point.y()
@@ -1037,6 +1046,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
+        point = self.map_input_point(point)
         blk = self.document().firstBlock()
         x, y = point.x(), point.y()
         off = 0

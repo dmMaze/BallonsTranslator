@@ -6,7 +6,7 @@ from typing import Optional, TYPE_CHECKING
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRectF, QSizeF
-from qtpy.QtGui import QPainterPath, QPolygonF
+from qtpy.QtGui import QPainterPath
 from qtpy.QtWidgets import QGraphicsItem
 
 from ballontranslator.utils.fontformat import (
@@ -15,6 +15,11 @@ from ballontranslator.utils.fontformat import (
     create_text_transform,
 )
 from ballontranslator.utils.textblock import TextAlignment
+from .text_effects.curvature import NonlinearTextSurfaceRenderer
+from .text_effects.raster import (
+    EffectRasterAllocationError,
+    RASTER_BOUNDARY_FAILURES,
+)
 from .text_transform_variants import text_transform_strategy
 
 if TYPE_CHECKING:
@@ -39,7 +44,12 @@ class TextItemGeometryController:
         self.preview: Optional[TextTransform] = None
         self.layout_renderer = None
         self.layout_renderer_type = None
+        self.visual_mapper = None
+        self.surface_renderer = None
+        self._surface_mapping_active = False
         self._transform_values_by_type = {}
+        self._input_mapping_active = False
+        self._input_previous_source = None
         self.installing = False
         self._box_geometry_active = False
         self._update_depth = 1
@@ -48,6 +58,7 @@ class TextItemGeometryController:
     def bind_model(self) -> None:
         """Reset transient state after the item adopts a ``TextBlock``."""
         self.preview = None
+        self.detach_surface_mapper()
         transform = self.canonical()
         self._transform_values_by_type = {
             transform.transform_type: transform
@@ -55,6 +66,10 @@ class TextItemGeometryController:
         self._box_geometry_active = text_transform_strategy(
             transform
         ).requires_custom_resize(transform)
+        self._surface_mapping_active = (
+            text_transform_strategy(transform).uses_surface_mapping
+            and not transform.is_neutral()
+        )
 
     def item_change(self, change, value, base_item_change):
         item = self.item
@@ -134,6 +149,9 @@ class TextItemGeometryController:
         transform = self.effective()
         return text_transform_strategy(transform).visual_is_neutral(self.item)
 
+    def uses_surface_warp(self) -> bool:
+        return self.visual_mapper is not None
+
     @contextmanager
     def update_transaction(self):
         """Batch cache and input-method work across nested Qt changes."""
@@ -176,25 +194,29 @@ class TextItemGeometryController:
             rotation_pivot = item.transformOriginPoint()
         return text_transform_strategy(values).compensated_matrix(
             values,
+            self.source_rect(),
             box_pivot,
             angle,
             rotation_pivot,
-        )
-
-    def visual_polygon(self, logical_rect):
-        return text_transform_strategy(self.effective()).visual_polygon(
-            self.item, logical_rect
         )
 
     def bounding_rect(self, base_rect: QRectF) -> QRectF:
         """Return the Qt paint bounds with the managed display size."""
         rect = QRectF(base_rect)
         rect.setSize(self.display_rect.size())
+        if self.visual_mapper is not None:
+            rect = rect.united(
+                self.visual_mapper.visual_bounds(self.source_rect())
+            )
         return rect
+
+    def source_rect(self) -> QRectF:
+        """Return the unwarped local paint surface, including effect padding."""
+        return QRectF(QPointF(), self.display_rect.size())
 
     def logical_rect(self) -> QRectF:
         """Return the untransformed, effect-free local rectangle."""
-        return self.unpad_rect(self.item.boundingRect())
+        return self.unpad_rect(self.source_rect())
 
     def pad_rect(self, rect: QRectF) -> QRectF:
         padding = self.item.padding()
@@ -205,27 +227,135 @@ class TextItemGeometryController:
         return rect.adjusted(padding, padding, -padding, -padding)
 
     def shape(self) -> QPainterPath:
+        if self.visual_mapper is not None:
+            return self.visual_mapper.map_rect_path(self.logical_rect())
         path = QPainterPath()
         path.addRect(
-            self.item.boundingRect() if self.is_neutral() else self.logical_rect()
+            self.source_rect() if self.is_neutral() else self.logical_rect()
         )
         return path
 
-    def visual_polygon_in_scene(self):
-        return self.visual_polygon(self.logical_rect())
+    def contains(self, point: QPointF) -> bool:
+        return self.shape().contains(QPointF(point))
 
-    def visual_polygon_in_item(self):
-        """Return the strategy-owned visual guide in item paint coordinates."""
-        item = self.item
-        return QPolygonF(
-            [
-                item.mapFromScene(point)
-                for point in self.visual_polygon_in_scene()
-            ]
+    def visual_outline_in_item(self) -> QPainterPath:
+        if self.visual_mapper is not None:
+            return self.visual_mapper.map_rect_path(self.logical_rect())
+        path = QPainterPath()
+        path.addRect(self.logical_rect())
+        return path
+
+    def visual_outline_in_scene(self) -> QPainterPath:
+        return self.item.sceneTransform().map(self.visual_outline_in_item())
+
+    def map_source_to_visual(self, point: QPointF) -> QPointF:
+        mapper = self.visual_mapper
+        return QPointF(point) if mapper is None else mapper.forward_point(point)
+
+    def map_visual_to_source(
+        self,
+        point: QPointF,
+        previous_source: QPointF = None,
+    ) -> QPointF:
+        mapper = self.visual_mapper
+        if mapper is None:
+            return QPointF(point)
+        if previous_source is None and self._input_mapping_active:
+            previous_source = self._input_previous_source
+        source = mapper.inverse_point(point, previous_source)
+        if self._input_mapping_active:
+            self._input_previous_source = QPointF(source)
+        return source
+
+    def begin_input_mapping(self) -> None:
+        self._input_mapping_active = True
+        self._input_previous_source = None
+
+    def end_input_mapping(self) -> None:
+        self._input_mapping_active = False
+        self._input_previous_source = None
+
+    def map_source_to_scene(self, point: QPointF) -> QPointF:
+        return self.item.mapToScene(self.map_source_to_visual(point))
+
+    def map_scene_to_source(
+        self,
+        point: QPointF,
+        previous_source: QPointF = None,
+    ) -> QPointF:
+        return self.map_visual_to_source(
+            self.item.mapFromScene(point), previous_source
         )
 
+    def capture_scene_to_source_mapper(self):
+        """Freeze the item mapping used for one shape-controller drag.
+
+        Resizing changes both the nonlinear mapper and the item's position.
+        Mapping later mouse events through that moving geometry creates
+        feedback, so a drag must stay in its start coordinate system.
+        """
+        scene_to_visual, invertible = self.item.sceneTransform().inverted()
+        if not invertible:
+            return None
+        visual_mapper = self.visual_mapper
+
+        def map_point(
+            scene_point: QPointF,
+            previous_source: QPointF = None,
+        ) -> QPointF:
+            visual_point = scene_to_visual.map(QPointF(scene_point))
+            if visual_mapper is None:
+                return visual_point
+            return visual_mapper.inverse_point(
+                visual_point,
+                previous_source,
+                extrapolate=True,
+            )
+
+        return map_point
+
+    def source_handle_points(self):
+        rect = self.logical_rect()
+        return (
+            rect.topLeft(),
+            QPointF(rect.center().x(), rect.top()),
+            rect.topRight(),
+            QPointF(rect.right(), rect.center().y()),
+            rect.bottomRight(),
+            QPointF(rect.center().x(), rect.bottom()),
+            rect.bottomLeft(),
+            QPointF(rect.left(), rect.center().y()),
+        )
+
+    def visual_handle_points_in_scene(self):
+        source_points = self.source_handle_points()
+        return [
+            self.map_source_to_scene(point) for point in source_points
+        ]
+
+    def visual_handle_tangents_in_scene(self):
+        """Return local text-flow tangents at the eight visual handles."""
+        mapper = self.visual_mapper
+        vertical = self.item.fontformat.vertical
+        source_flow = QPointF(0.0, 1.0) if vertical else QPointF(1.0, 0.0)
+        tangents = []
+        for source in self.source_handle_points():
+            visual = self.map_source_to_visual(source)
+            if mapper is None:
+                next_visual = self.map_source_to_visual(source + source_flow)
+            else:
+                next_visual = visual + mapper.local_tangent(source)
+            scene = self.item.mapToScene(visual)
+            tangents.append(self.item.mapToScene(next_visual) - scene)
+        return tangents
+
+    def visual_rotation_center_in_scene(self) -> QPointF:
+        # Curvature is translated so its visual outline bounds remain centered
+        # on the logical rectangle; Qt rotation uses that stable visual center.
+        return self.item.mapToScene(self.logical_rect().center())
+
     def visual_bounds_in_scene(self) -> QRectF:
-        return self.visual_polygon_in_scene().boundingRect()
+        return self.visual_outline_in_scene().boundingRect()
 
     def absolute_rect(self, max_h=None, max_w=None, qrect=False):
         """Return the persistent logical rectangle in parent coordinates."""
@@ -283,6 +413,8 @@ class TextItemGeometryController:
         item.prepareGeometryChange()
         self.display_rect = rect
         item.layout.setMaxSize(rect.width(), rect.height())
+        if self._surface_mapping_active:
+            self.refresh_surface_mapper()
         self.sync_origin()
         if (
             item.fontformat.gradient_enabled
@@ -415,6 +547,8 @@ class TextItemGeometryController:
             with self.update_transaction():
                 self.display_rect.setWidth(width)
                 self.display_rect.setHeight(height)
+                if self._surface_mapping_active:
+                    self.refresh_surface_mapper()
                 self.sync_origin()
                 new_anchor_parent = item.mapToParent(
                     self._size_alignment_anchor(self.logical_rect())
@@ -436,6 +570,154 @@ class TextItemGeometryController:
 
     def requires_custom_resize(self) -> bool:
         return self._box_geometry_active
+
+    def attach_surface_mapper(
+        self,
+        transform: TextTransform,
+    ) -> bool:
+        """Attach or update the nonlinear source-to-visual mapping."""
+        strategy = text_transform_strategy(transform)
+        wants_surface = (
+            strategy.uses_surface_mapping and not transform.is_neutral()
+        )
+        if self.item.layout is None:
+            changed = self.detach_surface_mapper()
+            self._surface_mapping_active = wants_surface
+            return changed
+        logical_rect = self.logical_rect()
+        source_rect = self.source_rect()
+        if (
+            logical_rect.width() <= 0.0
+            or logical_rect.height() <= 0.0
+            or source_rect.width() <= 0.0
+            or source_rect.height() <= 0.0
+        ):
+            changed = self.detach_surface_mapper()
+            self._surface_mapping_active = wants_surface
+            return changed
+        mapper = strategy.create_surface_mapper(
+            logical_rect,
+            source_rect,
+            self.item.fontformat.vertical,
+            transform,
+        )
+        if mapper is None:
+            return self.detach_surface_mapper()
+        previous = self.visual_mapper
+        self.item.prepareGeometryChange()
+        self.visual_mapper = mapper
+        self._surface_mapping_active = True
+        if self.surface_renderer is None:
+            self.surface_renderer = NonlinearTextSurfaceRenderer()
+        else:
+            self.surface_renderer.release()
+        self.item.layout.input_point_mapper = self.map_visual_to_source
+        self.item.update()
+        self.request_update()
+        return (
+            previous is None
+            or previous.geometry_key != mapper.geometry_key
+        )
+
+    def refresh_surface_mapper(self) -> bool:
+        if not self._surface_mapping_active and self.visual_mapper is None:
+            return False
+        transform = self.effective()
+        return self.attach_surface_mapper(transform)
+
+    def detach_surface_mapper(self) -> bool:
+        changed = (
+            self.visual_mapper is not None
+            or self.surface_renderer is not None
+        )
+        if not changed:
+            if self.item.layout is not None:
+                self.item.layout.input_point_mapper = None
+            return False
+        if self.item.layout is not None:
+            self.item.prepareGeometryChange()
+            self.item.layout.input_point_mapper = None
+        if self.surface_renderer is not None:
+            self.surface_renderer.release()
+        self.visual_mapper = None
+        self.surface_renderer = None
+        self._surface_mapping_active = False
+        self.end_input_mapping()
+        self.item.update()
+        self.request_update()
+        return True
+
+    def release_render_resources(self) -> None:
+        """Release every item-owned renderer/cache at the page boundary."""
+        self.detach_layout_renderer()
+        self.detach_surface_mapper()
+        self.item.effect_renderer.release_caches()
+
+    def invalidate_surface_cache(self) -> None:
+        if self.surface_renderer is not None:
+            self.surface_renderer.release()
+
+    def paint_item(self, painter, option, widget, base_paint) -> None:
+        """Paint directly or through the active nonlinear surface warp."""
+        mapper = self.visual_mapper
+        renderer = self.surface_renderer
+        if mapper is None or renderer is None:
+            self.item.effect_renderer.paint_item(
+                painter, option, widget, base_paint
+            )
+            return
+
+        effect_renderer = self.item.effect_renderer
+        layout_generation = getattr(self.item.layout, 'layout_generation', 0)
+        cache_key = (
+            mapper.geometry_key,
+            layout_generation,
+            effect_renderer.cache_generation,
+            (
+                0
+                if effect_renderer.background_pixmap is None
+                else effect_renderer.background_pixmap.cacheKey()
+            ),
+            self.item.document().revision(),
+        )
+
+        def paint_source(source_painter, source_option, source_widget):
+            effect_renderer.paint_item(
+                source_painter,
+                source_option,
+                source_widget,
+                base_paint,
+            )
+
+        interactive = (
+            self.item.is_editting()
+            or self.item.reshaping
+            or self.preview is not None
+        )
+        try:
+            renderer.paint(
+                painter,
+                option,
+                mapper,
+                self.source_rect(),
+                cache_key,
+                cache_allowed=(
+                    not interactive
+                    and not effect_renderer.export_render
+                ),
+                paint_source=paint_source,
+                maximum_scale=2.0 if interactive else None,
+            )
+        except RASTER_BOUNDARY_FAILURES as error:
+            # Exceptions cannot cross a Qt virtual paint callback. Export
+            # records the failure; interactive rendering remains usable.
+            failure = EffectRasterAllocationError(str(error))
+            effect_renderer._warn_effect_allocation_once(failure)
+            if effect_renderer.export_render:
+                effect_renderer.export_error = failure
+            effect_renderer.paint_item(
+                painter, option, widget, base_paint
+            )
 
     def attach_layout_renderer(self, transform_type, factory):
         renderer = self.layout_renderer
@@ -466,12 +748,6 @@ class TextItemGeometryController:
         self.layout_renderer = None
         self.layout_renderer_type = None
         return True
-
-    def release_layout_cache_namespace(self) -> None:
-        """Release global entries namespaced to this item's text layout."""
-        renderer = self.layout_renderer
-        if renderer is not None:
-            renderer.release_caches()
 
     def layout_ink_bounds(self):
         renderer = self.layout_renderer
@@ -562,6 +838,11 @@ class TextItemGeometryController:
             item.refresh_cache_policy()
             item.update()
         padding_changed = item.effect_renderer._update_effect_padding()
+        if padding_changed and self.layout_renderer is not None:
+            # Padding relayout advances the layout namespace after the first
+            # ink measurement. Rebuild that small committed geometry now so a
+            # later preview does not discover and evict stale entries.
+            self.layout_renderer.ink_bounds()
         if item.fontformat.gradient_enabled and not padding_changed:
             item.effect_renderer._refresh_gradient_geometry()
         return padding_changed
@@ -591,7 +872,22 @@ class TextItemGeometryController:
             target,
             persistent_cache=persistent_cache,
         )
-        padding_changed = self._refresh_effect_geometry(layout_changed)
+        # Curvature changes only the final surface warp. Rebuilding the
+        # unwarped stroke/shadow cache on every slider preview is both costly
+        # and can briefly drop effects. Glyph-slant transitions do alter the
+        # source composite and still invalidate that cache.
+        source_rendering_changed = (
+            layout_changed
+            and (
+                previous.transform_type == 'slant'
+                or target.transform_type == 'slant'
+            )
+        )
+        padding_changed = (
+            self._refresh_effect_geometry(True)
+            if source_rendering_changed
+            else False
+        )
         box_changed = self._apply_box(target)
         finalized = self._finalize_neutral(was_visual_neutral, target)
         return layout_changed or padding_changed or box_changed or finalized

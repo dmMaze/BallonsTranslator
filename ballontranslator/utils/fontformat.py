@@ -22,6 +22,12 @@ TEXT_TRANSFORM_BOX_SLANT_MIN = -85.0
 TEXT_TRANSFORM_BOX_SLANT_MAX = 85.0
 TEXT_TRANSFORM_GLYPH_SLANT_MIN = -45.0
 TEXT_TRANSFORM_GLYPH_SLANT_MAX = 45.0
+TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MIN = 0.0
+TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MAX = 0.8
+TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN = -180.0
+TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX = 180.0
+TEXT_TRANSFORM_CURVATURE_MIN = -1.0
+TEXT_TRANSFORM_CURVATURE_MAX = 1.0
 TEXT_TRANSFORM_PRECISION = 6
 
 
@@ -96,6 +102,52 @@ class SlantTextTransform(TextTransform):
         return self == SlantTextTransform()
 
 
+@dataclass(frozen=True)
+class PerspectiveTextTransform(TextTransform):
+    """Native projective depth transform around the text-box center."""
+
+    strength: float = 0.0
+    direction: float = 0.0
+    transform_type: str = dataclass_field(init=False, default='perspective')
+
+    def normalized(self) -> "PerspectiveTextTransform":
+        return PerspectiveTextTransform(
+            normalize_text_transform_value(
+                self.strength,
+                TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MIN,
+                TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MAX,
+            ),
+            normalize_text_transform_value(
+                self.direction,
+                TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN,
+                TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX,
+            ),
+        )
+
+    def is_neutral(self) -> bool:
+        return self.strength == 0.0
+
+
+@dataclass(frozen=True)
+class CurvatureTextTransform(TextTransform):
+    """Signed circular bend applied to the completed text surface."""
+
+    curvature: float = 0.0
+    transform_type: str = dataclass_field(init=False, default='curvature')
+
+    def normalized(self) -> "CurvatureTextTransform":
+        return CurvatureTextTransform(
+            normalize_text_transform_value(
+                self.curvature,
+                TEXT_TRANSFORM_CURVATURE_MIN,
+                TEXT_TRANSFORM_CURVATURE_MAX,
+            )
+        )
+
+    def is_neutral(self) -> bool:
+        return self.curvature == 0.0
+
+
 def normalize_text_transform_value(
     value: float,
     minimum: float,
@@ -158,6 +210,8 @@ def normalize_text_transform(
 TEXT_TRANSFORM_TYPES = {
     'none': NoTextTransform,
     'slant': SlantTextTransform,
+    'perspective': PerspectiveTextTransform,
+    'curvature': CurvatureTextTransform,
 }
 
 

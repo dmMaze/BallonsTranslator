@@ -272,6 +272,7 @@ class ControlBlockItem(QGraphicsRectItem):
             self.drag_mode = self.DRAG_NONE
             self.ctrl.angleLabel.setVisible(False)
             self.ctrl.blk_item.update()
+            self.ctrl.finishResize()
             self.ctrl.finishProxyDrag()
         return super().mouseReleaseEvent(event)
 
@@ -292,6 +293,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         super().__init__()
         self.gv = parent
         self._visual_polygon = QPolygonF()
+        self._visual_path = QPainterPath()
         self._outline_bounds = QRectF()
         self._true_handle_scene_points = []
         self._display_handle_scene_points = []
@@ -299,6 +301,10 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._updating_bounds = False
         self._resize_opposite_scene = None
         self._resize_opposite_idx = None
+        self._resize_initial_local = None
+        self._resize_initial_abs = None
+        self._resize_initial_source_handle = None
+        self._resize_scene_to_source = None
         self._proxy_drag_idx = None
         self._proxy_pointer_device_start = None
         self._proxy_actual_scene_start = None
@@ -339,8 +345,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
     def refreshDeviceGeometry(self) -> bool:
         geometry_bounds = (
-            self._visual_polygon.boundingRect()
-            if not self._visual_polygon.isEmpty()
+            self._visual_path.boundingRect()
+            if not self._visual_path.isEmpty()
             else super().rect()
         )
         if geometry_bounds.isNull():
@@ -375,7 +381,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
     @classmethod
     def _item_handle_points_in_scene(cls, item: TextBlkItem):
-        return cls._handle_points(item.visual_polygon_in_scene())
+        return item.geometry_controller.visual_handle_points_in_scene()
 
     def setBlkItem(self, blk_item: TextBlkItem):
         if (
@@ -403,6 +409,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if blk_item is None:
             self.resetInteraction()
             self._visual_polygon = QPolygonF()
+            self._visual_path = QPainterPath()
             self._outline_bounds = QRectF()
             self._true_handle_scene_points = []
             self._display_handle_scene_points = []
@@ -427,26 +434,27 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if self.blk_item is None:
             return
 
-        scene_polygon = self.blk_item.visual_polygon_in_scene()
+        scene_path = self.blk_item.geometry_controller.visual_outline_in_scene()
         parent = self.parentItem()
         if parent is None:
-            parent_polygon = QPolygonF([QPointF(point) for point in scene_polygon])
+            parent_path = QPainterPath(scene_path)
         else:
-            parent_polygon = QPolygonF(
-                [parent.mapFromScene(point) for point in scene_polygon]
+            inverse, invertible = parent.sceneTransform().inverted()
+            parent_path = (
+                inverse.map(scene_path) if invertible else QPainterPath()
             )
-        bounds = parent_polygon.boundingRect()
+        bounds = parent_path.boundingRect()
         origin = bounds.topLeft()
-        local_polygon = QPolygonF(
-            [point - origin for point in parent_polygon]
-        )
-        local_bounds = local_polygon.boundingRect()
+        local_path = QPainterPath(parent_path)
+        local_path.translate(-origin)
+        local_polygon = local_path.toFillPolygon()
+        local_bounds = local_path.boundingRect()
         guard = device_pixels_to_local(
             self, self.pen().widthF() / 2.0 + CONTROL_DEVICE_GUARD
         )
         outline_bounds = local_bounds.adjusted(-guard, -guard, guard, guard)
         if (
-            self._visual_polygon == local_polygon
+            self._visual_path == local_path
             and self.pos() == origin
             and self.rect() == local_bounds
             and self._outline_bounds == outline_bounds
@@ -458,6 +466,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._updating_bounds = True
         try:
             self.prepareGeometryChange()
+            self._visual_path = local_path
             self._visual_polygon = local_polygon
             self._outline_bounds = outline_bounds
             self._reported_angle = self.blk_item.rotation()
@@ -475,12 +484,9 @@ class TextBlkShapeControl(QGraphicsRectItem):
         return QPolygonF([self.mapToScene(point) for point in self._visual_polygon])
 
     def shape(self) -> QPainterPath:
-        if len(self._visual_polygon) != 4:
+        if self._visual_path.isEmpty():
             return super().shape()
-        path = QPainterPath()
-        path.addPolygon(self._visual_polygon)
-        path.closeSubpath()
-        return path
+        return QPainterPath(self._visual_path)
 
     def setRect(self, *args):
         if self.blk_item is not None and not self._updating_bounds:
@@ -488,6 +494,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             return
         super().setRect(*args)
         self._visual_polygon = QPolygonF()
+        self._visual_path = QPainterPath()
         rect = super().rect()
         guard = device_pixels_to_local(
             self, self.pen().widthF() / 2.0 + CONTROL_DEVICE_GUARD
@@ -515,7 +522,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         super().setRotation(angle)
 
     def updateControlBlocks(self):
-        if len(self._visual_polygon) == 4:
+        if self.blk_item is not None:
             true_scene_points = self._item_handle_points_in_scene(self.blk_item)
         else:
             polygon = rect_polygon(self.rect())
@@ -525,11 +532,31 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._true_handle_scene_points = [
             QPointF(point) for point in true_scene_points
         ]
-        outward_vectors = self._handle_outward_vectors_device(
-            self._true_handle_scene_points
+        local_frames = (
+            self.blk_item is not None
+            and (
+                self.blk_item.geometry_controller.uses_surface_warp()
+                or self.blk_item._effective_text_transform().transform_type
+                == 'perspective'
+            )
         )
-        device_angle = self._item_device_angle()
-        for ctrlblock in self.ctrlblock_group:
+        if local_frames:
+            outward_vectors, device_angles = self._handle_frames_device(
+                self._true_handle_scene_points,
+                self.blk_item.geometry_controller
+                .visual_handle_tangents_in_scene(),
+            )
+        else:
+            outward_vectors = self._handle_outward_vectors_device(
+                self._true_handle_scene_points
+            )
+            device_angles = [
+                self._item_device_angle()
+                for _ in self._true_handle_scene_points
+            ]
+        for ctrlblock, device_angle in zip(
+            self.ctrlblock_group, device_angles
+        ):
             ctrlblock.setDeviceAngle(device_angle)
         handle_placements = [
             self._outward_handle_scene_point(
@@ -603,6 +630,51 @@ class TextBlkShapeControl(QGraphicsRectItem):
             vectors.extend((corner_normal, edge_normals[index]))
         return vectors
 
+    def _handle_frames_device(self, scene_points, scene_tangents=None):
+        """Return local outward normals and tangent angles for eight handles."""
+        if len(scene_points) != 8:
+            return (
+                [QPointF() for _ in scene_points],
+                [self._item_device_angle() for _ in scene_points],
+            )
+        transform = self.gv.viewportTransform()
+        points = [transform.map(point) for point in scene_points]
+        if scene_tangents is None or len(scene_tangents) != len(points):
+            device_tangents = None
+        else:
+            device_origin = transform.map(QPointF())
+            device_tangents = [
+                transform.map(QPointF(tangent)) - device_origin
+                for tangent in scene_tangents
+            ]
+        signed_area = sum(
+            point.x() * points[(index + 1) % len(points)].y()
+            - point.y() * points[(index + 1) % len(points)].x()
+            for index, point in enumerate(points)
+        )
+        orientation = 1.0 if signed_area >= 0.0 else -1.0
+        outward_vectors = []
+        angles = []
+        for index in range(len(points)):
+            boundary_tangent = (
+                points[(index + 1) % 8] - points[(index - 1) % 8]
+            )
+            boundary_tangent = self._normalized_device_vector(
+                boundary_tangent.x(), boundary_tangent.y()
+            )
+            outward = QPointF(
+                orientation * boundary_tangent.y(),
+                -orientation * boundary_tangent.x(),
+            )
+            outward_vectors.append(outward)
+            tangent = (
+                boundary_tangent
+                if device_tangents is None
+                else device_tangents[index]
+            )
+            angles.append(math.degrees(math.atan2(tangent.y(), tangent.x())))
+        return outward_vectors, angles
+
     def _item_device_angle(self) -> float:
         if self.blk_item is None:
             return 0.0
@@ -649,10 +721,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.setRotation(angle)
 
     def visualCenterInScene(self) -> QPointF:
-        polygon = self.blk_item.visual_polygon_in_scene()
-        if len(polygon) != 4:
-            return self.sceneBoundingRect().center()
-        return sum((QPointF(point) for point in polygon), QPointF()) / 4
+        return self.blk_item.geometry_controller.visual_rotation_center_in_scene()
 
     def handleScenePoint(self, idx: int) -> QPointF:
         if len(self._true_handle_scene_points) == 8:
@@ -673,10 +742,31 @@ class TextBlkShapeControl(QGraphicsRectItem):
         return math.degrees(math.atan2(vector.y(), vector.x()))
 
     def resizeHandleSceneAngle(self, idx: int) -> float:
-        polygon = self.blk_item.visual_polygon_in_scene()
-        if len(polygon) == 4:
-            return resize_handle_scene_angle(polygon[1] - polygon[0], idx)
-        return self.rotation() + 45.0 * idx - 135.0
+        if (
+            not self.blk_item.geometry_controller.uses_surface_warp()
+            and self.blk_item._effective_text_transform().transform_type
+            != 'perspective'
+        ):
+            points = self._item_handle_points_in_scene(self.blk_item)
+            if len(points) == 8:
+                return resize_handle_scene_angle(
+                    points[2] - points[0], idx
+                )
+        points = self._item_handle_points_in_scene(self.blk_item)
+        if len(points) != 8:
+            return self.rotation() + 45.0 * idx - 135.0
+        tangent = points[(idx + 1) % 8] - points[(idx - 1) % 8]
+        signed_area = sum(
+            point.x() * points[(index + 1) % len(points)].y()
+            - point.y() * points[(index + 1) % len(points)].x()
+            for index, point in enumerate(points)
+        )
+        orientation = 1.0 if signed_area >= 0.0 else -1.0
+        outward = QPointF(
+            orientation * tangent.y(),
+            -orientation * tangent.x(),
+        )
+        return math.degrees(math.atan2(outward.y(), outward.x()))
 
     def _beginProxyDrag(self, idx: int, pointer_scene: QPointF):
         self._proxy_drag_idx = idx
@@ -707,8 +797,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def resetInteraction(self) -> None:
         """Clear transient state before the control crosses an item/page boundary."""
         self.reshaping = False
-        self._resize_opposite_scene = None
-        self._resize_opposite_idx = None
+        self.finishResize()
         self.finishProxyDrag()
         self.angleLabel.hide()
         self.setCursor(Qt.CursorShape.SizeAllCursor)
@@ -719,25 +808,52 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def beginResize(self, idx: int, pointer_scene: QPointF = None):
         if pointer_scene is not None:
             self._beginProxyDrag(idx, pointer_scene)
+        item = self.blk_item
         self._resize_opposite_idx = (idx + 4) % 8
         self._resize_opposite_scene = QPointF(
-            self._item_handle_points_in_scene(self.blk_item)[
+            self._item_handle_points_in_scene(item)[
                 self._resize_opposite_idx
             ]
         )
+        self._resize_initial_local = QRectF(item.logical_unpadded_rect())
+        self._resize_initial_abs = QRectF(item.absBoundingRect(qrect=True))
+        self._resize_initial_source_handle = QPointF(
+            item.geometry_controller.source_handle_points()[idx]
+        )
+        self._resize_scene_to_source = (
+            item.geometry_controller.capture_scene_to_source_mapper()
+        )
+
+    def finishResize(self) -> None:
+        self._resize_opposite_scene = None
+        self._resize_opposite_idx = None
+        self._resize_initial_local = None
+        self._resize_initial_abs = None
+        self._resize_initial_source_handle = None
+        self._resize_scene_to_source = None
 
     def resizeFromScene(self, idx: int, scene_pos: QPointF):
-        if self.blk_item is None or self._resize_opposite_scene is None:
+        if (
+            self.blk_item is None
+            or self._resize_opposite_scene is None
+            or self._resize_initial_local is None
+            or self._resize_initial_abs is None
+            or self._resize_initial_source_handle is None
+            or self._resize_scene_to_source is None
+        ):
             return
 
         item = self.blk_item
         scene_pos = self._proxySceneTarget(idx, scene_pos)
-        current_local = item.logical_unpadded_rect()
-        mouse_local = item.mapFromScene(scene_pos)
-        left = current_local.left()
-        right = current_local.right()
-        top = current_local.top()
-        bottom = current_local.bottom()
+        initial_local = self._resize_initial_local
+        mouse_local = self._resize_scene_to_source(
+            scene_pos,
+            self._resize_initial_source_handle,
+        )
+        left = initial_local.left()
+        right = initial_local.right()
+        top = initial_local.top()
+        bottom = initial_local.bottom()
         minimum = 1.0
 
         if idx in (0, 6, 7):
@@ -750,10 +866,10 @@ class TextBlkShapeControl(QGraphicsRectItem):
             bottom = max(mouse_local.y(), top + minimum)
 
         new_local = QRectF(QPointF(left, top), QPointF(right, bottom))
-        current_abs = item.absBoundingRect(qrect=True)
+        initial_abs = self._resize_initial_abs
         new_abs = QRectF(
-            current_abs.x() + new_local.x() - current_local.x(),
-            current_abs.y() + new_local.y() - current_local.y(),
+            initial_abs.x() + new_local.x() - initial_local.x(),
+            initial_abs.y() + new_local.y() - initial_local.y(),
             new_local.width(),
             new_local.height(),
         )
@@ -822,10 +938,10 @@ class TextBlkShapeControl(QGraphicsRectItem):
         )
         painter.setPen(self.pen())
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-        if len(self._visual_polygon) != 4:
+        if self._visual_path.isEmpty():
             painter.drawRect(self.rect())
         else:
-            painter.drawPolygon(self._visual_polygon)
+            painter.drawPath(self._visual_path)
         painter.restore()
 
     def hideControls(self):

@@ -6,10 +6,16 @@ from typing import Callable, Tuple
 from qtpy.QtCore import QCoreApplication
 
 from ballontranslator.utils.fontformat import (
+    TEXT_TRANSFORM_CURVATURE_MAX,
+    TEXT_TRANSFORM_CURVATURE_MIN,
     TEXT_TRANSFORM_BOX_SLANT_MAX,
     TEXT_TRANSFORM_BOX_SLANT_MIN,
     TEXT_TRANSFORM_GLYPH_SLANT_MAX,
     TEXT_TRANSFORM_GLYPH_SLANT_MIN,
+    TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX,
+    TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN,
+    TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MAX,
+    TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MIN,
     TEXT_TRANSFORM_SCALE_MAX,
     TEXT_TRANSFORM_SCALE_MIN,
     TEXT_TRANSFORM_TYPES,
@@ -18,7 +24,9 @@ from ballontranslator.utils.fontformat import (
 
 from .text_effects.transform_layout import GlyphSlantLayoutRenderer
 from .text_transform import (
+    CurvatureTextTransformStrategy,
     NoTextTransformStrategy,
+    PerspectiveTextTransformStrategy,
     SlantTextTransformStrategy,
     TextTransformStrategy,
 )
@@ -102,6 +110,45 @@ SLANT_CONTROLS = (
     ),
 )
 
+PERSPECTIVE_CONTROLS = (
+    TransformControlSpec(
+        'perspective_strength_control',
+        'strength',
+        lambda: QCoreApplication.translate(
+            'TextAdvancedFormatPanel', 'Strength'
+        ),
+        100.0,
+        TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MIN,
+        TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MAX,
+        '%',
+    ),
+    TransformControlSpec(
+        'perspective_direction_control',
+        'direction',
+        lambda: QCoreApplication.translate(
+            'TextAdvancedFormatPanel', 'Direction'
+        ),
+        1.0,
+        TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN,
+        TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX,
+        '\N{DEGREE SIGN}',
+    ),
+)
+
+CURVATURE_CONTROLS = (
+    TransformControlSpec(
+        'curvature_control',
+        'curvature',
+        lambda: QCoreApplication.translate(
+            'TextAdvancedFormatPanel', 'Curvature'
+        ),
+        100.0,
+        TEXT_TRANSFORM_CURVATURE_MIN,
+        TEXT_TRANSFORM_CURVATURE_MAX,
+        '%',
+    ),
+)
+
 
 TEXT_TRANSFORM_VARIANTS = (
     TextTransformVariantSpec(
@@ -114,6 +161,22 @@ TEXT_TRANSFORM_VARIANTS = (
         lambda: QCoreApplication.translate('TextAdvancedFormatPanel', 'Slant'),
         SlantTextTransformStrategy(GlyphSlantLayoutRenderer),
         SLANT_CONTROLS,
+    ),
+    TextTransformVariantSpec(
+        'perspective',
+        lambda: QCoreApplication.translate(
+            'TextAdvancedFormatPanel', 'Perspective'
+        ),
+        PerspectiveTextTransformStrategy(),
+        PERSPECTIVE_CONTROLS,
+    ),
+    TextTransformVariantSpec(
+        'curvature',
+        lambda: QCoreApplication.translate(
+            'TextAdvancedFormatPanel', 'Curvature'
+        ),
+        CurvatureTextTransformStrategy(),
+        CURVATURE_CONTROLS,
     ),
 )
 TEXT_TRANSFORM_VARIANTS_BY_TYPE = {

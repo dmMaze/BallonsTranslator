@@ -159,6 +159,8 @@ class TextEffectRenderer:
         return self.item.document()
 
     def boundingRect(self):
+        if self.geometry_controller.uses_surface_warp():
+            return self.geometry_controller.source_rect()
         return self.item.boundingRect()
 
     def logical_unpadded_rect(self):
@@ -174,6 +176,10 @@ class TextEffectRenderer:
         self.item.update()
 
     def _text_transform_is_neutral(self):
+        # Curvature warps the completed source composite. Effects themselves
+        # must therefore render in ordinary source coordinates exactly once.
+        if self.geometry_controller.uses_surface_warp():
+            return True
         return self.item._text_transform_is_neutral()
 
     def _effective_text_transform(self):
@@ -185,6 +191,14 @@ class TextEffectRenderer:
     def clear_cached_surface(self) -> None:
         self.background_pixmap = None
         self.background_pixmap_scale = None
+
+    def release_caches(self) -> None:
+        """Release every item-owned raster cache before page removal."""
+        self.clear_cached_surface()
+        state = self._transformed_effect_state
+        if state is not None:
+            state.tile_cache.clear()
+        self._transformed_effect_state = None
 
     def __paint_flip(self, base_paint, option):
 

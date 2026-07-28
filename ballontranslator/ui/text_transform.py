@@ -11,7 +11,13 @@ from typing import Optional
 from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import QPolygonF, QTransform
 
-from ballontranslator.utils.fontformat import TextTransform, normalize_text_transform
+from ballontranslator.utils.fontformat import (
+    CurvatureTextTransform,
+    PerspectiveTextTransform,
+    TextTransform,
+    normalize_text_transform,
+)
+from .text_effects.curvature import CurvatureMapper
 
 
 def _text_transform_coefficients(
@@ -96,15 +102,13 @@ def _transform_is_finite(transform: QTransform) -> bool:
     )
 
 
-def compensated_text_transform_matrix(
-    horizontal_scale: float,
-    vertical_scale: float,
-    slant_angle: float,
+def compensated_box_transform_matrix(
+    box_transform: QTransform,
     box_pivot: QPointF,
     rotation_angle: float,
     rotation_pivot: Optional[QPointF] = None,
 ) -> QTransform:
-    """Build the base transform that makes Box transform precede rotation.
+    """Build a Qt base transform that makes a box transform precede rotation.
 
     A :class:`QGraphicsItem` applies its built-in rotation before its base
     ``transform()`` when mapping a point.  For canonical Box transform ``S``
@@ -112,8 +116,9 @@ def compensated_text_transform_matrix(
     transform.  Qt then composes ``R * C == S * R``, which maps points as
     ``R(S(point))``.  ``box_pivot`` and ``rotation_pivot`` may differ.
 
-    >>> base = compensated_text_transform_matrix(
-    ...     2, 1, 0, QPointF(5, 7), 90, QPointF(5, 7)
+    >>> box = text_transform_matrix(2, 1, 0, QPointF(5, 7))
+    >>> base = compensated_box_transform_matrix(
+    ...     box, QPointF(5, 7), 90, QPointF(5, 7)
     ... )
     >>> # Built-in rotation maps (6, 7) to (5, 8) before ``base`` is applied.
     >>> mapped = base.map(QPointF(5, 8))
@@ -134,12 +139,6 @@ def compensated_text_transform_matrix(
         if not math.isfinite(pivot.x()) or not math.isfinite(pivot.y()):
             raise ValueError(f"{name} coordinates must be finite numbers")
 
-    box_transform = text_transform_matrix(
-        horizontal_scale,
-        vertical_scale,
-        slant_angle,
-        box_pivot,
-    )
     if not _transform_is_finite(box_transform):
         raise ValueError("Box transform coefficients must be finite numbers")
 
@@ -177,6 +176,87 @@ def compensated_text_transform_matrix(
     return compensated
 
 
+def compensated_text_transform_matrix(
+    horizontal_scale: float,
+    vertical_scale: float,
+    slant_angle: float,
+    box_pivot: QPointF,
+    rotation_angle: float,
+    rotation_pivot: Optional[QPointF] = None,
+) -> QTransform:
+    """Build the rotation-compensated affine Slant box matrix."""
+    return compensated_box_transform_matrix(
+        text_transform_matrix(
+            horizontal_scale,
+            vertical_scale,
+            slant_angle,
+            box_pivot,
+        ),
+        box_pivot,
+        rotation_angle,
+        rotation_pivot,
+    )
+
+
+def perspective_transform_matrix(
+    transform: PerspectiveTextTransform,
+    rect: QRectF,
+) -> QTransform:
+    """Return a centered, finite projective transform for ``rect``.
+
+    Direction is clockwise in screen coordinates. Its L1-normalized vector
+    keeps the homogeneous denominator at or above ``1 - strength``.
+
+    >>> matrix = perspective_transform_matrix(
+    ...     PerspectiveTextTransform(0.5, 0.0), QRectF(0, 0, 100, 50)
+    ... )
+    >>> mapped = matrix.map(QPointF(50, 25))
+    >>> (mapped.x(), mapped.y())
+    (50.0, 25.0)
+    """
+    transform = transform.normalized()
+    if transform.strength == 0.0:
+        return QTransform()
+    if rect.width() <= 0.0 or rect.height() <= 0.0:
+        raise ValueError('perspective rectangle must have positive dimensions')
+
+    radians = math.radians(transform.direction)
+    direction_x = math.cos(radians)
+    direction_y = math.sin(radians)
+    direction_length = abs(direction_x) + abs(direction_y)
+    direction_x /= direction_length
+    direction_y /= direction_length
+
+    center = rect.center()
+    half_width = rect.width() / 2.0
+    half_height = rect.height() / 2.0
+    projective_x = transform.strength * direction_x / half_width
+    projective_y = transform.strength * direction_y / half_height
+    denominator_offset = (
+        1.0
+        - projective_x * center.x()
+        - projective_y * center.y()
+    )
+
+    matrix = QTransform(
+        1.0 + center.x() * projective_x,
+        center.y() * projective_x,
+        projective_x,
+        center.x() * projective_y,
+        1.0 + center.y() * projective_y,
+        projective_y,
+        center.x() * denominator_offset - center.x(),
+        center.y() * denominator_offset - center.y(),
+        denominator_offset,
+    )
+    if not _transform_is_finite(matrix):
+        raise ValueError('perspective transform must be finite and invertible')
+    _, invertible = matrix.inverted()
+    if not invertible:
+        raise ValueError('perspective transform must be finite and invertible')
+    return matrix
+
+
 def rect_polygon(rect: QRectF) -> QPolygonF:
     """Return a rectangle's four distinct corners in clockwise order."""
     return QPolygonF(
@@ -188,20 +268,17 @@ class TextTransformStrategy:
     """Rendering/geometry boundary implemented by each transform variant."""
 
     transform_type = 'base'
+    uses_surface_mapping = False
 
     def compensated_matrix(
         self,
         transform: TextTransform,
+        source_rect: QRectF,
         box_pivot: QPointF,
         rotation_angle: float,
         rotation_pivot: QPointF,
     ) -> QTransform:
         raise NotImplementedError
-
-    def visual_polygon(self, item, logical_rect: QRectF) -> QPolygonF:
-        return QPolygonF(
-            [item.mapToScene(point) for point in rect_polygon(logical_rect)]
-        )
 
     def visual_is_neutral(self, item) -> bool:
         return item.transform().isIdentity()
@@ -233,6 +310,16 @@ class TextTransformStrategy:
         """Install variant state into a newly attached text layout."""
         return False
 
+    def create_surface_mapper(
+        self,
+        logical_rect: QRectF,
+        source_rect: QRectF,
+        vertical: bool,
+        transform: TextTransform,
+    ):
+        """Return a nonlinear visual mapper, or ``None`` for native variants."""
+        return None
+
     def requires_no_cache(self, transform: TextTransform) -> bool:
         return False
 
@@ -248,6 +335,7 @@ class NoTextTransformStrategy(TextTransformStrategy):
     def compensated_matrix(
         self,
         transform: TextTransform,
+        source_rect: QRectF,
         box_pivot: QPointF,
         rotation_angle: float,
         rotation_pivot: QPointF,
@@ -266,6 +354,7 @@ class SlantTextTransformStrategy(TextTransformStrategy):
     def compensated_matrix(
         self,
         transform: TextTransform,
+        source_rect: QRectF,
         box_pivot: QPointF,
         rotation_angle: float,
         rotation_pivot: QPointF,
@@ -336,3 +425,103 @@ class SlantTextTransformStrategy(TextTransformStrategy):
 
     def requires_custom_resize(self, transform: TextTransform) -> bool:
         return self.requires_no_cache(transform)
+
+
+class PerspectiveTextTransformStrategy(TextTransformStrategy):
+    """Projective box deformation delegated entirely to ``QTransform``."""
+
+    transform_type = 'perspective'
+
+    def compensated_matrix(
+        self,
+        transform: PerspectiveTextTransform,
+        source_rect: QRectF,
+        box_pivot: QPointF,
+        rotation_angle: float,
+        rotation_pivot: QPointF,
+    ) -> QTransform:
+        return compensated_box_transform_matrix(
+            # Qt applies the matrix to effect padding as well as glyphs.
+            # Bounding the denominator over the full source surface prevents
+            # wide stroke/shadow padding from crossing the projective horizon.
+            perspective_transform_matrix(transform, source_rect),
+            box_pivot,
+            rotation_angle,
+            rotation_pivot,
+        )
+
+    def requires_no_cache(self, transform: PerspectiveTextTransform) -> bool:
+        return not transform.is_neutral()
+
+    def requires_custom_resize(
+        self, transform: PerspectiveTextTransform
+    ) -> bool:
+        return not transform.is_neutral()
+
+
+class CurvatureTextTransformStrategy(TextTransformStrategy):
+    """Nonlinear surface deformation; rendering is attached lazily."""
+
+    transform_type = 'curvature'
+    uses_surface_mapping = True
+
+    def compensated_matrix(
+        self,
+        transform: CurvatureTextTransform,
+        source_rect: QRectF,
+        box_pivot: QPointF,
+        rotation_angle: float,
+        rotation_pivot: QPointF,
+    ) -> QTransform:
+        return QTransform()
+
+    def visual_is_neutral(self, item) -> bool:
+        return item.geometry_controller.visual_mapper is None
+
+    def create_surface_mapper(
+        self,
+        logical_rect: QRectF,
+        source_rect: QRectF,
+        vertical: bool,
+        transform: CurvatureTextTransform,
+    ):
+        if transform.is_neutral():
+            return None
+        return CurvatureMapper(
+            logical_rect,
+            source_rect,
+            vertical,
+            transform.curvature,
+        )
+
+    def apply_layout(
+        self,
+        item,
+        transform: CurvatureTextTransform,
+        persistent_cache: bool = True,
+    ) -> bool:
+        return item.geometry_controller.attach_surface_mapper(transform)
+
+    def deactivate_layout(
+        self,
+        item,
+        transform: CurvatureTextTransform,
+        persistent_cache: bool = True,
+    ) -> bool:
+        return item.geometry_controller.detach_surface_mapper()
+
+    def initialize_layout(
+        self,
+        item,
+        transform: CurvatureTextTransform,
+        persistent_cache: bool = True,
+    ) -> bool:
+        return item.geometry_controller.attach_surface_mapper(transform)
+
+    def requires_no_cache(self, transform: CurvatureTextTransform) -> bool:
+        return not transform.is_neutral()
+
+    def requires_custom_resize(
+        self, transform: CurvatureTextTransform
+    ) -> bool:
+        return not transform.is_neutral()

@@ -452,7 +452,7 @@ class SceneTextManager(QObject):
         self.hovering_transwidget = None
         self.txtblkShapeControl.setBlkItem(None)
         for blkitem in self.textblk_item_list:
-            blkitem.geometry_controller.release_layout_cache_namespace()
+            blkitem.geometry_controller.release_render_resources()
             self.canvas.removeItem(blkitem)
         self.textblk_item_list.clear()
         self.textEditList.clearAllSelected()

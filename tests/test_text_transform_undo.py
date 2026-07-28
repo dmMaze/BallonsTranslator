@@ -21,6 +21,7 @@ from qtpy.QtWidgets import (
     QGraphicsItem,
     QGraphicsRectItem,
     QGraphicsScene,
+    QGraphicsTextItem,
     QGraphicsView,
     QStyleOptionGraphicsItem,
 )
@@ -51,7 +52,15 @@ from ballontranslator.ui.text_effects.glyph import (
 from ballontranslator.ui.text_effects.transform_layout import (
     GlyphSlantLayoutRenderer,
 )
-from ballontranslator.utils.fontformat import NoTextTransform, SlantTextTransform
+from ballontranslator.ui.text_effects.curvature import CurvatureMapper
+from ballontranslator.ui.text_transform import perspective_transform_matrix
+from ballontranslator.utils.fontformat import (
+    CurvatureTextTransform,
+    FontFormat,
+    NoTextTransform,
+    PerspectiveTextTransform,
+    SlantTextTransform,
+)
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -184,6 +193,85 @@ class TextTransformTestBase(unittest.TestCase):
         self.assertEqual(item.toPlainText(), text_before + commit_text)
 
 
+class ExtendedTextTransformModelTest(TextTransformTestBase):
+    def test_perspective_and_curvature_payloads_round_trip(self):
+        payloads = (
+            {
+                'transform_type': 'perspective',
+                'strength': 0.55,
+                'direction': -35.0,
+            },
+            {
+                'transform_type': 'curvature',
+                'curvature': -0.75,
+            },
+        )
+        for payload in payloads:
+            with self.subTest(transform_type=payload['transform_type']):
+                font_format = FontFormat(text_transform=payload)
+                self.assertEqual(
+                    font_format.to_serializable_dict()['text_transform'],
+                    payload,
+                )
+
+    def test_perspective_matrix_is_centered_and_invertible(self):
+        rect = QRectF(20, 30, 400, 180)
+        for direction in (-180.0, -45.0, 0.0, 90.0, 180.0):
+            with self.subTest(direction=direction):
+                matrix = perspective_transform_matrix(
+                    PerspectiveTextTransform(0.8, direction),
+                    rect,
+                )
+                inverse, invertible = matrix.inverted()
+                self.assertTrue(invertible)
+                self.assertEqual(matrix.map(rect.center()), rect.center())
+                for point in (
+                    rect.topLeft(),
+                    rect.topRight(),
+                    rect.bottomRight(),
+                    rect.bottomLeft(),
+                ):
+                    restored = inverse.map(matrix.map(point))
+                    self.assertAlmostEqual(restored.x(), point.x(), places=6)
+                    self.assertAlmostEqual(restored.y(), point.y(), places=6)
+
+    def test_curvature_mapper_round_trips_both_writing_modes(self):
+        for vertical in (False, True):
+            logical = (
+                QRectF(10, 20, 160, 420)
+                if vertical
+                else QRectF(10, 20, 420, 160)
+            )
+            source = logical.adjusted(-12, -12, 12, 12)
+            for curvature in (-1.0, -0.4, 0.0, 0.4, 1.0):
+                with self.subTest(
+                    vertical=vertical, curvature=curvature
+                ):
+                    mapper = CurvatureMapper(
+                        logical, source, vertical, curvature
+                    )
+                    for x_ratio, y_ratio in (
+                        (0.0, 0.0),
+                        (0.2, 0.7),
+                        (0.5, 0.5),
+                        (0.8, 0.3),
+                        (1.0, 1.0),
+                    ):
+                        point = QPointF(
+                            logical.left() + logical.width() * x_ratio,
+                            logical.top() + logical.height() * y_ratio,
+                        )
+                        restored = mapper.inverse_point(
+                            mapper.forward_point(point)
+                        )
+                        self.assertAlmostEqual(
+                            restored.x(), point.x(), places=6
+                        )
+                        self.assertAlmostEqual(
+                            restored.y(), point.y(), places=6
+                        )
+
+
 class TextTransformUndoTest(TextTransformTestBase):
     def test_mixed_text_transforms_keep_undo_and_pair_widgets_in_sync(self):
         for vertical in (False, True):
@@ -260,6 +348,50 @@ class TextTransformUndoTest(TextTransformTestBase):
 
                 self.assertEqual(stack.count(), len(states) - 1)
 
+    def test_perspective_and_curvature_mix_with_text_undo(self):
+        perspective = PerspectiveTextTransform(0.6, 30.0)
+        curvature = CurvatureTextTransform(-0.65)
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item, pair = self._make_pair(0, TEST_LINES[0], vertical)
+                stack = QUndoStack()
+                stack.push(
+                    SetTextTransformCommand.create(
+                        [item], [NEUTRAL], [perspective]
+                    )
+                )
+                stack.push(
+                    MultiPasteCommand(
+                        TEST_LINES[1], [item], [pair.e_trans]
+                    )
+                )
+                stack.push(
+                    SetTextTransformCommand.create(
+                        [item], [perspective], [curvature]
+                    )
+                )
+                expected = (
+                    (NEUTRAL, TEST_LINES[0]),
+                    (perspective, TEST_LINES[0]),
+                    (perspective, TEST_LINES[1]),
+                    (curvature, TEST_LINES[1]),
+                )
+                for _ in range(3):
+                    for transform, text in reversed(expected[:-1]):
+                        stack.undo()
+                        self.assertEqual(
+                            item.blk.fontformat.text_transform, transform
+                        )
+                        self.assertEqual(item.toPlainText(), text)
+                        self.assertEqual(pair.e_trans.toPlainText(), text)
+                    for transform, text in expected[1:]:
+                        stack.redo()
+                        self.assertEqual(
+                            item.blk.fontformat.text_transform, transform
+                        )
+                        self.assertEqual(item.toPlainText(), text)
+                        self.assertEqual(pair.e_trans.toPlainText(), text)
+
     def test_type_switch_restores_each_items_last_slant_transform(self):
         versions = (
             SlantTextTransform(1.15, 0.85, 11.0, 4.0),
@@ -315,8 +447,122 @@ class TextTransformUndoTest(TextTransformTestBase):
                     list(versions),
                 )
 
+    def test_type_switch_remembers_extended_variant_values_per_item(self):
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        perspective = PerspectiveTextTransform(0.45, -70.0)
+        curvature = CurvatureTextTransform(0.72)
+        item.set_text_transform(perspective)
+        item.set_text_transform(NEUTRAL)
+        item.set_text_transform(curvature)
+        item.set_text_transform(NEUTRAL)
+
+        self.assertEqual(
+            item.geometry_controller.transform_for_type('perspective'),
+            perspective,
+        )
+        self.assertEqual(
+            item.geometry_controller.transform_for_type('curvature'),
+            curvature,
+        )
+
 
 class TextTransformRenderingTest(TextTransformTestBase):
+    def test_warped_curvature_surface_maps_layout_hit_tests(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                width, height = (
+                    (180, 500) if vertical else (500, 180)
+                )
+                block = TextBlock(
+                    [40, 40, 40 + width, 40 + height],
+                    _bounding_rect=[40, 40, width, height],
+                    translation=TEST_LINES[3],
+                )
+                block.vertical = vertical
+                item = TextBlkItem(block, 0)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                neutral_pixels = self._render_scene(scene)
+                source_point = item.logical_unpadded_rect().center()
+                neutral_hit = item.layout.hitTest(source_point, None)
+
+                item.set_text_transform(CurvatureTextTransform(0.7))
+                mapper = item.geometry_controller.visual_mapper
+                self.assertIsNotNone(mapper)
+                self.assertIs(
+                    item.layout.input_point_mapper.__self__,
+                    item.geometry_controller,
+                )
+                visual_point = mapper.forward_point(source_point)
+                self.assertEqual(
+                    item.layout.hitTest(visual_point, None),
+                    neutral_hit,
+                )
+                item.startEdit()
+                source_cursor_rect = QGraphicsTextItem.inputMethodQuery(
+                    item, Qt.InputMethodQuery.ImCursorRectangle
+                )
+                self.assertEqual(
+                    item.inputMethodQuery(
+                        Qt.InputMethodQuery.ImCursorRectangle
+                    ),
+                    mapper.map_rect_path(
+                        QRectF(source_cursor_rect)
+                    ).boundingRect(),
+                )
+                item.endEdit()
+                curved_pixels = self._render_scene(scene)
+                self.assertNotEqual(curved_pixels, neutral_pixels)
+                self.assertIsNotNone(
+                    item.geometry_controller.surface_renderer.cached_pixmap
+                )
+                self.assertTrue(item.contains(visual_point))
+
+                item.set_text_transform(NEUTRAL)
+                self.assertIsNone(item.geometry_controller.visual_mapper)
+                self.assertIsNone(item.geometry_controller.surface_renderer)
+                self.assertIsNone(item.layout.input_point_mapper)
+                self.assertEqual(self._render_scene(scene), neutral_pixels)
+                item.geometry_controller.release_render_resources()
+                scene.removeItem(item)
+                self.app.processEvents()
+
+    def test_fresh_items_install_perspective_and_curvature(self):
+        transforms = (
+            PerspectiveTextTransform(0.6, 25.0),
+            CurvatureTextTransform(-0.6),
+        )
+        for vertical in (False, True):
+            for transform in transforms:
+                with self.subTest(
+                    vertical=vertical,
+                    transform=transform.transform_type,
+                ):
+                    width, height = (
+                        (180, 500) if vertical else (500, 180)
+                    )
+                    block = TextBlock(
+                        [20, 30, 20 + width, 30 + height],
+                        _bounding_rect=[20, 30, width, height],
+                        translation=TEST_LINES[1],
+                    )
+                    block.vertical = vertical
+                    block.fontformat.text_transform = transform
+                    item = TextBlkItem(copy.deepcopy(block), 0)
+                    if transform.transform_type == 'perspective':
+                        self.assertFalse(item.transform().isIdentity())
+                        self.assertIsNone(
+                            item.geometry_controller.visual_mapper
+                        )
+                    else:
+                        self.assertTrue(item.transform().isIdentity())
+                        self.assertIsNotNone(
+                            item.geometry_controller.visual_mapper
+                        )
+                        self.assertIsNotNone(
+                            item.layout.input_point_mapper
+                        )
+
     def test_neutral_effect_render_is_stable_after_transform_roundtrip(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
@@ -635,8 +881,171 @@ class TextTransformGeometryTest(TextTransformTestBase):
 
 
 class TextTransformShapeControlTest(TextTransformTestBase):
+    def test_curvature_resize_uses_frozen_drag_coordinates(self):
+        for vertical in (False, True):
+            for curvature in (-0.95, 0.95):
+                with self.subTest(
+                    vertical=vertical,
+                    curvature=curvature,
+                ):
+                    scene = QGraphicsScene()
+                    view = QGraphicsView(scene)
+                    base = QGraphicsRectItem(QRectF(0, 0, 900, 700))
+                    scene.addItem(base)
+                    width, height = (
+                        (180, 420) if vertical else (420, 180)
+                    )
+                    block = TextBlock(
+                        [180, 120, 180 + width, 120 + height],
+                        _bounding_rect=[180, 120, width, height],
+                        translation=TEST_LINES[0],
+                    )
+                    block.vertical = vertical
+                    item = TextBlkItem(block, 0)
+                    item.setParentItem(base)
+                    item.set_text_transform(
+                        CurvatureTextTransform(curvature)
+                    )
+                    item.setRotation(23.0)
+                    control = TextBlkShapeControl(view)
+                    control.setParentItem(base)
+                    control.setBlkItem(item)
+                    view.resize(1000, 800)
+                    view.show()
+                    self.app.processEvents()
+                    self.addCleanup(view.close)
+
+                    handle_index = 5 if vertical else 3
+                    opposite_index = (handle_index + 4) % 8
+                    mapper = item.geometry_controller.visual_mapper
+                    initial_scene_transform = item.sceneTransform()
+                    initial_source = QPointF(
+                        item.geometry_controller.source_handle_points()[
+                            handle_index
+                        ]
+                    )
+                    initial_handle_scene = initial_scene_transform.map(
+                        mapper.forward_point(initial_source)
+                    )
+                    opposite_scene = control.handleScenePoint(
+                        opposite_index
+                    )
+                    initial_size = (
+                        item.absBoundingRect(qrect=True).height()
+                        if vertical
+                        else item.absBoundingRect(qrect=True).width()
+                    )
+
+                    control.beginResize(
+                        handle_index, initial_handle_scene
+                    )
+                    sizes = []
+                    for extension in (20.0, 40.0, 60.0):
+                        target_source = QPointF(initial_source)
+                        if vertical:
+                            target_source.setY(
+                                target_source.y() + extension
+                            )
+                        else:
+                            target_source.setX(
+                                target_source.x() + extension
+                            )
+                        target_scene = initial_scene_transform.map(
+                            mapper.forward_point(target_source)
+                        )
+                        control.resizeFromScene(
+                            handle_index, target_scene
+                        )
+                        rect = item.absBoundingRect(qrect=True)
+                        sizes.append(
+                            rect.height() if vertical else rect.width()
+                        )
+                        anchored = control.handleScenePoint(
+                            opposite_index
+                        )
+                        self.assertAlmostEqual(
+                            anchored.x(), opposite_scene.x(), places=4
+                        )
+                        self.assertAlmostEqual(
+                            anchored.y(), opposite_scene.y(), places=4
+                        )
+
+                    self.assertGreater(sizes[0], initial_size)
+                    self.assertGreater(sizes[1], sizes[0])
+                    self.assertGreater(sizes[2], sizes[1])
+                    control.finishResize()
+                    control.setBlkItem(None)
+                    item.geometry_controller.release_render_resources()
+                    scene.removeItem(base)
+                    view.close()
+                    self.app.processEvents()
+
+    def test_extended_transform_shape_control_tracks_geometry(self):
+        for vertical in (False, True):
+            for transform in (
+                PerspectiveTextTransform(0.55, 35.0),
+                CurvatureTextTransform(0.65),
+            ):
+                with self.subTest(
+                    vertical=vertical,
+                    transform=transform.transform_type,
+                ):
+                    scene = QGraphicsScene()
+                    view = QGraphicsView(scene)
+                    width, height = (
+                        (160, 420) if vertical else (420, 160)
+                    )
+                    base = QGraphicsRectItem(QRectF(0, 0, 700, 550))
+                    scene.addItem(base)
+                    block = TextBlock(
+                        [100, 70, 100 + width, 70 + height],
+                        _bounding_rect=[100, 70, width, height],
+                        translation=TEST_LINES[0],
+                    )
+                    block.vertical = vertical
+                    item = TextBlkItem(block, 0)
+                    item.setParentItem(base)
+                    item.set_text_transform(transform)
+                    control = TextBlkShapeControl(view)
+                    control.setParentItem(base)
+                    control.setBlkItem(item)
+                    view.resize(800, 650)
+                    view.show()
+                    self.app.processEvents()
+                    self.addCleanup(view.close)
+
+                    for angle in (0.0, 27.0):
+                        item.setRotation(angle)
+                        control.updateBoundingRect()
+                        expected = (
+                            item.geometry_controller
+                            .visual_handle_points_in_scene()
+                        )
+                        for index, point in enumerate(expected):
+                            actual = control.handleScenePoint(index)
+                            self.assertAlmostEqual(
+                                actual.x(), point.x(), places=5
+                            )
+                            self.assertAlmostEqual(
+                                actual.y(), point.y(), places=5
+                            )
+                        self.assertEqual(
+                            control.visualPolygonInScene().boundingRect(),
+                            item.visual_bounds_in_scene(),
+                        )
+                    control.setBlkItem(None)
+                    item.geometry_controller.release_render_resources()
+                    scene.removeItem(base)
+                    view.close()
+                    self.app.processEvents()
+
     def test_control_click_preserves_multi_selection(self):
-        for transform in (NEUTRAL, FIRST_TRANSFORM):
+        for transform in (
+            NEUTRAL,
+            FIRST_TRANSFORM,
+            PerspectiveTextTransform(0.5, 25.0),
+            CurvatureTextTransform(0.55),
+        ):
             with self.subTest(transform=transform.transform_type):
                 scene = QGraphicsScene()
                 view = QGraphicsView(scene)
@@ -669,7 +1078,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                 self.addCleanup(view.close)
 
                 logical = items[1].logical_unpadded_rect()
-                interior = items[1].mapToScene(
+                interior = items[1].geometry_controller.map_source_to_scene(
                     QPointF(logical.center().x(), logical.top() + 4.0)
                 )
                 QTest.mouseClick(
@@ -693,6 +1102,12 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                 self.app.processEvents()
                 self.assertTrue(items[0].isSelected())
                 self.assertFalse(items[1].isSelected())
+                control.setBlkItem(None)
+                for item in items:
+                    item.geometry_controller.release_render_resources()
+                scene.removeItem(base)
+                view.close()
+                self.app.processEvents()
 
     def test_shape_controls_reset_across_page_item_boundary(self):
         for stale_state in ("editing", "reshape"):

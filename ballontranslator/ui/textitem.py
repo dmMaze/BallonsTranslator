@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Tuple, Union
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
-from qtpy.QtCore import Qt, QRectF, QPointF, Signal
+from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor, QPixmap,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
                        QBrush, QPen)
@@ -96,6 +96,7 @@ class TextBlkItem(QGraphicsTextItem):
         return self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
 
     def on_content_changed(self):
+        self.geometry_controller.invalidate_surface_cache()
         if (self.hasFocus() or self.is_formatting) and not self.pre_editing and not self.block_change_signal:   
             # self.content_changed.emit(self)
             if not self.in_redo_undo:
@@ -259,15 +260,13 @@ class TextBlkItem(QGraphicsTextItem):
         """Return the untransformed, effect-free block rect in item coordinates."""
         return self.geometry_controller.logical_rect()
 
-    def visual_polygon_in_scene(self):
-        """Return the exact transformed logical block polygon in scene space."""
-        return self.geometry_controller.visual_polygon_in_scene()
-
     def visual_bounds_in_scene(self) -> QRectF:
         return self.geometry_controller.visual_bounds_in_scene()
 
     def rect(self) -> QRectF:
-        return QRectF(self.pos(), self.boundingRect().size())
+        return QRectF(
+            self.pos(), self.geometry_controller.source_rect().size()
+        )
 
     def logical_position(self) -> QPointF:
         """Return the persistent logical rectangle's absolute top-left."""
@@ -343,6 +342,20 @@ class TextBlkItem(QGraphicsTextItem):
 
     def shape(self):
         return self.geometry_controller.shape()
+
+    def contains(self, point: QPointF) -> bool:
+        return self.geometry_controller.contains(point)
+
+    def inputMethodQuery(self, query):
+        value = super().inputMethodQuery(query)
+        mapper = self.geometry_controller.visual_mapper
+        if mapper is None:
+            return value
+        if isinstance(value, (QPointF, QPoint)):
+            return mapper.forward_point(QPointF(value))
+        if isinstance(value, (QRectF, QRect)):
+            return mapper.map_rect_path(QRectF(value)).boundingRect()
+        return value
 
     def setScale(self, scale: float) -> None:
         previous = self.scale()
@@ -435,16 +448,17 @@ class TextBlkItem(QGraphicsTextItem):
             layout = HorizontalTextDocumentLayout(doc, self.fontformat)
         self.layout = layout
         doc.setDocumentLayout(layout)
+        layout.setEffectPadding(effect_padding)
         controller = self.geometry_controller
         controller.initialize_layout(
             persistent_cache=controller.preview is None,
         )
-        layout.setEffectPadding(effect_padding)
         layout.size_enlarged.connect(self.on_document_enlarged)
         layout.documentSizeChanged.connect(self.docSizeChanged)
         
         if valid_layout:
             layout.setMaxSize(rect.width(), rect.height())
+            controller.refresh_surface_mapper()
             self.repaint_background()
         if is_editing:
             self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
@@ -462,6 +476,8 @@ class TextBlkItem(QGraphicsTextItem):
             self.setTextCursor(cursor)
         if self.fontformat.gradient_enabled:
             self._refresh_gradient_geometry()
+        if valid_layout:
+            self.visual_geometry_changed.emit()
 
     def updateUndoSteps(self):
         self.old_undo_steps = self.document().availableUndoSteps()
@@ -523,7 +539,7 @@ class TextBlkItem(QGraphicsTextItem):
             return self.scale()
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
-        self.effect_renderer.paint_item(
+        self.geometry_controller.paint_item(
             painter,
             option,
             widget,
@@ -542,8 +558,8 @@ class TextBlkItem(QGraphicsTextItem):
         draw_rect = self.draw_rect and not self.under_ctrl
         if not selected and not draw_rect:
             return
-        polygon = self.geometry_controller.visual_polygon_in_item()
-        if polygon.isEmpty():
+        outline = self.geometry_controller.visual_outline_in_item()
+        if outline.isEmpty():
             return
         painter.save()
         try:
@@ -558,7 +574,7 @@ class TextBlkItem(QGraphicsTextItem):
             )
             painter.setPen(pen)
             painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-            painter.drawPolygon(polygon)
+            painter.drawPath(outline)
         finally:
             painter.restore()
 
@@ -573,6 +589,7 @@ class TextBlkItem(QGraphicsTextItem):
     def startEdit(self, pos: QPointF = None) -> None:
         self.pre_editing = False
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+        self.geometry_controller.invalidate_surface_cache()
         self.refresh_cache_policy()
         self.setFocus()
         self.begin_edit.emit(self.idx)
@@ -588,6 +605,7 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.clearSelection()
         self.setTextCursor(cursor)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.geometry_controller.invalidate_surface_cache()
         self.refresh_cache_policy()
         if keep_focus:
             self.setFocus()
@@ -652,6 +670,8 @@ class TextBlkItem(QGraphicsTextItem):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            if self.is_editting():
+                self.geometry_controller.begin_input_mapping()
             self.oldPos = self.pos()
             self.leftbutton_pressed.emit(self.idx)
         return super().mousePressEvent(event)
@@ -663,6 +683,24 @@ class TextBlkItem(QGraphicsTextItem):
             # the clicked items alive after their scene is replaced.
             self.move_interaction_finished.emit()
         super().mouseReleaseEvent(event)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.geometry_controller.end_input_mapping()
+
+    def dragEnterEvent(self, event) -> None:
+        self.geometry_controller.begin_input_mapping()
+        super().dragEnterEvent(event)
+
+    def dragLeaveEvent(self, event) -> None:
+        try:
+            super().dragLeaveEvent(event)
+        finally:
+            self.geometry_controller.end_input_mapping()
+
+    def dropEvent(self, event) -> None:
+        try:
+            super().dropEvent(event)
+        finally:
+            self.geometry_controller.end_input_mapping()
 
     def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
         self.hover_move.emit(self.idx)
