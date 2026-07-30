@@ -11,6 +11,7 @@ Important areas:
 - `ballontranslator/utils/proj_imgtrans.py`: project persistence and image/textblock state.
 - `ballontranslator/utils/textblock.py`: central TextBlock domain object.
 - `ballontranslator/utils/config.py`: persistent config and module settings.
+- `doc/ui/text_engine.md`: required entry guide for text layout, effects, interaction, geometry, performance, and rendering; read it before changing those paths and follow its detailed-topic links.
 
 ## Refactoring Rules
 
@@ -18,6 +19,7 @@ Important areas:
 - Prefer small, reviewable refactors over broad rewrites.
 - Treat all pre-existing modified, untracked, and ignored files as user-owned. Never delete, overwrite, move, clean, or restore them unless the user explicitly authorizes that operation for the exact paths involved, this applies especially to `config/`, backup files, credentials, projects, models, and other user-generated state.
 - Do not change public project JSON shape without migration/backward compatibility.
+- Keep passive config and project loading permissive for optional feature data. Unknown, removed, renamed, malformed, or out-of-range fields and entries must log a warning, discard only the invalid portion, and continue loading the rest; they must not abort loading or cause an existing config/project to be replaced with an empty or template file. Keep strict validation for live runtime values and explicit write/export boundaries.
 - Be careful with Qt signal/thread behavior in `ballontranslator/ui/module_manager.py`.
 - Do not rename registered module keys unless compatibility aliases are added.
 - Keep model-loading lazy/eager behavior intact.
