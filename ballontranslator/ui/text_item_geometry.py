@@ -5,9 +5,9 @@ import math
 from typing import Optional, TYPE_CHECKING
 
 import numpy as np
-from qtpy.QtCore import QPointF, QRectF, QSizeF
-from qtpy.QtGui import QPainterPath
-from qtpy.QtWidgets import QGraphicsItem
+from qtpy.QtCore import QPoint, QPointF, QRect, QRectF, QSizeF, Qt
+from qtpy.QtGui import QPainter, QPainterPath
+from qtpy.QtWidgets import QGraphicsItem, QGraphicsTextItem
 
 from ballontranslator.utils.fontformat import (
     TextTransform,
@@ -46,6 +46,7 @@ class TextItemGeometryController:
         self.layout_renderer_type = None
         self.visual_mapper = None
         self.surface_renderer = None
+        self._surface_cursor_position = -1
         self._surface_mapping_active = False
         self._transform_values_by_type = {}
         self._input_mapping_active = False
@@ -607,6 +608,7 @@ class TextItemGeometryController:
         self.item.prepareGeometryChange()
         self.visual_mapper = mapper
         self._surface_mapping_active = True
+        self._surface_cursor_position = -1
         if self.surface_renderer is None:
             self.surface_renderer = NonlinearTextSurfaceRenderer()
         else:
@@ -641,6 +643,7 @@ class TextItemGeometryController:
             self.surface_renderer.release()
         self.visual_mapper = None
         self.surface_renderer = None
+        self._surface_cursor_position = -1
         self._surface_mapping_active = False
         self.end_input_mapping()
         self.item.update()
@@ -656,6 +659,40 @@ class TextItemGeometryController:
     def invalidate_surface_cache(self) -> None:
         if self.surface_renderer is not None:
             self.surface_renderer.release()
+
+    def _paint_surface_cursor(self, painter: QPainter, mapper) -> None:
+        layout = self.item.layout
+        if self.item.effect_renderer.export_render:
+            return
+        cursor_position = layout.deferred_cursor_position
+        cursor_changed = cursor_position != self._surface_cursor_position
+        self._surface_cursor_position = cursor_position
+        if cursor_position < 0:
+            if cursor_changed:
+                self.item.update()
+            return
+        cursor_rect = QGraphicsTextItem.inputMethodQuery(
+            self.item, Qt.InputMethodQuery.ImCursorRectangle
+        )
+        if not isinstance(cursor_rect, (QRectF, QRect)):
+            return
+        cursor_path = mapper.map_rect_path(QRectF(cursor_rect))
+        if cursor_path.isEmpty():
+            return
+        painter.save()
+        try:
+            # Invert the completed scene destination, not a transparent source
+            # pixmap, so the caret contrasts with both text and page content.
+            painter.setCompositionMode(
+                QPainter.CompositionMode.RasterOp_NotDestination
+            )
+            painter.fillPath(cursor_path, Qt.GlobalColor.white)
+        finally:
+            painter.restore()
+        if cursor_changed:
+            # QWidgetTextControl may invalidate only the unwarped caret rect.
+            # One full follow-up paint clears or redraws its mapped position.
+            self.item.update()
 
     def paint_item(self, painter, option, widget, base_paint) -> None:
         """Paint directly or through the active nonlinear surface warp."""
@@ -682,12 +719,18 @@ class TextItemGeometryController:
         )
 
         def paint_source(source_painter, source_option, source_widget):
-            effect_renderer.paint_item(
-                source_painter,
-                source_option,
-                source_widget,
-                base_paint,
-            )
+            layout = self.item.layout
+            previous = layout.defer_cursor_paint
+            layout.defer_cursor_paint = True
+            try:
+                effect_renderer.paint_item(
+                    source_painter,
+                    source_option,
+                    source_widget,
+                    base_paint,
+                )
+            finally:
+                layout.defer_cursor_paint = previous
 
         interactive = (
             self.item.is_editting()
@@ -708,6 +751,7 @@ class TextItemGeometryController:
                 paint_source=paint_source,
                 maximum_scale=2.0 if interactive else None,
             )
+            self._paint_surface_cursor(painter, mapper)
         except RASTER_BOUNDARY_FAILURES as error:
             # Exceptions cannot cross a Qt virtual paint callback. Export
             # records the failure; interactive rendering remains usable.

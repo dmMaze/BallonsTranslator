@@ -208,6 +208,8 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.render_delegate = None
         self.layout_generation = 0
         self.render_failure_handler = None
+        self.defer_cursor_paint = False
+        self.deferred_cursor_position = -1
         # QWidgetTextControl routes its mouse and drag hit tests through this
         # layout.  Nonlinear visual effects can therefore restore source
         # coordinates here without replacing Qt's editing state machine.
@@ -553,6 +555,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
+        self.deferred_cursor_position = context.cursorPosition
         painter.save()
         block = doc.firstBlock()
         cursor_block = None
@@ -640,7 +643,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if self.foreground_pixmap is not None:
             painter.drawPixmap(0, 0, self.foreground_pixmap)
 
-        if cursor_block is not None:
+        if cursor_block is not None and not self.defer_cursor_paint:
             block = cursor_block
             blk_text = block.text()
             blpos = block.position()
@@ -1161,6 +1164,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
+        self.deferred_cursor_position = context.cursorPosition
         painter.save()
         painter.setPen(context.palette.color(QPalette.ColorRole.Text))
         block = doc.firstBlock()
@@ -1212,7 +1216,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         if self.foreground_pixmap is not None:
             painter.drawPixmap(0, 0, self.foreground_pixmap)
 
-        if cursor_block is not None:
+        if cursor_block is not None and not self.defer_cursor_paint:
             block = cursor_block
             blpos = block.position()
             bllen = block.length()

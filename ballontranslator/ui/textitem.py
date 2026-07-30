@@ -91,6 +91,20 @@ class TextBlkItem(QGraphicsTextItem):
         else:
             self.pre_editing = True
         super().inputMethodEvent(e)
+
+    def setTextCursor(self, cursor: QTextCursor) -> None:
+        super().setTextCursor(cursor)
+        self._update_nonlinear_editing_ui()
+
+    def _update_nonlinear_editing_ui(self) -> None:
+        controller = getattr(self, 'geometry_controller', None)
+        # Qt's source-local dirty rectangles cannot cover warped UI pixels.
+        if (
+            controller is not None
+            and self.is_editting()
+            and controller.uses_surface_warp()
+        ):
+            self.update()
         
     def is_editting(self):
         return self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
@@ -513,7 +527,8 @@ class TextBlkItem(QGraphicsTextItem):
             e.accept()
             self.textCursor().insertText('\n')
             return
-        return super().keyPressEvent(e)
+        super().keyPressEvent(e)
+        self._update_nonlinear_editing_ui()
 
     def undo(self) -> None:
         self.in_redo_undo = True
@@ -658,10 +673,13 @@ class TextBlkItem(QGraphicsTextItem):
             self.startEdit(pos=event.pos())
         else:
             super().mouseDoubleClickEvent(event)
+        self._update_nonlinear_editing_ui()
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super().mouseMoveEvent(event)  
-        if self.textInteractionFlags() != Qt.TextInteractionFlag.TextEditorInteraction:
+        if self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
+            self._update_nonlinear_editing_ui()
+        else:
             self.moving.emit(self)
 
     # QT 5.15.x causing segmentation fault 
@@ -674,7 +692,9 @@ class TextBlkItem(QGraphicsTextItem):
                 self.geometry_controller.begin_input_mapping()
             self.oldPos = self.pos()
             self.leftbutton_pressed.emit(self.idx)
-        return super().mousePressEvent(event)
+        result = super().mousePressEvent(event)
+        self._update_nonlinear_editing_ui()
+        return result
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -685,6 +705,7 @@ class TextBlkItem(QGraphicsTextItem):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.geometry_controller.end_input_mapping()
+            self._update_nonlinear_editing_ui()
 
     def dragEnterEvent(self, event) -> None:
         self.geometry_controller.begin_input_mapping()

@@ -7,11 +7,12 @@ from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtCore import QEvent, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QColor,
     QImage,
     QInputMethodEvent,
+    QKeyEvent,
     QPainter,
     QTextCursor,
 )
@@ -467,6 +468,121 @@ class TextTransformUndoTest(TextTransformTestBase):
 
 
 class TextTransformRenderingTest(TextTransformTestBase):
+    def test_curvature_selection_requests_a_full_item_update(self):
+        class RecordingTextItem(TextBlkItem):
+            def __init__(self, *args, **kwargs):
+                self.full_update_count = 0
+                super().__init__(*args, **kwargs)
+
+            def update(self, *args):
+                if not args:
+                    self.full_update_count += 1
+                return super().update(*args)
+
+        block = TextBlock(
+            [40, 40, 540, 220],
+            _bounding_rect=[40, 40, 500, 180],
+            translation=TEST_LINES[3],
+        )
+        item = RecordingTextItem(block, 0)
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        item.set_text_transform(CurvatureTextTransform(0.8))
+        item.startEdit()
+        item.full_update_count = 0
+
+        event = QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_A,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        item.keyPressEvent(event)
+        self.app.processEvents()
+
+        self.assertTrue(item.textCursor().hasSelection())
+        self.assertGreaterEqual(item.full_update_count, 1)
+        item.endEdit()
+
+    def test_curvature_defers_and_overlays_cursor_after_surface_warp(self):
+        class SourceCapture:
+            def __init__(self, cursor_position):
+                self.cursor_position = cursor_position
+                self.saw_deferred_cursor = False
+
+            def release(self):
+                pass
+
+            def paint(
+                self,
+                painter,
+                option,
+                mapper,
+                source_rect,
+                cache_key,
+                cache_allowed,
+                paint_source,
+                maximum_scale=None,
+            ):
+                def base_paint(*_):
+                    self.saw_deferred_cursor = (
+                        item.layout.defer_cursor_paint
+                    )
+                    item.layout.deferred_cursor_position = (
+                        self.cursor_position
+                    )
+
+                original = item.effect_renderer.paint_item
+                item.effect_renderer.paint_item = (
+                    lambda source_painter, source_option, source_widget,
+                    _base_paint: base_paint()
+                )
+                try:
+                    paint_source(painter, option, None)
+                finally:
+                    item.effect_renderer.paint_item = original
+
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                width, height = (
+                    (180, 500) if vertical else (500, 180)
+                )
+                block = TextBlock(
+                    [40, 40, 40 + width, 40 + height],
+                    _bounding_rect=[40, 40, width, height],
+                    translation=TEST_LINES[3],
+                )
+                block.vertical = vertical
+                item = TextBlkItem(block, 0)
+                item.set_text_transform(CurvatureTextTransform(0.8))
+                item.startEdit()
+                cursor = item.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                item.setTextCursor(cursor)
+                capture = SourceCapture(cursor.position())
+                item.geometry_controller.surface_renderer = capture
+
+                image = QImage(
+                    900,
+                    700,
+                    QImage.Format.Format_ARGB32_Premultiplied,
+                )
+                image.fill(QColor(127, 127, 127))
+                before = bytes(
+                    image.bits().asstring(image.sizeInBytes())
+                )
+                painter = QPainter(image)
+                painter.translate(100, 100)
+                option = QStyleOptionGraphicsItem()
+                option.exposedRect = item.boundingRect()
+                item.geometry_controller.paint_item(
+                    painter, option, None, lambda *_: None
+                )
+                painter.end()
+                after = bytes(image.bits().asstring(image.sizeInBytes()))
+                self.assertTrue(capture.saw_deferred_cursor)
+                self.assertNotEqual(after, before)
+                item.endEdit()
+
     def test_warped_curvature_surface_maps_layout_hit_tests(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
