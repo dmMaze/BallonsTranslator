@@ -441,22 +441,39 @@ class FontFormat(Config):
                 self.font_family = da['family']
 
         self.font_weight = fix_fontweight_qt(self.font_weight)
+        if not isinstance(self.text_transform, TextTransformStack):
+            if isinstance(self.text_transform, (list, tuple)):
+                transforms = []
+                for index, value in enumerate(self.text_transform):
+                    try:
+                        transforms.append(coerce_text_transform(value))
+                    except (TypeError, ValueError) as error:
+                        LOGGER.warning(
+                            'Ignoring invalid text transform config at index '
+                            '%s (%s).',
+                            index,
+                            error,
+                        )
+                self.text_transform = TextTransformStack(tuple(transforms))
+            else:
+                LOGGER.warning(
+                    'Ignoring invalid text transform stack (%r); '
+                    'using an empty transform stack.',
+                    self.text_transform,
+                )
+                self.text_transform = TextTransformStack()
         try:
-            self.text_transform = coerce_text_transform_stack(
-                self.text_transform
+            self.glyph_slant_angle = normalize_text_transform_value(
+                self.glyph_slant_angle,
+                TEXT_TRANSFORM_GLYPH_SLANT_MIN,
+                TEXT_TRANSFORM_GLYPH_SLANT_MAX,
             )
         except ValueError as error:
             LOGGER.warning(
-                'Ignoring invalid text transform config (%s); '
-                'using an empty transform stack.',
+                'Ignoring invalid Glyph Slant config (%s); using 0.',
                 error,
             )
-            self.text_transform = TextTransformStack()
-        self.glyph_slant_angle = normalize_text_transform_value(
-            self.glyph_slant_angle,
-            TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-            TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-        )
+            self.glyph_slant_angle = 0.0
         self.deprecated_attributes = {}
 
     def to_serializable_dict(self) -> dict:

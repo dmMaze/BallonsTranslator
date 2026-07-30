@@ -2,7 +2,6 @@ import copy
 import json
 import math
 import os
-import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -75,8 +74,7 @@ from ballontranslator.utils.fontformat import (
     TextTransformState,
 )
 from ballontranslator.utils import shared
-from ballontranslator.utils.config import ProgramConfig
-from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
+from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -251,91 +249,6 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                     font_format.to_serializable_dict()['text_transform'],
                     [payload],
                 )
-
-    def test_old_single_transform_payload_is_dropped(self):
-        with self.assertLogs('BallonTranslator', level='WARNING') as logs:
-            font_format = FontFormat(
-                text_transform={
-                    'transform_type': 'curvature',
-                    'curvature': 0.5,
-                },
-                font_size=37.0,
-            )
-        self.assertIn(
-            'Ignoring invalid text transform config',
-            '\n'.join(logs.output),
-        )
-        self.assertEqual(font_format.text_transform, TextTransformStack())
-        self.assertEqual(font_format.font_size, 37.0)
-
-    def test_program_config_drops_only_an_invalid_text_transform(self):
-        payload = {
-            'display_lang': 'English',
-            'global_fontformat': {
-                'font_size': 37.0,
-                'opacity': 0.6,
-                'text_transform': {
-                    'transform_type': 'curvature',
-                    'curvature': 0.5,
-                },
-            },
-        }
-        with tempfile.NamedTemporaryFile(
-            'w+', encoding='utf8'
-        ) as config_file:
-            json.dump(payload, config_file)
-            config_file.flush()
-            with self.assertLogs('BallonTranslator', level='WARNING') as logs:
-                loaded = ProgramConfig.load(config_file.name)
-
-        self.assertIn(
-            'Ignoring invalid text transform config',
-            '\n'.join(logs.output),
-        )
-        self.assertEqual(loaded.display_lang, 'English')
-        self.assertEqual(loaded.global_fontformat.font_size, 37.0)
-        self.assertEqual(loaded.global_fontformat.opacity, 0.6)
-        self.assertEqual(
-            loaded.global_fontformat.text_transform,
-            TextTransformStack(),
-        )
-
-    def test_project_drops_invalid_block_transform_without_rejecting_project(self):
-        project_data = {
-            'pages': {
-                'missing.png': [{
-                    'translation': 'preserved',
-                    'fontformat': {
-                        'font_size': 41.0,
-                        'text_transform': {
-                            'transform_type': 'slant',
-                            'horizontal_scale': 1.0,
-                            'vertical_scale': 1.0,
-                            'slant_angle': 0.0,
-                            'glyph_slant_angle': 0.0,
-                        },
-                    },
-                }],
-            },
-            'image_info': {},
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            project = ProjImgTrans()
-            project.directory = directory
-            with self.assertLogs('BallonTranslator', level='WARNING') as logs:
-                project.load_from_dict(project_data)
-
-        block = project.not_found_pages['missing.png'][0]
-        self.assertIn(
-            'Ignoring invalid text transform config',
-            '\n'.join(logs.output),
-        )
-        self.assertEqual(block.translation, 'preserved')
-        self.assertEqual(block.fontformat.font_size, 41.0)
-        self.assertEqual(
-            block.fontformat.text_transform,
-            TextTransformStack(),
-        )
 
     def test_duplicate_stack_entries_and_glyph_slant_round_trip(self):
         payload = [

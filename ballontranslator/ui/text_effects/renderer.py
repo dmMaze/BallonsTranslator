@@ -43,6 +43,11 @@ from .raster import (
 
 
 GRADIENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1238
+# Glyph Slant writes vector paths into effect pixmaps, not native text.
+_VECTOR_EFFECT_RENDER_HINTS = (
+    QPainter.RenderHint.Antialiasing
+    | QPainter.RenderHint.TextAntialiasing
+)
 
 
 class _TransformedEffectState:
@@ -467,6 +472,7 @@ class TextEffectRenderer:
                     'unable to begin vertical stroke source painter'
                 )
             try:
+                source_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
                 source_painter.translate(-rect.topLeft())
                 fragment_context = self._effect_paint_context()
                 fragment_context.selections = selections
@@ -739,6 +745,7 @@ class TextEffectRenderer:
             self.capturing_surface = True
             self.surface_raster_error = None
             try:
+                silhouette_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
                 silhouette_painter.translate(-shadow_rect.topLeft())
                 self._paint_live_layout(
                     silhouette_painter, self._effect_paint_context()
@@ -818,6 +825,7 @@ class TextEffectRenderer:
             self.capturing_surface = True
             self.surface_raster_error = None
             try:
+                stroke_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
                 stroke_painter.translate(-surface_rect.topLeft())
                 self.paint_stroke(
                     stroke_painter, render_scale, surface_rect
