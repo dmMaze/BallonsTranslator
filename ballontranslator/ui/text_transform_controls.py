@@ -3,10 +3,22 @@
 import math
 
 from qtpy.QtCore import QEvent, Signal, Qt
-from qtpy.QtGui import QKeyEvent
-from qtpy.QtWidgets import QHBoxLayout, QLineEdit, QSizePolicy, QWidget
+from qtpy.QtGui import QIcon, QKeyEvent
+from qtpy.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QSizePolicy,
+    QStyle,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
+from .adaptive_wrap_layout import AdaptiveWrapLayout
 from .custom_widget import SmallSizeControlLabel
+from .misc import themed_icon_path
 
 
 class TransformDragLabel(SmallSizeControlLabel):
@@ -259,3 +271,180 @@ class CommittedTransformControl(QWidget):
         self._drag_delta = 0.0
         self._restore_display()
         self.preview_canceled.emit(self.param_name)
+
+
+class TransformParameterPanel(QFrame):
+    """One indexed transform operation with independently owned controls.
+
+    >>> TransformParameterPanel.__name__
+    'TransformParameterPanel'
+    """
+
+    commit_requested = Signal(int, str, float)
+    preview_requested = Signal(int, str, float)
+    drag_commit_requested = Signal(int, str, float)
+    preview_canceled = Signal(int, str)
+    remove_requested = Signal(int)
+    move_requested = Signal(int, int)
+
+    def __init__(self, index, variant, parent=None):
+        super().__init__(parent)
+        self.index = int(index)
+        self.variant = variant
+        self._hovered = False
+        self.setObjectName('TextTransformParameterPanel')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        title = QLabel(variant.label(), self)
+        title.setObjectName('TextTransformParameterTitle')
+        title.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        standard = getattr(QStyle, 'StandardPixmap', QStyle)
+        self.move_up_button = QToolButton(self)
+        self.move_up_button.setObjectName('TextTransformMoveButton')
+        self.move_up_button.setIcon(
+            self.style().standardIcon(standard.SP_ArrowUp)
+        )
+        self.move_up_button.setToolTip(self.tr('Move Up'))
+        self.move_up_button.setAccessibleName(self.tr('Move Up'))
+        self.move_up_button.clicked.connect(
+            lambda: self.move_requested.emit(self.index, -1)
+        )
+
+        self.move_down_button = QToolButton(self)
+        self.move_down_button.setObjectName('TextTransformMoveButton')
+        self.move_down_button.setIcon(
+            self.style().standardIcon(standard.SP_ArrowDown)
+        )
+        self.move_down_button.setToolTip(self.tr('Move Down'))
+        self.move_down_button.setAccessibleName(self.tr('Move Down'))
+        self.move_down_button.clicked.connect(
+            lambda: self.move_requested.emit(self.index, 1)
+        )
+
+        self.close_button = QToolButton(self)
+        self.close_button.setObjectName('TextTransformCloseButton')
+        self.close_button.setIcon(
+            QIcon(themed_icon_path('titlebar_close.svg'))
+        )
+        self.close_button.setToolTip(self.tr('Delete Transform'))
+        self.close_button.setAccessibleName(self.tr('Delete Transform'))
+        self.close_button.clicked.connect(
+            lambda: self.remove_requested.emit(self.index)
+        )
+
+        action_widget = QWidget(self)
+        action_widget.setObjectName('TextTransformPanelActions')
+        action_widget.setFixedWidth(66)
+        action_layout = QHBoxLayout(action_widget)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(4)
+        for button in (
+            self.move_up_button,
+            self.move_down_button,
+            self.close_button,
+        ):
+            button.setFixedSize(18, 18)
+            action_layout.addWidget(button)
+
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.addWidget(title)
+        header_layout.addWidget(action_widget)
+
+        self.controls = {}
+        controls_widget = QWidget(self)
+        controls_widget.setObjectName('TextTransformPanelControls')
+        controls_layout = AdaptiveWrapLayout(controls_widget)
+        for spec in variant.controls:
+            control = CommittedTransformControl(
+                spec.label(),
+                spec.attribute_name,
+                spec.factor,
+                spec.minimum,
+                spec.maximum,
+                spec.suffix,
+                1.0,
+                controls_widget,
+            )
+            control.commit_requested.connect(
+                lambda name, value, self=self:
+                self.commit_requested.emit(self.index, name, value)
+            )
+            control.preview_requested.connect(
+                lambda name, value, self=self:
+                self.preview_requested.emit(self.index, name, value)
+            )
+            control.drag_commit_requested.connect(
+                lambda name, value, self=self:
+                self.drag_commit_requested.emit(self.index, name, value)
+            )
+            control.preview_canceled.connect(
+                lambda name, self=self:
+                self.preview_canceled.emit(self.index, name)
+            )
+            self.controls[spec.attribute_name] = control
+            controls_layout.addWidget(control)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(6)
+        layout.addLayout(header_layout)
+        layout.addWidget(controls_widget)
+
+        self._sync_action_visibility()
+
+    def set_index(self, index: int) -> None:
+        self.index = int(index)
+
+    def set_move_enabled(self, can_move_up: bool, can_move_down: bool) -> None:
+        self.move_up_button.setEnabled(can_move_up)
+        self.move_down_button.setEnabled(can_move_down)
+
+    def set_values(self, transforms) -> None:
+        for name, control in self.controls.items():
+            values = [getattr(transform, name) for transform in transforms]
+            common = (
+                values[0]
+                if values and all(value == values[0] for value in values)
+                else None
+            )
+            control.set_model_value(common)
+
+    def iter_controls(self):
+        return self.controls.values()
+
+    def cancel_pending(self) -> None:
+        for control in self.controls.values():
+            control.cancel_pending()
+
+    def cancel_previews(self) -> None:
+        for control in self.controls.values():
+            control.cancel_preview()
+
+    def finish_pending(self) -> None:
+        for control in self.controls.values():
+            control.commit_pending()
+
+    def _sync_action_visibility(self) -> None:
+        for button in (
+            self.move_up_button,
+            self.move_down_button,
+            self.close_button,
+        ):
+            button.setVisible(self._hovered)
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self._sync_action_visibility()
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self._sync_action_visibility()
+        return super().leaveEvent(event)

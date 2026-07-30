@@ -4,17 +4,20 @@ Glyph-local slant is deliberately rendered from shaped glyph runs and never
 enters the matrix in this module.
 """
 
+from dataclasses import dataclass
 import math
 from numbers import Real
-from typing import Optional
+from typing import Optional, Sequence
 
+import numpy as np
 from qtpy.QtCore import QPointF, QRectF
-from qtpy.QtGui import QPolygonF, QTransform
+from qtpy.QtGui import QPainterPath, QPolygonF, QTransform
 
 from ballontranslator.utils.fontformat import (
     CurvatureTextTransform,
     PerspectiveTextTransform,
-    TextTransform,
+    SlantTextTransform,
+    TextTransformStack,
     normalize_text_transform,
 )
 from .text_effects.curvature import CurvatureMapper
@@ -27,7 +30,7 @@ def _text_transform_coefficients(
 ):
     """Return canonical scale and the Box Slant shear coefficient."""
     transform = normalize_text_transform(
-        horizontal_scale, vertical_scale, slant_angle, 0.0
+        horizontal_scale, vertical_scale, slant_angle
     )
     return (
         transform.horizontal_scale,
@@ -176,28 +179,6 @@ def compensated_box_transform_matrix(
     return compensated
 
 
-def compensated_text_transform_matrix(
-    horizontal_scale: float,
-    vertical_scale: float,
-    slant_angle: float,
-    box_pivot: QPointF,
-    rotation_angle: float,
-    rotation_pivot: Optional[QPointF] = None,
-) -> QTransform:
-    """Build the rotation-compensated affine Slant box matrix."""
-    return compensated_box_transform_matrix(
-        text_transform_matrix(
-            horizontal_scale,
-            vertical_scale,
-            slant_angle,
-            box_pivot,
-        ),
-        box_pivot,
-        rotation_angle,
-        rotation_pivot,
-    )
-
-
 def perspective_transform_matrix(
     transform: PerspectiveTextTransform,
     rect: QRectF,
@@ -264,264 +245,373 @@ def rect_polygon(rect: QRectF) -> QPolygonF:
     )
 
 
-class TextTransformStrategy:
-    """Rendering/geometry boundary implemented by each transform variant."""
+@dataclass(frozen=True)
+class TransformStageContext:
+    """Geometry presented to one registered transform stage.
 
-    transform_type = 'base'
-    uses_surface_mapping = False
+    >>> context = TransformStageContext(
+    ...     QRectF(0, 0, 10, 5), QRectF(-1, -1, 12, 7), False
+    ... )
+    >>> context.source_bounds.width()
+    12.0
+    """
 
-    def compensated_matrix(
+    logical_bounds: QRectF
+    source_bounds: QRectF
+    vertical: bool
+
+
+def slant_transform_stage(
+    transform: SlantTextTransform,
+    context: TransformStageContext,
+) -> QTransform:
+    """Build one affine Slant stack stage."""
+    return text_transform_matrix(
+        transform.horizontal_scale,
+        transform.vertical_scale,
+        transform.slant_angle,
+        context.logical_bounds.center(),
+    )
+
+
+def perspective_transform_stage(
+    transform: PerspectiveTextTransform,
+    context: TransformStageContext,
+) -> QTransform:
+    """Build one native projective stack stage over its current surface."""
+    return perspective_transform_matrix(transform, context.source_bounds)
+
+
+def curvature_transform_stage(
+    transform: CurvatureTextTransform,
+    context: TransformStageContext,
+):
+    """Build one nonlinear stage without coupling the compiler to its type."""
+    return CurvatureMapper(
+        context.logical_bounds,
+        context.source_bounds,
+        context.vertical,
+        transform.curvature,
+    )
+
+
+class MatrixTransformMapper:
+    """Expose a finite ``QTransform`` through the composite mapper contract."""
+
+    def __init__(self, matrix: QTransform) -> None:
+        self.matrix = QTransform(matrix)
+        self.inverse, invertible = self.matrix.inverted()
+        if not invertible:
+            raise ValueError('transform matrix must be finite and invertible')
+
+    @property
+    def geometry_key(self):
+        matrix = self.matrix
+        return (
+            type(self),
+            matrix.m11(), matrix.m12(), matrix.m13(),
+            matrix.m21(), matrix.m22(), matrix.m23(),
+            matrix.m31(), matrix.m32(), matrix.m33(),
+        )
+
+    def forward_point(self, source: QPointF) -> QPointF:
+        return self.matrix.map(QPointF(source))
+
+    def inverse_point(
         self,
-        transform: TextTransform,
-        source_rect: QRectF,
-        box_pivot: QPointF,
-        rotation_angle: float,
-        rotation_pivot: QPointF,
-    ) -> QTransform:
-        raise NotImplementedError
+        visual: QPointF,
+        previous_source: QPointF = None,
+        *,
+        extrapolate: bool = False,
+    ) -> QPointF:
+        return self.inverse.map(QPointF(visual))
 
-    def visual_is_neutral(self, item) -> bool:
-        return item.transform().isIdentity()
+    def inverse_arrays(self, visual_x, visual_y, *, return_valid=False):
+        matrix = self.inverse
+        denominator = (
+            matrix.m13() * visual_x
+            + matrix.m23() * visual_y
+            + matrix.m33()
+        )
+        valid = np.isfinite(denominator) & (np.abs(denominator) > 1e-12)
+        safe_denominator = np.where(valid, denominator, 1.0)
+        source_x = (
+            matrix.m11() * visual_x
+            + matrix.m21() * visual_y
+            + matrix.m31()
+        ) / safe_denominator
+        source_y = (
+            matrix.m12() * visual_x
+            + matrix.m22() * visual_y
+            + matrix.m32()
+        ) / safe_denominator
+        valid &= np.isfinite(source_x) & np.isfinite(source_y)
+        if return_valid:
+            return source_x, source_y, valid
+        return source_x, source_y
 
-    def apply_layout(
+
+def _point_segment_distance(point: QPointF, start: QPointF, end: QPointF) -> float:
+    dx = end.x() - start.x()
+    dy = end.y() - start.y()
+    length_squared = dx * dx + dy * dy
+    if length_squared == 0.0:
+        return math.hypot(point.x() - start.x(), point.y() - start.y())
+    ratio = (
+        (point.x() - start.x()) * dx
+        + (point.y() - start.y()) * dy
+    ) / length_squared
+    ratio = min(max(ratio, 0.0), 1.0)
+    closest = QPointF(start.x() + ratio * dx, start.y() + ratio * dy)
+    return math.hypot(point.x() - closest.x(), point.y() - closest.y())
+
+
+class CompositeTextTransformMapper:
+    """Compose matrix and nonlinear stages behind one mapping boundary.
+
+    Painting inverse-samples this mapper once, even when it contains several
+    nonlinear stages.
+
+    >>> mapper = CompositeTextTransformMapper(
+    ...     (MatrixTransformMapper(QTransform().scale(2, 1)),),
+    ...     QRectF(0, 0, 10, 5),
+    ...     QRectF(0, 0, 10, 5),
+    ...     False,
+    ... )
+    >>> mapped = mapper.forward_point(QPointF(3, 2))
+    >>> (mapped.x(), mapped.y())
+    (6.0, 2.0)
+    """
+
+    OUTLINE_TOLERANCE = 0.25
+    OUTLINE_MAX_DEPTH = 9
+
+    def __init__(
         self,
-        item,
-        transform: TextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        """Apply variant-specific layout paint state."""
-        return False
-
-    def deactivate_layout(
-        self,
-        item,
-        transform: TextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        """Remove layout state owned by this strategy before a type switch."""
-        return False
-
-    def initialize_layout(
-        self,
-        item,
-        transform: TextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        """Install variant state into a newly attached text layout."""
-        return False
-
-    def create_surface_mapper(
-        self,
+        stages: Sequence,
         logical_rect: QRectF,
         source_rect: QRectF,
         vertical: bool,
-        transform: TextTransform,
-    ):
-        """Return a nonlinear visual mapper, or ``None`` for native variants."""
-        return None
+    ) -> None:
+        self.stages = tuple(stages)
+        self.logical_rect = QRectF(logical_rect)
+        self.source_rect = QRectF(source_rect)
+        self.vertical = bool(vertical)
+        self._rect_path_cache = {}
 
-    def requires_no_cache(self, transform: TextTransform) -> bool:
-        return False
-
-    def requires_custom_resize(self, transform: TextTransform) -> bool:
-        return False
-
-
-class NoTextTransformStrategy(TextTransformStrategy):
-    """Identity geometry and layout for the explicit no-effect variant."""
-
-    transform_type = 'none'
-
-    def compensated_matrix(
-        self,
-        transform: TextTransform,
-        source_rect: QRectF,
-        box_pivot: QPointF,
-        rotation_angle: float,
-        rotation_pivot: QPointF,
-    ) -> QTransform:
-        return QTransform()
-
-
-class SlantTextTransformStrategy(TextTransformStrategy):
-    """Current affine box and glyph-slant implementation."""
-
-    transform_type = 'slant'
-
-    def __init__(self, layout_renderer_factory) -> None:
-        self.layout_renderer_factory = layout_renderer_factory
-
-    def compensated_matrix(
-        self,
-        transform: TextTransform,
-        source_rect: QRectF,
-        box_pivot: QPointF,
-        rotation_angle: float,
-        rotation_pivot: QPointF,
-    ) -> QTransform:
-        return compensated_text_transform_matrix(
-            transform.horizontal_scale,
-            transform.vertical_scale,
-            transform.slant_angle,
-            box_pivot,
-            rotation_angle,
-            rotation_pivot,
-        )
-
-    def visual_is_neutral(self, item) -> bool:
+    @property
+    def geometry_key(self):
         return (
-            super().visual_is_neutral(item)
-            and not item.geometry_controller.has_layout_distortion()
+            type(self),
+            tuple(stage.geometry_key for stage in self.stages),
+            self.vertical,
+            self.logical_rect.x(),
+            self.logical_rect.y(),
+            self.logical_rect.width(),
+            self.logical_rect.height(),
+            self.source_rect.x(),
+            self.source_rect.y(),
+            self.source_rect.width(),
+            self.source_rect.height(),
         )
 
-    def apply_layout(
-        self,
-        item,
-        transform: TextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        if item.layout is None:
-            return False
-        if transform.glyph_slant_angle == 0.0:
-            return item.geometry_controller.detach_layout_renderer()
-        renderer = item.geometry_controller.attach_layout_renderer(
-            self.transform_type,
-            self.layout_renderer_factory,
-        )
-        return renderer.apply(transform, persistent_cache)
+    def forward_point(self, source: QPointF) -> QPointF:
+        point = QPointF(source)
+        for stage in self.stages:
+            point = stage.forward_point(point)
+        return point
 
-    def deactivate_layout(
-        self,
-        item,
-        transform: TextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        if item.layout is None:
-            return False
-        return item.geometry_controller.detach_layout_renderer()
-
-    def initialize_layout(
-        self,
-        item,
-        transform: TextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        if item.layout is None:
-            return False
-        if transform.glyph_slant_angle == 0.0:
-            return item.geometry_controller.detach_layout_renderer()
-        renderer = item.geometry_controller.attach_layout_renderer(
-            self.transform_type,
-            self.layout_renderer_factory,
-        )
-        return renderer.apply(transform, persistent_cache)
-
-    def requires_no_cache(self, transform: TextTransform) -> bool:
-        return (
-            transform.horizontal_scale != 1.0
-            or transform.vertical_scale != 1.0
-            or transform.slant_angle != 0.0
-        )
-
-    def requires_custom_resize(self, transform: TextTransform) -> bool:
-        return self.requires_no_cache(transform)
-
-
-class PerspectiveTextTransformStrategy(TextTransformStrategy):
-    """Projective box deformation delegated entirely to ``QTransform``."""
-
-    transform_type = 'perspective'
-
-    def compensated_matrix(
-        self,
-        transform: PerspectiveTextTransform,
-        source_rect: QRectF,
-        box_pivot: QPointF,
-        rotation_angle: float,
-        rotation_pivot: QPointF,
-    ) -> QTransform:
-        return compensated_box_transform_matrix(
-            # Qt applies the matrix to effect padding as well as glyphs.
-            # Bounding the denominator over the full source surface prevents
-            # wide stroke/shadow padding from crossing the projective horizon.
-            perspective_transform_matrix(transform, source_rect),
-            box_pivot,
-            rotation_angle,
-            rotation_pivot,
-        )
-
-    def requires_no_cache(self, transform: PerspectiveTextTransform) -> bool:
-        return not transform.is_neutral()
-
-    def requires_custom_resize(
-        self, transform: PerspectiveTextTransform
-    ) -> bool:
-        return not transform.is_neutral()
-
-
-class CurvatureTextTransformStrategy(TextTransformStrategy):
-    """Nonlinear surface deformation; rendering is attached lazily."""
-
-    transform_type = 'curvature'
-    uses_surface_mapping = True
-
-    def compensated_matrix(
-        self,
-        transform: CurvatureTextTransform,
-        source_rect: QRectF,
-        box_pivot: QPointF,
-        rotation_angle: float,
-        rotation_pivot: QPointF,
-    ) -> QTransform:
-        return QTransform()
-
-    def visual_is_neutral(self, item) -> bool:
-        return item.geometry_controller.visual_mapper is None
-
-    def create_surface_mapper(
-        self,
-        logical_rect: QRectF,
-        source_rect: QRectF,
-        vertical: bool,
-        transform: CurvatureTextTransform,
-    ):
-        if transform.is_neutral():
+    def _previous_stage_sources(self, previous_source: QPointF):
+        if previous_source is None:
             return None
-        return CurvatureMapper(
-            logical_rect,
-            source_rect,
-            vertical,
-            transform.curvature,
+        points = []
+        point = QPointF(previous_source)
+        for stage in self.stages:
+            points.append(QPointF(point))
+            point = stage.forward_point(point)
+        return points
+
+    def inverse_point(
+        self,
+        visual: QPointF,
+        previous_source: QPointF = None,
+        *,
+        extrapolate: bool = False,
+    ) -> QPointF:
+        point = QPointF(visual)
+        previous = self._previous_stage_sources(previous_source)
+        for index in range(len(self.stages) - 1, -1, -1):
+            point = self.stages[index].inverse_point(
+                point,
+                None if previous is None else previous[index],
+                extrapolate=extrapolate,
+            )
+        return point
+
+    def inverse_arrays(self, visual_x, visual_y, *, return_valid=False):
+        source_x, source_y = visual_x, visual_y
+        valid = np.ones_like(visual_x, dtype=bool)
+        for stage in reversed(self.stages):
+            source_x, source_y, stage_valid = stage.inverse_arrays(
+                source_x,
+                source_y,
+                return_valid=True,
+            )
+            valid &= stage_valid
+        if return_valid:
+            return source_x, source_y, valid
+        return source_x, source_y
+
+    def _append_mapped_edge(
+        self,
+        points: list[QPointF],
+        source_start: QPointF,
+        source_end: QPointF,
+        mapped_start: QPointF,
+        mapped_end: QPointF,
+        depth: int,
+    ) -> None:
+        source_quarter = source_start * 0.75 + source_end * 0.25
+        source_mid = (source_start + source_end) / 2.0
+        source_three_quarter = source_start * 0.25 + source_end * 0.75
+        mapped_quarter = self.forward_point(source_quarter)
+        mapped_mid = self.forward_point(source_mid)
+        mapped_three_quarter = self.forward_point(source_three_quarter)
+        if (
+            depth >= self.OUTLINE_MAX_DEPTH
+            or max(
+                _point_segment_distance(
+                    point, mapped_start, mapped_end
+                )
+                for point in (
+                    mapped_quarter,
+                    mapped_mid,
+                    mapped_three_quarter,
+                )
+            ) <= self.OUTLINE_TOLERANCE
+        ):
+            points.append(mapped_end)
+            return
+        self._append_mapped_edge(
+            points,
+            source_start,
+            source_mid,
+            mapped_start,
+            mapped_mid,
+            depth + 1,
+        )
+        self._append_mapped_edge(
+            points,
+            source_mid,
+            source_end,
+            mapped_mid,
+            mapped_end,
+            depth + 1,
         )
 
-    def apply_layout(
-        self,
-        item,
-        transform: CurvatureTextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        return item.geometry_controller.attach_surface_mapper(transform)
+    def map_rect_path(self, rect: QRectF) -> QPainterPath:
+        rect = QRectF(rect)
+        cacheable = (
+            rect == self.logical_rect
+            or rect == self.source_rect
+        )
+        cache_key = (
+            rect.x(),
+            rect.y(),
+            rect.width(),
+            rect.height(),
+        )
+        if cacheable:
+            cached = self._rect_path_cache.get(cache_key)
+            if cached is not None:
+                return QPainterPath(cached)
 
-    def deactivate_layout(
-        self,
-        item,
-        transform: CurvatureTextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        return item.geometry_controller.detach_surface_mapper()
+        if len(self.stages) == 1 and hasattr(
+            self.stages[0], 'map_rect_path'
+        ):
+            path = self.stages[0].map_rect_path(rect)
+            if cacheable:
+                self._rect_path_cache[cache_key] = QPainterPath(path)
+            return path
 
-    def initialize_layout(
-        self,
-        item,
-        transform: CurvatureTextTransform,
-        persistent_cache: bool = True,
-    ) -> bool:
-        return item.geometry_controller.attach_surface_mapper(transform)
+        corners = [
+            rect.topLeft(),
+            rect.topRight(),
+            rect.bottomRight(),
+            rect.bottomLeft(),
+        ]
+        points = [self.forward_point(corners[0])]
+        for index, source_start in enumerate(corners):
+            source_end = corners[(index + 1) % len(corners)]
+            self._append_mapped_edge(
+                points,
+                source_start,
+                source_end,
+                self.forward_point(source_start),
+                self.forward_point(source_end),
+                0,
+            )
+        path = QPainterPath()
+        if points:
+            path.moveTo(points[0])
+            for point in points[1:]:
+                path.lineTo(point)
+            path.closeSubpath()
+        if cacheable:
+            self._rect_path_cache[cache_key] = QPainterPath(path)
+        return path
 
-    def requires_no_cache(self, transform: CurvatureTextTransform) -> bool:
-        return not transform.is_neutral()
+    def visual_bounds(self, source_rect: QRectF = None) -> QRectF:
+        rect = self.source_rect if source_rect is None else source_rect
+        return self.map_rect_path(rect).boundingRect()
 
-    def requires_custom_resize(
-        self, transform: CurvatureTextTransform
-    ) -> bool:
-        return not transform.is_neutral()
+    def local_tangent(self, source: QPointF) -> QPointF:
+        flow = QPointF(0.0, 1.0) if self.vertical else QPointF(1.0, 0.0)
+        start = self.forward_point(source)
+        tangent = self.forward_point(QPointF(source) + flow) - start
+        length = math.hypot(tangent.x(), tangent.y())
+        return tangent / length if length else flow
+
+
+@dataclass(frozen=True)
+class CompiledTextTransform:
+    """One native matrix or one final surface mapper for an ordered stack."""
+
+    stack: TextTransformStack
+    native_matrix: QTransform
+    surface_mapper: Optional[CompositeTextTransformMapper] = None
+
+    @property
+    def geometry_key(self):
+        if self.surface_mapper is not None:
+            return ('surface', self.surface_mapper.geometry_key)
+        matrix = self.native_matrix
+        return (
+            'matrix',
+            matrix.m11(), matrix.m12(), matrix.m13(),
+            matrix.m21(), matrix.m22(), matrix.m23(),
+            matrix.m31(), matrix.m32(), matrix.m33(),
+        )
+
+    @property
+    def is_identity(self) -> bool:
+        return self.surface_mapper is None and self.native_matrix.isIdentity()
+
+    @property
+    def has_projective_mapping(self) -> bool:
+        return (
+            self.surface_mapper is None
+            and not self.native_matrix.isAffine()
+        )
+
+    @property
+    def needs_local_handle_frames(self) -> bool:
+        return self.surface_mapper is not None or self.has_projective_mapping
+
+    @property
+    def requires_no_cache(self) -> bool:
+        return not self.is_identity
+
+    @property
+    def requires_custom_resize(self) -> bool:
+        return not self.is_identity

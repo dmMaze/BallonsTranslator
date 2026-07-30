@@ -884,6 +884,39 @@ def draw_glyph_geometry(
     )
 
 
+def draw_uniform_glyph_geometries(
+    painter: QPainter,
+    geometries: Sequence[GlyphGeometry],
+    char_format: QTextCharFormat,
+    failure_handler=None,
+) -> None:
+    """Draw same-format geometry with one painter state transition.
+
+    Paths remain separate draw operations so overlapping glyphs cannot cancel
+    each other and each glyph retains its raw font fill rule.
+    """
+    brush = _foreground_brush(char_format, painter)
+    outline = char_format.textOutline()
+    if (
+        outline.style() != Qt.PenStyle.NoPen
+        or any(geometry.fallbacks for geometry in geometries)
+    ):
+        for geometry in geometries:
+            draw_glyph_geometry(
+                painter, geometry, char_format, failure_handler
+            )
+        return
+    painter.save()
+    try:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(brush)
+        for geometry in geometries:
+            for glyph_path in geometry.paths:
+                painter.drawPath(glyph_path)
+    finally:
+        painter.restore()
+
+
 def _draw_background(
     painter: QPainter,
     rect: QRectF,
@@ -1196,15 +1229,15 @@ def draw_slanted_glyph_mask(
     )
 
 
-def slanted_line_ink_bounds(
+def slanted_line_geometry(
     line: QTextLine,
     offset: QPointF,
     orientation: QTransform,
     angle: float,
     persistent_geometry_cache=None,
     cache_namespace=None,
-) -> QRectF:
-    """Return vector ink bounds for one live line, including pathless glyphs."""
+) -> GlyphGeometry:
+    """Return geometry shared by exact ink measurement and painting."""
     start = line.textStart()
     length = line.textLength()
     key = _geometry_cache_key(
@@ -1221,4 +1254,4 @@ def slanted_line_ink_bounds(
         )
         if persistent_geometry_cache is not None:
             _store_geometry(persistent_geometry_cache, key, geometry)
-    return QRectF(geometry.bounds)
+    return geometry

@@ -55,13 +55,22 @@ def plan_effect_raster(
 
     >>> plan_effect_raster(100, 80, 99).tier
     8.0
+    >>> plan_effect_raster(100, 80, 0.5).tier
+    0.5
     >>> plan_effect_raster(10000, 10000, 8).mode
     'tiles'
     """
     width = max(0.0, float(width))
     height = max(0.0, float(height))
-    requested_scale = max(1.0, min(float(requested_scale), EFFECT_CACHE_MAX_SCALE))
-    for tier in (8.0, 4.0, 2.0, 1.0):
+    requested_scale = max(
+        0.25, min(float(requested_scale), EFFECT_CACHE_MAX_SCALE)
+    )
+    tiers = (
+        (8.0, 4.0, 2.0, 1.0)
+        if requested_scale >= 1.0
+        else (0.5, 0.25)
+    )
+    for tier in tiers:
         if tier > requested_scale:
             continue
         pixel_width = max(1, math.ceil(width * tier))

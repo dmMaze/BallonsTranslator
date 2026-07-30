@@ -28,7 +28,7 @@ from ballontranslator.utils.config import (
     save_text_styles,
     text_styles,
 )
-from ballontranslator.utils.fontformat import coerce_text_transform
+from ballontranslator.utils.fontformat import TextTransformState
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -79,11 +79,18 @@ mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
 
 
 def _apply_global_text_transforms(block: TextBlock, global_format: FontFormat) -> bool:
-    """Copy the normalized global transform as one model update."""
-    target = coerce_text_transform(global_format.text_transform)
-    if block.fontformat.text_transform == target:
+    """Copy normalized global stack/layout transform state."""
+    state = TextTransformState(
+        global_format.text_transform,
+        global_format.glyph_slant_angle,
+    )
+    if (
+        block.fontformat.text_transform == state.stack
+        and block.fontformat.glyph_slant_angle == state.glyph_slant_angle
+    ):
         return False
-    block.fontformat.text_transform = target
+    block.fontformat.text_transform = state.stack
+    block.fontformat.glyph_slant_angle = state.glyph_slant_angle
     return True
 
 

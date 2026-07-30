@@ -1,8 +1,11 @@
 import copy
+import json
 import math
 import os
+import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -41,6 +44,7 @@ from ballontranslator.ui.textedit_commands import (
     propagate_user_edit,
 )
 from ballontranslator.ui.textitem import TextBlkItem
+from ballontranslator.ui.text_advanced_format import TextAdvancedFormatPanel
 from ballontranslator.ui.texteditshapecontrol import TextBlkShapeControl
 from ballontranslator.ui.text_transform_editor import TextTransformEditSession
 from ballontranslator.ui import shared_widget as SW
@@ -54,14 +58,25 @@ from ballontranslator.ui.text_effects.transform_layout import (
     GlyphSlantLayoutRenderer,
 )
 from ballontranslator.ui.text_effects.curvature import CurvatureMapper
-from ballontranslator.ui.text_transform import perspective_transform_matrix
+from ballontranslator.ui.text_transform import (
+    CompositeTextTransformMapper,
+    perspective_transform_matrix,
+    text_transform_matrix,
+)
+from ballontranslator.ui.text_transform_variants import (
+    compile_text_transform_stack,
+)
 from ballontranslator.utils.fontformat import (
     CurvatureTextTransform,
     FontFormat,
-    NoTextTransform,
     PerspectiveTextTransform,
     SlantTextTransform,
+    TextTransformStack,
+    TextTransformState,
 )
+from ballontranslator.utils import shared
+from ballontranslator.utils.config import ProgramConfig
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -73,11 +88,27 @@ TEST_LINES = (
     "벼는 익을수록 고개를 숙인다.",
     "☀ ☁ ☂ ☃ ★ ☆ ☎ ☯ ♠ ♥ ♦ ♣ ⚠ ⚽ ⚾ ㊗ ㊙ ! @ # $",
 )
-NEUTRAL = NoTextTransform()
-FIRST_TRANSFORM = SlantTextTransform(1.2, 0.9, 12.0, 5.0)
+def transform_state(*transforms, glyph_slant_angle=0.0):
+    return TextTransformState(
+        TextTransformStack(tuple(transforms)),
+        glyph_slant_angle,
+    )
+
+
+NEUTRAL = transform_state()
+FIRST_TRANSFORM = transform_state(
+    SlantTextTransform(1.2, 0.9, 12.0),
+    glyph_slant_angle=5.0,
+)
 FINAL_TRANSFORMS = (
-    SlantTextTransform(0.8, 1.1, -9.0, -4.0),
-    SlantTextTransform(1.3, 0.7, 6.0, 8.0),
+    transform_state(
+        SlantTextTransform(0.8, 1.1, -9.0),
+        glyph_slant_angle=-4.0,
+    ),
+    transform_state(
+        SlantTextTransform(1.3, 0.7, 6.0),
+        glyph_slant_angle=8.0,
+    ),
 )
 
 
@@ -103,7 +134,13 @@ class TextTransformTestBase(unittest.TestCase):
         ):
             self.assertEqual(item.toPlainText(), text)
             self.assertEqual(pair.e_trans.toPlainText(), text)
-            self.assertEqual(item.blk.fontformat.text_transform, transform)
+            self.assertEqual(
+                TextTransformState(
+                    item.blk.fontformat.text_transform,
+                    item.blk.fontformat.glyph_slant_angle,
+                ),
+                transform,
+            )
 
     @staticmethod
     def _render_scene(scene):
@@ -209,11 +246,130 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
         )
         for payload in payloads:
             with self.subTest(transform_type=payload['transform_type']):
-                font_format = FontFormat(text_transform=payload)
+                font_format = FontFormat(text_transform=[payload])
                 self.assertEqual(
                     font_format.to_serializable_dict()['text_transform'],
-                    payload,
+                    [payload],
                 )
+
+    def test_old_single_transform_payload_is_dropped(self):
+        with self.assertLogs('BallonTranslator', level='WARNING') as logs:
+            font_format = FontFormat(
+                text_transform={
+                    'transform_type': 'curvature',
+                    'curvature': 0.5,
+                },
+                font_size=37.0,
+            )
+        self.assertIn(
+            'Ignoring invalid text transform config',
+            '\n'.join(logs.output),
+        )
+        self.assertEqual(font_format.text_transform, TextTransformStack())
+        self.assertEqual(font_format.font_size, 37.0)
+
+    def test_program_config_drops_only_an_invalid_text_transform(self):
+        payload = {
+            'display_lang': 'English',
+            'global_fontformat': {
+                'font_size': 37.0,
+                'opacity': 0.6,
+                'text_transform': {
+                    'transform_type': 'curvature',
+                    'curvature': 0.5,
+                },
+            },
+        }
+        with tempfile.NamedTemporaryFile(
+            'w+', encoding='utf8'
+        ) as config_file:
+            json.dump(payload, config_file)
+            config_file.flush()
+            with self.assertLogs('BallonTranslator', level='WARNING') as logs:
+                loaded = ProgramConfig.load(config_file.name)
+
+        self.assertIn(
+            'Ignoring invalid text transform config',
+            '\n'.join(logs.output),
+        )
+        self.assertEqual(loaded.display_lang, 'English')
+        self.assertEqual(loaded.global_fontformat.font_size, 37.0)
+        self.assertEqual(loaded.global_fontformat.opacity, 0.6)
+        self.assertEqual(
+            loaded.global_fontformat.text_transform,
+            TextTransformStack(),
+        )
+
+    def test_project_drops_invalid_block_transform_without_rejecting_project(self):
+        project_data = {
+            'pages': {
+                'missing.png': [{
+                    'translation': 'preserved',
+                    'fontformat': {
+                        'font_size': 41.0,
+                        'text_transform': {
+                            'transform_type': 'slant',
+                            'horizontal_scale': 1.0,
+                            'vertical_scale': 1.0,
+                            'slant_angle': 0.0,
+                            'glyph_slant_angle': 0.0,
+                        },
+                    },
+                }],
+            },
+            'image_info': {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project = ProjImgTrans()
+            project.directory = directory
+            with self.assertLogs('BallonTranslator', level='WARNING') as logs:
+                project.load_from_dict(project_data)
+
+        block = project.not_found_pages['missing.png'][0]
+        self.assertIn(
+            'Ignoring invalid text transform config',
+            '\n'.join(logs.output),
+        )
+        self.assertEqual(block.translation, 'preserved')
+        self.assertEqual(block.fontformat.font_size, 41.0)
+        self.assertEqual(
+            block.fontformat.text_transform,
+            TextTransformStack(),
+        )
+
+    def test_duplicate_stack_entries_and_glyph_slant_round_trip(self):
+        payload = [
+            {
+                'transform_type': 'slant',
+                'horizontal_scale': 1.2,
+                'vertical_scale': 1.0,
+                'slant_angle': 5.0,
+            },
+            {
+                'transform_type': 'slant',
+                'horizontal_scale': 0.8,
+                'vertical_scale': 1.1,
+                'slant_angle': -3.0,
+            },
+        ]
+        font_format = FontFormat(
+            text_transform=payload,
+            glyph_slant_angle=7.0,
+        )
+        serialized = font_format.to_serializable_dict()
+        self.assertEqual(serialized['text_transform'], payload)
+        self.assertEqual(serialized['glyph_slant_angle'], 7.0)
+
+        block = TextBlock([0, 0, 20, 10])
+        block.fontformat = font_format
+        restored = TextBlock(
+            **json.loads(json.dumps(block, cls=TextBlkEncoder))
+        )
+        self.assertEqual(
+            restored.fontformat.text_transform,
+            font_format.text_transform,
+        )
+        self.assertEqual(restored.fontformat.glyph_slant_angle, 7.0)
 
     def test_perspective_matrix_is_centered_and_invertible(self):
         rect = QRectF(20, 30, 400, 180)
@@ -271,6 +427,102 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                         self.assertAlmostEqual(
                             restored.y(), point.y(), places=6
                         )
+
+
+class TextTransformPanelTest(TextTransformTestBase):
+    def _make_panel(self):
+        previous = getattr(shared, 'register_view_widget', None)
+        shared.register_view_widget = lambda *_args: None
+        self.addCleanup(
+            lambda: (
+                delattr(shared, 'register_view_widget')
+                if previous is None
+                else setattr(shared, 'register_view_widget', previous)
+            )
+        )
+        panel = TextAdvancedFormatPanel(
+            'Advanced', 'test_transform', 'test_transform_expand',
+            lambda *_args: None,
+        )
+        self.addCleanup(panel.deleteLater)
+        return panel
+
+    def test_add_menu_and_hover_actions_are_generated_from_registry(self):
+        panel = self._make_panel()
+        self.assertEqual(
+            [action.text() for action in panel.add_transform_button.menu().actions()],
+            ['Slant', 'Perspective', 'Curvature'],
+        )
+        added = []
+        panel.transform_add_requested.connect(added.append)
+        panel.add_transform_button.menu().actions()[1].trigger()
+        self.assertEqual(added, ['perspective'])
+
+        panel.set_transform(
+            transform_state(SlantTextTransform(), CurvatureTextTransform())
+        )
+        operation_panel = panel.transform_panels[0]
+        self.assertTrue(operation_panel.close_button.isHidden())
+        QApplication.sendEvent(operation_panel, QEvent(QEvent.Type.Enter))
+        self.assertFalse(operation_panel.close_button.isHidden())
+
+        removed = []
+        panel.transform_remove_requested.connect(removed.append)
+        operation_panel.close_button.click()
+        self.assertEqual(removed, [0])
+
+    def test_multi_selection_only_exposes_matching_stack_indices(self):
+        panel = self._make_panel()
+        matching = [
+            SimpleNamespace(
+                blk=SimpleNamespace(
+                    fontformat=FontFormat(
+                        text_transform=TextTransformStack((
+                            SlantTextTransform(1.1, 1.0, 4.0),
+                            CurvatureTextTransform(0.4),
+                        )),
+                    )
+                )
+            ),
+            SimpleNamespace(
+                blk=SimpleNamespace(
+                    fontformat=FontFormat(
+                        text_transform=TextTransformStack((
+                            SlantTextTransform(0.9, 1.0, -4.0),
+                            CurvatureTextTransform(-0.4),
+                        )),
+                    )
+                )
+            ),
+        ]
+        panel.set_transform_items(matching)
+        self.assertEqual(len(panel.transform_panels), 2)
+        self.assertTrue(panel.transform_mixed_label.isHidden())
+        self.assertFalse(panel.transform_rows.isHidden())
+        self.assertEqual(
+            panel.transform_panels[0].controls[
+                'horizontal_scale'
+            ].editor.text(),
+            '\N{EM DASH}',
+        )
+
+        mixed = [
+            matching[0],
+            SimpleNamespace(
+                blk=SimpleNamespace(
+                    fontformat=FontFormat(
+                        text_transform=TextTransformStack((
+                            CurvatureTextTransform(0.4),
+                            SlantTextTransform(),
+                        )),
+                    )
+                )
+            ),
+        ]
+        panel.set_transform_items(mixed)
+        self.assertEqual(panel.transform_panels, [])
+        self.assertFalse(panel.transform_mixed_label.isHidden())
+        self.assertTrue(panel.transform_rows.isHidden())
 
 
 class TextTransformUndoTest(TextTransformTestBase):
@@ -350,8 +602,10 @@ class TextTransformUndoTest(TextTransformTestBase):
                 self.assertEqual(stack.count(), len(states) - 1)
 
     def test_perspective_and_curvature_mix_with_text_undo(self):
-        perspective = PerspectiveTextTransform(0.6, 30.0)
-        curvature = CurvatureTextTransform(-0.65)
+        perspective = transform_state(
+            PerspectiveTextTransform(0.6, 30.0)
+        )
+        curvature = transform_state(CurvatureTextTransform(-0.65))
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
                 item, pair = self._make_pair(0, TEST_LINES[0], vertical)
@@ -381,22 +635,30 @@ class TextTransformUndoTest(TextTransformTestBase):
                     for transform, text in reversed(expected[:-1]):
                         stack.undo()
                         self.assertEqual(
-                            item.blk.fontformat.text_transform, transform
+                            TextTransformState(
+                                item.blk.fontformat.text_transform,
+                                item.blk.fontformat.glyph_slant_angle,
+                            ),
+                            transform,
                         )
                         self.assertEqual(item.toPlainText(), text)
                         self.assertEqual(pair.e_trans.toPlainText(), text)
                     for transform, text in expected[1:]:
                         stack.redo()
                         self.assertEqual(
-                            item.blk.fontformat.text_transform, transform
+                            TextTransformState(
+                                item.blk.fontformat.text_transform,
+                                item.blk.fontformat.glyph_slant_angle,
+                            ),
+                            transform,
                         )
                         self.assertEqual(item.toPlainText(), text)
                         self.assertEqual(pair.e_trans.toPlainText(), text)
 
-    def test_type_switch_restores_each_items_last_slant_transform(self):
+    def test_stack_structure_edits_are_undoable_for_selected_items(self):
         versions = (
-            SlantTextTransform(1.15, 0.85, 11.0, 4.0),
-            SlantTextTransform(0.75, 1.25, -7.0, -3.0),
+            transform_state(SlantTextTransform(1.15, 0.85, 11.0)),
+            transform_state(SlantTextTransform(0.75, 1.25, -7.0)),
         )
         previous_canvas = getattr(SW, 'canvas', None)
         self.addCleanup(setattr, SW, 'canvas', previous_canvas)
@@ -415,59 +677,718 @@ class TextTransformUndoTest(TextTransformTestBase):
                 session = object.__new__(TextTransformEditSession)
                 session.items = items
                 session.controls = SimpleNamespace(
-                    set_transform_items=lambda _items: None
+                    set_transform_items=lambda _items: None,
+                    finish_pending_transform_edits=lambda: None,
+                    cancel_transform_previews=lambda: None,
                 )
                 session.drag_before = None
-                session.drag_param = None
+                session.drag_key = None
 
-                session.change_type('none')
+                session.add_transform('curvature')
                 self.assertEqual(
-                    [item.blk.fontformat.text_transform for item in items],
-                    [NEUTRAL, NEUTRAL],
+                    [
+                        tuple(item.blk.fontformat.text_transform)
+                        for item in items
+                    ],
+                    [
+                        (
+                            versions[0].stack[0],
+                            CurvatureTextTransform(),
+                        ),
+                        (
+                            versions[1].stack[0],
+                            CurvatureTextTransform(),
+                        ),
+                    ],
                 )
-                session.change_type('slant')
+                session.add_transform('slant')
                 self.assertEqual(
-                    [item.blk.fontformat.text_transform for item in items],
-                    list(versions),
+                    [len(item.blk.fontformat.text_transform) for item in items],
+                    [3, 3],
                 )
-
+                session.move_transform(2, -1)
+                self.assertEqual(
+                    [
+                        tuple(
+                            transform.transform_type
+                            for transform in item.blk.fontformat.text_transform
+                        )
+                        for item in items
+                    ],
+                    [('slant', 'slant', 'curvature')] * 2,
+                )
+                session.remove_transform(2)
+                self.assertEqual(
+                    [len(item.blk.fontformat.text_transform) for item in items],
+                    [2, 2],
+                )
                 stack.undo()
                 self.assertEqual(
-                    [item.blk.fontformat.text_transform for item in items],
-                    [NEUTRAL, NEUTRAL],
+                    [len(item.blk.fontformat.text_transform) for item in items],
+                    [3, 3],
                 )
                 stack.undo()
                 self.assertEqual(
-                    [item.blk.fontformat.text_transform for item in items],
-                    list(versions),
+                    [
+                        tuple(
+                            transform.transform_type
+                            for transform in item.blk.fontformat.text_transform
+                        )
+                        for item in items
+                    ],
+                    [('slant', 'curvature', 'slant')] * 2,
                 )
-                stack.redo()
-                stack.redo()
+                stack.undo()
+                stack.undo()
                 self.assertEqual(
-                    [item.blk.fontformat.text_transform for item in items],
+                    [
+                        TextTransformState(
+                            item.blk.fontformat.text_transform,
+                            item.blk.fontformat.glyph_slant_angle,
+                        )
+                        for item in items
+                    ],
                     list(versions),
                 )
 
-    def test_type_switch_remembers_extended_variant_values_per_item(self):
-        item, _ = self._make_pair(0, TEST_LINES[0], False)
-        perspective = PerspectiveTextTransform(0.45, -70.0)
-        curvature = CurvatureTextTransform(0.72)
-        item.set_text_transform(perspective)
-        item.set_text_transform(NEUTRAL)
-        item.set_text_transform(curvature)
-        item.set_text_transform(NEUTRAL)
+    def test_mixed_stack_structures_only_allow_append(self):
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        items = [
+            self._make_pair(index, TEST_LINES[index], False)[0]
+            for index in range(2)
+        ]
+        initial = (
+            transform_state(SlantTextTransform(1.2, 1.0, 5.0)),
+            transform_state(CurvatureTextTransform(0.4)),
+        )
+        for item, state in zip(items, initial):
+            item.set_text_transform(state)
 
-        self.assertEqual(
-            item.geometry_controller.transform_for_type('perspective'),
-            perspective,
+        stack = QUndoStack()
+        SW.canvas = SimpleNamespace(push_undo_command=stack.push)
+        session = object.__new__(TextTransformEditSession)
+        session.items = items
+        session.controls = SimpleNamespace(
+            set_transform_items=lambda _items: None,
+            finish_pending_transform_edits=lambda: None,
+            cancel_transform_previews=lambda: None,
         )
+        session.drag_before = None
+        session.drag_key = None
+
+        session.commit_value(0, 'horizontal_scale', 1.5)
+        self.assertEqual(stack.count(), 0)
         self.assertEqual(
-            item.geometry_controller.transform_for_type('curvature'),
-            curvature,
+            tuple(session._state_for_item(item) for item in items),
+            initial,
         )
+
+        session.add_transform('perspective')
+        self.assertEqual(stack.count(), 1)
+        for item in items:
+            self.assertEqual(
+                item.blk.fontformat.text_transform[-1],
+                PerspectiveTextTransform(),
+            )
+        stack.undo()
+        self.assertEqual(
+            tuple(session._state_for_item(item) for item in items),
+            initial,
+        )
+
+    def test_compiler_uses_one_mapping_boundary_for_composed_operations(self):
+        logical = QRectF(10, 20, 420, 160)
+        source = logical.adjusted(-12, -12, 12, 12)
+        first = SlantTextTransform(1.2, 0.9, 8.0)
+        second = SlantTextTransform(0.8, 1.1, -4.0)
+        matrix_only = TextTransformStack((first, second))
+        compiled = compile_text_transform_stack(
+            matrix_only, logical, source, False
+        )
+        self.assertIsNone(compiled.surface_mapper)
+        expected = (
+            text_transform_matrix(
+                first.horizontal_scale,
+                first.vertical_scale,
+                first.slant_angle,
+                logical.center(),
+            )
+            * text_transform_matrix(
+                second.horizontal_scale,
+                second.vertical_scale,
+                second.slant_angle,
+                logical.center(),
+            )
+        )
+        self.assertEqual(compiled.native_matrix, expected)
+        reversed_compiled = compile_text_transform_stack(
+            TextTransformStack((second, first)),
+            logical,
+            source,
+            False,
+        )
+        self.assertNotEqual(
+            compiled.native_matrix.map(logical.topLeft()),
+            reversed_compiled.native_matrix.map(logical.topLeft()),
+        )
+        neutral_nonlinear = compile_text_transform_stack(
+            TextTransformStack((
+                CurvatureTextTransform(),
+                first,
+            )),
+            logical,
+            source,
+            False,
+        )
+        self.assertIsNone(neutral_nonlinear.surface_mapper)
+        self.assertFalse(
+            TextTransformStack((CurvatureTextTransform(),)).has_nonlinear
+        )
+
+        single_nonlinear = compile_text_transform_stack(
+            TextTransformStack((CurvatureTextTransform(0.6),)),
+            logical,
+            source,
+            False,
+        ).surface_mapper
+        stage = single_nonlinear.stages[0]
+        stage_map_rect_path = stage.map_rect_path
+        stage_path_calls = 0
+
+        def recording_map_rect_path(rect):
+            nonlocal stage_path_calls
+            stage_path_calls += 1
+            return stage_map_rect_path(rect)
+
+        stage.map_rect_path = recording_map_rect_path
+        first_path = single_nonlinear.map_rect_path(source)
+        second_path = single_nonlinear.map_rect_path(source)
+        self.assertEqual(stage_path_calls, 1)
+        self.assertEqual(first_path, second_path)
+
+        nonlinear = TextTransformStack((
+            SlantTextTransform(1.1, 0.9, 3.0),
+            PerspectiveTextTransform(0.45, -70.0),
+            CurvatureTextTransform(0.72),
+            SlantTextTransform(0.8, 1.1, -4.0),
+            PerspectiveTextTransform(0.2, 25.0),
+            CurvatureTextTransform(-0.35),
+        ))
+        for vertical in (False, True):
+            compiled = compile_text_transform_stack(
+                nonlinear, logical, source, vertical
+            )
+            self.assertTrue(compiled.native_matrix.isIdentity())
+            self.assertIsInstance(
+                compiled.surface_mapper, CompositeTextTransformMapper
+            )
+            # Adjacent matrix stages on either side of a nonlinear stage fold.
+            self.assertEqual(len(compiled.surface_mapper.stages), 4)
+            self.assertTrue(nonlinear.has_nonlinear)
+
+            point = QPointF(180, 90)
+            restored = compiled.surface_mapper.inverse_point(
+                compiled.surface_mapper.forward_point(point)
+            )
+            self.assertAlmostEqual(restored.x(), point.x(), places=5)
+            self.assertAlmostEqual(restored.y(), point.y(), places=5)
 
 
 class TextTransformRenderingTest(TextTransformTestBase):
+    def test_uniform_glyph_paint_batch_matches_per_line_fallback(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                width, height = (
+                    (300, 600) if vertical else (600, 300)
+                )
+                block = TextBlock([0, 0, width, height])
+                block._bounding_rect = [0, 0, width, height]
+                block.vertical = vertical
+                block.translation = (
+                    TEST_LINES[0]
+                    + "\n\n   \n"
+                    + "\n".join(TEST_LINES[1:4])
+                )
+                block.fontformat.glyph_slant_angle = 20.0
+                item = TextBlkItem(block, 0)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                self.app.processEvents()
+
+                batched = self._render_scene(scene)
+                renderer = item.geometry_controller.layout_renderer
+                with patch.object(
+                    renderer,
+                    "draw_uniform_block",
+                    return_value=False,
+                ):
+                    item.update()
+                    fallback = self._render_scene(scene)
+                self.assertEqual(batched, fallback)
+
+    def test_vertical_width_resize_translates_existing_layout(self):
+        block = TextBlock([0, 0, 300, 600])
+        block._bounding_rect = [0, 0, 300, 600]
+        block.vertical = True
+        block.translation = "\n".join(TEST_LINES[:4])
+        block.fontformat.glyph_slant_angle = 20.0
+        item = TextBlkItem(block, 0)
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        self.app.processEvents()
+        layout = item.layout
+
+        with patch.object(
+            layout, "layoutBlock", wraps=layout.layoutBlock
+        ) as layout_block:
+            resized = item.absBoundingRect(qrect=True)
+            resized.setWidth(resized.width() + 40)
+            item.setRect(resized, repaint=False)
+            self.assertEqual(layout_block.call_count, 0)
+            fast_positions = tuple(
+                (
+                    block_number,
+                    line_number,
+                    block_layout.lineAt(line_number).position(),
+                )
+                for block_number in range(item.document().blockCount())
+                for block_layout in (
+                    item.document()
+                    .findBlockByNumber(block_number)
+                    .layout(),
+                )
+                for line_number in range(block_layout.lineCount())
+            )
+            fast_pixels = self._render_scene(scene)
+
+            layout.reLayout()
+            full_positions = tuple(
+                (
+                    block_number,
+                    line_number,
+                    block_layout.lineAt(line_number).position(),
+                )
+                for block_number in range(item.document().blockCount())
+                for block_layout in (
+                    item.document()
+                    .findBlockByNumber(block_number)
+                    .layout(),
+                )
+                for line_number in range(block_layout.lineCount())
+            )
+            self.assertEqual(fast_positions, full_positions)
+            self.assertEqual(fast_pixels, self._render_scene(scene))
+
+            layout_block.reset_mock()
+            resized.setHeight(resized.height() + 40)
+            item.setRect(resized, repaint=False)
+            self.assertGreater(layout_block.call_count, 0)
+
+    def test_geometry_edits_compile_each_transform_input_once(self):
+        state = transform_state(
+            SlantTextTransform(1.1, 0.9, 5.0),
+            CurvatureTextTransform(0.55),
+            PerspectiveTextTransform(0.25, 30.0),
+            CurvatureTextTransform(-0.2),
+            glyph_slant_angle=22.0,
+        )
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                width, height = (
+                    (300, 600) if vertical else (600, 300)
+                )
+                block = TextBlock([0, 0, width, height])
+                block._bounding_rect = [0, 0, width, height]
+                block.vertical = vertical
+                block.translation = "\n".join(TEST_LINES[:4])
+                block.fontformat.stroke_width = 0.08
+                item = TextBlkItem(block, 0)
+                item.set_text_transform(state)
+                controller = item.geometry_controller
+
+                target = (
+                    'ballontranslator.ui.text_item_geometry.'
+                    'compile_text_transform_stack'
+                )
+                with patch(
+                    target, wraps=compile_text_transform_stack
+                ) as compile_mock:
+                    unchanged = item.absBoundingRect(qrect=True)
+                    item.setRect(unchanged, repaint=False)
+                    self.app.processEvents()
+                    self.assertEqual(compile_mock.call_count, 0)
+
+                    changed = QRectF(unchanged)
+                    if vertical:
+                        changed.setHeight(changed.height() + 40)
+                    else:
+                        changed.setWidth(changed.width() + 40)
+                    item.setRect(changed, repaint=False)
+                    self.app.processEvents()
+                    self.assertEqual(compile_mock.call_count, 1)
+
+                    compile_mock.reset_mock()
+                    item.startEdit()
+                    cursor = item.textCursor()
+                    cursor.movePosition(QTextCursor.MoveOperation.End)
+                    cursor.insertText(" reflow")
+                    item.setTextCursor(cursor)
+                    self.app.processEvents()
+                    self.assertLessEqual(compile_mock.call_count, 1)
+
+                    compile_mock.reset_mock()
+                    item.setFontSize(38, repaint_background=False)
+                    self.app.processEvents()
+                    self.assertLessEqual(compile_mock.call_count, 1)
+                    self.assertFalse(controller._compile_deferred)
+                    compile_mock.reset_mock()
+                    self.assertFalse(
+                        controller.refresh_compiled_geometry()
+                    )
+                    self.assertEqual(compile_mock.call_count, 0)
+                    item.endEdit()
+
+                    compile_mock.reset_mock()
+                    item.setRelFontSize(
+                        0.9, repaint_background=False
+                    )
+                    self.app.processEvents()
+                    self.assertLessEqual(compile_mock.call_count, 1)
+
+                    compile_mock.reset_mock()
+                    item.setStrokeWidth(
+                        0.12, repaint_background=False
+                    )
+                    self.app.processEvents()
+                    self.assertLessEqual(compile_mock.call_count, 1)
+
+                    compile_mock.reset_mock()
+                    item.setVertical(not vertical)
+                    self.app.processEvents()
+                    compile_inputs = {
+                        (
+                            call.args[1].getRect(),
+                            call.args[2].getRect(),
+                            call.args[3],
+                        )
+                        for call in compile_mock.call_args_list
+                    }
+                    self.assertEqual(
+                        len(compile_inputs), compile_mock.call_count
+                    )
+                    self.assertLessEqual(compile_mock.call_count, 2)
+
+                    compile_mock.reset_mock()
+                    mapper = controller.visual_mapper
+                    controller.detach_surface_mapper()
+                    self.assertTrue(
+                        controller.refresh_compiled_geometry()
+                    )
+                    self.assertEqual(compile_mock.call_count, 0)
+                    self.assertIs(controller.visual_mapper, mapper)
+
+    def test_glyph_slant_effects_stay_on_transformed_source_path(self):
+        state = transform_state(
+            PerspectiveTextTransform(0.3, 25.0),
+            CurvatureTextTransform(0.55),
+            glyph_slant_angle=20.0,
+        )
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                width, height = (
+                    (300, 600) if vertical else (600, 300)
+                )
+                block = TextBlock([0, 0, width, height])
+                block._bounding_rect = [0, 0, width, height]
+                block.vertical = vertical
+                block.translation = "\n".join(TEST_LINES[:3])
+                block.fontformat.stroke_width = 0.08
+                block.fontformat.shadow_radius = 0.08
+                block.fontformat.shadow_strength = 0.7
+                block.fontformat.shadow_offset = [0.08, 0.06]
+                block.fontformat.gradient_enabled = True
+                block.fontformat.gradient_start_color = [20, 40, 160]
+                block.fontformat.gradient_end_color = [220, 80, 40]
+
+                item = TextBlkItem(block, 0)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                view = QGraphicsView(scene)
+                view.show()
+                self.app.processEvents()
+                item.set_text_transform(state)
+                controller = item.geometry_controller
+                renderer = item.effect_renderer
+
+                def assert_effect_path():
+                    self.assertIsNotNone(controller.visual_mapper)
+                    self.assertIs(
+                        item.layout.render_delegate,
+                        controller.layout_renderer,
+                    )
+                    self.assertFalse(
+                        renderer._text_transform_is_neutral()
+                    )
+                    with (
+                        patch.object(
+                            renderer,
+                            '_paint_cloned_document_stroke',
+                        ) as cloned,
+                        patch.object(
+                            renderer, '_paint_live_layout'
+                        ) as live,
+                        patch.object(
+                            renderer, '_paint_vertical_stroke'
+                        ) as vertical_stroke,
+                    ):
+                        renderer.paint_stroke(None)
+                    cloned.assert_not_called()
+                    if vertical:
+                        vertical_stroke.assert_called_once()
+                        live.assert_not_called()
+                    else:
+                        live.assert_called_once()
+                        vertical_stroke.assert_not_called()
+                    pixels = self._render_scene(scene)
+                    self.assertNotEqual(pixels, bytes(len(pixels)))
+
+                assert_effect_path()
+                item.startEdit()
+                pair = TransPairWidget(block, 0, False)
+                pair.e_trans.setPlainText(item.toPlainText())
+                propagated = []
+                def record_and_propagate(position, text, joint):
+                    propagated.append((position, text))
+                    propagate_user_edit(
+                        item,
+                        pair.e_trans,
+                        position,
+                        text,
+                        joint,
+                    )
+
+                item.propagate_user_edited.connect(record_and_propagate)
+                cursor = item.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                insert_at = cursor.position()
+                cursor.insertText(" edited")
+                item.setTextCursor(cursor)
+                self.app.processEvents()
+                self.assertEqual(len(propagated), 1)
+                self.assertIn(
+                    propagated[0],
+                    (
+                        (insert_at, " edited"),
+                        (
+                            0,
+                            item.toPlainText().replace(
+                                '\n', '\N{PARAGRAPH SEPARATOR}'
+                            ),
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    pair.e_trans.toPlainText(), item.toPlainText()
+                )
+                assert_effect_path()
+                item.endEdit()
+
+                rect = item.absBoundingRect(qrect=True)
+                rect.setWidth(rect.width() + 40)
+                rect.setHeight(rect.height() + 30)
+                item.setRect(rect, repaint=False)
+                assert_effect_path()
+
+                item.setFontSize(34, repaint_background=False)
+                assert_effect_path()
+                pair.deleteLater()
+                view.close()
+                scene.removeItem(item)
+
+    def test_zero_glyph_slant_restores_effects_inside_nonlinear_stack(self):
+        stack = TextTransformStack((CurvatureTextTransform(0.55),))
+        zero = TextTransformState(stack, 0.0)
+        slanted = TextTransformState(stack, 20.0)
+        for vertical in (False, True):
+            for effect in ("stroke", "shadow"):
+                with self.subTest(vertical=vertical, effect=effect):
+                    width, height = (
+                        (300, 600) if vertical else (600, 300)
+                    )
+                    block = TextBlock([0, 0, width, height])
+                    block._bounding_rect = [0, 0, width, height]
+                    block.vertical = vertical
+                    block.translation = "\n".join(TEST_LINES[:3])
+                    if effect == "stroke":
+                        block.fontformat.stroke_width = 0.12
+                    else:
+                        block.fontformat.shadow_radius = 0.12
+                        block.fontformat.shadow_strength = 0.8
+                        block.fontformat.shadow_offset = [0.1, 0.1]
+
+                    item = TextBlkItem(block, 0)
+                    scene = QGraphicsScene()
+                    scene.addItem(item)
+                    item.set_text_transform(zero)
+                    zero_pixels = self._render_scene(scene)
+
+                    item.set_text_transform(slanted)
+                    slanted_pixels = self._render_scene(scene)
+                    self.assertNotEqual(slanted_pixels, zero_pixels)
+
+                    renderer = item.effect_renderer
+                    with patch.object(
+                        renderer,
+                        "_repaint_neutral_background",
+                        wraps=renderer._repaint_neutral_background,
+                    ) as repaint_neutral:
+                        item.set_text_transform(zero, preview=True)
+                    self.assertEqual(repaint_neutral.call_count, 1)
+                    self.assertIsNotNone(
+                        renderer.background_pixmap
+                    )
+
+                    item.clear_text_transform_preview()
+                    self._render_scene(scene)
+                    with patch.object(
+                        renderer,
+                        "_repaint_neutral_background",
+                        wraps=renderer._repaint_neutral_background,
+                    ) as repaint_neutral:
+                        item.set_text_transform(zero)
+                    self.assertEqual(repaint_neutral.call_count, 1)
+                    self.assertIsNotNone(
+                        renderer.background_pixmap
+                    )
+                    self.assertIsNone(renderer._transformed_effect_state)
+                    scene.removeItem(item)
+
+    def test_surface_without_raster_effects_keeps_effect_fast_path(self):
+        state = transform_state(
+            CurvatureTextTransform(0.55),
+            glyph_slant_angle=20.0,
+        )
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item, _ = self._make_pair(0, TEST_LINES[1], vertical)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                item.set_text_transform(state)
+
+                renderer = item.effect_renderer
+                self.assertTrue(
+                    item.geometry_controller.has_layout_distortion()
+                )
+                self.assertTrue(
+                    item.geometry_controller.uses_surface_warp()
+                )
+                self.assertTrue(renderer._text_transform_is_neutral())
+                self.assertIsNone(renderer._transformed_effect_state)
+                pixels = self._render_scene(scene)
+                self.assertNotEqual(pixels, bytes(len(pixels)))
+                self.assertIsNone(renderer._transformed_effect_state)
+
+                item.set_text_transform(
+                    TextTransformState(state.stack, -20.0)
+                )
+                mirrored_pixels = self._render_scene(scene)
+                self.assertNotEqual(mirrored_pixels, pixels)
+                self.assertIsNone(renderer._transformed_effect_state)
+                scene.removeItem(item)
+
+    def test_reshape_surface_uses_bounded_low_resolution_preview(self):
+        class ScaleCapture:
+            def __init__(self):
+                self.maximum_scale = None
+
+            def release(self):
+                pass
+
+            def paint(
+                self,
+                painter,
+                option,
+                mapper,
+                source_rect,
+                cache_key,
+                cache_allowed,
+                paint_source,
+                maximum_scale=None,
+            ):
+                self.maximum_scale = maximum_scale
+
+        item, _ = self._make_pair(99, TEST_LINES[3], False)
+        item.set_text_transform(
+            transform_state(
+                PerspectiveTextTransform(0.6, 45.0),
+                CurvatureTextTransform(0.7),
+            )
+        )
+        capture = ScaleCapture()
+        item.geometry_controller.surface_renderer = capture
+        image = QImage(
+            900,
+            600,
+            QImage.Format.Format_ARGB32_Premultiplied,
+        )
+        image.fill(QColor(0, 0, 0, 0))
+        option = QStyleOptionGraphicsItem()
+        option.exposedRect = item.boundingRect()
+
+        item.reshaping = True
+        painter = QPainter(image)
+        item.geometry_controller.paint_item(
+            painter, option, None, lambda *_: None
+        )
+        painter.end()
+        self.assertEqual(capture.maximum_scale, 0.5)
+
+        item.reshaping = False
+        painter = QPainter(image)
+        item.geometry_controller.paint_item(
+            painter, option, None, lambda *_: None
+        )
+        painter.end()
+        self.assertIsNone(capture.maximum_scale)
+
+    def test_surface_composition_renders_through_one_nonlinear_surface(self):
+        stack = TextTransformStack((
+            SlantTextTransform(1.1, 0.9, 5.0),
+            CurvatureTextTransform(0.55),
+            PerspectiveTextTransform(0.25, 30.0),
+            CurvatureTextTransform(-0.2),
+        ))
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item, _ = self._make_pair(99, TEST_LINES[3], vertical)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                neutral_pixels = self._render_scene(scene)
+
+                item.set_text_transform(TextTransformState(stack))
+                controller = item.geometry_controller
+                self.assertTrue(item.transform().isIdentity())
+                self.assertIsInstance(
+                    controller.visual_mapper,
+                    CompositeTextTransformMapper,
+                )
+                renderer = controller.surface_renderer
+                self.assertIsNotNone(renderer)
+                self.assertNotEqual(self._render_scene(scene), neutral_pixels)
+                self.assertIs(controller.surface_renderer, renderer)
+                cached_pixmap = renderer.cached_pixmap
+                self.assertIsNotNone(cached_pixmap)
+
+                self.assertFalse(controller.refresh_compiled_geometry())
+                self.assertIs(renderer.cached_pixmap, cached_pixmap)
+                item.set_text_transform(NEUTRAL)
+                self.assertIsNone(controller.surface_renderer)
+                self.assertEqual(self._render_scene(scene), neutral_pixels)
+                controller.release_render_resources()
+                scene.removeItem(item)
+                self.app.processEvents()
+
     def test_curvature_selection_requests_a_full_item_update(self):
         class RecordingTextItem(TextBlkItem):
             def __init__(self, *args, **kwargs):
@@ -487,7 +1408,9 @@ class TextTransformRenderingTest(TextTransformTestBase):
         item = RecordingTextItem(block, 0)
         scene = QGraphicsScene()
         scene.addItem(item)
-        item.set_text_transform(CurvatureTextTransform(0.8))
+        item.set_text_transform(
+            transform_state(CurvatureTextTransform(0.8))
+        )
         item.startEdit()
         item.full_update_count = 0
 
@@ -553,7 +1476,9 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 )
                 block.vertical = vertical
                 item = TextBlkItem(block, 0)
-                item.set_text_transform(CurvatureTextTransform(0.8))
+                item.set_text_transform(
+                    transform_state(CurvatureTextTransform(0.8))
+                )
                 item.startEdit()
                 cursor = item.textCursor()
                 cursor.movePosition(QTextCursor.MoveOperation.End)
@@ -602,7 +1527,9 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 source_point = item.logical_unpadded_rect().center()
                 neutral_hit = item.layout.hitTest(source_point, None)
 
-                item.set_text_transform(CurvatureTextTransform(0.7))
+                item.set_text_transform(
+                    transform_state(CurvatureTextTransform(0.7))
+                )
                 mapper = item.geometry_controller.visual_mapper
                 self.assertIsNotNone(mapper)
                 self.assertIs(
@@ -663,7 +1590,9 @@ class TextTransformRenderingTest(TextTransformTestBase):
                         translation=TEST_LINES[1],
                     )
                     block.vertical = vertical
-                    block.fontformat.text_transform = transform
+                    block.fontformat.text_transform = TextTransformStack(
+                        (transform,)
+                    )
                     item = TextBlkItem(copy.deepcopy(block), 0)
                     if transform.transform_type == 'perspective':
                         self.assertFalse(item.transform().isIdentity())
@@ -719,13 +1648,14 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 block.vertical = vertical
                 block.angle = 17.0
                 block.translation = TEST_LINES[0]
-                block.fontformat.text_transform = FIRST_TRANSFORM
+                block.fontformat.text_transform = FIRST_TRANSFORM.stack
+                block.fontformat.glyph_slant_angle = (
+                    FIRST_TRANSFORM.glyph_slant_angle
+                )
 
                 for source in (block, copy.deepcopy(block)):
                     item = TextBlkItem(source, 0)
-                    expected = item.geometry_controller.compensated_matrix(
-                        FIRST_TRANSFORM
-                    )
+                    expected = item.geometry_controller.compensated_matrix()
                     self.assertFalse(item.transform().isIdentity())
                     self.assertEqual(item.transform(), expected)
 
@@ -777,11 +1707,16 @@ class TextTransformRenderingTest(TextTransformTestBase):
         item.set_text_transform(FIRST_TRANSFORM)
         geometry_cache = item.geometry_controller.layout_renderer.geometry_cache
         self.assertTrue(geometry_cache.persistent)
-        box_preview = FIRST_TRANSFORM.with_value('horizontal_scale', 1.4)
+        box_preview = transform_state(
+            FIRST_TRANSFORM.stack[0].with_value(
+                'horizontal_scale', 1.4
+            ),
+            glyph_slant_angle=FIRST_TRANSFORM.glyph_slant_angle,
+        )
         item.set_text_transform(box_preview, preview=True)
         self.assertTrue(geometry_cache.persistent)
         item.clear_text_transform_preview()
-        glyph_preview = FIRST_TRANSFORM.with_value('glyph_slant_angle', 9.0)
+        glyph_preview = TextTransformState(FIRST_TRANSFORM.stack, 9.0)
         committed_entries = len(GLOBAL_GLYPH_GEOMETRY_CACHE)
         item.set_text_transform(glyph_preview, preview=True)
         self.assertFalse(geometry_cache.persistent)
@@ -859,7 +1794,9 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 item.layout.reLayout()
                 self.assertEqual(len(GLOBAL_GLYPH_GEOMETRY_CACHE), 0)
 
-                box_only = SlantTextTransform(1.2, 0.9, 8.0, 0.0)
+                box_only = transform_state(
+                    SlantTextTransform(1.2, 0.9, 8.0)
+                )
                 item.set_text_transform(box_only)
                 self.assertIsNone(item.layout.render_delegate)
                 self.assertTrue(
@@ -1020,7 +1957,9 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                     item = TextBlkItem(block, 0)
                     item.setParentItem(base)
                     item.set_text_transform(
-                        CurvatureTextTransform(curvature)
+                        transform_state(
+                            CurvatureTextTransform(curvature)
+                        )
                     )
                     item.setRotation(23.0)
                     control = TextBlkShapeControl(view)
@@ -1098,13 +2037,22 @@ class TextTransformShapeControlTest(TextTransformTestBase):
 
     def test_extended_transform_shape_control_tracks_geometry(self):
         for vertical in (False, True):
-            for transform in (
-                PerspectiveTextTransform(0.55, 35.0),
-                CurvatureTextTransform(0.65),
+            for state in (
+                transform_state(
+                    PerspectiveTextTransform(0.55, 35.0)
+                ),
+                transform_state(CurvatureTextTransform(0.65)),
+                transform_state(
+                    PerspectiveTextTransform(0.55, 35.0),
+                    CurvatureTextTransform(0.65),
+                ),
             ):
                 with self.subTest(
                     vertical=vertical,
-                    transform=transform.transform_type,
+                    transforms=tuple(
+                        transform.transform_type
+                        for transform in state.stack
+                    ),
                 ):
                     scene = QGraphicsScene()
                     view = QGraphicsView(scene)
@@ -1121,7 +2069,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                     block.vertical = vertical
                     item = TextBlkItem(block, 0)
                     item.setParentItem(base)
-                    item.set_text_transform(transform)
+                    item.set_text_transform(state)
                     control = TextBlkShapeControl(view)
                     control.setParentItem(base)
                     control.setBlkItem(item)
@@ -1162,7 +2110,18 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             PerspectiveTextTransform(0.5, 25.0),
             CurvatureTextTransform(0.55),
         ):
-            with self.subTest(transform=transform.transform_type):
+            state = (
+                transform
+                if isinstance(transform, TextTransformState)
+                else transform_state(transform)
+            )
+            with self.subTest(
+                transform=(
+                    state.stack[0].transform_type
+                    if state.stack.transforms
+                    else 'none'
+                )
+            ):
                 scene = QGraphicsScene()
                 view = QGraphicsView(scene)
                 view.resize(500, 260)
@@ -1177,7 +2136,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                     )
                     item = TextBlkItem(block, index)
                     item.setParentItem(base)
-                    item.set_text_transform(transform)
+                    item.set_text_transform(state)
                     items.append(item)
 
                 control = TextBlkShapeControl(view)
@@ -1303,7 +2262,13 @@ class TextTransformShapeControlTest(TextTransformTestBase):
 
     def test_item_owned_selection_guide_can_be_suppressed_for_export(self):
         for transform in (NEUTRAL, FIRST_TRANSFORM):
-            with self.subTest(transform=transform.transform_type):
+            with self.subTest(
+                transform=(
+                    transform.stack[0].transform_type
+                    if transform.stack.transforms
+                    else 'none'
+                )
+            ):
                 item, _ = self._make_pair(0, TEST_LINES[3], False)
                 item.set_logical_position(QPointF(50, 50))
                 item.set_text_transform(transform)

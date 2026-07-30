@@ -7,12 +7,12 @@ from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QPainter,
     QTextBlock,
+    QTextCharFormat,
     QTransform,
 )
 
 from ballontranslator.utils import shared as C
 from ballontranslator.utils.fontformat import (
-    SlantTextTransform,
     TEXT_TRANSFORM_GLYPH_SLANT_MAX,
     TEXT_TRANSFORM_GLYPH_SLANT_MIN,
     normalize_text_transform_value,
@@ -22,7 +22,8 @@ from .glyph import (
     GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE,
     draw_slanted_glyph_mask,
     draw_slanted_line,
-    slanted_line_ink_bounds,
+    draw_uniform_glyph_geometries,
+    slanted_line_geometry,
 )
 from .indexing import _utf16_char_at, _utf16_length
 
@@ -84,8 +85,8 @@ class LayoutGlyphGeometryCache:
 class GlyphSlantLayoutRenderer:
     """Own glyph-slant rendering and caches without owning neutral layout.
 
-    The constructor owns only the layout boundary. Complete typed transform
-    values enter through :meth:`apply`, matching other variant renderers.
+    The constructor owns only the layout boundary. Glyph Slant remains one
+    pre-geometry typography value independent of the ordered transform stack.
 
     >>> GlyphSlantLayoutRenderer(object()).glyph_slant_angle
     0.0
@@ -96,6 +97,8 @@ class GlyphSlantLayoutRenderer:
         self.glyph_slant_angle = 0.0
         self.generation = getattr(layout, 'layout_generation', 0)
         self.bounds_cache = {}
+        self.geometry_plan = None
+        self.geometry_plan_bounds = QRectF()
         self.geometry_cache = LayoutGlyphGeometryCache(self)
 
     def bind_layout(self, layout) -> None:
@@ -106,6 +109,8 @@ class GlyphSlantLayoutRenderer:
         self.layout = layout
         self.generation = getattr(layout, 'layout_generation', 0)
         self.bounds_cache.clear()
+        self.geometry_plan = None
+        self.geometry_plan_bounds = QRectF()
 
     def ensure_layout_generation(self) -> None:
         generation = getattr(self.layout, 'layout_generation', self.generation)
@@ -114,6 +119,13 @@ class GlyphSlantLayoutRenderer:
         self.geometry_cache.invalidate_generation()
         self.generation = generation
         self.bounds_cache.clear()
+        self.geometry_plan = None
+        self.geometry_plan_bounds = QRectF()
+
+    def render_cache_key(self):
+        """Return state that changes the delegated glyph source image."""
+        self.ensure_layout_generation()
+        return self.generation, self.glyph_slant_angle
 
     @property
     def line_spaces_lst(self):
@@ -312,6 +324,8 @@ class GlyphSlantLayoutRenderer:
         return True
 
     def draw_horizontal_block(self, painter, block, context) -> None:
+        if self.draw_uniform_block(painter, block, context):
+            return
         layout = block.layout()
         for line_number in range(layout.lineCount()):
             line = layout.lineAt(line_number)
@@ -331,21 +345,23 @@ class GlyphSlantLayoutRenderer:
 
     def clear_caches(self) -> None:
         self.bounds_cache.clear()
+        self.geometry_plan = None
+        self.geometry_plan_bounds = QRectF()
         self.geometry_cache.clear_transient()
 
     def release_caches(self) -> None:
         """Drop every cache entry derived from the attached layout."""
         self.bounds_cache.clear()
+        self.geometry_plan = None
+        self.geometry_plan_bounds = QRectF()
         self.geometry_cache.invalidate_generation()
 
     def apply(
         self,
-        transform: SlantTextTransform,
+        angle: float,
         persistent_cache: bool = True,
     ) -> bool:
-        if not isinstance(transform, SlantTextTransform):
-            raise TypeError('glyph slant renderer requires SlantTextTransform')
-        return self._set_angle(transform.glyph_slant_angle, persistent_cache)
+        return self._set_angle(angle, persistent_cache)
 
     def deactivate(self, persistent_cache: bool = True) -> bool:
         return self._set_angle(0.0, persistent_cache)
@@ -396,6 +412,87 @@ class GlyphSlantLayoutRenderer:
                     )
             block = block.next()
 
+    @staticmethod
+    def _uniform_block_format(block):
+        """Return the sole undecorated block format, or ``None``."""
+        layout = block.layout()
+        if layout.formats():
+            return None
+        fragments = []
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid() and fragment.length() > 0:
+                fragments.append(fragment)
+            iterator += 1
+        if len(fragments) != 1:
+            return None
+        char_format = fragments[0].charFormat()
+        font = char_format.font()
+        if (
+            char_format.background().style() != Qt.BrushStyle.NoBrush
+            or char_format.textOutline().style() != Qt.PenStyle.NoPen
+            or char_format.underlineStyle()
+            != QTextCharFormat.UnderlineStyle.NoUnderline
+            or font.overline()
+            or font.strikeOut()
+        ):
+            return None
+        return char_format
+
+    def draw_uniform_block(self, painter, block, context) -> bool:
+        """Batch the common unselected, same-format glyph paint path."""
+        if context.selections:
+            return False
+        char_format = self._uniform_block_format(block)
+        if char_format is None:
+            return False
+        self._ensure_geometry_plan()
+        draw_uniform_glyph_geometries(
+            painter,
+            self.geometry_plan.get(block.blockNumber(), ()),
+            char_format,
+            self._report_glyph_raster_failure,
+        )
+        return True
+
+    def _ensure_geometry_plan(self) -> QRectF:
+        """Build the exact generation geometry once for bounds and paint."""
+        self.ensure_layout_generation()
+        if self.geometry_plan is not None:
+            return QRectF(self.geometry_plan_bounds)
+        bounds = QRectF()
+        geometry_plan = {}
+        placements = (
+            self._iter_glyph_line_placements()
+            if hasattr(self.layout, 'line_spaces_lst')
+            else self._iter_horizontal_line_placements()
+        )
+        for namespace, line, offset, orientation in placements:
+            geometry = slanted_line_geometry(
+                line,
+                offset,
+                orientation,
+                self.glyph_slant_angle,
+                self.geometry_cache,
+                namespace,
+            )
+            geometry_plan.setdefault(namespace[0], []).append(geometry)
+            line_bounds = geometry.bounds
+            if line_bounds.isEmpty():
+                continue
+            bounds = (
+                QRectF(line_bounds)
+                if bounds.isNull()
+                else bounds.united(line_bounds)
+            )
+        self.geometry_plan = {
+            block_number: tuple(geometries)
+            for block_number, geometries in geometry_plan.items()
+        }
+        self.geometry_plan_bounds = QRectF(bounds)
+        return bounds
+
     def ink_bounds(self) -> QRectF:
         self.ensure_layout_generation()
         document = self.layout.document()
@@ -410,23 +507,6 @@ class GlyphSlantLayoutRenderer:
         cached = self.bounds_cache.get(key)
         if cached is not None:
             return QRectF(cached)
-        bounds = QRectF()
-        placements = (
-            self._iter_glyph_line_placements()
-            if hasattr(self.layout, 'line_spaces_lst')
-            else self._iter_horizontal_line_placements()
-        )
-        for namespace, line, offset, orientation in placements:
-            line_bounds = slanted_line_ink_bounds(
-                line,
-                offset,
-                orientation,
-                self.glyph_slant_angle,
-                self.geometry_cache,
-                namespace,
-            )
-            if line_bounds.isEmpty():
-                continue
-            bounds = line_bounds if bounds.isNull() else bounds.united(line_bounds)
+        bounds = self._ensure_geometry_plan()
         self.bounds_cache = {key: QRectF(bounds)}
         return bounds

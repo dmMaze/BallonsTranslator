@@ -534,11 +534,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         ]
         local_frames = (
             self.blk_item is not None
-            and (
-                self.blk_item.geometry_controller.uses_surface_warp()
-                or self.blk_item._effective_text_transform().transform_type
-                == 'perspective'
-            )
+            and self.blk_item.geometry_controller
+            .compiled.needs_local_handle_frames
         )
         if local_frames:
             outward_vectors, device_angles = self._handle_frames_device(
@@ -743,9 +740,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
     def resizeHandleSceneAngle(self, idx: int) -> float:
         if (
-            not self.blk_item.geometry_controller.uses_surface_warp()
-            and self.blk_item._effective_text_transform().transform_type
-            != 'perspective'
+            not self.blk_item.geometry_controller
+            .compiled.needs_local_handle_frames
         ):
             points = self._item_handle_points_in_scene(self.blk_item)
             if len(points) == 8:

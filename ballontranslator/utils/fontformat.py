@@ -9,10 +9,12 @@ import enum
 import math
 import re
 import copy
+from typing import ClassVar
 
 import numpy as np
 
 from . import shared
+from .logger import logger as LOGGER
 from .structures import Union, List, Config, field, nested_dataclass
 
 
@@ -48,6 +50,9 @@ class TextTransform:
     """
 
     transform_type: str = dataclass_field(init=False, default='base')
+    # ``nonlinear`` means that QTransform cannot represent the operation and
+    # the completed text surface must be inverse-warped instead.
+    is_nonlinear: ClassVar[bool] = False
 
     def normalized(self) -> "TextTransform":
         raise NotImplementedError
@@ -64,30 +69,12 @@ class TextTransform:
 
 
 @dataclass(frozen=True)
-class NoTextTransform(TextTransform):
-    """Explicit absence of a text transform effect.
-
-    >>> NoTextTransform().is_neutral()
-    True
-    """
-
-    transform_type: str = dataclass_field(init=False, default='none')
-
-    def normalized(self) -> "NoTextTransform":
-        return self
-
-    def is_neutral(self) -> bool:
-        return True
-
-
-@dataclass(frozen=True)
 class SlantTextTransform(TextTransform):
-    """Current affine box transform plus glyph-local slant."""
+    """Affine box scale and shear applied in the ordered geometry stack."""
 
     horizontal_scale: float = 1.0
     vertical_scale: float = 1.0
     slant_angle: float = 0.0
-    glyph_slant_angle: float = 0.0
     transform_type: str = dataclass_field(init=False, default='slant')
 
     def normalized(self) -> "SlantTextTransform":
@@ -95,7 +82,6 @@ class SlantTextTransform(TextTransform):
             self.horizontal_scale,
             self.vertical_scale,
             self.slant_angle,
-            self.glyph_slant_angle,
         )
 
     def is_neutral(self) -> bool:
@@ -134,6 +120,7 @@ class CurvatureTextTransform(TextTransform):
 
     curvature: float = 0.0
     transform_type: str = dataclass_field(init=False, default='curvature')
+    is_nonlinear: ClassVar[bool] = True
 
     def normalized(self) -> "CurvatureTextTransform":
         return CurvatureTextTransform(
@@ -146,6 +133,78 @@ class CurvatureTextTransform(TextTransform):
 
     def is_neutral(self) -> bool:
         return self.curvature == 0.0
+
+
+@dataclass(frozen=True)
+class TextTransformStack:
+    """Immutable ordered text-geometry operations.
+
+    Empty means no geometry transform. Neutral entries remain present for the
+    editor but are skipped by the runtime compiler.
+
+    >>> stack = TextTransformStack((CurvatureTextTransform(0.5),))
+    >>> stack.has_nonlinear
+    True
+    """
+
+    transforms: tuple[TextTransform, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            'transforms',
+            tuple(coerce_text_transform(value) for value in self.transforms),
+        )
+
+    def __iter__(self):
+        return iter(self.transforms)
+
+    def __len__(self) -> int:
+        return len(self.transforms)
+
+    def __getitem__(self, index):
+        return self.transforms[index]
+
+    def is_neutral(self) -> bool:
+        return all(transform.is_neutral() for transform in self.transforms)
+
+    @property
+    def has_nonlinear(self) -> bool:
+        return any(
+            not transform.is_neutral() and transform.is_nonlinear
+            for transform in self.transforms
+        )
+
+
+@dataclass(frozen=True)
+class TextTransformState:
+    """Complete immutable state edited by the transform undo command.
+
+    Geometry operations stay ordered while Glyph Slant remains one layout
+    effect applied before that geometry.
+
+    >>> TextTransformState().glyph_slant_angle
+    0.0
+    """
+
+    stack: TextTransformStack = dataclass_field(
+        default_factory=TextTransformStack
+    )
+    glyph_slant_angle: float = 0.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, 'stack', coerce_text_transform_stack(self.stack)
+        )
+        object.__setattr__(
+            self,
+            'glyph_slant_angle',
+            normalize_text_transform_value(
+                self.glyph_slant_angle,
+                TEXT_TRANSFORM_GLYPH_SLANT_MIN,
+                TEXT_TRANSFORM_GLYPH_SLANT_MAX,
+            ),
+        )
 
 
 def normalize_text_transform_value(
@@ -180,12 +239,11 @@ def normalize_text_transform(
     horizontal_scale: float,
     vertical_scale: float,
     slant_angle: float,
-    glyph_slant_angle: float,
 ) -> SlantTextTransform:
-    """Normalize the canonical four-component text transform.
+    """Normalize the canonical affine Slant operation.
 
-    >>> normalize_text_transform(1.23456789, 0.01, -90, 0.0)
-    SlantTextTransform(transform_type='slant', horizontal_scale=1.234568, vertical_scale=0.1, slant_angle=-85.0, glyph_slant_angle=0.0)
+    >>> normalize_text_transform(1.23456789, 0.01, -90)
+    SlantTextTransform(transform_type='slant', horizontal_scale=1.234568, vertical_scale=0.1, slant_angle=-85.0)
     """
     return SlantTextTransform(
         normalize_text_transform_value(
@@ -199,16 +257,10 @@ def normalize_text_transform(
             TEXT_TRANSFORM_BOX_SLANT_MIN,
             TEXT_TRANSFORM_BOX_SLANT_MAX,
         ),
-        normalize_text_transform_value(
-            glyph_slant_angle,
-            TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-            TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-        ),
     )
 
 
 TEXT_TRANSFORM_TYPES = {
-    'none': NoTextTransform,
     'slant': SlantTextTransform,
     'perspective': PerspectiveTextTransform,
     'curvature': CurvatureTextTransform,
@@ -222,8 +274,8 @@ def create_text_transform(transform_type: str) -> TextTransform:
     payloads may still supply required variant fields through
     :func:`coerce_text_transform`.
 
-    >>> create_text_transform('none')
-    NoTextTransform(transform_type='none')
+    >>> create_text_transform('slant')
+    SlantTextTransform(transform_type='slant', horizontal_scale=1.0, vertical_scale=1.0, slant_angle=0.0)
     """
     transform_class = TEXT_TRANSFORM_TYPES.get(transform_type)
     if transform_class is None:
@@ -269,7 +321,26 @@ def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
         raise ValueError(
             f'persisted {transform_type} transform values must be canonical'
         )
-    return transform
+    return normalized
+
+
+def coerce_text_transform_stack(value) -> TextTransformStack:
+    """Return one canonical ordered stack and reject the old single payload.
+
+    >>> coerce_text_transform_stack([
+    ...     {'transform_type': 'curvature', 'curvature': 0.5},
+    ... ])
+    TextTransformStack(transforms=(CurvatureTextTransform(transform_type='curvature', curvature=0.5),))
+    >>> coerce_text_transform_stack({'transform_type': 'curvature'})
+    Traceback (most recent call last):
+    ...
+    ValueError: text transform stack must be an ordered list
+    """
+    if isinstance(value, TextTransformStack):
+        return value
+    if not isinstance(value, (list, tuple)):
+        raise ValueError('text transform stack must be an ordered list')
+    return TextTransformStack(tuple(value))
 
 
 def pt2px(pt, to_int=False) -> float:
@@ -347,10 +418,11 @@ class FontFormat(Config):
     _style_name: str = ''
     line_spacing_type: int = LineSpacingType.Proportional
 
-    # Direct in-memory owner; persisted dictionaries carry a transform type.
-    text_transform: Union[TextTransform, dict] = field(
-        default_factory=NoTextTransform
+    # Direct in-memory owner; persistence stores an ordered list of payloads.
+    text_transform: Union[TextTransformStack, List] = field(
+        default_factory=TextTransformStack
     )
+    glyph_slant_angle: float = 0.0
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())
 
@@ -369,13 +441,30 @@ class FontFormat(Config):
                 self.font_family = da['family']
 
         self.font_weight = fix_fontweight_qt(self.font_weight)
-        self.text_transform = coerce_text_transform(self.text_transform)
+        try:
+            self.text_transform = coerce_text_transform_stack(
+                self.text_transform
+            )
+        except ValueError as error:
+            LOGGER.warning(
+                'Ignoring invalid text transform config (%s); '
+                'using an empty transform stack.',
+                error,
+            )
+            self.text_transform = TextTransformStack()
+        self.glyph_slant_angle = normalize_text_transform_value(
+            self.glyph_slant_angle,
+            TEXT_TRANSFORM_GLYPH_SLANT_MIN,
+            TEXT_TRANSFORM_GLYPH_SLANT_MAX,
+        )
         self.deprecated_attributes = {}
 
     def to_serializable_dict(self) -> dict:
         """Return config/project data with a typed transform payload."""
         serialized = vars(self).copy()
-        serialized['text_transform'] = asdict(self.text_transform)
+        serialized['text_transform'] = [
+            asdict(transform) for transform in self.text_transform
+        ]
         return serialized
 
     def deepcopy(self):

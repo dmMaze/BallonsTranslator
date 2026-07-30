@@ -268,7 +268,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.available_width = max(max_width -  doc_margin, 0)
         self.available_height = max(max_height - doc_margin, 0)
         if relayout:
-            self.reLayout()
+            self.reLayoutForResize()
+
+    def reLayoutForResize(self):
+        self.reLayout()
 
     def setLineSpacing(self, line_spacing: float):
         if self.line_spacing != line_spacing:
@@ -402,6 +405,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.line_draw = line_draw_qt6 if C.FLAG_QT6 else line_draw_qt5
 
         self.per_char_records = []
+        self._resize_layout_max_width = None
+        self._resize_layout_available_height = None
+        self._resize_layout_padding = None
 
     @property
     def align_right(self):
@@ -450,6 +456,47 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 for ii, xoffset in enumerate(self.x_offset_lst):
                     self.x_offset_lst[ii] = xoffset + x_shift
         self.updateDrawOffsets()
+        self._resize_layout_max_width = self.max_width
+        self._resize_layout_available_height = self.available_height
+        self._resize_layout_padding = self._effect_padding
+        self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
+
+    def reLayoutForResize(self):
+        """Translate a width-only resize; height changes still reflow columns."""
+        if (
+            self._resize_layout_max_width is None
+            or self.available_height
+            != self._resize_layout_available_height
+            or self._effect_padding != self._resize_layout_padding
+        ):
+            self.reLayout()
+            return
+        x_shift = self.max_width - self._resize_layout_max_width
+        if x_shift == 0:
+            self.documentSizeChanged.emit(
+                QSizeF(self.max_width, self.max_height)
+            )
+            return
+        if self.layout_left + x_shift < self._effect_padding:
+            # The normal path enforces the content's minimum column width.
+            self.reLayout()
+            return
+
+        self._begin_layout_generation()
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for line_number in range(layout.lineCount()):
+                line = layout.lineAt(line_number)
+                position = line.position()
+                position.setX(position.x() + x_shift)
+                line.setPosition(position)
+            block = block.next()
+        self.x_offset_lst = [
+            x_offset + x_shift for x_offset in self.x_offset_lst
+        ]
+        self.layout_left += x_shift
+        self._resize_layout_max_width = self.max_width
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
     def updateDrawOffsets(self):
@@ -580,6 +627,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             char_records = self.per_char_records[blk_no]
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
+            uniform_block_drawn = (
+                custom_rendering
+                and render_delegate.draw_uniform_block(
+                    painter, block, context
+                )
+            )
 
             if _block_cursor_position(block, context.cursorPosition) >= 0:
                 cursor_block = block
@@ -592,9 +645,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
                 if char_idx < 0:
                     if custom_rendering:
-                        render_delegate.draw_vertical_line(
-                            painter, block, ii, context
-                        )
+                        if not uniform_block_drawn:
+                            render_delegate.draw_vertical_line(
+                                painter, block, ii, context
+                            )
                     else:
                         line.draw(painter, QPointF(0, 0))
                     continue
@@ -609,9 +663,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 fm = cfmt.font_metrics
                 if custom_rendering:
-                    render_delegate.draw_vertical_line(
-                        painter, block, ii, context
-                    )
+                    if not uniform_block_drawn:
+                        render_delegate.draw_vertical_line(
+                            painter, block, ii, context
+                        )
                     continue
                 selected = False
                 if has_selection:

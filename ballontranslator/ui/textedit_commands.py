@@ -11,8 +11,7 @@ from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
     FontFormat,
-    TextTransform,
-    coerce_text_transform,
+    TextTransformState,
 )
 from .misc import doc_replace, doc_replace_no_shift
 from .texteditshapecontrol import TextBlkShapeControl
@@ -39,38 +38,44 @@ def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit
 
 
 class SetTextTransformCommand(QUndoCommand):
-    """Atomically apply canonical text transforms to one or more items."""
+    """Atomically apply complete transform state to one or more items."""
 
     def __init__(
         self,
         items: Sequence[TextBlkItem],
-        before: Sequence[TextTransform],
-        after: Sequence[TextTransform],
+        before: Sequence[TextTransformState],
+        after: Sequence[TextTransformState],
         refresh_callback: Optional[Callable[[], None]] = None,
     ):
         super().__init__()
         self.items = tuple(items)
         if len(self.items) != len(before) or len(self.items) != len(after):
             raise ValueError("items, before, and after must have the same length")
-        self.before = tuple(coerce_text_transform(values) for values in before)
-        self.after = tuple(coerce_text_transform(values) for values in after)
+        self.before = tuple(
+            TextTransformState(value.stack, value.glyph_slant_angle)
+            for value in before
+        )
+        self.after = tuple(
+            TextTransformState(value.stack, value.glyph_slant_angle)
+            for value in after
+        )
         self.refresh_callback = refresh_callback
 
     @classmethod
     def create(
         cls,
         items: Sequence[TextBlkItem],
-        before: Sequence[TextTransform],
-        after: Sequence[TextTransform],
+        before: Sequence[TextTransformState],
+        after: Sequence[TextTransformState],
         refresh_callback: Optional[Callable[[], None]] = None,
     ) -> Optional["SetTextTransformCommand"]:
         """Build a command, or return ``None`` for a normalized no-op."""
         command = cls(items, before, after, refresh_callback)
         return None if command.before == command.after else command
 
-    def _apply(self, transforms: Sequence[TextTransform]):
-        for item, transform in zip(self.items, transforms):
-            item.set_text_transform(transform, preview=False)
+    def _apply(self, states: Sequence[TextTransformState]):
+        for item, state in zip(self.items, states):
+            item.set_text_transform(state, preview=False)
         if self.refresh_callback is not None:
             self.refresh_callback()
 

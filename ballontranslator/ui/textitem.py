@@ -11,7 +11,7 @@ from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
     FontFormat,
-    TextTransform,
+    TextTransformState,
     pt2px,
 )
 from .misc import td_pattern, table_pattern
@@ -127,9 +127,19 @@ class TextBlkItem(QGraphicsTextItem):
                         self.input_method_from = -1
 
                     elif self.change_added > 0:
-                        cursor = self.textCursor()
+                        cursor = QTextCursor(self.document())
                         cursor.setPosition(change_from)
-                        cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor)
+                        # QTextLayout range changes can make Qt report the
+                        # terminal document separator as part of a full-range
+                        # edit. It is not a selectable character.
+                        selection_end = min(
+                            change_from + self.change_added,
+                            self.document().characterCount() - 1,
+                        )
+                        cursor.setPosition(
+                            selection_end,
+                            QTextCursor.MoveMode.KeepAnchor,
+                        )
                         added_text = cursor.selectedText()
 
                     self.propagate_user_edited.emit(change_from, added_text, joint_previous)
@@ -224,7 +234,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
         self.repaint_background()
 
-    def _effective_text_transform(self) -> TextTransform:
+    def _effective_text_transform(self) -> TextTransformState:
         return self.geometry_controller.effective()
 
     def _text_transform_is_neutral(self) -> bool:
@@ -255,11 +265,11 @@ class TextBlkItem(QGraphicsTextItem):
 
     def set_text_transform(
         self,
-        transform: TextTransform = None,
+        state: TextTransformState = None,
         *,
         preview: bool = False,
     ) -> bool:
-        changed = self.geometry_controller.set(transform, preview=preview)
+        changed = self.geometry_controller.set(state, preview=preview)
         if changed:
             self.visual_geometry_changed.emit()
         return changed
@@ -771,9 +781,12 @@ class TextBlkItem(QGraphicsTextItem):
         fontformat.gradient_angle = self.fontformat.gradient_angle
         fontformat.gradient_size = self.fontformat.gradient_size
         # Selection changes can detach the render/UI format cache from the
-        # persistent TextBlock owner.  The canonical quartet must always win
-        # when producing a save/undo format snapshot.
+        # persistent TextBlock owner. Canonical transform state must win when
+        # producing a save/undo format snapshot.
         fontformat.text_transform = self.blk.fontformat.text_transform
+        fontformat.glyph_slant_angle = (
+            self.blk.fontformat.glyph_slant_angle
+        )
         return fontformat
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True, set_effect=True):
@@ -846,7 +859,12 @@ class TextBlkItem(QGraphicsTextItem):
         self.fontformat.gradient_size = ffmat.gradient_size
         
         self.fontformat.merge(ffmat)
-        self.set_text_transform(self.fontformat.text_transform)
+        self.set_text_transform(
+            TextTransformState(
+                self.fontformat.text_transform,
+                self.fontformat.glyph_slant_angle,
+            )
+        )
 
         self.repainting = False
         if self.fontformat.gradient_enabled:
@@ -903,10 +921,11 @@ class TextBlkItem(QGraphicsTextItem):
                     cursor.setPosition(max(pos1, pos2), QTextCursor.MoveMode.KeepAnchor)
                 self.setTextCursor(cursor)
 
+        cursor.endEditBlock()
+        self.geometry_controller.flush_deferred_compilation()
         if repaint_background:
             self.repaint_background()
 
-        cursor.endEditBlock()
         self.is_formatting = False
 
     def setFontFamily(self, value: str, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
@@ -999,6 +1018,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.is_formatting = True
         self.fontformat.line_spacing = value
         self.layout.setLineSpacing(value)
+        self.geometry_controller.flush_deferred_compilation()
         if repaint_background:
             self.repaint_background()
             self.update()
@@ -1008,6 +1028,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.is_formatting = True
         self.fontformat.line_spacing_type = value
         self.layout.setLineSpacingType(value)
+        self.geometry_controller.flush_deferred_compilation()
         if repaint_background:
             self.repaint_background()
             self.update()
@@ -1026,6 +1047,7 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.select(QTextCursor.SelectionType.Document)
             self.set_cursor_cfmt(cursor, char_fmt, True)
 
+        self.geometry_controller.flush_deferred_compilation()
         if repaint_background:
             self.repaint_background()
             self.update()

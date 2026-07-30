@@ -118,6 +118,13 @@ class TextEffectRenderer:
             self._transformed_effect_state = state
         return state
 
+    def surface_cache_state(self) -> Tuple[int, bool]:
+        """Return final-warp cache inputs without allocating effect state."""
+        state = self._transformed_effect_state
+        if state is None:
+            return 0, False
+        return state.cache_generation, state.export_render
+
     @property
     def fontformat(self):
         return self.item.fontformat
@@ -176,10 +183,14 @@ class TextEffectRenderer:
         self.item.update()
 
     def _text_transform_is_neutral(self):
-        # Curvature warps the completed source composite. Effects themselves
-        # must therefore render in ordinary source coordinates exactly once.
+        # A final surface warp still consumes source-local effects exactly
+        # once. Active effects around Glyph Slant must keep the
+        # transform-aware source path so their silhouette stays slanted.
         if self.geometry_controller.uses_surface_warp():
-            return True
+            return not (
+                self._has_layout_distortion()
+                and any(self._effect_flags())
+            )
         return self.item._text_transform_is_neutral()
 
     def _effective_text_transform(self):

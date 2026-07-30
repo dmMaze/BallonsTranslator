@@ -1,19 +1,26 @@
-"""Selection-scoped editing transactions for text-transform controls."""
+"""Selection-scoped editing transactions for composable text transforms."""
 
 import copy
 
 from ballontranslator.utils import config as C
-from ballontranslator.utils.fontformat import create_text_transform
+from ballontranslator.utils.fontformat import (
+    TextTransformStack,
+    TextTransformState,
+    create_text_transform,
+)
 
 from . import shared_widget as SW
 from .textedit_commands import SetTextTransformCommand
 
 
+GLYPH_SLANT_INDEX = -1
+
+
 class TextTransformEditSession:
     """Own transform targets, previews, and undo-command boundaries.
 
-    The format panel remains responsible for choosing the active formatting
-    owner; this session owns only transform-specific interaction state.
+    Structure and parameter edits use one complete immutable state per item,
+    so every selected-item operation enters the canvas undo stack atomically.
 
     >>> session = object.__new__(TextTransformEditSession)
     >>> session.items = []
@@ -26,48 +33,112 @@ class TextTransformEditSession:
         self.controls = controls
         self.items = []
         self.drag_before = None
-        self.drag_param = None
-        self.global_values_by_type = {}
+        self.drag_key = None
 
         controls.transform_commit_requested.connect(self.commit_value)
         controls.transform_preview_requested.connect(self.preview_delta)
         controls.transform_drag_commit_requested.connect(self.commit_drag)
         controls.transform_preview_canceled.connect(self.cancel_preview)
-        controls.transform_type_change_requested.connect(self.change_type)
+        controls.transform_add_requested.connect(self.add_transform)
+        controls.transform_remove_requested.connect(self.remove_transform)
+        controls.transform_move_requested.connect(self.move_transform)
 
     def has_items(self) -> bool:
         return bool(self.items)
 
     @staticmethod
-    def _with_value(transform, param_name, value):
-        return transform.with_value(param_name, value)
+    def _state_for_format(font_format) -> TextTransformState:
+        return TextTransformState(
+            font_format.text_transform,
+            font_format.glyph_slant_angle,
+        )
+
+    @classmethod
+    def _state_for_item(cls, item) -> TextTransformState:
+        return cls._state_for_format(item.blk.fontformat)
+
+    @staticmethod
+    def _with_value(
+        state: TextTransformState,
+        index: int,
+        param_name: str,
+        value: float,
+    ) -> TextTransformState:
+        if index == GLYPH_SLANT_INDEX:
+            if param_name != 'glyph_slant_angle':
+                raise ValueError(f'unknown glyph transform field {param_name}')
+            return TextTransformState(state.stack, value)
+        if index < 0 or index >= len(state.stack):
+            raise IndexError('text transform index is no longer current')
+        transforms = list(state.stack)
+        transforms[index] = transforms[index].with_value(param_name, value)
+        return TextTransformState(
+            TextTransformStack(tuple(transforms)),
+            state.glyph_slant_angle,
+        )
+
+    @staticmethod
+    def _value_at(
+        state: TextTransformState,
+        index: int,
+        param_name: str,
+    ) -> float:
+        if index == GLYPH_SLANT_INDEX:
+            if param_name != 'glyph_slant_angle':
+                raise ValueError(f'unknown glyph transform field {param_name}')
+            return state.glyph_slant_angle
+        if index < 0 or index >= len(state.stack):
+            raise IndexError('text transform index is no longer current')
+        return getattr(state.stack[index], param_name)
+
+    def _current_states(self):
+        if self.items:
+            return [self._state_for_item(item) for item in self.items]
+        return [self._state_for_format(self.host.global_format)]
+
+    @staticmethod
+    def _has_common_stack_shape(states) -> bool:
+        sequences = [
+            tuple(transform.transform_type for transform in state.stack)
+            for state in states
+        ]
+        return not sequences or all(
+            sequence == sequences[0] for sequence in sequences
+        )
 
     def _refresh_geometry(self) -> None:
         for item in self.items:
             item.update()
 
-    def _remember_global_transform(self, transform) -> None:
-        self.global_values_by_type[transform.transform_type] = transform
+    def _set_global_state(self, state: TextTransformState) -> None:
+        self.host.global_format.text_transform = state.stack
+        self.host.global_format.glyph_slant_angle = state.glyph_slant_angle
+        self.host.update_text_style_label()
 
-    def _global_transform_for_type(self, transform_type):
-        current = self.host.global_format.text_transform
-        self._remember_global_transform(current)
-        if current.transform_type == transform_type:
-            return current
-        remembered = self.global_values_by_type.get(transform_type)
-        return (
-            remembered
-            if remembered is not None
-            else create_text_transform(transform_type)
+    def _commit_states(self, before, after) -> None:
+        if not self.items:
+            if before[0] != after[0]:
+                self._set_global_state(after[0])
+            self.refresh_controls(refresh_shape=False)
+            return
+        command = SetTextTransformCommand.create(
+            self.items,
+            before,
+            after,
+            self.refresh_controls,
         )
+        if command is not None:
+            SW.canvas.push_undo_command(command)
+        else:
+            self.refresh_controls(refresh_shape=False)
 
     def refresh_controls(self, refresh_shape=True) -> None:
         if self.items:
             self.controls.set_transform_items(self.items)
             if len(self.items) == 1 and C.active_format is not None:
-                C.active_format.text_transform = (
-                    self.items[0].blk.fontformat.text_transform
-                )
+                state = self._state_for_item(self.items[0])
+                C.active_format.text_transform = state.stack
+                C.active_format.glyph_slant_angle = state.glyph_slant_angle
         else:
             active_format = (
                 self.host.global_format
@@ -76,7 +147,9 @@ class TextTransformEditSession:
             )
             if active_format is None:
                 return
-            self.controls.set_transform(active_format.text_transform)
+            self.controls.set_transform(
+                self._state_for_format(active_format)
+            )
         if refresh_shape:
             self._refresh_geometry()
 
@@ -90,141 +163,182 @@ class TextTransformEditSession:
             self.cancel_control_previews()
         else:
             # A focus-only refresh keeps the physical press alive but restores
-            # the model-owned transform before the controls are refreshed.
-            self.cancel_preview(self.drag_param)
+            # model-owned state before controls are refreshed.
+            self.cancel_preview()
         self.items = items
 
-    def commit_value(self, param_name: str, value: float) -> None:
-        if not self.items:
-            before = self.host.global_format.text_transform
-            after = self._with_value(before, param_name, value)
-            if before != after:
-                self.host.global_format.text_transform = after
-                self._remember_global_transform(after)
-                self.host.update_text_style_label()
+    def commit_value(self, index: int, param_name: str, value: float) -> None:
+        before = self._current_states()
+        if (
+            index != GLYPH_SLANT_INDEX
+            and not self._has_common_stack_shape(before)
+        ):
             self.refresh_controls(refresh_shape=False)
             return
+        try:
+            after = [
+                self._with_value(state, index, param_name, value)
+                for state in before
+            ]
+        except (AttributeError, IndexError, ValueError):
+            self.refresh_controls(refresh_shape=False)
+            return
+        self._commit_states(before, after)
 
-        before = [item.blk.fontformat.text_transform for item in self.items]
+    def _prepare_structure_change(self) -> None:
+        # A typed value owns an earlier transaction and must land before the
+        # operation list changes its indices.
+        self.controls.finish_pending_transform_edits()
+        self.cancel_control_previews()
+
+    def add_transform(self, transform_type: str) -> None:
+        self._prepare_structure_change()
+        try:
+            transform = create_text_transform(transform_type)
+        except ValueError:
+            self.refresh_controls(refresh_shape=False)
+            return
+        before = self._current_states()
         after = [
-            self._with_value(transform, param_name, value)
-            for transform in before
+            TextTransformState(
+                TextTransformStack((*state.stack.transforms, transform)),
+                state.glyph_slant_angle,
+            )
+            for state in before
         ]
-        command = SetTextTransformCommand.create(
-            self.items,
-            before,
-            after,
-            self.refresh_controls,
-        )
-        if command is not None:
-            SW.canvas.push_undo_command(command)
-        else:
-            self.refresh_controls(refresh_shape=False)
+        self._commit_states(before, after)
 
-    def change_type(self, transform_type: str) -> None:
-        if not self.items:
-            before = self.host.global_format.text_transform
-            after = self._global_transform_for_type(transform_type)
-            if before != after:
-                self.host.global_format.text_transform = after
-                self._remember_global_transform(after)
-                self.host.update_text_style_label()
+    def remove_transform(self, index: int) -> None:
+        self._prepare_structure_change()
+        before = self._current_states()
+        if (
+            not self._has_common_stack_shape(before)
+            or index < 0
+            or any(index >= len(state.stack) for state in before)
+        ):
             self.refresh_controls(refresh_shape=False)
             return
+        after = []
+        for state in before:
+            transforms = list(state.stack)
+            del transforms[index]
+            after.append(
+                TextTransformState(
+                    TextTransformStack(tuple(transforms)),
+                    state.glyph_slant_angle,
+                )
+            )
+        self._commit_states(before, after)
 
-        before = [item.blk.fontformat.text_transform for item in self.items]
-        after = [
-            item.geometry_controller.transform_for_type(transform_type)
-            for item in self.items
-        ]
-        command = SetTextTransformCommand.create(
-            self.items,
-            before,
-            after,
-            self.refresh_controls,
-        )
-        if command is not None:
-            SW.canvas.push_undo_command(command)
-        else:
+    def move_transform(self, index: int, direction: int) -> None:
+        self._prepare_structure_change()
+        before = self._current_states()
+        destination = index + direction
+        if (
+            not self._has_common_stack_shape(before)
+            or direction not in (-1, 1)
+            or index < 0
+            or any(
+                index >= len(state.stack)
+                or destination < 0
+                or destination >= len(state.stack)
+                for state in before
+            )
+        ):
             self.refresh_controls(refresh_shape=False)
-
-    def preview_delta(self, param_name: str, canonical_delta: float) -> None:
-        if not self.items:
-            if self.drag_param != param_name or self.drag_before is None:
-                self.drag_param = param_name
-                self.drag_before = [self.host.global_format.text_transform]
             return
-        if self.drag_param != param_name or self.drag_before is None:
-            # The emitting control owns its cumulative delta until release.
+        after = []
+        for state in before:
+            transforms = list(state.stack)
+            transforms[index], transforms[destination] = (
+                transforms[destination],
+                transforms[index],
+            )
+            after.append(
+                TextTransformState(
+                    TextTransformStack(tuple(transforms)),
+                    state.glyph_slant_angle,
+                )
+            )
+        self._commit_states(before, after)
+
+    def preview_delta(
+        self,
+        index: int,
+        param_name: str,
+        canonical_delta: float,
+    ) -> None:
+        key = (index, param_name)
+        current = self._current_states()
+        if (
+            index != GLYPH_SLANT_INDEX
+            and not self._has_common_stack_shape(current)
+        ):
+            self.cancel_preview()
+            self.refresh_controls(refresh_shape=False)
+            return
+        if self.drag_key != key or self.drag_before is None:
             if self.drag_before is not None:
                 for item in self.items:
                     item.clear_text_transform_preview()
-            self.drag_param = param_name
-            self.drag_before = [
-                item.blk.fontformat.text_transform for item in self.items
+            self.drag_key = key
+            self.drag_before = current
+        if not self.items:
+            return
+        try:
+            preview_after = [
+                self._with_value(
+                    state,
+                    index,
+                    param_name,
+                    self._value_at(state, index, param_name)
+                    + canonical_delta,
+                )
+                for state in self.drag_before
             ]
-        preview_after = [
-            self._with_value(
-                transform,
-                param_name,
-                getattr(transform, param_name) + canonical_delta,
-            )
-            for transform in self.drag_before
-        ]
+        except (AttributeError, IndexError, ValueError):
+            self.cancel_preview()
+            return
         geometry_changed = False
-        for item, transform in zip(self.items, preview_after):
-            # Clamped drag deltas can repeatedly produce the current endpoint.
-            if item._effective_text_transform() == transform:
+        for item, state in zip(self.items, preview_after):
+            if item._effective_text_transform() == state:
                 continue
             geometry_changed = (
-                item.set_text_transform(transform, preview=True)
+                item.set_text_transform(state, preview=True)
                 or geometry_changed
             )
         if geometry_changed:
             self._refresh_geometry()
 
-    def commit_drag(self, param_name: str, canonical_delta: float) -> None:
-        if self.drag_param != param_name or self.drag_before is None:
+    def commit_drag(
+        self,
+        index: int,
+        param_name: str,
+        canonical_delta: float,
+    ) -> None:
+        key = (index, param_name)
+        if self.drag_key != key or self.drag_before is None:
             return
         before = self.drag_before
-        after = [
-            self._with_value(
-                transform,
-                param_name,
-                getattr(transform, param_name) + canonical_delta,
-            )
-            for transform in before
-        ]
-        items = list(self.items)
-        self.drag_before = None
-        self.drag_param = None
-        if not items:
-            global_before = before[0]
-            global_after = after[0]
-            if global_before != global_after:
-                self.host.global_format.text_transform = global_after
-                self._remember_global_transform(global_after)
-                self.host.update_text_style_label()
-            self.refresh_controls(refresh_shape=False)
-            return
-        command = SetTextTransformCommand.create(
-            items,
-            before,
-            after,
-            self.refresh_controls,
-        )
-        if command is None:
-            geometry_changed = False
-            for item in items:
-                geometry_changed = (
-                    item.clear_text_transform_preview() or geometry_changed
+        try:
+            after = [
+                self._with_value(
+                    state,
+                    index,
+                    param_name,
+                    self._value_at(state, index, param_name)
+                    + canonical_delta,
                 )
-            if geometry_changed:
-                self._refresh_geometry()
-        else:
-            SW.canvas.push_undo_command(command)
+                for state in before
+            ]
+        except (AttributeError, IndexError, ValueError):
+            self.cancel_preview()
+            return
+        self.drag_before = None
+        self.drag_key = None
+        self._commit_states(before, after)
 
-    def cancel_preview(self, _param_name=None) -> None:
+    def cancel_preview(self, *_key) -> None:
         geometry_changed = False
         if self.drag_before is not None:
             for item in self.items:
@@ -232,17 +346,16 @@ class TextTransformEditSession:
                     item.clear_text_transform_preview() or geometry_changed
                 )
         self.drag_before = None
-        self.drag_param = None
+        self.drag_key = None
         if not self.items:
             self.refresh_controls(refresh_shape=False)
         elif geometry_changed:
             self._refresh_geometry()
 
     def cancel_control_previews(self) -> None:
-        for control in self.controls.transform_controls.values():
-            control.cancel_preview()
+        self.controls.cancel_transform_previews()
         if self.drag_before is not None:
-            self.cancel_preview(self.drag_param)
+            self.cancel_preview()
 
     def resolve_for_save(self) -> None:
         """Commit typed values and cancel any still-held drag preview."""
@@ -260,10 +373,8 @@ class TextTransformEditSession:
 
     def cancel_for_scene_change(self) -> None:
         """Discard transient control state after an external model replacement."""
-        for control in self.controls.transform_controls.values():
-            control.cancel_pending()
-            control.cancel_preview()
-        self.cancel_preview(self.drag_param)
+        self.controls.cancel_pending_transform_edits()
+        self.cancel_control_previews()
         self.detach_scene_owner()
 
     def finish_pending_edits(self) -> None:

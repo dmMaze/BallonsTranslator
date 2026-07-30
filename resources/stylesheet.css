@@ -2000,6 +2000,50 @@ DeleteStyleButton::hover {
     background-color: #FF605C;
 }
 
+QFrame#TextTransformParameterPanel {
+    background-color: @transtexteditBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 5px;
+}
+
+QFrame#TextTransformParameterPanel QLabel,
+QFrame#TextTransformParameterPanel QWidget#TextTransformPanelActions,
+QFrame#TextTransformParameterPanel QWidget#TextTransformPanelControls {
+    background-color: transparent;
+}
+
+QFrame#TextTransformParameterPanel QLabel#TextTransformParameterTitle {
+    font-weight: 600;
+}
+
+QToolButton#AddTextTransformButton {
+    padding: 3px 8px;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+    background-color: @pushBtnBackgroundColor;
+}
+
+QToolButton#AddTextTransformButton:hover,
+QToolButton#TextTransformMoveButton:hover {
+    background-color: @borderColor;
+}
+
+QToolButton#TextTransformMoveButton,
+QToolButton#TextTransformCloseButton {
+    border: none;
+    border-radius: 3px;
+    background-color: transparent;
+}
+
+QToolButton#TextTransformCloseButton:hover {
+    background-color: #FF605C;
+}
+
+QLabel#TextTransformMixedLabel {
+    color: @qwidgetForegroundColor;
+    font-style: italic;
+}
+
 /* Suggestion Popup (Spell Checker) */
 QWidget#suggestion_popup {
     background-color: @emptyContentBackgroundColor;
