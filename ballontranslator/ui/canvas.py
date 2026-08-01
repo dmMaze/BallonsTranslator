@@ -17,6 +17,7 @@ from .texteditshapecontrol import (
     CONTROL_ITEM_DATA_KEY,
     TextBlkShapeControl,
 )
+from .text_grid_control import TextGridTransformControl
 from .custom_widget import ScrollBar, FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
@@ -232,7 +233,13 @@ class Canvas(QGraphicsScene):
         # self.default_cursor = self.gv.cursor()
         self.rubber_band = self.addWidget(QRubberBand(QRubberBand.Shape.Rectangle))
         self.rubber_band.hide()
+        self.rubber_band.setZValue(100)
         self.rubber_band_origin = None
+        self.rubber_band_modifiers = Qt.KeyboardModifier.NoModifier
+        self._rubber_band_button = Qt.MouseButton.NoButton
+        self._rubber_band_target = None
+        self._rubber_band_update = None
+        self._rubber_band_finish = None
 
         self.draw_undo_stack = QUndoStack(self)
         self.text_undo_stack = QUndoStack(self)
@@ -245,6 +252,7 @@ class Canvas(QGraphicsScene):
         self.scaleFactorLabel.gv = self.gv
 
         self.txtblkShapeControl = TextBlkShapeControl(self.gv)
+        self.txtblkGridControl = TextGridTransformControl()
         
         self.baseLayer = QGraphicsRectItem()
         pen = QPen()
@@ -269,6 +277,7 @@ class Canvas(QGraphicsScene):
         self.drawingLayer.setParentItem(self.baseLayer)
         self.textLayer.setParentItem(self.baseLayer)
         self.txtblkShapeControl.setParentItem(self.baseLayer)
+        self.txtblkGridControl.setParentItem(self.baseLayer)
         self.hscroll_bar.valueChanged.connect(self.refresh_text_shape_control)
         self.vscroll_bar.valueChanged.connect(self.refresh_text_shape_control)
 
@@ -345,6 +354,37 @@ class Canvas(QGraphicsScene):
 
     def refresh_text_shape_control(self, *_args):
         self.txtblkShapeControl.requestGeometryRefresh()
+        self.txtblkGridControl.requestGeometryRefresh()
+
+    def bind_text_grid_control(self, item, stack_index, **callbacks):
+        if self._rubber_band_target == 'grid':
+            self.hide_rubber_band()
+        if self.txtblkShapeControl.blk_item is not item:
+            self.txtblkShapeControl.setBlkItem(item)
+        self.txtblkGridControl.bind(
+            item,
+            stack_index,
+            **callbacks,
+        )
+        self.txtblkShapeControl.hide()
+
+    def clear_text_grid_control(self):
+        if self._rubber_band_target == 'grid':
+            self.hide_rubber_band()
+        had_grid_binding = self.txtblkGridControl.item is not None
+        self.txtblkGridControl.clear()
+        shape = self.txtblkShapeControl
+        selected = self.selected_text_items()
+        if had_grid_binding and len(selected) == 1:
+            shape.setBlkItem(selected[0])
+            return
+        if (
+            shape.blk_item is not None
+            and shape.blk_item.isSelected()
+            and len(selected) == 1
+        ):
+            shape.show()
+            shape.requestGeometryRefresh()
 
     def _set_scene_scale(self, scale: float, refresh_control: bool = True):
         self.scale_factor = scale
@@ -543,6 +583,9 @@ class Canvas(QGraphicsScene):
         key = event.key()
 
         modifiers = event.modifiers()
+        if self.handle_grid_modal_shortcut(key, modifiers):
+            event.accept()
+            return
         if (modifiers == Qt.KeyboardModifier.AltModifier) and \
             not key == QKEY.Key_Alt and \
                 self.editing_textblkitem is None:
@@ -567,6 +610,18 @@ class Canvas(QGraphicsScene):
             value = QNUMERIC_KEYS[key]
             self.set_active_layer_transparency(value * 10)
         return super().keyPressEvent(event)
+
+    def handle_grid_modal_shortcut(
+        self,
+        key,
+        modifiers=Qt.KeyboardModifier.NoModifier,
+    ) -> bool:
+        if (
+            self.editing_textblkitem is not None
+            or self.rubber_band_origin is not None
+        ):
+            return False
+        return self.txtblkGridControl.handle_shortcut(key, modifiers)
     
     def set_active_layer_transparency(self, value: int):
         if self.textEditMode():
@@ -618,6 +673,11 @@ class Canvas(QGraphicsScene):
         return textblk_created
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.txtblkGridControl.handle_modal_mouse_move(event):
+            return
+        if self._update_rubber_band(event.scenePos()):
+            event.accept()
+            return
         if self.mid_btn_pressed:
             new_pos = event.screenPos()
             delta_pos = new_pos - self.pan_initial_pos
@@ -641,15 +701,6 @@ class Canvas(QGraphicsScene):
         
         elif self.scale_tool_mode:
             self.scale_tool.emit(event.scenePos())
-        
-        elif self.rubber_band.isVisible() and self.rubber_band_origin is not None:
-            self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, event.scenePos()).normalized())
-            sel_path = QPainterPath(self.rubber_band_origin)
-            sel_path.addRect(self.rubber_band.geometry())
-            if shared.FLAG_QT6:
-                self.setSelectionArea(sel_path, deviceTransform=self.gv.viewportTransform())
-            else:
-                self.setSelectionArea(sel_path, Qt.ItemSelectionMode.IntersectsItemBoundingRect, self.gv.viewportTransform())
         
         return super().mouseMoveEvent(event)
     
@@ -691,7 +742,30 @@ class Canvas(QGraphicsScene):
         return self.gv.mapToScene(origin)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.txtblkGridControl.handle_modal_mouse_press(event):
+            return
         btn = event.button()
+        if (
+            btn in (
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.RightButton,
+            )
+            and self._is_grid_rubber_origin(
+                event.scenePos(),
+                allow_handles=btn == Qt.MouseButton.RightButton,
+            )
+            and self._begin_rubber_band(
+                event.scenePos(),
+                event.modifiers(),
+                btn,
+                target='grid',
+                on_finish=(
+                    self.txtblkGridControl.select_handles_in_scene_rect
+                ),
+            )
+        ):
+            event.accept()
+            return
         if btn == Qt.MouseButton.MiddleButton:
             self.mid_btn_pressed = True
             self.pan_initial_pos = event.screenPos()
@@ -718,10 +792,13 @@ class Canvas(QGraphicsScene):
                     erasing = self.image_edit_mode == ImageEditMode.PenTool
                     self.addStrokeImageItem(self.inpaintLayer.mapFromScene(event.scenePos()), self.erasing_pen, erasing)
                 else:   # rubber band selection
-                    self.rubber_band_origin = event.scenePos()
-                    self.rubber_band.setGeometry(QRectF(self.rubber_band_origin, self.rubber_band_origin).normalized())
-                    self.rubber_band.show()
-                    self.rubber_band.setZValue(1)
+                    self._begin_rubber_band(
+                        event.scenePos(),
+                        event.modifiers(),
+                        btn,
+                        target='scene',
+                        on_update=self._select_scene_items_in_rect,
+                    )
 
         return super().mousePressEvent(event)
 
@@ -730,7 +807,15 @@ class Canvas(QGraphicsScene):
         return self.image_edit_mode == ImageEditMode.RectTool and self.editor_index == 0
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.txtblkGridControl.handle_modal_mouse_release(event):
+            return
         btn = event.button()
+        rubber_target = self._rubber_band_target
+        if self._finish_rubber_band(event.scenePos(), btn) and (
+            rubber_target == 'grid'
+        ):
+            event.accept()
+            return
 
         self.hide_rubber_band()
 
@@ -752,6 +837,91 @@ class Canvas(QGraphicsScene):
             elif self.scale_tool_mode:
                 self.end_scale_tool.emit()
         return super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self._rubber_band_target == 'grid':
+            self.hide_rubber_band()
+        return super().mouseDoubleClickEvent(event)
+
+    def _is_grid_rubber_origin(
+        self,
+        scene_pos: QPointF,
+        *,
+        allow_handles: bool = False,
+    ) -> bool:
+        control = self.txtblkGridControl
+        if control.item is None or not control.isVisible():
+            return False
+        for item in self.items(scene_pos):
+            if item in control.handles:
+                if allow_handles:
+                    continue
+                return False
+            if isinstance(item, TextBlkItem) and item is not control.item:
+                return False
+            if item.data(CONTROL_ITEM_DATA_KEY) and item is not control:
+                return False
+        return True
+
+    def _begin_rubber_band(
+        self,
+        scene_pos,
+        modifiers,
+        button,
+        *,
+        target,
+        on_update=None,
+        on_finish=None,
+    ) -> bool:
+        if self.rubber_band_origin is not None:
+            return False
+        self.rubber_band_origin = QPointF(scene_pos)
+        self.rubber_band_modifiers = modifiers
+        self._rubber_band_button = button
+        self._rubber_band_target = target
+        self._rubber_band_update = on_update
+        self._rubber_band_finish = on_finish
+        self.rubber_band.setGeometry(QRectF(scene_pos, scene_pos))
+        self.rubber_band.show()
+        return True
+
+    def _update_rubber_band(self, scene_pos) -> bool:
+        if self.rubber_band_origin is None:
+            return False
+        rect = QRectF(self.rubber_band_origin, scene_pos).normalized()
+        self.rubber_band.setGeometry(rect)
+        if self._rubber_band_update is not None:
+            self._rubber_band_update(rect, self.rubber_band_modifiers)
+        return True
+
+    def _finish_rubber_band(self, scene_pos, button) -> bool:
+        if (
+            self.rubber_band_origin is None
+            or button != self._rubber_band_button
+        ):
+            return False
+        rect = QRectF(self.rubber_band_origin, scene_pos).normalized()
+        finish = self._rubber_band_finish
+        modifiers = self.rubber_band_modifiers
+        self.hide_rubber_band()
+        if finish is not None:
+            finish(rect, modifiers)
+        return True
+
+    def _select_scene_items_in_rect(self, rect, _modifiers) -> None:
+        path = QPainterPath(rect.topLeft())
+        path.addRect(rect)
+        if shared.FLAG_QT6:
+            self.setSelectionArea(
+                path,
+                deviceTransform=self.gv.viewportTransform(),
+            )
+        else:
+            self.setSelectionArea(
+                path,
+                Qt.ItemSelectionMode.IntersectsItemBoundingRect,
+                self.gv.viewportTransform(),
+            )
 
     def updateCanvas(self):
         self.editing_textblkitem = None
@@ -900,9 +1070,13 @@ class Canvas(QGraphicsScene):
                 self.copy_textblks.emit()
 
     def hide_rubber_band(self):
-        if self.rubber_band.isVisible():
-            self.rubber_band.hide()
-            self.rubber_band_origin = None
+        self.rubber_band.hide()
+        self.rubber_band_origin = None
+        self.rubber_band_modifiers = Qt.KeyboardModifier.NoModifier
+        self._rubber_band_button = Qt.MouseButton.NoButton
+        self._rubber_band_target = None
+        self._rubber_band_update = None
+        self._rubber_band_finish = None
     
     def on_hide_canvas(self):
         self.clear_states()
@@ -914,6 +1088,7 @@ class Canvas(QGraphicsScene):
                 self.editing_textblkitem = textitem
 
     def clear_states(self):
+        self.hide_rubber_band()
         self.creating_textblock = False
         self.create_block_origin = None
         self.editing_textblkitem = None

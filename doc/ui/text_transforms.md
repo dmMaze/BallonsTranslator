@@ -12,7 +12,7 @@ There are two transform layers:
 QTextDocument + SceneTextLayout
   -> Glyph Slant around each shaped glyph baseline
   -> fill, stroke, shadow, gradient
-  -> ordered global stack: Slant / Perspective / Curvature
+  -> ordered global stack: Slant / Perspective / Curvature / Grid
   -> item-local visual geometry
   -> QGraphicsItem position and rotation
 ```
@@ -40,10 +40,11 @@ Item position and built-in rotation remain outside the stack.
 | Variant registry and stack compiler | [`ui/text_transform_variants.py`](../../ballontranslator/ui/text_transform_variants.py) |
 | Item transform and render lifecycle | [`ui/text_item_geometry.py`](../../ballontranslator/ui/text_item_geometry.py) |
 | Selection-scoped preview and commit transactions | [`ui/text_transform_editor.py`](../../ballontranslator/ui/text_transform_editor.py) |
-| Advanced-panel cards and controls | [`ui/text_transform_controls.py`](../../ballontranslator/ui/text_transform_controls.py), [`ui/text_advanced_format.py`](../../ballontranslator/ui/text_advanced_format.py) |
+| Expandable transform panel, cards, and controls | [`ui/text_transform_panel.py`](../../ballontranslator/ui/text_transform_panel.py), [`ui/text_transform_controls.py`](../../ballontranslator/ui/text_transform_controls.py) |
 | Transform undo command | [`ui/textedit_commands.py`](../../ballontranslator/ui/textedit_commands.py) |
 | Glyph Slant | [`ui/text_effects/transform_layout.py`](../../ballontranslator/ui/text_effects/transform_layout.py) |
 | Curvature mapping and final surface warp | [`ui/text_effects/curvature.py`](../../ballontranslator/ui/text_effects/curvature.py) |
+| Grid mapping and selected-stage overlay | [`ui/text_effects/grid.py`](../../ballontranslator/ui/text_effects/grid.py), [`ui/text_grid_control.py`](../../ballontranslator/ui/text_grid_control.py) |
 | Resize/rotation overlay | [`ui/texteditshapecontrol.py`](../../ballontranslator/ui/texteditshapecontrol.py) |
 
 New variants extend the model, registry, and stage factory. Do not add
@@ -59,7 +60,11 @@ Current global variants are:
 
 - `SlantTextTransform`: affine box scale and shear;
 - `PerspectiveTextTransform`: projective, but representable by `QTransform`;
-- `CurvatureTextTransform`: nonlinear and mapper-based.
+- `CurvatureTextTransform`: nonlinear and mapper-based;
+- `GridTextTransform`: nonlinear free-form deformation with normalized control
+  points, 1 to 32 horizontal and vertical cell divisions, and Straight or
+  Smooth sampling. A 1 by 1 grid has four corner handles. Their canonical
+  sampling values are `bilinear` and `catmull_rom`.
 
 `TextTransformStack` is an immutable ordered tuple. Neutral entries remain in
 the model for stable UI structure and persistence but are skipped at runtime.
@@ -86,10 +91,51 @@ values.
 
 ### UI and undo
 
-The Advanced panel generates transform cards from `TEXT_TRANSFORM_VARIANTS`.
-Add appends, delete removes one indexed entry, and move swaps adjacent entries.
+The Text Transform panel generates transform cards from
+`TEXT_TRANSFORM_VARIANTS`.
+Add appends and selects the new entry, delete removes one indexed entry, and
+move swaps adjacent entries.
 Typed values commit on Return/focus-out; label dragging previews transient state
 and commits one command on release; Escape cancels the preview.
+
+Cards have one selected index. Clicking a card or manually interacting with one
+of its parameters selects it; selecting another card replaces that selection,
+and deleting the selected entry clears it. Selecting a Grid card for exactly
+one text block binds the global Grid overlay and hides the normal shape overlay.
+Circle handles use Ctrl or Shift to toggle selection, rubber-band selection can
+start with either mouse button inside the grid or on the surrounding canvas,
+and dragging any selected handle moves the selected set in one preview and one
+undo transaction. Grid-owned right-button selection is consumed without
+opening the Canvas context menu.
+
+The Canvas owns one scene-space rubber-band gesture and visual. Normal canvas
+selection applies it to scene items while an active Grid delegates completion
+to the Grid controller's handle-selection rule; Grid does not keep a second
+rectangle or gesture state.
+
+With at least one Grid handle selected, `G`, `R`, and `S` start reusable modal
+Move, Rotate, and Scale operations. The initial mouse-to-selection offset is
+preserved. Left click commits one undo command; right click or Escape restores
+the operation-start points without creating a command. Starting another modal
+operation also restores those points before switching modes. During Move, `X`
+or `Y` restores the start points and constrains subsequent movement to the
+corresponding canvas axis. Rotate and Scale use the selected-handle center and
+show a dotted origin-to-pointer guide; constrained movement shows its active
+axis line.
+
+The selected Grid overlay batch-maps handle coordinates through the compiled
+stage suffix. Its guide lines are one transient raster warped by that same
+mapper instead of thousands of scalar scene-path mappings; the overlay remains
+global UI state and is never included in text export.
+
+Grid control points are stored as normalized coordinates, so font, spacing,
+writing-mode, and text-box geometry changes rebuild the stage against settled
+logical bounds instead of leaving the controller attached to stale pixels.
+Straight sampling is bilinear within each cell. Smooth sampling uses a
+tensor-product Catmull-Rom interpolation: it passes through every handle while
+neighboring handles curve the coordinates between them. A 1 by 1 grid produces
+the same result in either mode because it has no interior neighbors to create
+curvature.
 
 Before a structural edit, `TextTransformEditSession` commits pending typed
 values and cancels previews so indices cannot move under an active control.
@@ -148,9 +194,12 @@ all active stages
 
 The controller compiles by immutable stack, writing mode, logical rectangle,
 and padded source rectangle. Rich-text formatting can emit intermediate sizes,
-so compilation is deferred until its edit block settles. Reusing compiled
-output still requires reinstalling it because page/layout lifecycle code may
-have detached the mapper or changed Qt's matrix.
+so compilation is deferred until its edit block settles. The settled flush
+publishes `visual_geometry_changed` after installing the rebuilt mapper, which
+keeps shape and Grid overlays synchronized for every transform variant and
+formatting setter. Reusing compiled output still requires reinstalling it
+because page/layout lifecycle code may have detached the mapper or changed Qt's
+matrix.
 
 ## Mapper and rendering contract
 
@@ -158,17 +207,21 @@ A nonlinear stage must provide stable point and vectorized raster inversion:
 
 ```python
 forward_point(source)
+forward_arrays(source_x, source_y)
 inverse_point(visual, previous_source=None, *, extrapolate=False)
 inverse_arrays(visual_x, visual_y, *, return_valid=False)
+visual_bounds(source_rect=None)
 geometry_key
 ```
 
 - Forward mapping drives outlines, handles, bounds, and composition.
+- Array forward mapping batches dense controller and overlay geometry.
 - Point inversion drives hit testing and resize.
 - `previous_source` preserves branch continuity near seams.
 - `extrapolate=True` is reserved for reshape beyond the visible mapped surface.
 - Array inversion is the raster hot path and returns a validity mask when
   requested.
+- Visual bounds must include interior extrema, not only the mapped outer edge.
 - `geometry_key` includes every input that changes mapping.
 
 The composite applies forward stages in order and inverse stages in reverse.
@@ -190,11 +243,24 @@ bounded row bands, draws it once, then overlays the mapped caret. Sampling uses
 premultiplied alpha to avoid colored fringes.
 
 Cache keys include mapping geometry, layout generation, Glyph Slant render
-state, effect/background generation, and document revision. Idle settled
-output may be cached. Editing, resize, and parameter previews do not retain a
-final-surface cache. Raster size and quality remain bounded; interactive
-allocation failure may degrade with a warning, while export failure is
-reported after the Qt paint callback.
+state, effect/background generation, document revision, and live selection
+state. The renderer separately caches inverse remap coordinates by mapper
+geometry, source/destination rectangles, and render scale. Text, selection,
+and IME changes regenerate surface pixels through that existing map; mapper
+geometry changes and item/page release discard it. Editing retains the final
+surface: caret-only repaints reuse it and run a transparent source-layout probe
+to preserve Qt's native blink visibility, selection changes select a new
+surface key, and each IME event explicitly invalidates transient preedit
+pixels. Resize and parameter previews remain uncached. Raster size and quality
+remain bounded; interactive allocation failure may degrade with a warning,
+while export failure is reported after the Qt paint callback.
+
+Grid's dense Newton inverse uses separately compiled bilinear and Catmull-Rom
+Numba kernels after an asynchronous launch warm-up. Numba owns cache validation and
+stores the signatures under `.btrans_cache/numba`, which survives application
+updates; a missing, stale, or incompatible entry is compiled in the background.
+Until warm-up succeeds, Grid keeps using the NumPy inverse so the Qt thread
+never waits for compilation.
 
 ## Glyph Slant and effects
 

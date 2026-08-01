@@ -3,7 +3,7 @@
 Start here before changing text layout, editing, effects, geometry, or export.
 The code and tests are authoritative; this guide identifies ownership and the
 cross-file invariants that are easiest to break. For Slant, Perspective,
-Curvature, or Glyph Slant, continue with
+Curvature, Grid, or Glyph Slant, continue with
 [Composable text transforms](text_transforms.md).
 
 ## System and owners
@@ -26,9 +26,9 @@ Project JSON
 | Horizontal and vertical layout | `SceneTextLayout` subclasses | [`ui/scene_textlayout.py`](../../ballontranslator/ui/scene_textlayout.py) |
 | Fill, stroke, shadow, gradient, raster bounds | `TextEffectRenderer` | [`ui/text_effects/renderer.py`](../../ballontranslator/ui/text_effects/renderer.py) |
 | Derived geometry and visual/input mapping | `TextItemGeometryController` | [`ui/text_item_geometry.py`](../../ballontranslator/ui/text_item_geometry.py) |
-| Resize and rotation overlay | `TextBlkShapeControl` | [`ui/texteditshapecontrol.py`](../../ballontranslator/ui/texteditshapecontrol.py) |
+| Scene geometry overlays | `TextBlkShapeControl`, `TextGridTransformControl` | [`ui/texteditshapecontrol.py`](../../ballontranslator/ui/texteditshapecontrol.py), [`ui/text_grid_control.py`](../../ballontranslator/ui/text_grid_control.py) |
 | Scene items, paired editors, undo integration | `SceneTextManager` | [`ui/scenetext_manager.py`](../../ballontranslator/ui/scenetext_manager.py), [`ui/textedit_commands.py`](../../ballontranslator/ui/textedit_commands.py) |
-| Formatting UI | `FontFormatPanel`, `TextAdvancedFormatPanel` | [`ui/text_panel.py`](../../ballontranslator/ui/text_panel.py), [`ui/text_advanced_format.py`](../../ballontranslator/ui/text_advanced_format.py) |
+| Formatting UI | `FontFormatPanel`, `TextAdvancedFormatPanel`, `TextTransformPanel` | [`ui/text_panel.py`](../../ballontranslator/ui/text_panel.py), [`ui/text_advanced_format.py`](../../ballontranslator/ui/text_advanced_format.py), [`ui/text_transform_panel.py`](../../ballontranslator/ui/text_transform_panel.py) |
 
 `TextBlkItem` is the Qt-facing integration point, not the owner of every
 subsystem. Keep Qt virtual methods and signals there, but extend the existing
@@ -137,10 +137,12 @@ Every `TextBlkItem`, including a neutral one, owns
 rectangle, padded source rectangle, visual geometry, installed Qt transform,
 input mapping, cache policy, and render resources.
 
-`TextBlkShapeControl` is the sole resize/rotation overlay. It reads visual
-outlines but writes logical geometry through the item/controller boundary.
-Transform features extend this same controller, layout, and effect path; they
-do not replace it. See [Composable text transforms](text_transforms.md).
+`TextBlkShapeControl` owns resize and rotation. While one Grid transform on one
+text block is selected, the global `TextGridTransformControl` replaces that
+shape overlay and edits the selected stage's normalized control points. Both
+read and write through `TextItemGeometryController`; transform features do not
+create a parallel layout, renderer, or text editor. See
+[Composable text transforms](text_transforms.md).
 
 ## Invalidation and performance
 

@@ -32,6 +32,7 @@ from .custom_widget import (
 from .textitem import TextBlkItem
 from .text_advanced_format import TextAdvancedFormatPanel
 from .text_transform_editor import TextTransformEditSession
+from .text_transform_panel import TextTransformPanel
 from .text_style_presets import TextStylePresetPanel
 from . import shared_widget as SW
 from . import funcmaps as FM
@@ -401,9 +402,14 @@ class FontFormatPanel(Widget):
             config_expand_name='expand_tadvanced_panel',
             on_format_changed=self.on_param_changed
         )
+        self.texttransform_panel = TextTransformPanel(
+            self.tr('Text Transform'),
+            config_name='text_transform_panel',
+            config_expand_name='expand_ttransform_panel',
+        )
         self.text_transform_editor = TextTransformEditSession(
             self,
-            self.textadvancedfmt_panel,
+            self.texttransform_panel,
         )
         color_label = self.textadvancedfmt_panel.shadow_group.color_label
         color_label.changingColor.connect(self.changingColor)
@@ -429,6 +435,7 @@ class FontFormatPanel(Widget):
         vl0 = QVBoxLayout()
         vl0.addWidget(self.textstyle_panel.view_widget)
         vl0.addWidget(self.textadvancedfmt_panel.view_widget)
+        vl0.addWidget(self.texttransform_panel.view_widget)
         vl0.setSpacing(0)
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
@@ -566,6 +573,7 @@ class FontFormatPanel(Widget):
         
         self.familybox.blockSignals(False)
         self.textadvancedfmt_panel.set_active_format(font_format)
+        self.texttransform_panel.set_active_format(font_format)
 
     def set_globalfmt_title(self):
         active_text_style_label = self.active_text_style_label()
@@ -640,7 +648,7 @@ class FontFormatPanel(Widget):
                 self.set_active_format(self.global_format, multi_select)
                 self.set_globalfmt_title()
             if transform_items:
-                self.textadvancedfmt_panel.set_transform_items(transform_items)
+                self.texttransform_panel.set_transform_items(transform_items)
             
         else:
             if not self.restoring_textblk:
@@ -655,5 +663,5 @@ class FontFormatPanel(Widget):
                 self.textblk_item = textblk_item
                 multi_size = not textblk_item.isEditing() and textblk_item.isMultiFontSize()
                 self.set_active_format(blk_fmt, multi_size)
-                self.textadvancedfmt_panel.set_transform_items(transform_items)
+                self.texttransform_panel.set_transform_items(transform_items)
                 self.textstyle_panel.setTitle(f'TextBlock #{textblk_item.idx}')

@@ -6,10 +6,15 @@ from typing import Optional, TYPE_CHECKING
 
 import numpy as np
 from qtpy.QtCore import QPoint, QPointF, QRect, QRectF, QSizeF, Qt
-from qtpy.QtGui import QPainter, QPainterPath, QTransform
-from qtpy.QtWidgets import QGraphicsItem, QGraphicsTextItem
+from qtpy.QtGui import QPainter, QPainterPath, QPolygonF, QTransform
+from qtpy.QtWidgets import (
+    QGraphicsItem,
+    QGraphicsTextItem,
+    QStyleOptionGraphicsItem,
+)
 
 from ballontranslator.utils.fontformat import (
+    GridTextTransform,
     TextTransformStack,
     TextTransformState,
 )
@@ -22,7 +27,9 @@ from .text_effects.raster import (
 )
 from .text_transform import (
     CompiledTextTransform,
+    CompositeTextTransformMapper,
     compensated_box_transform_matrix,
+    grid_transform_stage,
 )
 from .text_transform_variants import compile_text_transform_stack
 
@@ -273,6 +280,187 @@ class TextItemGeometryController:
         return self.map_visual_to_source(
             self.item.mapFromScene(point), previous_source
         )
+
+    def _grid_stage(self, stack_index: int):
+        stages = self.compiled.stages
+        if stack_index < 0 or stack_index >= len(stages):
+            return None
+        record = stages[stack_index]
+        if not isinstance(record.transform, GridTextTransform):
+            return None
+        mapper = record.mapper or grid_transform_stage(
+            record.transform, record.context
+        )
+        prefix = tuple(
+            stage.mapper
+            for stage in stages[:stack_index]
+            if stage.mapper is not None
+        )
+        return record, mapper, prefix
+
+    def grid_control_geometry(self, stack_index: int):
+        """Return batched handles and the compiled Grid-output mapper."""
+        stage = self._grid_stage(stack_index)
+        if stage is None:
+            return None
+        record, mapper, prefix = stage
+        suffix_stages = (mapper,) + tuple(
+            stage.mapper
+            for stage in self.compiled.stages[stack_index + 1:]
+            if stage.mapper is not None
+        )
+        output_mapper = (
+            self.compiled.surface_mapper
+            if record.mapper is not None and not prefix
+            else CompositeTextTransformMapper(
+                suffix_stages,
+                record.context.logical_bounds,
+                record.context.logical_bounds,
+                record.context.vertical,
+            )
+        )
+        points = mapper.control_source_points()
+        coordinates = np.asarray(
+            [(point.x(), point.y()) for point in points],
+            dtype=np.float64,
+        )
+        visual_x, visual_y = output_mapper.forward_arrays(
+            coordinates[:, 0], coordinates[:, 1]
+        )
+        visual_points = QPolygonF([
+            QPointF(float(x), float(y))
+            for x, y in zip(visual_x, visual_y)
+        ])
+        return (
+            visual_points,
+            output_mapper,
+            QRectF(record.context.logical_bounds),
+            record.transform,
+        )
+
+    def grid_control_points_in_scene(self, stack_index: int):
+        geometry = self.grid_control_geometry(stack_index)
+        if geometry is None:
+            return ()
+        return tuple(self.item.sceneTransform().map(geometry[0]))
+
+    def capture_scene_to_grid_output_mapper(self, stack_index: int):
+        """Freeze scene-to-grid coordinates for one control-point drag."""
+        stage = self._grid_stage(stack_index)
+        scene_to_visual, invertible = self.item.sceneTransform().inverted()
+        if stage is None or not invertible:
+            return None
+        record, mapper, prefix = stage
+
+        if record.mapper is not None and self.compiled.surface_mapper is not None:
+            suffix_stages = tuple(
+                stage.mapper
+                for stage in self.compiled.stages[stack_index + 1:]
+                if stage.mapper is not None
+            )
+            suffix_mapper = (
+                CompositeTextTransformMapper(
+                    suffix_stages,
+                    record.context.logical_bounds,
+                    record.context.logical_bounds,
+                    record.context.vertical,
+                )
+                if suffix_stages
+                else None
+            )
+
+            def map_point(scene_point: QPointF, previous_source=None):
+                grid_output = scene_to_visual.map(QPointF(scene_point))
+                if suffix_mapper is not None:
+                    grid_output = suffix_mapper.inverse_point(
+                        grid_output,
+                        previous_source,
+                        extrapolate=True,
+                    )
+                return grid_output
+
+            return map_point, mapper.normalized_output_delta
+
+        scene_to_source = self.capture_scene_to_source_mapper()
+        if scene_to_source is None:
+            return None
+
+        def map_point(scene_point: QPointF, previous_source=None):
+            source = scene_to_source(scene_point, previous_source)
+            stage_input = QPointF(source)
+            for prefix_mapper in prefix:
+                stage_input = prefix_mapper.forward_point(stage_input)
+            return mapper.forward_point(stage_input)
+
+        return map_point, mapper.normalized_output_delta
+
+    def capture_scene_to_grid_output_array_mapper(self, stack_index: int):
+        """Freeze a batched scene-to-selected-Grid-output mapping.
+
+        >>> callable(TextItemGeometryController.capture_scene_to_grid_output_array_mapper)
+        True
+        """
+        stage = self._grid_stage(stack_index)
+        scene_to_visual, invertible = self.item.sceneTransform().inverted()
+        if stage is None or not invertible:
+            return None
+        record, mapper, prefix = stage
+
+        def scene_arrays(scene_points):
+            visual_points = scene_to_visual.map(QPolygonF(scene_points))
+            coordinates = np.asarray(
+                [(point.x(), point.y()) for point in visual_points],
+                dtype=np.float64,
+            )
+            return coordinates[:, 0], coordinates[:, 1]
+
+        if record.mapper is not None and self.compiled.surface_mapper is not None:
+            suffix_stages = tuple(
+                stage.mapper
+                for stage in self.compiled.stages[stack_index + 1:]
+                if stage.mapper is not None
+            )
+            suffix_mapper = (
+                CompositeTextTransformMapper(
+                    suffix_stages,
+                    record.context.logical_bounds,
+                    record.context.logical_bounds,
+                    record.context.vertical,
+                )
+                if suffix_stages
+                else None
+            )
+
+            def map_points(scene_points):
+                visual_x, visual_y = scene_arrays(scene_points)
+                if suffix_mapper is None:
+                    valid = np.isfinite(visual_x) & np.isfinite(visual_y)
+                    return visual_x, visual_y, valid
+                return suffix_mapper.inverse_arrays(
+                    visual_x, visual_y, return_valid=True
+                )
+
+            return map_points
+
+        visual_mapper = self.visual_mapper
+
+        def map_points(scene_points):
+            source_x, source_y = scene_arrays(scene_points)
+            valid = np.isfinite(source_x) & np.isfinite(source_y)
+            if visual_mapper is not None:
+                source_x, source_y, mapper_valid = visual_mapper.inverse_arrays(
+                    source_x, source_y, return_valid=True
+                )
+                valid &= mapper_valid
+            for prefix_mapper in prefix:
+                source_x, source_y = prefix_mapper.forward_arrays(
+                    source_x, source_y
+                )
+            output_x, output_y = mapper.forward_arrays(source_x, source_y)
+            valid &= np.isfinite(output_x) & np.isfinite(output_y)
+            return output_x, output_y, valid
+
+        return map_points
 
     def capture_scene_to_source_mapper(self):
         """Freeze the item mapping used for one shape-controller drag.
@@ -645,7 +833,13 @@ class TextItemGeometryController:
     def flush_deferred_compilation(self) -> bool:
         if not self._compile_deferred:
             return False
-        return self.refresh_compiled_geometry(force=True)
+        changed = self.refresh_compiled_geometry(force=True)
+        if changed:
+            # Formatting can emit its last size signal before the deferred
+            # mapper is rebuilt. Notify every visual overlay after the settled
+            # geometry is installed, not while it still observes stale bounds.
+            self.item.visual_geometry_changed.emit()
+        return changed
 
     def detach_surface_mapper(self) -> bool:
         changed = (
@@ -678,7 +872,7 @@ class TextItemGeometryController:
 
     def invalidate_surface_cache(self) -> None:
         if self.surface_renderer is not None:
-            self.surface_renderer.release()
+            self.surface_renderer.invalidate_surface()
 
     def _paint_surface_cursor(
         self,
@@ -720,6 +914,23 @@ class TextItemGeometryController:
             # One full follow-up paint clears or redraws its mapped position.
             self.item.update()
 
+    def _probe_surface_cursor(self, painter, option, widget, base_paint):
+        """Refresh Qt's cursor visibility without repainting source pixels."""
+        layout = self.item.layout
+        previous = layout.defer_cursor_paint
+        layout.defer_cursor_paint = True
+        painter.save()
+        try:
+            painter.setOpacity(0.0)
+            base_paint(
+                painter,
+                QStyleOptionGraphicsItem(option),
+                widget,
+            )
+        finally:
+            painter.restore()
+            layout.defer_cursor_paint = previous
+
     def paint_item(self, painter, option, widget, base_paint) -> None:
         """Paint directly or through the active nonlinear surface warp."""
         mapper = self.visual_mapper
@@ -740,6 +951,15 @@ class TextItemGeometryController:
             if self.layout_renderer is None
             else self.layout_renderer.render_cache_key()
         )
+        selection_key = None
+        if self.item.is_editting():
+            cursor = self.item.textCursor()
+            if cursor.hasSelection():
+                selection_key = (
+                    cursor.selectionStart(),
+                    cursor.selectionEnd(),
+                    self.item.hasFocus(),
+                )
         cache_key = (
             mapper.geometry_key,
             layout_generation,
@@ -751,6 +971,7 @@ class TextItemGeometryController:
                 else effect_renderer.background_pixmap.cacheKey()
             ),
             self.item.document().revision(),
+            selection_key,
         )
 
         def paint_source(source_painter, source_option, source_widget):
@@ -774,23 +995,28 @@ class TextItemGeometryController:
         )
         maximum_scale = (
             0.5
-            if self.item.reshaping
+            if self.item.reshaping or self.preview is not None
             else (2.0 if interactive else None)
         )
         try:
-            renderer.paint(
+            cache_hit = renderer.paint(
                 painter,
                 option,
                 mapper,
                 self.source_rect(),
                 cache_key,
                 cache_allowed=(
-                    not interactive
-                    and not export_render
+                    not export_render
+                    and not self.item.reshaping
+                    and self.preview is None
                 ),
                 paint_source=paint_source,
                 maximum_scale=maximum_scale,
             )
+            if cache_hit and self.item.is_editting():
+                self._probe_surface_cursor(
+                    painter, option, widget, base_paint
+                )
             self._paint_surface_cursor(
                 painter, mapper, export_render=export_render
             )

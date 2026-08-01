@@ -909,7 +909,12 @@ class MainWindow(mainwindow_cls):
         drawpanel_shortcuts = {'hand': 'H', 'rect': 'R', 'inpaint': 'J', 'pen': 'B'}
         for tool_name, shortcut_key in drawpanel_shortcuts.items():
             shortcut = QShortcut(QKeySequence(shortcut_key), self)
-            shortcut.activated.connect(partial(self.drawingPanel.shortcutSetCurrentToolByName, tool_name))
+            key = getattr(QKEY, f'Key_{shortcut_key}')
+            shortcut.activated.connect(partial(
+                self.drawingPanel.shortcutSetCurrentToolByName,
+                tool_name,
+                key,
+            ))
             self.drawingPanel.setShortcutTip(tool_name, shortcut_key)
 
     def shortcutNext(self):
@@ -1268,6 +1273,8 @@ class MainWindow(mainwindow_cls):
         edit.setTextCursor(cursor)
 
     def shortcutEscape(self):
+        if self.canvas.handle_grid_modal_shortcut(QKEY.Key_Escape):
+            return
         if self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
         elif self.canvas.editing_textblkitem is not None and self.canvas.editing_textblkitem.isEditing():

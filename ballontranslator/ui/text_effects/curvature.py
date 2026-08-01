@@ -171,6 +171,36 @@ class CurvatureMapper:
             return source
         return self._raw_forward(source) + self.translation
 
+    def forward_arrays(self, source_x, source_y):
+        source_x = np.asarray(source_x, dtype=np.float64)
+        source_y = np.asarray(source_y, dtype=np.float64)
+        if self.is_identity:
+            return source_x, source_y
+        if self.vertical:
+            flow = source_y - self.center.y()
+            cross = source_x - self.center.x()
+            flow_length = self.logical_rect.height()
+        else:
+            flow = source_x - self.center.x()
+            cross = source_y - self.center.y()
+            flow_length = self.logical_rect.width()
+        angle = self.sweep * flow / flow_length
+        radial = self.radius - self.direction * self.cross_scale * cross
+        mapped_flow = radial * np.sin(angle)
+        mapped_cross = self.direction * (
+            self.radius - radial * np.cos(angle)
+        )
+        if self.vertical:
+            visual_x = self.center.x() + mapped_cross
+            visual_y = self.center.y() + mapped_flow
+        else:
+            visual_x = self.center.x() + mapped_flow
+            visual_y = self.center.y() + mapped_cross
+        return (
+            visual_x + self.translation.x(),
+            visual_y + self.translation.y(),
+        )
+
     def inverse_point(
         self,
         visual: QPointF,
@@ -352,9 +382,9 @@ class CurvatureMapper:
 class NonlinearTextSurfaceRenderer:
     """Warp a complete source text composite through a visual mapper.
 
-    Float remap coordinates are allocated one row band at a time.  The cached
-    output is item-local and generation keyed; no page- or process-global
-    image/grid cache retains text-item state.
+    Float remap coordinates are built in row bands and cached by geometry.
+    Rendered pixels have a separate content key so text, selection, and IME
+    changes can reuse the inverse map. Both caches remain item-local.
 
     >>> renderer = NonlinearTextSurfaceRenderer()
     >>> renderer.cached_pixmap is None
@@ -366,10 +396,17 @@ class NonlinearTextSurfaceRenderer:
     def __init__(self) -> None:
         self.cached_pixmap = None
         self.cached_key = None
+        self.cached_remap = None
+        self.cached_remap_key = None
 
-    def release(self) -> None:
+    def invalidate_surface(self) -> None:
         self.cached_pixmap = None
         self.cached_key = None
+
+    def release(self) -> None:
+        self.invalidate_surface()
+        self.cached_remap = None
+        self.cached_remap_key = None
 
     @staticmethod
     def _device_scale(painter: QPainter) -> float:
@@ -409,9 +446,8 @@ class NonlinearTextSurfaceRenderer:
             source_painter.end()
         return pixmap
 
-    @classmethod
     def _warp(
-        cls,
+        self,
         source_pixmap: QPixmap,
         source_rect: QRectF,
         destination_rect: QRectF,
@@ -431,54 +467,81 @@ class NonlinearTextSurfaceRenderer:
         del alpha
         output_width = max(1, math.ceil(destination_rect.width() * scale))
         output_height = max(1, math.ceil(destination_rect.height() * scale))
-        output = np.zeros(
-            (output_height, output_width, 4), dtype=np.uint8
+        remap_key = (
+            mapper.geometry_key,
+            source_rect.x(),
+            source_rect.y(),
+            source_rect.width(),
+            source_rect.height(),
+            destination_rect.x(),
+            destination_rect.y(),
+            destination_rect.width(),
+            destination_rect.height(),
+            scale,
+            output_width,
+            output_height,
         )
-        x = (
-            destination_rect.left()
-            + (np.arange(output_width, dtype=np.float32) + 0.5) / scale
+        remap = (
+            self.cached_remap
+            if self.cached_remap_key == remap_key
+            else None
         )
-        for top in range(0, output_height, cls.REMAP_ROW_BAND):
-            bottom = min(output_height, top + cls.REMAP_ROW_BAND)
-            y = (
-                destination_rect.top()
-                + (
-                    np.arange(top, bottom, dtype=np.float32) + 0.5
-                ) / scale
+        if remap is None:
+            map_x = np.empty(
+                (output_height, output_width), dtype=np.float32
             )
-            visual_x, visual_y = np.meshgrid(x, y)
-            source_x, source_y, valid = mapper.inverse_arrays(
-                visual_x, visual_y, return_valid=True
+            map_y = np.empty(
+                (output_height, output_width), dtype=np.float32
             )
-            map_x = (
-                (source_x - source_rect.left()) * scale - 0.5
-            ).astype(np.float32, copy=False)
-            map_y = (
-                (source_y - source_rect.top()) * scale - 0.5
-            ).astype(np.float32, copy=False)
-            map_x[~valid] = -1.0
-            map_y[~valid] = -1.0
-            warped = cv2.remap(
-                source,
-                map_x,
-                map_y,
-                interpolation=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=(0, 0, 0, 0),
+            x = (
+                destination_rect.left()
+                + (np.arange(output_width, dtype=np.float32) + 0.5) / scale
             )
-            output_alpha = warped[:, :, 3]
-            nonzero = output_alpha > 0
-            if np.any(nonzero):
-                alpha_values = output_alpha[nonzero].astype(np.float32)
-                for channel_index in range(3):
-                    channel = warped[:, :, channel_index]
-                    values = channel[nonzero].astype(np.float32)
-                    values *= 255.0
-                    values /= alpha_values
-                    channel[nonzero] = np.clip(
-                        np.rint(values), 0, 255
-                    ).astype(np.uint8)
-            output[top:bottom] = warped
+            for top in range(0, output_height, self.REMAP_ROW_BAND):
+                bottom = min(output_height, top + self.REMAP_ROW_BAND)
+                y = (
+                    destination_rect.top()
+                    + (
+                        np.arange(top, bottom, dtype=np.float32) + 0.5
+                    ) / scale
+                )
+                visual_x, visual_y = np.meshgrid(x, y)
+                source_x, source_y, valid = mapper.inverse_arrays(
+                    visual_x, visual_y, return_valid=True
+                )
+                band_x = (
+                    (source_x - source_rect.left()) * scale - 0.5
+                ).astype(np.float32, copy=False)
+                band_y = (
+                    (source_y - source_rect.top()) * scale - 0.5
+                ).astype(np.float32, copy=False)
+                band_x[~valid] = -1.0
+                band_y[~valid] = -1.0
+                map_x[top:bottom] = band_x
+                map_y[top:bottom] = band_y
+            remap = (map_x, map_y)
+            self.cached_remap = remap
+            self.cached_remap_key = remap_key
+        output = cv2.remap(
+            source,
+            remap[0],
+            remap[1],
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(0, 0, 0, 0),
+        )
+        output_alpha = output[:, :, 3]
+        nonzero = output_alpha > 0
+        if np.any(nonzero):
+            alpha_values = output_alpha[nonzero].astype(np.float32)
+            for channel_index in range(3):
+                channel = output[:, :, channel_index]
+                values = channel[nonzero].astype(np.float32)
+                values *= 255.0
+                values /= alpha_values
+                channel[nonzero] = np.clip(
+                    np.rint(values), 0, 255
+                ).astype(np.uint8)
         pixmap = ndarray2pixmap(output)
         if pixmap.isNull():
             raise EffectRasterAllocationError(
@@ -497,7 +560,7 @@ class NonlinearTextSurfaceRenderer:
         cache_allowed: bool,
         paint_source,
         maximum_scale: float = None,
-    ) -> None:
+    ) -> bool:
         destination_rect = mapper.visual_bounds(source_rect)
         requested_scale = self._device_scale(painter)
         if maximum_scale is not None:
@@ -521,6 +584,7 @@ class NonlinearTextSurfaceRenderer:
             if cache_allowed and self.cached_key == key
             else None
         )
+        cache_hit = pixmap is not None
         if pixmap is None:
             source = self._capture_source(
                 source_rect, render_scale, option, paint_source
@@ -545,3 +609,4 @@ class NonlinearTextSurfaceRenderer:
             )
         finally:
             painter.restore()
+        return cache_hit

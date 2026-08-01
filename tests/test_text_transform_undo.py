@@ -6,6 +6,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import numpy as np
+
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -43,9 +45,10 @@ from ballontranslator.ui.textedit_commands import (
     propagate_user_edit,
 )
 from ballontranslator.ui.textitem import TextBlkItem
-from ballontranslator.ui.text_advanced_format import TextAdvancedFormatPanel
+from ballontranslator.ui.text_transform_panel import TextTransformPanel
 from ballontranslator.ui.texteditshapecontrol import TextBlkShapeControl
 from ballontranslator.ui.text_transform_editor import TextTransformEditSession
+from ballontranslator.ui.scenetext_manager import SceneTextManager
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.text_effects.glyph import (
     GLOBAL_GLYPH_GEOMETRY_CACHE,
@@ -57,6 +60,11 @@ from ballontranslator.ui.text_effects.transform_layout import (
     GlyphSlantLayoutRenderer,
 )
 from ballontranslator.ui.text_effects.curvature import CurvatureMapper
+from ballontranslator.ui.text_effects.grid import GridMapper
+from ballontranslator.ui.text_grid_control import TextGridTransformControl
+from ballontranslator.ui.canvas import Canvas
+from ballontranslator.ui.drawingpanel import DrawingPanel
+from ballontranslator.ui.modal_point_transform import ModalPointTransform
 from ballontranslator.ui.text_transform import (
     CompositeTextTransformMapper,
     perspective_transform_matrix,
@@ -68,6 +76,7 @@ from ballontranslator.ui.text_transform_variants import (
 from ballontranslator.utils.fontformat import (
     CurvatureTextTransform,
     FontFormat,
+    GridTextTransform,
     PerspectiveTextTransform,
     SlantTextTransform,
     TextTransformStack,
@@ -320,6 +329,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                     mapper = CurvatureMapper(
                         logical, source, vertical, curvature
                     )
+                    source_points = []
                     for x_ratio, y_ratio in (
                         (0.0, 0.0),
                         (0.2, 0.7),
@@ -331,6 +341,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                             logical.left() + logical.width() * x_ratio,
                             logical.top() + logical.height() * y_ratio,
                         )
+                        source_points.append(point)
                         restored = mapper.inverse_point(
                             mapper.forward_point(point)
                         )
@@ -340,6 +351,265 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                         self.assertAlmostEqual(
                             restored.y(), point.y(), places=6
                         )
+                    source_x = np.asarray([
+                        point.x() for point in source_points
+                    ])
+                    source_y = np.asarray([
+                        point.y() for point in source_points
+                    ])
+                    visual_x, visual_y = mapper.forward_arrays(
+                        source_x, source_y
+                    )
+                    for index, point in enumerate(source_points):
+                        expected = mapper.forward_point(point)
+                        self.assertAlmostEqual(
+                            visual_x[index], expected.x(), places=6
+                        )
+                        self.assertAlmostEqual(
+                            visual_y[index], expected.y(), places=6
+                        )
+
+    def test_grid_payload_divisions_and_sampling_round_trip(self):
+        grid = GridTextTransform(3, 2, 'catmull_rom').normalized()
+        self.assertEqual(len(grid.control_points), 12)
+        self.assertTrue(grid.is_neutral())
+        self.assertEqual(
+            len(GridTextTransform().normalized().control_points),
+            4,
+        )
+        with self.assertRaises(ValueError):
+            GridTextTransform(33, 1).normalized()
+
+        points = list(grid.control_points)
+        points[5] = (0.7, 0.35)
+        grid = grid.with_control_points(points)
+        font_format = FontFormat(text_transform=[
+            {
+                'transform_type': 'grid',
+                'horizontal_divisions': grid.horizontal_divisions,
+                'vertical_divisions': grid.vertical_divisions,
+                'sampling': grid.sampling,
+                'control_points': grid.control_points,
+            }
+        ])
+        restored = FontFormat(**json.loads(json.dumps(
+            font_format.to_serializable_dict()
+        )))
+        self.assertEqual(restored.text_transform[0], grid)
+
+    def test_grid_bilinear_and_catmull_rom_differ_between_anchors(self):
+        logical = QRectF(0, 0, 400, 200)
+        source = logical.adjusted(-10, -10, 10, 10)
+        base = GridTextTransform(2, 2).normalized()
+        points = list(base.control_points)
+        points[4] = (0.7, 0.3)
+        bilinear = GridMapper(
+            logical,
+            source,
+            base.with_control_points(points),
+        )
+        catmull_rom = GridMapper(
+            logical,
+            source,
+            base.with_control_points(points).with_value(
+                'sampling', 'catmull_rom'
+            ),
+        )
+        anchor = QPointF(200, 100)
+        expected_anchor = QPointF(280, 60)
+        self.assertEqual(bilinear.forward_point(anchor), expected_anchor)
+        self.assertEqual(catmull_rom.forward_point(anchor), expected_anchor)
+        between = QPointF(100, 100)
+        self.assertNotEqual(
+            bilinear.forward_point(between),
+            catmull_rom.forward_point(between),
+        )
+        for mapper in (bilinear, catmull_rom):
+            for point in (QPointF(40, 30), QPointF(180, 80), QPointF(350, 170)):
+                restored = mapper.inverse_point(mapper.forward_point(point))
+                self.assertAlmostEqual(restored.x(), point.x(), places=5)
+                self.assertAlmostEqual(restored.y(), point.y(), places=5)
+
+        protruding = list(base.control_points)
+        protruding[4] = (1.5, -0.5)
+        protruding_mapper = GridMapper(
+            logical,
+            source,
+            base.with_control_points(protruding),
+        )
+        self.assertTrue(
+            protruding_mapper.visual_bounds().contains(QPointF(600, -100))
+        )
+
+    def test_grid_inverse_stops_after_convergence(self):
+        coordinates = np.meshgrid(
+            np.linspace(0.0, 400.0, 24),
+            np.linspace(0.0, 200.0, 12),
+        )
+        for sampling in ('bilinear', 'catmull_rom'):
+            with self.subTest(sampling=sampling):
+                grid = GridTextTransform(2, 2, sampling).normalized()
+                points = list(grid.control_points)
+                points[4] = (0.6, 0.4)
+                mapper = GridMapper(
+                    QRectF(0, 0, 400, 200),
+                    QRectF(0, 0, 400, 200),
+                    grid.with_control_points(points),
+                )
+                calls = []
+                evaluate = mapper._evaluate
+
+                def counted_evaluate(x, y):
+                    calls.append(True)
+                    return evaluate(x, y)
+
+                mapper._evaluate = counted_evaluate
+                source_x, source_y, valid = mapper.inverse_arrays(
+                    *coordinates, return_valid=True
+                )
+                self.assertEqual(source_x.dtype, np.dtype(np.float32))
+                self.assertEqual(source_y.dtype, np.dtype(np.float32))
+                self.assertTrue(valid.all())
+                self.assertLessEqual(len(calls), mapper.INVERSE_ITERATIONS)
+                remapped, _dx, _dy = evaluate(
+                    source_x / 400.0, source_y / 200.0
+                )
+                self.assertTrue(np.allclose(
+                    remapped[..., 0] * 400.0,
+                    coordinates[0],
+                    atol=0.005,
+                ))
+                self.assertTrue(np.allclose(
+                    remapped[..., 1] * 200.0,
+                    coordinates[1],
+                    atol=0.005,
+                ))
+
+    def test_numpy_bilinear_inverse_retries_across_cell_boundaries(self):
+        points = (
+            (0.1122, 0.2059), (0.7473, 0.0404), (1.0360, 0.2975),
+            (-0.2799, 0.4329), (0.3352, 0.2276), (0.7989, 0.5373),
+            (-0.2889, 1.2479), (0.3509, 1.2040), (0.6679, 0.9692),
+        )
+        mapper = GridMapper(
+            QRectF(0, 0, 1000, 500),
+            QRectF(0, 0, 1000, 500),
+            GridTextTransform(2, 2, 'bilinear', points).normalized(),
+        )
+        axis = np.linspace(0.25, 0.75, 41, dtype=np.float32)
+        source_x, source_y = np.meshgrid(axis * 1000, axis * 500)
+        visual_x, visual_y = mapper.forward_arrays(source_x, source_y)
+        with patch(
+            'ballontranslator.ui.text_effects.grid.'
+            '_compiled_inverse_grid_arrays',
+            return_value=None,
+        ):
+            restored_x, restored_y, valid = mapper.inverse_arrays(
+                visual_x, visual_y, return_valid=True
+            )
+
+        self.assertTrue(valid.all())
+        self.assertLess(
+            float(np.max(np.hypot(
+                restored_x - source_x,
+                restored_y - source_y,
+            ))),
+            0.02,
+        )
+
+    def test_compiled_grid_bounds_include_protruding_interior_handle(self):
+        logical = QRectF(0, 0, 400, 200)
+        grid = GridTextTransform(2, 2).normalized()
+        points = list(grid.control_points)
+        points[4] = (1.5, -0.5)
+        compiled = compile_text_transform_stack(
+            TextTransformStack((grid.with_control_points(points),)),
+            logical,
+            logical,
+            False,
+        )
+        mapped_handle = compiled.surface_mapper.forward_point(
+            logical.center()
+        )
+        self.assertTrue(
+            compiled.surface_mapper.visual_bounds(logical).contains(
+                mapped_handle
+            )
+        )
+
+    def test_bilinear_grid_outline_keeps_padded_cell_boundary_kinks(self):
+        logical = QRectF(0, 0, 100, 100)
+        source = logical.adjusted(-10, -20, 30, 20)
+        grid = GridTextTransform(2, 1).normalized()
+        points = list(grid.control_points)
+        points[1] = (0.5, -1.0)
+        points[4] = (0.5, 1.0)
+        mapper = GridMapper(
+            logical,
+            source,
+            grid.with_control_points(points),
+        )
+        kink = mapper.forward_point(QPointF(50, source.top()))
+        self.assertLess(kink.y(), -100.0)
+        self.assertTrue(mapper.visual_bounds().contains(kink))
+
+    def test_catmull_rom_bounds_scale_with_deformation_not_box_size(self):
+        logical = QRectF(0, 0, 400, 200)
+        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        points = list(grid.control_points)
+        points[4] = (0.55, 0.45)
+        bounds = GridMapper(
+            logical,
+            logical,
+            grid.with_control_points(points),
+        ).visual_bounds()
+        self.assertLess(bounds.width(), logical.width() * 1.2)
+        self.assertLess(bounds.height(), logical.height() * 1.2)
+
+    def test_grid_compiles_as_one_ordered_composable_surface_mapper(self):
+        logical = QRectF(10, 20, 420, 160)
+        source = logical.adjusted(-12, -12, 12, 12)
+        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        points = list(grid.control_points)
+        points[4] = (0.62, 0.38)
+        stack = TextTransformStack((
+            SlantTextTransform(1.1, 0.9, 4.0),
+            grid.with_control_points(points),
+            PerspectiveTextTransform(0.25, 30.0),
+        ))
+        for vertical in (False, True):
+            compiled = compile_text_transform_stack(
+                stack, logical, source, vertical
+            )
+            self.assertTrue(compiled.native_matrix.isIdentity())
+            self.assertIsInstance(
+                compiled.surface_mapper, CompositeTextTransformMapper
+            )
+            self.assertEqual(
+                tuple(stage.transform.transform_type for stage in compiled.stages),
+                ('slant', 'grid', 'perspective'),
+            )
+            point = QPointF(180, 90)
+            restored = compiled.surface_mapper.inverse_point(
+                compiled.surface_mapper.forward_point(point)
+            )
+            self.assertAlmostEqual(restored.x(), point.x(), places=5)
+            self.assertAlmostEqual(restored.y(), point.y(), places=5)
+            source_x = np.asarray([40.0, 180.0, 350.0])
+            source_y = np.asarray([30.0, 80.0, 170.0])
+            visual_x, visual_y = compiled.surface_mapper.forward_arrays(
+                source_x, source_y
+            )
+            for index in range(len(source_x)):
+                expected = compiled.surface_mapper.forward_point(QPointF(
+                    source_x[index], source_y[index]
+                ))
+                self.assertAlmostEqual(
+                    visual_x[index], expected.x(), places=6
+                )
+                self.assertAlmostEqual(
+                    visual_y[index], expected.y(), places=6
+                )
 
 
 class TextTransformPanelTest(TextTransformTestBase):
@@ -353,18 +623,25 @@ class TextTransformPanelTest(TextTransformTestBase):
                 else setattr(shared, 'register_view_widget', previous)
             )
         )
-        panel = TextAdvancedFormatPanel(
-            'Advanced', 'test_transform', 'test_transform_expand',
-            lambda *_args: None,
+        panel = TextTransformPanel(
+            'Text Transform', 'test_transform', 'test_transform_expand',
         )
         self.addCleanup(panel.deleteLater)
         return panel
+
+    def test_transform_settings_have_their_own_expandable_panel(self):
+        panel = self._make_panel()
+        self.assertEqual(panel.title(), 'Text Transform')
+        self.assertIs(panel.view_widget.content_widget, panel)
+        self.assertTrue(
+            panel.scrollContent.isAncestorOf(panel.glyph_slant_control)
+        )
 
     def test_add_menu_and_hover_actions_are_generated_from_registry(self):
         panel = self._make_panel()
         self.assertEqual(
             [action.text() for action in panel.add_transform_button.menu().actions()],
-            ['Slant', 'Perspective', 'Curvature'],
+            ['Slant', 'Perspective', 'Curvature', 'Grid'],
         )
         added = []
         panel.transform_add_requested.connect(added.append)
@@ -383,6 +660,152 @@ class TextTransformPanelTest(TextTransformTestBase):
         panel.transform_remove_requested.connect(removed.append)
         operation_panel.close_button.click()
         self.assertEqual(removed, [0])
+
+    def test_panel_grows_until_its_scrollable_maximum(self):
+        panel = self._make_panel()
+        initial_height = panel.sizeHint().height()
+        panel.set_transform(transform_state(*(
+            SlantTextTransform() for _index in range(10)
+        )))
+        self.assertGreater(panel.sizeHint().height(), initial_height)
+        self.assertEqual(panel.sizeHint().height(), panel.MAX_CONTENT_HEIGHT)
+        self.assertEqual(panel.maximumHeight(), panel.MAX_CONTENT_HEIGHT)
+        panel.setMaximumWidth(300)
+        panel.resize(300, panel.MAX_CONTENT_HEIGHT)
+        panel.show()
+        self.app.processEvents()
+        self.assertGreater(panel.verticalScrollBar().maximum(), 0)
+        self.app.processEvents()
+        self.assertEqual(
+            panel.scrollContent.width(), panel.viewport().width()
+        )
+        self.assertTrue(all(
+            operation.width() == panel.transform_rows.width()
+            for operation in panel.transform_panels
+        ))
+        self.assertEqual(
+            [operation.y() for operation in panel.transform_panels],
+            sorted({operation.y() for operation in panel.transform_panels}),
+        )
+
+    def test_transform_cards_select_on_card_and_parameter_interaction(self):
+        panel = self._make_panel()
+        panel.set_transform(transform_state(
+            GridTextTransform().normalized(),
+            SlantTextTransform(),
+        ))
+        selected = []
+        panel.transform_selected.connect(selected.append)
+
+        QTest.mouseClick(
+            panel.transform_panels[1], Qt.MouseButton.LeftButton
+        )
+        self.assertEqual(panel.selected_transform_index, 1)
+        self.assertTrue(panel.transform_panels[1].property('selected'))
+        self.assertFalse(panel.transform_panels[0].property('selected'))
+
+        QTest.mouseClick(
+            panel.transform_panels[1], Qt.MouseButton.LeftButton
+        )
+        self.assertIsNone(panel.selected_transform_index)
+        self.assertFalse(panel.transform_panels[1].property('selected'))
+
+        control = panel.transform_panels[0].controls[
+            'horizontal_divisions'
+        ]
+        control.editor.setText('2')
+        control.editor.textEdited.emit('2')
+        self.assertEqual(panel.selected_transform_index, 0)
+        self.assertEqual(selected, [1, -1, 0])
+
+    def test_grid_sampling_uses_plain_labels_and_technical_values(self):
+        panel = self._make_panel()
+        panel.set_transform(transform_state(
+            GridTextTransform().normalized()
+        ))
+        combobox = panel.transform_panels[0].controls[
+            'sampling'
+        ].combobox
+
+        self.assertEqual(
+            [combobox.itemText(index) for index in range(combobox.count())],
+            ['Straight', 'Smooth'],
+        )
+        self.assertEqual(
+            [combobox.itemData(index) for index in range(combobox.count())],
+            ['bilinear', 'catmull_rom'],
+        )
+
+    def test_grid_parameter_selection_binds_controller_and_delete_clears_it(self):
+        panel = self._make_panel()
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.set_text_transform(transform_state(
+            GridTextTransform().normalized()
+        ))
+        stack = QUndoStack()
+        bindings = []
+        clears = []
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        SW.canvas = SimpleNamespace(
+            push_undo_command=stack.push,
+            bind_text_grid_control=lambda item, index, **callbacks:
+            bindings.append((item, index, callbacks)),
+            clear_text_grid_control=lambda: clears.append(True),
+        )
+        session = TextTransformEditSession(SimpleNamespace(), panel)
+        session.replace_targets([item])
+        panel.set_transform_items([item])
+
+        control = panel.transform_panels[0].controls[
+            'horizontal_divisions'
+        ]
+        control.editor.setText('2')
+        control.editor.textEdited.emit('2')
+        self.assertEqual(session.selected_index, 0)
+        self.assertEqual(bindings[-1][:2], (item, 0))
+
+        panel.transform_panels[0].card_clicked.emit(0)
+        self.assertIsNone(session.selected_index)
+        self.assertIsNone(panel.selected_transform_index)
+        self.assertTrue(clears)
+
+        panel.transform_panels[0].card_clicked.emit(0)
+        self.assertEqual(session.selected_index, 0)
+        self.assertEqual(bindings[-1][:2], (item, 0))
+
+        session.remove_transform(0)
+        self.assertIsNone(session.selected_index)
+        self.assertIsNone(panel.selected_transform_index)
+        self.assertEqual(len(item.blk.fontformat.text_transform), 0)
+        self.assertTrue(clears)
+
+    def test_added_transform_is_selected_and_new_grid_binds_controller(self):
+        panel = self._make_panel()
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.set_text_transform(transform_state(SlantTextTransform()))
+        stack = QUndoStack()
+        bindings = []
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        SW.canvas = SimpleNamespace(
+            push_undo_command=stack.push,
+            bind_text_grid_control=lambda item, index, **_callbacks:
+            bindings.append((item, index)),
+            clear_text_grid_control=lambda: None,
+        )
+        session = TextTransformEditSession(SimpleNamespace(), panel)
+        session.replace_targets([item])
+        panel.set_transform_items([item])
+
+        session.add_transform('grid')
+
+        self.assertEqual(session.selected_index, 1)
+        self.assertEqual(panel.selected_transform_index, 1)
+        self.assertTrue(panel.transform_panels[1].property('selected'))
+        self.assertFalse(panel.transform_panels[0].property('selected'))
+        self.assertEqual(bindings[-1], (item, 1))
+        self.assertEqual(stack.count(), 1)
 
     def test_multi_selection_only_exposes_matching_stack_indices(self):
         panel = self._make_panel()
@@ -439,6 +862,128 @@ class TextTransformPanelTest(TextTransformTestBase):
 
 
 class TextTransformUndoTest(TextTransformTestBase):
+    def test_grid_modal_preview_switch_and_cancel_do_not_create_undo(self):
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        item.set_text_transform(transform_state(grid))
+        stack = QUndoStack()
+        SW.canvas = SimpleNamespace(push_undo_command=stack.push)
+        session = object.__new__(TextTransformEditSession)
+        session.host = SimpleNamespace()
+        session.items = [item]
+        session.controls = SimpleNamespace(
+            set_transform_items=lambda _items: None,
+            finish_pending_transform_edits=lambda: None,
+            cancel_transform_previews=lambda: None,
+        )
+        session.drag_before = None
+        session.drag_key = None
+        session.grid_before = None
+        session.grid_index = None
+        session.selected_index = 0
+        controller = TextGridTransformControl()
+        controller.setParentItem(base)
+        controller.bind(
+            item,
+            0,
+            begin_edit=session.begin_grid_edit,
+            preview_points=session.preview_grid_points,
+            commit_points=session.commit_grid_points,
+            cancel_edit=session.cancel_grid_edit,
+        )
+        controller._set_selected_indices({0, 1})
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+        start = controller.handles[0].scenePos()
+
+        self.assertTrue(controller._start_modal('translate', start))
+        with patch(
+            'ballontranslator.ui.text_item_geometry.'
+            'compile_text_transform_stack',
+            wraps=compile_text_transform_stack,
+        ) as compile_mock:
+            self.assertTrue(controller._update_modal(
+                start + QPointF(30, 10)
+            ))
+            self.app.processEvents()
+            self.assertLessEqual(compile_mock.call_count, 1)
+        self.assertEqual(stack.count(), 0)
+        self.assertTrue(controller._switch_modal(
+            'scale', start + QPointF(30, 10)
+        ))
+        self.assertEqual(stack.count(), 0)
+        self.assertEqual(
+            item._effective_text_transform().stack[0], grid
+        )
+        self.assertTrue(controller._finish_modal(False))
+        self.assertEqual(stack.count(), 0)
+        self.assertEqual(item._effective_text_transform().stack[0], grid)
+
+        self.assertTrue(controller._start_modal('translate', start))
+        self.assertTrue(controller._update_modal(start + QPointF(20, 15)))
+        self.assertEqual(stack.count(), 0)
+        self.assertTrue(controller._finish_modal(True))
+        self.assertEqual(stack.count(), 1)
+        self.assertNotEqual(item.blk.fontformat.text_transform[0], grid)
+        stack.undo()
+        self.assertEqual(item.blk.fontformat.text_transform[0], grid)
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
+    def test_grid_handle_preview_commits_one_undoable_state(self):
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        points = list(grid.control_points)
+        points[4] = (0.56, 0.44)
+        grid = grid.with_control_points(points)
+        item.set_text_transform(transform_state(grid))
+        stack = QUndoStack()
+        SW.canvas = SimpleNamespace(push_undo_command=stack.push)
+        session = object.__new__(TextTransformEditSession)
+        session.host = SimpleNamespace()
+        session.items = [item]
+        session.controls = SimpleNamespace(
+            set_transform_items=lambda _items: None,
+            finish_pending_transform_edits=lambda: None,
+            cancel_transform_previews=lambda: None,
+        )
+        session.drag_before = None
+        session.drag_key = None
+        session.grid_before = None
+        session.grid_index = None
+        session.selected_index = 0
+
+        points = list(grid.control_points)
+        points[4] = (0.62, 0.38)
+        session.begin_grid_edit(0)
+        session.preview_grid_points(0, points)
+        self.assertEqual(
+            item._effective_text_transform().stack[0].control_points[4],
+            (0.62, 0.38),
+        )
+        self.assertEqual(
+            item.blk.fontformat.text_transform[0], grid
+        )
+        session.commit_grid_points(0, points)
+        self.assertEqual(stack.count(), 1)
+        self.assertEqual(
+            item.blk.fontformat.text_transform[0].control_points[4],
+            (0.62, 0.38),
+        )
+        stack.undo()
+        self.assertEqual(item.blk.fontformat.text_transform[0], grid)
+
     def test_mixed_text_transforms_keep_undo_and_pair_widgets_in_sync(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
@@ -593,6 +1138,8 @@ class TextTransformUndoTest(TextTransformTestBase):
                     set_transform_items=lambda _items: None,
                     finish_pending_transform_edits=lambda: None,
                     cancel_transform_previews=lambda: None,
+                    select_transform=lambda _index, emit=False: None,
+                    clear_transform_selection=lambda emit=False: None,
                 )
                 session.drag_before = None
                 session.drag_key = None
@@ -686,6 +1233,8 @@ class TextTransformUndoTest(TextTransformTestBase):
             set_transform_items=lambda _items: None,
             finish_pending_transform_edits=lambda: None,
             cancel_transform_previews=lambda: None,
+            select_transform=lambda _index, emit=False: None,
+            clear_transform_selection=lambda emit=False: None,
         )
         session.drag_before = None
         session.drag_key = None
@@ -1210,7 +1759,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 self.assertIsNone(renderer._transformed_effect_state)
                 scene.removeItem(item)
 
-    def test_reshape_surface_uses_bounded_low_resolution_preview(self):
+    def test_interactive_surface_uses_bounded_low_resolution_preview(self):
         class ScaleCapture:
             def __init__(self):
                 self.maximum_scale = None
@@ -1264,6 +1813,20 @@ class TextTransformRenderingTest(TextTransformTestBase):
         )
         painter.end()
         self.assertIsNone(capture.maximum_scale)
+
+        item.set_text_transform(
+            transform_state(
+                PerspectiveTextTransform(0.6, 45.0),
+                CurvatureTextTransform(0.6),
+            ),
+            preview=True,
+        )
+        painter = QPainter(image)
+        item.geometry_controller.paint_item(
+            painter, option, None, lambda *_: None
+        )
+        painter.end()
+        self.assertEqual(capture.maximum_scale, 0.5)
 
     def test_surface_composition_renders_through_one_nonlinear_surface(self):
         stack = TextTransformStack((
@@ -1338,6 +1901,108 @@ class TextTransformRenderingTest(TextTransformTestBase):
         self.assertTrue(item.textCursor().hasSelection())
         self.assertGreaterEqual(item.full_update_count, 1)
         item.endEdit()
+
+    def test_grid_editing_cache_tracks_selection_and_ime(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                width, height = (
+                    (120, 240) if vertical else (240, 120)
+                )
+                block = TextBlock(
+                    [0, 0, width, height],
+                    _bounding_rect=[0, 0, width, height],
+                    translation=TEST_LINES[0],
+                )
+                block.vertical = vertical
+                item = TextBlkItem(block, 0)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+                points = list(grid.control_points)
+                points[4] = (0.56, 0.44)
+                item.set_text_transform(transform_state(
+                    grid.with_control_points(points)
+                ))
+                self._render_scene(scene)
+                renderer = item.geometry_controller.surface_renderer
+                self.assertIsNotNone(renderer.cached_pixmap)
+                self.assertIsNotNone(renderer.cached_remap)
+                mapper = item.geometry_controller.visual_mapper
+
+                with patch.object(
+                    renderer, '_warp', wraps=renderer._warp
+                ) as warp, patch.object(
+                    mapper, 'inverse_arrays', wraps=mapper.inverse_arrays
+                ) as inverse:
+                    item.startEdit()
+                    self._render_scene(scene)
+                    self.assertEqual(warp.call_count, 0)
+
+                    cursor = item.textCursor()
+                    cursor.setPosition(1)
+                    item.setTextCursor(cursor)
+                    self._render_scene(scene)
+                    self.assertEqual(warp.call_count, 0)
+
+                    cursor.setPosition(0)
+                    cursor.setPosition(
+                        3, QTextCursor.MoveMode.KeepAnchor
+                    )
+                    item.setTextCursor(cursor)
+                    self._render_scene(scene)
+                    self._render_scene(scene)
+                    self.assertEqual(warp.call_count, 1)
+
+                    cursor.setPosition(
+                        4, QTextCursor.MoveMode.KeepAnchor
+                    )
+                    item.setTextCursor(cursor)
+                    self._render_scene(scene)
+                    self.assertEqual(warp.call_count, 2)
+
+                    cursor.clearSelection()
+                    item.setTextCursor(cursor)
+                    self._render_scene(scene)
+                    self._render_scene(scene)
+                    self.assertEqual(warp.call_count, 3)
+
+                    cursor.insertText('X')
+                    item.setTextCursor(cursor)
+                    self._render_scene(scene)
+                    self._render_scene(scene)
+                    self.assertEqual(warp.call_count, 4)
+
+                    item.inputMethodEvent(QInputMethodEvent('かな', []))
+                    self.assertTrue(item.pre_editing)
+                    self.assertIsNone(renderer.cached_pixmap)
+                    self.assertIsNotNone(renderer.cached_remap)
+                    self._render_scene(scene)
+                    self._render_scene(scene)
+                    self.assertEqual(warp.call_count, 5)
+                    self.assertEqual(inverse.call_count, 0)
+
+                    item.inputMethodEvent(QInputMethodEvent('', []))
+                    self.assertFalse(item.pre_editing)
+
+                    changed = list(points)
+                    changed[4] = (0.58, 0.42)
+                    item.set_text_transform(transform_state(
+                        grid.with_control_points(changed)
+                    ))
+                    self.assertIsNone(renderer.cached_remap)
+                    changed_mapper = item.geometry_controller.visual_mapper
+                    with patch.object(
+                        changed_mapper,
+                        'inverse_arrays',
+                        wraps=changed_mapper.inverse_arrays,
+                    ) as changed_inverse:
+                        self._render_scene(scene)
+                    self.assertGreater(changed_inverse.call_count, 0)
+                    self.assertEqual(warp.call_count, 6)
+
+                item.endEdit()
+                item.geometry_controller.release_render_resources()
+                scene.removeItem(item)
 
     def test_curvature_defers_and_overlays_cursor_after_surface_warp(self):
         class SourceCapture:
@@ -1420,6 +2085,54 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 self.assertTrue(capture.saw_deferred_cursor)
                 self.assertNotEqual(after, before)
                 item.endEdit()
+
+    def test_cached_surface_probes_native_cursor_visibility(self):
+        class CacheHit:
+            def release(self):
+                pass
+
+            def paint(self, *_args, **_kwargs):
+                return True
+
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item, _ = self._make_pair(0, TEST_LINES[0], vertical)
+                item.set_text_transform(transform_state(
+                    CurvatureTextTransform(0.7)
+                ))
+                item.startEdit()
+                cursor = item.textCursor()
+                cursor.setPosition(2)
+                item.setTextCursor(cursor)
+                item.geometry_controller.surface_renderer = CacheHit()
+                probes = []
+
+                def base_paint(painter, _option, _widget):
+                    probes.append((
+                        item.layout.defer_cursor_paint,
+                        painter.opacity(),
+                    ))
+                    item.layout.deferred_cursor_position = cursor.position()
+
+                image = QImage(
+                    900, 600, QImage.Format.Format_ARGB32_Premultiplied
+                )
+                image.fill(QColor(0, 0, 0, 0))
+                painter = QPainter(image)
+                option = QStyleOptionGraphicsItem()
+                option.exposedRect = item.boundingRect()
+                item.geometry_controller.paint_item(
+                    painter, option, None, base_paint
+                )
+                painter.end()
+
+                self.assertEqual(probes, [(True, 0.0)])
+                self.assertEqual(
+                    item.geometry_controller._surface_cursor_position,
+                    cursor.position(),
+                )
+                item.endEdit()
+                item.geometry_controller.release_render_resources()
 
     def test_warped_curvature_surface_maps_layout_hit_tests(self):
         for vertical in (False, True):
@@ -1737,6 +2450,41 @@ class TextTransformRenderingTest(TextTransformTestBase):
 
 
 class TextTransformGeometryTest(TextTransformTestBase):
+    def test_settled_format_geometry_notifies_visual_controllers(self):
+        for transform in (
+            SlantTextTransform(1.2, 0.9, 8.0),
+            PerspectiveTextTransform(0.5, 25.0),
+            CurvatureTextTransform(0.55),
+            GridTextTransform().normalized().with_control_points((
+                (0.0, 0.0),
+                (1.1, 0.05),
+                (-0.05, 1.0),
+                (1.0, 1.0),
+            )),
+        ):
+            for vertical in (False, True):
+                with self.subTest(
+                    transform=transform.transform_type,
+                    vertical=vertical,
+                ):
+                    item, _ = self._make_pair(0, TEST_LINES[0], vertical)
+                    item.set_text_transform(transform_state(transform))
+                    controller = item.geometry_controller
+                    notifications = []
+                    item.visual_geometry_changed.connect(
+                        lambda: notifications.append(True)
+                    )
+
+                    item.is_formatting = True
+                    changed = item.absBoundingRect(qrect=True)
+                    changed.setWidth(changed.width() + 24.0)
+                    item.setRect(changed, repaint=False)
+                    self.assertTrue(controller._compile_deferred)
+                    notifications.clear()
+                    self.assertTrue(controller.flush_deferred_compilation())
+                    item.is_formatting = False
+                    self.assertEqual(notifications, [True])
+
     def test_resize_undo_stores_alternating_logical_rectangles(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
@@ -1847,6 +2595,714 @@ class TextTransformGeometryTest(TextTransformTestBase):
 
 
 class TextTransformShapeControlTest(TextTransformTestBase):
+    def test_modal_point_transform_matches_blender_style_relative_math(self):
+        tool = ModalPointTransform()
+        points = (QPointF(0, 0), QPointF(2, 0))
+        self.assertTrue(tool.begin(tool.TRANSLATE, points, QPointF(10, 10)))
+        moved = tool.update(QPointF(13, 14))
+        self.assertEqual(moved, (QPointF(3, 4), QPointF(5, 4)))
+
+        reset = tool.constrain('x', QPointF(13, 14))
+        self.assertEqual(reset, points)
+        constrained = tool.update(QPointF(18, 30))
+        self.assertEqual(constrained, (QPointF(5, 0), QPointF(7, 0)))
+
+        reset = tool.switch_mode(tool.ROTATE, QPointF(2, 0))
+        self.assertEqual(reset, points)
+        rotated = tool.update(QPointF(1, 1))
+        self.assertAlmostEqual(rotated[0].x(), 1.0, places=6)
+        self.assertAlmostEqual(rotated[0].y(), -1.0, places=6)
+        self.assertAlmostEqual(rotated[1].x(), 1.0, places=6)
+        self.assertAlmostEqual(rotated[1].y(), 1.0, places=6)
+
+        reset = tool.switch_mode(tool.SCALE, QPointF(2, 0))
+        self.assertEqual(reset, points)
+        scaled = tool.update(QPointF(3, 0))
+        self.assertEqual(scaled, (QPointF(-1, 0), QPointF(3, 0)))
+        self.assertEqual(tool.cancel(), points)
+
+    def test_shape_handle_bounds_cover_its_shifted_manual_paint(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        base = QGraphicsRectItem(QRectF(0, 0, 400, 300))
+        scene.addItem(base)
+        control = TextBlkShapeControl(view)
+        control.setParentItem(base)
+        handle = control.ctrlblock_group[0]
+        handle.setDeviceAngle(0.0)
+        handle.setOutwardDeviceVector(QPointF(0.92, 0.39), True)
+
+        guard = handle.pen_width / 2.0 + 1.0
+        painted = handle.visible_rect.adjusted(
+            -guard, -guard, guard, guard
+        )
+        self.assertTrue(handle.boundingRect().contains(painted))
+        # Expanding the paint bounds must not expand the interaction hitbox.
+        self.assertFalse(handle.shape().contains(painted.topLeft()))
+
+        scene.removeItem(base)
+
+    def test_grid_hover_suppresses_shape_only_for_bound_item(self):
+        first = SimpleNamespace(hasFocus=lambda: False)
+        second = SimpleNamespace(hasFocus=lambda: False)
+        calls = []
+        shape = SimpleNamespace(blk_item=first)
+
+        def bind_shape(item):
+            calls.append(('bind', item))
+            shape.blk_item = item
+
+        shape.setBlkItem = bind_shape
+        shape.hide = lambda: calls.append(('hide', shape.blk_item))
+        manager = SimpleNamespace(
+            is_editting=lambda: False,
+            textblk_item_list=[first, second],
+            canvas=SimpleNamespace(
+                txtblkGridControl=SimpleNamespace(item=first)
+            ),
+            txtblkShapeControl=shape,
+        )
+
+        SceneTextManager.onTextBlkItemHoverEnter(manager, 0)
+        SceneTextManager.onTextBlkItemHoverEnter(manager, 1)
+        SceneTextManager.onTextBlkItemHoverEnter(manager, 0)
+
+        self.assertEqual(
+            calls,
+            [
+                ('hide', first),
+                ('bind', second),
+                ('bind', first),
+                ('hide', first),
+            ],
+        )
+
+    def test_grid_binding_restores_selected_shape_owner_when_cleared(self):
+        selected = SimpleNamespace(isSelected=lambda: True)
+        hovered = SimpleNamespace(isSelected=lambda: False)
+        calls = []
+        shape = SimpleNamespace(blk_item=hovered)
+
+        def bind_shape(item):
+            calls.append(('shape', item))
+            shape.blk_item = item
+
+        shape.setBlkItem = bind_shape
+        shape.hide = lambda: calls.append(('hide', shape.blk_item))
+        shape.show = lambda: calls.append(('show', shape.blk_item))
+        shape.requestGeometryRefresh = lambda: calls.append(('refresh', None))
+        grid = SimpleNamespace(item=None)
+
+        def bind_grid(item, index, **_callbacks):
+            calls.append(('grid', item, index))
+            grid.item = item
+
+        grid.bind = bind_grid
+        grid.clear = lambda: setattr(grid, 'item', None)
+        canvas = SimpleNamespace(
+            txtblkShapeControl=shape,
+            txtblkGridControl=grid,
+            _rubber_band_target=None,
+            selected_text_items=lambda: [selected],
+        )
+
+        Canvas.bind_text_grid_control(canvas, selected, 2)
+        shape.blk_item = hovered
+        Canvas.clear_text_grid_control(canvas)
+
+        self.assertEqual(
+            calls,
+            [
+                ('shape', selected),
+                ('grid', selected, 2),
+                ('hide', selected),
+                ('shape', selected),
+            ],
+        )
+
+    def test_grid_overlay_tracks_composed_stack_in_both_writing_modes(self):
+        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        points = list(grid.control_points)
+        points[4] = (0.62, 0.38)
+        stack = transform_state(
+            SlantTextTransform(1.08, 0.95, 4.0),
+            grid.with_control_points(points),
+            PerspectiveTextTransform(0.2, 25.0),
+        )
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                scene = QGraphicsScene()
+                base = QGraphicsRectItem(QRectF(0, 0, 900, 700))
+                scene.addItem(base)
+                item, _ = self._make_pair(0, TEST_LINES[0], vertical)
+                item.setParentItem(base)
+                item.setRotation(12.0)
+                item.set_text_transform(stack)
+                controller = TextGridTransformControl()
+                controller.setParentItem(base)
+                controller.bind(
+                    item,
+                    1,
+                    begin_edit=lambda _index: None,
+                    preview_points=lambda _index, _points: None,
+                    commit_points=lambda _index, _points: None,
+                    cancel_edit=lambda _index: None,
+                )
+
+                compiled = item.geometry_controller.compiled
+                grid_mapper = compiled.stages[1].mapper
+                prefix_mapper = compiled.stages[0].mapper
+                for handle, stage_point in zip(
+                    controller.handles,
+                    grid_mapper.control_source_points(),
+                ):
+                    source = prefix_mapper.inverse_point(
+                        stage_point, extrapolate=True
+                    )
+                    expected = item.mapToScene(
+                        compiled.surface_mapper.forward_point(source)
+                    )
+                    actual = handle.scenePos()
+                    self.assertAlmostEqual(
+                        actual.x(), expected.x(), places=5
+                    )
+                    self.assertAlmostEqual(
+                        actual.y(), expected.y(), places=5
+                    )
+
+                image = QImage(
+                    900, 700, QImage.Format.Format_ARGB32_Premultiplied
+                )
+                image.fill(QColor(0, 0, 0, 0))
+                painter = QPainter(image)
+                scene.render(painter)
+                painter.end()
+                self.assertIsNotNone(
+                    controller._overlay_renderer.cached_pixmap
+                )
+                destination = controller._overlay_mapper.visual_bounds(
+                    controller._overlay_source_rect
+                )
+                item_to_control, valid = item.itemTransform(controller)
+                self.assertTrue(valid)
+                self.assertTrue(
+                    controller.boundingRect().contains(
+                        item_to_control.mapRect(destination)
+                    )
+                )
+                self.assertGreaterEqual(
+                    controller._overlay_renderer.cached_pixmap.width(),
+                    math.ceil(destination.width()),
+                )
+                self.assertGreaterEqual(
+                    controller._overlay_renderer.cached_pixmap.height(),
+                    math.ceil(destination.height()),
+                )
+                mapper = controller._overlay_mapper
+                cached_pixmap_key = (
+                    controller._overlay_renderer.cached_pixmap.cacheKey()
+                )
+                cached_remap = controller._overlay_renderer.cached_remap
+                item.setPos(item.pos() + QPointF(25.0, 15.0))
+                item.moving.emit(item)
+                self.assertIs(controller._overlay_mapper, mapper)
+
+                image.fill(QColor(0, 0, 0, 0))
+                painter = QPainter(image)
+                scene.render(painter)
+                painter.end()
+                self.assertEqual(
+                    controller._overlay_renderer.cached_pixmap.cacheKey(),
+                    cached_pixmap_key,
+                )
+                self.assertIs(
+                    controller._overlay_renderer.cached_remap,
+                    cached_remap,
+                )
+                controller.clear()
+                item.geometry_controller.release_render_resources()
+                scene.removeItem(base)
+
+    def test_grid_controller_double_click_enters_edit_and_deselects(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        view.resize(800, 500)
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        item.set_text_transform(transform_state(
+            GridTextTransform().normalized()
+        ))
+        controller = TextGridTransformControl()
+        controller.setParentItem(base)
+        previous_register = getattr(shared, 'register_view_widget', None)
+        shared.register_view_widget = lambda *_args: None
+        self.addCleanup(
+            lambda: (
+                delattr(shared, 'register_view_widget')
+                if previous_register is None
+                else setattr(
+                    shared, 'register_view_widget', previous_register
+                )
+            )
+        )
+        panel = TextTransformPanel(
+            'Text Transform', 'test_transform', 'test_transform_expand'
+        )
+        self.addCleanup(panel.deleteLater)
+        stack = QUndoStack()
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        SW.canvas = SimpleNamespace(
+            push_undo_command=stack.push,
+            bind_text_grid_control=lambda bound_item, index, **callbacks:
+            controller.bind(bound_item, index, **callbacks),
+            clear_text_grid_control=controller.clear,
+        )
+        session = TextTransformEditSession(SimpleNamespace(), panel)
+        session.replace_targets([item])
+        panel.set_transform_items([item])
+        panel.transform_panels[0].card_clicked.emit(0)
+        item.begin_edit.connect(
+            lambda _index: session.select_transform(-1)
+        )
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+
+        scene_pos = item.geometry_controller.map_source_to_scene(
+            item.boundingRect().center()
+        )
+        QTest.mouseDClick(
+            view.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            view.mapFromScene(scene_pos),
+        )
+        self.app.processEvents()
+
+        self.assertTrue(item.isEditing())
+        self.assertIsNone(session.selected_index)
+        self.assertIsNone(panel.selected_transform_index)
+        self.assertIsNone(controller.item)
+        self.assertFalse(controller.isVisible())
+
+        item.endEdit()
+        self.app.processEvents()
+        self.assertFalse(controller.isVisible())
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
+    def test_grid_controller_group_drag_moves_selected_circle_handles(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        points = list(grid.control_points)
+        points[4] = (0.56, 0.44)
+        grid = grid.with_control_points(points)
+        item.set_text_transform(transform_state(grid))
+        controller = TextGridTransformControl()
+        controller.setParentItem(base)
+        begun = []
+        previews = []
+        committed = []
+        canceled = []
+        controller.bind(
+            item,
+            0,
+            begin_edit=begun.append,
+            preview_points=lambda index, points: previews.append(
+                (index, points)
+            ),
+            commit_points=lambda index, points: committed.append(
+                (index, points)
+            ),
+            cancel_edit=canceled.append,
+        )
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+
+        self.assertEqual(len(controller.handles), 9)
+        self.assertFalse(controller.path().isEmpty())
+        self.assertIsNotNone(controller._overlay_mapper)
+        grid_mapper = controller._overlay_mapper.stages[0]
+        original_forward_point = grid_mapper.forward_point
+        original_inverse_point = grid_mapper.inverse_point
+        grid_mapper.forward_point = lambda _point: self.fail(
+            'controller handles must use batched forward mapping'
+        )
+        try:
+            controller.requestGeometryRefresh()
+        finally:
+            grid_mapper.forward_point = original_forward_point
+        grid_mapper.inverse_point = lambda *_args, **_kwargs: self.fail(
+            'dragging a Grid handle must not invert that same Grid stage'
+        )
+
+        try:
+            image = QImage(800, 500, QImage.Format.Format_ARGB32_Premultiplied)
+            image.fill(QColor(0, 0, 0, 0))
+            painter = QPainter(image)
+            scene.render(painter)
+            painter.end()
+            self.assertIsNotNone(controller._overlay_renderer.cached_pixmap)
+            controller._set_selected_indices({0})
+            start = controller.handles[1].scenePos()
+            self.assertTrue(controller.begin_handle_drag(
+                1, start, Qt.KeyboardModifier.ControlModifier
+            ))
+            self.assertEqual(controller.selected_indices, {0, 1})
+            self.assertTrue(controller.move_handle_drag(
+                start + QPointF(20.0, 10.0)
+            ))
+            self.assertTrue(controller.finish_handle_drag())
+        finally:
+            grid_mapper.inverse_point = original_inverse_point
+
+        self.assertEqual(begun, [0])
+        self.assertEqual(canceled, [])
+        self.assertTrue(previews)
+        self.assertEqual(len(committed), 1)
+        moved = committed[0][1]
+        delta0 = (
+            moved[0][0] - grid.control_points[0][0],
+            moved[0][1] - grid.control_points[0][1],
+        )
+        delta1 = (
+            moved[1][0] - grid.control_points[1][0],
+            moved[1][1] - grid.control_points[1][1],
+        )
+        self.assertAlmostEqual(delta0[0], delta1[0], places=6)
+        self.assertAlmostEqual(delta0[1], delta1[1], places=6)
+        self.assertEqual(moved[2], grid.control_points[2])
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
+    def test_grid_modal_shortcuts_reset_modes_and_commit_once(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        item.set_text_transform(transform_state(grid))
+        controller = TextGridTransformControl()
+        controller.setParentItem(base)
+        begun = []
+        previews = []
+        committed = []
+        canceled = []
+        controller.bind(
+            item,
+            0,
+            begin_edit=begun.append,
+            preview_points=lambda index, points: previews.append(
+                (index, points)
+            ),
+            commit_points=lambda index, points: committed.append(
+                (index, points)
+            ),
+            cancel_edit=canceled.append,
+        )
+        controller._set_selected_indices({0, 1})
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+        start = controller.handles[0].scenePos()
+        controller._cursor_scene_position = lambda: (view, start)
+
+        def press(key):
+            return controller.handle_key_press(QKeyEvent(
+                QEvent.Type.KeyPress,
+                key,
+                Qt.KeyboardModifier.NoModifier,
+            ))
+
+        self.assertTrue(press(Qt.Key.Key_G))
+        self.assertTrue(controller._update_modal(start + QPointF(25, 10)))
+        self.assertEqual(begun, [0])
+        self.assertTrue(previews)
+        self.assertEqual(committed, [])
+        moved = previews[-1][1]
+        self.assertNotEqual(moved, grid.control_points)
+
+        self.assertTrue(press(Qt.Key.Key_X))
+        self.assertEqual(previews[-1][1], grid.control_points)
+        self.assertTrue(controller.modal_indicator.isVisible())
+        self.assertTrue(controller._update_modal(start + QPointF(40, 30)))
+        constrained = previews[-1][1]
+        self.assertAlmostEqual(constrained[0][1], grid.control_points[0][1])
+
+        self.assertTrue(press(Qt.Key.Key_S))
+        self.assertEqual(previews[-1][1], grid.control_points)
+        self.assertEqual(controller._modal_transform.mode, 'scale')
+        self.assertTrue(controller._update_modal(start + QPointF(70, 30)))
+        self.assertTrue(press(Qt.Key.Key_R))
+        self.assertEqual(previews[-1][1], grid.control_points)
+        self.assertEqual(controller._modal_transform.mode, 'rotate')
+        self.assertTrue(controller._update_modal(start + QPointF(50, 60)))
+        self.assertTrue(controller._finish_modal(False))
+        self.assertEqual(canceled, [0])
+        self.assertEqual(committed, [])
+
+        self.assertTrue(press(Qt.Key.Key_G))
+        self.assertTrue(controller._update_modal(start + QPointF(20, 15)))
+        self.assertTrue(controller._finish_modal(True))
+        self.assertEqual(begun, [0, 0])
+        self.assertEqual(len(committed), 1)
+        self.assertEqual(canceled, [0])
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
+    def test_canvas_routes_grid_modal_key_and_unheld_mouse_following(self):
+        canvas = Canvas()
+        canvas.gv.resize(800, 500)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        item.set_text_transform(transform_state(
+            GridTextTransform(2, 2, 'bilinear').normalized()
+        ))
+        previews = []
+        committed = []
+        canceled = []
+        canvas.bind_text_grid_control(
+            item,
+            0,
+            begin_edit=lambda _index: None,
+            preview_points=lambda index, points: previews.append(
+                (index, points)
+            ),
+            commit_points=lambda index, points: committed.append(
+                (index, points)
+            ),
+            cancel_edit=canceled.append,
+        )
+        controller = canvas.txtblkGridControl
+        controller._set_selected_indices({0, 1})
+        canvas.gv.show()
+        canvas.gv.setFocus()
+        self.app.processEvents()
+        self.addCleanup(canvas.gv.close)
+        start = controller.handles[0].scenePos()
+        controller._cursor_scene_position = lambda: (canvas.gv, start)
+
+        QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_G)
+        self.app.processEvents()
+        self.assertTrue(controller._modal_transform.active)
+        target = start + QPointF(35, 20)
+        viewport_target = canvas.gv.mapFromScene(target)
+        QTest.mouseMove(canvas.gv.viewport(), viewport_target)
+        self.app.processEvents()
+        self.assertTrue(previews)
+        self.assertEqual(committed, [])
+
+        QTest.mouseClick(
+            canvas.gv.viewport(),
+            Qt.MouseButton.RightButton,
+            Qt.KeyboardModifier.NoModifier,
+            viewport_target,
+        )
+        self.app.processEvents()
+        self.assertFalse(controller._modal_transform.active)
+        self.assertEqual(committed, [])
+        self.assertEqual(canceled, [0])
+
+        QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_G)
+        self.app.processEvents()
+        self.assertTrue(controller._modal_transform.active)
+        viewport_target = canvas.gv.mapFromScene(target + QPointF(20, 10))
+        QTest.mouseMove(canvas.gv.viewport(), viewport_target)
+        self.app.processEvents()
+        QTest.mouseClick(
+            canvas.gv.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            viewport_target,
+        )
+        self.app.processEvents()
+        self.assertFalse(controller._modal_transform.active)
+        self.assertEqual(len(committed), 1)
+        self.assertEqual(canceled, [0])
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+
+    def test_draw_tool_shortcut_routes_rotate_to_selected_grid_handles(self):
+        canvas = Canvas()
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        item.set_text_transform(transform_state(
+            GridTextTransform(2, 2, 'bilinear').normalized()
+        ))
+        canvas.bind_text_grid_control(
+            item,
+            0,
+            begin_edit=lambda _index: None,
+            preview_points=lambda _index, _points: None,
+            commit_points=lambda _index, _points: None,
+            cancel_edit=lambda _index: None,
+        )
+        controller = canvas.txtblkGridControl
+        controller._set_selected_indices({0, 1})
+        start = controller.handles[0].scenePos()
+        controller._cursor_scene_position = lambda: (canvas.gv, start)
+        drawing_tools = []
+        drawing_panel = SimpleNamespace(
+            canvas=canvas,
+            isVisible=lambda: True,
+            setCurrentToolByName=drawing_tools.append,
+        )
+
+        DrawingPanel.shortcutSetCurrentToolByName(
+            drawing_panel, 'rect', Qt.Key.Key_R
+        )
+
+        self.assertEqual(controller._modal_transform.mode, 'rotate')
+        self.assertEqual(drawing_tools, [])
+        controller._finish_modal(False)
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+
+    def test_grid_rubber_selection_can_start_on_canvas_background(self):
+        canvas = Canvas()
+        context_requests = []
+        canvas.context_menu_requested.connect(
+            lambda *args: context_requests.append(args)
+        )
+        canvas.gv.resize(800, 500)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        item.set_text_transform(transform_state(
+            GridTextTransform(2, 2, 'bilinear').normalized()
+        ))
+        canvas.bind_text_grid_control(
+            item,
+            0,
+            begin_edit=lambda _index: None,
+            preview_points=lambda _index, _points: None,
+            commit_points=lambda _index, _points: None,
+            cancel_edit=lambda _index: None,
+        )
+        controller = canvas.txtblkGridControl
+        controller._set_selected_indices({0})
+        canvas.gv.show()
+        self.app.processEvents()
+        self.addCleanup(canvas.gv.close)
+        bounds = controller.mapRectToScene(controller.path().boundingRect())
+        start = bounds.bottomRight() + QPointF(30.0, 30.0)
+        end = bounds.topLeft() - QPointF(10.0, 10.0)
+        canvas.setSceneRect(QRectF(start, end).normalized().adjusted(
+            -50.0, -50.0, 50.0, 50.0
+        ))
+        canvas.gv.fitInView(
+            canvas.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio
+        )
+        self.app.processEvents()
+        self.assertTrue(canvas._is_grid_rubber_origin(start))
+
+        start_view = canvas.gv.mapFromScene(start)
+        end_view = canvas.gv.mapFromScene(end)
+        QTest.mousePress(
+            canvas.gv.viewport(),
+            Qt.MouseButton.RightButton,
+            Qt.KeyboardModifier.NoModifier,
+            start_view,
+        )
+        self.app.processEvents()
+        self.assertTrue(canvas.rubber_band.isVisible())
+        QTest.mouseMove(canvas.gv.viewport(), end_view)
+        QTest.mouseRelease(
+            canvas.gv.viewport(),
+            Qt.MouseButton.RightButton,
+            Qt.KeyboardModifier.NoModifier,
+            end_view,
+        )
+        self.app.processEvents()
+
+        self.assertEqual(
+            controller.selected_indices,
+            set(range(len(controller.handles))),
+        )
+        self.assertFalse(canvas.rubber_band.isVisible())
+        self.assertEqual(context_requests, [])
+
+        controller._set_selected_indices(set())
+        inside = (
+            controller.handles[0].scenePos()
+            + controller.handles[4].scenePos()
+        ) / 2.0
+        inside_end = controller.handles[0].scenePos() - QPointF(5.0, 5.0)
+        self.assertTrue(canvas._is_grid_rubber_origin(inside))
+        QTest.mousePress(
+            canvas.gv.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            canvas.gv.mapFromScene(inside),
+        )
+        QTest.mouseMove(
+            canvas.gv.viewport(), canvas.gv.mapFromScene(inside_end)
+        )
+        QTest.mouseRelease(
+            canvas.gv.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            canvas.gv.mapFromScene(inside_end),
+        )
+        self.app.processEvents()
+        self.assertEqual(controller.selected_indices, {0})
+        self.assertEqual(context_requests, [])
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+        canvas.removeItem(item)
+
+    def test_canvas_rubber_band_still_selects_scene_items(self):
+        canvas = Canvas()
+        canvas.imgtrans_proj = SimpleNamespace(img_valid=True)
+        canvas.gv.resize(500, 350)
+        selectable = QGraphicsRectItem(QRectF(100, 100, 60, 40))
+        selectable.setFlag(
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable,
+            True,
+        )
+        selectable.setParentItem(canvas.baseLayer)
+        canvas.setSceneRect(0, 0, 300, 240)
+        canvas.gv.fitInView(
+            canvas.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio
+        )
+        canvas.gv.show()
+        self.app.processEvents()
+        self.addCleanup(canvas.gv.close)
+        start = canvas.gv.mapFromScene(QPointF(80, 80))
+        end = canvas.gv.mapFromScene(QPointF(180, 160))
+
+        QTest.mousePress(
+            canvas.gv.viewport(),
+            Qt.MouseButton.RightButton,
+            Qt.KeyboardModifier.NoModifier,
+            start,
+        )
+        QTest.mouseMove(canvas.gv.viewport(), end)
+        self.app.processEvents()
+
+        self.assertTrue(canvas.rubber_band.isVisible())
+        self.assertTrue(selectable.isSelected())
+        QTest.mouseRelease(
+            canvas.gv.viewport(),
+            Qt.MouseButton.RightButton,
+            Qt.KeyboardModifier.NoModifier,
+            end,
+        )
+        self.app.processEvents()
+        self.assertFalse(canvas.rubber_band.isVisible())
+
     def test_curvature_resize_uses_frozen_drag_coordinates(self):
         for vertical in (False, True):
             for curvature in (-0.95, 0.95):
@@ -1948,9 +3404,73 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                     view.close()
                     self.app.processEvents()
 
+    def test_grid_resize_continues_from_the_previous_drag_sample(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        base = QGraphicsRectItem(QRectF(0, 0, 900, 700))
+        scene.addItem(base)
+        block = TextBlock(
+            [180, 120, 600, 300],
+            _bounding_rect=[180, 120, 420, 180],
+            translation=TEST_LINES[0],
+        )
+        item = TextBlkItem(block, 0)
+        item.setParentItem(base)
+        grid = GridTextTransform(2, 2, 'bilinear').normalized()
+        points = list(grid.control_points)
+        points[4] = (0.35, 0.65)
+        item.set_text_transform(transform_state(
+            grid.with_control_points(points)
+        ))
+        control = TextBlkShapeControl(view)
+        control.setParentItem(base)
+        control.setBlkItem(item)
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+
+        handle_index = 4
+        initial_transform = item.sceneTransform()
+        mapper = item.geometry_controller.visual_mapper
+        initial_source = QPointF(
+            item.geometry_controller.source_handle_points()[handle_index]
+        )
+        initial_scene = initial_transform.map(
+            mapper.forward_point(initial_source)
+        )
+        control.beginResize(handle_index, initial_scene)
+        frozen_mapper = control._resize_scene_to_source
+        calls = []
+
+        def tracked_mapper(scene_point, previous_source):
+            result = frozen_mapper(scene_point, previous_source)
+            calls.append((QPointF(previous_source), QPointF(result)))
+            return result
+
+        control._resize_scene_to_source = tracked_mapper
+        for extension in (15.0, 30.0, 45.0):
+            target = initial_source + QPointF(extension, extension)
+            control.resizeFromScene(
+                handle_index,
+                initial_transform.map(mapper.forward_point(target)),
+            )
+
+        self.assertEqual(len(calls), 3)
+        for previous, prior_result in zip(
+            (call[0] for call in calls[1:]),
+            (call[1] for call in calls[:-1]),
+        ):
+            self.assertAlmostEqual(previous.x(), prior_result.x(), places=6)
+            self.assertAlmostEqual(previous.y(), prior_result.y(), places=6)
+        control.finishResize()
+        control.setBlkItem(None)
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
     def test_extended_transform_shape_control_tracks_geometry(self):
         for vertical in (False, True):
             for state in (
+                FIRST_TRANSFORM,
                 transform_state(
                     PerspectiveTextTransform(0.55, 35.0)
                 ),
@@ -1958,6 +3478,14 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                 transform_state(
                     PerspectiveTextTransform(0.55, 35.0),
                     CurvatureTextTransform(0.65),
+                ),
+                transform_state(
+                    GridTextTransform().normalized().with_control_points((
+                        (0.0, 0.0),
+                        (1.08, 0.04),
+                        (-0.04, 1.0),
+                        (1.0, 1.0),
+                    ))
                 ),
             ):
                 with self.subTest(
@@ -2010,6 +3538,25 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                             control.visualPolygonInScene().boundingRect(),
                             item.visual_bounds_in_scene(),
                         )
+
+                    item.setFontSize(38, repaint_background=False)
+                    self.app.processEvents()
+                    expected = (
+                        item.geometry_controller
+                        .visual_handle_points_in_scene()
+                    )
+                    for index, point in enumerate(expected):
+                        actual = control.handleScenePoint(index)
+                        self.assertAlmostEqual(
+                            actual.x(), point.x(), places=5
+                        )
+                        self.assertAlmostEqual(
+                            actual.y(), point.y(), places=5
+                        )
+                    self.assertEqual(
+                        control.visualPolygonInScene().boundingRect(),
+                        item.visual_bounds_in_scene(),
+                    )
                     control.setBlkItem(None)
                     item.geometry_controller.release_render_resources()
                     scene.removeItem(base)
@@ -2157,7 +3704,8 @@ class TextTransformShapeControlTest(TextTransformTestBase):
 
         on_black = render(QColor(Qt.GlobalColor.black))
         on_white = render(QColor(Qt.GlobalColor.white))
-        contrast_pixels = []
+        light_on_black = []
+        dark_on_white = []
         for y in range(on_black.height()):
             for x in range(on_black.width()):
                 black_pixel = on_black.pixelColor(x, y)
@@ -2166,12 +3714,16 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                     black_pixel.red() > 220
                     and black_pixel.green() > 220
                     and black_pixel.blue() > 220
-                    and white_pixel.red() < 35
-                    and white_pixel.green() < 35
-                    and white_pixel.blue() < 35
                 ):
-                    contrast_pixels.append((x, y))
-        self.assertTrue(contrast_pixels)
+                    light_on_black.append((x, y))
+                if (
+                    white_pixel.red() < 120
+                    and white_pixel.green() < 120
+                    and white_pixel.blue() < 120
+                ):
+                    dark_on_white.append((x, y))
+        self.assertTrue(light_on_black)
+        self.assertTrue(dark_on_white)
 
     def test_item_owned_selection_guide_can_be_suppressed_for_export(self):
         for transform in (NEUTRAL, FIRST_TRANSFORM):

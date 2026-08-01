@@ -2006,6 +2006,10 @@ QFrame#TextTransformParameterPanel {
     border-radius: 5px;
 }
 
+QFrame#TextTransformParameterPanel[selected="true"] {
+    border: 2px solid rgb(30, 147, 229);
+}
+
 QFrame#TextTransformParameterPanel QLabel,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelActions,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelControls {

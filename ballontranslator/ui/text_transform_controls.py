@@ -8,6 +8,7 @@ from qtpy.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QComboBox,
     QLineEdit,
     QSizePolicy,
     QStyle,
@@ -58,7 +59,7 @@ class TransformDragLabel(SmallSizeControlLabel):
 
 
 class _TransformValueEdit(QLineEdit):
-    """Line edit with the Advanced-panel logical width contract."""
+    """Line edit with the transform-panel logical width contract."""
 
     def sizeHint(self):
         hint = super().sizeHint()
@@ -72,16 +73,17 @@ class _TransformValueEdit(QLineEdit):
 
 
 class CommittedTransformControl(QWidget):
-    """One Advanced-panel-only committed numeric transform editor."""
+    """One committed numeric transform editor."""
 
     IDLE = 'IDLE'
     PENDING_TEXT = 'PENDING_TEXT'
     DRAG_PREVIEW = 'DRAG_PREVIEW'
 
-    commit_requested = Signal(str, float)
+    commit_requested = Signal(str, object)
     preview_requested = Signal(str, float)
     drag_commit_requested = Signal(str, float)
     preview_canceled = Signal(str)
+    user_interacted = Signal()
 
     def __init__(
         self,
@@ -93,6 +95,7 @@ class CommittedTransformControl(QWidget):
         suffix: str,
         drag_step: float,
         parent=None,
+        decimals: int = 1,
     ):
         super().__init__(parent)
         if display_factor == 0 or not math.isfinite(display_factor):
@@ -107,6 +110,7 @@ class CommittedTransformControl(QWidget):
         self.canonical_maximum = float(canonical_maximum)
         self.suffix = suffix
         self.drag_step = float(drag_step)
+        self.decimals = max(0, int(decimals))
         self.state = self.IDLE
         self._model_value = None
         self._drag_delta = 0.0
@@ -149,7 +153,10 @@ class CommittedTransformControl(QWidget):
         return value / self.display_factor
 
     def _format(self, canonical_value: float) -> str:
-        return f'{self._canonical_to_display(canonical_value):.1f}{self.suffix}'
+        return (
+            f'{self._canonical_to_display(canonical_value):.{self.decimals}f}'
+            f'{self.suffix}'
+        )
 
     def _parse(self, text: str) -> float:
         text = text.strip()
@@ -179,6 +186,7 @@ class CommittedTransformControl(QWidget):
         self._restore_display()
 
     def _on_text_edited(self):
+        self.user_interacted.emit()
         if self.state != self.DRAG_PREVIEW:
             self.state = self.PENDING_TEXT
 
@@ -211,7 +219,10 @@ class CommittedTransformControl(QWidget):
             ):
                 event.accept()
                 return True
-            if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            if (
+                event.type() == QEvent.Type.KeyPress
+                and event.key() == Qt.Key.Key_Escape
+            ):
                 self.cancel_pending()
                 event.accept()
                 return True
@@ -220,6 +231,7 @@ class CommittedTransformControl(QWidget):
         return super().eventFilter(watched, event)
 
     def _start_drag(self):
+        self.user_interacted.emit()
         self.commit_pending()
         self.state = self.DRAG_PREVIEW
         self._drag_delta = 0.0
@@ -273,6 +285,48 @@ class CommittedTransformControl(QWidget):
         self.preview_canceled.emit(self.param_name)
 
 
+class CommittedTransformChoiceControl(QWidget):
+    """One immediately committed transform choice."""
+
+    commit_requested = Signal(str, object)
+    user_interacted = Signal()
+
+    def __init__(self, title, param_name, choices, parent=None):
+        super().__init__(parent)
+        self.param_name = param_name
+        self.choices = tuple(choices)
+        self.label = QLabel(title, self)
+        self.label.setWordWrap(True)
+        self.combobox = QComboBox(self)
+        for value, label in self.choices:
+            self.combobox.addItem(label(), value)
+        self.combobox.activated.connect(self._commit_index)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.label)
+        layout.addWidget(self.combobox)
+
+    def _commit_index(self, index):
+        self.user_interacted.emit()
+        self.commit_requested.emit(
+            self.param_name, self.combobox.itemData(index)
+        )
+
+    def set_model_value(self, value):
+        index = self.combobox.findData(value)
+        self.combobox.setCurrentIndex(index)
+
+    def cancel_pending(self):
+        pass
+
+    def cancel_preview(self):
+        pass
+
+    def commit_pending(self):
+        return False
+
+
 class TransformParameterPanel(QFrame):
     """One indexed transform operation with independently owned controls.
 
@@ -280,18 +334,21 @@ class TransformParameterPanel(QFrame):
     'TransformParameterPanel'
     """
 
-    commit_requested = Signal(int, str, float)
+    commit_requested = Signal(int, str, object)
     preview_requested = Signal(int, str, float)
     drag_commit_requested = Signal(int, str, float)
     preview_canceled = Signal(int, str)
     remove_requested = Signal(int)
     move_requested = Signal(int, int)
+    card_clicked = Signal(int)
+    selected = Signal(int)
 
     def __init__(self, index, variant, parent=None):
         super().__init__(parent)
         self.index = int(index)
         self.variant = variant
         self._hovered = False
+        self._selected = False
         self.setObjectName('TextTransformParameterPanel')
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(
@@ -362,32 +419,45 @@ class TransformParameterPanel(QFrame):
         controls_widget.setObjectName('TextTransformPanelControls')
         controls_layout = AdaptiveWrapLayout(controls_widget)
         for spec in variant.controls:
-            control = CommittedTransformControl(
-                spec.label(),
-                spec.attribute_name,
-                spec.factor,
-                spec.minimum,
-                spec.maximum,
-                spec.suffix,
-                1.0,
-                controls_widget,
-            )
+            if spec.choices:
+                control = CommittedTransformChoiceControl(
+                    spec.label(),
+                    spec.attribute_name,
+                    spec.choices,
+                    controls_widget,
+                )
+            else:
+                control = CommittedTransformControl(
+                    spec.label(),
+                    spec.attribute_name,
+                    spec.factor,
+                    spec.minimum,
+                    spec.maximum,
+                    spec.suffix,
+                    1.0,
+                    controls_widget,
+                    decimals=spec.decimals,
+                )
             control.commit_requested.connect(
                 lambda name, value, self=self:
                 self.commit_requested.emit(self.index, name, value)
             )
-            control.preview_requested.connect(
-                lambda name, value, self=self:
-                self.preview_requested.emit(self.index, name, value)
+            control.user_interacted.connect(
+                lambda self=self: self.selected.emit(self.index)
             )
-            control.drag_commit_requested.connect(
-                lambda name, value, self=self:
-                self.drag_commit_requested.emit(self.index, name, value)
-            )
-            control.preview_canceled.connect(
-                lambda name, self=self:
-                self.preview_canceled.emit(self.index, name)
-            )
+            if isinstance(control, CommittedTransformControl):
+                control.preview_requested.connect(
+                    lambda name, value, self=self:
+                    self.preview_requested.emit(self.index, name, value)
+                )
+                control.drag_commit_requested.connect(
+                    lambda name, value, self=self:
+                    self.drag_commit_requested.emit(self.index, name, value)
+                )
+                control.preview_canceled.connect(
+                    lambda name, self=self:
+                    self.preview_canceled.emit(self.index, name)
+                )
             self.controls[spec.attribute_name] = control
             controls_layout.addWidget(control)
 
@@ -405,6 +475,16 @@ class TransformParameterPanel(QFrame):
     def set_move_enabled(self, can_move_up: bool, can_move_down: bool) -> None:
         self.move_up_button.setEnabled(can_move_up)
         self.move_down_button.setEnabled(can_move_down)
+
+    def set_selected(self, selected: bool) -> None:
+        selected = bool(selected)
+        if self._selected == selected:
+            return
+        self._selected = selected
+        self.setProperty('selected', selected)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
 
     def set_values(self, transforms) -> None:
         for name, control in self.controls.items():
@@ -448,3 +528,8 @@ class TransformParameterPanel(QFrame):
         self._hovered = False
         self._sync_action_visibility()
         return super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.card_clicked.emit(self.index)
+        return super().mousePressEvent(event)

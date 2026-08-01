@@ -4,6 +4,7 @@ import copy
 
 from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import (
+    GridTextTransform,
     TextTransformStack,
     TextTransformState,
     create_text_transform,
@@ -34,6 +35,9 @@ class TextTransformEditSession:
         self.items = []
         self.drag_before = None
         self.drag_key = None
+        self.grid_before = None
+        self.grid_index = None
+        self.selected_index = None
 
         controls.transform_commit_requested.connect(self.commit_value)
         controls.transform_preview_requested.connect(self.preview_delta)
@@ -42,6 +46,7 @@ class TextTransformEditSession:
         controls.transform_add_requested.connect(self.add_transform)
         controls.transform_remove_requested.connect(self.remove_transform)
         controls.transform_move_requested.connect(self.move_transform)
+        controls.transform_selected.connect(self.select_transform)
 
     def has_items(self) -> bool:
         return bool(self.items)
@@ -62,7 +67,7 @@ class TextTransformEditSession:
         state: TextTransformState,
         index: int,
         param_name: str,
-        value: float,
+        value,
     ) -> TextTransformState:
         if index == GLYPH_SLANT_INDEX:
             if param_name != 'glyph_slant_angle':
@@ -82,7 +87,7 @@ class TextTransformEditSession:
         state: TextTransformState,
         index: int,
         param_name: str,
-    ) -> float:
+    ):
         if index == GLYPH_SLANT_INDEX:
             if param_name != 'glyph_slant_angle':
                 raise ValueError(f'unknown glyph transform field {param_name}')
@@ -109,6 +114,42 @@ class TextTransformEditSession:
     def _refresh_geometry(self) -> None:
         for item in self.items:
             item.update()
+
+    def _sync_grid_controller(self) -> None:
+        canvas = getattr(SW, 'canvas', None)
+        if canvas is None or not hasattr(canvas, 'bind_text_grid_control'):
+            return
+        selected = getattr(self, 'selected_index', None)
+        if selected is not None and len(self.items) == 1:
+            stack = self._state_for_item(self.items[0]).stack
+            if (
+                0 <= selected < len(stack)
+                and isinstance(stack[selected], GridTextTransform)
+            ):
+                canvas.bind_text_grid_control(
+                    self.items[0],
+                    selected,
+                    begin_edit=self.begin_grid_edit,
+                    preview_points=self.preview_grid_points,
+                    commit_points=self.commit_grid_points,
+                    cancel_edit=self.cancel_grid_edit,
+                )
+                return
+        canvas.clear_text_grid_control()
+
+    def select_transform(self, index: int) -> None:
+        index = int(index)
+        selected = index if index >= 0 else None
+        if getattr(self, 'selected_index', None) == selected:
+            self._sync_grid_controller()
+            return
+        self.cancel_grid_edit(getattr(self, 'grid_index', -1))
+        self.selected_index = selected
+        if selected is None:
+            self.controls.clear_transform_selection(emit=False)
+        else:
+            self.controls.select_transform(selected, emit=False)
+        self._sync_grid_controller()
 
     def _set_global_state(self, state: TextTransformState) -> None:
         self.host.global_format.text_transform = state.stack
@@ -152,6 +193,7 @@ class TextTransformEditSession:
             )
         if refresh_shape:
             self._refresh_geometry()
+        self._sync_grid_controller()
 
     def replace_targets(self, items) -> None:
         items = list(items)
@@ -166,8 +208,9 @@ class TextTransformEditSession:
             # model-owned state before controls are refreshed.
             self.cancel_preview()
         self.items = items
+        self._sync_grid_controller()
 
-    def commit_value(self, index: int, param_name: str, value: float) -> None:
+    def commit_value(self, index: int, param_name: str, value) -> None:
         before = self._current_states()
         if (
             index != GLYPH_SLANT_INDEX
@@ -206,7 +249,17 @@ class TextTransformEditSession:
             )
             for state in before
         ]
+        new_index = (
+            len(after[0].stack) - 1
+            if self._has_common_stack_shape(after)
+            else None
+        )
+        self.selected_index = new_index
         self._commit_states(before, after)
+        if new_index is None:
+            self.controls.clear_transform_selection(emit=False)
+        else:
+            self.controls.select_transform(new_index, emit=False)
 
     def remove_transform(self, index: int) -> None:
         self._prepare_structure_change()
@@ -218,6 +271,12 @@ class TextTransformEditSession:
         ):
             self.refresh_controls(refresh_shape=False)
             return
+        selected = getattr(self, 'selected_index', None)
+        if selected == index:
+            self.selected_index = None
+            self.controls.clear_transform_selection(emit=False)
+        elif selected is not None and selected > index:
+            self.selected_index = selected - 1
         after = []
         for state in before:
             transforms = list(state.stack)
@@ -247,6 +306,11 @@ class TextTransformEditSession:
         ):
             self.refresh_controls(refresh_shape=False)
             return
+        selected = getattr(self, 'selected_index', None)
+        if selected == index:
+            self.selected_index = destination
+        elif selected == destination:
+            self.selected_index = index
         after = []
         for state in before:
             transforms = list(state.stack)
@@ -261,6 +325,71 @@ class TextTransformEditSession:
                 )
             )
         self._commit_states(before, after)
+
+    @staticmethod
+    def _with_grid_points(state, index, points):
+        if index < 0 or index >= len(state.stack):
+            raise IndexError('grid transform index is no longer current')
+        transform = state.stack[index]
+        if not isinstance(transform, GridTextTransform):
+            raise ValueError('selected transform is not a Grid transform')
+        transforms = list(state.stack)
+        transforms[index] = transform.with_control_points(points)
+        return TextTransformState(
+            TextTransformStack(tuple(transforms)),
+            state.glyph_slant_angle,
+        )
+
+    def begin_grid_edit(self, index: int) -> None:
+        self.controls.finish_pending_transform_edits()
+        self.cancel_control_previews()
+        before = self._current_states()
+        if (
+            len(before) != 1
+            or index < 0
+            or index >= len(before[0].stack)
+            or not isinstance(before[0].stack[index], GridTextTransform)
+        ):
+            return
+        self.grid_before = before
+        self.grid_index = index
+
+    def preview_grid_points(self, index: int, points) -> None:
+        if (
+            getattr(self, 'grid_before', None) is None
+            or getattr(self, 'grid_index', None) != index
+            or len(self.items) != 1
+        ):
+            return
+        try:
+            state = self._with_grid_points(
+                self.grid_before[0], index, points
+            )
+        except (IndexError, TypeError, ValueError):
+            self.cancel_grid_edit(index)
+            return
+        self.items[0].set_text_transform(state, preview=True)
+
+    def commit_grid_points(self, index: int, points) -> None:
+        before = getattr(self, 'grid_before', None)
+        if before is None or getattr(self, 'grid_index', None) != index:
+            return
+        try:
+            after = [self._with_grid_points(before[0], index, points)]
+        except (IndexError, TypeError, ValueError):
+            self.cancel_grid_edit(index)
+            return
+        self.grid_before = None
+        self.grid_index = None
+        self._commit_states(before, after)
+
+    def cancel_grid_edit(self, _index=-1) -> None:
+        if getattr(self, 'grid_before', None) is None:
+            return
+        for item in self.items:
+            item.clear_text_transform_preview()
+        self.grid_before = None
+        self.grid_index = None
 
     def preview_delta(
         self,
@@ -356,6 +485,7 @@ class TextTransformEditSession:
         self.controls.cancel_transform_previews()
         if self.drag_before is not None:
             self.cancel_preview()
+        self.cancel_grid_edit(getattr(self, 'grid_index', -1))
 
     def resolve_for_save(self) -> None:
         """Commit typed values and cancel any still-held drag preview."""
@@ -386,5 +516,7 @@ class TextTransformEditSession:
             host.textblk_item.fontformat = copy.deepcopy(C.active_format)
         host.textblk_item = None
         self.items = []
+        self.selected_index = None
+        self._sync_grid_controller()
         host.set_active_format(host.global_format)
         host.set_globalfmt_title()

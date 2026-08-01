@@ -15,12 +15,14 @@ from qtpy.QtGui import QPainterPath, QPolygonF, QTransform
 
 from ballontranslator.utils.fontformat import (
     CurvatureTextTransform,
+    GridTextTransform,
     PerspectiveTextTransform,
     SlantTextTransform,
     TextTransformStack,
     normalize_text_transform,
 )
 from .text_effects.curvature import CurvatureMapper
+from .text_effects.grid import GridMapper
 
 
 def _text_transform_coefficients(
@@ -261,6 +263,16 @@ class TransformStageContext:
     vertical: bool
 
 
+@dataclass(frozen=True)
+class CompiledTransformStage:
+    """Runtime mapper and input geometry for one persisted stack entry."""
+
+    stack_index: int
+    transform: object
+    context: TransformStageContext
+    mapper: object = None
+
+
 def slant_transform_stage(
     transform: SlantTextTransform,
     context: TransformStageContext,
@@ -295,6 +307,18 @@ def curvature_transform_stage(
     )
 
 
+def grid_transform_stage(
+    transform: GridTextTransform,
+    context: TransformStageContext,
+):
+    """Build one normalized free-form deformation stage."""
+    return GridMapper(
+        context.logical_bounds,
+        context.source_bounds,
+        transform,
+    )
+
+
 class MatrixTransformMapper:
     """Expose a finite ``QTransform`` through the composite mapper contract."""
 
@@ -316,6 +340,28 @@ class MatrixTransformMapper:
 
     def forward_point(self, source: QPointF) -> QPointF:
         return self.matrix.map(QPointF(source))
+
+    def forward_arrays(self, source_x, source_y):
+        source_x = np.asarray(source_x, dtype=np.float64)
+        source_y = np.asarray(source_y, dtype=np.float64)
+        matrix = self.matrix
+        denominator = (
+            matrix.m13() * source_x
+            + matrix.m23() * source_y
+            + matrix.m33()
+        )
+        return (
+            (
+                matrix.m11() * source_x
+                + matrix.m21() * source_y
+                + matrix.m31()
+            ) / denominator,
+            (
+                matrix.m12() * source_x
+                + matrix.m22() * source_y
+                + matrix.m32()
+            ) / denominator,
+        )
 
     def inverse_point(
         self,
@@ -349,6 +395,9 @@ class MatrixTransformMapper:
         if return_valid:
             return source_x, source_y, valid
         return source_x, source_y
+
+    def visual_bounds(self, source_rect: QRectF) -> QRectF:
+        return self.matrix.map(rect_polygon(source_rect)).boundingRect()
 
 
 def _point_segment_distance(point: QPointF, start: QPointF, end: QPointF) -> float:
@@ -398,6 +447,7 @@ class CompositeTextTransformMapper:
         self.source_rect = QRectF(source_rect)
         self.vertical = bool(vertical)
         self._rect_path_cache = {}
+        self._visual_bounds_cache = {}
 
     @property
     def geometry_key(self):
@@ -420,6 +470,14 @@ class CompositeTextTransformMapper:
         for stage in self.stages:
             point = stage.forward_point(point)
         return point
+
+    def forward_arrays(self, source_x, source_y):
+        visual_x, visual_y = source_x, source_y
+        for stage in self.stages:
+            visual_x, visual_y = stage.forward_arrays(
+                visual_x, visual_y
+            )
+        return visual_x, visual_y
 
     def _previous_stage_sources(self, previous_source: QPointF):
         if previous_source is None:
@@ -563,7 +621,17 @@ class CompositeTextTransformMapper:
 
     def visual_bounds(self, source_rect: QRectF = None) -> QRectF:
         rect = self.source_rect if source_rect is None else source_rect
-        return self.map_rect_path(rect).boundingRect()
+        cache_key = (
+            rect.x(), rect.y(), rect.width(), rect.height()
+        )
+        cached = self._visual_bounds_cache.get(cache_key)
+        if cached is not None:
+            return QRectF(cached)
+        bounds = QRectF(rect)
+        for stage in self.stages:
+            bounds = stage.visual_bounds(bounds)
+        self._visual_bounds_cache[cache_key] = QRectF(bounds)
+        return bounds
 
     def local_tangent(self, source: QPointF) -> QPointF:
         flow = QPointF(0.0, 1.0) if self.vertical else QPointF(1.0, 0.0)
@@ -580,6 +648,7 @@ class CompiledTextTransform:
     stack: TextTransformStack
     native_matrix: QTransform
     surface_mapper: Optional[CompositeTextTransformMapper] = None
+    stages: tuple[CompiledTransformStage, ...] = ()
 
     @property
     def geometry_key(self):

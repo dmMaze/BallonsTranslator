@@ -91,6 +91,11 @@ class TextBlkItem(QGraphicsTextItem):
         else:
             self.pre_editing = True
         super().inputMethodEvent(e)
+        # Preedit text and attributes live in QTextLayout, so they need an
+        # explicit surface invalidation even when the document revision does
+        # not change. The next paint is cached until another IME event.
+        self.geometry_controller.invalidate_surface_cache()
+        self._update_nonlinear_editing_ui()
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
         super().setTextCursor(cursor)
@@ -614,7 +619,6 @@ class TextBlkItem(QGraphicsTextItem):
     def startEdit(self, pos: QPointF = None) -> None:
         self.pre_editing = False
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
-        self.geometry_controller.invalidate_surface_cache()
         self.refresh_cache_policy()
         self.setFocus()
         self.begin_edit.emit(self.idx)
@@ -630,7 +634,6 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.clearSelection()
         self.setTextCursor(cursor)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        self.geometry_controller.invalidate_surface_cache()
         self.refresh_cache_policy()
         if keep_focus:
             self.setFocus()

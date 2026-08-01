@@ -30,6 +30,9 @@ TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN = -180.0
 TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX = 180.0
 TEXT_TRANSFORM_CURVATURE_MIN = -1.0
 TEXT_TRANSFORM_CURVATURE_MAX = 1.0
+TEXT_TRANSFORM_GRID_DIVISION_MIN = 1
+TEXT_TRANSFORM_GRID_DIVISION_MAX = 32
+TEXT_TRANSFORM_GRID_SAMPLING_TYPES = ('bilinear', 'catmull_rom')
 TEXT_TRANSFORM_PRECISION = 6
 
 
@@ -133,6 +136,198 @@ class CurvatureTextTransform(TextTransform):
 
     def is_neutral(self) -> bool:
         return self.curvature == 0.0
+
+
+def _normalize_grid_division(value) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float, np.number)):
+        raise ValueError('grid divisions must be integers from 1 to 32')
+    numeric = float(value)
+    if not math.isfinite(numeric) or not numeric.is_integer():
+        raise ValueError('grid divisions must be integers from 1 to 32')
+    division = int(numeric)
+    if not (
+        TEXT_TRANSFORM_GRID_DIVISION_MIN
+        <= division
+        <= TEXT_TRANSFORM_GRID_DIVISION_MAX
+    ):
+        raise ValueError('grid divisions must be integers from 1 to 32')
+    return division
+
+
+def _default_grid_control_points(horizontal: int, vertical: int) -> tuple:
+    return tuple(
+        (
+            round(column / horizontal, TEXT_TRANSFORM_PRECISION),
+            round(row / vertical, TEXT_TRANSFORM_PRECISION),
+        )
+        for row in range(vertical + 1)
+        for column in range(horizontal + 1)
+    )
+
+
+def _normalize_grid_control_points(points, horizontal: int, vertical: int) -> tuple:
+    expected = (horizontal + 1) * (vertical + 1)
+    if not isinstance(points, (list, tuple)) or len(points) != expected:
+        raise ValueError(f'grid transform requires {expected} control points')
+    normalized = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            raise ValueError('grid control points must be finite coordinate pairs')
+        coordinates = []
+        for value in point:
+            if isinstance(value, bool) or not isinstance(
+                value, (int, float, np.number)
+            ):
+                raise ValueError(
+                    'grid control points must be finite coordinate pairs'
+                )
+            value = float(value)
+            if not math.isfinite(value):
+                raise ValueError(
+                    'grid control points must be finite coordinate pairs'
+                )
+            coordinates.append(round(value, TEXT_TRANSFORM_PRECISION))
+        normalized.append(tuple(coordinates))
+    return tuple(normalized)
+
+
+def _sample_grid_points_bilinear(
+    points: tuple,
+    horizontal: int,
+    vertical: int,
+    x: float,
+    y: float,
+) -> tuple:
+    scaled_x = min(max(x, 0.0), 1.0) * horizontal
+    scaled_y = min(max(y, 0.0), 1.0) * vertical
+    column = min(int(scaled_x), horizontal - 1)
+    row = min(int(scaled_y), vertical - 1)
+    local_x = scaled_x - column
+    local_y = scaled_y - row
+    stride = horizontal + 1
+    top_left = points[row * stride + column]
+    top_right = points[row * stride + column + 1]
+    bottom_left = points[(row + 1) * stride + column]
+    bottom_right = points[(row + 1) * stride + column + 1]
+    return tuple(
+        (1.0 - local_y)
+        * ((1.0 - local_x) * top_left[axis] + local_x * top_right[axis])
+        + local_y
+        * ((1.0 - local_x) * bottom_left[axis] + local_x * bottom_right[axis])
+        for axis in range(2)
+    )
+
+
+def _resample_grid_control_points(
+    points: tuple,
+    old_horizontal: int,
+    old_vertical: int,
+    new_horizontal: int,
+    new_vertical: int,
+) -> tuple:
+    return tuple(
+        _sample_grid_points_bilinear(
+            points,
+            old_horizontal,
+            old_vertical,
+            column / new_horizontal,
+            row / new_vertical,
+        )
+        for row in range(new_vertical + 1)
+        for column in range(new_horizontal + 1)
+    )
+
+
+@dataclass(frozen=True)
+class GridTextTransform(TextTransform):
+    """Free-form grid deformation stored in normalized logical coordinates.
+
+    Division counts describe cells, so the neutral 1 by 1 grid has four
+    corner handles.
+
+    >>> len(GridTextTransform().normalized().control_points)
+    4
+    >>> GridTextTransform(horizontal_divisions=2).normalized().is_neutral()
+    True
+    """
+
+    horizontal_divisions: int = 1
+    vertical_divisions: int = 1
+    sampling: str = 'bilinear'
+    control_points: tuple = ()
+    transform_type: str = dataclass_field(init=False, default='grid')
+    is_nonlinear: ClassVar[bool] = True
+
+    def __post_init__(self) -> None:
+        if self.control_points:
+            try:
+                points = tuple(tuple(point) for point in self.control_points)
+            except TypeError as error:
+                raise ValueError(
+                    'grid control points must be coordinate pairs'
+                ) from error
+            object.__setattr__(self, 'control_points', points)
+
+    def normalized(self) -> "GridTextTransform":
+        horizontal = _normalize_grid_division(self.horizontal_divisions)
+        vertical = _normalize_grid_division(self.vertical_divisions)
+        if self.sampling not in TEXT_TRANSFORM_GRID_SAMPLING_TYPES:
+            raise ValueError(
+                f'unsupported grid sampling type {self.sampling!r}'
+            )
+        points = (
+            _normalize_grid_control_points(
+                self.control_points, horizontal, vertical
+            )
+            if self.control_points
+            else _default_grid_control_points(horizontal, vertical)
+        )
+        return GridTextTransform(
+            horizontal,
+            vertical,
+            self.sampling,
+            points,
+        )
+
+    def with_value(self, name: str, value) -> "GridTextTransform":
+        current = self.normalized()
+        if name in {'horizontal_divisions', 'vertical_divisions'}:
+            horizontal = (
+                _normalize_grid_division(value)
+                if name == 'horizontal_divisions'
+                else current.horizontal_divisions
+            )
+            vertical = (
+                _normalize_grid_division(value)
+                if name == 'vertical_divisions'
+                else current.vertical_divisions
+            )
+            points = _resample_grid_control_points(
+                current.control_points,
+                current.horizontal_divisions,
+                current.vertical_divisions,
+                horizontal,
+                vertical,
+            )
+            return GridTextTransform(
+                horizontal,
+                vertical,
+                current.sampling,
+                points,
+            ).normalized()
+        if name == 'sampling':
+            return replace(current, sampling=value).normalized()
+        return super().with_value(name, value)
+
+    def with_control_points(self, points) -> "GridTextTransform":
+        return replace(self, control_points=tuple(points)).normalized()
+
+    def is_neutral(self) -> bool:
+        normalized = self.normalized()
+        return normalized.control_points == _default_grid_control_points(
+            normalized.horizontal_divisions,
+            normalized.vertical_divisions,
+        )
 
 
 @dataclass(frozen=True)
@@ -264,6 +459,7 @@ TEXT_TRANSFORM_TYPES = {
     'slant': SlantTextTransform,
     'perspective': PerspectiveTextTransform,
     'curvature': CurvatureTextTransform,
+    'grid': GridTextTransform,
 }
 
 
@@ -317,7 +513,13 @@ def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
         )
     transform = transform_class(**payload)
     normalized = transform.normalized()
-    if transform != normalized:
+    comparison = transform
+    if isinstance(transform, GridTextTransform) and not transform.control_points:
+        comparison = replace(
+            transform,
+            control_points=normalized.control_points,
+        )
+    if comparison != normalized:
         raise ValueError(
             f'persisted {transform_type} transform values must be canonical'
         )

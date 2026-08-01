@@ -586,6 +586,7 @@ class SceneTextManager(QObject):
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]
+        self.formatpanel.text_transform_editor.select_transform(-1)
         self.txtblkShapeControl.setBlkItem(blk_item)
         self.canvas.editing_textblkitem = blk_item
         self.formatpanel.set_textblk_item(blk_item)
@@ -641,6 +642,12 @@ class SceneTextManager(QObject):
         if self.is_editting():
             return
         blk_item = self.textblk_item_list[blk_id]
+        if self.canvas.txtblkGridControl.item is blk_item:
+            shape = self.txtblkShapeControl
+            if shape.blk_item is not blk_item:
+                shape.setBlkItem(blk_item)
+            shape.hide()
+            return
         if not blk_item.hasFocus():
             self.txtblkShapeControl.setBlkItem(blk_item)
 

@@ -5,10 +5,8 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMenu,
     QSizePolicy,
     QStyle,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -25,15 +23,7 @@ from .custom_widget import (
 )
 from .custom_widget.scrollbar import ScrollBar
 from .adaptive_wrap_layout import AdaptiveWrapLayout
-from .text_transform_controls import (
-    CommittedTransformControl,
-    TransformParameterPanel,
-)
-from .text_transform_variants import (
-    GLYPH_SLANT_CONTROL,
-    TEXT_TRANSFORM_VARIANTS,
-)
-from ballontranslator.utils.fontformat import FontFormat, TextTransformState
+from ballontranslator.utils.fontformat import FontFormat
 
 def _word_wrap_label(label: QLabel):
     label.setWordWrap(True)
@@ -252,13 +242,6 @@ class TextGradientGroup(QGroupBox):
 class TextAdvancedFormatPanel(PanelArea):
 
     param_changed = Signal(str, object)
-    transform_commit_requested = Signal(int, str, float)
-    transform_preview_requested = Signal(int, str, float)
-    transform_drag_commit_requested = Signal(int, str, float)
-    transform_preview_canceled = Signal(int, str)
-    transform_add_requested = Signal(str)
-    transform_remove_requested = Signal(int)
-    transform_move_requested = Signal(int, int)
 
     def __init__(
         self,
@@ -302,84 +285,6 @@ class TextAdvancedFormatPanel(PanelArea):
         self.scrollContent.after_resized.connect(
             self._schedule_geometry_update
         )
-
-        self.transform_group = QGroupBox(
-            self.tr('Transform'), self.scrollContent
-        )
-        self.transform_group.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-
-        self.transform_variants = TEXT_TRANSFORM_VARIANTS
-        glyph = GLYPH_SLANT_CONTROL
-        self.glyph_slant_control = CommittedTransformControl(
-            glyph.label(),
-            glyph.attribute_name,
-            glyph.factor,
-            glyph.minimum,
-            glyph.maximum,
-            glyph.suffix,
-            1.0,
-            self.transform_group,
-        )
-        setattr(self, glyph.name, self.glyph_slant_control)
-        self.glyph_slant_control.commit_requested.connect(
-            lambda name, value:
-            self.transform_commit_requested.emit(-1, name, value)
-        )
-        self.glyph_slant_control.preview_requested.connect(
-            lambda name, value:
-            self.transform_preview_requested.emit(-1, name, value)
-        )
-        self.glyph_slant_control.drag_commit_requested.connect(
-            lambda name, value:
-            self.transform_drag_commit_requested.emit(-1, name, value)
-        )
-        self.glyph_slant_control.preview_canceled.connect(
-            lambda name: self.transform_preview_canceled.emit(-1, name)
-        )
-
-        self.add_transform_button = QToolButton(self.transform_group)
-        self.add_transform_button.setObjectName('AddTextTransformButton')
-        self.add_transform_button.setText(self.tr('Add Transform'))
-        self.add_transform_button.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
-        self.add_transform_button.setPopupMode(
-            QToolButton.ToolButtonPopupMode.InstantPopup
-        )
-        add_menu = QMenu(self.add_transform_button)
-        for variant in self.transform_variants:
-            action = add_menu.addAction(variant.label())
-            action.triggered.connect(
-                lambda _checked=False, transform_type=variant.transform_type:
-                self.transform_add_requested.emit(transform_type)
-            )
-        self.add_transform_button.setMenu(add_menu)
-
-        self.transform_mixed_label = QLabel(
-            self.tr('Mixed'), self.transform_group
-        )
-        self.transform_mixed_label.setObjectName('TextTransformMixedLabel')
-        self.transform_mixed_label.setVisible(False)
-
-        self.transform_rows = QWidget(self.transform_group)
-        self.transform_rows.setObjectName('TextTransformRows')
-        self.transform_rows_layout = QVBoxLayout(self.transform_rows)
-        self.transform_rows_layout.setContentsMargins(0, 0, 0, 0)
-        self.transform_rows_layout.setSpacing(6)
-        self.transform_panels = []
-        self._transform_panel_types = ()
-
-        self.transform_layout = QVBoxLayout(self.transform_group)
-        self.transform_layout.setContentsMargins(8, 8, 8, 8)
-        self.transform_layout.setSpacing(6)
-        self.transform_layout.addWidget(self.glyph_slant_control)
-        self.transform_layout.addWidget(
-            self.add_transform_button, alignment=Qt.AlignmentFlag.AlignLeft
-        )
-        self.transform_layout.addWidget(self.transform_mixed_label)
-        self.transform_layout.addWidget(self.transform_rows)
 
         self.top_section = QWidget(self.scrollContent)
         self.top_section.setSizePolicy(
@@ -441,9 +346,7 @@ class TextAdvancedFormatPanel(PanelArea):
         self.gradient_group = TextGradientGroup(self.on_format_changed)
         vlayout = QVBoxLayout()
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        # Preserve the current panel's section order.
         vlayout.addWidget(self.top_section)
-        vlayout.addWidget(self.transform_group)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
 
@@ -559,7 +462,6 @@ class TextAdvancedFormatPanel(PanelArea):
             layout.minimumSize().width()
             for layout in (
                 self.top_layout,
-                self.transform_layout,
                 self.shadow_group.adaptive_layout,
                 self.gradient_group.adaptive_layout,
             )
@@ -670,95 +572,9 @@ class TextAdvancedFormatPanel(PanelArea):
     def on_linespacing_type_changed(self):
         self.on_format_changed('line_spacing_type', self.linespacing_type_combobox.currentIndex())
 
-    def _clear_transform_panels(self):
-        for panel in self.transform_panels:
-            self.transform_rows_layout.removeWidget(panel)
-            panel.setParent(None)
-            panel.deleteLater()
-        self.transform_panels = []
-        self._transform_panel_types = ()
-
-    def _rebuild_transform_panels(self, transform_types):
-        transform_types = tuple(transform_types)
-        if transform_types == self._transform_panel_types:
-            return
-        self._clear_transform_panels()
-        variants = {
-            variant.transform_type: variant
-            for variant in self.transform_variants
-        }
-        for index, transform_type in enumerate(transform_types):
-            panel = TransformParameterPanel(
-                index, variants[transform_type], self.transform_rows
-            )
-            panel.commit_requested.connect(
-                self.transform_commit_requested.emit
-            )
-            panel.preview_requested.connect(
-                self.transform_preview_requested.emit
-            )
-            panel.drag_commit_requested.connect(
-                self.transform_drag_commit_requested.emit
-            )
-            panel.preview_canceled.connect(
-                self.transform_preview_canceled.emit
-            )
-            panel.remove_requested.connect(
-                self.transform_remove_requested.emit
-            )
-            panel.move_requested.connect(self.transform_move_requested.emit)
-            self.transform_rows_layout.addWidget(panel)
-            self.transform_panels.append(panel)
-        self._transform_panel_types = transform_types
-        count = len(self.transform_panels)
-        for index, panel in enumerate(self.transform_panels):
-            panel.set_index(index)
-            panel.set_move_enabled(index > 0, index + 1 < count)
-        self.transform_group.updateGeometry()
-        self._schedule_geometry_update()
-
-    def _set_transform_states(self, states):
-        states = [
-            state
-            if isinstance(state, TextTransformState)
-            else TextTransformState(
-                state.text_transform, state.glyph_slant_angle
-            )
-            for state in states
-        ]
-        glyph_values = [state.glyph_slant_angle for state in states]
-        common_glyph = (
-            glyph_values[0]
-            if glyph_values
-            and all(value == glyph_values[0] for value in glyph_values)
-            else None
-        )
-        self.glyph_slant_control.set_model_value(common_glyph)
-
-        sequences = [
-            tuple(transform.transform_type for transform in state.stack)
-            for state in states
-        ]
-        common_sequence = (
-            sequences[0]
-            if sequences
-            and all(sequence == sequences[0] for sequence in sequences)
-            else None
-        )
-        mixed = common_sequence is None
-        self.transform_mixed_label.setVisible(mixed)
-        self.transform_rows.setVisible(not mixed)
-        if mixed:
-            self._rebuild_transform_panels(())
-            return
-        self._rebuild_transform_panels(common_sequence)
-        for index, panel in enumerate(self.transform_panels):
-            panel.set_values([state.stack[index] for state in states])
-
     def set_active_format(self, font_format: FontFormat):
         self.active_format = font_format
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
-        self._set_transform_states([font_format])
 
         self.shadow_group.color_label.setPickerColor(font_format.shadow_color)
         self.shadow_group.strength_box.setValue(font_format.shadow_strength)
@@ -772,34 +588,3 @@ class TextAdvancedFormatPanel(PanelArea):
         self.gradient_group.start_picker.setPickerColor(font_format.gradient_start_color)
         self.gradient_group.end_picker.setPickerColor(font_format.gradient_end_color)
         # self.tate_chu_yoko_checker.setChecked(font_format.font)
-
-    def set_transform_items(self, items):
-        self._set_transform_states(
-            [
-                TextTransformState(
-                    item.blk.fontformat.text_transform,
-                    item.blk.fontformat.glyph_slant_angle,
-                )
-                for item in items
-            ]
-        )
-
-    def set_transform(self, state):
-        self._set_transform_states([state])
-
-    def iter_transform_controls(self):
-        yield self.glyph_slant_control
-        for panel in self.transform_panels:
-            yield from panel.iter_controls()
-
-    def cancel_pending_transform_edits(self):
-        for control in self.iter_transform_controls():
-            control.cancel_pending()
-
-    def cancel_transform_previews(self):
-        for control in self.iter_transform_controls():
-            control.cancel_preview()
-
-    def finish_pending_transform_edits(self):
-        for control in self.iter_transform_controls():
-            control.commit_pending()

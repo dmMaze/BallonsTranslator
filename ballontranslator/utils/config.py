@@ -290,6 +290,8 @@ class ProgramConfig(Config):
     expand_teffect_panel: bool = True
     text_advanced_format_panel: bool = True
     expand_tadvanced_panel: bool = True
+    text_transform_panel: bool = True
+    expand_ttransform_panel: bool = True
 
     @staticmethod
     def load(cfg_path: str):

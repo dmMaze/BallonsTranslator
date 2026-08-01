@@ -66,6 +66,12 @@ def device_pixels_to_local(item: QGraphicsItem, pixels: float) -> float:
 
 
 class ControlBlockItem(QGraphicsRectItem):
+    """Fixed-device-size resize/rotation handle for the shape overlay.
+
+    >>> ControlBlockItem.DRAG_NONE
+    0
+    """
+
     DRAG_NONE = 0
     DRAG_RESHAPE = 1
     DRAG_ROTATE = 2
@@ -139,11 +145,30 @@ class ControlBlockItem(QGraphicsRectItem):
             center = outward_local * (
                 -(self.edge_width - visible_len) / 2 * support
             )
-        self.visible_rect = QRectF(
+        visible_rect = QRectF(
             center.x() - visible_len / 2,
             center.y() - visible_len / 2,
             visible_len,
             visible_len,
+        )
+        if getattr(self, 'visible_rect', None) == visible_rect:
+            return
+        # The painted block is shifted inside its larger interaction hitbox.
+        # Notify Qt when that manual paint extent changes so old pixels are
+        # included in the viewport's dirty region during movement.
+        self.prepareGeometryChange()
+        self.visible_rect = visible_rect
+        self.update()
+
+    def boundingRect(self) -> QRectF:
+        bounds = QRectF(super().boundingRect())
+        visible_rect = getattr(self, 'visible_rect', QRectF())
+        if visible_rect.isNull():
+            return bounds
+        # paint() supplies its own pen because the item's real pen is NoPen.
+        guard = getattr(self, 'pen_width', 0.0) / 2.0 + 1.0
+        return bounds.united(
+            visible_rect.adjusted(-guard, -guard, guard, guard)
         )
 
     def paint(
@@ -304,6 +329,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._resize_initial_local = None
         self._resize_initial_abs = None
         self._resize_initial_source_handle = None
+        self._resize_previous_source = None
         self._resize_scene_to_source = None
         self._proxy_drag_idx = None
         self._proxy_pointer_device_start = None
@@ -816,6 +842,9 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._resize_initial_source_handle = QPointF(
             item.geometry_controller.source_handle_points()[idx]
         )
+        self._resize_previous_source = QPointF(
+            self._resize_initial_source_handle
+        )
         self._resize_scene_to_source = (
             item.geometry_controller.capture_scene_to_source_mapper()
         )
@@ -826,6 +855,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._resize_initial_local = None
         self._resize_initial_abs = None
         self._resize_initial_source_handle = None
+        self._resize_previous_source = None
         self._resize_scene_to_source = None
 
     def resizeFromScene(self, idx: int, scene_pos: QPointF):
@@ -835,6 +865,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             or self._resize_initial_local is None
             or self._resize_initial_abs is None
             or self._resize_initial_source_handle is None
+            or self._resize_previous_source is None
             or self._resize_scene_to_source is None
         ):
             return
@@ -844,8 +875,9 @@ class TextBlkShapeControl(QGraphicsRectItem):
         initial_local = self._resize_initial_local
         mouse_local = self._resize_scene_to_source(
             scene_pos,
-            self._resize_initial_source_handle,
+            self._resize_previous_source,
         )
+        self._resize_previous_source = QPointF(mouse_local)
         left = initial_local.left()
         right = initial_local.right()
         top = initial_local.top()
@@ -927,17 +959,27 @@ class TextBlkShapeControl(QGraphicsRectItem):
         widget=...,
     ) -> None:
         painter.save()
-        # The active/hover outline must remain legible over both light and dark
-        # image regions, as the original rectangular control was.
+        # Destination-inverting raster ops leave trails when QGraphicsView
+        # coalesces partial repaints during movement. A fixed halo gives the
+        # same light/dark contrast without depending on old framebuffer pixels.
         painter.setCompositionMode(
-            QPainter.CompositionMode.RasterOp_NotDestination
+            QPainter.CompositionMode.CompositionMode_SourceOver
         )
-        painter.setPen(self.pen())
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        path = self._visual_path
+        halo = QPen(self.pen())
+        halo.setColor(QColor(245, 245, 245))
+        halo.setWidthF(self.pen().widthF() + 2.0)
+        painter.setPen(halo)
         if self._visual_path.isEmpty():
             painter.drawRect(self.rect())
         else:
-            painter.drawPath(self._visual_path)
+            painter.drawPath(path)
+        painter.setPen(self.pen())
+        if path.isEmpty():
+            painter.drawRect(self.rect())
+        else:
+            painter.drawPath(path)
         painter.restore()
 
     def hideControls(self):
