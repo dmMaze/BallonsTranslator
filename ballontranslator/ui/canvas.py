@@ -135,8 +135,9 @@ class CustomGV(QGraphicsView):
         return super().keyPressEvent(e)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
+        result = super().resizeEvent(event)
         self.view_resized.emit()
-        return super().resizeEvent(event)
+        return result
 
     def hideEvent(self, event: QHideEvent) -> None:
         self.hide_canvas.emit()
@@ -594,6 +595,7 @@ class Canvas(QGraphicsScene):
         pos.setX(x-30)
         self.search_widget.move(pos)
         self.refresh_text_shape_control()
+        self.gv.viewport().update()
         
     def onScaleFactorChanged(self):
         self.scaleFactorLabel.setText(f'{self.scale_factor*100:2.0f}%')

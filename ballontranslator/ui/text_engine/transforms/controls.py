@@ -3,7 +3,7 @@
 import math
 
 from qtpy.QtCore import QEvent, QPoint, QRect, QSize, Signal, Qt
-from qtpy.QtGui import QIcon, QKeyEvent, QPainter
+from qtpy.QtGui import QColor, QIcon, QKeyEvent, QPainter
 from qtpy.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -90,6 +90,8 @@ class _TransformIntegerEdit(_TransformValueEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setProperty('integerStepper', True)
+        self.setMouseTracking(True)
+        self._hover_button = ''
 
     def sizeHint(self):
         hint = super().sizeHint()
@@ -124,10 +126,14 @@ class _TransformIntegerEdit(_TransformValueEdit):
         super().paintEvent(event)
         painter = QPainter(self)
         up_rect, down_rect = self._button_rects()
-        for rect, icon_name in (
-            (down_rect, 'chevron-down.svg'),
-            (up_rect, 'chevron-up.svg'),
+        for name, rect, icon_name in (
+            ('down', down_rect, 'chevron-down.svg'),
+            ('up', up_rect, 'chevron-up.svg'),
         ):
+            if self._hover_button == name and self.isEnabled():
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(30, 147, 229, 32))
+                painter.drawRoundedRect(rect, 3, 3)
             pixmap = render_svg_pixmap(
                 themed_icon_path(icon_name),
                 self.ICON_SIZE,
@@ -150,6 +156,25 @@ class _TransformIntegerEdit(_TransformValueEdit):
                 event.accept()
                 return
         return super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        pos = self._event_pos(event)
+        up_rect, down_rect = self._button_rects()
+        hovered = (
+            'up' if up_rect.contains(pos)
+            else 'down' if down_rect.contains(pos)
+            else ''
+        )
+        if hovered != self._hover_button:
+            self._hover_button = hovered
+            self.update()
+        return super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        if self._hover_button:
+            self._hover_button = ''
+            self.update()
+        return super().leaveEvent(event)
 
 class CommittedTransformControl(QWidget):
     """One committed numeric transform editor."""
@@ -441,9 +466,11 @@ class CommittedTransformControl(QWidget):
         if limits is not None:
             display_delta = min(max(display_delta, limits[0]), limits[1])
         if display_delta:
+            canonical_delta = self._display_to_canonical(display_delta)
+            self.preview_requested.emit(self.param_name, canonical_delta)
             self.drag_commit_requested.emit(
                 self.param_name,
-                self._display_to_canonical(display_delta),
+                canonical_delta,
             )
 
 
