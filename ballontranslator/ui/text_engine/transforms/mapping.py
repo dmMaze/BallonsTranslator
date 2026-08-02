@@ -17,10 +17,12 @@ from ballontranslator.utils.fontformat import (
     CurvatureTextTransform,
     GridTextTransform,
     ProjectiveTextTransform,
+    SineTextTransform,
     TextTransformStack,
 )
 from .curvature import CurvatureMapper
 from .grid import GridMapper
+from .sine import SineMapper
 
 
 def _rotation_about_pivot_matrix(angle: float, pivot: QPointF) -> QTransform:
@@ -306,6 +308,18 @@ def curvature_transform_stage(
         context.source_bounds,
         context.vertical,
         transform.curvature,
+    )
+
+
+def sine_transform_stage(
+    transform: SineTextTransform,
+    context: TransformStageContext,
+):
+    """Build one invertible two-axis sine deformation stage."""
+    return SineMapper(
+        context.logical_bounds,
+        context.source_bounds,
+        transform,
     )
 
 

@@ -893,9 +893,11 @@ class TextItemGeometryController:
             if cursor_changed:
                 self.item.update()
             return
-        cursor_rect = QGraphicsTextItem.inputMethodQuery(
-            self.item, Qt.InputMethodQuery.ImCursorRectangle
-        )
+        cursor_rect = layout.source_cursor_rect(cursor_position)
+        if cursor_rect is None:
+            cursor_rect = QGraphicsTextItem.inputMethodQuery(
+                self.item, Qt.InputMethodQuery.ImCursorRectangle
+            )
         if not isinstance(cursor_rect, (QRectF, QRect)):
             return
         cursor_path = mapper.map_rect_path(QRectF(cursor_rect))

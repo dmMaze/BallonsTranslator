@@ -24,6 +24,12 @@ from ballontranslator.utils.fontformat import (
     TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
     TEXT_TRANSFORM_SCALE_MAX,
     TEXT_TRANSFORM_SCALE_MIN,
+    TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
+    TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
+    TEXT_TRANSFORM_SINE_FREQUENCY_MAX,
+    TEXT_TRANSFORM_SINE_FREQUENCY_MIN,
+    TEXT_TRANSFORM_SINE_PHASE_MAX,
+    TEXT_TRANSFORM_SINE_PHASE_MIN,
     TEXT_TRANSFORM_TYPES,
     coerce_text_transform_stack,
 )
@@ -38,6 +44,7 @@ from .mapping import (
     grid_transform_stage,
     projective_transform_stage,
     rect_polygon,
+    sine_transform_stage,
 )
 
 
@@ -203,6 +210,77 @@ CURVATURE_CONTROLS = (
     ),
 )
 
+SINE_CONTROLS = (
+    TransformControlSpec(
+        'sine_frequency_x_control',
+        'frequency_x',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Left-to-Right Wave Segments'
+        ),
+        1.0,
+        TEXT_TRANSFORM_SINE_FREQUENCY_MIN,
+        TEXT_TRANSFORM_SINE_FREQUENCY_MAX,
+        '',
+        decimals=0,
+    ),
+    TransformControlSpec(
+        'sine_phase_x_control',
+        'phase_x',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Left-to-Right Wave Shift'
+        ),
+        100.0,
+        TEXT_TRANSFORM_SINE_PHASE_MIN,
+        TEXT_TRANSFORM_SINE_PHASE_MAX,
+        '%',
+    ),
+    TransformControlSpec(
+        'sine_amplitude_x_control',
+        'amplitude_x',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Wave Height'
+        ),
+        100.0,
+        TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
+        TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
+        '%',
+    ),
+    TransformControlSpec(
+        'sine_frequency_y_control',
+        'frequency_y',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Top-to-Bottom Wave Segments'
+        ),
+        1.0,
+        TEXT_TRANSFORM_SINE_FREQUENCY_MIN,
+        TEXT_TRANSFORM_SINE_FREQUENCY_MAX,
+        '',
+        decimals=0,
+    ),
+    TransformControlSpec(
+        'sine_phase_y_control',
+        'phase_y',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Top-to-Bottom Wave Shift'
+        ),
+        100.0,
+        TEXT_TRANSFORM_SINE_PHASE_MIN,
+        TEXT_TRANSFORM_SINE_PHASE_MAX,
+        '%',
+    ),
+    TransformControlSpec(
+        'sine_amplitude_y_control',
+        'amplitude_y',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Wave Width'
+        ),
+        100.0,
+        TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
+        TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
+        '%',
+    ),
+)
+
 GRID_CONTROLS = (
     TransformControlSpec(
         'grid_horizontal_divisions_control',
@@ -272,6 +350,14 @@ TEXT_TRANSFORM_VARIANTS = (
         ),
         curvature_transform_stage,
         CURVATURE_CONTROLS,
+    ),
+    TextTransformVariantSpec(
+        'sine',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Sine Wave'
+        ),
+        sine_transform_stage,
+        SINE_CONTROLS,
     ),
     TextTransformVariantSpec(
         'grid',

@@ -46,6 +46,9 @@ from ballontranslator.ui.text_engine.editing.commands import (
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.transforms.panel import TextTransformPanel
+from ballontranslator.ui.text_engine.transforms.controls import (
+    CommittedTransformControl,
+)
 from ballontranslator.ui.text_engine.shape_control import TextBlkShapeControl
 from ballontranslator.ui.text_engine.transforms.editor import TextTransformEditSession
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
@@ -61,6 +64,7 @@ from ballontranslator.ui.text_engine.rendering.glyph_slant import (
 )
 from ballontranslator.ui.text_engine.transforms.curvature import CurvatureMapper
 from ballontranslator.ui.text_engine.transforms.grid import GridMapper
+from ballontranslator.ui.text_engine.transforms.sine import SineMapper
 from ballontranslator.ui.text_engine.transforms.grid_control import TextGridTransformControl
 from ballontranslator.ui.text_engine.transforms.projective_control import (
     PROJECTIVE_CONTROL_RADIUS,
@@ -81,6 +85,7 @@ from ballontranslator.utils.fontformat import (
     FontFormat,
     GridTextTransform,
     ProjectiveTextTransform,
+    SineTextTransform,
     TextTransformStack,
     TextTransformState,
 )
@@ -431,6 +436,89 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                             visual_y[index], expected.y(), places=6
                         )
 
+    def test_sine_payload_neutrality_and_phase_endpoint(self):
+        transform = SineTextTransform(
+            frequency_x=64,
+            frequency_y=3,
+            phase_x=1.0,
+            phase_y=0.25,
+            amplitude_x=1.0,
+            amplitude_y=0.4,
+        )
+        payload = {
+            'transform_type': 'sine',
+            'frequency_x': 64,
+            'frequency_y': 3,
+            'phase_x': 1.0,
+            'phase_y': 0.25,
+            'amplitude_x': 1.0,
+            'amplitude_y': 0.4,
+        }
+        font_format = FontFormat(text_transform=[payload])
+        self.assertEqual(font_format.text_transform[0], transform)
+        self.assertEqual(
+            font_format.to_serializable_dict()['text_transform'], [payload]
+        )
+        self.assertTrue(SineTextTransform(frequency_x=0).is_neutral())
+        self.assertTrue(SineTextTransform(
+            amplitude_x=0.0, amplitude_y=0.0
+        ).is_neutral())
+        self.assertFalse(SineTextTransform().is_neutral())
+        with self.assertRaises(ValueError):
+            SineTextTransform(frequency_x=0.5).normalized()
+
+    def test_sine_mapper_round_trips_ordered_axes_at_extreme_values(self):
+        logical = QRectF(10, 20, 420, 160)
+        source = logical.adjusted(-12, -12, 12, 12)
+        transform = SineTextTransform(
+            frequency_x=64,
+            frequency_y=64,
+            phase_x=1.0,
+            phase_y=0.375,
+            amplitude_x=1.0,
+            amplitude_y=1.0,
+        )
+        mapper = SineMapper(logical, source, transform)
+        source_x = np.asarray([10.0, 61.25, 180.0, 333.75, 430.0])
+        source_y = np.asarray([20.0, 44.5, 90.0, 151.5, 180.0])
+        visual_x, visual_y = mapper.forward_arrays(source_x, source_y)
+        restored_x, restored_y, valid = mapper.inverse_arrays(
+            visual_x, visual_y, return_valid=True
+        )
+        self.assertTrue(valid.all())
+        self.assertTrue(np.allclose(restored_x, source_x, atol=1e-9))
+        self.assertTrue(np.allclose(restored_y, source_y, atol=1e-9))
+        for index in range(len(source_x)):
+            point = QPointF(source_x[index], source_y[index])
+            mapped = mapper.forward_point(point)
+            self.assertAlmostEqual(mapped.x(), visual_x[index], places=6)
+            self.assertAlmostEqual(mapped.y(), visual_y[index], places=6)
+            restored = mapper.inverse_point(mapped)
+            self.assertAlmostEqual(restored.x(), point.x(), places=6)
+            self.assertAlmostEqual(restored.y(), point.y(), places=6)
+        self.assertGreater(
+            mapper.map_rect_path(logical).boundingRect().height(),
+            logical.height() * 2.9,
+        )
+
+        compiled = compile_text_transform_stack(
+            TextTransformStack((transform,)), logical, source, False
+        )
+        self.assertIsInstance(
+            compiled.surface_mapper, CompositeTextTransformMapper
+        )
+        self.assertTrue(
+            compiled.surface_mapper.visual_bounds().contains(source)
+        )
+        default_bounds = SineMapper(
+            logical, source, SineTextTransform()
+        ).visual_bounds()
+        self.assertEqual(default_bounds.left(), source.left())
+        self.assertEqual(default_bounds.right(), source.right())
+        self.assertEqual(
+            default_bounds.top(), source.top() - logical.height() * 0.1
+        )
+
     def test_grid_payload_divisions_and_interpolation_round_trip(self):
         grid = GridTextTransform(3, 2, 'catmull_rom').normalized()
         self.assertEqual(len(grid.control_points), 12)
@@ -675,7 +763,7 @@ class TextTransformPanelTest(TextTransformTestBase):
         panel = self._make_panel()
         self.assertEqual(
             [action.text() for action in panel.add_transform_button.menu().actions()],
-            ['Scale / Slant / 3D', 'Curvature', 'Grid'],
+            ['Scale / Slant / 3D', 'Curvature', 'Sine Wave', 'Grid'],
         )
         added = []
         panel.transform_add_requested.connect(added.append)
@@ -755,6 +843,7 @@ class TextTransformPanelTest(TextTransformTestBase):
         cases = (
             (ProjectiveTextTransform(), 'rotation_x'),
             (CurvatureTextTransform(), 'curvature'),
+            (SineTextTransform(), 'frequency_x'),
             (GridTextTransform().normalized(), 'horizontal_divisions'),
         )
         panel.show()
@@ -780,6 +869,73 @@ class TextTransformPanelTest(TextTransformTestBase):
                 self.assertTrue(
                     panel.transform_panels[0].property('selected')
                 )
+
+    def test_sine_controls_use_wave_language_and_percentage_values(self):
+        panel = self._make_panel()
+        panel.set_transform(transform_state(SineTextTransform()))
+        controls = panel.transform_panels[0].controls
+        self.assertEqual(
+            [control.label.text() for control in controls.values()],
+            [
+                'Left-to-Right Wave Segments',
+                'Left-to-Right Wave Shift',
+                'Wave Height',
+                'Top-to-Bottom Wave Segments',
+                'Top-to-Bottom Wave Shift',
+                'Wave Width',
+            ],
+        )
+        self.assertEqual(controls['frequency_x'].editor.text(), '2')
+        self.assertEqual(controls['frequency_x'].drag_step, 0.125)
+        self.assertEqual(controls['amplitude_x'].editor.text(), '10.0%')
+
+    def test_integer_drag_uses_eight_pixels_per_step_and_stops_at_range_end(self):
+        integer = CommittedTransformControl(
+            'Segments', 'frequency_x', 1.0, 0.0, 64.0, '', 0.125,
+            decimals=0,
+        )
+        self.addCleanup(integer.deleteLater)
+        integer.set_model_value(2)
+        integer_previews = []
+        integer.preview_requested.connect(
+            lambda _name, delta: integer_previews.append(delta)
+        )
+        integer._start_drag()
+        integer._move_drag(7)
+        integer._move_drag(1)
+        self.assertEqual(integer_previews, [0.0, 1.0])
+        self.assertEqual(integer.editor.text(), '3')
+
+        bounded = CommittedTransformControl(
+            'Shift', 'phase_x', 100.0, 0.0, 1.0, '%', 1.0,
+        )
+        self.addCleanup(bounded.deleteLater)
+        bounded.set_model_value(0.9)
+        bounded_previews = []
+        bounded_commits = []
+        bounded.preview_requested.connect(
+            lambda _name, delta: bounded_previews.append(delta)
+        )
+        bounded.drag_commit_requested.connect(
+            lambda _name, delta: bounded_commits.append(delta)
+        )
+        bounded._start_drag()
+        bounded._move_drag(20)
+        bounded._move_drag(100)
+        self.assertEqual(bounded.editor.text(), '100.0%')
+        self.assertAlmostEqual(bounded_previews[-2], 0.1)
+        self.assertAlmostEqual(bounded_previews[-1], 0.1)
+        bounded._finish_drag()
+        self.assertEqual(len(bounded_commits), 1)
+        self.assertAlmostEqual(bounded_commits[0], 0.1)
+
+        bounded.set_model_value(None, [0.2, 0.9])
+        bounded_previews.clear()
+        bounded._start_drag()
+        bounded._move_drag(100)
+        bounded._move_drag(100)
+        self.assertEqual(bounded.editor.text(), 'Δ +10.0%')
+        self.assertAlmostEqual(bounded_previews[-1], 0.1)
 
     def test_grid_parameter_selection_binds_controller_and_delete_clears_it(self):
         panel = self._make_panel()
@@ -1132,11 +1288,12 @@ class TextTransformUndoTest(TextTransformTestBase):
 
                 self.assertEqual(stack.count(), len(states) - 1)
 
-    def test_projective_and_curvature_mix_with_text_undo(self):
+    def test_projective_curvature_and_sine_mix_with_text_undo(self):
         projective = transform_state(
             ProjectiveTextTransform(rotation_y=30.0, perspective=0.6)
         )
         curvature = transform_state(CurvatureTextTransform(-0.65))
+        sine = transform_state(SineTextTransform())
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
                 item, pair = self._make_pair(0, TEST_LINES[0], vertical)
@@ -1156,11 +1313,17 @@ class TextTransformUndoTest(TextTransformTestBase):
                         [item], [projective], [curvature]
                     )
                 )
+                stack.push(
+                    SetTextTransformCommand.create(
+                        [item], [curvature], [sine]
+                    )
+                )
                 expected = (
                     (NEUTRAL, TEST_LINES[0]),
                     (projective, TEST_LINES[0]),
                     (projective, TEST_LINES[1]),
                     (curvature, TEST_LINES[1]),
+                    (sine, TEST_LINES[1]),
                 )
                 for _ in range(3):
                     for transform, text in reversed(expected[:-1]):
@@ -1898,6 +2061,12 @@ class TextTransformRenderingTest(TextTransformTestBase):
     def test_surface_composition_renders_through_one_nonlinear_surface(self):
         stack = TextTransformStack((
             ProjectiveTextTransform(1.1, 0.9, 5.0),
+            SineTextTransform(
+                frequency_x=3,
+                frequency_y=2,
+                phase_x=0.25,
+                phase_y=1.0,
+            ),
             CurvatureTextTransform(0.55),
             ProjectiveTextTransform(rotation_y=30.0, perspective=0.25),
             CurvatureTextTransform(-0.2),
@@ -2152,6 +2321,66 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 self.assertTrue(capture.saw_deferred_cursor)
                 self.assertNotEqual(after, before)
                 item.endEdit()
+
+    def test_nonlinear_surface_uses_each_layouts_cursor_orientation(self):
+        nonlinear_transforms = (
+            CurvatureTextTransform(0.7),
+            SineTextTransform(),
+            GridTextTransform().normalized().with_control_points((
+                (0.0, 0.0),
+                (1.05, 0.0),
+                (0.0, 1.0),
+                (1.0, 1.0),
+            )),
+        )
+        for vertical in (False, True):
+            for transform in nonlinear_transforms:
+                with self.subTest(
+                    vertical=vertical,
+                    transform=transform.transform_type,
+                ):
+                    self._assert_nonlinear_cursor_orientation(
+                        vertical, transform
+                    )
+
+    def _assert_nonlinear_cursor_orientation(self, vertical, transform):
+        item, _ = self._make_pair(0, TEST_LINES[0], vertical)
+        item.set_text_transform(transform_state(transform))
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(2)
+        item.setTextCursor(cursor)
+        item.layout.deferred_cursor_position = cursor.position()
+        mapper = item.geometry_controller.visual_mapper
+        mapped_rects = []
+        original_map_rect_path = mapper.map_rect_path
+
+        def capture_rect(rect):
+            mapped_rects.append(QRectF(rect))
+            return original_map_rect_path(rect)
+
+        image = QImage(
+            900, 600, QImage.Format.Format_ARGB32_Premultiplied
+        )
+        image.fill(QColor(127, 127, 127))
+        painter = QPainter(image)
+        with patch.object(mapper, 'map_rect_path', capture_rect):
+            item.geometry_controller._paint_surface_cursor(
+                painter, mapper, export_render=False
+            )
+        painter.end()
+
+        self.assertEqual(len(mapped_rects), 1)
+        if vertical:
+            self.assertGreater(
+                mapped_rects[0].width(), mapped_rects[0].height()
+            )
+        else:
+            self.assertGreater(
+                mapped_rects[0].height(), mapped_rects[0].width()
+            )
+        item.endEdit()
+        item.geometry_controller.release_render_resources()
 
     def test_cached_surface_probes_native_cursor_visibility(self):
         class CacheHit:
@@ -3860,6 +4089,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                     ProjectiveTextTransform(rotation_y=35.0, perspective=0.55)
                 ),
                 transform_state(CurvatureTextTransform(0.65)),
+                transform_state(SineTextTransform()),
                 transform_state(
                     ProjectiveTextTransform(rotation_y=35.0, perspective=0.55),
                     CurvatureTextTransform(0.65),

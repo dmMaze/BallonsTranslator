@@ -222,7 +222,6 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self._max_font_size = -1
 
         self.foreground_pixmap: QPixmap = None
-
         self.relayout_on_changed = True
 
         # Effect padding is derived layout state, not rich-text content.
@@ -240,6 +239,17 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self._is_painting_stroke = False
         self._draw_offset = []
         self.text_padding = 0
+
+    def source_cursor_rect(self, cursor_position: int):
+        """Return a layout-owned caret rectangle, or defer to Qt.
+
+        Horizontal layout uses Qt's native cursor geometry. Vertical layout
+        overrides this because its caret is horizontal.
+
+        >>> SceneTextLayout.source_cursor_rect(None, 0) is None
+        True
+        """
+        return None
 
     def _begin_layout_generation(self):
         self.layout_generation += 1
@@ -589,6 +599,36 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
+
+    def source_cursor_rect(self, cursor_position: int):
+        """Return the horizontal caret used by vertical text painting."""
+        block = self.document().firstBlock()
+        while block.isValid():
+            cpos = _block_cursor_position(block, cursor_position)
+            if cpos >= 0:
+                layout = block.layout()
+                line = layout.lineForTextPosition(cpos)
+                if not line.isValid():
+                    return QRectF()
+                position = line.position()
+                x, y = position.x(), position.y()
+                cfmt = self.get_char_fontfmt(block.blockNumber(), cpos)
+                metrics = (
+                    cfmt.font_metrics
+                    if cfmt is not None
+                    else QFontMetricsF(block.charFormat().font())
+                )
+                line_spaces = self.line_spaces_lst[block.blockNumber()]
+                if line.lineNumber() < len(line_spaces):
+                    _right, _left, offsets, line_position = line_spaces[
+                        line.lineNumber()
+                    ]
+                    offset_index = cpos - line_position
+                    if 0 <= offset_index < len(offsets):
+                        y = offsets[offset_index]
+                return QRectF(x, y, metrics.height(), 2.0)
+            block = block.next()
+        return QRectF()
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()

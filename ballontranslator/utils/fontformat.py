@@ -32,6 +32,12 @@ TEXT_TRANSFORM_GLYPH_SLANT_MIN = -45.0
 TEXT_TRANSFORM_GLYPH_SLANT_MAX = 45.0
 TEXT_TRANSFORM_CURVATURE_MIN = -1.0
 TEXT_TRANSFORM_CURVATURE_MAX = 1.0
+TEXT_TRANSFORM_SINE_FREQUENCY_MIN = 0
+TEXT_TRANSFORM_SINE_FREQUENCY_MAX = 64
+TEXT_TRANSFORM_SINE_PHASE_MIN = 0.0
+TEXT_TRANSFORM_SINE_PHASE_MAX = 1.0
+TEXT_TRANSFORM_SINE_AMPLITUDE_MIN = 0.0
+TEXT_TRANSFORM_SINE_AMPLITUDE_MAX = 1.0
 TEXT_TRANSFORM_GRID_DIVISION_MIN = 1
 TEXT_TRANSFORM_GRID_DIVISION_MAX = 32
 TEXT_TRANSFORM_GRID_INTERPOLATION_TYPES = ('bilinear', 'catmull_rom')
@@ -170,6 +176,83 @@ class CurvatureTextTransform(TextTransform):
 
     def is_neutral(self) -> bool:
         return self.curvature == 0.0
+
+
+def _normalize_sine_frequency(value) -> int:
+    if isinstance(value, bool) or not isinstance(
+        value, (int, float, np.number)
+    ):
+        raise ValueError('sine frequencies must be integers from 0 to 64')
+    numeric = float(value)
+    if not math.isfinite(numeric) or not numeric.is_integer():
+        raise ValueError('sine frequencies must be integers from 0 to 64')
+    frequency = int(numeric)
+    if not (
+        TEXT_TRANSFORM_SINE_FREQUENCY_MIN
+        <= frequency
+        <= TEXT_TRANSFORM_SINE_FREQUENCY_MAX
+    ):
+        raise ValueError('sine frequencies must be integers from 0 to 64')
+    return frequency
+
+
+@dataclass(frozen=True)
+class SineTextTransform(TextTransform):
+    """Two ordered sine shears over the completed text surface.
+
+    Frequencies count half-waves. The x-axis wave is applied first so the
+    paired mappings remain exactly invertible at every supported value.
+
+    >>> SineTextTransform().normalized().is_neutral()
+    False
+    >>> SineTextTransform(frequency_x=0).normalized().is_neutral()
+    True
+    """
+
+    frequency_x: int = 2
+    frequency_y: int = 0
+    phase_x: float = 0.0
+    phase_y: float = 0.0
+    amplitude_x: float = 0.1
+    amplitude_y: float = 0.1
+    transform_type: str = dataclass_field(init=False, default='sine')
+    is_nonlinear: ClassVar[bool] = True
+
+    def normalized(self) -> "SineTextTransform":
+        return SineTextTransform(
+            _normalize_sine_frequency(self.frequency_x),
+            _normalize_sine_frequency(self.frequency_y),
+            normalize_text_transform_value(
+                self.phase_x,
+                TEXT_TRANSFORM_SINE_PHASE_MIN,
+                TEXT_TRANSFORM_SINE_PHASE_MAX,
+            ),
+            normalize_text_transform_value(
+                self.phase_y,
+                TEXT_TRANSFORM_SINE_PHASE_MIN,
+                TEXT_TRANSFORM_SINE_PHASE_MAX,
+            ),
+            normalize_text_transform_value(
+                self.amplitude_x,
+                TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
+                TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
+            ),
+            normalize_text_transform_value(
+                self.amplitude_y,
+                TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
+                TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
+            ),
+        )
+
+    def is_neutral(self) -> bool:
+        normalized = self.normalized()
+        return (
+            normalized.frequency_x == 0
+            or normalized.amplitude_x == 0.0
+        ) and (
+            normalized.frequency_y == 0
+            or normalized.amplitude_y == 0.0
+        )
 
 
 def _normalize_grid_division(value) -> int:
@@ -467,6 +550,7 @@ def normalize_text_transform_value(
 TEXT_TRANSFORM_TYPES = {
     'projective': ProjectiveTextTransform,
     'curvature': CurvatureTextTransform,
+    'sine': SineTextTransform,
     'grid': GridTextTransform,
 }
 

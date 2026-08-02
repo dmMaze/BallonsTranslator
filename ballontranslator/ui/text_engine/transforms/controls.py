@@ -118,7 +118,9 @@ class CommittedTransformControl(QWidget):
         self.decimals = max(0, int(decimals))
         self.state = self.IDLE
         self._model_value = None
+        self._model_values = ()
         self._drag_delta = 0.0
+        self._drag_remainder = 0.0
 
         self.label = TransformDragLabel(
             self,
@@ -184,10 +186,16 @@ class CommittedTransformControl(QWidget):
             else self._format(self._model_value)
         )
 
-    def set_model_value(self, canonical_value):
+    def set_model_value(self, canonical_value, model_values=None):
         self.state = self.IDLE
         self._drag_delta = 0.0
+        self._drag_remainder = 0.0
         self._model_value = canonical_value
+        self._model_values = (
+            (() if canonical_value is None else (canonical_value,))
+            if model_values is None
+            else tuple(model_values)
+        )
         self._restore_display()
 
     def _on_text_edited(self):
@@ -206,6 +214,7 @@ class CommittedTransformControl(QWidget):
             return False
         self.state = self.IDLE
         self._model_value = canonical_value
+        self._model_values = (canonical_value,)
         self._restore_display()
         self.commit_requested.emit(self.param_name, canonical_value)
         return True
@@ -240,29 +249,60 @@ class CommittedTransformControl(QWidget):
         self.commit_pending()
         self.state = self.DRAG_PREVIEW
         self._drag_delta = 0.0
+        self._drag_remainder = 0.0
+
+    def _drag_limits(self):
+        if not self._model_values:
+            return None
+        canonical_minimum = max(
+            self.canonical_minimum - value for value in self._model_values
+        )
+        canonical_maximum = min(
+            self.canonical_maximum - value for value in self._model_values
+        )
+        limits = (
+            self._canonical_to_display(canonical_minimum),
+            self._canonical_to_display(canonical_maximum),
+        )
+        return min(limits), max(limits)
 
     def _move_drag(self, delta: int):
         if self.state != self.DRAG_PREVIEW:
             self._start_drag()
-        self._drag_delta += float(delta) * self.drag_step
+        movement = float(delta) * self.drag_step
+        limits = self._drag_limits()
+        if limits is not None and (
+            (self._drag_delta <= limits[0] and movement < 0.0)
+            or (self._drag_delta >= limits[1] and movement > 0.0)
+        ):
+            # Discard outward overshoot so reversing responds immediately.
+            self._drag_remainder = 0.0
+            movement = 0.0
+        if self.decimals == 0:
+            self._drag_remainder += movement
+            whole_steps = math.trunc(self._drag_remainder)
+            self._drag_remainder -= whole_steps
+            candidate = self._drag_delta + whole_steps
+        else:
+            candidate = self._drag_delta + movement
+        if limits is not None:
+            clamped = min(max(candidate, limits[0]), limits[1])
+            if clamped != candidate:
+                self._drag_remainder = 0.0
+            candidate = clamped
+        self._drag_delta = candidate
+        canonical_delta = self._display_to_canonical(self._drag_delta)
         if self._model_value is None:
             self.editor.setText(
                 f'\N{GREEK CAPITAL LETTER DELTA} '
                 f'{self._drag_delta:+.1f}{self.suffix}'
             )
         else:
-            canonical_delta = self._display_to_canonical(self._drag_delta)
-            preview_value = min(
-                max(
-                    self._model_value + canonical_delta,
-                    self.canonical_minimum,
-                ),
-                self.canonical_maximum,
-            )
+            preview_value = self._model_value + canonical_delta
             self.editor.setText(self._format(preview_value))
         self.preview_requested.emit(
             self.param_name,
-            self._display_to_canonical(self._drag_delta),
+            canonical_delta,
         )
 
     def _finish_drag(self):
@@ -271,6 +311,7 @@ class CommittedTransformControl(QWidget):
         delta = self._drag_delta
         self.state = self.IDLE
         self._drag_delta = 0.0
+        self._drag_remainder = 0.0
         self._restore_display()
         if delta == 0.0:
             self.preview_canceled.emit(self.param_name)
@@ -286,6 +327,7 @@ class CommittedTransformControl(QWidget):
             return
         self.state = self.IDLE
         self._drag_delta = 0.0
+        self._drag_remainder = 0.0
         self._restore_display()
         self.preview_canceled.emit(self.param_name)
 
@@ -438,7 +480,7 @@ class TransformParameterPanel(QFrame):
                     spec.minimum,
                     spec.maximum,
                     spec.suffix,
-                    1.0,
+                    0.125 if spec.decimals == 0 else 1.0,
                     controls_widget,
                     decimals=spec.decimals,
                 )
@@ -502,7 +544,10 @@ class TransformParameterPanel(QFrame):
                 if values and all(value == values[0] for value in values)
                 else None
             )
-            control.set_model_value(common)
+            if isinstance(control, CommittedTransformControl):
+                control.set_model_value(common, values)
+            else:
+                control.set_model_value(common)
 
     def iter_controls(self):
         return self.controls.values()

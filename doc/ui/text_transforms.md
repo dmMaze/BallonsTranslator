@@ -12,7 +12,7 @@ There are two transform layers:
 QTextDocument + SceneTextLayout
   -> Glyph Slant around each shaped glyph baseline
   -> fill, stroke, shadow, gradient
-  -> ordered global stack: Projective / Curvature / Grid
+  -> ordered global stack: Projective / Curvature / Sine Wave / Grid
   -> item-local visual geometry
   -> QGraphicsItem position and rotation
 ```
@@ -44,6 +44,7 @@ Item position and built-in rotation remain outside the stack.
 | Transform undo command | [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
 | Glyph Slant | [`ui/text_engine/rendering/glyph_slant.py`](../../ballontranslator/ui/text_engine/rendering/glyph_slant.py) |
 | Curvature mapping and final surface warp | [`ui/text_engine/transforms/curvature.py`](../../ballontranslator/ui/text_engine/transforms/curvature.py), [`ui/text_engine/rendering/surface.py`](../../ballontranslator/ui/text_engine/rendering/surface.py) |
+| Sine Wave mapping | [`ui/text_engine/transforms/sine.py`](../../ballontranslator/ui/text_engine/transforms/sine.py) |
 | Grid mapping and selected-stage overlay | [`ui/text_engine/transforms/grid.py`](../../ballontranslator/ui/text_engine/transforms/grid.py), [`ui/text_engine/transforms/grid_control.py`](../../ballontranslator/ui/text_engine/transforms/grid_control.py) |
 | Projective matrix and selected-stage overlay | [`ui/text_engine/transforms/mapping.py`](../../ballontranslator/ui/text_engine/transforms/mapping.py), [`ui/text_engine/transforms/projective_control.py`](../../ballontranslator/ui/text_engine/transforms/projective_control.py) |
 | Resize/rotation overlay | [`ui/text_engine/shape_control.py`](../../ballontranslator/ui/text_engine/shape_control.py) |
@@ -63,6 +64,10 @@ Current global variants are:
   X/Y/Z planar rotation, and normalized perspective, compiled together into
   one centered native `QTransform`;
 - `CurvatureTextTransform`: nonlinear and mapper-based;
+- `SineTextTransform`: nonlinear horizontal and vertical sine shears. Integer
+  frequencies count half-waves from 0 to 64; phase and perpendicular-box
+  amplitude use 0 to 1. The x-axis wave runs first so the combined map
+  has an exact inverse;
 - `GridTextTransform`: nonlinear free-form deformation with normalized control
   points, 1 to 32 horizontal and vertical cell divisions, and Straight or
   Smooth interpolation. A 1 by 1 grid has four corner handles. Their canonical
@@ -100,7 +105,9 @@ The Text Transform panel generates transform cards from
 Add appends and selects the new entry, delete removes one indexed entry, and
 move swaps adjacent entries.
 Typed values commit on Return/focus-out; label dragging previews transient state
-and commits one command on release; Escape cancels the preview.
+and commits one command on release; Escape cancels the preview. Integer labels
+move one step per eight pixels, and every drag saturates at the shared valid range
+without accumulating hidden overshoot.
 
 Cards have one selected index. Clicking a card or manually interacting with one
 of its parameters selects it; selecting another card replaces that selection,
@@ -317,9 +324,10 @@ move selection and caret pixels outside them, so editing changes request a full
 `TextBlkItem.update()` while a surface warp is active.
 
 During source capture, both layouts defer caret painting and retain the cursor
-position. After the warp, the controller queries the raw source caret rectangle,
-maps it through the composite, and paints it over the completed destination
-with `RasterOp_NotDestination`. Selection remains part of source capture.
+position. After the warp, the controller uses the layout-owned horizontal
+caret for vertical text and Qt's native rectangle for horizontal text, maps it
+through the composite, and paints it over the completed destination with
+`RasterOp_NotDestination`. Selection remains part of source capture.
 
 ### Resize
 

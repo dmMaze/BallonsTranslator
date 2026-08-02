@@ -299,7 +299,7 @@ class TextTransformPanel(PanelArea):
             and all(value == glyph_values[0] for value in glyph_values)
             else None
         )
-        self.glyph_slant_control.set_model_value(common_glyph)
+        self.glyph_slant_control.set_model_value(common_glyph, glyph_values)
 
         sequences = [
             tuple(transform.transform_type for transform in state.stack)
