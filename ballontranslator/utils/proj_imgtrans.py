@@ -95,7 +95,7 @@ class TextBlkEncoder(NumpyEncoder):
         if isinstance(obj, TextBlock):
             return obj.to_dict()
         elif isinstance(obj, FontFormat):
-            return obj.to_serializable_dict()
+            return vars(obj)
         return NumpyEncoder.default(self, obj)
 
 
@@ -147,9 +147,7 @@ class ProjImgTrans:
     def load(self, directory: str, json_path: str = None) -> bool:
         self.directory = directory
         if json_path is None:
-            self.proj_path = osp.join(
-                self.directory, self.proj_name() + '.json'
-            )
+            self.proj_path = osp.join(self.directory, self.proj_name() + '.json')
         else:
             self.proj_path = json_path
         new_proj = False

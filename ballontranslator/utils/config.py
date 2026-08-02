@@ -306,8 +306,6 @@ class ProgramConfig(Config):
     expand_teffect_panel: bool = True
     text_advanced_format_panel: bool = True
     expand_tadvanced_panel: bool = True
-    text_transform_panel: bool = True
-    expand_ttransform_panel: bool = True
 
     @staticmethod
     def load(cfg_path: str):
@@ -412,9 +410,6 @@ def json_dump_program_config(obj, **kwargs):
             return serialize_np(obj)
         elif isinstance(obj, ModuleConfig):
             return obj.get_saving_params()
-        serializer = getattr(obj, 'to_serializable_dict', None)
-        if serializer is not None:
-            return serializer()
         return obj.__dict__
     return json.dumps(obj, default=lambda o: _default(o), ensure_ascii=False, **kwargs)
 

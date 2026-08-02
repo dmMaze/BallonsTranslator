@@ -11,7 +11,7 @@ from ballontranslator.utils.logger import logger
 
 from .image_edit import ImageEditMode, PixmapItem, DrawingLayer, StrokeImgItem
 from .canvas import Canvas, TextBlkItem
-from .text_engine.editing.widgets import TransPairWidget
+from .textedit_area import TransPairWidget
 
 
 class StrokeItemUndoCommand(QUndoCommand):

@@ -28,19 +28,13 @@ from ballontranslator.utils.config import (
     save_text_styles,
     text_styles,
 )
-from ballontranslator.utils.fontformat import TextTransformState
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
-from .text_engine.editing.widgets import SourceTextEdit, TransTextEdit
+from .textedit_area import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
-from .text_engine.editing.manager import (
-    PasteSrcItemsCommand,
-    SceneTextManager,
-    SceneTextReplacementReason,
-    TextPanel,
-)
+from .scenetext_manager import SceneTextManager, TextPanel, PasteSrcItemsCommand
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .menu_style import install_app_style_filters
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
@@ -49,7 +43,7 @@ from .update_dialog import UpdateReleaseDialog
 from .run_pipeline_dialog import RunPipelineDialog
 from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
-from .text_engine.editing.commands import GlobalRepalceAllCommand
+from .textedit_commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
@@ -76,24 +70,6 @@ class PageListView(QListWidget):
         return super().contextMenuEvent(e)
 
 mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
-
-
-def _apply_global_text_transforms(block: TextBlock, global_format: FontFormat) -> bool:
-    """Copy normalized global stack/layout transform state."""
-    state = TextTransformState(
-        global_format.text_transform,
-        global_format.glyph_slant_angle,
-    )
-    if (
-        block.fontformat.text_transform == state.stack
-        and block.fontformat.glyph_slant_angle == state.glyph_slant_angle
-    ):
-        return False
-    block.fontformat.text_transform = state.stack
-    block.fontformat.glyph_slant_angle = state.glyph_slant_angle
-    return True
-
-
 class MainWindow(mainwindow_cls):
 
     imgtrans_proj: ProjImgTrans = ProjImgTrans()
@@ -694,10 +670,7 @@ class MainWindow(mainwindow_cls):
             self.generate_tif_thumbnails(directory)
             # 重新加载项目，此时应该只加载预览图
             self.imgtrans_proj.load(directory)
-            self.st_manager.clearSceneTextitems(
-                SceneTextReplacementReason.PROJECT_RELOAD
-            )
-            self.canvas.clear_undostack(update_saved_step=True)
+            self.st_manager.clearSceneTextitems()
             self.titleBar.setTitleContent(osp.basename(directory))
             self.updatePageList()
             self.opening_dir = False
@@ -738,10 +711,7 @@ class MainWindow(mainwindow_cls):
         try:
             self.opening_dir = True
             self.imgtrans_proj.load_from_json(json_path)
-            self.st_manager.clearSceneTextitems(
-                SceneTextReplacementReason.PROJECT_RELOAD
-            )
-            self.canvas.clear_undostack(update_saved_step=True)
+            self.st_manager.clearSceneTextitems()
             self.leftBar.updateRecentProjList(self.imgtrans_proj.proj_path)
             self.updatePageList()
             self.titleBar.setTitleContent(osp.basename(self.imgtrans_proj.proj_path))
@@ -778,9 +748,6 @@ class MainWindow(mainwindow_cls):
         save_config()
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        # Pending numeric edits are not dirty until they commit. Resolve them
-        # before the close-time dirty check and final config snapshot.
-        self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
         if not self.imgtrans_proj.is_empty:
             self.conditional_save(keep_exist_as_backup=True)
         while True:
@@ -832,19 +799,12 @@ class MainWindow(mainwindow_cls):
         item = self.pageList.currentItem()
         self.page_changing = True
         if item is not None:
-            if not self.opening_dir:
-                # Typed transform edits belong to the old page and must commit
-                # before its dirty check. Live drags are previews and cancel.
-                self.st_manager.formatpanel.resolve_text_transform_edits_for_page_change()
             if self.save_on_page_changed:
                 self.conditional_save()
-            self.st_manager.clearSceneTextitems(
-                SceneTextReplacementReason.PAGE_CHANGE
-            )
             self.imgtrans_proj.set_current_img(item.text())
             self.canvas.clear_undostack(update_saved_step=True)
             self.canvas.updateCanvas()
-            self.st_manager.populateSceneTextitems()
+            self.st_manager.updateSceneTextitems()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
             self.module_manager.handle_page_changed()
             self.drawingPanel.handle_page_changed()
@@ -908,12 +868,7 @@ class MainWindow(mainwindow_cls):
         drawpanel_shortcuts = {'hand': 'H', 'rect': 'R', 'inpaint': 'J', 'pen': 'B'}
         for tool_name, shortcut_key in drawpanel_shortcuts.items():
             shortcut = QShortcut(QKeySequence(shortcut_key), self)
-            key = getattr(QKEY, f'Key_{shortcut_key}')
-            shortcut.activated.connect(partial(
-                self.drawingPanel.shortcutSetCurrentToolByName,
-                tool_name,
-                key,
-            ))
+            shortcut.activated.connect(partial(self.drawingPanel.shortcutSetCurrentToolByName, tool_name))
             self.drawingPanel.setShortcutTip(tool_name, shortcut_key)
 
     def shortcutNext(self):
@@ -1005,11 +960,9 @@ class MainWindow(mainwindow_cls):
             self.textPanel.formatpanel.formatBtnGroup.underlineBtn.click()
 
     def on_redo(self):
-        self.st_manager.formatpanel.resolve_text_transform_edits_for_history_change()
         self.canvas.redo()
 
     def on_undo(self):
-        self.st_manager.formatpanel.resolve_text_transform_edits_for_history_change()
         self.canvas.undo()
 
     def on_page_search(self):
@@ -1238,17 +1191,6 @@ class MainWindow(mainwindow_cls):
             self.save_on_page_changed = ori_save 
             return
 
-        # This path disables the normal page-change save callback. Commit the
-        # old page's pending transform before its own dirty check, while
-        # suppressing the search-result invalidation normally caused by a new
-        # text undo command during an in-progress replace/rerender operation.
-        page_changing = self.page_changing
-        self.page_changing = True
-        try:
-            self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
-        finally:
-            self.page_changing = page_changing
-
         if current_img not in self.global_search_widget.page_set:
             if self.canvas.projstate_unsaved: 
                 self.saveCurrentPage()
@@ -1272,8 +1214,6 @@ class MainWindow(mainwindow_cls):
         edit.setTextCursor(cursor)
 
     def shortcutEscape(self):
-        if self.canvas.handle_transform_modal_shortcut(QKEY.Key_Escape):
-            return
         if self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
         elif self.canvas.editing_textblkitem is not None and self.canvas.editing_textblkitem.isEditing():
@@ -1323,13 +1263,7 @@ class MainWindow(mainwindow_cls):
         
         if not self.imgtrans_proj.img_valid:
             return
-
-        if update_scene_text or save_proj:
-            # Resolve text-transform editor state before both the canonical
-            # project snapshot and the result-image render consume it. The
-            # render-only translation completion path saves its project first.
-            self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
-
+        
         if restore_interface:
             set_canvas_focus = self.canvas.hasFocus()
             sel_textitem = self.canvas.selected_text_items()
@@ -1512,6 +1446,19 @@ class MainWindow(mainwindow_cls):
             tgt_selector.setCurrentText(module)
         self.bottomBar.inpaint_selector.updateButtonText()
 
+    def on_transpagebtn_pressed(self, run_target: bool):
+        page_key = self.imgtrans_proj.current_img
+        if page_key is None:
+            return
+
+        blkitem_list = self.st_manager.textblk_item_list
+
+        if len(blkitem_list) < 1:
+            return
+        
+        self.translateBlkitemList(blkitem_list, -1)
+
+
     def translateBlkitemList(self, blkitem_list: List, mode: int) -> bool:
 
         tgt_img = self.imgtrans_proj.img_array
@@ -1638,7 +1585,6 @@ class MainWindow(mainwindow_cls):
                     sw = blk.stroke_width
                     if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
-                    _apply_global_text_transforms(blk, gf)
 
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (enable_detect or enable_translate)

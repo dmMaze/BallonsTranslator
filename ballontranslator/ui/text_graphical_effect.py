@@ -1,10 +1,10 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Callable
 
 import cv2
 import numpy as np
 from qtpy.QtGui import QColor, QPixmap, QImage
 
-from ...misc import pixmap2ndarray, ndarray2pixmap
+from .misc import pixmap2ndarray, ndarray2pixmap
 
 
 def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, strength=1.0, radius=21) -> Tuple[

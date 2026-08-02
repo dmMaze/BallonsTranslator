@@ -5,7 +5,6 @@ import os.path as osp
 import os
 import shutil
 import subprocess
-import threading
 from platform import platform
 
 
@@ -71,8 +70,6 @@ disable_bundled_windows_user_site()
 import ballontranslator.utils.shared as shared # Earlier import of shared to use default for config_path argument
 from ballontranslator.utils.version import APP_VERSION
 
-os.environ['NUMBA_CACHE_DIR'] = osp.join(shared.cache_dir, 'numba')
-
 PATH_ROOT = Path(shared.PROGRAM_PATH)
 PATH_FONTS = str(PATH_ROOT / 'fonts')
 
@@ -130,31 +127,6 @@ def setup_locks():
     from ballontranslator.utils.lock import RUNTIME_LOCKS
     from qtpy.QtCore import QMutex
     RUNTIME_LOCKS['model_loading'] = QMutex()
-
-
-def start_grid_numba_warmup(logger=None):
-    """Load or compile Grid kernels outside the Qt event thread."""
-    def warmup():
-        try:
-            from ballontranslator.ui.text_engine.transforms.grid_numba import (
-                warm_grid_numba_cache,
-            )
-            warm_grid_numba_cache()
-            if logger is not None:
-                logger.info('Grid transform acceleration is ready.')
-        except Exception as error:
-            if logger is not None:
-                logger.warning(
-                    f'Grid transform acceleration is unavailable: {error}'
-                )
-
-    thread = threading.Thread(
-        target=warmup,
-        name='GridNumbaWarmup',
-        daemon=True,
-    )
-    thread.start()
-    return thread
 
 
 def ensure_resource_theme_files(program_path: str = None, logger=None) -> list:
@@ -397,7 +369,6 @@ def main():
                 0,
                 lambda: FramelessMoveResize.maximize(ballontrans),
             )
-    QTimer.singleShot(0, lambda: start_grid_numba_warmup(LOGGER))
     if updated_mirrors:
         create_info_dialog(QApplication.translate(
             'NetworkMirrors',

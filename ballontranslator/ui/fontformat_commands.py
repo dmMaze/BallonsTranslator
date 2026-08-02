@@ -7,11 +7,10 @@ try:
 except:
     from qtpy.QtGui import QUndoCommand
 
-from ... import shared_widget as SW
+from . import shared_widget as SW
 from ballontranslator.utils.fontformat import FontFormat, px2pt
-from ballontranslator.utils.io_utils import empty_func
-from ..item import TextBlkItem
-from ..editing.commands import RotateItemCommand
+from .textitem import TextBlkItem
+from .textedit_commands import RotateItemCommand
 
 global_default_set_kwargs = dict(set_selected=False, restore_cursor=False)
 local_default_set_kwargs = dict(set_selected=True, restore_cursor=True)
@@ -182,12 +181,7 @@ def ffmt_change_angle(param_name: str, values: float, act_ffmt: FontFormat, is_g
 
     blkitems = [blkitem for blkitem in blkitems if blkitem is not None]
     if len(blkitems) > 0:
-        SW.canvas.push_undo_command(
-            RotateItemCommand(
-                blkitems,
-                values,
-            )
-        )
+        SW.canvas.push_undo_command(RotateItemCommand(blkitems, values, SW.canvas.txtblkShapeControl))
 
     if set_focus and not SW.canvas.hasFocus():
         SW.canvas.setFocus()
@@ -213,8 +207,3 @@ ffmt_change_gradient_start_color = ffmt_change_gradient_enabled
 ffmt_change_gradient_end_color = ffmt_change_gradient_enabled
 ffmt_change_gradient_angle = ffmt_change_gradient_enabled
 ffmt_change_gradient_size = ffmt_change_gradient_enabled
-
-handle_ffmt_change = {
-    name: globals().get(f'ffmt_change_{name}', empty_func)
-    for name in (*FontFormat.params(), 'rel_font_size', 'angle')
-}

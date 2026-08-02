@@ -18,20 +18,14 @@ def find_model_paths(model_dir, prefixes):
         'data/models/ysgyolo_yolo26_2.0.pt',
         'data/models/ysgyolo_yolo26OBB_2.0.pt'
     ]
-    if isinstance(prefixes, str):
-        prefixes = (prefixes,)
     if not osp.exists(model_dir):
         return []
     found_list = [
         osp.join(model_dir, p).replace('\\', '/')
         for p in sorted(os.listdir(model_dir))
-        if p.startswith(tuple(prefixes))
+        if p.startswith(prefixes)
     ]
     for p in default_path_list:
-        # Keep bundled download targets scoped to the requested model family,
-        # just like the locally discovered checkpoint paths above.
-        if not osp.basename(p).startswith(tuple(prefixes)):
-            continue
         if p not in found_list:
             found_list.append(p)
 

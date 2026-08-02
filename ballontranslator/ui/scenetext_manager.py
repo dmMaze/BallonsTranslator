@@ -1,10 +1,9 @@
 
-from enum import Enum
 from typing import List, Union, Tuple
 import numpy as np
 import copy
 
-from qtpy.QtWidgets import QApplication, QWidget
+from qtpy.QtWidgets import QApplication, QWidget, QGraphicsItem
 from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF
 from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetricsF, QFont, QTextCharFormat, QClipboard
 try:
@@ -12,33 +11,17 @@ try:
 except:
     from qtpy.QtGui import QUndoCommand
 
-from ..item import TextBlkItem, TextBlock
-from ...canvas import Canvas
-from .widgets import TransTextEdit, SourceTextEdit, TransPairWidget, TextEditListScrollArea, QVBoxLayout, Widget
+from .textitem import TextBlkItem, TextBlock
+from .canvas import Canvas
+from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, TextEditListScrollArea, QVBoxLayout, Widget
 from ballontranslator.utils.fontformat import FontFormat
-from .commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
-from ..formatting.panel import FontFormatPanel
+from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
+from .text_panel import FontFormatPanel
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils import shared
-from ballontranslator.utils.imgproc_utils import extract_ballon_region, get_block_mask
+from ballontranslator.utils.imgproc_utils import extract_ballon_region, rotate_polygons, get_block_mask
 from ballontranslator.utils.text_processing import seg_text, is_cjk
 from ballontranslator.utils.text_layout import layout_text
-
-
-class SceneTextReplacementReason(Enum):
-    """Describe why every scene text item is being replaced.
-
-    ``PAGE_CHANGE`` assumes the caller resolved edits before saving the old
-    page. The other reasons discard transient editors because their backing
-    model has already been replaced externally.
-
-    >>> SceneTextReplacementReason.CURRENT_PAGE_RELOAD.value
-    'current-page-reload'
-    """
-
-    PAGE_CHANGE = 'page-change'
-    CURRENT_PAGE_RELOAD = 'current-page-reload'
-    PROJECT_RELOAD = 'project-reload'
 
 
 class CreateItemCommand(QUndoCommand):
@@ -266,11 +249,13 @@ class RearrangeBlksCommand(QUndoCommand):
         self.ctrl: SceneTextManager = ctrl
         self.src_ids, self.tgt_ids = rmap[0], rmap[1]
 
+        self.nr = len(self.src_ids)
         self.src2tgt = {}
         self.tgt2src = {}
         for s, t in zip(self.src_ids, self.tgt_ids):
             self.src2tgt[s] = t
             self.tgt2src[t] = s
+        self.visible_ = None
         self.redo_visible_idx = self.undo_visible_idx = None
         if len(rmap) > 2:
             self.redo_visible_idx, self.undo_visible_idx = rmap[2]
@@ -340,6 +325,7 @@ class SceneTextManager(QObject):
         self.mainwindow = mainwindow
         self.canvas = canvas
         canvas.switch_text_item.connect(self.on_switch_textitem)
+        self.canvas.scalefactor_changed.connect(self.adjustSceneTextRect)
         self.canvas.end_create_textblock.connect(self.onEndCreateTextBlock)
         self.canvas.paste2selected_textitems.connect(self.on_paste2selected_textitems)
         self.canvas.delete_textblks.connect(self.onDeleteBlkItems)
@@ -349,9 +335,7 @@ class SceneTextManager(QObject):
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvas.reset_angle.connect(self.onResetAngle)
         self.canvas.squeeze_blk.connect(self.onSqueezeBlk)
-        self.canvas.incanvas_selection_changed.connect(
-            self._on_canvas_selection_changed
-        )
+        self.canvas.incanvas_selection_changed.connect(self.on_incanvas_selection_changed)
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
         self.textEditList = textpanel.textEditList
@@ -369,7 +353,7 @@ class SceneTextManager(QObject):
         self.auto_textlayout_flag = False
         self.hovering_transwidget : TransTextEdit = None
 
-        self._text_move_snapshot = {}
+        self.prev_blkitem: TextBlkItem = None
 
     def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None, current_editing_widget: Union[SourceTextEdit, TransTextEdit] = None):
         n_blk = len(self.textblk_item_list)
@@ -406,7 +390,7 @@ class SceneTextManager(QObject):
                 self.txtblkShapeControl.setBlkItem(blk)
                 edit = self.pairwidget_list[tgt_idx].e_trans
                 self.changeHoveringWidget(edit)
-                self.on_incanvas_selection_changed()
+                self.textEditList.set_selected_list([blk.idx])
             else:
                 editing_blk.endEdit()
                 editing_blk.setSelected(False)
@@ -439,17 +423,13 @@ class SceneTextManager(QObject):
             self.textpanel.formatpanel.set_textblk_item()
             self.canvas.textLayer.hide()
 
-    def clearSceneTextitems(
-        self,
-        reason=SceneTextReplacementReason.CURRENT_PAGE_RELOAD,
-    ):
-        if reason is not SceneTextReplacementReason.PAGE_CHANGE:
-            self.formatpanel.cancel_text_transform_edits_for_scene_change()
-        self._text_move_snapshot.clear()
+    def adjustSceneTextRect(self):
+        self.txtblkShapeControl.updateBoundingRect()
+
+    def clearSceneTextitems(self):
         self.hovering_transwidget = None
         self.txtblkShapeControl.setBlkItem(None)
         for blkitem in self.textblk_item_list:
-            blkitem.geometry_controller.release_render_resources()
             self.canvas.removeItem(blkitem)
         self.textblk_item_list.clear()
         self.textEditList.clearAllSelected()
@@ -457,29 +437,16 @@ class SceneTextManager(QObject):
             self.textEditList.removeWidget(textwidget)
         self.pairwidget_list.clear()
 
-    def populateSceneTextitems(self):
-        """Create scene items for the project's already-selected current page."""
+    def updateSceneTextitems(self):
         self.hovering_transwidget = None
+        self.txtblkShapeControl.setBlkItem(None)
+        self.clearSceneTextitems()
         for textblock in self.imgtrans_proj.current_block_list():
             if textblock.font_family is None or textblock.font_family.strip() == '':
                 textblock.font_family = self.formatpanel.familybox.currentText()
-            self.addTextBlock(textblock)
+            blk_item = self.addTextBlock(textblock)
         if self.auto_textlayout_flag:
             self.updateTextBlkList()
-
-    def updateSceneTextitems(
-        self,
-        reason=SceneTextReplacementReason.CURRENT_PAGE_RELOAD,
-    ):
-        """Replace all scene text items at an explicit lifecycle boundary."""
-        if reason is SceneTextReplacementReason.CURRENT_PAGE_RELOAD:
-            # Commands retain their original QGraphicsItems. They cannot remain
-            # valid after the current page is rebuilt with new item instances.
-            self.canvas.clear_text_stack()
-        elif reason is SceneTextReplacementReason.PROJECT_RELOAD:
-            self.canvas.clear_undostack(update_saved_step=True)
-        self.clearSceneTextitems(reason)
-        self.populateSceneTextitems()
 
     def addTextBlock(self, blk: Union[TextBlock, TextBlkItem] = None) -> TextBlkItem:
         if isinstance(blk, TextBlkItem):
@@ -498,7 +465,7 @@ class SceneTextManager(QObject):
                     blk_item.setPlainText(translation)
         self.addTextBlkItem(blk_item)
 
-        pair_widget = TransPairWidget(len(self.pairwidget_list), pcfg.fold_textarea)
+        pair_widget = TransPairWidget(blk, len(self.pairwidget_list), pcfg.fold_textarea)
         self.pairwidget_list.append(pair_widget)
         self.textEditList.addPairWidget(pair_widget)
         pair_widget.e_source.setPlainText(blk_item.blk.get_text())
@@ -531,15 +498,15 @@ class SceneTextManager(QObject):
         textblk_item.end_edit.connect(self.onTextBlkItemEndEdit)
         textblk_item.hover_enter.connect(self.onTextBlkItemHoverEnter)
         textblk_item.leftbutton_pressed.connect(self.onLeftbuttonPressed)
-        textblk_item.move_interaction_finished.connect(
-            self.onTextBlkItemMoveFinished
-        )
+        textblk_item.moving.connect(self.onTextBlkItemMoving)
+        textblk_item.moved.connect(self.onTextBlkItemMoved)
         textblk_item.reshaped.connect(self.onTextBlkItemReshaped)
         textblk_item.rotated.connect(self.onTextBlkItemRotated)
         textblk_item.push_undo_stack.connect(self.on_push_textitem_undostack)
         textblk_item.undo_signal.connect(self.on_textedit_undo)
         textblk_item.redo_signal.connect(self.on_textedit_redo)
         textblk_item.propagate_user_edited.connect(self.on_propagate_textitem_edit)
+        textblk_item.doc_size_changed.connect(self.onTextBlkItemSizeChanged)
         textblk_item.pasted.connect(self.onBlkitemPaste)
         return textblk_item
 
@@ -571,6 +538,12 @@ class SceneTextManager(QObject):
         self.on_incanvas_selection_changed()
         self.canvas.block_selection_signal = False
         
+    def onTextBlkItemSizeChanged(self, idx: int):
+        blk_item = self.textblk_item_list[idx]
+        if not self.txtblkShapeControl.reshaping:
+            if self.txtblkShapeControl.blk_item == blk_item:
+                self.txtblkShapeControl.updateBoundingRect()
+
     @property
     def app_clipborad(self) -> QClipboard:
         return self.app.clipboard()
@@ -583,7 +556,6 @@ class SceneTextManager(QObject):
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]
-        self.formatpanel.text_transform_editor.select_transform(-1)
         self.txtblkShapeControl.setBlkItem(blk_item)
         self.canvas.editing_textblkitem = blk_item
         self.formatpanel.set_textblk_item(blk_item)
@@ -607,14 +579,10 @@ class SceneTextManager(QObject):
     def onLeftbuttonPressed(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]
         self.txtblkShapeControl.setBlkItem(blk_item)
-        selections = self.canvas.selected_text_items(sort=False)
-        if blk_item not in selections:
-            selections.append(blk_item)
-        self._text_move_snapshot = {
-            item: QPointF(item.logical_position()) for item in selections
-        }
-        for item in selections:
-            item.oldPos = item.pos()
+        selections: List[TextBlkItem] = self.canvas.selectedItems()
+        if len(selections) > 1:
+            for item in selections:
+                item.oldPos = item.pos()
         self.changeHoveringWidget(self.pairwidget_list[blk_id].e_trans)
 
     def onTextBlkItemEndEdit(self, blk_id: int):
@@ -627,6 +595,10 @@ class SceneTextManager(QObject):
             return self.canvas.editing_textblkitem
         return None
 
+    def savePrevBlkItem(self, blkitem: TextBlkItem):
+        self.prev_blkitem = blkitem
+        self.prev_textCursor = QTextCursor(self.prev_blkitem.textCursor())
+
     def is_editting(self):
         blk_item = self.txtblkShapeControl.blk_item
         return blk_item is not None and blk_item.is_editting()
@@ -635,58 +607,24 @@ class SceneTextManager(QObject):
         if self.is_editting():
             return
         blk_item = self.textblk_item_list[blk_id]
-        if self.canvas.active_transform_control_item() is blk_item:
-            shape = self.txtblkShapeControl
-            if shape.blk_item is not blk_item:
-                shape.setBlkItem(blk_item)
-            shape.hide()
-            return
         if not blk_item.hasFocus():
             self.txtblkShapeControl.setBlkItem(blk_item)
 
-    def onTextBlkItemMoveFinished(self):
-        try:
-            items = [
-                item
-                for item in self._text_move_snapshot
-                if item.scene() is self.canvas
-            ]
-            if not items:
-                return
-            before = [
-                QPointF(
-                    self._text_move_snapshot.get(
-                        item, item.logical_position()
-                    )
-                )
-                for item in items
-            ]
-            after = [QPointF(item.logical_position()) for item in items]
-            if before != after:
-                self.canvas.push_undo_command(
-                    MoveBlkItemsCommand(
-                        items,
-                        before_positions=before,
-                        after_positions=after,
-                    )
-                )
-        finally:
-            self._text_move_snapshot.clear()
+    def onTextBlkItemMoving(self, item: TextBlkItem):
+        self.txtblkShapeControl.updateBoundingRect()
+
+    def onTextBlkItemMoved(self):
+        selected_blks = self.canvas.selected_text_items()
+        if len(selected_blks) > 0:
+            self.canvas.push_undo_command(MoveBlkItemsCommand(selected_blks, self.txtblkShapeControl))
         
     def onTextBlkItemReshaped(self, item: TextBlkItem):
-        self.canvas.push_undo_command(
-            ReshapeItemCommand(item)
-        )
+        self.canvas.push_undo_command(ReshapeItemCommand(item))
 
     def onTextBlkItemRotated(self, new_angle: float):
         blk_item = self.txtblkShapeControl.blk_item
         if blk_item:
-            self.canvas.push_undo_command(
-                RotateItemCommand(
-                    blk_item,
-                    new_angle,
-                )
-            )
+            self.canvas.push_undo_command(RotateItemCommand(blk_item, new_angle, self.txtblkShapeControl))
 
     def onDeleteBlkItems(self, mode: int):
         selected_blks = self.canvas.selected_text_items()
@@ -765,17 +703,12 @@ class SceneTextManager(QObject):
     def onResetAngle(self):
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
-            self.canvas.push_undo_command(
-                ResetAngleCommand(selected_blks)
-            )
+            self.canvas.push_undo_command(ResetAngleCommand(selected_blks, self.txtblkShapeControl))
 
     def onSqueezeBlk(self):
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(SqueezeCommand(selected_blks, self.txtblkShapeControl))
-
-    def _on_canvas_selection_changed(self):
-        self.on_incanvas_selection_changed()
 
     def on_incanvas_selection_changed(self):
         if self.canvas.textEditMode():
@@ -1023,6 +956,9 @@ class SceneTextManager(QObject):
         etrans = [self.pairwidget_list[blkitem.idx].e_trans for blkitem in blkitems]
         self.canvas.push_undo_command(MultiPasteCommand(text, blkitems, etrans))
 
+    def onRotateTextBlkItem(self, item: TextBlock):
+        self.canvas.push_undo_command(RotateItemCommand(item))
+    
     def on_transwidget_focus_in(self, idx: int):
         if self.is_editting():
             textitm = self.editingTextItem()
@@ -1045,7 +981,7 @@ class SceneTextManager(QObject):
         sender = self.sender()
         if isinstance(sender, TransTextEdit) and idx < len(self.textblk_item_list):
             blk_item = self.textblk_item_list[idx]
-            blk_item.refresh_cache_policy()
+            blk_item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
 
     def on_push_textitem_undostack(self, num_steps: int, is_formatting: bool):
         blkitem: TextBlkItem = self.sender()
@@ -1078,13 +1014,7 @@ class SceneTextManager(QObject):
         for blk in selected_blks:
             trans_widget_list.append(self.pairwidget_list[blk.idx].e_trans)
         if len(selected_blks) > 0:
-            self.canvas.push_undo_command(
-                ApplyFontformatCommand(
-                    selected_blks,
-                    trans_widget_list,
-                    fontformat,
-                )
-            )
+            self.canvas.push_undo_command(ApplyFontformatCommand(selected_blks, trans_widget_list, fontformat))
             if self.formatpanel.global_mode():
                 if id(self.formatpanel.active_text_style_format()) != id(fontformat):
                     self.formatpanel.deactivate_style_label()
@@ -1104,7 +1034,6 @@ class SceneTextManager(QObject):
         for idx in selset:
             self.textblk_item_list[idx].setSelected(True)
         self.canvas.block_selection_signal = False
-        self.on_incanvas_selection_changed()
 
     def on_textedit_list_focusout(self):
         fw = self.app.focusWidget()
@@ -1144,10 +1073,15 @@ class SceneTextManager(QObject):
             blk_item.updateBlkFormat()
             cbl.append(blk_item.blk)
 
+    def updateTranslation(self):
+        for blk_item, transwidget in zip(self.textblk_item_list, self.pairwidget_list):
+            transwidget.e_trans.setPlainText(blk_item.blk.translation)
+            blk_item.setPlainText(blk_item.blk.translation)
+        self.canvas.clear_text_stack()
+
     def showTextblkItemRect(self, draw_rect: bool):
-        self.canvas.textblock_mode = bool(draw_rect)
         for blk_item in self.textblk_item_list:
-            blk_item.draw_rect = bool(draw_rect)
+            blk_item.draw_rect = draw_rect
             blk_item.update()
 
     def set_blkitems_selection(self, selected: bool, blk_items: List[TextBlkItem] = None):
@@ -1173,6 +1107,7 @@ class SceneTextManager(QObject):
 
 def get_text_size(fm: QFontMetricsF, text: str) -> Tuple[int, int]:
     brt = fm.tightBoundingRect(text)
+    br = fm.boundingRect(text)
     return int(np.ceil(fm.horizontalAdvance(text))), int(np.ceil(brt.height()))
     
 def get_words_length_list(fm: QFontMetricsF, words: List[str]) -> List[int]:

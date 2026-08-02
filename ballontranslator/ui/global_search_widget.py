@@ -10,8 +10,8 @@ from .page_search_widget import SearchEditor, HighlightMatched, SEARCHRST_HIGHLI
 from .misc import doc_replace
 from ballontranslator.utils.config import pcfg
 from .custom_widget import ProgressMessageBox, Widget, NoBorderPushBtn
-from .text_engine.item import TextBlkItem, TextBlock
-from .text_engine.editing.widgets import TransPairWidget, SourceTextEdit
+from .textitem import TextBlkItem, TextBlock
+from .textedit_area import TransPairWidget, SourceTextEdit
 from .io_thread import ThreadBase
 from ballontranslator.utils import shared
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans

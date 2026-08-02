@@ -141,7 +141,7 @@ def _find_model_paths(model_dir, prefixes):
         ...     _ = Path(tmp, 'ysgyolo_demo.pt').write_text('')
         ...     _ = Path(tmp, 'other.pt').write_text('')
         ...     _find_model_paths(tmp, ('ysgyolo',))  # doctest: +ELLIPSIS
-        ['...ysgyolo_demo.pt', 'data/models/ysgyolo_yolo26_2.0.pt', 'data/models/ysgyolo_yolo26OBB_2.0.pt']
+        ['...ysgyolo_demo.pt']
     """
 
     default_path_list = [
@@ -162,10 +162,6 @@ def _find_model_paths(model_dir, prefixes):
     ]
 
     for p in default_path_list:
-        # Built-in download targets must obey the same prefix filter as local
-        # files; SafeEval can encounter this helper with non-YSG prefixes.
-        if not os.path.basename(p).startswith(tuple(prefixes)):
-            continue
         if p not in found_list:
             found_list.append(p)
 

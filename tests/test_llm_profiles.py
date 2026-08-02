@@ -252,7 +252,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
 
                 self.assertTrue(profile.support_text)
                 self.assertTrue(profile.support_vision)
-                self.assertTrue(profile.vision_model)
+                self.assertEqual(profile.vision_model, profile.model)
                 self.assertIn(profile.vision_model, profile.vision_model_options)
                 self.assertEqual(profile.vision_detail_level, 'auto')
 
@@ -269,10 +269,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
         profile = default_profile('OpenRouter')
 
         self.assertTrue(profile.support_image)
-        self.assertEqual(
-            profile.image_base_url,
-            'https://openrouter.ai/api/v1/images',
-        )
+        self.assertEqual(profile.image_base_url, 'https://openrouter.ai/api/v1')
         self.assertEqual(profile.image_model, 'black-forest-labs/flux.2-klein-4b')
         self.assertEqual(profile.image_model_options, ['black-forest-labs/flux.2-klein-4b'])
 
@@ -396,10 +393,7 @@ class SecretStoreTest(unittest.TestCase):
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.inpaint_llm_id)
         self.assertEqual(loaded.module.inpaint_llm_id, 'openrouter')
         self.assertTrue(selected.support_image)
-        self.assertEqual(
-            selected.image_base_url,
-            'https://openrouter.ai/api/v1/images',
-        )
+        self.assertEqual(selected.image_base_url, 'https://openrouter.ai/api/v1')
         self.assertEqual(selected.image_model, 'black-forest-labs/flux.2-klein-4b')
         self.assertEqual(selected.image_model_options, ['black-forest-labs/flux.2-klein-4b'])
 

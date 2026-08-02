@@ -1,17 +1,17 @@
 import re
 import threading
 import traceback
-from typing import List
+from typing import List, Union
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
 from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
 import numpy as np
 
-from ...custom_widget import ScrollBar, Widget, SeparatorWidget
-from ..item import TextBlock
+from .custom_widget import ScrollBar, Widget, SeparatorWidget
+from .textitem import TextBlock
 from ballontranslator.utils.config import pcfg
-from ...spellcheck import SpellCheckManager, SpellCheckHighlighter
+from ballontranslator.ui.spellcheck import SpellCheckManager, SpellCheckHighlighter
 
 
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
@@ -599,13 +599,14 @@ class TransPairWidget(Widget):
     idx_edited = Signal(int, int)
     pw_drop = Signal()
 
-    def __init__(self, idx: int = None, fold: bool = False, *args, **kwargs) -> None:
+    def __init__(self, textblock: TextBlock = None, idx: int = None, fold: bool = False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.e_source = SourceTextEdit(idx, self, fold)
         self.e_trans = TransTextEdit(idx, self, fold)
         self.idx_label = RowIndexLabel(idx, self)
         self.idx_label.setText(str(idx + 1).zfill(2))   # showed index start from 1!
         self.submmit_idx = self.idx_label.submmit_idx.connect(self.on_idx_edited)
+        self.textblock = textblock
         self.idx = idx
         self.checked = False
         vlayout = QVBoxLayout()

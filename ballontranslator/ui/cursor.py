@@ -1,45 +1,14 @@
-import math
-import os.path as osp
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QPixmap
+from qtpy.QtGui import QCursor
 from functools import cached_property
-
-from qtpy.QtCore import QPointF, Qt
-from qtpy.QtGui import QCursor, QPixmap
+import os.path as osp
 
 from ballontranslator.utils import shared
 
 
 def _icon_path(filename: str) -> str:
     return osp.join(shared.ICON_DIR, filename)
-
-
-def scene_angle_to_cursor_index(angle: float) -> int:
-    """Map an ``atan2`` scene angle to the cursor lists' handle order.
-
-    Scene angles start at the right edge, while the cursor lists start at the
-    top-left handle and advance clockwise.
-
-    >>> [scene_angle_to_cursor_index(angle) for angle in (-135, -90, -45, 0)]
-    [0, 1, 2, 3]
-    """
-    return int((angle + 135.0 + 22.5) % 360 / 45)
-
-
-def resize_handle_scene_angle(
-    horizontal_axis: QPointF,
-    handle_index: int,
-) -> float:
-    """Return the semantic resize direction for an eight-handle box.
-
-    The top edge supplies accumulated rotation.  Aspect ratio, non-uniform
-    scale, and projective slant must not change a handle's semantic role.
-
-    >>> round(resize_handle_scene_angle(QPointF(1000, 0), 0))
-    -135
-    """
-    rotation = math.degrees(
-        math.atan2(horizontal_axis.y(), horizontal_axis.x())
-    )
-    return rotation + 45.0 * handle_index - 135.0
 
 
 class RotateCursorList:
