@@ -12,12 +12,12 @@ try:
 except:
     from qtpy.QtGui import QUndoCommand
 
-from .textitem import TextBlkItem, TextBlock
-from .canvas import Canvas
-from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, TextEditListScrollArea, QVBoxLayout, Widget
+from ..item import TextBlkItem, TextBlock
+from ...canvas import Canvas
+from .widgets import TransTextEdit, SourceTextEdit, TransPairWidget, TextEditListScrollArea, QVBoxLayout, Widget
 from ballontranslator.utils.fontformat import FontFormat
-from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
-from .text_panel import FontFormatPanel
+from .commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
+from ..formatting.panel import FontFormatPanel
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils import shared
 from ballontranslator.utils.imgproc_utils import extract_ballon_region, get_block_mask
@@ -266,13 +266,11 @@ class RearrangeBlksCommand(QUndoCommand):
         self.ctrl: SceneTextManager = ctrl
         self.src_ids, self.tgt_ids = rmap[0], rmap[1]
 
-        self.nr = len(self.src_ids)
         self.src2tgt = {}
         self.tgt2src = {}
         for s, t in zip(self.src_ids, self.tgt_ids):
             self.src2tgt[s] = t
             self.tgt2src[t] = s
-        self.visible_ = None
         self.redo_visible_idx = self.undo_visible_idx = None
         if len(rmap) > 2:
             self.redo_visible_idx, self.undo_visible_idx = rmap[2]
@@ -371,7 +369,6 @@ class SceneTextManager(QObject):
         self.auto_textlayout_flag = False
         self.hovering_transwidget : TransTextEdit = None
 
-        self.prev_blkitem: TextBlkItem = None
         self._text_move_snapshot = {}
 
     def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None, current_editing_widget: Union[SourceTextEdit, TransTextEdit] = None):
@@ -501,7 +498,7 @@ class SceneTextManager(QObject):
                     blk_item.setPlainText(translation)
         self.addTextBlkItem(blk_item)
 
-        pair_widget = TransPairWidget(blk, len(self.pairwidget_list), pcfg.fold_textarea)
+        pair_widget = TransPairWidget(len(self.pairwidget_list), pcfg.fold_textarea)
         self.pairwidget_list.append(pair_widget)
         self.textEditList.addPairWidget(pair_widget)
         pair_widget.e_source.setPlainText(blk_item.blk.get_text())
@@ -630,10 +627,6 @@ class SceneTextManager(QObject):
             return self.canvas.editing_textblkitem
         return None
 
-    def savePrevBlkItem(self, blkitem: TextBlkItem):
-        self.prev_blkitem = blkitem
-        self.prev_textCursor = QTextCursor(self.prev_blkitem.textCursor())
-
     def is_editting(self):
         blk_item = self.txtblkShapeControl.blk_item
         return blk_item is not None and blk_item.is_editting()
@@ -642,7 +635,7 @@ class SceneTextManager(QObject):
         if self.is_editting():
             return
         blk_item = self.textblk_item_list[blk_id]
-        if self.canvas.txtblkGridControl.item is blk_item:
+        if self.canvas.active_transform_control_item() is blk_item:
             shape = self.txtblkShapeControl
             if shape.blk_item is not blk_item:
                 shape.setBlkItem(blk_item)
@@ -1030,11 +1023,6 @@ class SceneTextManager(QObject):
         etrans = [self.pairwidget_list[blkitem.idx].e_trans for blkitem in blkitems]
         self.canvas.push_undo_command(MultiPasteCommand(text, blkitems, etrans))
 
-    def onRotateTextBlkItem(self, item: TextBlock):
-        self.canvas.push_undo_command(
-            RotateItemCommand(item)
-        )
-    
     def on_transwidget_focus_in(self, idx: int):
         if self.is_editting():
             textitm = self.editingTextItem()
@@ -1154,12 +1142,6 @@ class SceneTextManager(QObject):
             blk_item.blk._bounding_rect = blk_item.absBoundingRect()
             blk_item.updateBlkFormat()
             cbl.append(blk_item.blk)
-
-    def updateTranslation(self):
-        for blk_item, transwidget in zip(self.textblk_item_list, self.pairwidget_list):
-            transwidget.e_trans.setPlainText(blk_item.blk.translation)
-            blk_item.setPlainText(blk_item.blk.translation)
-        self.canvas.clear_text_stack()
 
     def showTextblkItemRect(self, draw_rect: bool):
         self.canvas.textblock_mode = bool(draw_rect)

@@ -10,24 +10,25 @@ from qtpy.QtGui import QTransform
 from ballontranslator.utils.fontformat import (
     TEXT_TRANSFORM_CURVATURE_MAX,
     TEXT_TRANSFORM_CURVATURE_MIN,
-    TEXT_TRANSFORM_BOX_SLANT_MAX,
-    TEXT_TRANSFORM_BOX_SLANT_MIN,
     TEXT_TRANSFORM_GLYPH_SLANT_MAX,
     TEXT_TRANSFORM_GLYPH_SLANT_MIN,
     TEXT_TRANSFORM_GRID_DIVISION_MAX,
     TEXT_TRANSFORM_GRID_DIVISION_MIN,
-    TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX,
-    TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN,
-    TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MAX,
-    TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MIN,
+    TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MAX,
+    TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MIN,
+    TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
+    TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
+    TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MAX,
+    TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MIN,
+    TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
+    TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
     TEXT_TRANSFORM_SCALE_MAX,
     TEXT_TRANSFORM_SCALE_MIN,
     TEXT_TRANSFORM_TYPES,
-    TextTransformStack,
     coerce_text_transform_stack,
 )
 
-from .text_transform import (
+from .mapping import (
     CompiledTextTransform,
     CompositeTextTransformMapper,
     CompiledTransformStage,
@@ -35,9 +36,8 @@ from .text_transform import (
     TransformStageContext,
     curvature_transform_stage,
     grid_transform_stage,
-    perspective_transform_stage,
+    projective_transform_stage,
     rect_polygon,
-    slant_transform_stage,
 )
 
 
@@ -54,6 +54,7 @@ class TransformControlSpec:
     suffix: str
     decimals: int = 1
     choices: tuple = ()
+    shortcut: Callable[[], str] = None
 
 
 @dataclass(frozen=True)
@@ -61,7 +62,7 @@ class TextTransformVariantSpec:
     """Bind one persisted type to controls and one geometry-stage factory.
 
     >>> TEXT_TRANSFORM_VARIANTS[0].transform_type
-    'slant'
+    'projective'
     """
 
     transform_type: str
@@ -70,7 +71,7 @@ class TextTransformVariantSpec:
     controls: Tuple[TransformControlSpec, ...] = ()
 
 
-SLANT_CONTROLS = (
+PROJECTIVE_CONTROLS = (
     TransformControlSpec(
         'horizontal_scale_control',
         'horizontal_scale',
@@ -81,6 +82,9 @@ SLANT_CONTROLS = (
         TEXT_TRANSFORM_SCALE_MIN,
         TEXT_TRANSFORM_SCALE_MAX,
         '%',
+        shortcut=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Shortcut: S → X'
+        ),
     ),
     TransformControlSpec(
         'vertical_scale_control',
@@ -92,17 +96,84 @@ SLANT_CONTROLS = (
         TEXT_TRANSFORM_SCALE_MIN,
         TEXT_TRANSFORM_SCALE_MAX,
         '%',
+        shortcut=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Shortcut: S → Y'
+        ),
     ),
     TransformControlSpec(
-        'slant_angle_control',
-        'slant_angle',
+        'horizontal_slant_control',
+        'horizontal_slant',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Box Slant'
+            'TextTransformPanel', 'Horizontal Slant'
         ),
         1.0,
-        TEXT_TRANSFORM_BOX_SLANT_MIN,
-        TEXT_TRANSFORM_BOX_SLANT_MAX,
+        TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
+        TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
         '\N{DEGREE SIGN}',
+    ),
+    TransformControlSpec(
+        'vertical_slant_control',
+        'vertical_slant',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Vertical Slant'
+        ),
+        1.0,
+        TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
+        TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
+        '\N{DEGREE SIGN}',
+    ),
+    TransformControlSpec(
+        'rotation_x_control',
+        'rotation_x',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Rotation X'
+        ),
+        1.0,
+        TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
+        TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
+        '\N{DEGREE SIGN}',
+        shortcut=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Shortcut: R → X'
+        ),
+    ),
+    TransformControlSpec(
+        'rotation_y_control',
+        'rotation_y',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Rotation Y'
+        ),
+        1.0,
+        TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
+        TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
+        '\N{DEGREE SIGN}',
+        shortcut=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Shortcut: R → Y'
+        ),
+    ),
+    TransformControlSpec(
+        'rotation_z_control',
+        'rotation_z',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Rotation Z'
+        ),
+        1.0,
+        TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MIN,
+        TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MAX,
+        '\N{DEGREE SIGN}',
+        shortcut=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Shortcut: R (or R → Z)'
+        ),
+    ),
+    TransformControlSpec(
+        'perspective_control',
+        'perspective',
+        lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Perspective'
+        ),
+        100.0,
+        TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MIN,
+        TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MAX,
+        '%',
     ),
 )
 
@@ -116,31 +187,6 @@ GLYPH_SLANT_CONTROL = TransformControlSpec(
     TEXT_TRANSFORM_GLYPH_SLANT_MIN,
     TEXT_TRANSFORM_GLYPH_SLANT_MAX,
     '\N{DEGREE SIGN}',
-)
-
-PERSPECTIVE_CONTROLS = (
-    TransformControlSpec(
-        'perspective_strength_control',
-        'strength',
-        lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Strength'
-        ),
-        100.0,
-        TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MIN,
-        TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MAX,
-        '%',
-    ),
-    TransformControlSpec(
-        'perspective_direction_control',
-        'direction',
-        lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Direction'
-        ),
-        1.0,
-        TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN,
-        TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX,
-        '\N{DEGREE SIGN}',
-    ),
 )
 
 CURVATURE_CONTROLS = (
@@ -183,10 +229,10 @@ GRID_CONTROLS = (
         decimals=0,
     ),
     TransformControlSpec(
-        'grid_sampling_control',
-        'sampling',
+        'grid_interpolation_control',
+        'interpolation',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Sampling'
+            'TextTransformPanel', 'Interpolation'
         ),
         1.0,
         0.0,
@@ -212,18 +258,12 @@ GRID_CONTROLS = (
 
 TEXT_TRANSFORM_VARIANTS = (
     TextTransformVariantSpec(
-        'slant',
-        lambda: QCoreApplication.translate('TextTransformPanel', 'Slant'),
-        slant_transform_stage,
-        SLANT_CONTROLS,
-    ),
-    TextTransformVariantSpec(
-        'perspective',
+        'projective',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Perspective'
+            'TextTransformPanel', 'Scale / Slant / 3D'
         ),
-        perspective_transform_stage,
-        PERSPECTIVE_CONTROLS,
+        projective_transform_stage,
+        PROJECTIVE_CONTROLS,
     ),
     TextTransformVariantSpec(
         'curvature',

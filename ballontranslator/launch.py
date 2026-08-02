@@ -136,7 +136,7 @@ def start_grid_numba_warmup(logger=None):
     """Load or compile Grid kernels outside the Qt event thread."""
     def warmup():
         try:
-            from ballontranslator.ui.text_effects.grid_numba import (
+            from ballontranslator.ui.text_engine.transforms.grid_numba import (
                 warm_grid_numba_cache,
             )
             warm_grid_numba_cache()

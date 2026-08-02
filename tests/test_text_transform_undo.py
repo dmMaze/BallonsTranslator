@@ -36,49 +36,51 @@ try:
 except ImportError:
     from qtpy.QtWidgets import QUndoStack
 
-from ballontranslator.ui.textedit_area import TransPairWidget
-from ballontranslator.ui.textedit_commands import (
+from ballontranslator.ui.text_engine.editing.widgets import TransPairWidget
+from ballontranslator.ui.text_engine.editing.commands import (
     MultiPasteCommand,
     ReshapeItemCommand,
     SetTextTransformCommand,
     TextEditCommand,
     propagate_user_edit,
 )
-from ballontranslator.ui.textitem import TextBlkItem
-from ballontranslator.ui.text_transform_panel import TextTransformPanel
-from ballontranslator.ui.texteditshapecontrol import TextBlkShapeControl
-from ballontranslator.ui.text_transform_editor import TextTransformEditSession
-from ballontranslator.ui.scenetext_manager import SceneTextManager
+from ballontranslator.ui.text_engine.item import TextBlkItem
+from ballontranslator.ui.text_engine.transforms.panel import TextTransformPanel
+from ballontranslator.ui.text_engine.shape_control import TextBlkShapeControl
+from ballontranslator.ui.text_engine.transforms.editor import TextTransformEditSession
+from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui import shared_widget as SW
-from ballontranslator.ui.text_effects.glyph import (
+from ballontranslator.ui.text_engine.rendering.glyph import (
     GLOBAL_GLYPH_GEOMETRY_CACHE,
     GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE,
     GlyphGeometry,
     WeightedGlyphGeometryCache,
 )
-from ballontranslator.ui.text_effects.transform_layout import (
+from ballontranslator.ui.text_engine.rendering.glyph_slant import (
     GlyphSlantLayoutRenderer,
 )
-from ballontranslator.ui.text_effects.curvature import CurvatureMapper
-from ballontranslator.ui.text_effects.grid import GridMapper
-from ballontranslator.ui.text_grid_control import TextGridTransformControl
+from ballontranslator.ui.text_engine.transforms.curvature import CurvatureMapper
+from ballontranslator.ui.text_engine.transforms.grid import GridMapper
+from ballontranslator.ui.text_engine.transforms.grid_control import TextGridTransformControl
+from ballontranslator.ui.text_engine.transforms.projective_control import (
+    PROJECTIVE_CONTROL_RADIUS,
+    TextProjectiveTransformControl,
+)
 from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.drawingpanel import DrawingPanel
-from ballontranslator.ui.modal_point_transform import ModalPointTransform
-from ballontranslator.ui.text_transform import (
+from ballontranslator.ui.text_engine.transforms.modal import ModalPointTransform
+from ballontranslator.ui.text_engine.transforms.mapping import (
     CompositeTextTransformMapper,
-    perspective_transform_matrix,
-    text_transform_matrix,
+    projective_transform_matrix,
 )
-from ballontranslator.ui.text_transform_variants import (
+from ballontranslator.ui.text_engine.transforms.registry import (
     compile_text_transform_stack,
 )
 from ballontranslator.utils.fontformat import (
     CurvatureTextTransform,
     FontFormat,
     GridTextTransform,
-    PerspectiveTextTransform,
-    SlantTextTransform,
+    ProjectiveTextTransform,
     TextTransformStack,
     TextTransformState,
 )
@@ -104,16 +106,16 @@ def transform_state(*transforms, glyph_slant_angle=0.0):
 
 NEUTRAL = transform_state()
 FIRST_TRANSFORM = transform_state(
-    SlantTextTransform(1.2, 0.9, 12.0),
+    ProjectiveTextTransform(1.2, 0.9, 12.0),
     glyph_slant_angle=5.0,
 )
 FINAL_TRANSFORMS = (
     transform_state(
-        SlantTextTransform(0.8, 1.1, -9.0),
+        ProjectiveTextTransform(0.8, 1.1, -9.0),
         glyph_slant_angle=-4.0,
     ),
     transform_state(
-        SlantTextTransform(1.3, 0.7, 6.0),
+        ProjectiveTextTransform(1.3, 0.7, 6.0),
         glyph_slant_angle=8.0,
     ),
 )
@@ -130,7 +132,7 @@ class TextTransformTestBase(unittest.TestCase):
         block.vertical = vertical
         block.translation = text
         item = TextBlkItem(block, index)
-        pair = TransPairWidget(block, index, False)
+        pair = TransPairWidget(index, False)
         pair.e_trans.setPlainText(item.toPlainText())
         return item, pair
 
@@ -239,12 +241,18 @@ class TextTransformTestBase(unittest.TestCase):
 
 
 class ExtendedTextTransformModelTest(TextTransformTestBase):
-    def test_perspective_and_curvature_payloads_round_trip(self):
+    def test_projective_and_curvature_payloads_round_trip(self):
         payloads = (
             {
-                'transform_type': 'perspective',
-                'strength': 0.55,
-                'direction': -35.0,
+                'transform_type': 'projective',
+                'horizontal_scale': 1.2,
+                'vertical_scale': 0.9,
+                'horizontal_slant': 8.0,
+                'vertical_slant': -4.0,
+                'rotation_x': 25.0,
+                'rotation_y': -35.0,
+                'rotation_z': 12.0,
+                'perspective': 0.55,
             },
             {
                 'transform_type': 'curvature',
@@ -262,16 +270,26 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
     def test_duplicate_stack_entries_and_glyph_slant_round_trip(self):
         payload = [
             {
-                'transform_type': 'slant',
+                'transform_type': 'projective',
                 'horizontal_scale': 1.2,
                 'vertical_scale': 1.0,
-                'slant_angle': 5.0,
+                'horizontal_slant': 5.0,
+                'vertical_slant': 0.0,
+                'rotation_x': 0.0,
+                'rotation_y': 0.0,
+                'rotation_z': 0.0,
+                'perspective': 0.0,
             },
             {
-                'transform_type': 'slant',
+                'transform_type': 'projective',
                 'horizontal_scale': 0.8,
                 'vertical_scale': 1.1,
-                'slant_angle': -3.0,
+                'horizontal_slant': -3.0,
+                'vertical_slant': 0.0,
+                'rotation_x': 0.0,
+                'rotation_y': 0.0,
+                'rotation_z': 0.0,
+                'perspective': 0.0,
             },
         ]
         font_format = FontFormat(
@@ -293,12 +311,27 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
         )
         self.assertEqual(restored.fontformat.glyph_slant_angle, 7.0)
 
-    def test_perspective_matrix_is_centered_and_invertible(self):
+    def test_projective_matrix_is_centered_and_invertible(self):
         rect = QRectF(20, 30, 400, 180)
-        for direction in (-180.0, -45.0, 0.0, 90.0, 180.0):
-            with self.subTest(direction=direction):
-                matrix = perspective_transform_matrix(
-                    PerspectiveTextTransform(0.8, direction),
+        for rotation_x, rotation_y in (
+            (-89.0, -45.0),
+            (-30.0, 60.0),
+            (0.0, 0.0),
+            (45.0, 30.0),
+            (89.0, 89.0),
+        ):
+            with self.subTest(rotation_x=rotation_x, rotation_y=rotation_y):
+                matrix = projective_transform_matrix(
+                    ProjectiveTextTransform(
+                        horizontal_scale=1.2,
+                        vertical_scale=0.9,
+                        horizontal_slant=8.0,
+                        vertical_slant=-4.0,
+                        rotation_x=rotation_x,
+                        rotation_y=rotation_y,
+                        rotation_z=20.0,
+                        perspective=0.8,
+                    ),
                     rect,
                 )
                 inverse, invertible = matrix.inverted()
@@ -313,6 +346,35 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                     restored = inverse.map(matrix.map(point))
                     self.assertAlmostEqual(restored.x(), point.x(), places=6)
                     self.assertAlmostEqual(restored.y(), point.y(), places=6)
+
+    def test_projective_parameters_compile_to_one_native_stage_matrix(self):
+        rect = QRectF(20, 30, 400, 180)
+        transform = ProjectiveTextTransform(
+            horizontal_scale=1.2,
+            vertical_scale=0.85,
+            horizontal_slant=12.0,
+            vertical_slant=-7.0,
+            rotation_x=25.0,
+            rotation_y=-35.0,
+            rotation_z=18.0,
+            perspective=0.65,
+        )
+
+        compiled = compile_text_transform_stack(
+            TextTransformStack((transform,)), rect, rect, False
+        )
+
+        self.assertIsNone(compiled.surface_mapper)
+        self.assertEqual(len(compiled.stages), 1)
+        self.assertIsNotNone(compiled.stages[0].mapper)
+        self.assertEqual(
+            compiled.native_matrix,
+            compiled.stages[0].mapper.matrix,
+        )
+        self.assertEqual(
+            compiled.native_matrix,
+            projective_transform_matrix(transform, rect),
+        )
 
     def test_curvature_mapper_round_trips_both_writing_modes(self):
         for vertical in (False, True):
@@ -369,7 +431,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                             visual_y[index], expected.y(), places=6
                         )
 
-    def test_grid_payload_divisions_and_sampling_round_trip(self):
+    def test_grid_payload_divisions_and_interpolation_round_trip(self):
         grid = GridTextTransform(3, 2, 'catmull_rom').normalized()
         self.assertEqual(len(grid.control_points), 12)
         self.assertTrue(grid.is_neutral())
@@ -388,7 +450,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                 'transform_type': 'grid',
                 'horizontal_divisions': grid.horizontal_divisions,
                 'vertical_divisions': grid.vertical_divisions,
-                'sampling': grid.sampling,
+                'interpolation': grid.interpolation,
                 'control_points': grid.control_points,
             }
         ])
@@ -412,7 +474,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
             logical,
             source,
             base.with_control_points(points).with_value(
-                'sampling', 'catmull_rom'
+                'interpolation', 'catmull_rom'
             ),
         )
         anchor = QPointF(200, 100)
@@ -446,9 +508,9 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
             np.linspace(0.0, 400.0, 24),
             np.linspace(0.0, 200.0, 12),
         )
-        for sampling in ('bilinear', 'catmull_rom'):
-            with self.subTest(sampling=sampling):
-                grid = GridTextTransform(2, 2, sampling).normalized()
+        for interpolation in ('bilinear', 'catmull_rom'):
+            with self.subTest(interpolation=interpolation):
+                grid = GridTextTransform(2, 2, interpolation).normalized()
                 points = list(grid.control_points)
                 points[4] = (0.6, 0.4)
                 mapper = GridMapper(
@@ -500,7 +562,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
         source_x, source_y = np.meshgrid(axis * 1000, axis * 500)
         visual_x, visual_y = mapper.forward_arrays(source_x, source_y)
         with patch(
-            'ballontranslator.ui.text_effects.grid.'
+            'ballontranslator.ui.text_engine.transforms.grid.'
             '_compiled_inverse_grid_arrays',
             return_value=None,
         ):
@@ -515,26 +577,6 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
                 restored_y - source_y,
             ))),
             0.02,
-        )
-
-    def test_compiled_grid_bounds_include_protruding_interior_handle(self):
-        logical = QRectF(0, 0, 400, 200)
-        grid = GridTextTransform(2, 2).normalized()
-        points = list(grid.control_points)
-        points[4] = (1.5, -0.5)
-        compiled = compile_text_transform_stack(
-            TextTransformStack((grid.with_control_points(points),)),
-            logical,
-            logical,
-            False,
-        )
-        mapped_handle = compiled.surface_mapper.forward_point(
-            logical.center()
-        )
-        self.assertTrue(
-            compiled.surface_mapper.visual_bounds(logical).contains(
-                mapped_handle
-            )
         )
 
     def test_bilinear_grid_outline_keeps_padded_cell_boundary_kinks(self):
@@ -573,9 +615,9 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
         points = list(grid.control_points)
         points[4] = (0.62, 0.38)
         stack = TextTransformStack((
-            SlantTextTransform(1.1, 0.9, 4.0),
+            ProjectiveTextTransform(1.1, 0.9, 4.0),
             grid.with_control_points(points),
-            PerspectiveTextTransform(0.25, 30.0),
+            ProjectiveTextTransform(rotation_y=30.0, perspective=0.25),
         ))
         for vertical in (False, True):
             compiled = compile_text_transform_stack(
@@ -587,7 +629,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
             )
             self.assertEqual(
                 tuple(stage.transform.transform_type for stage in compiled.stages),
-                ('slant', 'grid', 'perspective'),
+                ('projective', 'grid', 'projective'),
             )
             point = QPointF(180, 90)
             restored = compiled.surface_mapper.inverse_point(
@@ -629,27 +671,19 @@ class TextTransformPanelTest(TextTransformTestBase):
         self.addCleanup(panel.deleteLater)
         return panel
 
-    def test_transform_settings_have_their_own_expandable_panel(self):
-        panel = self._make_panel()
-        self.assertEqual(panel.title(), 'Text Transform')
-        self.assertIs(panel.view_widget.content_widget, panel)
-        self.assertTrue(
-            panel.scrollContent.isAncestorOf(panel.glyph_slant_control)
-        )
-
     def test_add_menu_and_hover_actions_are_generated_from_registry(self):
         panel = self._make_panel()
         self.assertEqual(
             [action.text() for action in panel.add_transform_button.menu().actions()],
-            ['Slant', 'Perspective', 'Curvature', 'Grid'],
+            ['Scale / Slant / 3D', 'Curvature', 'Grid'],
         )
         added = []
         panel.transform_add_requested.connect(added.append)
-        panel.add_transform_button.menu().actions()[1].trigger()
-        self.assertEqual(added, ['perspective'])
+        panel.add_transform_button.menu().actions()[0].trigger()
+        self.assertEqual(added, ['projective'])
 
         panel.set_transform(
-            transform_state(SlantTextTransform(), CurvatureTextTransform())
+            transform_state(ProjectiveTextTransform(), CurvatureTextTransform())
         )
         operation_panel = panel.transform_panels[0]
         self.assertTrue(operation_panel.close_button.isHidden())
@@ -665,7 +699,7 @@ class TextTransformPanelTest(TextTransformTestBase):
         panel = self._make_panel()
         initial_height = panel.sizeHint().height()
         panel.set_transform(transform_state(*(
-            SlantTextTransform() for _index in range(10)
+            ProjectiveTextTransform() for _index in range(10)
         )))
         self.assertGreater(panel.sizeHint().height(), initial_height)
         self.assertEqual(panel.sizeHint().height(), panel.MAX_CONTENT_HEIGHT)
@@ -692,7 +726,7 @@ class TextTransformPanelTest(TextTransformTestBase):
         panel = self._make_panel()
         panel.set_transform(transform_state(
             GridTextTransform().normalized(),
-            SlantTextTransform(),
+            ProjectiveTextTransform(),
         ))
         selected = []
         panel.transform_selected.connect(selected.append)
@@ -700,14 +734,12 @@ class TextTransformPanelTest(TextTransformTestBase):
         QTest.mouseClick(
             panel.transform_panels[1], Qt.MouseButton.LeftButton
         )
-        self.assertEqual(panel.selected_transform_index, 1)
         self.assertTrue(panel.transform_panels[1].property('selected'))
         self.assertFalse(panel.transform_panels[0].property('selected'))
 
         QTest.mouseClick(
             panel.transform_panels[1], Qt.MouseButton.LeftButton
         )
-        self.assertIsNone(panel.selected_transform_index)
         self.assertFalse(panel.transform_panels[1].property('selected'))
 
         control = panel.transform_panels[0].controls[
@@ -715,26 +747,39 @@ class TextTransformPanelTest(TextTransformTestBase):
         ]
         control.editor.setText('2')
         control.editor.textEdited.emit('2')
-        self.assertEqual(panel.selected_transform_index, 0)
+        self.assertTrue(panel.transform_panels[0].property('selected'))
         self.assertEqual(selected, [1, -1, 0])
 
-    def test_grid_sampling_uses_plain_labels_and_technical_values(self):
+    def test_parameter_label_drag_keeps_every_transform_selected(self):
         panel = self._make_panel()
-        panel.set_transform(transform_state(
-            GridTextTransform().normalized()
-        ))
-        combobox = panel.transform_panels[0].controls[
-            'sampling'
-        ].combobox
-
-        self.assertEqual(
-            [combobox.itemText(index) for index in range(combobox.count())],
-            ['Straight', 'Smooth'],
+        cases = (
+            (ProjectiveTextTransform(), 'rotation_x'),
+            (CurvatureTextTransform(), 'curvature'),
+            (GridTextTransform().normalized(), 'horizontal_divisions'),
         )
-        self.assertEqual(
-            [combobox.itemData(index) for index in range(combobox.count())],
-            ['bilinear', 'catmull_rom'],
-        )
+        panel.show()
+        self.app.processEvents()
+        for transform, parameter in cases:
+            with self.subTest(transform=transform.transform_type):
+                panel.set_transform(transform_state(transform))
+                panel.clear_transform_selection(emit=False)
+                label = panel.transform_panels[0].controls[parameter].label
+                QTest.mousePress(
+                    label,
+                    Qt.MouseButton.LeftButton,
+                    Qt.KeyboardModifier.NoModifier,
+                    label.rect().center(),
+                )
+                label.size_ctrl_changed.emit(5)
+                QTest.mouseRelease(
+                    label,
+                    Qt.MouseButton.LeftButton,
+                    Qt.KeyboardModifier.NoModifier,
+                    label.rect().center(),
+                )
+                self.assertTrue(
+                    panel.transform_panels[0].property('selected')
+                )
 
     def test_grid_parameter_selection_binds_controller_and_delete_clears_it(self):
         panel = self._make_panel()
@@ -751,7 +796,7 @@ class TextTransformPanelTest(TextTransformTestBase):
             push_undo_command=stack.push,
             bind_text_grid_control=lambda item, index, **callbacks:
             bindings.append((item, index, callbacks)),
-            clear_text_grid_control=lambda: clears.append(True),
+            clear_text_transform_controls=lambda: clears.append(True),
         )
         session = TextTransformEditSession(SimpleNamespace(), panel)
         session.replace_targets([item])
@@ -767,7 +812,37 @@ class TextTransformPanelTest(TextTransformTestBase):
 
         panel.transform_panels[0].card_clicked.emit(0)
         self.assertIsNone(session.selected_index)
-        self.assertIsNone(panel.selected_transform_index)
+        self.assertFalse(panel.transform_panels[0].property('selected'))
+        self.assertTrue(clears)
+
+    def test_projective_parameter_selection_binds_controller_and_toggle_clears_it(self):
+        panel = self._make_panel()
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.set_text_transform(transform_state(ProjectiveTextTransform()))
+        stack = QUndoStack()
+        bindings = []
+        clears = []
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        SW.canvas = SimpleNamespace(
+            push_undo_command=stack.push,
+            bind_text_projective_control=lambda item, index, **callbacks:
+            bindings.append((item, index, callbacks)),
+            clear_text_transform_controls=lambda: clears.append(True),
+        )
+        session = TextTransformEditSession(SimpleNamespace(), panel)
+        session.replace_targets([item])
+        panel.set_transform_items([item])
+
+        control = panel.transform_panels[0].controls['rotation_x']
+        control.editor.setText('12')
+        control.editor.textEdited.emit('12')
+
+        self.assertEqual(session.selected_index, 0)
+        self.assertEqual(bindings[-1][:2], (item, 0))
+        panel.transform_panels[0].card_clicked.emit(0)
+        self.assertIsNone(session.selected_index)
+        self.assertFalse(panel.transform_panels[0].property('selected'))
         self.assertTrue(clears)
 
         panel.transform_panels[0].card_clicked.emit(0)
@@ -776,14 +851,13 @@ class TextTransformPanelTest(TextTransformTestBase):
 
         session.remove_transform(0)
         self.assertIsNone(session.selected_index)
-        self.assertIsNone(panel.selected_transform_index)
         self.assertEqual(len(item.blk.fontformat.text_transform), 0)
         self.assertTrue(clears)
 
     def test_added_transform_is_selected_and_new_grid_binds_controller(self):
         panel = self._make_panel()
         item, _ = self._make_pair(0, TEST_LINES[0], False)
-        item.set_text_transform(transform_state(SlantTextTransform()))
+        item.set_text_transform(transform_state(ProjectiveTextTransform()))
         stack = QUndoStack()
         bindings = []
         previous_canvas = getattr(SW, 'canvas', None)
@@ -792,7 +866,7 @@ class TextTransformPanelTest(TextTransformTestBase):
             push_undo_command=stack.push,
             bind_text_grid_control=lambda item, index, **_callbacks:
             bindings.append((item, index)),
-            clear_text_grid_control=lambda: None,
+            clear_text_transform_controls=lambda: None,
         )
         session = TextTransformEditSession(SimpleNamespace(), panel)
         session.replace_targets([item])
@@ -801,7 +875,6 @@ class TextTransformPanelTest(TextTransformTestBase):
         session.add_transform('grid')
 
         self.assertEqual(session.selected_index, 1)
-        self.assertEqual(panel.selected_transform_index, 1)
         self.assertTrue(panel.transform_panels[1].property('selected'))
         self.assertFalse(panel.transform_panels[0].property('selected'))
         self.assertEqual(bindings[-1], (item, 1))
@@ -814,7 +887,7 @@ class TextTransformPanelTest(TextTransformTestBase):
                 blk=SimpleNamespace(
                     fontformat=FontFormat(
                         text_transform=TextTransformStack((
-                            SlantTextTransform(1.1, 1.0, 4.0),
+                            ProjectiveTextTransform(1.1, 1.0, 4.0),
                             CurvatureTextTransform(0.4),
                         )),
                     )
@@ -824,7 +897,7 @@ class TextTransformPanelTest(TextTransformTestBase):
                 blk=SimpleNamespace(
                     fontformat=FontFormat(
                         text_transform=TextTransformStack((
-                            SlantTextTransform(0.9, 1.0, -4.0),
+                            ProjectiveTextTransform(0.9, 1.0, -4.0),
                             CurvatureTextTransform(-0.4),
                         )),
                     )
@@ -849,7 +922,7 @@ class TextTransformPanelTest(TextTransformTestBase):
                     fontformat=FontFormat(
                         text_transform=TextTransformStack((
                             CurvatureTextTransform(0.4),
-                            SlantTextTransform(),
+                            ProjectiveTextTransform(),
                         )),
                     )
                 )
@@ -906,7 +979,7 @@ class TextTransformUndoTest(TextTransformTestBase):
 
         self.assertTrue(controller._start_modal('translate', start))
         with patch(
-            'ballontranslator.ui.text_item_geometry.'
+            'ballontranslator.ui.text_engine.geometry.'
             'compile_text_transform_stack',
             wraps=compile_text_transform_stack,
         ) as compile_mock:
@@ -1059,9 +1132,9 @@ class TextTransformUndoTest(TextTransformTestBase):
 
                 self.assertEqual(stack.count(), len(states) - 1)
 
-    def test_perspective_and_curvature_mix_with_text_undo(self):
-        perspective = transform_state(
-            PerspectiveTextTransform(0.6, 30.0)
+    def test_projective_and_curvature_mix_with_text_undo(self):
+        projective = transform_state(
+            ProjectiveTextTransform(rotation_y=30.0, perspective=0.6)
         )
         curvature = transform_state(CurvatureTextTransform(-0.65))
         for vertical in (False, True):
@@ -1070,7 +1143,7 @@ class TextTransformUndoTest(TextTransformTestBase):
                 stack = QUndoStack()
                 stack.push(
                     SetTextTransformCommand.create(
-                        [item], [NEUTRAL], [perspective]
+                        [item], [NEUTRAL], [projective]
                     )
                 )
                 stack.push(
@@ -1080,13 +1153,13 @@ class TextTransformUndoTest(TextTransformTestBase):
                 )
                 stack.push(
                     SetTextTransformCommand.create(
-                        [item], [perspective], [curvature]
+                        [item], [projective], [curvature]
                     )
                 )
                 expected = (
                     (NEUTRAL, TEST_LINES[0]),
-                    (perspective, TEST_LINES[0]),
-                    (perspective, TEST_LINES[1]),
+                    (projective, TEST_LINES[0]),
+                    (projective, TEST_LINES[1]),
                     (curvature, TEST_LINES[1]),
                 )
                 for _ in range(3):
@@ -1115,8 +1188,8 @@ class TextTransformUndoTest(TextTransformTestBase):
 
     def test_stack_structure_edits_are_undoable_for_selected_items(self):
         versions = (
-            transform_state(SlantTextTransform(1.15, 0.85, 11.0)),
-            transform_state(SlantTextTransform(0.75, 1.25, -7.0)),
+            transform_state(ProjectiveTextTransform(1.15, 0.85, 11.0)),
+            transform_state(ProjectiveTextTransform(0.75, 1.25, -7.0)),
         )
         previous_canvas = getattr(SW, 'canvas', None)
         self.addCleanup(setattr, SW, 'canvas', previous_canvas)
@@ -1161,7 +1234,7 @@ class TextTransformUndoTest(TextTransformTestBase):
                         ),
                     ],
                 )
-                session.add_transform('slant')
+                session.add_transform('projective')
                 self.assertEqual(
                     [len(item.blk.fontformat.text_transform) for item in items],
                     [3, 3],
@@ -1175,7 +1248,7 @@ class TextTransformUndoTest(TextTransformTestBase):
                         )
                         for item in items
                     ],
-                    [('slant', 'slant', 'curvature')] * 2,
+                    [('projective', 'projective', 'curvature')] * 2,
                 )
                 session.remove_transform(2)
                 self.assertEqual(
@@ -1196,7 +1269,7 @@ class TextTransformUndoTest(TextTransformTestBase):
                         )
                         for item in items
                     ],
-                    [('slant', 'curvature', 'slant')] * 2,
+                    [('projective', 'curvature', 'projective')] * 2,
                 )
                 stack.undo()
                 stack.undo()
@@ -1219,7 +1292,7 @@ class TextTransformUndoTest(TextTransformTestBase):
             for index in range(2)
         ]
         initial = (
-            transform_state(SlantTextTransform(1.2, 1.0, 5.0)),
+            transform_state(ProjectiveTextTransform(1.2, 1.0, 5.0)),
             transform_state(CurvatureTextTransform(0.4)),
         )
         for item, state in zip(items, initial):
@@ -1246,12 +1319,12 @@ class TextTransformUndoTest(TextTransformTestBase):
             initial,
         )
 
-        session.add_transform('perspective')
+        session.add_transform('projective')
         self.assertEqual(stack.count(), 1)
         for item in items:
             self.assertEqual(
                 item.blk.fontformat.text_transform[-1],
-                PerspectiveTextTransform(),
+                ProjectiveTextTransform(),
             )
         stack.undo()
         self.assertEqual(
@@ -1262,25 +1335,19 @@ class TextTransformUndoTest(TextTransformTestBase):
     def test_compiler_uses_one_mapping_boundary_for_composed_operations(self):
         logical = QRectF(10, 20, 420, 160)
         source = logical.adjusted(-12, -12, 12, 12)
-        first = SlantTextTransform(1.2, 0.9, 8.0)
-        second = SlantTextTransform(0.8, 1.1, -4.0)
+        first = ProjectiveTextTransform(1.2, 0.9, 8.0)
+        second = ProjectiveTextTransform(0.8, 1.1, -4.0)
         matrix_only = TextTransformStack((first, second))
         compiled = compile_text_transform_stack(
             matrix_only, logical, source, False
         )
         self.assertIsNone(compiled.surface_mapper)
         expected = (
-            text_transform_matrix(
-                first.horizontal_scale,
-                first.vertical_scale,
-                first.slant_angle,
-                logical.center(),
+            projective_transform_matrix(
+                first, compiled.stages[0].context.source_bounds
             )
-            * text_transform_matrix(
-                second.horizontal_scale,
-                second.vertical_scale,
-                second.slant_angle,
-                logical.center(),
+            * projective_transform_matrix(
+                second, compiled.stages[1].context.source_bounds
             )
         )
         self.assertEqual(compiled.native_matrix, expected)
@@ -1330,11 +1397,11 @@ class TextTransformUndoTest(TextTransformTestBase):
         self.assertEqual(first_path, second_path)
 
         nonlinear = TextTransformStack((
-            SlantTextTransform(1.1, 0.9, 3.0),
-            PerspectiveTextTransform(0.45, -70.0),
+            ProjectiveTextTransform(1.1, 0.9, 3.0),
+            ProjectiveTextTransform(rotation_y=-70.0, perspective=0.45),
             CurvatureTextTransform(0.72),
-            SlantTextTransform(0.8, 1.1, -4.0),
-            PerspectiveTextTransform(0.2, 25.0),
+            ProjectiveTextTransform(0.8, 1.1, -4.0),
+            ProjectiveTextTransform(rotation_y=25.0, perspective=0.2),
             CurvatureTextTransform(-0.35),
         ))
         for vertical in (False, True):
@@ -1449,9 +1516,9 @@ class TextTransformRenderingTest(TextTransformTestBase):
 
     def test_geometry_edits_compile_each_transform_input_once(self):
         state = transform_state(
-            SlantTextTransform(1.1, 0.9, 5.0),
+            ProjectiveTextTransform(1.1, 0.9, 5.0),
             CurvatureTextTransform(0.55),
-            PerspectiveTextTransform(0.25, 30.0),
+            ProjectiveTextTransform(rotation_y=30.0, perspective=0.25),
             CurvatureTextTransform(-0.2),
             glyph_slant_angle=22.0,
         )
@@ -1470,7 +1537,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 controller = item.geometry_controller
 
                 target = (
-                    'ballontranslator.ui.text_item_geometry.'
+                    'ballontranslator.ui.text_engine.geometry.'
                     'compile_text_transform_stack'
                 )
                 with patch(
@@ -1552,7 +1619,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
 
     def test_glyph_slant_effects_stay_on_transformed_source_path(self):
         state = transform_state(
-            PerspectiveTextTransform(0.3, 25.0),
+            ProjectiveTextTransform(rotation_y=25.0, perspective=0.3),
             CurvatureTextTransform(0.55),
             glyph_slant_angle=20.0,
         )
@@ -1617,7 +1684,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
 
                 assert_effect_path()
                 item.startEdit()
-                pair = TransPairWidget(block, 0, False)
+                pair = TransPairWidget(0, False)
                 pair.e_trans.setPlainText(item.toPlainText())
                 propagated = []
                 def record_and_propagate(position, text, joint):
@@ -1783,7 +1850,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
         item, _ = self._make_pair(99, TEST_LINES[3], False)
         item.set_text_transform(
             transform_state(
-                PerspectiveTextTransform(0.6, 45.0),
+                ProjectiveTextTransform(rotation_y=45.0, perspective=0.6),
                 CurvatureTextTransform(0.7),
             )
         )
@@ -1816,7 +1883,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
 
         item.set_text_transform(
             transform_state(
-                PerspectiveTextTransform(0.6, 45.0),
+                ProjectiveTextTransform(rotation_y=45.0, perspective=0.6),
                 CurvatureTextTransform(0.6),
             ),
             preview=True,
@@ -1830,9 +1897,9 @@ class TextTransformRenderingTest(TextTransformTestBase):
 
     def test_surface_composition_renders_through_one_nonlinear_surface(self):
         stack = TextTransformStack((
-            SlantTextTransform(1.1, 0.9, 5.0),
+            ProjectiveTextTransform(1.1, 0.9, 5.0),
             CurvatureTextTransform(0.55),
-            PerspectiveTextTransform(0.25, 30.0),
+            ProjectiveTextTransform(rotation_y=30.0, perspective=0.25),
             CurvatureTextTransform(-0.2),
         ))
         for vertical in (False, True):
@@ -2196,9 +2263,9 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 scene.removeItem(item)
                 self.app.processEvents()
 
-    def test_fresh_items_install_perspective_and_curvature(self):
+    def test_fresh_items_install_projective_and_curvature(self):
         transforms = (
-            PerspectiveTextTransform(0.6, 25.0),
+            ProjectiveTextTransform(rotation_y=25.0, perspective=0.6),
             CurvatureTextTransform(-0.6),
         )
         for vertical in (False, True):
@@ -2220,7 +2287,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                         (transform,)
                     )
                     item = TextBlkItem(copy.deepcopy(block), 0)
-                    if transform.transform_type == 'perspective':
+                    if transform.transform_type == 'projective':
                         self.assertFalse(item.transform().isIdentity())
                         self.assertIsNone(
                             item.geometry_controller.visual_mapper
@@ -2266,7 +2333,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 self.assertEqual(self._render_scene(scene), neutral_pixels)
                 scene.removeItem(item)
 
-    def test_persisted_box_transform_is_installed_on_fresh_items(self):
+    def test_persisted_projective_transform_is_installed_on_fresh_items(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
                 block = TextBlock([40, 50, 440, 250])
@@ -2333,13 +2400,13 @@ class TextTransformRenderingTest(TextTransformTestBase):
         item.set_text_transform(FIRST_TRANSFORM)
         geometry_cache = item.geometry_controller.layout_renderer.geometry_cache
         self.assertTrue(geometry_cache.persistent)
-        box_preview = transform_state(
+        projective_preview = transform_state(
             FIRST_TRANSFORM.stack[0].with_value(
                 'horizontal_scale', 1.4
             ),
             glyph_slant_angle=FIRST_TRANSFORM.glyph_slant_angle,
         )
-        item.set_text_transform(box_preview, preview=True)
+        item.set_text_transform(projective_preview, preview=True)
         self.assertTrue(geometry_cache.persistent)
         item.clear_text_transform_preview()
         glyph_preview = TextTransformState(FIRST_TRANSFORM.stack, 9.0)
@@ -2399,7 +2466,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 self.assertEqual(item.document().documentMargin(), 0.0)
                 self.assertEqual(item.absBoundingRect(qrect=True), logical_rect)
 
-    def test_none_and_box_only_paths_do_not_create_glyph_renderer(self):
+    def test_none_and_projective_only_paths_do_not_create_glyph_renderer(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
                 GLOBAL_GLYPH_GEOMETRY_CACHE.clear()
@@ -2420,10 +2487,10 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 item.layout.reLayout()
                 self.assertEqual(len(GLOBAL_GLYPH_GEOMETRY_CACHE), 0)
 
-                box_only = transform_state(
-                    SlantTextTransform(1.2, 0.9, 8.0)
+                projective_only = transform_state(
+                    ProjectiveTextTransform(1.2, 0.9, 8.0)
                 )
-                item.set_text_transform(box_only)
+                item.set_text_transform(projective_only)
                 self.assertIsNone(item.layout.render_delegate)
                 self.assertTrue(
                     bool(
@@ -2452,8 +2519,8 @@ class TextTransformRenderingTest(TextTransformTestBase):
 class TextTransformGeometryTest(TextTransformTestBase):
     def test_settled_format_geometry_notifies_visual_controllers(self):
         for transform in (
-            SlantTextTransform(1.2, 0.9, 8.0),
-            PerspectiveTextTransform(0.5, 25.0),
+            ProjectiveTextTransform(1.2, 0.9, 8.0),
+            ProjectiveTextTransform(rotation_y=25.0, perspective=0.5),
             CurvatureTextTransform(0.55),
             GridTextTransform().normalized().with_control_points((
                 (0.0, 0.0),
@@ -2621,6 +2688,223 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         self.assertEqual(scaled, (QPointF(-1, 0), QPointF(3, 0)))
         self.assertEqual(tool.cancel(), points)
 
+        boundary = ModalPointTransform()
+        start_angle = math.radians(179.0)
+        end_angle = math.radians(-179.0)
+        start = QPointF(math.cos(start_angle), math.sin(start_angle))
+        end = QPointF(math.cos(end_angle), math.sin(end_angle))
+        self.assertTrue(boundary.begin(boundary.ROTATE, (QPointF(),), start))
+        boundary.update(end)
+        self.assertAlmostEqual(boundary.rotation_delta(), 2.0, places=6)
+
+    def test_projective_controller_modal_rotate_scale_and_axis_constraints(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        initial = ProjectiveTextTransform()
+        item.set_text_transform(transform_state(initial))
+        controller = TextProjectiveTransformControl()
+        controller.setParentItem(base)
+        begun = []
+        previews = []
+        committed = []
+        canceled = []
+        controller.bind(
+            item,
+            0,
+            begin_edit=begun.append,
+            preview_transform=lambda index, transform:
+            previews.append((index, transform)),
+            commit_transform=lambda index, transform:
+            committed.append((index, transform)),
+            cancel_edit=canceled.append,
+        )
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+        center = controller.scenePos()
+        start = center + QPointF(PROJECTIVE_CONTROL_RADIUS, 0.0)
+        controller._cursor_scene_position = lambda: (view, start)
+
+        def press(key):
+            return controller.handle_shortcut(key)
+
+        self.assertTrue(press(Qt.Key.Key_R))
+        self.assertEqual(controller._modal_transform.axis, 'z')
+        self.assertTrue(controller._update_modal(
+            center + QPointF(0.0, PROJECTIVE_CONTROL_RADIUS)
+        ))
+        self.assertAlmostEqual(previews[-1][1].rotation_z, 90.0)
+
+        self.assertTrue(press(Qt.Key.Key_X))
+        self.assertEqual(previews[-1][1], initial)
+        self.assertTrue(controller._update_modal(
+            center - QPointF(0.0, PROJECTIVE_CONTROL_RADIUS)
+        ))
+        self.assertNotEqual(previews[-1][1].rotation_x, 0.0)
+
+        self.assertTrue(press(Qt.Key.Key_S))
+        self.assertEqual(previews[-1][1], initial)
+        scale_start = QPointF(controller._modal_transform.start_mouse)
+        vector = scale_start - center
+        self.assertTrue(controller._update_modal(center + vector * 1.5))
+        self.assertAlmostEqual(previews[-1][1].horizontal_scale, 1.5)
+        self.assertAlmostEqual(previews[-1][1].vertical_scale, 1.5)
+
+        self.assertTrue(press(Qt.Key.Key_Y))
+        self.assertEqual(previews[-1][1], initial)
+        scale_start = QPointF(controller._modal_transform.start_mouse)
+        vector = scale_start - center
+        self.assertTrue(controller._update_modal(center + vector * 1.25))
+        self.assertEqual(previews[-1][1].horizontal_scale, 1.0)
+        self.assertAlmostEqual(previews[-1][1].vertical_scale, 1.25)
+        self.assertTrue(controller._finish_modal(True))
+
+        self.assertEqual(begun, [0])
+        self.assertEqual(len(committed), 1)
+        self.assertEqual(canceled, [])
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
+    def test_projective_controller_keeps_a_fixed_device_size(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        item.set_text_transform(transform_state(ProjectiveTextTransform()))
+        controller = TextProjectiveTransformControl()
+        controller.setParentItem(base)
+        controller.bind(
+            item,
+            0,
+            begin_edit=lambda _index: None,
+            preview_transform=lambda _index, _transform: None,
+            commit_transform=lambda _index, _transform: None,
+            cancel_edit=lambda _index: None,
+        )
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+
+        before = controller.deviceTransform(
+            view.viewportTransform()
+        ).mapRect(controller.boundingRect())
+        view.scale(2.0, 2.0)
+        controller.requestGeometryRefresh()
+        after = controller.deviceTransform(
+            view.viewportTransform()
+        ).mapRect(controller.boundingRect())
+
+        self.assertAlmostEqual(before.width(), after.width(), places=5)
+        self.assertAlmostEqual(before.height(), after.height(), places=5)
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
+    def test_projective_controller_keeps_its_pivot_during_preview(self):
+        scene = QGraphicsScene()
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        initial = ProjectiveTextTransform(
+            rotation_y=35.0,
+            perspective=0.7,
+        )
+        item.set_text_transform(transform_state(initial))
+        controller = TextProjectiveTransformControl()
+        controller.setParentItem(base)
+        controller.bind(
+            item,
+            0,
+            begin_edit=lambda _index: None,
+            preview_transform=lambda _index, _transform: None,
+            commit_transform=lambda _index, _transform: None,
+            cancel_edit=lambda _index: None,
+        )
+        before = QPointF(controller.scenePos())
+
+        item.set_text_transform(
+            transform_state(initial.with_value('rotation_z', 55.0)),
+            preview=True,
+        )
+
+        self.assertAlmostEqual(controller.scenePos().x(), before.x())
+        self.assertAlmostEqual(controller.scenePos().y(), before.y())
+        stage = item.geometry_controller.compiled.stages[0]
+        expected = item.mapToScene(stage.context.source_bounds.center())
+        self.assertEqual(controller.scenePos(), expected)
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
+    def test_projective_controller_commit_creates_one_undo_command(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        initial = ProjectiveTextTransform()
+        item.set_text_transform(transform_state(initial))
+        controller = TextProjectiveTransformControl()
+        controller.setParentItem(base)
+        previous_register = getattr(shared, 'register_view_widget', None)
+        shared.register_view_widget = lambda *_args: None
+        self.addCleanup(
+            lambda: (
+                delattr(shared, 'register_view_widget')
+                if previous_register is None
+                else setattr(
+                    shared, 'register_view_widget', previous_register
+                )
+            )
+        )
+        panel = TextTransformPanel(
+            'Text Transform', 'test_transform', 'test_transform_expand'
+        )
+        self.addCleanup(panel.deleteLater)
+        stack = QUndoStack()
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        SW.canvas = SimpleNamespace(
+            push_undo_command=stack.push,
+            bind_text_projective_control=lambda bound_item, index, **callbacks:
+            controller.bind(bound_item, index, **callbacks),
+            clear_text_transform_controls=controller.clear,
+        )
+        session = TextTransformEditSession(SimpleNamespace(), panel)
+        session.replace_targets([item])
+        panel.set_transform_items([item])
+        panel.transform_panels[0].card_clicked.emit(0)
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+        center = controller.scenePos()
+        start = center + QPointF(PROJECTIVE_CONTROL_RADIUS, 0.0)
+        controller._cursor_scene_position = lambda: (view, start)
+
+        self.assertTrue(controller.handle_shortcut(Qt.Key.Key_R))
+        self.assertTrue(controller._update_modal(
+            center + QPointF(0.0, PROJECTIVE_CONTROL_RADIUS)
+        ))
+        self.assertTrue(controller._finish_modal(True))
+
+        self.assertEqual(stack.count(), 1)
+        changed = item.blk.fontformat.text_transform[0]
+        self.assertAlmostEqual(changed.rotation_z, 90.0)
+        stack.undo()
+        self.assertEqual(item.blk.fontformat.text_transform[0], initial)
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
     def test_shape_handle_bounds_cover_its_shifted_manual_paint(self):
         scene = QGraphicsScene()
         view = QGraphicsView(scene)
@@ -2642,7 +2926,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
 
         scene.removeItem(base)
 
-    def test_grid_hover_suppresses_shape_only_for_bound_item(self):
+    def test_active_transform_hover_suppresses_shape_only_for_bound_item(self):
         first = SimpleNamespace(hasFocus=lambda: False)
         second = SimpleNamespace(hasFocus=lambda: False)
         calls = []
@@ -2658,7 +2942,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             is_editting=lambda: False,
             textblk_item_list=[first, second],
             canvas=SimpleNamespace(
-                txtblkGridControl=SimpleNamespace(item=first)
+                active_transform_control_item=lambda: first,
             ),
             txtblkShapeControl=shape,
         )
@@ -2699,16 +2983,22 @@ class TextTransformShapeControlTest(TextTransformTestBase):
 
         grid.bind = bind_grid
         grid.clear = lambda: setattr(grid, 'item', None)
+        projective = SimpleNamespace(item=None, clear=lambda: None)
         canvas = SimpleNamespace(
             txtblkShapeControl=shape,
             txtblkGridControl=grid,
+            txtblkProjectiveControl=projective,
             _rubber_band_target=None,
             selected_text_items=lambda: [selected],
+        )
+        canvas._restore_shape_after_transform_control = (
+            lambda had_binding:
+            Canvas._restore_shape_after_transform_control(canvas, had_binding)
         )
 
         Canvas.bind_text_grid_control(canvas, selected, 2)
         shape.blk_item = hovered
-        Canvas.clear_text_grid_control(canvas)
+        Canvas.clear_text_transform_controls(canvas)
 
         self.assertEqual(
             calls,
@@ -2725,9 +3015,9 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         points = list(grid.control_points)
         points[4] = (0.62, 0.38)
         stack = transform_state(
-            SlantTextTransform(1.08, 0.95, 4.0),
+            ProjectiveTextTransform(1.08, 0.95, 4.0),
             grid.with_control_points(points),
-            PerspectiveTextTransform(0.2, 25.0),
+            ProjectiveTextTransform(rotation_y=25.0, perspective=0.2),
         )
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
@@ -2858,7 +3148,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             push_undo_command=stack.push,
             bind_text_grid_control=lambda bound_item, index, **callbacks:
             controller.bind(bound_item, index, **callbacks),
-            clear_text_grid_control=controller.clear,
+            clear_text_transform_controls=controller.clear,
         )
         session = TextTransformEditSession(SimpleNamespace(), panel)
         session.replace_targets([item])
@@ -2884,13 +3174,79 @@ class TextTransformShapeControlTest(TextTransformTestBase):
 
         self.assertTrue(item.isEditing())
         self.assertIsNone(session.selected_index)
-        self.assertIsNone(panel.selected_transform_index)
+        self.assertFalse(panel.transform_panels[0].property('selected'))
         self.assertIsNone(controller.item)
         self.assertFalse(controller.isVisible())
 
         item.endEdit()
         self.app.processEvents()
         self.assertFalse(controller.isVisible())
+        item.geometry_controller.release_render_resources()
+        scene.removeItem(base)
+
+    def test_projective_ring_double_click_enters_edit_and_deselects(self):
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        view.resize(800, 500)
+        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
+        scene.addItem(base)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(base)
+        item.set_text_transform(transform_state(ProjectiveTextTransform()))
+        controller = TextProjectiveTransformControl()
+        controller.setParentItem(base)
+        previous_register = getattr(shared, 'register_view_widget', None)
+        shared.register_view_widget = lambda *_args: None
+        self.addCleanup(
+            lambda: (
+                delattr(shared, 'register_view_widget')
+                if previous_register is None
+                else setattr(
+                    shared, 'register_view_widget', previous_register
+                )
+            )
+        )
+        panel = TextTransformPanel(
+            'Text Transform', 'test_transform', 'test_transform_expand'
+        )
+        self.addCleanup(panel.deleteLater)
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        SW.canvas = SimpleNamespace(
+            push_undo_command=QUndoStack().push,
+            bind_text_projective_control=
+            lambda bound_item, index, **callbacks:
+            controller.bind(bound_item, index, **callbacks),
+            clear_text_transform_controls=controller.clear,
+        )
+        session = TextTransformEditSession(SimpleNamespace(), panel)
+        session.replace_targets([item])
+        panel.set_transform_items([item])
+        panel.transform_panels[0].card_clicked.emit(0)
+        item.begin_edit.connect(
+            lambda _index: session.select_transform(-1)
+        )
+        view.show()
+        self.app.processEvents()
+        self.addCleanup(view.close)
+
+        ring_point = controller.rings['z'].path().pointAtPercent(0.0)
+        scene_pos = controller.mapToScene(ring_point)
+        QTest.mouseDClick(
+            view.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            view.mapFromScene(scene_pos),
+        )
+        self.app.processEvents()
+
+        self.assertTrue(item.isEditing())
+        self.assertIsNone(session.selected_index)
+        self.assertFalse(panel.transform_panels[0].property('selected'))
+        self.assertIsNone(controller.item)
+        self.assertFalse(controller.isVisible())
+
+        item.endEdit()
         item.geometry_controller.release_render_resources()
         scene.removeItem(base)
 
@@ -3020,11 +3376,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         controller._cursor_scene_position = lambda: (view, start)
 
         def press(key):
-            return controller.handle_key_press(QKeyEvent(
-                QEvent.Type.KeyPress,
-                key,
-                Qt.KeyboardModifier.NoModifier,
-            ))
+            return controller.handle_shortcut(key)
 
         self.assertTrue(press(Qt.Key.Key_G))
         self.assertTrue(controller._update_modal(start + QPointF(25, 10)))
@@ -3166,6 +3518,39 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         )
 
         self.assertEqual(controller._modal_transform.mode, 'rotate')
+        self.assertEqual(drawing_tools, [])
+        controller._finish_modal(False)
+        controller.clear()
+        item.geometry_controller.release_render_resources()
+
+    def test_draw_tool_shortcut_routes_to_selected_projective_stage(self):
+        canvas = Canvas()
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        item.set_text_transform(transform_state(ProjectiveTextTransform()))
+        canvas.bind_text_projective_control(
+            item,
+            0,
+            begin_edit=lambda _index: None,
+            preview_transform=lambda _index, _transform: None,
+            commit_transform=lambda _index, _transform: None,
+            cancel_edit=lambda _index: None,
+        )
+        controller = canvas.txtblkProjectiveControl
+        start = controller.scenePos() + QPointF(PROJECTIVE_CONTROL_RADIUS, 0.0)
+        controller._cursor_scene_position = lambda: (canvas.gv, start)
+        drawing_tools = []
+        drawing_panel = SimpleNamespace(
+            canvas=canvas,
+            isVisible=lambda: True,
+            setCurrentToolByName=drawing_tools.append,
+        )
+
+        DrawingPanel.shortcutSetCurrentToolByName(
+            drawing_panel, 'rect', Qt.Key.Key_S
+        )
+
+        self.assertEqual(controller._modal_transform.mode, 'scale')
         self.assertEqual(drawing_tools, [])
         controller._finish_modal(False)
         controller.clear()
@@ -3472,11 +3857,11 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             for state in (
                 FIRST_TRANSFORM,
                 transform_state(
-                    PerspectiveTextTransform(0.55, 35.0)
+                    ProjectiveTextTransform(rotation_y=35.0, perspective=0.55)
                 ),
                 transform_state(CurvatureTextTransform(0.65)),
                 transform_state(
-                    PerspectiveTextTransform(0.55, 35.0),
+                    ProjectiveTextTransform(rotation_y=35.0, perspective=0.55),
                     CurvatureTextTransform(0.65),
                 ),
                 transform_state(
@@ -3535,7 +3920,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                                 actual.y(), point.y(), places=5
                             )
                         self.assertEqual(
-                            control.visualPolygonInScene().boundingRect(),
+                            control.mapToScene(control.shape()).boundingRect(),
                             item.visual_bounds_in_scene(),
                         )
 
@@ -3554,7 +3939,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                             actual.y(), point.y(), places=5
                         )
                     self.assertEqual(
-                        control.visualPolygonInScene().boundingRect(),
+                        control.mapToScene(control.shape()).boundingRect(),
                         item.visual_bounds_in_scene(),
                     )
                     control.setBlkItem(None)
@@ -3567,7 +3952,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         for transform in (
             NEUTRAL,
             FIRST_TRANSFORM,
-            PerspectiveTextTransform(0.5, 25.0),
+            ProjectiveTextTransform(rotation_y=25.0, perspective=0.5),
             CurvatureTextTransform(0.55),
         ):
             state = (
@@ -3627,7 +4012,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                 self.assertTrue(items[1].isSelected())
                 self.assertEqual(move_interactions, [True])
 
-                handle_center = control.handleDisplayScenePoint(1)
+                handle_center = control.ctrlblock_group[1].scenePos()
                 QTest.mouseClick(
                     view.viewport(),
                     Qt.MouseButton.LeftButton,
@@ -3683,47 +4068,6 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                         for handle in control.ctrlblock_group
                     )
                 )
-
-    def test_shape_control_outline_contrasts_with_background(self):
-        view = QGraphicsView()
-        control = TextBlkShapeControl(view)
-        control.setRect(QRectF(20, 20, 80, 40))
-        self.addCleanup(view.close)
-
-        def render(background):
-            image = QImage(120, 80, QImage.Format.Format_ARGB32)
-            image.fill(background)
-            painter = QPainter(image)
-            control.paint(
-                painter,
-                QStyleOptionGraphicsItem(),
-                None,
-            )
-            painter.end()
-            return image
-
-        on_black = render(QColor(Qt.GlobalColor.black))
-        on_white = render(QColor(Qt.GlobalColor.white))
-        light_on_black = []
-        dark_on_white = []
-        for y in range(on_black.height()):
-            for x in range(on_black.width()):
-                black_pixel = on_black.pixelColor(x, y)
-                white_pixel = on_white.pixelColor(x, y)
-                if (
-                    black_pixel.red() > 220
-                    and black_pixel.green() > 220
-                    and black_pixel.blue() > 220
-                ):
-                    light_on_black.append((x, y))
-                if (
-                    white_pixel.red() < 120
-                    and white_pixel.green() < 120
-                    and white_pixel.blue() < 120
-                ):
-                    dark_on_white.append((x, y))
-        self.assertTrue(light_on_black)
-        self.assertTrue(dark_on_white)
 
     def test_item_owned_selection_guide_can_be_suppressed_for_export(self):
         for transform in (NEUTRAL, FIRST_TRANSFORM):

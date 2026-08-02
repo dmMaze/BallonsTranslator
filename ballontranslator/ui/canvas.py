@@ -12,12 +12,13 @@ except:
     from qtpy.QtGui import QUndoStack, QUndoCommand
 
 from .misc import ndarray2pixmap, QKEY, QNUMERIC_KEYS, ARROWKEY2DIRECTION
-from .textitem import TextBlkItem, TextBlock
-from .texteditshapecontrol import (
+from .text_engine.item import TextBlkItem, TextBlock
+from .text_engine.shape_control import (
     CONTROL_ITEM_DATA_KEY,
     TextBlkShapeControl,
 )
-from .text_grid_control import TextGridTransformControl
+from .text_engine.transforms.grid_control import TextGridTransformControl
+from .text_engine.transforms.projective_control import TextProjectiveTransformControl
 from .custom_widget import ScrollBar, FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
@@ -253,6 +254,7 @@ class Canvas(QGraphicsScene):
 
         self.txtblkShapeControl = TextBlkShapeControl(self.gv)
         self.txtblkGridControl = TextGridTransformControl()
+        self.txtblkProjectiveControl = TextProjectiveTransformControl()
         
         self.baseLayer = QGraphicsRectItem()
         pen = QPen()
@@ -278,6 +280,7 @@ class Canvas(QGraphicsScene):
         self.textLayer.setParentItem(self.baseLayer)
         self.txtblkShapeControl.setParentItem(self.baseLayer)
         self.txtblkGridControl.setParentItem(self.baseLayer)
+        self.txtblkProjectiveControl.setParentItem(self.baseLayer)
         self.hscroll_bar.valueChanged.connect(self.refresh_text_shape_control)
         self.vscroll_bar.valueChanged.connect(self.refresh_text_shape_control)
 
@@ -355,10 +358,12 @@ class Canvas(QGraphicsScene):
     def refresh_text_shape_control(self, *_args):
         self.txtblkShapeControl.requestGeometryRefresh()
         self.txtblkGridControl.requestGeometryRefresh()
+        self.txtblkProjectiveControl.requestGeometryRefresh()
 
     def bind_text_grid_control(self, item, stack_index, **callbacks):
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
+        self.txtblkProjectiveControl.clear()
         if self.txtblkShapeControl.blk_item is not item:
             self.txtblkShapeControl.setBlkItem(item)
         self.txtblkGridControl.bind(
@@ -368,23 +373,49 @@ class Canvas(QGraphicsScene):
         )
         self.txtblkShapeControl.hide()
 
-    def clear_text_grid_control(self):
+    def bind_text_projective_control(self, item, stack_index, **callbacks):
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
-        had_grid_binding = self.txtblkGridControl.item is not None
         self.txtblkGridControl.clear()
-        shape = self.txtblkShapeControl
-        selected = self.selected_text_items()
-        if had_grid_binding and len(selected) == 1:
-            shape.setBlkItem(selected[0])
+        if self.txtblkShapeControl.blk_item is not item:
+            self.txtblkShapeControl.setBlkItem(item)
+        self.txtblkProjectiveControl.bind(
+            item,
+            stack_index,
+            **callbacks,
+        )
+        self.txtblkShapeControl.hide()
+
+    def _restore_shape_after_transform_control(self, had_binding):
+        if not had_binding:
             return
-        if (
-            shape.blk_item is not None
-            and shape.blk_item.isSelected()
-            and len(selected) == 1
+        selected = self.selected_text_items()
+        if len(selected) == 1:
+            self.txtblkShapeControl.setBlkItem(selected[0])
+
+    def clear_text_transform_controls(self):
+        if self._rubber_band_target == 'grid':
+            self.hide_rubber_band()
+        had_binding = (
+            self.txtblkGridControl.item is not None
+            or self.txtblkProjectiveControl.item is not None
+        )
+        self.txtblkGridControl.clear()
+        self.txtblkProjectiveControl.clear()
+        self._restore_shape_after_transform_control(had_binding)
+
+    def active_text_transform_control(self):
+        for control in (
+            self.txtblkGridControl,
+            self.txtblkProjectiveControl,
         ):
-            shape.show()
-            shape.requestGeometryRefresh()
+            if control.item is not None and control.isVisible():
+                return control
+        return None
+
+    def active_transform_control_item(self):
+        control = self.active_text_transform_control()
+        return None if control is None else control.item
 
     def _set_scene_scale(self, scale: float, refresh_control: bool = True):
         self.scale_factor = scale
@@ -583,7 +614,7 @@ class Canvas(QGraphicsScene):
         key = event.key()
 
         modifiers = event.modifiers()
-        if self.handle_grid_modal_shortcut(key, modifiers):
+        if self.handle_transform_modal_shortcut(key, modifiers):
             event.accept()
             return
         if (modifiers == Qt.KeyboardModifier.AltModifier) and \
@@ -611,7 +642,7 @@ class Canvas(QGraphicsScene):
             self.set_active_layer_transparency(value * 10)
         return super().keyPressEvent(event)
 
-    def handle_grid_modal_shortcut(
+    def handle_transform_modal_shortcut(
         self,
         key,
         modifiers=Qt.KeyboardModifier.NoModifier,
@@ -621,7 +652,11 @@ class Canvas(QGraphicsScene):
             or self.rubber_band_origin is not None
         ):
             return False
-        return self.txtblkGridControl.handle_shortcut(key, modifiers)
+        control = self.active_text_transform_control()
+        return (
+            control is not None
+            and control.handle_shortcut(key, modifiers)
+        )
     
     def set_active_layer_transparency(self, value: int):
         if self.textEditMode():
@@ -673,7 +708,8 @@ class Canvas(QGraphicsScene):
         return textblk_created
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.txtblkGridControl.handle_modal_mouse_move(event):
+        control = self.active_text_transform_control()
+        if control is not None and control.handle_modal_mouse_move(event):
             return
         if self._update_rubber_band(event.scenePos()):
             event.accept()
@@ -742,7 +778,8 @@ class Canvas(QGraphicsScene):
         return self.gv.mapToScene(origin)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.txtblkGridControl.handle_modal_mouse_press(event):
+        control = self.active_text_transform_control()
+        if control is not None and control.handle_modal_mouse_press(event):
             return
         btn = event.button()
         if (
@@ -807,7 +844,8 @@ class Canvas(QGraphicsScene):
         return self.image_edit_mode == ImageEditMode.RectTool and self.editor_index == 0
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.txtblkGridControl.handle_modal_mouse_release(event):
+        control = self.active_text_transform_control()
+        if control is not None and control.handle_modal_mouse_release(event):
             return
         btn = event.button()
         rubber_target = self._rubber_band_target

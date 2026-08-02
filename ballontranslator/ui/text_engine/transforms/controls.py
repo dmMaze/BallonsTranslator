@@ -17,9 +17,9 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from .adaptive_wrap_layout import AdaptiveWrapLayout
-from .custom_widget import SmallSizeControlLabel
-from .misc import themed_icon_path
+from ...adaptive_wrap_layout import AdaptiveWrapLayout
+from ...custom_widget import SmallSizeControlLabel
+from ...misc import themed_icon_path
 
 
 class TransformDragLabel(SmallSizeControlLabel):
@@ -34,6 +34,11 @@ class TransformDragLabel(SmallSizeControlLabel):
         if event.button() == Qt.MouseButton.LeftButton:
             self.setFocus()
             self.drag_started.emit()
+            super().mousePressEvent(event)
+            # This label owns the drag. Letting QLabel ignore the press makes
+            # it bubble to the card, which immediately toggles selection off.
+            event.accept()
+            return
         return super().mousePressEvent(event)
 
     def abort_drag_session(self):
@@ -346,7 +351,6 @@ class TransformParameterPanel(QFrame):
     def __init__(self, index, variant, parent=None):
         super().__init__(parent)
         self.index = int(index)
-        self.variant = variant
         self._hovered = False
         self._selected = False
         self.setObjectName('TextTransformParameterPanel')
@@ -438,6 +442,10 @@ class TransformParameterPanel(QFrame):
                     controls_widget,
                     decimals=spec.decimals,
                 )
+                if spec.shortcut is not None:
+                    shortcut = spec.shortcut()
+                    control.label.setToolTip(shortcut)
+                    control.editor.setToolTip(shortcut)
             control.commit_requested.connect(
                 lambda name, value, self=self:
                 self.commit_requested.emit(self.index, name, value)
@@ -502,14 +510,6 @@ class TransformParameterPanel(QFrame):
     def cancel_pending(self) -> None:
         for control in self.controls.values():
             control.cancel_pending()
-
-    def cancel_previews(self) -> None:
-        for control in self.controls.values():
-            control.cancel_preview()
-
-    def finish_pending(self) -> None:
-        for control in self.controls.values():
-            control.commit_pending()
 
     def _sync_action_visibility(self) -> None:
         for button in (

@@ -20,14 +20,14 @@ from qtpy.QtGui import (
     QTransform,
 )
 
-from .cursor import (
+from ..cursor import (
     resizeCursorList,
     resize_handle_scene_angle,
     rotateCursorList,
     scene_angle_to_cursor_index,
 )
-from .textitem import TextBlkItem
-from .text_transform import rect_polygon
+from .item import TextBlkItem
+from .transforms.mapping import rect_polygon
 
 
 CBEDGE_WIDTH = 30
@@ -317,7 +317,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def __init__(self, parent) -> None:
         super().__init__()
         self.gv = parent
-        self._visual_polygon = QPolygonF()
         self._visual_path = QPainterPath()
         self._outline_bounds = QRectF()
         self._true_handle_scene_points = []
@@ -434,7 +433,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.blk_item = blk_item
         if blk_item is None:
             self.resetInteraction()
-            self._visual_polygon = QPolygonF()
             self._visual_path = QPainterPath()
             self._outline_bounds = QRectF()
             self._true_handle_scene_points = []
@@ -473,7 +471,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
         origin = bounds.topLeft()
         local_path = QPainterPath(parent_path)
         local_path.translate(-origin)
-        local_polygon = local_path.toFillPolygon()
         local_bounds = local_path.boundingRect()
         guard = device_pixels_to_local(
             self, self.pen().widthF() / 2.0 + CONTROL_DEVICE_GUARD
@@ -493,7 +490,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
         try:
             self.prepareGeometryChange()
             self._visual_path = local_path
-            self._visual_polygon = local_polygon
             self._outline_bounds = outline_bounds
             self._reported_angle = self.blk_item.rotation()
             super().setTransform(QTransform(), False)
@@ -506,9 +502,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self._updating_bounds = False
         return True
 
-    def visualPolygonInScene(self) -> QPolygonF:
-        return QPolygonF([self.mapToScene(point) for point in self._visual_polygon])
-
     def shape(self) -> QPainterPath:
         if self._visual_path.isEmpty():
             return super().shape()
@@ -519,7 +512,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self.updateBoundingRect()
             return
         super().setRect(*args)
-        self._visual_polygon = QPolygonF()
         self._visual_path = QPainterPath()
         rect = super().rect()
         guard = device_pixels_to_local(
@@ -753,11 +745,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
             points = self._item_handle_points_in_scene(self.blk_item)
             if len(points) == 8:
                 return QPointF(points[idx])
-        return self.ctrlblock_group[idx].scenePos()
-
-    def handleDisplayScenePoint(self, idx: int) -> QPointF:
-        if len(self._display_handle_scene_points) == 8:
-            return QPointF(self._display_handle_scene_points[idx])
         return self.ctrlblock_group[idx].scenePos()
 
     def handleSceneAngle(self, idx: int) -> float:

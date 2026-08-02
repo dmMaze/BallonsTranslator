@@ -12,7 +12,7 @@ There are two transform layers:
 QTextDocument + SceneTextLayout
   -> Glyph Slant around each shaped glyph baseline
   -> fill, stroke, shadow, gradient
-  -> ordered global stack: Slant / Perspective / Curvature / Grid
+  -> ordered global stack: Projective / Curvature / Grid
   -> item-local visual geometry
   -> QGraphicsItem position and rotation
 ```
@@ -36,16 +36,17 @@ Item position and built-in rotation remain outside the stack.
 | Concern | Owner |
 | --- | --- |
 | Immutable values, stack, state, persistence | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
-| Stage math, matrix adapter, composite mapper | [`ui/text_transform.py`](../../ballontranslator/ui/text_transform.py) |
-| Variant registry and stack compiler | [`ui/text_transform_variants.py`](../../ballontranslator/ui/text_transform_variants.py) |
-| Item transform and render lifecycle | [`ui/text_item_geometry.py`](../../ballontranslator/ui/text_item_geometry.py) |
-| Selection-scoped preview and commit transactions | [`ui/text_transform_editor.py`](../../ballontranslator/ui/text_transform_editor.py) |
-| Expandable transform panel, cards, and controls | [`ui/text_transform_panel.py`](../../ballontranslator/ui/text_transform_panel.py), [`ui/text_transform_controls.py`](../../ballontranslator/ui/text_transform_controls.py) |
-| Transform undo command | [`ui/textedit_commands.py`](../../ballontranslator/ui/textedit_commands.py) |
-| Glyph Slant | [`ui/text_effects/transform_layout.py`](../../ballontranslator/ui/text_effects/transform_layout.py) |
-| Curvature mapping and final surface warp | [`ui/text_effects/curvature.py`](../../ballontranslator/ui/text_effects/curvature.py) |
-| Grid mapping and selected-stage overlay | [`ui/text_effects/grid.py`](../../ballontranslator/ui/text_effects/grid.py), [`ui/text_grid_control.py`](../../ballontranslator/ui/text_grid_control.py) |
-| Resize/rotation overlay | [`ui/texteditshapecontrol.py`](../../ballontranslator/ui/texteditshapecontrol.py) |
+| Stage math, matrix adapter, composite mapper | [`ui/text_engine/transforms/mapping.py`](../../ballontranslator/ui/text_engine/transforms/mapping.py) |
+| Variant registry and stack compiler | [`ui/text_engine/transforms/registry.py`](../../ballontranslator/ui/text_engine/transforms/registry.py) |
+| Item transform and render lifecycle | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
+| Selection-scoped preview and commit transactions | [`ui/text_engine/transforms/editor.py`](../../ballontranslator/ui/text_engine/transforms/editor.py) |
+| Expandable transform panel, cards, and controls | [`ui/text_engine/transforms/panel.py`](../../ballontranslator/ui/text_engine/transforms/panel.py), [`ui/text_engine/transforms/controls.py`](../../ballontranslator/ui/text_engine/transforms/controls.py) |
+| Transform undo command | [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
+| Glyph Slant | [`ui/text_engine/rendering/glyph_slant.py`](../../ballontranslator/ui/text_engine/rendering/glyph_slant.py) |
+| Curvature mapping and final surface warp | [`ui/text_engine/transforms/curvature.py`](../../ballontranslator/ui/text_engine/transforms/curvature.py), [`ui/text_engine/rendering/surface.py`](../../ballontranslator/ui/text_engine/rendering/surface.py) |
+| Grid mapping and selected-stage overlay | [`ui/text_engine/transforms/grid.py`](../../ballontranslator/ui/text_engine/transforms/grid.py), [`ui/text_engine/transforms/grid_control.py`](../../ballontranslator/ui/text_engine/transforms/grid_control.py) |
+| Projective matrix and selected-stage overlay | [`ui/text_engine/transforms/mapping.py`](../../ballontranslator/ui/text_engine/transforms/mapping.py), [`ui/text_engine/transforms/projective_control.py`](../../ballontranslator/ui/text_engine/transforms/projective_control.py) |
+| Resize/rotation overlay | [`ui/text_engine/shape_control.py`](../../ballontranslator/ui/text_engine/shape_control.py) |
 
 New variants extend the model, registry, and stage factory. Do not add
 transform-type branches to `TextBlkItem` or `TextItemGeometryController`.
@@ -58,13 +59,14 @@ transform-type branches to `TextBlkItem` or `TextItemGeometryController`.
 
 Current global variants are:
 
-- `SlantTextTransform`: affine box scale and shear;
-- `PerspectiveTextTransform`: projective, but representable by `QTransform`;
+- `ProjectiveTextTransform`: horizontal/vertical scale and sequential slant,
+  X/Y/Z planar rotation, and normalized perspective, compiled together into
+  one centered native `QTransform`;
 - `CurvatureTextTransform`: nonlinear and mapper-based;
 - `GridTextTransform`: nonlinear free-form deformation with normalized control
   points, 1 to 32 horizontal and vertical cell divisions, and Straight or
-  Smooth sampling. A 1 by 1 grid has four corner handles. Their canonical
-  sampling values are `bilinear` and `catmull_rom`.
+  Smooth interpolation. A 1 by 1 grid has four corner handles. Their canonical
+  interpolation values are `bilinear` and `catmull_rom`.
 
 `TextTransformStack` is an immutable ordered tuple. Neutral entries remain in
 the model for stable UI structure and persistence but are skipped at runtime.
@@ -76,8 +78,10 @@ Project JSON stores only canonical values:
 ```json
 {
   "text_transform": [
-    {"transform_type":"slant","horizontal_scale":1.1,
-     "vertical_scale":1.0,"slant_angle":8.0},
+    {"transform_type":"projective","horizontal_scale":1.1,
+     "vertical_scale":1.0,"horizontal_slant":8.0,"vertical_slant":0.0,
+     "rotation_x":15.0,"rotation_y":-20.0,"rotation_z":5.0,
+     "perspective":0.4},
     {"transform_type":"curvature","curvature":0.35}
   ],
   "glyph_slant_angle": 10.0
@@ -100,8 +104,10 @@ and commits one command on release; Escape cancels the preview.
 
 Cards have one selected index. Clicking a card or manually interacting with one
 of its parameters selects it; selecting another card replaces that selection,
-and deleting the selected entry clears it. Selecting a Grid card for exactly
-one text block binds the global Grid overlay and hides the normal shape overlay.
+and deleting the selected entry clears it. Selecting a Grid or Projective card
+for exactly one text block binds its global overlay and hides the normal shape
+overlay. The two transform overlays are mutually exclusive and follow the same
+selection, deletion, item-switch, and text-editing lifecycle.
 Circle handles use Ctrl or Shift to toggle selection, rubber-band selection can
 start with either mouse button inside the grid or on the surrounding canvas,
 and dragging any selected handle moves the selected set in one preview and one
@@ -123,6 +129,18 @@ corresponding canvas axis. Rotate and Scale use the selected-handle center and
 show a dotted origin-to-pointer guide; constrained movement shows its active
 axis line.
 
+The Projective controller is fixed in device pixels and follows the selected
+stage's fixed matrix pivot without growing with text geometry or canvas zoom.
+Its three mutually perpendicular X, Y, and Z rings use one small display-only
+X/Y tilt so no axis collapses under the fixed front view. Perspective previews
+must not recenter the controller from their asymmetric visual bounding box.
+Direct ring dragging edits that rotation axis.
+`R` defaults to Z; pressing X, Y, or Z restores the operation-start transform
+and constrains rotation to that axis. `S` scales both dimensions; X or Y resets
+and constrains the corresponding pre-rotation scale. Switching between `R` and
+`S` also restores the start transform. Left click commits one undo command;
+right click or Escape cancels.
+
 The selected Grid overlay batch-maps handle coordinates through the compiled
 stage suffix. Its guide lines are one transient raster warped by that same
 mapper instead of thousands of scalar scene-path mappings; the overlay remains
@@ -131,7 +149,7 @@ global UI state and is never included in text export.
 Grid control points are stored as normalized coordinates, so font, spacing,
 writing-mode, and text-box geometry changes rebuild the stage against settled
 logical bounds instead of leaving the controller attached to stale pixels.
-Straight sampling is bilinear within each cell. Smooth sampling uses a
+Straight interpolation is bilinear within each cell. Smooth interpolation uses a
 tensor-product Catmull-Rom interpolation: it passes through every handle while
 neighboring handles curve the coordinates between them. A 1 by 1 grid produces
 the same result in either mode because it has no interior neighbors to create
@@ -176,8 +194,10 @@ active matrix stages
   -> no surface mapper
 ```
 
-The matrix is installed through the existing item transform path.
-`compensated_box_transform_matrix()` preserves the intended order of
+The matrix is installed through the existing item transform path. One
+Projective stage computes its complete homography when its parameters or input
+bounds change; painting never assembles its scale, slant, rotation, or depth
+components. `compensated_native_transform_matrix()` preserves the intended order of
 item-local stack transform followed by Qt's built-in item rotation. Keep its
 identity and zero-rotation fast paths exact; floating residue in a neutral
 matrix can activate unnecessary custom geometry and cache behavior.
@@ -356,10 +376,11 @@ cursor/selection mapping, and frozen-coordinate resize.
 ```bash
 python -m py_compile \
   ballontranslator/utils/fontformat.py \
-  ballontranslator/ui/text_transform.py \
-  ballontranslator/ui/text_transform_variants.py \
-  ballontranslator/ui/text_item_geometry.py \
-  ballontranslator/ui/text_transform_editor.py
+  ballontranslator/ui/text_engine/geometry.py \
+  ballontranslator/ui/text_engine/transforms/mapping.py \
+  ballontranslator/ui/text_engine/transforms/registry.py \
+  ballontranslator/ui/text_engine/transforms/editor.py \
+  ballontranslator/ui/text_engine/transforms/projective_control.py
 
 QT_API=pyqt6 QT_QPA_PLATFORM=offscreen \
   /opt/miniconda3/envs/common/bin/python -m unittest \

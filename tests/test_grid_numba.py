@@ -5,8 +5,8 @@ import unittest
 import numpy as np
 from qtpy.QtCore import QRectF
 
-from ballontranslator.ui.text_effects.grid import GridMapper
-from ballontranslator.ui.text_effects.grid_numba import (
+from ballontranslator.ui.text_engine.transforms.grid import GridMapper
+from ballontranslator.ui.text_engine.transforms.grid_numba import (
     NUMBA_CACHE_DIR,
     inverse_grid_arrays,
     warm_grid_numba_cache,
@@ -31,12 +31,12 @@ class GridNumbaTest(unittest.TestCase):
         source = logical.adjusted(-10, -5, 10, 5)
         visual_x = np.asarray([[-5.0, 50.0, 105.0]], dtype=np.float32)
         visual_y = np.asarray([[-2.0, 25.0, 52.0]], dtype=np.float32)
-        for sampling in ('bilinear', 'catmull_rom'):
-            with self.subTest(sampling=sampling):
+        for interpolation in ('bilinear', 'catmull_rom'):
+            with self.subTest(interpolation=interpolation):
                 mapper = GridMapper(
                     logical,
                     source,
-                    GridTextTransform(1, 1, sampling).normalized(),
+                    GridTextTransform(1, 1, interpolation).normalized(),
                 )
                 restored_x, restored_y, valid = mapper.inverse_arrays(
                     visual_x, visual_y, return_valid=True

@@ -20,19 +20,21 @@ from .structures import Union, List, Config, field, nested_dataclass
 
 TEXT_TRANSFORM_SCALE_MIN = 0.1
 TEXT_TRANSFORM_SCALE_MAX = 4.0
-TEXT_TRANSFORM_BOX_SLANT_MIN = -85.0
-TEXT_TRANSFORM_BOX_SLANT_MAX = 85.0
+TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN = -85.0
+TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX = 85.0
+TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN = -89.0
+TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX = 89.0
+TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MIN = -180.0
+TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MAX = 180.0
+TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MIN = 0.0
+TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MAX = 0.8
 TEXT_TRANSFORM_GLYPH_SLANT_MIN = -45.0
 TEXT_TRANSFORM_GLYPH_SLANT_MAX = 45.0
-TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MIN = 0.0
-TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MAX = 0.8
-TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN = -180.0
-TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX = 180.0
 TEXT_TRANSFORM_CURVATURE_MIN = -1.0
 TEXT_TRANSFORM_CURVATURE_MAX = 1.0
 TEXT_TRANSFORM_GRID_DIVISION_MIN = 1
 TEXT_TRANSFORM_GRID_DIVISION_MAX = 32
-TEXT_TRANSFORM_GRID_SAMPLING_TYPES = ('bilinear', 'catmull_rom')
+TEXT_TRANSFORM_GRID_INTERPOLATION_TYPES = ('bilinear', 'catmull_rom')
 TEXT_TRANSFORM_PRECISION = 6
 
 
@@ -48,8 +50,8 @@ class TextTransform:
     Subclasses expose stable component names and normalization. Persistence
     stores ``transform_type`` with the variant-specific component payload.
 
-    >>> SlantTextTransform().transform_type
-    'slant'
+    >>> ProjectiveTextTransform().transform_type
+    'projective'
     """
 
     transform_type: str = dataclass_field(init=False, default='base')
@@ -72,49 +74,81 @@ class TextTransform:
 
 
 @dataclass(frozen=True)
-class SlantTextTransform(TextTransform):
-    """Affine box scale and shear applied in the ordered geometry stack."""
+class ProjectiveTextTransform(TextTransform):
+    """One native projective stage for affine and planar 3D controls.
+
+    X and Y stop short of edge-on because a projected flat plane is singular
+    at exactly 90 degrees.
+
+    >>> ProjectiveTextTransform(rotation_x=90).normalized().rotation_x
+    89.0
+    """
 
     horizontal_scale: float = 1.0
     vertical_scale: float = 1.0
-    slant_angle: float = 0.0
-    transform_type: str = dataclass_field(init=False, default='slant')
+    horizontal_slant: float = 0.0
+    vertical_slant: float = 0.0
+    rotation_x: float = 0.0
+    rotation_y: float = 0.0
+    rotation_z: float = 0.0
+    perspective: float = 0.0
+    transform_type: str = dataclass_field(init=False, default='projective')
 
-    def normalized(self) -> "SlantTextTransform":
-        return normalize_text_transform(
-            self.horizontal_scale,
-            self.vertical_scale,
-            self.slant_angle,
+    def normalized(self) -> "ProjectiveTextTransform":
+        return ProjectiveTextTransform(
+            normalize_text_transform_value(
+                self.horizontal_scale,
+                TEXT_TRANSFORM_SCALE_MIN,
+                TEXT_TRANSFORM_SCALE_MAX,
+            ),
+            normalize_text_transform_value(
+                self.vertical_scale,
+                TEXT_TRANSFORM_SCALE_MIN,
+                TEXT_TRANSFORM_SCALE_MAX,
+            ),
+            normalize_text_transform_value(
+                self.horizontal_slant,
+                TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
+                TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
+            ),
+            normalize_text_transform_value(
+                self.vertical_slant,
+                TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
+                TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
+            ),
+            normalize_text_transform_value(
+                self.rotation_x,
+                TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
+                TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
+            ),
+            normalize_text_transform_value(
+                self.rotation_y,
+                TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
+                TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
+            ),
+            normalize_text_transform_value(
+                self.rotation_z,
+                TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MIN,
+                TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MAX,
+            ),
+            normalize_text_transform_value(
+                self.perspective,
+                TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MIN,
+                TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MAX,
+            ),
         )
 
     def is_neutral(self) -> bool:
-        return self == SlantTextTransform()
-
-
-@dataclass(frozen=True)
-class PerspectiveTextTransform(TextTransform):
-    """Native projective depth transform around the text-box center."""
-
-    strength: float = 0.0
-    direction: float = 0.0
-    transform_type: str = dataclass_field(init=False, default='perspective')
-
-    def normalized(self) -> "PerspectiveTextTransform":
-        return PerspectiveTextTransform(
-            normalize_text_transform_value(
-                self.strength,
-                TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MIN,
-                TEXT_TRANSFORM_PERSPECTIVE_STRENGTH_MAX,
-            ),
-            normalize_text_transform_value(
-                self.direction,
-                TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MIN,
-                TEXT_TRANSFORM_PERSPECTIVE_DIRECTION_MAX,
-            ),
+        normalized = self.normalized()
+        return (
+            normalized.horizontal_scale == 1.0
+            and normalized.vertical_scale == 1.0
+            and normalized.horizontal_slant == 0.0
+            and normalized.vertical_slant == 0.0
+            and normalized.rotation_x == 0.0
+            and normalized.rotation_y == 0.0
+            and normalized.rotation_z == 0.0
         )
-
-    def is_neutral(self) -> bool:
-        return self.strength == 0.0
 
 
 @dataclass(frozen=True)
@@ -191,7 +225,7 @@ def _normalize_grid_control_points(points, horizontal: int, vertical: int) -> tu
     return tuple(normalized)
 
 
-def _sample_grid_points_bilinear(
+def _interpolate_grid_point_bilinear(
     points: tuple,
     horizontal: int,
     vertical: int,
@@ -226,7 +260,7 @@ def _resample_grid_control_points(
     new_vertical: int,
 ) -> tuple:
     return tuple(
-        _sample_grid_points_bilinear(
+        _interpolate_grid_point_bilinear(
             points,
             old_horizontal,
             old_vertical,
@@ -253,7 +287,7 @@ class GridTextTransform(TextTransform):
 
     horizontal_divisions: int = 1
     vertical_divisions: int = 1
-    sampling: str = 'bilinear'
+    interpolation: str = 'bilinear'
     control_points: tuple = ()
     transform_type: str = dataclass_field(init=False, default='grid')
     is_nonlinear: ClassVar[bool] = True
@@ -271,9 +305,9 @@ class GridTextTransform(TextTransform):
     def normalized(self) -> "GridTextTransform":
         horizontal = _normalize_grid_division(self.horizontal_divisions)
         vertical = _normalize_grid_division(self.vertical_divisions)
-        if self.sampling not in TEXT_TRANSFORM_GRID_SAMPLING_TYPES:
+        if self.interpolation not in TEXT_TRANSFORM_GRID_INTERPOLATION_TYPES:
             raise ValueError(
-                f'unsupported grid sampling type {self.sampling!r}'
+                f'unsupported grid interpolation type {self.interpolation!r}'
             )
         points = (
             _normalize_grid_control_points(
@@ -285,7 +319,7 @@ class GridTextTransform(TextTransform):
         return GridTextTransform(
             horizontal,
             vertical,
-            self.sampling,
+            self.interpolation,
             points,
         )
 
@@ -312,11 +346,11 @@ class GridTextTransform(TextTransform):
             return GridTextTransform(
                 horizontal,
                 vertical,
-                current.sampling,
+                current.interpolation,
                 points,
             ).normalized()
-        if name == 'sampling':
-            return replace(current, sampling=value).normalized()
+        if name == 'interpolation':
+            return replace(current, interpolation=value).normalized()
         return super().with_value(name, value)
 
     def with_control_points(self, points) -> "GridTextTransform":
@@ -430,34 +464,8 @@ def normalize_text_transform_value(
     return 0.0 if value == 0.0 else value
 
 
-def normalize_text_transform(
-    horizontal_scale: float,
-    vertical_scale: float,
-    slant_angle: float,
-) -> SlantTextTransform:
-    """Normalize the canonical affine Slant operation.
-
-    >>> normalize_text_transform(1.23456789, 0.01, -90)
-    SlantTextTransform(transform_type='slant', horizontal_scale=1.234568, vertical_scale=0.1, slant_angle=-85.0)
-    """
-    return SlantTextTransform(
-        normalize_text_transform_value(
-            horizontal_scale, TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX
-        ),
-        normalize_text_transform_value(
-            vertical_scale, TEXT_TRANSFORM_SCALE_MIN, TEXT_TRANSFORM_SCALE_MAX
-        ),
-        normalize_text_transform_value(
-            slant_angle,
-            TEXT_TRANSFORM_BOX_SLANT_MIN,
-            TEXT_TRANSFORM_BOX_SLANT_MAX,
-        ),
-    )
-
-
 TEXT_TRANSFORM_TYPES = {
-    'slant': SlantTextTransform,
-    'perspective': PerspectiveTextTransform,
+    'projective': ProjectiveTextTransform,
     'curvature': CurvatureTextTransform,
     'grid': GridTextTransform,
 }
@@ -470,8 +478,8 @@ def create_text_transform(transform_type: str) -> TextTransform:
     payloads may still supply required variant fields through
     :func:`coerce_text_transform`.
 
-    >>> create_text_transform('slant')
-    SlantTextTransform(transform_type='slant', horizontal_scale=1.0, vertical_scale=1.0, slant_angle=0.0)
+    >>> create_text_transform('projective')
+    ProjectiveTextTransform(transform_type='projective', horizontal_scale=1.0, vertical_scale=1.0, horizontal_slant=0.0, vertical_slant=0.0, rotation_x=0.0, rotation_y=0.0, rotation_z=0.0, perspective=0.0)
     """
     transform_class = TEXT_TRANSFORM_TYPES.get(transform_type)
     if transform_class is None:
@@ -483,16 +491,16 @@ def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
     """Normalize a live value or construct a canonical persisted payload.
 
     >>> transform = coerce_text_transform(
-    ...     {'transform_type': 'slant', 'slant_angle': 5}
+    ...     {'transform_type': 'projective', 'rotation_z': 5}
     ... )
-    >>> transform.slant_angle
+    >>> transform.rotation_z
     5.0
     >>> coerce_text_transform(
-    ...     {'transform_type': 'slant', 'horizontal_scale': 5}
+    ...     {'transform_type': 'projective', 'horizontal_scale': 5}
     ... )
     Traceback (most recent call last):
     ...
-    ValueError: persisted slant transform values must be canonical
+    ValueError: persisted projective transform values must be canonical
     """
     if isinstance(value, TextTransform):
         return value.normalized()

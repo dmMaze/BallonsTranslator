@@ -5,13 +5,14 @@ import copy
 from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import (
     GridTextTransform,
+    ProjectiveTextTransform,
     TextTransformStack,
     TextTransformState,
     create_text_transform,
 )
 
-from . import shared_widget as SW
-from .textedit_commands import SetTextTransformCommand
+from ... import shared_widget as SW
+from ..editing.commands import SetTextTransformCommand
 
 
 GLYPH_SLANT_INDEX = -1
@@ -25,8 +26,8 @@ class TextTransformEditSession:
 
     >>> session = object.__new__(TextTransformEditSession)
     >>> session.items = []
-    >>> session.has_items()
-    False
+    >>> session.items
+    []
     """
 
     def __init__(self, host, controls) -> None:
@@ -37,6 +38,8 @@ class TextTransformEditSession:
         self.drag_key = None
         self.grid_before = None
         self.grid_index = None
+        self.projective_before = None
+        self.projective_index = None
         self.selected_index = None
 
         controls.transform_commit_requested.connect(self.commit_value)
@@ -47,9 +50,6 @@ class TextTransformEditSession:
         controls.transform_remove_requested.connect(self.remove_transform)
         controls.transform_move_requested.connect(self.move_transform)
         controls.transform_selected.connect(self.select_transform)
-
-    def has_items(self) -> bool:
-        return bool(self.items)
 
     @staticmethod
     def _state_for_format(font_format) -> TextTransformState:
@@ -115,9 +115,9 @@ class TextTransformEditSession:
         for item in self.items:
             item.update()
 
-    def _sync_grid_controller(self) -> None:
+    def _sync_transform_controller(self) -> None:
         canvas = getattr(SW, 'canvas', None)
-        if canvas is None or not hasattr(canvas, 'bind_text_grid_control'):
+        if canvas is None or not hasattr(canvas, 'clear_text_transform_controls'):
             return
         selected = getattr(self, 'selected_index', None)
         if selected is not None and len(self.items) == 1:
@@ -135,21 +135,35 @@ class TextTransformEditSession:
                     cancel_edit=self.cancel_grid_edit,
                 )
                 return
-        canvas.clear_text_grid_control()
+            if (
+                0 <= selected < len(stack)
+                and isinstance(stack[selected], ProjectiveTextTransform)
+            ):
+                canvas.bind_text_projective_control(
+                    self.items[0],
+                    selected,
+                    begin_edit=self.begin_projective_edit,
+                    preview_transform=self.preview_projective_transform,
+                    commit_transform=self.commit_projective_transform,
+                    cancel_edit=self.cancel_projective_edit,
+                )
+                return
+        canvas.clear_text_transform_controls()
 
     def select_transform(self, index: int) -> None:
         index = int(index)
         selected = index if index >= 0 else None
         if getattr(self, 'selected_index', None) == selected:
-            self._sync_grid_controller()
+            self._sync_transform_controller()
             return
         self.cancel_grid_edit(getattr(self, 'grid_index', -1))
+        self.cancel_projective_edit(getattr(self, 'projective_index', -1))
         self.selected_index = selected
         if selected is None:
             self.controls.clear_transform_selection(emit=False)
         else:
             self.controls.select_transform(selected, emit=False)
-        self._sync_grid_controller()
+        self._sync_transform_controller()
 
     def _set_global_state(self, state: TextTransformState) -> None:
         self.host.global_format.text_transform = state.stack
@@ -193,7 +207,7 @@ class TextTransformEditSession:
             )
         if refresh_shape:
             self._refresh_geometry()
-        self._sync_grid_controller()
+        self._sync_transform_controller()
 
     def replace_targets(self, items) -> None:
         items = list(items)
@@ -208,7 +222,7 @@ class TextTransformEditSession:
             # model-owned state before controls are refreshed.
             self.cancel_preview()
         self.items = items
-        self._sync_grid_controller()
+        self._sync_transform_controller()
 
     def commit_value(self, index: int, param_name: str, value) -> None:
         before = self._current_states()
@@ -391,6 +405,72 @@ class TextTransformEditSession:
         self.grid_before = None
         self.grid_index = None
 
+    @staticmethod
+    def _with_projective_transform(state, index, transform):
+        if index < 0 or index >= len(state.stack):
+            raise IndexError('projective transform index is no longer current')
+        if not isinstance(state.stack[index], ProjectiveTextTransform):
+            raise ValueError('selected transform is not a Projective transform')
+        transform = transform.normalized()
+        transforms = list(state.stack)
+        transforms[index] = transform
+        return TextTransformState(
+            TextTransformStack(tuple(transforms)),
+            state.glyph_slant_angle,
+        )
+
+    def begin_projective_edit(self, index: int) -> None:
+        self.controls.finish_pending_transform_edits()
+        self.cancel_control_previews()
+        before = self._current_states()
+        if (
+            len(before) != 1
+            or index < 0
+            or index >= len(before[0].stack)
+            or not isinstance(before[0].stack[index], ProjectiveTextTransform)
+        ):
+            return
+        self.projective_before = before
+        self.projective_index = index
+
+    def preview_projective_transform(self, index: int, transform) -> None:
+        before = getattr(self, 'projective_before', None)
+        if (
+            before is None
+            or getattr(self, 'projective_index', None) != index
+            or len(self.items) != 1
+        ):
+            return
+        try:
+            state = self._with_projective_transform(
+                before[0], index, transform
+            )
+        except (IndexError, TypeError, ValueError):
+            self.cancel_projective_edit(index)
+            return
+        self.items[0].set_text_transform(state, preview=True)
+
+    def commit_projective_transform(self, index: int, transform) -> None:
+        before = getattr(self, 'projective_before', None)
+        if before is None or getattr(self, 'projective_index', None) != index:
+            return
+        try:
+            after = [self._with_projective_transform(before[0], index, transform)]
+        except (IndexError, TypeError, ValueError):
+            self.cancel_projective_edit(index)
+            return
+        self.projective_before = None
+        self.projective_index = None
+        self._commit_states(before, after)
+
+    def cancel_projective_edit(self, _index=-1) -> None:
+        if getattr(self, 'projective_before', None) is None:
+            return
+        for item in self.items:
+            item.clear_text_transform_preview()
+        self.projective_before = None
+        self.projective_index = None
+
     def preview_delta(
         self,
         index: int,
@@ -486,6 +566,7 @@ class TextTransformEditSession:
         if self.drag_before is not None:
             self.cancel_preview()
         self.cancel_grid_edit(getattr(self, 'grid_index', -1))
+        self.cancel_projective_edit(getattr(self, 'projective_index', -1))
 
     def resolve_for_save(self) -> None:
         """Commit typed values and cancel any still-held drag preview."""
@@ -517,6 +598,6 @@ class TextTransformEditSession:
         host.textblk_item = None
         self.items = []
         self.selected_index = None
-        self._sync_grid_controller()
+        self._sync_transform_controller()
         host.set_active_format(host.global_format)
         host.set_globalfmt_title()

@@ -33,9 +33,9 @@ from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
-from .textedit_area import SourceTextEdit, TransTextEdit
+from .text_engine.editing.widgets import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
-from .scenetext_manager import (
+from .text_engine.editing.manager import (
     PasteSrcItemsCommand,
     SceneTextManager,
     SceneTextReplacementReason,
@@ -49,7 +49,7 @@ from .update_dialog import UpdateReleaseDialog
 from .run_pipeline_dialog import RunPipelineDialog
 from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
-from .textedit_commands import GlobalRepalceAllCommand
+from .text_engine.editing.commands import GlobalRepalceAllCommand
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
@@ -1273,7 +1273,7 @@ class MainWindow(mainwindow_cls):
         edit.setTextCursor(cursor)
 
     def shortcutEscape(self):
-        if self.canvas.handle_grid_modal_shortcut(QKEY.Key_Escape):
+        if self.canvas.handle_transform_modal_shortcut(QKEY.Key_Escape):
             return
         if self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
@@ -1512,19 +1512,6 @@ class MainWindow(mainwindow_cls):
         if tgt_selector.currentText() != module and module in GET_VALID_INPAINTERS():
             tgt_selector.setCurrentText(module)
         self.bottomBar.inpaint_selector.updateButtonText()
-
-    def on_transpagebtn_pressed(self, run_target: bool):
-        page_key = self.imgtrans_proj.current_img
-        if page_key is None:
-            return
-
-        blkitem_list = self.st_manager.textblk_item_list
-
-        if len(blkitem_list) < 1:
-            return
-        
-        self.translateBlkitemList(blkitem_list, -1)
-
 
     def translateBlkitemList(self, blkitem_list: List, mode: int) -> bool:
 

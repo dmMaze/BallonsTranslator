@@ -7,15 +7,15 @@ try:
 except:
     from qtpy.QtGui import QUndoCommand
 
-from .textitem import TextBlkItem, TextBlock
-from .textedit_area import TransTextEdit, SourceTextEdit
+from ..item import TextBlkItem, TextBlock
+from .widgets import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
     FontFormat,
     TextTransformState,
 )
-from .misc import doc_replace, doc_replace_no_shift
-from .texteditshapecontrol import TextBlkShapeControl
-from .page_search_widget import PageSearchWidget, Matched
+from ...misc import doc_replace, doc_replace_no_shift
+from ..shape_control import TextBlkShapeControl
+from ...page_search_widget import PageSearchWidget, Matched
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -393,8 +393,6 @@ class PageReplaceOneCommand(QUndoCommand):
         self.op_counter = 0
         self.sw = se
         self.reptxt = self.sw.replace_editor.toPlainText()
-        self.repl_len = len(self.reptxt)
-        
         self.sel_start = self.sw.current_cursor.selectionStart()
         self.oritxt = self.sw.current_cursor.selectedText()
         self.ori_len = len(self.oritxt)
@@ -501,7 +499,6 @@ class GlobalRepalceAllCommand(QUndoCommand):
     def __init__(self, sceneitem_list: dict, background_list: dict, target_text: str, proj: ProjImgTrans) -> None:
         super().__init__()
         self.op_counter = -1
-        self.target_text = target_text
         self.proj = proj
         self.trans_list = sceneitem_list['trans']
         self.src_list = sceneitem_list['src']

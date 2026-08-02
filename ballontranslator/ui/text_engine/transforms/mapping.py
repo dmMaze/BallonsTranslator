@@ -1,4 +1,4 @@
-"""Pure helpers for the item-local post-layout *box* transform.
+"""Pure helpers for item-local post-layout transforms.
 
 Glyph-local slant is deliberately rendered from shaped glyph runs and never
 enters the matrix in this module.
@@ -16,61 +16,11 @@ from qtpy.QtGui import QPainterPath, QPolygonF, QTransform
 from ballontranslator.utils.fontformat import (
     CurvatureTextTransform,
     GridTextTransform,
-    PerspectiveTextTransform,
-    SlantTextTransform,
+    ProjectiveTextTransform,
     TextTransformStack,
-    normalize_text_transform,
 )
-from .text_effects.curvature import CurvatureMapper
-from .text_effects.grid import GridMapper
-
-
-def _text_transform_coefficients(
-    horizontal_scale: float,
-    vertical_scale: float,
-    slant_angle: float,
-):
-    """Return canonical scale and the Box Slant shear coefficient."""
-    transform = normalize_text_transform(
-        horizontal_scale, vertical_scale, slant_angle
-    )
-    return (
-        transform.horizontal_scale,
-        transform.vertical_scale,
-        -math.tan(math.radians(transform.slant_angle)),
-    )
-
-
-def text_transform_matrix(
-    horizontal_scale: float,
-    vertical_scale: float,
-    slant_angle: float,
-    pivot: QPointF,
-) -> QTransform:
-    """Build the Box-only affine matrix used for visual item geometry.
-
-    >>> matrix = text_transform_matrix(2, 3, 0, QPointF(1, 1))
-    >>> mapped = matrix.map(QPointF(2, 3))
-    >>> (mapped.x(), mapped.y())
-    (3.0, 7.0)
-    >>> extreme = text_transform_matrix(4, 4, 85, QPointF())
-    >>> all(math.isfinite(value) for value in (
-    ...     extreme.m11(), extreme.m12(), extreme.m21(), extreme.m22()
-    ... ))
-    True
-    """
-    horizontal_scale, vertical_scale, shear = _text_transform_coefficients(
-        horizontal_scale, vertical_scale, slant_angle
-    )
-    px, py = pivot.x(), pivot.y()
-    return QTransform(
-        horizontal_scale,
-        0.0,
-        shear * vertical_scale,
-        vertical_scale,
-        px - horizontal_scale * px - shear * vertical_scale * py,
-        py - vertical_scale * py,
-    )
+from .curvature import CurvatureMapper
+from .grid import GridMapper
 
 
 def _rotation_about_pivot_matrix(angle: float, pivot: QPointF) -> QTransform:
@@ -107,23 +57,23 @@ def _transform_is_finite(transform: QTransform) -> bool:
     )
 
 
-def compensated_box_transform_matrix(
-    box_transform: QTransform,
-    box_pivot: QPointF,
+def compensated_native_transform_matrix(
+    native_transform: QTransform,
+    transform_pivot: QPointF,
     rotation_angle: float,
     rotation_pivot: Optional[QPointF] = None,
 ) -> QTransform:
-    """Build a Qt base transform that makes a box transform precede rotation.
+    """Make a compiled native transform precede Qt's item rotation.
 
     A :class:`QGraphicsItem` applies its built-in rotation before its base
-    ``transform()`` when mapping a point.  For canonical Box transform ``S``
+    ``transform()`` when mapping a point. For compiled native transform ``S``
     and built-in rotation ``R``, install ``C = R^-1 * S * R`` as the base
     transform.  Qt then composes ``R * C == S * R``, which maps points as
-    ``R(S(point))``.  ``box_pivot`` and ``rotation_pivot`` may differ.
+    ``R(S(point))``. The transform and rotation pivots may differ.
 
-    >>> box = text_transform_matrix(2, 1, 0, QPointF(5, 7))
-    >>> base = compensated_box_transform_matrix(
-    ...     box, QPointF(5, 7), 90, QPointF(5, 7)
+    >>> native = QTransform().translate(5, 7).scale(2, 1).translate(-5, -7)
+    >>> base = compensated_native_transform_matrix(
+    ...     native, QPointF(5, 7), 90, QPointF(5, 7)
     ... )
     >>> # Built-in rotation maps (6, 7) to (5, 8) before ``base`` is applied.
     >>> mapped = base.map(QPointF(5, 8))
@@ -136,34 +86,36 @@ def compensated_box_transform_matrix(
     if not math.isfinite(rotation_angle):
         raise ValueError("rotation angle must be a finite number")
 
-    rotation_pivot = box_pivot if rotation_pivot is None else rotation_pivot
+    rotation_pivot = (
+        transform_pivot if rotation_pivot is None else rotation_pivot
+    )
     for name, pivot in (
-        ("box pivot", box_pivot),
+        ("transform pivot", transform_pivot),
         ("rotation pivot", rotation_pivot),
     ):
         if not math.isfinite(pivot.x()) or not math.isfinite(pivot.y()):
             raise ValueError(f"{name} coordinates must be finite numbers")
 
-    if not _transform_is_finite(box_transform):
-        raise ValueError("Box transform coefficients must be finite numbers")
+    if not _transform_is_finite(native_transform):
+        raise ValueError("native transform coefficients must be finite numbers")
 
     # Preserve exact canonical matrices for the common neutral paths.  Besides
     # avoiding trigonometric residue, this keeps identity/cache checks exact.
     same_pivot = (
-        box_pivot.x() == rotation_pivot.x()
-        and box_pivot.y() == rotation_pivot.y()
+        transform_pivot.x() == rotation_pivot.x()
+        and transform_pivot.y() == rotation_pivot.y()
     )
-    isotropic_box = (
-        box_transform.m11() == box_transform.m22()
-        and box_transform.m12() == 0.0
-        and box_transform.m21() == 0.0
+    isotropic_native = (
+        native_transform.m11() == native_transform.m22()
+        and native_transform.m12() == 0.0
+        and native_transform.m21() == 0.0
     )
     if (
-        box_transform.isIdentity()
+        native_transform.isIdentity()
         or math.fmod(rotation_angle, 360.0) == 0.0
-        or (same_pivot and isotropic_box)
+        or (same_pivot and isotropic_native)
     ):
-        return box_transform
+        return native_transform
 
     rotation = _rotation_about_pivot_matrix(rotation_angle, rotation_pivot)
     if not _transform_is_finite(rotation):
@@ -172,71 +124,134 @@ def compensated_box_transform_matrix(
     if not rotation_is_invertible or not _transform_is_finite(inverse_rotation):
         raise ValueError("rotation transform must be finite and invertible")
 
-    compensated = inverse_rotation * box_transform * rotation
+    compensated = inverse_rotation * native_transform * rotation
     if not _transform_is_finite(compensated):
-        raise ValueError("compensated Box transform must be finite and invertible")
+        raise ValueError("compensated transform must be finite and invertible")
     _, compensated_is_invertible = compensated.inverted()
     if not compensated_is_invertible:
-        raise ValueError("compensated Box transform must be finite and invertible")
+        raise ValueError("compensated transform must be finite and invertible")
     return compensated
 
 
-def perspective_transform_matrix(
-    transform: PerspectiveTextTransform,
+def projective_transform_matrix(
+    transform: ProjectiveTextTransform,
     rect: QRectF,
 ) -> QTransform:
-    """Return a centered, finite projective transform for ``rect``.
+    """Compile affine controls and planar 3D projection into one matrix.
 
-    Direction is clockwise in screen coordinates. Its L1-normalized vector
-    keeps the homogeneous denominator at or above ``1 - strength``.
+    The depth coefficient is normalized over the four input corners. This
+    keeps every homogeneous denominator at least ``1 - perspective`` without
+    retaining or applying component matrices during painting.
 
-    >>> matrix = perspective_transform_matrix(
-    ...     PerspectiveTextTransform(0.5, 0.0), QRectF(0, 0, 100, 50)
+    >>> matrix = projective_transform_matrix(
+    ...     ProjectiveTextTransform(rotation_y=30, perspective=0.5),
+    ...     QRectF(0, 0, 100, 50),
     ... )
-    >>> mapped = matrix.map(QPointF(50, 25))
-    >>> (mapped.x(), mapped.y())
-    (50.0, 25.0)
+    >>> matrix.type() == QTransform.TransformationType.TxProject
+    True
+    >>> matrix.map(QPointF(50, 25))
+    PyQt6.QtCore.QPointF(50.0, 25.0)
     """
     transform = transform.normalized()
-    if transform.strength == 0.0:
+    if transform.is_neutral():
         return QTransform()
     if rect.width() <= 0.0 or rect.height() <= 0.0:
-        raise ValueError('perspective rectangle must have positive dimensions')
+        raise ValueError('projective rectangle must have positive dimensions')
 
-    radians = math.radians(transform.direction)
-    direction_x = math.cos(radians)
-    direction_y = math.sin(radians)
-    direction_length = abs(direction_x) + abs(direction_y)
-    direction_x /= direction_length
-    direction_y /= direction_length
+    # Scale, then horizontal shear, then vertical shear. Sequential shears
+    # retain determinant one instead of becoming singular for valid angles.
+    shear_x = -math.tan(math.radians(transform.horizontal_slant))
+    shear_y = -math.tan(math.radians(transform.vertical_slant))
+    affine = np.asarray((
+        (
+            transform.horizontal_scale,
+            shear_x * transform.vertical_scale,
+        ),
+        (
+            shear_y * transform.horizontal_scale,
+            transform.vertical_scale
+            * (1.0 + shear_x * shear_y),
+        ),
+    ), dtype=np.float64)
+
+    angle_x = math.radians(transform.rotation_x)
+    angle_y = math.radians(transform.rotation_y)
+    angle_z = math.radians(transform.rotation_z)
+    cosine_x, sine_x = math.cos(angle_x), math.sin(angle_x)
+    cosine_y, sine_y = math.cos(angle_y), math.sin(angle_y)
+    cosine_z, sine_z = math.cos(angle_z), math.sin(angle_z)
+    rotate_x = np.asarray((
+        (1.0, 0.0, 0.0),
+        (0.0, cosine_x, -sine_x),
+        (0.0, sine_x, cosine_x),
+    ))
+    rotate_y = np.asarray((
+        (cosine_y, 0.0, sine_y),
+        (0.0, 1.0, 0.0),
+        (-sine_y, 0.0, cosine_y),
+    ))
+    rotate_z = np.asarray((
+        (cosine_z, -sine_z, 0.0),
+        (sine_z, cosine_z, 0.0),
+        (0.0, 0.0, 1.0),
+    ))
+    rotated_plane = (
+        rotate_z @ rotate_y @ rotate_x
+    )[:, :2] @ affine
 
     center = rect.center()
-    half_width = rect.width() / 2.0
-    half_height = rect.height() / 2.0
-    projective_x = transform.strength * direction_x / half_width
-    projective_y = transform.strength * direction_y / half_height
+    depth_coefficients = rotated_plane[2]
+    half_width, half_height = rect.width() / 2.0, rect.height() / 2.0
+    maximum_depth = (
+        abs(depth_coefficients[0]) * half_width
+        + abs(depth_coefficients[1]) * half_height
+    )
+    depth_scale = (
+        transform.perspective / maximum_depth
+        if maximum_depth > 1e-12
+        else 0.0
+    )
+    denominator_x = depth_scale * depth_coefficients[0]
+    denominator_y = depth_scale * depth_coefficients[1]
+
+    output_x = rotated_plane[0] + center.x() * np.asarray(
+        (denominator_x, denominator_y)
+    )
+    output_y = rotated_plane[1] + center.y() * np.asarray(
+        (denominator_x, denominator_y)
+    )
+    offset_x = (
+        center.x()
+        - output_x[0] * center.x()
+        - output_x[1] * center.y()
+    )
+    offset_y = (
+        center.y()
+        - output_y[0] * center.x()
+        - output_y[1] * center.y()
+    )
     denominator_offset = (
         1.0
-        - projective_x * center.x()
-        - projective_y * center.y()
+        - denominator_x * center.x()
+        - denominator_y * center.y()
     )
 
     matrix = QTransform(
-        1.0 + center.x() * projective_x,
-        center.y() * projective_x,
-        projective_x,
-        center.x() * projective_y,
-        1.0 + center.y() * projective_y,
-        projective_y,
-        center.x() * denominator_offset - center.x(),
-        center.y() * denominator_offset - center.y(),
+        float(output_x[0]),
+        float(output_y[0]),
+        float(denominator_x),
+        float(output_x[1]),
+        float(output_y[1]),
+        float(denominator_y),
+        float(offset_x),
+        float(offset_y),
         denominator_offset,
     )
     if not _transform_is_finite(matrix):
-        raise ValueError('perspective transform must be finite and invertible')
+        raise ValueError('projective transform must be finite and invertible')
     _, invertible = matrix.inverted()
     if not invertible:
-        raise ValueError('perspective transform must be finite and invertible')
+        raise ValueError('projective transform must be finite and invertible')
     return matrix
 
 
@@ -273,25 +288,12 @@ class CompiledTransformStage:
     mapper: object = None
 
 
-def slant_transform_stage(
-    transform: SlantTextTransform,
+def projective_transform_stage(
+    transform: ProjectiveTextTransform,
     context: TransformStageContext,
 ) -> QTransform:
-    """Build one affine Slant stack stage."""
-    return text_transform_matrix(
-        transform.horizontal_scale,
-        transform.vertical_scale,
-        transform.slant_angle,
-        context.logical_bounds.center(),
-    )
-
-
-def perspective_transform_stage(
-    transform: PerspectiveTextTransform,
-    context: TransformStageContext,
-) -> QTransform:
-    """Build one native projective stack stage over its current surface."""
-    return perspective_transform_matrix(transform, context.source_bounds)
+    """Build one precompiled native projective stack stage."""
+    return projective_transform_matrix(transform, context.source_bounds)
 
 
 def curvature_transform_stage(

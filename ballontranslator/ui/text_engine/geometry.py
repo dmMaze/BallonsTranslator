@@ -5,7 +5,7 @@ import math
 from typing import Optional, TYPE_CHECKING
 
 import numpy as np
-from qtpy.QtCore import QPoint, QPointF, QRect, QRectF, QSizeF, Qt
+from qtpy.QtCore import QPointF, QRect, QRectF, QSizeF, Qt
 from qtpy.QtGui import QPainter, QPainterPath, QPolygonF, QTransform
 from qtpy.QtWidgets import (
     QGraphicsItem,
@@ -15,26 +15,27 @@ from qtpy.QtWidgets import (
 
 from ballontranslator.utils.fontformat import (
     GridTextTransform,
+    ProjectiveTextTransform,
     TextTransformStack,
     TextTransformState,
 )
 from ballontranslator.utils.textblock import TextAlignment
-from .text_effects.curvature import NonlinearTextSurfaceRenderer
-from .text_effects.transform_layout import GlyphSlantLayoutRenderer
-from .text_effects.raster import (
+from .rendering.surface import NonlinearTextSurfaceRenderer
+from .rendering.glyph_slant import GlyphSlantLayoutRenderer
+from .rendering.raster import (
     EffectRasterAllocationError,
     RASTER_BOUNDARY_FAILURES,
 )
-from .text_transform import (
+from .transforms.mapping import (
     CompiledTextTransform,
     CompositeTextTransformMapper,
-    compensated_box_transform_matrix,
+    compensated_native_transform_matrix,
     grid_transform_stage,
 )
-from .text_transform_variants import compile_text_transform_stack
+from .transforms.registry import compile_text_transform_stack
 
 if TYPE_CHECKING:
-    from .textitem import TextBlkItem
+    from .item import TextBlkItem
 
 
 class TextItemGeometryController:
@@ -44,8 +45,8 @@ class TextItemGeometryController:
     layout calls are explicit host boundaries so new transform stages do
     not need to grow ``TextBlkItem`` itself.
 
-    >>> from ballontranslator.utils.fontformat import SlantTextTransform
-    >>> SlantTextTransform().is_neutral()
+    >>> from ballontranslator.utils.fontformat import ProjectiveTextTransform
+    >>> ProjectiveTextTransform().is_neutral()
     True
     """
 
@@ -96,7 +97,7 @@ class TextItemGeometryController:
                 self.install(
                     self.compiled,
                     angle=item.rotation(),
-                    box_pivot=item.logical_unpadded_rect().center(),
+                    transform_pivot=item.logical_unpadded_rect().center(),
                     rotation_pivot=item.transformOriginPoint(),
                 )
                 result = base_item_change(change, value)
@@ -175,21 +176,21 @@ class TextItemGeometryController:
         compiled: CompiledTextTransform = None,
         *,
         angle: Optional[float] = None,
-        box_pivot: Optional[QPointF] = None,
+        transform_pivot: Optional[QPointF] = None,
         rotation_pivot: Optional[QPointF] = None,
     ):
         """Build the derived Qt base transform for the current item state."""
         item = self.item
         if angle is None:
             angle = item.rotation()
-        if box_pivot is None:
-            box_pivot = item.logical_unpadded_rect().center()
+        if transform_pivot is None:
+            transform_pivot = item.logical_unpadded_rect().center()
         if rotation_pivot is None:
             rotation_pivot = item.transformOriginPoint()
         compiled = self.compiled if compiled is None else compiled
-        return compensated_box_transform_matrix(
+        return compensated_native_transform_matrix(
             compiled.native_matrix,
-            box_pivot,
+            transform_pivot,
             angle,
             rotation_pivot,
         )
@@ -272,15 +273,6 @@ class TextItemGeometryController:
     def map_source_to_scene(self, point: QPointF) -> QPointF:
         return self.item.mapToScene(self.map_source_to_visual(point))
 
-    def map_scene_to_source(
-        self,
-        point: QPointF,
-        previous_source: QPointF = None,
-    ) -> QPointF:
-        return self.map_visual_to_source(
-            self.item.mapFromScene(point), previous_source
-        )
-
     def _grid_stage(self, stack_index: int):
         stages = self.compiled.stages
         if stack_index < 0 or stack_index >= len(stages):
@@ -338,11 +330,21 @@ class TextItemGeometryController:
             record.transform,
         )
 
-    def grid_control_points_in_scene(self, stack_index: int):
-        geometry = self.grid_control_geometry(stack_index)
-        if geometry is None:
-            return ()
-        return tuple(self.item.sceneTransform().map(geometry[0]))
+    def projective_control_center_in_scene(self, stack_index: int):
+        """Return the selected stage's fixed pivot in scene coordinates."""
+        stages = self.compiled.stages
+        if stack_index < 0 or stack_index >= len(stages):
+            return None
+        record = stages[stack_index]
+        if not isinstance(record.transform, ProjectiveTextTransform):
+            return None
+        source = record.context.source_bounds.center()
+        for prefix in reversed(stages[:stack_index]):
+            if prefix.mapper is not None:
+                source = prefix.mapper.inverse_point(
+                    source, extrapolate=True
+                )
+        return self.map_source_to_scene(source)
 
     def capture_scene_to_grid_output_mapper(self, stack_index: int):
         """Freeze scene-to-grid coordinates for one control-point drag."""
@@ -1099,14 +1101,14 @@ class TextItemGeometryController:
         compiled: CompiledTextTransform = None,
         *,
         angle: Optional[float] = None,
-        box_pivot: Optional[QPointF] = None,
+        transform_pivot: Optional[QPointF] = None,
         rotation_pivot: Optional[QPointF] = None,
     ) -> bool:
         """Install derived Qt geometry without lifecycle side effects."""
         matrix = self.compensated_matrix(
             compiled,
             angle=angle,
-            box_pivot=box_pivot,
+            transform_pivot=transform_pivot,
             rotation_pivot=rotation_pivot,
         )
         if self.item.transform() == matrix:

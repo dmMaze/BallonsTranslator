@@ -12,7 +12,7 @@ from qtpy.QtWidgets import (
 )
 from qtpy.QtCore import QEvent, QPoint, QRect, QSize, QTimer, Signal, Qt
 
-from .custom_widget import (
+from ...custom_widget import (
     PanelArea,
     SmallColorPickerLabel,
     SmallComboBox,
@@ -21,8 +21,8 @@ from .custom_widget import (
     SmallSizeControlLabel,
     TextCheckerLabel,
 )
-from .custom_widget.scrollbar import ScrollBar
-from .adaptive_wrap_layout import AdaptiveWrapLayout
+from ...custom_widget.scrollbar import ScrollBar
+from ...adaptive_wrap_layout import AdaptiveWrapLayout
 from ballontranslator.utils.fontformat import FontFormat
 
 def _word_wrap_label(label: QLabel):
@@ -252,7 +252,6 @@ class TextAdvancedFormatPanel(PanelArea):
     ):
         super().__init__(panel_name, config_name, config_expand_name)
 
-        self.active_format: FontFormat = None
         self.on_format_changed = on_format_changed
         self._last_content_width = None
         self._last_content_height = None
@@ -573,7 +572,6 @@ class TextAdvancedFormatPanel(PanelArea):
         self.on_format_changed('line_spacing_type', self.linespacing_type_combobox.currentIndex())
 
     def set_active_format(self, font_format: FontFormat):
-        self.active_format = font_format
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
 
         self.shadow_group.color_label.setPickerColor(font_format.shadow_color)

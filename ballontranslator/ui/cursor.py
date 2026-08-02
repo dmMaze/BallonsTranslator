@@ -31,7 +31,7 @@ def resize_handle_scene_angle(
     """Return the semantic resize direction for an eight-handle box.
 
     The top edge supplies accumulated rotation.  Aspect ratio, non-uniform
-    scale, and Box Slant must not turn a corner handle into an edge handle.
+    scale, and projective slant must not change a handle's semantic role.
 
     >>> round(resize_handle_scene_angle(QPointF(1000, 0), 0))
     -135

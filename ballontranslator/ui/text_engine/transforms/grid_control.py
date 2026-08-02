@@ -18,11 +18,11 @@ from qtpy.QtWidgets import (
 
 from ballontranslator.utils.fontformat import GridTextTransform
 
-from .text_effects.curvature import NonlinearTextSurfaceRenderer
-from .text_effects.raster import RASTER_BOUNDARY_FAILURES
-from .cursor import rotateCursorList
-from .modal_point_transform import ModalPointTransform
-from .texteditshapecontrol import CONTROL_ITEM_DATA_KEY
+from ..rendering.surface import NonlinearTextSurfaceRenderer
+from ..rendering.raster import RASTER_BOUNDARY_FAILURES
+from ...cursor import rotateCursorList
+from .modal import ModalPointTransform
+from ..shape_control import CONTROL_ITEM_DATA_KEY
 
 
 GRID_HANDLE_RADIUS = 5.0
@@ -563,10 +563,6 @@ class TextGridTransformControl(QGraphicsPathItem):
             self._cancel_edit(self.stack_index)
         return True
 
-    def handle_key_press(self, event) -> bool:
-        """Handle modal shortcuts while this visible Grid owns a selection."""
-        return self.handle_shortcut(event.key(), event.modifiers())
-
     def handle_shortcut(
         self,
         key,
@@ -595,6 +591,8 @@ class TextGridTransformControl(QGraphicsPathItem):
                 self._modal_view, scene_pos = self._cursor_scene_position()
             return scene_pos is not None and self._start_modal(mode, scene_pos)
         if self._modal_transform.active and key in (Qt.Key.Key_X, Qt.Key.Key_Y):
+            if self._modal_transform.mode == ModalPointTransform.ROTATE:
+                return False
             axis = 'x' if key == Qt.Key.Key_X else 'y'
             return self._constrain_modal(
                 axis, self._modal_transform.current_mouse

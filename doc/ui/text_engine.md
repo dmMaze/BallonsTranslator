@@ -2,8 +2,8 @@
 
 Start here before changing text layout, editing, effects, geometry, or export.
 The code and tests are authoritative; this guide identifies ownership and the
-cross-file invariants that are easiest to break. For Slant, Perspective,
-Curvature, Grid, or Glyph Slant, continue with
+cross-file invariants that are easiest to break. For Projective, Curvature,
+Grid, or Glyph Slant, continue with
 [Composable text transforms](text_transforms.md).
 
 ## System and owners
@@ -18,17 +18,23 @@ Project JSON
   -> QGraphicsScene                         interaction, view, export
 ```
 
+The implementation lives under `ui/text_engine/`: engine-wide item, layout,
+geometry, effect, and shape-control boundaries stay at its root; paired-editor
+coordination lives in `editing/`; format commands and panels live in
+`formatting/`; pixel and glyph work lives in `rendering/`; composable transform
+math, UI, and selected transform controls live in `transforms/`.
+
 | Concern | Owner | Main files |
 | --- | --- | --- |
 | Block text, logical rectangle, angle, metadata | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
 | Persistent typography and transforms | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
-| Live Qt integration | `TextBlkItem` | [`ui/textitem.py`](../../ballontranslator/ui/textitem.py) |
-| Horizontal and vertical layout | `SceneTextLayout` subclasses | [`ui/scene_textlayout.py`](../../ballontranslator/ui/scene_textlayout.py) |
-| Fill, stroke, shadow, gradient, raster bounds | `TextEffectRenderer` | [`ui/text_effects/renderer.py`](../../ballontranslator/ui/text_effects/renderer.py) |
-| Derived geometry and visual/input mapping | `TextItemGeometryController` | [`ui/text_item_geometry.py`](../../ballontranslator/ui/text_item_geometry.py) |
-| Scene geometry overlays | `TextBlkShapeControl`, `TextGridTransformControl` | [`ui/texteditshapecontrol.py`](../../ballontranslator/ui/texteditshapecontrol.py), [`ui/text_grid_control.py`](../../ballontranslator/ui/text_grid_control.py) |
-| Scene items, paired editors, undo integration | `SceneTextManager` | [`ui/scenetext_manager.py`](../../ballontranslator/ui/scenetext_manager.py), [`ui/textedit_commands.py`](../../ballontranslator/ui/textedit_commands.py) |
-| Formatting UI | `FontFormatPanel`, `TextAdvancedFormatPanel`, `TextTransformPanel` | [`ui/text_panel.py`](../../ballontranslator/ui/text_panel.py), [`ui/text_advanced_format.py`](../../ballontranslator/ui/text_advanced_format.py), [`ui/text_transform_panel.py`](../../ballontranslator/ui/text_transform_panel.py) |
+| Live Qt integration | `TextBlkItem` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
+| Horizontal and vertical layout | `SceneTextLayout` subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py) |
+| Fill, stroke, shadow, gradient, raster bounds | `TextEffectRenderer` | [`ui/text_engine/effect_renderer.py`](../../ballontranslator/ui/text_engine/effect_renderer.py), [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
+| Derived geometry and visual/input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
+| Scene geometry overlays | `TextBlkShapeControl`, selected-transform controls | [`ui/text_engine/shape_control.py`](../../ballontranslator/ui/text_engine/shape_control.py), [`ui/text_engine/transforms/grid_control.py`](../../ballontranslator/ui/text_engine/transforms/grid_control.py), [`ui/text_engine/transforms/projective_control.py`](../../ballontranslator/ui/text_engine/transforms/projective_control.py) |
+| Scene items, paired editors, undo integration | `SceneTextManager` | [`ui/text_engine/editing/manager.py`](../../ballontranslator/ui/text_engine/editing/manager.py), [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py), [`ui/text_engine/editing/widgets.py`](../../ballontranslator/ui/text_engine/editing/widgets.py) |
+| Formatting UI | `FontFormatPanel`, `TextAdvancedFormatPanel`, `TextTransformPanel` | [`ui/text_engine/formatting/`](../../ballontranslator/ui/text_engine/formatting/), [`ui/text_engine/transforms/panel.py`](../../ballontranslator/ui/text_engine/transforms/panel.py) |
 
 `TextBlkItem` is the Qt-facing integration point, not the owner of every
 subsystem. Keep Qt virtual methods and signals there, but extend the existing
@@ -137,11 +143,12 @@ Every `TextBlkItem`, including a neutral one, owns
 rectangle, padded source rectangle, visual geometry, installed Qt transform,
 input mapping, cache policy, and render resources.
 
-`TextBlkShapeControl` owns resize and rotation. While one Grid transform on one
-text block is selected, the global `TextGridTransformControl` replaces that
-shape overlay and edits the selected stage's normalized control points. Both
-read and write through `TextItemGeometryController`; transform features do not
-create a parallel layout, renderer, or text editor. See
+`TextBlkShapeControl` owns resize and item rotation. While one Grid or
+Projective transform on one text block is selected, its global transform
+controller replaces that shape overlay. Grid edits normalized control points;
+Projective exposes a fixed-device-size 3D rotation gizmo. All controllers read
+and write through `TextItemGeometryController`; transform features do not create
+a parallel layout, renderer, or text editor. See
 [Composable text transforms](text_transforms.md).
 
 ## Invalidation and performance

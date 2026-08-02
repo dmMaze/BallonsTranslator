@@ -72,12 +72,12 @@ class GridMapper:
         self._array_points = self.points.astype(np.float32)
         self._catmull_rom_points = (
             self._pad_catmull_rom_points(self.points)
-            if self.transform.sampling == 'catmull_rom'
+            if self.transform.interpolation == 'catmull_rom'
             else None
         )
         self._array_catmull_rom_points = (
             self._pad_catmull_rom_points(self._array_points)
-            if self.transform.sampling == 'catmull_rom'
+            if self.transform.interpolation == 'catmull_rom'
             else None
         )
 
@@ -219,7 +219,7 @@ class GridMapper:
         )
         x = x.astype(dtype, copy=False)
         y = y.astype(dtype, copy=False)
-        if self.transform.sampling == 'catmull_rom':
+        if self.transform.interpolation == 'catmull_rom':
             return self._evaluate_catmull_rom(x, y)
         return self._evaluate_bilinear(x, y)
 
@@ -466,7 +466,7 @@ class GridMapper:
         )
         points = (
             self._array_catmull_rom_points
-            if self.transform.sampling == 'catmull_rom'
+            if self.transform.interpolation == 'catmull_rom'
             else self._array_points
         )
         source_bounds = self._normalized_source_bounds()
@@ -476,7 +476,7 @@ class GridMapper:
             self.vertical,
             normalized_x,
             normalized_y,
-            catmull_rom=self.transform.sampling == 'catmull_rom',
+            catmull_rom=self.transform.interpolation == 'catmull_rom',
             source_bounds=source_bounds,
         )
         if compiled is None:
@@ -495,7 +495,7 @@ class GridMapper:
                 & (source_y >= source_top - source_epsilon)
                 & (source_y <= source_bottom + source_epsilon)
             )
-            if self.transform.sampling == 'bilinear' and not np.all(valid):
+            if self.transform.interpolation == 'bilinear' and not np.all(valid):
                 source_x, source_y, valid = self._retry_bilinear_inverse(
                     normalized_x,
                     normalized_y,
@@ -543,36 +543,9 @@ class GridMapper:
             delta.y() / self.logical_rect.height(),
         )
 
-    def source_grid_lines(self, samples_per_cell=None):
-        samples = (
-            self.OUTLINE_SAMPLES_PER_CELL
-            if samples_per_cell is None
-            else max(1, int(samples_per_cell))
-        )
-        horizontal_samples = self.horizontal * samples
-        vertical_samples = self.vertical * samples
-        lines = []
-        for row in range(self.vertical + 1):
-            y = row / self.vertical
-            lines.append(tuple(
-                QPointF(*self._normalized_to_source(
-                    index / horizontal_samples, y
-                ))
-                for index in range(horizontal_samples + 1)
-            ))
-        for column in range(self.horizontal + 1):
-            x = column / self.horizontal
-            lines.append(tuple(
-                QPointF(*self._normalized_to_source(
-                    x, index / vertical_samples
-                ))
-                for index in range(vertical_samples + 1)
-            ))
-        return tuple(lines)
-
     def map_rect_path(self, rect: QRectF) -> QPainterPath:
         rect = QRectF(rect).normalized()
-        if self.transform.sampling == 'bilinear':
+        if self.transform.interpolation == 'bilinear':
             x_coordinates = [rect.left()]
             x_coordinates.extend(
                 self.logical_rect.left()
@@ -660,7 +633,7 @@ class GridMapper:
         ).boundingRect()
         minimum = self.points.min(axis=(0, 1))
         maximum = self.points.max(axis=(0, 1))
-        if self.transform.sampling == 'catmull_rom':
+        if self.transform.interpolation == 'catmull_rom':
             # Catmull-Rom reproduces the regular identity lattice exactly, so
             # Only handle displacement can contribute Catmull-Rom overshoot.
             displacement = self.points.copy()

@@ -3,7 +3,7 @@
 The renderer is deliberately read-only with respect to the document and its
 layouts.  It consumes the glyph runs Qt has already shaped, then maps their ink
 through the glyph-local shear and the placement/orientation supplied by
-``scene_textlayout``.
+``text_engine.layout``.
 """
 
 from __future__ import annotations
@@ -198,25 +198,6 @@ GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE = WeightedGlyphGeometryCache(
     GLYPH_PREVIEW_GEOMETRY_CACHE_MAX_ENTRIES,
     GLYPH_PREVIEW_GEOMETRY_CACHE_MAX_BYTES,
 )
-
-
-def glyph_slant_x(x: float, y: float, baseline_y: float, angle: float) -> float:
-    """Return the canonical glyph-local slanted x coordinate.
-
-    Positive angles lean the top of a glyph toward glyph-local ``+x`` in Qt's
-    downward-positive coordinate system.
-
-    >>> round(glyph_slant_x(2.0, -3.0, 0.0, 45.0), 6)
-    5.0
-    >>> round(glyph_slant_x(2.0, 3.0, 0.0, -45.0), 6)
-    5.0
-    """
-    angle = normalize_text_transform_value(
-        angle,
-        TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-        TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-    )
-    return x - math.tan(math.radians(angle)) * (y - baseline_y)
 
 
 def glyph_slant_transform(angle: float, baseline_y: float) -> QTransform:

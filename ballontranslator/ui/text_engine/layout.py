@@ -8,19 +8,15 @@ import numpy as np
 from typing import List
 from functools import lru_cache, cached_property
 
-from .misc import pixmap2ndarray, LruIgnoreArg
+from ..misc import pixmap2ndarray, LruIgnoreArg
 from ballontranslator.utils import shared as C
 from ballontranslator.utils.fontformat import pt2px, FontFormat, LineSpacingType
-from .text_effects.indexing import (
+from .rendering.indexing import (
     _grapheme_count,
     _utf16_char_at,
     _utf16_length,
     _utf16_slice,
 )
-
-def print_transform(tr: QTransform):
-    print(f'[[{tr.m11(), tr.m12(), tr.m13()}]\n [{tr.m21(), tr.m22(), tr.m23()}]\n [{tr.m31(), tr.m32(), tr.m33()}]]')
-
 
 PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 
@@ -116,7 +112,6 @@ class CharFontFormat:
     def __init__(self, fcmt: QTextCharFormat) -> None:
         font = fcmt.font()
         self.font = font
-        self.stroke_width = fcmt.textOutline().widthF() / 2
         self.font_metrics = QFontMetricsF(font)
 
     @cached_property
@@ -227,7 +222,6 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self._max_font_size = -1
 
         self.foreground_pixmap: QPixmap = None
-        self.draw_foreground_only = False
 
         self.relayout_on_changed = True
 
@@ -238,8 +232,6 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         # relative bottom/right
         self.shrink_height = 0 
         self.shrink_width = 0
-
-        self._doc_text: str = ''
 
         # The upstream vertical-stroke renderer clones a document and reuses
         # the already-computed draw offsets.  Keep that neutral-state path
@@ -324,7 +316,6 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.reLayoutEverything()
         
     def reLayoutEverything(self):
-        self._doc_text = self.document().toPlainText()
         self._max_font_size = -1
         block = self.document().firstBlock()
         self.block_charfmt_lst = []
@@ -397,7 +388,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.line_spaces_lst = []
         self.min_height = 0
         self.layout_left = 0
-        self.force_single_char = True
         self.has_selection = False
         self.draw_shifted = 0
 

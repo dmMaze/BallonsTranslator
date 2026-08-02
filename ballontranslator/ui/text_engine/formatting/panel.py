@@ -19,7 +19,7 @@ from ballontranslator.utils.fontformat import (
     FontFormat,
     LineSpacingType,
 )
-from .custom_widget import (
+from ...custom_widget import (
     AlignmentChecker,
     CheckableLabel,
     ColorPickerLabel,
@@ -29,13 +29,13 @@ from .custom_widget import (
     TextCheckerLabel,
     Widget,
 )
-from .textitem import TextBlkItem
-from .text_advanced_format import TextAdvancedFormatPanel
-from .text_transform_editor import TextTransformEditSession
-from .text_transform_panel import TextTransformPanel
-from .text_style_presets import TextStylePresetPanel
-from . import shared_widget as SW
-from . import funcmaps as FM
+from ..item import TextBlkItem
+from .advanced import TextAdvancedFormatPanel
+from ..transforms.editor import TextTransformEditSession
+from ..transforms.panel import TextTransformPanel
+from .presets import TextStylePresetPanel
+from .commands import handle_ffmt_change
+from ... import shared_widget as SW
 
 class LineEdit(QLineEdit):
 
@@ -230,13 +230,12 @@ class FontSizeBox(QFrame):
 
 class FontFamilyComboBox(QFontComboBox):
     param_changed = Signal(str, object)
-    def __init__(self, emit_if_focused=True, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.currentFontChanged.connect(self.on_fontfamily_changed)
         self.lineedit = lineedit = LineEdit(parent=self)
         lineedit.return_pressed.connect(self.on_return_pressed)
         self.setLineEdit(lineedit)
-        self.emit_if_focused = emit_if_focused
         self.return_pressed = False
         
     def apply_fontfamily(self):
@@ -285,7 +284,7 @@ class FontFormatPanel(Widget):
 
         self.vlayout = QVBoxLayout(self)
         self.vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.familybox = FontFamilyComboBox(emit_if_focused=True, parent=self)
+        self.familybox = FontFamilyComboBox(parent=self)
         self.familybox.setContentsMargins(0, 0, 0, 0)
         self.familybox.setObjectName("FontFamilyBox")
         self.familybox.setToolTip(self.tr("Font Family"))
@@ -495,7 +494,7 @@ class FontFormatPanel(Widget):
             return None
 
     def on_param_changed(self, param_name: str, value):
-        func = FM.handle_ffmt_change.get(param_name)
+        func = handle_ffmt_change.get(param_name)
         func_kwargs = {}
         if param_name in {'font_size', 'rel_font_size'}:
             func_kwargs['clip_size'] = True

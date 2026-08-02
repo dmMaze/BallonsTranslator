@@ -12,12 +12,12 @@ from qtpy.QtWidgets import (
 
 from ballontranslator.utils.fontformat import FontFormat, TextTransformState
 
-from .custom_widget import PanelArea
-from .text_transform_controls import (
+from ...custom_widget import PanelArea
+from .controls import (
     CommittedTransformControl,
     TransformParameterPanel,
 )
-from .text_transform_variants import (
+from .registry import (
     GLYPH_SLANT_CONTROL,
     TEXT_TRANSFORM_VARIANTS,
 )
@@ -254,10 +254,6 @@ class TextTransformPanel(PanelArea):
         ):
             self.clear_transform_selection()
         self._sync_content_height()
-
-    @property
-    def selected_transform_index(self):
-        return self._selected_transform_index
 
     def select_transform(self, index: int, *, emit: bool = True):
         index = int(index)

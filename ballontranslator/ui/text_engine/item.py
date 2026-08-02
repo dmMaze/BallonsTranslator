@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, Signal
-from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor, QPixmap,
+from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
                        QBrush, QPen)
 
@@ -14,10 +14,10 @@ from ballontranslator.utils.fontformat import (
     TextTransformState,
     pt2px,
 )
-from .misc import td_pattern, table_pattern
-from .scene_textlayout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
-from .text_effects.renderer import TextEffectRenderer
-from .text_item_geometry import TextItemGeometryController
+from ..misc import td_pattern, table_pattern
+from .layout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
+from .effect_renderer import TextEffectRenderer
+from .geometry import TextItemGeometryController
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
@@ -28,7 +28,6 @@ class TextBlkItem(QGraphicsTextItem):
     begin_edit = Signal(int)
     end_edit = Signal(int)
     hover_enter = Signal(int)
-    hover_move = Signal(int)
     move_interaction_finished = Signal()
     moving = Signal(QGraphicsTextItem)
     rotated = Signal(float)
@@ -410,9 +409,6 @@ class TextBlkItem(QGraphicsTextItem):
     def angle(self) -> int:
         return self.blk.angle
 
-    def toTextBlock(self) -> TextBlock:
-        raise NotImplementedError
-
     def setAngle(self, angle: int):
         with self.geometry_controller.update_transaction():
             # Preview/meta-property paths intentionally do not mutate the
@@ -560,13 +556,6 @@ class TextBlkItem(QGraphicsTextItem):
     def on_document_enlarged(self):
         size = self.documentSize()
         self.set_size(size.width(), size.height())
-
-    def get_scale(self) -> float:
-        tl = self.topLevelItem()
-        if tl is not None:
-            return tl.scale()
-        else:
-            return self.scale()
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         self.geometry_controller.paint_item(
@@ -736,22 +725,9 @@ class TextBlkItem(QGraphicsTextItem):
         finally:
             self.geometry_controller.end_input_mapping()
 
-    def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        self.hover_move.emit(self.idx)
-        return super().hoverMoveEvent(event)
-
     def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
         self.hover_enter.emit(self.idx)
         return super().hoverEnterEvent(event)
-
-    def toPixmap(self) -> QPixmap:
-        pixmap = QPixmap(self.boundingRect().size().toSize())
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        doc = self.document()
-        doc.drawContents(painter)
-        painter.end()
-        return pixmap
 
     def toHtml(self) -> str:
         html = super().toHtml()

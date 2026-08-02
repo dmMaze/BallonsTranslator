@@ -32,6 +32,7 @@ class ModalPointTransform:
         self.origin = QPointF()
         self.start_mouse = QPointF()
         self.current_mouse = QPointF()
+        self._rotation_degrees = 0.0
 
     @property
     def active(self) -> bool:
@@ -50,6 +51,7 @@ class ModalPointTransform:
         self.axis = None
         self.start_mouse = QPointF(mouse)
         self.current_mouse = QPointF(mouse)
+        self._rotation_degrees = 0.0
         return True
 
     def switch_mode(self, mode: str, mouse: QPointF):
@@ -61,19 +63,28 @@ class ModalPointTransform:
         self.axis = None
         self.start_mouse = QPointF(mouse)
         self.current_mouse = QPointF(mouse)
+        self._rotation_degrees = 0.0
         self.result_points = tuple(
             QPointF(point) for point in self.initial_points
         )
         return tuple(QPointF(point) for point in self.result_points)
 
     def constrain(self, axis: str, mouse: QPointF):
-        if not self.active or self.mode != self.TRANSLATE:
+        if not self.active:
             return None
-        if axis not in ('x', 'y'):
-            raise ValueError("axis must be 'x' or 'y'")
+        valid_axes = (
+            ('x', 'y', 'z')
+            if self.mode == self.ROTATE
+            else ('x', 'y')
+        )
+        if axis not in valid_axes:
+            raise ValueError(
+                f"axis must be one of {', '.join(valid_axes)}"
+            )
         self.axis = axis
         self.start_mouse = QPointF(mouse)
         self.current_mouse = QPointF(mouse)
+        self._rotation_degrees = 0.0
         self.result_points = tuple(
             QPointF(point) for point in self.initial_points
         )
@@ -82,6 +93,16 @@ class ModalPointTransform:
     def update(self, mouse: QPointF):
         if not self.active:
             return ()
+        if self.mode == self.ROTATE:
+            previous = self.current_mouse - self.origin
+            current = QPointF(mouse) - self.origin
+            if not previous.isNull() and not current.isNull():
+                delta = (
+                    math.atan2(current.y(), current.x())
+                    - math.atan2(previous.y(), previous.x())
+                )
+                delta = (delta + math.pi) % (2.0 * math.pi) - math.pi
+                self._rotation_degrees += math.degrees(delta)
         self.current_mouse = QPointF(mouse)
         if self.mode == self.TRANSLATE:
             delta = self.current_mouse - self.start_mouse
@@ -91,15 +112,8 @@ class ModalPointTransform:
                 delta.setX(0.0)
             result = tuple(point + delta for point in self.initial_points)
         elif self.mode == self.ROTATE:
-            start = self.start_mouse - self.origin
-            current = self.current_mouse - self.origin
-            if start.isNull() or current.isNull():
-                cosine, sine = 1.0, 0.0
-            else:
-                start_angle = math.atan2(start.y(), start.x())
-                current_angle = math.atan2(current.y(), current.x())
-                angle = current_angle - start_angle
-                cosine, sine = math.cos(angle), math.sin(angle)
+            angle = math.radians(self.rotation_delta())
+            cosine, sine = math.cos(angle), math.sin(angle)
             result = tuple(
                 QPointF(
                     self.origin.x()
@@ -112,25 +126,49 @@ class ModalPointTransform:
                 for point in self.initial_points
             )
         else:
-            start_distance = math.hypot(
-                self.start_mouse.x() - self.origin.x(),
-                self.start_mouse.y() - self.origin.y(),
-            )
-            current_distance = math.hypot(
-                self.current_mouse.x() - self.origin.x(),
-                self.current_mouse.y() - self.origin.y(),
-            )
-            factor = (
-                current_distance / start_distance
-                if start_distance > 1e-9
-                else 1.0
-            )
+            factor = self.scale_factor()
             result = tuple(
-                self.origin + (point - self.origin) * factor
+                QPointF(
+                    self.origin.x()
+                    + (point.x() - self.origin.x())
+                    * (factor if self.axis != 'y' else 1.0),
+                    self.origin.y()
+                    + (point.y() - self.origin.y())
+                    * (factor if self.axis != 'x' else 1.0),
+                )
                 for point in self.initial_points
             )
         self.result_points = tuple(QPointF(point) for point in result)
         return tuple(QPointF(point) for point in self.result_points)
+
+    def rotation_delta(self) -> float:
+        """Return the current clockwise screen-space angle in degrees.
+
+        >>> tool = ModalPointTransform()
+        >>> tool.begin(tool.ROTATE, (QPointF(),), QPointF(1, 0))
+        True
+        >>> tool.update(QPointF(0, 1))
+        (PyQt6.QtCore.QPointF(),)
+        >>> round(tool.rotation_delta())
+        90
+        """
+        return self._rotation_degrees
+
+    def scale_factor(self) -> float:
+        """Return the current radial scale relative to modal start."""
+        start_distance = math.hypot(
+            self.start_mouse.x() - self.origin.x(),
+            self.start_mouse.y() - self.origin.y(),
+        )
+        current_distance = math.hypot(
+            self.current_mouse.x() - self.origin.x(),
+            self.current_mouse.y() - self.origin.y(),
+        )
+        return (
+            current_distance / start_distance
+            if start_distance > 1e-9
+            else 1.0
+        )
 
     def finish(self):
         if not self.active:
@@ -154,3 +192,4 @@ class ModalPointTransform:
         self.origin = QPointF()
         self.start_mouse = QPointF()
         self.current_mouse = QPointF()
+        self._rotation_degrees = 0.0
