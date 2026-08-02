@@ -27,11 +27,11 @@
   
 * **Edição de texto:**
   - Suporta formatação de texto e [predefinições de estilo de texto](https://github.com/dmMaze/BallonsTranslator/pull/311). Textos traduzidos podem ser editados interativamente.
-  - Permite localizar e substituir.
+  - [Transformações de texto](https://github.com/dmMaze/BallonsTranslator/pull/1245), localizar e substituir.
   - Permite exportar/importar para/de documentos do Word.
 
 * <details>
-  <summary><i>Tradução por LLM sensível ao contexto</i></summary>
+  <summary><i>Tradução por LLM sensível ao contexto e glossários</i></summary>
 
   **Histórico de traduções**
 

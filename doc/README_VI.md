@@ -27,11 +27,11 @@
   
 * Chỉnh sửa văn bản
   - Hỗ trợ RTF (rich text formatting) zà [TSP (text style presets)](https://github.com/dmMaze/BallonsTranslator/pull/311), có thể chỉnh sửa lại các văn bản đã được dịch đó lun nè.
-  - Hỗ trợ Tìm kiếm & Thay thế
+  - [Biến đổi văn bản](https://github.com/dmMaze/BallonsTranslator/pull/1245), tìm kiếm & thay thế
   - Hỗ trợ cả import từ dạng word hoặc export ra dạng đó nữa
 
 * <details>
-  <summary><i>Dịch bằng LLM có nhận biết ngữ cảnh</i></summary>
+  <summary><i>Dịch bằng LLM có nhận biết ngữ cảnh và bảng thuật ngữ</i></summary>
 
   **Lịch sử bản dịch**
 

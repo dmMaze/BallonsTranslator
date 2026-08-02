@@ -27,11 +27,11 @@
   
 * Pengeditan teks  
   - Mendukung format rich text dan style teks, teks yang diterjemahkan dapat diedit secara langsung.
-  - Mendukung pencarian & penggantian kata
+  - [Transformasi teks](https://github.com/dmMaze/BallonsTranslator/pull/1245), pencarian & penggantian kata
   - Mendukung ekspor/impor ke/dari dokumen word
 
 * <details>
-  <summary><i>Terjemahan LLM yang peka terhadap konteks</i></summary>
+  <summary><i>Terjemahan LLM yang peka terhadap konteks dan glosarium</i></summary>
 
   **Riwayat terjemahan**
 
