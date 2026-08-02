@@ -520,13 +520,21 @@ class TextEffectRenderer:
             self._paint_cloned_document_stroke(painter)
             return
         active_layout = self.document().documentLayout()
-        if isinstance(active_layout, VerticalTextDocumentLayout):
-            if not self._has_layout_distortion():
-                self._paint_cloned_document_stroke(painter)
-                return
+        if (
+            isinstance(active_layout, VerticalTextDocumentLayout)
+            and self._has_layout_distortion()
+        ):
             self._paint_vertical_stroke(painter, render_scale, surface_rect)
             return
-        self._paint_live_layout(painter, self._stroke_paint_context())
+        self._paint_source_local_stroke(painter)
+
+    def _paint_source_local_stroke(self, painter: QPainter):
+        # Native box transforms map the completed source surface. Only an
+        # attached glyph renderer changes the source glyph geometry itself.
+        if self._has_layout_distortion():
+            self._paint_live_layout(painter, self._stroke_paint_context())
+            return
+        self._paint_cloned_document_stroke(painter)
 
     def _shadow_metrics(self):
         font_size = self.layout.max_font_size(to_px=True)
@@ -1190,10 +1198,10 @@ class TextEffectRenderer:
     def _draw_direct_stroke(self, painter: QPainter):
         if not self._effect_flags()[0]:
             return
-        # This path intentionally avoids every intermediate allocation. The
-        # attached layout consumes the same per-fragment outline selections,
-        # preserving vector geometry while shadow is omitted for this frame.
-        self._paint_live_layout(painter, self._stroke_paint_context())
+        # This path intentionally avoids every intermediate raster allocation.
+        # The custom glyph renderer still consumes outline selections, while a
+        # native box transform keeps the unclipped cloned-document stroke.
+        self._paint_source_local_stroke(painter)
 
     def _draw_effects(
         self, painter: QPainter, exposed_rect: QRectF = None
