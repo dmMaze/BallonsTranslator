@@ -86,6 +86,7 @@ class NonlinearTextSurfaceRenderer:
         destination_rect: QRectF,
         mapper,
         scale: float,
+        interpolation: int,
     ) -> QPixmap:
         source = pixmap2ndarray(source_pixmap, keep_alpha=True)
         # Interpolate premultiplied color so transparent glyph edges do not
@@ -159,7 +160,7 @@ class NonlinearTextSurfaceRenderer:
             source,
             remap[0],
             remap[1],
-            interpolation=cv2.INTER_LINEAR,
+            interpolation=interpolation,
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=(0, 0, 0, 0),
         )
@@ -193,25 +194,39 @@ class NonlinearTextSurfaceRenderer:
         cache_allowed: bool,
         paint_source,
         maximum_scale: float = None,
+        high_quality: bool = True,
     ) -> bool:
         destination_rect = mapper.visual_bounds(source_rect)
         requested_scale = self._device_scale(painter)
         if maximum_scale is not None:
             requested_scale = min(requested_scale, float(maximum_scale))
+        raster_request = requested_scale
+        if high_quality:
+            raster_request = next(
+                (
+                    tier
+                    for tier in (1.0, 2.0, 4.0, 8.0)
+                    if requested_scale <= tier * (1.0 + 1e-6)
+                ),
+                requested_scale,
+            )
         source_plan = plan_effect_raster(
-            source_rect.width(), source_rect.height(), requested_scale
+            source_rect.width(), source_rect.height(), raster_request
         )
         destination_plan = plan_effect_raster(
             destination_rect.width(),
             destination_rect.height(),
-            requested_scale,
+            raster_request,
         )
         if source_plan.mode != 'full' or destination_plan.mode != 'full':
             raise EffectRasterAllocationError(
                 'nonlinear text surface exceeds bounded full-raster policy'
             )
         render_scale = min(source_plan.tier, destination_plan.tier)
-        key = cache_key + (render_scale,)
+        interpolation = (
+            cv2.INTER_CUBIC if high_quality else cv2.INTER_LINEAR
+        )
+        key = cache_key + (render_scale, interpolation)
         pixmap = (
             self.cached_pixmap
             if cache_allowed and self.cached_key == key
@@ -228,6 +243,7 @@ class NonlinearTextSurfaceRenderer:
                 destination_rect,
                 mapper,
                 render_scale,
+                interpolation,
             )
             if cache_allowed:
                 self.cached_pixmap = pixmap

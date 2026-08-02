@@ -342,6 +342,7 @@ class TextGridTransformControl(QGraphicsPathItem):
                 ),
                 cache_allowed=True,
                 paint_source=self._paint_grid_source,
+                high_quality=False,
             )
         except RASTER_BOUNDARY_FAILURES:
             pass

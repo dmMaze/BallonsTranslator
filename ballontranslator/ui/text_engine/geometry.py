@@ -1016,6 +1016,9 @@ class TextItemGeometryController:
                 ),
                 paint_source=paint_source,
                 maximum_scale=maximum_scale,
+                high_quality=(
+                    not self.item.reshaping and self.preview is None
+                ),
             )
             if cache_hit and self.item.is_editting():
                 self._probe_surface_cursor(

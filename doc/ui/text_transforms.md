@@ -267,7 +267,10 @@ The effective render paths are:
 For nonlinear output, `TextItemGeometryController.paint_item()` captures fill,
 gradient, stroke, and shadow into one padded source pixmap, inverse-maps it in
 bounded row bands, draws it once, then overlays the mapped caret. Sampling uses
-premultiplied alpha to avoid colored fringes.
+premultiplied alpha to avoid colored fringes. Settled text uses cubic sampling
+at a raster tier no smaller than the device scale when the bounded allocation
+policy permits; live parameter and resize previews retain the cheaper bilinear
+path.
 
 Cache keys include mapping geometry, layout generation, Glyph Slant render
 state, effect/background generation, document revision, and live selection

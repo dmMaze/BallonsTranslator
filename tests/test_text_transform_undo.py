@@ -6,6 +6,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import cv2
 import numpy as np
 
 
@@ -61,6 +62,9 @@ from ballontranslator.ui.text_engine.rendering.glyph import (
 )
 from ballontranslator.ui.text_engine.rendering.glyph_slant import (
     GlyphSlantLayoutRenderer,
+)
+from ballontranslator.ui.text_engine.rendering.surface import (
+    NonlinearTextSurfaceRenderer,
 )
 from ballontranslator.ui.text_engine.transforms.bend import BendMapper
 from ballontranslator.ui.text_engine.transforms.grid import GridMapper
@@ -1661,6 +1665,65 @@ class TextTransformUndoTest(TextTransformTestBase):
 
 
 class TextTransformRenderingTest(TextTransformTestBase):
+    def test_nonlinear_surface_sampling_tracks_render_quality(self):
+        class IdentityMapper:
+            geometry_key = ('identity',)
+
+            @staticmethod
+            def visual_bounds(rect):
+                return QRectF(rect)
+
+            @staticmethod
+            def inverse_arrays(x, y, *, return_valid=False):
+                if return_valid:
+                    return x, y, np.ones_like(x, dtype=bool)
+                return x, y
+
+        renderer = NonlinearTextSurfaceRenderer()
+        source_rect = QRectF(0, 0, 40, 20)
+        option = QStyleOptionGraphicsItem()
+        image = QImage(
+            100,
+            60,
+            QImage.Format.Format_ARGB32_Premultiplied,
+        )
+        image.fill(Qt.GlobalColor.transparent)
+
+        def paint_source(painter, _option, _widget):
+            painter.fillRect(source_rect, QColor(255, 255, 255))
+
+        def sampled_warp(*, high_quality, maximum_scale=None):
+            painter = QPainter(image)
+            try:
+                painter.scale(1.5, 1.5)
+                with patch.object(
+                    renderer, '_warp', wraps=renderer._warp
+                ) as warp:
+                    renderer.paint(
+                        painter,
+                        option,
+                        IdentityMapper(),
+                        source_rect,
+                        ('content', high_quality),
+                        False,
+                        paint_source,
+                        maximum_scale=maximum_scale,
+                        high_quality=high_quality,
+                    )
+                return warp.call_args.args[-2:]
+            finally:
+                painter.end()
+
+        render_scale, interpolation = sampled_warp(high_quality=True)
+        self.assertEqual(render_scale, 2.0)
+        self.assertEqual(interpolation, cv2.INTER_CUBIC)
+
+        render_scale, interpolation = sampled_warp(
+            high_quality=False, maximum_scale=0.5
+        )
+        self.assertEqual(render_scale, 0.5)
+        self.assertEqual(interpolation, cv2.INTER_LINEAR)
+
     def test_uniform_glyph_paint_batch_matches_per_line_fallback(self):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
@@ -2066,6 +2129,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
         class ScaleCapture:
             def __init__(self):
                 self.maximum_scale = None
+                self.high_quality = None
 
             def release(self):
                 pass
@@ -2080,8 +2144,10 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 cache_allowed,
                 paint_source,
                 maximum_scale=None,
+                high_quality=True,
             ):
                 self.maximum_scale = maximum_scale
+                self.high_quality = high_quality
 
         item, _ = self._make_pair(99, TEST_LINES[3], False)
         item.set_text_transform(
@@ -2108,6 +2174,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
         )
         painter.end()
         self.assertEqual(capture.maximum_scale, 0.5)
+        self.assertFalse(capture.high_quality)
 
         item.reshaping = False
         painter = QPainter(image)
@@ -2116,6 +2183,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
         )
         painter.end()
         self.assertIsNone(capture.maximum_scale)
+        self.assertTrue(capture.high_quality)
 
         item.set_text_transform(
             transform_state(
@@ -2130,6 +2198,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
         )
         painter.end()
         self.assertEqual(capture.maximum_scale, 0.5)
+        self.assertFalse(capture.high_quality)
 
     def test_surface_composition_renders_through_one_nonlinear_surface(self):
         stack = TextTransformStack((
@@ -2332,6 +2401,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 cache_allowed,
                 paint_source,
                 maximum_scale=None,
+                high_quality=True,
             ):
                 def base_paint(*_):
                     self.saw_deferred_cursor = (
