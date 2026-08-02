@@ -44,7 +44,7 @@ from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
-    completion_token_limit_args,
+    openai_chat_completion_args,
     profile_by_id,
     profile_from_config,
     resolve_api_key,
@@ -686,10 +686,8 @@ class LLMTranslator(BaseTranslator):
         api_args = {
             "model": model,
             "messages": messages,
-            "temperature": float(profile.temperature),
-            "top_p": float(profile.top_p),
         }
-        api_args.update(completion_token_limit_args(profile, model))
+        api_args.update(openai_chat_completion_args(profile, model))
         if profile.json_schema_response_format:
             api_args["response_format"] = {
                 "type": "json_schema",

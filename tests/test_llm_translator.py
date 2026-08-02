@@ -150,6 +150,7 @@ class LLMTranslatorTest(unittest.TestCase):
         profile = default_profile('OpenAI')
         profile.thinking_level = 'None'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
+        self.assertNotIn('temperature', args)
         self.assertNotIn('reasoning_effort', args)
         self.assertNotIn('frequency_penalty', args)
         self.assertNotIn('presence_penalty', args)
@@ -164,6 +165,29 @@ class LLMTranslatorTest(unittest.TestCase):
         profile.thinking_level = 'low'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
         self.assertEqual(args['reasoning_effort'], 'low')
+
+    def test_temperature_is_only_omitted_for_native_openai_gpt_5_5_and_newer(self):
+        profile = default_profile('OpenAI')
+
+        for model in ('gpt-5.5', 'gpt-5.5-2026-04-23', 'gpt-5.6-sol', 'gpt-6'):
+            profile.model = model
+            self.assertNotIn(
+                'temperature',
+                self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}]),
+            )
+
+        profile.model = 'gpt-5.4'
+        self.assertEqual(
+            self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])['temperature'],
+            0.1,
+        )
+
+        profile.model = 'openai/gpt-5.5'
+        profile.base_url = 'https://openrouter.ai/api/v1'
+        self.assertEqual(
+            self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])['temperature'],
+            0.1,
+        )
 
     def test_json_schema_response_format_is_profile_controlled(self):
         profile = default_profile('OpenAI')

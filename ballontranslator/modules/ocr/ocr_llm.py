@@ -11,7 +11,7 @@ from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModel
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
-    completion_token_limit_args,
+    openai_chat_completion_args,
     profile_by_id,
     profile_from_config,
     resolve_api_key,
@@ -219,10 +219,8 @@ class LLMOCR(OCRBase):
         api_args = {
             "model": model,
             "messages": messages,
-            "temperature": float(profile.temperature),
-            "top_p": float(profile.top_p),
         }
-        api_args.update(completion_token_limit_args(profile, model))
+        api_args.update(openai_chat_completion_args(profile, model))
         return api_args
 
     def _request_ocr(self, profile: LLMProfile, messages: List[Dict]) -> str:
