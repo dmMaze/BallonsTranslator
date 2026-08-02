@@ -491,6 +491,7 @@ class _TorchDTypeMap:
 TORCH_DTYPE_MAP = _TorchDTypeMap()
 
 MODULE_ROOT = Path(__file__).resolve().parent
+CUSTOM_MODULE_ROOT = Path(shared.PROGRAM_PATH) / 'custom_modules'
 MODULE_SCRIPTS = {
     'translator': {
         'module_dir': str(MODULE_ROOT / 'translators'),
@@ -516,7 +517,9 @@ MODULE_SCRIPTS = {
     
 def import_module_registries(target_modules=None):
     # Eager import path kept for explicit compatibility/debug use only.
-    def _load_module(module_dir: str, module_package: str, module_pattern: str):
+    def _load_module(module_dir: str, module_package: str, module_pattern: str) -> None:
+        if not os.path.isdir(module_dir):
+            return
         modules = os.listdir(module_dir)
         pattern = re.compile(module_pattern)
         for module_name in modules:
@@ -534,6 +537,11 @@ def import_module_registries(target_modules=None):
 
     for k in target_modules:
         _load_module(**MODULE_SCRIPTS[k])
+        _load_module(
+            str(CUSTOM_MODULE_ROOT),
+            'custom_modules',
+            MODULE_SCRIPTS[k]['module_pattern'],
+        )
 
 
 def init_module_registries(target_modules=None):

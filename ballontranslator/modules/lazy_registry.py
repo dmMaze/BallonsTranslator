@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ballontranslator.utils.registry import ModuleSpec
+from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.torch_install_helper import detect_nvidia_gpus
 
-from .base import MODULE_ROOT, MODULE_SCRIPTS
+from .base import CUSTOM_MODULE_ROOT, MODULE_ROOT, MODULE_SCRIPTS
 
 
 UNKNOWN = object()
@@ -447,10 +448,14 @@ def _module_name_from_path(path: str) -> str:
         rel_path = path_obj.relative_to(PACKAGE_ROOT)
         return 'ballontranslator.' + '.'.join(rel_path.with_suffix('').parts)
     except ValueError:
-        module_name = path.replace(os.sep, '.').replace('/', '.')
-        if module_name.endswith('.py'):
-            module_name = module_name[:-3]
-        return module_name
+        try:
+            rel_path = path_obj.relative_to(CUSTOM_MODULE_ROOT.resolve())
+            return 'custom_modules.' + '.'.join(rel_path.with_suffix('').parts)
+        except ValueError:
+            module_name = path.replace(os.sep, '.').replace('/', '.')
+            if module_name.endswith('.py'):
+                module_name = module_name[:-3]
+            return module_name
 
 
 def _decorator_key(node, module_type: str, env: Dict[str, Any]) -> Optional[str]:
@@ -810,6 +815,31 @@ def _scan_file(path: str, module_type: str, include_inactive_platform_branches: 
     return specs
 
 
+def _module_files(module_type: str) -> List[str]:
+    script = MODULE_SCRIPTS[module_type]
+    pattern = re.compile(script['module_pattern'])
+    files = []
+    module_dir = script['module_dir']
+    if os.path.isdir(module_dir):
+        for name in sorted(os.listdir(module_dir)):
+            if pattern.match(name):
+                files.append(os.path.join(module_dir, name))
+    files.extend(EXTRA_MODULE_FILES.get(module_type, []))
+    if os.path.isdir(CUSTOM_MODULE_ROOT):
+        for name in sorted(os.listdir(CUSTOM_MODULE_ROOT)):
+            if pattern.match(name):
+                files.append(os.path.join(CUSTOM_MODULE_ROOT, name))
+    return [path for path in files if os.path.exists(path)]
+
+
+def _is_custom_module_file(path: str) -> bool:
+    try:
+        Path(path).resolve().relative_to(CUSTOM_MODULE_ROOT.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def iter_lazy_module_specs(include_inactive_platform_branches: bool = False):
     """Yield module metadata without changing the active runtime registries.
 
@@ -823,19 +853,13 @@ def iter_lazy_module_specs(include_inactive_platform_branches: bool = False):
     """
 
     for module_type in sorted(MODULE_SCRIPTS):
-        script = MODULE_SCRIPTS[module_type]
-        module_dir = script['module_dir']
-        pattern = re.compile(script['module_pattern'])
-        paths = []
-        if os.path.isdir(module_dir):
-            for name in sorted(os.listdir(module_dir)):
-                if pattern.match(name):
-                    paths.append(os.path.join(module_dir, name))
-        paths.extend(EXTRA_MODULE_FILES.get(module_type, []))
-        for path in paths:
-            if not os.path.exists(path):
-                continue
-            yield from _scan_file(path, module_type, include_inactive_platform_branches)
+        for path in _module_files(module_type):
+            try:
+                yield from _scan_file(path, module_type, include_inactive_platform_branches)
+            except Exception as e:
+                if not _is_custom_module_file(path):
+                    raise
+                LOGGER.warning(f'Failed to scan custom module {path}: {e}')
 
 
 def init_lazy_module_registries(target_modules=None):
@@ -849,19 +873,6 @@ def init_lazy_module_registries(target_modules=None):
 
     from . import MODULETYPE_TO_REGISTRIES
 
-    def _module_files(module_type: str) -> List[str]:
-        script = MODULE_SCRIPTS[module_type]
-        module_dir = script['module_dir']
-        pattern = re.compile(script['module_pattern'])
-        files = []
-        if os.path.isdir(module_dir):
-            for name in sorted(os.listdir(module_dir)):
-                if pattern.match(name):
-                    files.append(os.path.join(module_dir, name))
-        files.extend(EXTRA_MODULE_FILES.get(module_type, []))
-        return [path for path in files if os.path.exists(path)]
-
-
     def _targets(target_modules=None):
         if target_modules is None:
             return list(MODULE_SCRIPTS.keys())
@@ -874,7 +885,14 @@ def init_lazy_module_registries(target_modules=None):
             continue
         registry = MODULETYPE_TO_REGISTRIES[module_type]
         for path in _module_files(module_type):
-            for spec in _scan_file(path, module_type):
-                registry.register_lazy_module(spec)
+            try:
+                for spec in _scan_file(path, module_type):
+                    registry.register_lazy_module(spec)
+                    if _is_custom_module_file(path):
+                        LOGGER.info(f'Discovered custom {module_type} module "{spec.key}" from {path}')
+            except Exception as e:
+                if not _is_custom_module_file(path):
+                    raise
+                LOGGER.warning(f'Failed to register custom module {path}: {e}')
         # Registry groups are idempotent; re-scanning could overwrite live classes.
         INITIALIZED_REGISTRIES.add(module_type)

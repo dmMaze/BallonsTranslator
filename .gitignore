@@ -67,3 +67,7 @@ Ultralytics/settings.json
 # Spellcheck dictionaries
 config/custom_dictionary.txt
 data/dictionaries/
+
+custom_modules/*
+!custom_modules/put your custom modules here.txt
+!custom_modules/trans_custom_copy_source.py

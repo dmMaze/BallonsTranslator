@@ -208,7 +208,9 @@ class LLMProfileMigrationTest(unittest.TestCase):
         profile = default_profile('OpenAI')
 
         self.assertEqual(profile.model, 'gpt-5.5')
-        self.assertIn('gpt-5.5', profile.model_options)
+        for model in ('gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'):
+            self.assertIn(model, profile.model_options)
+            self.assertIn(model, profile.vision_model_options)
         self.assertIn('gpt-4.1', profile.model_options)
         self.assertIn('gpt-4.1-mini', profile.model_options)
         self.assertIn('None', profile.thinking_level_options)

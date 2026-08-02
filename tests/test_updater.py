@@ -31,6 +31,7 @@ class UpdaterTests(unittest.TestCase):
 
     def test_managed_payload_includes_builtin_profiles_and_launchers(self):
         self.assertIn('config/llm_profile_builtin', updater.SOURCE_UPDATE_DIRS)
+        self.assertNotIn('custom_modules', updater.SOURCE_UPDATE_DIRS)
         self.assertIn('launch_win.bat', updater.SOURCE_UPDATE_FILES)
         self.assertIn('launch.sh', updater.SOURCE_UPDATE_FILES)
 
@@ -233,6 +234,8 @@ class UpdaterTests(unittest.TestCase):
             root = Path(tmpdir)
             cache_dir = root / '.btrans_cache'
             _write_update_dirs(root, 'old')
+            (root / 'custom_modules').mkdir()
+            (root / 'custom_modules' / 'trans_user.py').write_text('user module', encoding='utf8')
             (root / 'config' / 'textstyles').mkdir()
             (root / 'config' / 'textstyles' / 'user.json').write_text('local textstyle', encoding='utf8')
             _write_update_root_files(root, 'old')
@@ -254,6 +257,10 @@ class UpdaterTests(unittest.TestCase):
             ).install_source_zip(zip_path)
 
             self.assertEqual((root / 'ballontranslator' / '__init__.py').read_text(encoding='utf8'), 'new app')
+            self.assertEqual(
+                (root / 'custom_modules' / 'trans_user.py').read_text(encoding='utf8'),
+                'user module',
+            )
             self.assertEqual((root / 'resources' / 'themes.json').read_text(encoding='utf8'), '{"new": true}')
             self.assertEqual((root / 'config' / 'llm_profile_builtin' / 'deepseek.yaml').read_text(encoding='utf8'), 'new profile')
             self.assertEqual(
