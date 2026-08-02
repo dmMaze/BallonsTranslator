@@ -5,7 +5,7 @@ from . import shared
 from .logger import logger as LOGGER
 
 
-def create_error_dialog(exception: Exception, error_msg: str = None, exception_type: str = None):
+def create_error_dialog(exception: Exception, error_msg: str = None, exception_type: str = None) -> None:
     '''
         Popup a error dialog in main thread
     Args:
@@ -13,7 +13,11 @@ def create_error_dialog(exception: Exception, error_msg: str = None, exception_t
         exception_type: Specify it to avoid errors dialog of the same type popup repeatedly 
     '''
 
-    detail_traceback = traceback.format_exc()
+    # Dialogs may be created later or on another thread, outside the original
+    # except block, so format the traceback retained by the exception itself.
+    detail_traceback = ''.join(traceback.format_exception(
+        type(exception), exception, exception.__traceback__,
+    ))
     
     if exception_type is None:
         exception_type = ''
