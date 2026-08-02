@@ -40,7 +40,7 @@
   
 * 文本编辑  
   - 支持所见即所得地富文本编辑和一些基础排版格式调整、[字体样式预设](https://github.com/dmMaze/BallonsTranslator/pull/311)
-  - [文本变形](https://github.com/dmMaze/BallonsTranslator/pull/1245)、全文/原文/译文查找替换
+  - [文本变形](https://github.com/dmMaze/BallonsTranslator/pull/1238)、全文/原文/译文查找替换
   - 支持导入导出 word 文档
 
 * <details>

@@ -30,7 +30,7 @@
   
 * Text editing  
   - Support rich text formatting and [text style presets](https://github.com/dmMaze/BallonsTranslator/pull/311), translated texts can be edited interactively.
-  - [Text transforms](https://github.com/dmMaze/BallonsTranslator/pull/1245), Search & replace
+  - [Text transforms](https://github.com/dmMaze/BallonsTranslator/pull/1238), Search & replace
   - Support export/import to/from word documents
 
 * <details>

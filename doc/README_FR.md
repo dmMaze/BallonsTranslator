@@ -36,7 +36,7 @@ Prend en charge l’export/import vers/depuis des documents Word
   
 * Édition de texte
   - Prend en charge le formatage riche du texte et les [préréglages de style](https://github.com/dmMaze/BallonsTranslator/pull/311). Les textes traduits peuvent être édités interactivement.
-  - [Transformations de texte](https://github.com/dmMaze/BallonsTranslator/pull/1245), recherche et remplacement
+  - [Transformations de texte](https://github.com/dmMaze/BallonsTranslator/pull/1238), recherche et remplacement
   - Prend en charge l’export/import vers/depuis des documents Word
 
 * <details>

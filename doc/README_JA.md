@@ -26,7 +26,7 @@
 
 * テキストの編集
   - リッチテキストフォーマットをサポートし、翻訳されたテキストはインタラクティブに編集することができます。
-  - [テキスト変形](https://github.com/dmMaze/BallonsTranslator/pull/1245)、検索と置換
+  - [テキスト変形](https://github.com/dmMaze/BallonsTranslator/pull/1238)、検索と置換
 
 * <details>
   <summary><i>文脈対応 LLM 翻訳と用語集</i></summary>

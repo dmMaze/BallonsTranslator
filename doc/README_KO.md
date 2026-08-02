@@ -30,7 +30,7 @@
 
 * 텍스트 편집
   - 풍부한 텍스트 포맷 지원 [텍스트 스타일 프리셋](https://github.com/dmMaze/BallonsTranslator/pull/311) 및, 번역된 텍스트는 대화형으로 편집할 수 있습니다.
-  - [텍스트 변형](https://github.com/dmMaze/BallonsTranslator/pull/1245), 찾기 & 바꾸기 지원
+  - [텍스트 변형](https://github.com/dmMaze/BallonsTranslator/pull/1238), 찾기 & 바꾸기 지원
   - 워드 문서를 불러오기/내보내기 지원
 
 * <details>

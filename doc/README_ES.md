@@ -30,7 +30,7 @@
   
 * **Edición de texto:**
   - Admite formato de texto y [preajustes de estilo de texto](https://github.com/dmMaze/BallonsTranslator/pull/311). Los textos traducidos pueden editarse interactivamente.
-  - [Transformaciones de texto](https://github.com/dmMaze/BallonsTranslator/pull/1245), búsqueda y reemplazo.
+  - [Transformaciones de texto](https://github.com/dmMaze/BallonsTranslator/pull/1238), búsqueda y reemplazo.
   - Exportación/importación a/desde documentos Word.
 
 * <details>

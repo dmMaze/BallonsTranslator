@@ -27,7 +27,7 @@
   
 * Pengeditan teks  
   - Mendukung format rich text dan style teks, teks yang diterjemahkan dapat diedit secara langsung.
-  - [Transformasi teks](https://github.com/dmMaze/BallonsTranslator/pull/1245), pencarian & penggantian kata
+  - [Transformasi teks](https://github.com/dmMaze/BallonsTranslator/pull/1238), pencarian & penggantian kata
   - Mendukung ekspor/impor ke/dari dokumen word
 
 * <details>

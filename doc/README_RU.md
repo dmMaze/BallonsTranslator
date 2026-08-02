@@ -30,7 +30,7 @@
   
 * Редактирование текста  
   - Поддерживает богатое форматирование текста и [пресеты стилей текста](https://github.com/dmMaze/BallonsTranslator/pull/311), переведенные тексты можно редактировать интерактивно.
-  - [Трансформации текста](https://github.com/dmMaze/BallonsTranslator/pull/1245), поиск и замена
+  - [Трансформации текста](https://github.com/dmMaze/BallonsTranslator/pull/1238), поиск и замена
   - Поддерживает экспорт/импорт в/из документов Word
 
 * <details>
