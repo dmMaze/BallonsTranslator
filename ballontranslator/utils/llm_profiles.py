@@ -38,10 +38,12 @@ PROVIDER_DEFAULTS = {
         "vision_model": "gpt-5.5",
         "vision_detail_level": "auto",
         "model_options": [
+            "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
             "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
             "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
         ],
         "vision_model_options": [
+            "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
             "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
             "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
         ],
