@@ -33,7 +33,7 @@ from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.custom_widget.label import ColorPickerLabel
 from ballontranslator.ui.icon_rendering import render_svg_pixmap
 from ballontranslator.ui.menu_style import MenuStyleFilter
-from ballontranslator.ui.textedit_area import FloatingSuggestionLabel
+from ballontranslator.ui.text_engine.editing.widgets import FloatingSuggestionLabel
 
 if API_NAME in ('PyQt6', 'PySide6'):
     from ballontranslator.ui.framelesswindow.fw_qt6.linux_frameless_window import LinuxFramelessWindow, LinuxMoveResize

@@ -1,4 +1,4 @@
-from typing import List, Union, Tuple
+from typing import Callable, List, Optional, Sequence, Union
 
 from qtpy.QtGui import QTextCursor
 from qtpy.QtCore import QPointF
@@ -7,15 +7,16 @@ try:
 except:
     from qtpy.QtGui import QUndoCommand
 
-from .textitem import TextBlkItem, TextBlock
-from .textedit_area import TransTextEdit, SourceTextEdit
-from ballontranslator.utils.fontformat import FontFormat
-import ballontranslator.utils.config as C
-from .misc import doc_replace, doc_replace_no_shift
-from .texteditshapecontrol import TextBlkShapeControl
-from .page_search_widget import PageSearchWidget, Matched
+from ..item import TextBlkItem, TextBlock
+from .widgets import TransTextEdit, SourceTextEdit
+from ballontranslator.utils.fontformat import (
+    FontFormat,
+    TextTransformState,
+)
+from ...misc import doc_replace, doc_replace_no_shift
+from ..shape_control import TextBlkShapeControl
+from ...page_search_widget import PageSearchWidget, Matched
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
-from .scene_textlayout import PUNSET_HALF
 
 
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, joint_previous: bool = False):
@@ -36,48 +37,123 @@ def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit
     target_edit.old_undo_steps = target_edit.document().availableUndoSteps()
 
 
+class SetTextTransformCommand(QUndoCommand):
+    """Atomically apply complete transform state to one or more items."""
+
+    def __init__(
+        self,
+        items: Sequence[TextBlkItem],
+        before: Sequence[TextTransformState],
+        after: Sequence[TextTransformState],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ):
+        super().__init__()
+        self.items = tuple(items)
+        if len(self.items) != len(before) or len(self.items) != len(after):
+            raise ValueError("items, before, and after must have the same length")
+        self.before = tuple(
+            TextTransformState(value.stack, value.glyph_slant_angle)
+            for value in before
+        )
+        self.after = tuple(
+            TextTransformState(value.stack, value.glyph_slant_angle)
+            for value in after
+        )
+        self.refresh_callback = refresh_callback
+
+    @classmethod
+    def create(
+        cls,
+        items: Sequence[TextBlkItem],
+        before: Sequence[TextTransformState],
+        after: Sequence[TextTransformState],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> Optional["SetTextTransformCommand"]:
+        """Build a command, or return ``None`` for a normalized no-op."""
+        command = cls(items, before, after, refresh_callback)
+        return None if command.before == command.after else command
+
+    def _apply(self, states: Sequence[TextTransformState]):
+        for item, state in zip(self.items, states):
+            item.set_text_transform(state, preview=False)
+        if self.refresh_callback is not None:
+            self.refresh_callback()
+
+    def redo(self):
+        self._apply(self.after)
+
+    def undo(self):
+        self._apply(self.before)
+
+
 class MoveBlkItemsCommand(QUndoCommand):
-    def __init__(self, items: List[TextBlkItem], shape_ctrl: TextBlkShapeControl):
+    def __init__(
+        self,
+        items: List[TextBlkItem],
+        before_positions: Optional[Sequence[QPointF]] = None,
+        after_positions: Optional[Sequence[QPointF]] = None,
+    ):
         super(MoveBlkItemsCommand, self).__init__()
-        self.items = items
+        self.items = list(items)
         self.old_pos_lst: List[QPointF] = []
         self.new_pos_lst: List[QPointF] = []
-        self.shape_ctrl = shape_ctrl
-        for item in items:
-            padding = item.padding()
-            padding = QPointF(padding, padding)
-            self.old_pos_lst.append(item.oldPos + padding)
-            self.new_pos_lst.append(item.pos() + padding)
+        if before_positions is not None and len(before_positions) != len(self.items):
+            raise ValueError('items and before_positions must have the same length')
+        if after_positions is not None and len(after_positions) != len(self.items):
+            raise ValueError('items and after_positions must have the same length')
+        for index, item in enumerate(self.items):
+            logical = item.logical_position()
+            logical_offset = logical - item.pos()
+            before = (
+                QPointF(before_positions[index])
+                if before_positions is not None
+                else item.oldPos + logical_offset
+            )
+            after = (
+                QPointF(after_positions[index])
+                if after_positions is not None
+                else logical
+            )
+            self.old_pos_lst.append(before)
+            self.new_pos_lst.append(after)
+            item.oldPos = item.pos()
+        if self.old_pos_lst == self.new_pos_lst:
+            self.setObsolete(True)
+
+    def _apply(self, positions: Sequence[QPointF]):
+        for item, position in zip(self.items, positions):
+            item.set_logical_position(position)
             item.oldPos = item.pos()
 
     def redo(self):
-        for item, new_pos in zip(self.items, self.new_pos_lst):
-            padding = item.padding()
-            padding = QPointF(padding, padding)
-            item.setPos(new_pos - padding)
-            if self.shape_ctrl.blk_item == item and self.shape_ctrl.pos() != new_pos:
-                self.shape_ctrl.setPos(new_pos)
+        self._apply(self.new_pos_lst)
 
     def undo(self):
-        for item, old_pos in zip(self.items, self.old_pos_lst):
-            padding = item.padding()
-            padding = QPointF(padding, padding)
-            item.setPos(old_pos - padding)
-            if self.shape_ctrl.blk_item == item and self.shape_ctrl.pos() != old_pos:
-                self.shape_ctrl.setPos(old_pos)
+        self._apply(self.old_pos_lst)
 
 
 class ApplyFontformatCommand(QUndoCommand):
-    def __init__(self, items: List[TextBlkItem], trans_widget_lst: List[TransTextEdit], fontformat: FontFormat):
+    """Apply one captured whole-format value to the selected text items."""
+
+    def __init__(
+        self,
+        items: List[TextBlkItem],
+        trans_widget_lst: List[TransTextEdit],
+        fontformat: FontFormat,
+    ):
         super(ApplyFontformatCommand, self).__init__()
         self.items = items
         self.old_html_lst = []
         self.old_rect_lst = []
         self.old_fmt_lst = []
-        self.new_fmt = fontformat
+        # Redo must replay the format that was applied when the command was
+        # created, even if the live global/preset format changes afterwards.
+        self.new_fmt = fontformat.deepcopy()
         self.trans_widget_lst = trans_widget_lst
         for item in items:
             self.old_html_lst.append(item.toHtml())
+            # get_fontformat() deep-copies FontFormat, including its complete
+            # typed transform, so whole-format undo restores it as well.
             self.old_fmt_lst.append(item.get_fontformat())
             self.old_rect_lst.append(item.absBoundingRect(qrect=True))
 
@@ -87,7 +163,13 @@ class ApplyFontformatCommand(QUndoCommand):
             edit.document().clearUndoRedoStacks()
 
     def undo(self):
-        for rect, item, html, fmt, edit in zip(self.old_rect_lst, self.items, self.old_html_lst, self.old_fmt_lst, self.trans_widget_lst):
+        for rect, item, html, fmt, edit in zip(
+            self.old_rect_lst,
+            self.items,
+            self.old_html_lst,
+            self.old_fmt_lst,
+            self.trans_widget_lst,
+        ):
             item.setHtml(html)
             item.set_fontformat(fmt)
             item.setRect(rect)
@@ -115,12 +197,16 @@ class ReshapeItemCommand(QUndoCommand):
         item = command.item
         if self.item != item:
             return False
-        self.newRect = item.rect()
+        self.newRect = item.absBoundingRect(qrect=True)
         return True
 
 
 class RotateItemCommand(QUndoCommand):
-    def __init__(self, item: Union[TextBlkItem, List[TextBlkItem]], new_angle: float = None, shape_ctrl: TextBlkShapeControl = None):
+    def __init__(
+        self,
+        item: Union[TextBlkItem, List[TextBlkItem]],
+        new_angle: float = None,
+    ):
         super(RotateItemCommand, self).__init__()
         self.items = item if isinstance(item, list) else [item]
         self.items = [item for item in self.items if item is not None]
@@ -129,19 +215,14 @@ class RotateItemCommand(QUndoCommand):
         if new_angle is None and self.item is not None:
             new_angle = self.item.angle
         self.new_angle = new_angle
-        self.shape_ctrl = shape_ctrl
 
     def redo(self):
         for item in self.items:
             item.setAngle(self.new_angle)
-            if self.shape_ctrl is not None and self.shape_ctrl.blk_item == item and self.shape_ctrl.rotation() != self.new_angle:
-                self.shape_ctrl.setRotation(self.new_angle)
 
     def undo(self):
         for item, old_angle in zip(self.items, self.old_angles):
             item.setAngle(old_angle)
-            if self.shape_ctrl is not None and self.shape_ctrl.blk_item == item and self.shape_ctrl.rotation() != old_angle:
-                self.shape_ctrl.setRotation(old_angle)
 
     def mergeWith(self, command: QUndoCommand):
         if not isinstance(command, RotateItemCommand):
@@ -208,11 +289,10 @@ class SqueezeCommand(QUndoCommand):
                 self.ctrl.updateBoundingRect()
 
 class ResetAngleCommand(QUndoCommand):
-    def __init__(self, blkitem_lst: List[TextBlkItem], ctrl: TextBlkShapeControl):
+    def __init__(self, blkitem_lst: List[TextBlkItem]):
         super(ResetAngleCommand, self).__init__()
         self.blkitem_lst = blkitem_lst
         self.angle_lst = []
-        self.ctrl = ctrl
         blkitem_lst = []
         for blk in self.blkitem_lst:
             rotation = blk.rotation()
@@ -224,14 +304,10 @@ class ResetAngleCommand(QUndoCommand):
     def redo(self):
         for blk in self.blkitem_lst:
             blk.setAngle(0)
-            if self.ctrl.blk_item == blk:
-                self.ctrl.setAngle(0)
 
     def undo(self):
         for blk, angle in zip(self.blkitem_lst, self.angle_lst):
             blk.setAngle(angle)
-            if self.ctrl.blk_item == blk:
-                self.ctrl.setAngle(angle)
 
 class TextItemEditCommand(QUndoCommand):
     def __init__(self, blkitem: TextBlkItem, trans_edit: TransTextEdit, num_steps: int, formatpanel=None):
@@ -317,8 +393,6 @@ class PageReplaceOneCommand(QUndoCommand):
         self.op_counter = 0
         self.sw = se
         self.reptxt = self.sw.replace_editor.toPlainText()
-        self.repl_len = len(self.reptxt)
-        
         self.sel_start = self.sw.current_cursor.selectionStart()
         self.oritxt = self.sw.current_cursor.selectedText()
         self.ori_len = len(self.oritxt)
@@ -425,7 +499,6 @@ class GlobalRepalceAllCommand(QUndoCommand):
     def __init__(self, sceneitem_list: dict, background_list: dict, target_text: str, proj: ProjImgTrans) -> None:
         super().__init__()
         self.op_counter = -1
-        self.target_text = target_text
         self.proj = proj
         self.trans_list = sceneitem_list['trans']
         self.src_list = sceneitem_list['src']

@@ -8,6 +8,8 @@ PyQt5>=5.15.10 ; python_version <= "3.8"
 qtpy
 packaging
 numpy>=1.22
+numba>=0.58.1
+einops
 opencv-python>=4.8.1.78
 pillow-jxl-plugin>=1.3.4
 requests>=2.32.4
@@ -30,4 +32,3 @@ pyobjc-core; sys_platform == 'darwin'
 pyobjc-framework-cocoa; sys_platform == 'darwin'
 pyobjc-framework-coreml; sys_platform == 'darwin'
 pyobjc-framework-quartz; sys_platform == 'darwin'
-

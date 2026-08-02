@@ -136,6 +136,7 @@ class ScrollBar(QWidget):
 
     def __init__(self, orient: Qt.Orientation, parent: QAbstractScrollArea, fadeout: bool = False, hover_style: bool = False):
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         fadeout = fadeout and not hover_style
         self.groove = ScrollBarGroove(orient, self, hover_style=hover_style)
         self.handle = ScrollBarHandle(orient, self, fadeout, hover_style=hover_style)

@@ -7,8 +7,8 @@ import re
 
 from ballontranslator.utils.config import pcfg
 from .custom_widget import Widget, ClickableLabel
-from .textitem import TextBlkItem
-from .textedit_area import TransPairWidget, SourceTextEdit, TransTextEdit
+from .text_engine.item import TextBlkItem
+from .text_engine.editing.widgets import TransPairWidget, SourceTextEdit, TransTextEdit
 
 SEARCHRST_HIGHLIGHT_COLOR = QColor(30, 147, 229, 60)
 CURRENT_TEXT_COLOR = QColor(244, 249, 28)

@@ -263,7 +263,7 @@ class LLMTranslatorTest(unittest.TestCase):
             'prompt_cache_miss_tokens': 30,
         }
         messages = []
-        self.translator.logger = SimpleNamespace(info=messages.append)
+        self.translator.logger = SimpleNamespace(debug=messages.append)
 
         self.translator._log_token_usage(
             SimpleNamespace(usage=openai_usage),

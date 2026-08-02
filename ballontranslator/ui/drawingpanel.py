@@ -371,7 +371,9 @@ class DrawingPanel(Widget):
         except:
             LOGGER.error(f'{set_method} not found in drawing panel')
 
-    def shortcutSetCurrentToolByName(self, tool_name: str):
+    def shortcutSetCurrentToolByName(self, tool_name: str, key=None):
+        if key is not None and self.canvas.handle_transform_modal_shortcut(key):
+            return
         if self.isVisible():
             self.setCurrentToolByName(tool_name)
 
