@@ -946,22 +946,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         widget=...,
     ) -> None:
         painter.save()
-        # Destination-inverting raster ops leave trails when QGraphicsView
-        # coalesces partial repaints during movement. A fixed halo gives the
-        # same light/dark contrast without depending on old framebuffer pixels.
-        painter.setCompositionMode(
-            QPainter.CompositionMode.CompositionMode_SourceOver
-        )
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         path = self._visual_path
-        halo = QPen(self.pen())
-        halo.setColor(QColor(245, 245, 245))
-        halo.setWidthF(self.pen().widthF() + 2.0)
-        painter.setPen(halo)
-        if self._visual_path.isEmpty():
-            painter.drawRect(self.rect())
-        else:
-            painter.drawPath(path)
         painter.setPen(self.pen())
         if path.isEmpty():
             painter.drawRect(self.rect())
