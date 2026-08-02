@@ -1,4 +1,6 @@
-from typing import Union, Tuple
+from __future__ import annotations
+
+from typing import Tuple, Union
 
 import cv2
 import numpy as np
@@ -7,8 +9,12 @@ from qtpy.QtGui import QColor, QPixmap, QImage
 from ...misc import pixmap2ndarray, ndarray2pixmap
 
 
-def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, strength=1.0, radius=21) -> Tuple[
-    QPixmap, np.ndarray, np.ndarray]:
+def apply_shadow_effect(
+    img: Union[QPixmap, QImage, np.ndarray],
+    color: QColor,
+    strength: float = 1.0,
+    radius: int = 21,
+) -> Tuple[QPixmap, np.ndarray]:
     if isinstance(color, QColor):
         color = [color.red(), color.green(), color.blue()]
 

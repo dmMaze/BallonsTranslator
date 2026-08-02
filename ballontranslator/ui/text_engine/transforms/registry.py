@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 import math
-from typing import Callable, Tuple
+from typing import Callable, Sequence, Tuple, Union
 
 from qtpy.QtCore import QCoreApplication, QRectF
 from qtpy.QtGui import QTransform
@@ -31,6 +31,8 @@ from ballontranslator.utils.fontformat import (
     TEXT_TRANSFORM_SINE_PHASE_MAX,
     TEXT_TRANSFORM_SINE_PHASE_MIN,
     TEXT_TRANSFORM_TYPES,
+    TextTransform,
+    TextTransformStack,
     coerce_text_transform_stack,
 )
 
@@ -489,7 +491,10 @@ _NONLINEAR_MAPPER_METHODS = (
 
 
 def compile_text_transform_stack(
-    stack,
+    stack: Union[
+        TextTransformStack,
+        Sequence[Union[TextTransform, dict]],
+    ],
     logical_rect: QRectF,
     source_rect: QRectF,
     vertical: bool,

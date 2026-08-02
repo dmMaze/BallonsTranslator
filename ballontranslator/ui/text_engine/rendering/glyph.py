@@ -10,7 +10,16 @@ from __future__ import annotations
 
 from collections import OrderedDict
 import math
-from typing import List, NamedTuple, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Callable,
+    Hashable,
+    List,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 import cv2
 import numpy as np
@@ -134,13 +143,13 @@ class WeightedGlyphGeometryCache:
     def __len__(self) -> int:
         return len(self._entries)
 
-    def get(self, key):
+    def get(self, key: Hashable) -> Optional[Any]:
         value = self._entries.get(key)
         if value is not None:
             self._entries.move_to_end(key)
         return value
 
-    def _remove(self, key) -> None:
+    def _remove(self, key: Hashable) -> None:
         if key not in self._entries:
             return
         self._entries.pop(key)
@@ -154,10 +163,10 @@ class WeightedGlyphGeometryCache:
 
     def store(
         self,
-        key,
-        value,
+        key: Hashable,
+        value: Any,
         weight: Optional[int] = None,
-        namespace=None,
+        namespace: Optional[Hashable] = None,
     ) -> None:
         if weight is None:
             weight = _glyph_geometry_cache_weight(value)
@@ -178,7 +187,7 @@ class WeightedGlyphGeometryCache:
             self._namespace_keys.setdefault(namespace, set()).add(key)
         self.total_weight += weight
 
-    def discard_namespace(self, namespace) -> None:
+    def discard_namespace(self, namespace: Hashable) -> None:
         for key in tuple(self._namespace_keys.get(namespace, ())):
             self._remove(key)
 
@@ -692,7 +701,7 @@ def _draw_fallbacks(
     fallbacks: Sequence[FallbackGlyph],
     brush: QBrush,
     outline: QPen,
-    failure_handler=None,
+    failure_handler: Optional[Callable[[Exception, bool], None]] = None,
     effect_pass: bool = False,
 ) -> None:
     if not fallbacks:
@@ -836,7 +845,7 @@ def draw_glyph_geometry(
     painter: QPainter,
     geometry: GlyphGeometry,
     char_format: QTextCharFormat,
-    failure_handler=None,
+    failure_handler: Optional[Callable[[Exception, bool], None]] = None,
 ) -> None:
     """Draw vector ink, document outline, and pathless glyph fallbacks."""
     brush = _foreground_brush(char_format, painter)
@@ -869,7 +878,7 @@ def draw_uniform_glyph_geometries(
     painter: QPainter,
     geometries: Sequence[GlyphGeometry],
     char_format: QTextCharFormat,
-    failure_handler=None,
+    failure_handler: Optional[Callable[[Exception, bool], None]] = None,
 ) -> None:
     """Draw same-format geometry with one painter state transition.
 
@@ -986,13 +995,13 @@ def _draw_decorations(
 
 
 def _geometry_cache_key(
-    namespace,
+    namespace: Optional[Hashable],
     start: int,
     length: int,
     offset: QPointF,
     orientation: QTransform,
     angle: float,
-):
+) -> tuple:
     return (
         namespace,
         start,
@@ -1009,7 +1018,9 @@ def _geometry_cache_key(
     )
 
 
-def _store_geometry(cache, key, geometry) -> None:
+def _store_geometry(
+    cache: Any, key: Hashable, geometry: GlyphGeometry
+) -> None:
     store = getattr(cache, 'store', None)
     if store is not None:
         store(key, geometry)
@@ -1027,9 +1038,9 @@ def draw_slanted_line(
     orientation: QTransform,
     angle: float,
     context: QAbstractTextDocumentLayout.PaintContext,
-    failure_handler=None,
-    persistent_geometry_cache=None,
-    cache_namespace=None,
+    failure_handler: Optional[Callable[[Exception, bool], None]] = None,
+    persistent_geometry_cache: Optional[Any] = None,
+    cache_namespace: Optional[Hashable] = None,
 ) -> None:
     """Paint one already-laid-out line without changing logical geometry."""
     layout = block.layout()
@@ -1186,9 +1197,9 @@ def draw_slanted_glyph_mask(
     offset: QPointF,
     orientation: QTransform,
     angle: float,
-    failure_handler=None,
-    persistent_geometry_cache=None,
-    cache_namespace=None,
+    failure_handler: Optional[Callable[[Exception, bool], None]] = None,
+    persistent_geometry_cache: Optional[Any] = None,
+    cache_namespace: Optional[Hashable] = None,
 ) -> None:
     """Draw only slanted glyph alpha for stroke/shadow mask construction."""
     char_format = QTextCharFormat()
@@ -1215,8 +1226,8 @@ def slanted_line_geometry(
     offset: QPointF,
     orientation: QTransform,
     angle: float,
-    persistent_geometry_cache=None,
-    cache_namespace=None,
+    persistent_geometry_cache: Optional[Any] = None,
+    cache_namespace: Optional[Hashable] = None,
 ) -> GlyphGeometry:
     """Return geometry shared by exact ink measurement and painting."""
     start = line.textStart()

@@ -1,6 +1,9 @@
 """Analytic circular text-surface mapping."""
 
+from __future__ import annotations
+
 import math
+from typing import Iterator, Optional, Tuple, Union
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRectF
@@ -13,7 +16,7 @@ BEND_OUTLINE_TOLERANCE = 0.25
 BEND_OUTLINE_MAX_SEGMENTS = 512
 
 
-def _rect_edge_samples(rect: QRectF, segments: int):
+def _rect_edge_samples(rect: QRectF, segments: int) -> Iterator[QPointF]:
     """Yield one clockwise sampled rectangle boundary without duplicates."""
     left, right = rect.left(), rect.right()
     top, bottom = rect.top(), rect.bottom()
@@ -115,7 +118,7 @@ class BendMapper:
         return self.bend == 0.0
 
     @property
-    def geometry_key(self):
+    def geometry_key(self) -> tuple:
         return (
             type(self),
             self.bend,
@@ -130,7 +133,7 @@ class BendMapper:
             self.source_rect.height(),
         )
 
-    def _flow_cross(self, point: QPointF):
+    def _flow_cross(self, point: QPointF) -> Tuple[float, float]:
         if self.vertical:
             return point.y() - self.center.y(), point.x() - self.center.x()
         return point.x() - self.center.x(), point.y() - self.center.y()
@@ -140,7 +143,7 @@ class BendMapper:
             return QPointF(self.center.x() + cross, self.center.y() + flow)
         return QPointF(self.center.x() + flow, self.center.y() + cross)
 
-    def _cross_range(self, rect: QRectF):
+    def _cross_range(self, rect: QRectF) -> Tuple[float, float]:
         if self.vertical:
             return rect.left() - self.center.x(), rect.right() - self.center.x()
         return rect.top() - self.center.y(), rect.bottom() - self.center.y()
@@ -166,7 +169,9 @@ class BendMapper:
             return source
         return self._raw_forward(source) + self.translation
 
-    def forward_arrays(self, source_x, source_y):
+    def forward_arrays(
+        self, source_x: np.ndarray, source_y: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         source_x = np.asarray(source_x, dtype=np.float64)
         source_y = np.asarray(source_y, dtype=np.float64)
         if self.is_identity:
@@ -199,7 +204,7 @@ class BendMapper:
     def inverse_point(
         self,
         visual: QPointF,
-        previous_source: QPointF = None,
+        previous_source: Optional[QPointF] = None,
         *,
         extrapolate: bool = False,
     ) -> QPointF:
@@ -246,7 +251,16 @@ class BendMapper:
         )
         return self._from_flow_cross(flow, cross)
 
-    def inverse_arrays(self, visual_x, visual_y, *, return_valid=False):
+    def inverse_arrays(
+        self,
+        visual_x: np.ndarray,
+        visual_y: np.ndarray,
+        *,
+        return_valid: bool = False,
+    ) -> Union[
+        Tuple[np.ndarray, np.ndarray],
+        Tuple[np.ndarray, np.ndarray, np.ndarray],
+    ]:
         """Vectorized inverse used by the bounded raster sampler."""
         if self.is_identity:
             if return_valid:
@@ -346,7 +360,9 @@ class BendMapper:
         path.translate(self.translation)
         return path
 
-    def visual_bounds(self, source_rect: QRectF = None) -> QRectF:
+    def visual_bounds(
+        self, source_rect: Optional[QRectF] = None
+    ) -> QRectF:
         rect = self.source_rect if source_rect is None else source_rect
         return self.map_rect_path(rect).boundingRect()
 
@@ -372,4 +388,3 @@ class BendMapper:
         )
         length = math.hypot(tangent.x(), tangent.y())
         return tangent / length if length else QPointF(1.0, 0.0)
-

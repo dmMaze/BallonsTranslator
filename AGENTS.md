@@ -47,6 +47,7 @@ Important areas:
 
 ## Maintainability Rules
 
+- Add type hints, including return types, to new or modified Python functions and methods when their types are stable and useful. Prefer concrete domain and Qt types and precise callable signatures; reserve `Any` for genuinely dynamic boundaries, and do not churn unrelated legacy code solely for annotation coverage.
 - Shape APIs around the app's current caller chain. A small public helper at the UI boundary is easier to review than a stack of generic helpers, constructor injection, and wrapper layers that no production caller needs.
 - Prefer clear ownership names over broad global names. A helper named for the boundary that consumes it is easier to review than a shared API with hidden registration state.
 - In code review, check both sides of every simplification: the new direct path should be obvious, and the old path should be gone enough that future readers do not have to understand both.

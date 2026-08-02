@@ -1,6 +1,9 @@
 """Invertible sine-wave mapping for completed text surfaces."""
 
+from __future__ import annotations
+
 import math
+from typing import Optional, Tuple, Union
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRectF
@@ -48,7 +51,7 @@ class SineMapper:
         )
 
     @property
-    def geometry_key(self):
+    def geometry_key(self) -> tuple:
         rect = self.logical_rect
         source = self.source_rect
         return (
@@ -58,7 +61,9 @@ class SineMapper:
             source.x(), source.y(), source.width(), source.height(),
         )
 
-    def _vertical_offset(self, source_x):
+    def _vertical_offset(
+        self, source_x: Union[float, np.ndarray]
+    ) -> Union[float, np.ndarray]:
         if self.transform.frequency_x == 0 or self.vertical_amplitude == 0.0:
             return (
                 np.zeros_like(source_x)
@@ -73,7 +78,9 @@ class SineMapper:
             + math.tau * self.transform.phase_x
         )
 
-    def _horizontal_offset(self, source_y):
+    def _horizontal_offset(
+        self, source_y: Union[float, np.ndarray]
+    ) -> Union[float, np.ndarray]:
         if self.transform.frequency_y == 0 or self.horizontal_amplitude == 0.0:
             return (
                 np.zeros_like(source_y)
@@ -94,7 +101,9 @@ class SineMapper:
         mapped_x = source.x() + float(self._horizontal_offset(mapped_y))
         return QPointF(mapped_x, mapped_y)
 
-    def forward_arrays(self, source_x, source_y):
+    def forward_arrays(
+        self, source_x: np.ndarray, source_y: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         source_x = np.asarray(source_x, dtype=np.float64)
         source_y = np.asarray(source_y, dtype=np.float64)
         mapped_y = source_y + self._vertical_offset(source_x)
@@ -104,7 +113,7 @@ class SineMapper:
     def inverse_point(
         self,
         visual: QPointF,
-        previous_source: QPointF = None,
+        previous_source: Optional[QPointF] = None,
         *,
         extrapolate: bool = False,
     ) -> QPointF:
@@ -113,7 +122,16 @@ class SineMapper:
         source_y = visual.y() - float(self._vertical_offset(source_x))
         return QPointF(source_x, source_y)
 
-    def inverse_arrays(self, visual_x, visual_y, *, return_valid=False):
+    def inverse_arrays(
+        self,
+        visual_x: np.ndarray,
+        visual_y: np.ndarray,
+        *,
+        return_valid: bool = False,
+    ) -> Union[
+        Tuple[np.ndarray, np.ndarray],
+        Tuple[np.ndarray, np.ndarray, np.ndarray],
+    ]:
         visual_x = np.asarray(visual_x, dtype=np.float64)
         visual_y = np.asarray(visual_y, dtype=np.float64)
         source_x = visual_x - self._horizontal_offset(visual_y)
@@ -123,7 +141,9 @@ class SineMapper:
             return source_x, source_y, valid
         return source_x, source_y
 
-    def visual_bounds(self, source_rect: QRectF = None) -> QRectF:
+    def visual_bounds(
+        self, source_rect: Optional[QRectF] = None
+    ) -> QRectF:
         rect = QRectF(self.source_rect if source_rect is None else source_rect)
         return rect.adjusted(
             -self.horizontal_amplitude,

@@ -4,10 +4,12 @@ Glyph-local slant is deliberately rendered from shaped glyph runs and never
 enters the matrix in this module.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 import math
 from numbers import Real
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRectF
@@ -287,7 +289,7 @@ class CompiledTransformStage:
     stack_index: int
     transform: object
     context: TransformStageContext
-    mapper: object = None
+    mapper: Optional[Any] = None
 
 
 def projective_transform_stage(
@@ -301,7 +303,7 @@ def projective_transform_stage(
 def bend_transform_stage(
     transform: BendTextTransform,
     context: TransformStageContext,
-):
+) -> BendMapper:
     """Build one nonlinear stage without coupling the compiler to its type."""
     return BendMapper(
         context.logical_bounds,
@@ -314,7 +316,7 @@ def bend_transform_stage(
 def sine_transform_stage(
     transform: SineTextTransform,
     context: TransformStageContext,
-):
+) -> SineMapper:
     """Build one invertible two-axis sine deformation stage."""
     return SineMapper(
         context.logical_bounds,
@@ -326,7 +328,7 @@ def sine_transform_stage(
 def grid_transform_stage(
     transform: GridTextTransform,
     context: TransformStageContext,
-):
+) -> GridMapper:
     """Build one normalized free-form deformation stage."""
     return GridMapper(
         context.logical_bounds,
@@ -345,7 +347,7 @@ class MatrixTransformMapper:
             raise ValueError('transform matrix must be finite and invertible')
 
     @property
-    def geometry_key(self):
+    def geometry_key(self) -> tuple:
         matrix = self.matrix
         return (
             type(self),
@@ -357,7 +359,9 @@ class MatrixTransformMapper:
     def forward_point(self, source: QPointF) -> QPointF:
         return self.matrix.map(QPointF(source))
 
-    def forward_arrays(self, source_x, source_y):
+    def forward_arrays(
+        self, source_x: np.ndarray, source_y: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         source_x = np.asarray(source_x, dtype=np.float64)
         source_y = np.asarray(source_y, dtype=np.float64)
         matrix = self.matrix
@@ -382,13 +386,22 @@ class MatrixTransformMapper:
     def inverse_point(
         self,
         visual: QPointF,
-        previous_source: QPointF = None,
+        previous_source: Optional[QPointF] = None,
         *,
         extrapolate: bool = False,
     ) -> QPointF:
         return self.inverse.map(QPointF(visual))
 
-    def inverse_arrays(self, visual_x, visual_y, *, return_valid=False):
+    def inverse_arrays(
+        self,
+        visual_x: np.ndarray,
+        visual_y: np.ndarray,
+        *,
+        return_valid: bool = False,
+    ) -> Union[
+        Tuple[np.ndarray, np.ndarray],
+        Tuple[np.ndarray, np.ndarray, np.ndarray],
+    ]:
         matrix = self.inverse
         denominator = (
             matrix.m13() * visual_x
@@ -453,7 +466,7 @@ class CompositeTextTransformMapper:
 
     def __init__(
         self,
-        stages: Sequence,
+        stages: Sequence[Any],
         logical_rect: QRectF,
         source_rect: QRectF,
         vertical: bool,
@@ -466,7 +479,7 @@ class CompositeTextTransformMapper:
         self._visual_bounds_cache = {}
 
     @property
-    def geometry_key(self):
+    def geometry_key(self) -> tuple:
         return (
             type(self),
             tuple(stage.geometry_key for stage in self.stages),
@@ -487,7 +500,9 @@ class CompositeTextTransformMapper:
             point = stage.forward_point(point)
         return point
 
-    def forward_arrays(self, source_x, source_y):
+    def forward_arrays(
+        self, source_x: np.ndarray, source_y: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         visual_x, visual_y = source_x, source_y
         for stage in self.stages:
             visual_x, visual_y = stage.forward_arrays(
@@ -495,7 +510,9 @@ class CompositeTextTransformMapper:
             )
         return visual_x, visual_y
 
-    def _previous_stage_sources(self, previous_source: QPointF):
+    def _previous_stage_sources(
+        self, previous_source: Optional[QPointF]
+    ) -> Optional[list[QPointF]]:
         if previous_source is None:
             return None
         points = []
@@ -508,7 +525,7 @@ class CompositeTextTransformMapper:
     def inverse_point(
         self,
         visual: QPointF,
-        previous_source: QPointF = None,
+        previous_source: Optional[QPointF] = None,
         *,
         extrapolate: bool = False,
     ) -> QPointF:
@@ -522,7 +539,16 @@ class CompositeTextTransformMapper:
             )
         return point
 
-    def inverse_arrays(self, visual_x, visual_y, *, return_valid=False):
+    def inverse_arrays(
+        self,
+        visual_x: np.ndarray,
+        visual_y: np.ndarray,
+        *,
+        return_valid: bool = False,
+    ) -> Union[
+        Tuple[np.ndarray, np.ndarray],
+        Tuple[np.ndarray, np.ndarray, np.ndarray],
+    ]:
         source_x, source_y = visual_x, visual_y
         valid = np.ones_like(visual_x, dtype=bool)
         for stage in reversed(self.stages):
@@ -635,7 +661,9 @@ class CompositeTextTransformMapper:
             self._rect_path_cache[cache_key] = QPainterPath(path)
         return path
 
-    def visual_bounds(self, source_rect: QRectF = None) -> QRectF:
+    def visual_bounds(
+        self, source_rect: Optional[QRectF] = None
+    ) -> QRectF:
         rect = self.source_rect if source_rect is None else source_rect
         cache_key = (
             rect.x(), rect.y(), rect.width(), rect.height()
@@ -667,7 +695,7 @@ class CompiledTextTransform:
     stages: tuple[CompiledTransformStage, ...] = ()
 
     @property
-    def geometry_key(self):
+    def geometry_key(self) -> tuple:
         if self.surface_mapper is not None:
             return ('surface', self.surface_mapper.geometry_key)
         matrix = self.native_matrix

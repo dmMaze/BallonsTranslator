@@ -9,7 +9,7 @@ import enum
 import math
 import re
 import copy
-from typing import ClassVar
+from typing import ClassVar, Iterator, Sequence
 
 import numpy as np
 
@@ -44,7 +44,9 @@ TEXT_TRANSFORM_GRID_INTERPOLATION_TYPES = ('bilinear', 'catmull_rom')
 TEXT_TRANSFORM_PRECISION = 6
 
 
-def _transform_value_field_names(transform) -> tuple:
+def _transform_value_field_names(
+    transform: Union["TextTransform", type["TextTransform"]],
+) -> tuple[str, ...]:
     """Return constructor fields, excluding derived fields such as the type."""
     return tuple(field.name for field in fields(transform) if field.init)
 
@@ -178,7 +180,7 @@ class BendTextTransform(TextTransform):
         return self.bend == 0.0
 
 
-def _normalize_sine_frequency(value) -> int:
+def _normalize_sine_frequency(value: Union[int, float, np.number]) -> int:
     if isinstance(value, bool) or not isinstance(
         value, (int, float, np.number)
     ):
@@ -255,7 +257,7 @@ class SineTextTransform(TextTransform):
         )
 
 
-def _normalize_grid_division(value) -> int:
+def _normalize_grid_division(value: Union[int, float, np.number]) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float, np.number)):
         raise ValueError('grid divisions must be integers from 1 to 32')
     numeric = float(value)
@@ -282,7 +284,9 @@ def _default_grid_control_points(horizontal: int, vertical: int) -> tuple:
     )
 
 
-def _normalize_grid_control_points(points, horizontal: int, vertical: int) -> tuple:
+def _normalize_grid_control_points(
+    points: Sequence[Sequence[float]], horizontal: int, vertical: int
+) -> tuple:
     expected = (horizontal + 1) * (vertical + 1)
     if not isinstance(points, (list, tuple)) or len(points) != expected:
         raise ValueError(f'grid transform requires {expected} control points')
@@ -406,7 +410,9 @@ class GridTextTransform(TextTransform):
             points,
         )
 
-    def with_value(self, name: str, value) -> "GridTextTransform":
+    def with_value(
+        self, name: str, value: Union[int, float, str]
+    ) -> "GridTextTransform":
         current = self.normalized()
         if name in {'horizontal_divisions', 'vertical_divisions'}:
             horizontal = (
@@ -436,7 +442,9 @@ class GridTextTransform(TextTransform):
             return replace(current, interpolation=value).normalized()
         return super().with_value(name, value)
 
-    def with_control_points(self, points) -> "GridTextTransform":
+    def with_control_points(
+        self, points: Sequence[Sequence[float]]
+    ) -> "GridTextTransform":
         return replace(self, control_points=tuple(points)).normalized()
 
     def is_neutral(self) -> bool:
@@ -468,13 +476,13 @@ class TextTransformStack:
             tuple(coerce_text_transform(value) for value in self.transforms),
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[TextTransform]:
         return iter(self.transforms)
 
     def __len__(self) -> int:
         return len(self.transforms)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> TextTransform:
         return self.transforms[index]
 
     def is_neutral(self) -> bool:
@@ -618,7 +626,12 @@ def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
     return normalized
 
 
-def coerce_text_transform_stack(value) -> TextTransformStack:
+def coerce_text_transform_stack(
+    value: Union[
+        TextTransformStack,
+        Sequence[Union[TextTransform, dict]],
+    ],
+) -> TextTransformStack:
     """Return one canonical ordered stack and reject the old single payload.
 
     >>> coerce_text_transform_stack([

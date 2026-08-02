@@ -1,6 +1,9 @@
 """Reusable Blender-style modal transforms for selected 2D points."""
 
+from __future__ import annotations
+
 import math
+from typing import Optional, Sequence, Tuple
 
 from qtpy.QtCore import QPointF
 
@@ -38,7 +41,9 @@ class ModalPointTransform:
     def active(self) -> bool:
         return self.mode is not None
 
-    def begin(self, mode: str, points, mouse: QPointF) -> bool:
+    def begin(
+        self, mode: str, points: Sequence[QPointF], mouse: QPointF
+    ) -> bool:
         if mode not in self.MODES or self.active:
             return False
         points = tuple(QPointF(point) for point in points)
@@ -54,7 +59,9 @@ class ModalPointTransform:
         self._rotation_degrees = 0.0
         return True
 
-    def switch_mode(self, mode: str, mouse: QPointF):
+    def switch_mode(
+        self, mode: str, mouse: QPointF
+    ) -> Optional[Tuple[QPointF, ...]]:
         if not self.active or mode not in self.MODES:
             return None
         if mode == self.mode:
@@ -69,7 +76,9 @@ class ModalPointTransform:
         )
         return tuple(QPointF(point) for point in self.result_points)
 
-    def constrain(self, axis: str, mouse: QPointF):
+    def constrain(
+        self, axis: str, mouse: QPointF
+    ) -> Optional[Tuple[QPointF, ...]]:
         if not self.active:
             return None
         valid_axes = (
@@ -90,7 +99,7 @@ class ModalPointTransform:
         )
         return tuple(QPointF(point) for point in self.result_points)
 
-    def update(self, mouse: QPointF):
+    def update(self, mouse: QPointF) -> Tuple[QPointF, ...]:
         if not self.active:
             return ()
         if self.mode == self.ROTATE:
@@ -170,14 +179,14 @@ class ModalPointTransform:
             else 1.0
         )
 
-    def finish(self):
+    def finish(self) -> Tuple[QPointF, ...]:
         if not self.active:
             return ()
         result = tuple(QPointF(point) for point in self.result_points)
         self._reset()
         return result
 
-    def cancel(self):
+    def cancel(self) -> Tuple[QPointF, ...]:
         if not self.active:
             return ()
         result = tuple(QPointF(point) for point in self.initial_points)

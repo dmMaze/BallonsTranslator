@@ -1,16 +1,18 @@
 """Height-for-width wrapping layout for indivisible UI control units."""
 
-from typing import Sequence
+from __future__ import annotations
+
+from typing import Optional, Sequence
 
 from qtpy.QtCore import QRect, QSize
-from qtpy.QtWidgets import QLayout, QLayoutItem, QSizePolicy, QStyle
+from qtpy.QtWidgets import QLayout, QLayoutItem, QSizePolicy, QStyle, QWidget
 
 
 def _pack_preferred_widths(
     preferred_widths: Sequence[int],
     available_width: int,
     spacing: int,
-):
+) -> list[tuple[int, ...]]:
     """Return greedy rows of indexes without splitting an atomic item.
 
     An over-wide item occupies a row by itself; geometry assignment later gives
@@ -55,32 +57,37 @@ class AdaptiveWrapLayout(QLayout):
     [(0, 1), (2,)]
     """
 
-    def __init__(self, parent=None, horizontal_spacing=-1, vertical_spacing=-1):
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        horizontal_spacing: int = -1,
+        vertical_spacing: int = -1,
+    ) -> None:
         super().__init__(parent)
         self._items = []
         self._horizontal_spacing = horizontal_spacing
         self._vertical_spacing = vertical_spacing
 
-    def addItem(self, item: QLayoutItem):
+    def addItem(self, item: QLayoutItem) -> None:
         self._items.append(item)
 
-    def count(self):
+    def count(self) -> int:
         return len(self._items)
 
-    def itemAt(self, index):
+    def itemAt(self, index: int) -> Optional[QLayoutItem]:
         if 0 <= index < len(self._items):
             return self._items[index]
         return None
 
-    def takeAt(self, index):
+    def takeAt(self, index: int) -> Optional[QLayoutItem]:
         if 0 <= index < len(self._items):
             return self._items.pop(index)
         return None
 
-    def hasHeightForWidth(self):
+    def hasHeightForWidth(self) -> bool:
         return True
 
-    def _style_spacing(self, horizontal):
+    def _style_spacing(self, horizontal: bool) -> int:
         explicit = (
             self._horizontal_spacing if horizontal else self._vertical_spacing
         )
@@ -103,24 +110,24 @@ class AdaptiveWrapLayout(QLayout):
                 return value
         return 6
 
-    def horizontalSpacing(self):
+    def horizontalSpacing(self) -> int:
         return self._style_spacing(True)
 
-    def verticalSpacing(self):
+    def verticalSpacing(self) -> int:
         return self._style_spacing(False)
 
     @staticmethod
-    def _item_height(item, width):
+    def _item_height(item: QLayoutItem, width: int) -> int:
         if item.hasHeightForWidth():
             height = item.heightForWidth(width)
         else:
             height = item.sizeHint().height()
         return max(item.minimumSize().height(), height)
 
-    def _visible_items(self):
+    def _visible_items(self) -> list[QLayoutItem]:
         return [item for item in self._items if not item.isEmpty()]
 
-    def _do_layout(self, rect: QRect, test_only: bool):
+    def _do_layout(self, rect: QRect, test_only: bool) -> int:
         left, top, right, bottom = self.getContentsMargins()
         content_x = rect.x() + left
         content_y = rect.y() + top
@@ -182,14 +189,14 @@ class AdaptiveWrapLayout(QLayout):
                 y += vertical_spacing
         return (y - rect.y()) + bottom
 
-    def heightForWidth(self, width):
+    def heightForWidth(self, width: int) -> int:
         return self._do_layout(QRect(0, 0, max(0, width), 0), True)
 
-    def setGeometry(self, rect):
+    def setGeometry(self, rect: QRect) -> None:
         super().setGeometry(rect)
         self._do_layout(rect, False)
 
-    def minimumSize(self):
+    def minimumSize(self) -> QSize:
         items = self._visible_items()
         left, top, right, bottom = self.getContentsMargins()
         width = max(
@@ -199,7 +206,7 @@ class AdaptiveWrapLayout(QLayout):
         width += left + right
         return QSize(width, self.heightForWidth(width))
 
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
         items = self._visible_items()
         left, _top, right, _bottom = self.getContentsMargins()
         spacing = self.horizontalSpacing()

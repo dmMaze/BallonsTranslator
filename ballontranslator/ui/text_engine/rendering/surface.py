@@ -1,15 +1,23 @@
 """Rendering for complete text surfaces under nonlinear mappings."""
 
+from __future__ import annotations
+
 import math
+from typing import Any, Callable, Optional
 
 import cv2
 import numpy as np
 from qtpy.QtCore import QRectF, Qt
 from qtpy.QtGui import QPainter, QPixmap
-from qtpy.QtWidgets import QStyleOptionGraphicsItem
+from qtpy.QtWidgets import QStyleOptionGraphicsItem, QWidget
 
 from ...misc import ndarray2pixmap, pixmap2ndarray
 from .raster import EffectRasterAllocationError, plan_effect_raster
+
+
+PaintSource = Callable[
+    [QPainter, QStyleOptionGraphicsItem, Optional[QWidget]], None
+]
 
 
 class NonlinearTextSurfaceRenderer:
@@ -52,8 +60,8 @@ class NonlinearTextSurfaceRenderer:
     def _capture_source(
         source_rect: QRectF,
         scale: float,
-        option,
-        paint_source,
+        option: QStyleOptionGraphicsItem,
+        paint_source: PaintSource,
     ) -> QPixmap:
         width = max(1, math.ceil(source_rect.width() * scale))
         height = max(1, math.ceil(source_rect.height() * scale))
@@ -84,7 +92,7 @@ class NonlinearTextSurfaceRenderer:
         source_pixmap: QPixmap,
         source_rect: QRectF,
         destination_rect: QRectF,
-        mapper,
+        mapper: Any,
         scale: float,
         interpolation: int,
     ) -> QPixmap:
@@ -187,13 +195,13 @@ class NonlinearTextSurfaceRenderer:
     def paint(
         self,
         painter: QPainter,
-        option,
-        mapper,
+        option: QStyleOptionGraphicsItem,
+        mapper: Any,
         source_rect: QRectF,
-        cache_key,
+        cache_key: tuple,
         cache_allowed: bool,
-        paint_source,
-        maximum_scale: float = None,
+        paint_source: PaintSource,
+        maximum_scale: Optional[float] = None,
         high_quality: bool = True,
     ) -> bool:
         destination_rect = mapper.visual_bounds(source_rect)

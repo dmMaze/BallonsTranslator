@@ -1,6 +1,9 @@
 """Transform-aware state layered on top of the existing text layouts."""
 
+from __future__ import annotations
+
 from itertools import count
+from typing import Hashable, Iterator, Optional, Tuple, TYPE_CHECKING
 
 from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
@@ -8,6 +11,8 @@ from qtpy.QtGui import (
     QPainter,
     QTextBlock,
     QTextCharFormat,
+    QTextDocument,
+    QTextLine,
     QTransform,
 )
 
@@ -24,8 +29,12 @@ from .glyph import (
     draw_slanted_line,
     draw_uniform_glyph_geometries,
     slanted_line_geometry,
+    GlyphGeometry,
 )
 from .indexing import _utf16_char_at, _utf16_length
+
+if TYPE_CHECKING:
+    from ..layout import SceneTextLayout
 
 
 _LAYOUT_CACHE_TOKENS = count(1)
@@ -34,23 +43,23 @@ _LAYOUT_CACHE_TOKENS = count(1)
 class LayoutGlyphGeometryCache:
     """Route committed geometry globally and preview geometry transiently."""
 
-    def __init__(self, renderer) -> None:
+    def __init__(self, renderer: GlyphSlantLayoutRenderer) -> None:
         self.renderer = renderer
         self.layout_token = next(_LAYOUT_CACHE_TOKENS)
         self.persistent = True
 
-    def _global_key(self, key):
+    def _global_key(self, key: Hashable) -> tuple:
         self.renderer.ensure_layout_generation()
         return self.layout_token, self.renderer.generation, key
 
-    def get(self, key):
+    def get(self, key: Hashable) -> Optional[GlyphGeometry]:
         if self.persistent:
             return GLOBAL_GLYPH_GEOMETRY_CACHE.get(self._global_key(key))
         return GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE.get(
             self._global_key(key)
         )
 
-    def store(self, key, geometry) -> None:
+    def store(self, key: Hashable, geometry: GlyphGeometry) -> None:
         if self.persistent:
             GLOBAL_GLYPH_GEOMETRY_CACHE.store(
                 self._global_key(key),
@@ -92,7 +101,7 @@ class GlyphSlantLayoutRenderer:
     0.0
     """
 
-    def __init__(self, layout) -> None:
+    def __init__(self, layout: SceneTextLayout) -> None:
         self.layout = layout
         self.glyph_slant_angle = 0.0
         self.generation = getattr(layout, 'layout_generation', 0)
@@ -101,7 +110,7 @@ class GlyphSlantLayoutRenderer:
         self.geometry_plan_bounds = QRectF()
         self.geometry_cache = LayoutGlyphGeometryCache(self)
 
-    def bind_layout(self, layout) -> None:
+    def bind_layout(self, layout: SceneTextLayout) -> None:
         """Attach a replacement writing-mode layout without leaking caches."""
         if self.layout is layout:
             return
@@ -122,26 +131,30 @@ class GlyphSlantLayoutRenderer:
         self.geometry_plan = None
         self.geometry_plan_bounds = QRectF()
 
-    def render_cache_key(self):
+    def render_cache_key(self) -> tuple:
         """Return state that changes the delegated glyph source image."""
         self.ensure_layout_generation()
         return self.generation, self.glyph_slant_angle
 
     @property
-    def line_spaces_lst(self):
+    def line_spaces_lst(self) -> list:
         return self.layout.line_spaces_lst
 
     @property
-    def _draw_offset(self):
+    def _draw_offset(self) -> list:
         return self.layout._draw_offset
 
-    def document(self):
+    def document(self) -> QTextDocument:
         return self.layout.document()
 
-    def _report_glyph_raster_failure(self, error, effect_pass=False):
+    def _report_glyph_raster_failure(
+        self, error: Exception, effect_pass: bool = False
+    ) -> None:
         self.layout._report_render_failure(error, effect_pass)
 
-    def _vertical_line_placement(self, block: QTextBlock, line_number: int):
+    def _vertical_line_placement(
+        self, block: QTextBlock, line_number: int
+    ) -> Optional[Tuple[QTextLine, QPointF, QTransform]]:
         layout = block.layout()
         line = layout.lineAt(line_number)
         if not line.isValid() or line.textLength() <= 0:
@@ -173,7 +186,9 @@ class GlyphSlantLayoutRenderer:
             )
         return line, QPointF(x_offset, y_offset), orientation
 
-    def _iter_glyph_line_placements(self):
+    def _iter_glyph_line_placements(
+        self,
+    ) -> Iterator[Tuple[Tuple[int, int], QTextLine, QPointF, QTransform]]:
         block = self.document().firstBlock()
         while block.isValid():
             layout = block.layout()
@@ -304,7 +319,13 @@ class GlyphSlantLayoutRenderer:
                     painter.restore()
             block = block.next()
 
-    def draw_vertical_line(self, painter, block, line_number, context) -> bool:
+    def draw_vertical_line(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        line_number: int,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> bool:
         placement = self._vertical_line_placement(block, line_number)
         if placement is None:
             return False
@@ -323,7 +344,12 @@ class GlyphSlantLayoutRenderer:
         )
         return True
 
-    def draw_horizontal_block(self, painter, block, context) -> None:
+    def draw_horizontal_block(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
         if self.draw_uniform_block(painter, block, context):
             return
         layout = block.layout()
@@ -394,7 +420,9 @@ class GlyphSlantLayoutRenderer:
             )
         return True
 
-    def _iter_horizontal_line_placements(self):
+    def _iter_horizontal_line_placements(
+        self,
+    ) -> Iterator[Tuple[Tuple[int, int], QTextLine, QPointF, QTransform]]:
         block = self.document().firstBlock()
         while block.isValid():
             layout = block.layout()
@@ -410,7 +438,9 @@ class GlyphSlantLayoutRenderer:
             block = block.next()
 
     @staticmethod
-    def _uniform_block_format(block):
+    def _uniform_block_format(
+        block: QTextBlock,
+    ) -> Optional[QTextCharFormat]:
         """Return the sole undecorated block format, or ``None``."""
         layout = block.layout()
         if layout.formats():
@@ -437,7 +467,12 @@ class GlyphSlantLayoutRenderer:
             return None
         return char_format
 
-    def draw_uniform_block(self, painter, block, context) -> bool:
+    def draw_uniform_block(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> bool:
         """Batch the common unselected, same-format glyph paint path."""
         if context.selections:
             return False
