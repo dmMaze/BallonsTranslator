@@ -7,10 +7,10 @@ from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import QPainterPath
 
 
-MAX_CURVATURE_SWEEP = math.radians(350.0)
-CURVATURE_RADIAL_GUARD_RATIO = 0.02
-CURVATURE_OUTLINE_TOLERANCE = 0.25
-CURVATURE_OUTLINE_MAX_SEGMENTS = 512
+MAX_BEND_SWEEP = math.radians(350.0)
+BEND_RADIAL_GUARD_RATIO = 0.02
+BEND_OUTLINE_TOLERANCE = 0.25
+BEND_OUTLINE_MAX_SEGMENTS = 512
 
 
 def _rect_edge_samples(rect: QRectF, segments: int):
@@ -31,14 +31,14 @@ def _rect_edge_samples(rect: QRectF, segments: int):
         yield QPointF(left, bottom - rect.height() * ratio)
 
 
-class CurvatureMapper:
+class BendMapper:
     """Map a source rectangle to an invertible circular strip.
 
     The same analytic mapping is used by geometry, interaction, and raster
     sampling. The padded source extent may reduce the maximum logical sweep so
     effects never overlap across the near-closed seam.
 
-    >>> mapper = CurvatureMapper(
+    >>> mapper = BendMapper(
     ...     QRectF(0, 0, 100, 20), QRectF(0, 0, 100, 20), False, 0.5
     ... )
     >>> point = QPointF(25, 8)
@@ -52,13 +52,13 @@ class CurvatureMapper:
         logical_rect: QRectF,
         source_rect: QRectF,
         vertical: bool,
-        curvature: float,
+        bend: float,
     ) -> None:
         self.logical_rect = QRectF(logical_rect)
         self.source_rect = QRectF(source_rect)
         self.vertical = bool(vertical)
-        self.curvature = float(curvature)
-        self.direction = 1.0 if curvature >= 0.0 else -1.0
+        self.bend = float(bend)
+        self.direction = 1.0 if bend >= 0.0 else -1.0
         self.center = self.logical_rect.center()
         self.translation = QPointF()
         self.cross_scale = 1.0
@@ -66,7 +66,7 @@ class CurvatureMapper:
         self.sweep = 0.0
         self.source_angle_limit = 0.0
 
-        if curvature == 0.0:
+        if bend == 0.0:
             return
         flow_length = (
             self.logical_rect.height()
@@ -79,11 +79,11 @@ class CurvatureMapper:
             else self.source_rect.width()
         )
         if flow_length <= 0.0 or source_flow_length <= 0.0:
-            raise ValueError('curvature rectangles must have positive dimensions')
+            raise ValueError('bend rectangles must have positive dimensions')
 
-        requested_sweep = abs(curvature) * MAX_CURVATURE_SWEEP
+        requested_sweep = abs(bend) * MAX_BEND_SWEEP
         padded_sweep_limit = (
-            MAX_CURVATURE_SWEEP * flow_length / source_flow_length
+            MAX_BEND_SWEEP * flow_length / source_flow_length
         )
         self.sweep = min(requested_sweep, padded_sweep_limit)
         self.radius = flow_length / self.sweep
@@ -99,7 +99,7 @@ class CurvatureMapper:
         )
         if radial_extent > 0.0:
             available_radius = self.radius * (
-                1.0 - CURVATURE_RADIAL_GUARD_RATIO
+                1.0 - BEND_RADIAL_GUARD_RATIO
             )
             self.cross_scale = min(1.0, available_radius / radial_extent)
 
@@ -112,13 +112,13 @@ class CurvatureMapper:
 
     @property
     def is_identity(self) -> bool:
-        return self.curvature == 0.0
+        return self.bend == 0.0
 
     @property
     def geometry_key(self):
         return (
             type(self),
-            self.curvature,
+            self.bend,
             self.vertical,
             self.logical_rect.x(),
             self.logical_rect.y(),
@@ -301,25 +301,25 @@ class CurvatureMapper:
             self.radius - self.direction * self.cross_scale * cross_min,
             self.radius - self.direction * self.cross_scale * cross_max,
         )
-        if maximum_radius <= CURVATURE_OUTLINE_TOLERANCE:
+        if maximum_radius <= BEND_OUTLINE_TOLERANCE:
             maximum_segment_angle = math.pi
         else:
             maximum_segment_angle = 2.0 * math.acos(
                 max(
                     -1.0,
-                    1.0 - CURVATURE_OUTLINE_TOLERANCE / maximum_radius,
+                    1.0 - BEND_OUTLINE_TOLERANCE / maximum_radius,
                 )
             )
             if maximum_segment_angle == 0.0:
                 maximum_segment_angle = math.sqrt(
                     8.0
-                    * CURVATURE_OUTLINE_TOLERANCE
+                    * BEND_OUTLINE_TOLERANCE
                     / maximum_radius
                 )
         return max(
             8,
             min(
-                CURVATURE_OUTLINE_MAX_SEGMENTS,
+                BEND_OUTLINE_MAX_SEGMENTS,
                 math.ceil(full_angle / maximum_segment_angle),
             ),
         )

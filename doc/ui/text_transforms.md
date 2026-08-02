@@ -12,7 +12,7 @@ There are two transform layers:
 QTextDocument + SceneTextLayout
   -> Glyph Slant around each shaped glyph baseline
   -> fill, stroke, shadow, gradient
-  -> ordered global stack: Projective / Curvature / Sine Wave / Grid
+  -> ordered global stack: Projective / Bend / Sine Wave / Grid
   -> item-local visual geometry
   -> QGraphicsItem position and rotation
 ```
@@ -43,7 +43,7 @@ Item position and built-in rotation remain outside the stack.
 | Expandable transform panel, cards, and controls | [`ui/text_engine/transforms/panel.py`](../../ballontranslator/ui/text_engine/transforms/panel.py), [`ui/text_engine/transforms/controls.py`](../../ballontranslator/ui/text_engine/transforms/controls.py) |
 | Transform undo command | [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
 | Glyph Slant | [`ui/text_engine/rendering/glyph_slant.py`](../../ballontranslator/ui/text_engine/rendering/glyph_slant.py) |
-| Curvature mapping and final surface warp | [`ui/text_engine/transforms/curvature.py`](../../ballontranslator/ui/text_engine/transforms/curvature.py), [`ui/text_engine/rendering/surface.py`](../../ballontranslator/ui/text_engine/rendering/surface.py) |
+| Bend mapping and final surface warp | [`ui/text_engine/transforms/bend.py`](../../ballontranslator/ui/text_engine/transforms/bend.py), [`ui/text_engine/rendering/surface.py`](../../ballontranslator/ui/text_engine/rendering/surface.py) |
 | Sine Wave mapping | [`ui/text_engine/transforms/sine.py`](../../ballontranslator/ui/text_engine/transforms/sine.py) |
 | Grid mapping and selected-stage overlay | [`ui/text_engine/transforms/grid.py`](../../ballontranslator/ui/text_engine/transforms/grid.py), [`ui/text_engine/transforms/grid_control.py`](../../ballontranslator/ui/text_engine/transforms/grid_control.py) |
 | Projective matrix and selected-stage overlay | [`ui/text_engine/transforms/mapping.py`](../../ballontranslator/ui/text_engine/transforms/mapping.py), [`ui/text_engine/transforms/projective_control.py`](../../ballontranslator/ui/text_engine/transforms/projective_control.py) |
@@ -63,7 +63,7 @@ Current global variants are:
 - `ProjectiveTextTransform`: horizontal/vertical scale and sequential slant,
   X/Y/Z planar rotation, and normalized perspective, compiled together into
   one centered native `QTransform`;
-- `CurvatureTextTransform`: nonlinear and mapper-based;
+- `BendTextTransform`: nonlinear and mapper-based;
 - `SineTextTransform`: nonlinear horizontal and vertical sine shears. Integer
   frequencies count half-waves from 0 to 64; phase and perpendicular-box
   amplitude use 0 to 1. The x-axis wave runs first so the combined map
@@ -87,7 +87,7 @@ Project JSON stores only canonical values:
      "vertical_scale":1.0,"horizontal_slant":8.0,"vertical_slant":0.0,
      "rotation_x":15.0,"rotation_y":-20.0,"rotation_z":5.0,
      "perspective":0.4},
-    {"transform_type":"curvature","curvature":0.35}
+    {"transform_type":"bend","bend":0.35}
   ],
   "glyph_slant_angle": 10.0
 }
@@ -160,7 +160,7 @@ Straight interpolation is bilinear within each cell. Smooth interpolation uses a
 tensor-product Catmull-Rom interpolation: it passes through every handle while
 neighboring handles curve the coordinates between them. A 1 by 1 grid produces
 the same result in either mode because it has no interior neighbors to create
-curvature.
+additional bending.
 
 Before a structural edit, `TextTransformEditSession` commits pending typed
 values and cancels previews so indices cannot move under an active control.
@@ -340,7 +340,7 @@ visual handle to its original scene position.
 
 Only this reshape mapper uses branch-aware `extrapolate=True`. Ordinary text
 hit testing retains bounded seam behavior. Mapping through geometry changed by
-the previous event creates feedback and can collapse an outward curvature drag.
+the previous event creates feedback and can collapse an outward bend drag.
 
 ## Lifecycle and optimization rules
 

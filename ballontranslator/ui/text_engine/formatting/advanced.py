@@ -2,11 +2,11 @@ from typing import Callable
 
 from qtpy.QtWidgets import (
     QApplication,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
-    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -21,7 +21,6 @@ from ...custom_widget import (
     SmallSizeControlLabel,
     TextCheckerLabel,
 )
-from ...custom_widget.scrollbar import ScrollBar
 from ...adaptive_wrap_layout import AdaptiveWrapLayout
 from ballontranslator.utils.fontformat import FontFormat
 
@@ -33,12 +32,29 @@ def _word_wrap_label(label: QLabel):
 
 def _atomic_unit(parent: QWidget, *widgets: QWidget):
     unit = QWidget(parent)
-    unit.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+    unit.setObjectName('TextAdvancedFormatUnit')
+    unit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     layout = QHBoxLayout(unit)
     layout.setContentsMargins(0, 0, 0, 0)
     for widget in widgets:
+        if isinstance(widget, QComboBox):
+            widget.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                widget.sizePolicy().verticalPolicy(),
+            )
         layout.addWidget(widget)
     return unit
+
+
+def _adaptive_row(parent: QWidget, *units: QWidget):
+    row = QWidget(parent)
+    row.setObjectName('TextAdvancedFormatUnit')
+    row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    layout = AdaptiveWrapLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    for unit in units:
+        layout.addWidget(unit)
+    return row, layout
 
 
 class TextShadowGroup(QGroupBox):
@@ -74,10 +90,6 @@ class TextShadowGroup(QGroupBox):
         self.yoffset_label.btn_released.connect(self.on_offset_changed)
 
         self.color_label = SmallColorPickerLabel(self, param_name='shadow_color')
-        self.color_name_label = _word_wrap_label(
-            SmallParamLabel(self.tr('Color'), parent=self)
-        )
-
         self.strength_box = SmallSizeComboBox([0, 3], 'shadow_strength', self)
         self.strength_box.setToolTip(self.tr("Set Shadow Strength"))
         self.strength_box.param_changed.connect(self.on_param_changed)
@@ -115,6 +127,9 @@ class TextShadowGroup(QGroupBox):
         self.offset_label = _word_wrap_label(
             SmallParamLabel(self.tr('Offset'), parent=self)
         )
+        self.offset_label.setSizePolicy(
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
+        )
         self.offset_unit = _atomic_unit(
             self,
             self.offset_label,
@@ -123,9 +138,7 @@ class TextShadowGroup(QGroupBox):
             self.yoffset_label,
             self.yoffset_box,
         )
-        self.color_unit = _atomic_unit(
-            self, self.color_name_label, self.color_label
-        )
+        self.color_unit = _atomic_unit(self, self.color_label)
         self.strength_unit = _atomic_unit(
             self, self.strength_label, self.strength_box
         )
@@ -139,9 +152,18 @@ class TextShadowGroup(QGroupBox):
             self.radius_unit,
         )
 
-        self.adaptive_layout = AdaptiveWrapLayout(self)
-        for unit in self.atomic_units:
-            self.adaptive_layout.addWidget(unit)
+        self.offset_row, self.offset_layout = _adaptive_row(
+            self, self.offset_unit
+        )
+        self.detail_row, self.detail_layout = _adaptive_row(
+            self,
+            self.color_unit,
+            self.strength_unit,
+            self.radius_unit,
+        )
+        self.adaptive_layout = QVBoxLayout(self)
+        self.adaptive_layout.addWidget(self.offset_row)
+        self.adaptive_layout.addWidget(self.detail_row)
 
     def on_offset_changed(self, *args, **kwargs):
         self.on_param_changed(
@@ -234,9 +256,18 @@ class TextGradientGroup(QGroupBox):
             self.size_unit,
         )
 
-        self.adaptive_layout = AdaptiveWrapLayout(self)
-        for unit in self.atomic_units:
-            self.adaptive_layout.addWidget(unit)
+        self.color_row, self.color_layout = _adaptive_row(
+            self,
+            self.start_color_unit,
+            self.end_color_unit,
+            self.enable_unit,
+        )
+        self.geometry_row, self.geometry_layout = _adaptive_row(
+            self, self.angle_unit, self.size_unit
+        )
+        self.adaptive_layout = QVBoxLayout(self)
+        self.adaptive_layout.addWidget(self.color_row)
+        self.adaptive_layout.addWidget(self.geometry_row)
 
 
 class TextAdvancedFormatPanel(PanelArea):
@@ -258,16 +289,6 @@ class TextAdvancedFormatPanel(PanelArea):
         self._last_height_cap = None
         self._updating_responsive_geometry = False
 
-        # PanelArea installs overlay scrollbars and forces the native bars off.
-        # This panel needs a width-consuming native vertical bar so its content
-        # width and height-for-width calculation agree exactly.
-        self._inherited_overlay_scrollbars = tuple(self.findChildren(ScrollBar))
-        for scrollbar in self._inherited_overlay_scrollbars:
-            scrollbar.setForceHidden(True)
-        self.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
@@ -286,6 +307,7 @@ class TextAdvancedFormatPanel(PanelArea):
         )
 
         self.top_section = QWidget(self.scrollContent)
+        self.top_section.setObjectName('TextAdvancedFormatTopSection')
         self.top_section.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
@@ -431,19 +453,12 @@ class TextAdvancedFormatPanel(PanelArea):
     def _panel_height_cap(self):
         return max(240, 18 * self.fontMetrics().lineSpacing())
 
-    def _scrollbar_extent(self):
-        pixel_metrics = getattr(QStyle, 'PixelMetric', QStyle)
-        metric = getattr(pixel_metrics, 'PM_ScrollBarExtent')
-        return max(0, self.style().pixelMetric(metric))
-
     def _effective_content_width(self):
-        # viewport().width() already excludes the frame and a visible native
-        # vertical scrollbar; use an outer-width fallback before first polish.
+        # PanelArea's styled scrollbar overlays the viewport without consuming
+        # content width.
         width = self.viewport().width()
         if width <= 0:
             width = self.width() - 2 * self.frameWidth()
-            if self.verticalScrollBar().isVisible():
-                width -= self._scrollbar_extent()
         return max(1, width)
 
     def _content_preferred_height(self, width):
@@ -471,7 +486,6 @@ class TextAdvancedFormatPanel(PanelArea):
             + left
             + right
             + 2 * self.frameWidth()
-            + self._scrollbar_extent()
         )
 
     def sizeHint(self):

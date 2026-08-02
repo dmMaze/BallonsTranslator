@@ -406,7 +406,7 @@ class SceneTextManager(QObject):
                 self.txtblkShapeControl.setBlkItem(blk)
                 edit = self.pairwidget_list[tgt_idx].e_trans
                 self.changeHoveringWidget(edit)
-                self.textEditList.set_selected_list([blk.idx])
+                self.on_incanvas_selection_changed()
             else:
                 editing_blk.endEdit()
                 editing_blk.setSelected(False)
@@ -1104,6 +1104,7 @@ class SceneTextManager(QObject):
         for idx in selset:
             self.textblk_item_list[idx].setSelected(True)
         self.canvas.block_selection_signal = False
+        self.on_incanvas_selection_changed()
 
     def on_textedit_list_focusout(self):
         fw = self.app.focusWidget()

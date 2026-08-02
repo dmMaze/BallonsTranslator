@@ -30,8 +30,8 @@ TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MIN = 0.0
 TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MAX = 0.8
 TEXT_TRANSFORM_GLYPH_SLANT_MIN = -45.0
 TEXT_TRANSFORM_GLYPH_SLANT_MAX = 45.0
-TEXT_TRANSFORM_CURVATURE_MIN = -1.0
-TEXT_TRANSFORM_CURVATURE_MAX = 1.0
+TEXT_TRANSFORM_BEND_MIN = -1.0
+TEXT_TRANSFORM_BEND_MAX = 1.0
 TEXT_TRANSFORM_SINE_FREQUENCY_MIN = 0
 TEXT_TRANSFORM_SINE_FREQUENCY_MAX = 64
 TEXT_TRANSFORM_SINE_PHASE_MIN = 0.0
@@ -158,24 +158,24 @@ class ProjectiveTextTransform(TextTransform):
 
 
 @dataclass(frozen=True)
-class CurvatureTextTransform(TextTransform):
+class BendTextTransform(TextTransform):
     """Signed circular bend applied to the completed text surface."""
 
-    curvature: float = 0.0
-    transform_type: str = dataclass_field(init=False, default='curvature')
+    bend: float = 0.0
+    transform_type: str = dataclass_field(init=False, default='bend')
     is_nonlinear: ClassVar[bool] = True
 
-    def normalized(self) -> "CurvatureTextTransform":
-        return CurvatureTextTransform(
+    def normalized(self) -> "BendTextTransform":
+        return BendTextTransform(
             normalize_text_transform_value(
-                self.curvature,
-                TEXT_TRANSFORM_CURVATURE_MIN,
-                TEXT_TRANSFORM_CURVATURE_MAX,
+                self.bend,
+                TEXT_TRANSFORM_BEND_MIN,
+                TEXT_TRANSFORM_BEND_MAX,
             )
         )
 
     def is_neutral(self) -> bool:
-        return self.curvature == 0.0
+        return self.bend == 0.0
 
 
 def _normalize_sine_frequency(value) -> int:
@@ -454,7 +454,7 @@ class TextTransformStack:
     Empty means no geometry transform. Neutral entries remain present for the
     editor but are skipped by the runtime compiler.
 
-    >>> stack = TextTransformStack((CurvatureTextTransform(0.5),))
+    >>> stack = TextTransformStack((BendTextTransform(0.5),))
     >>> stack.has_nonlinear
     True
     """
@@ -549,7 +549,7 @@ def normalize_text_transform_value(
 
 TEXT_TRANSFORM_TYPES = {
     'projective': ProjectiveTextTransform,
-    'curvature': CurvatureTextTransform,
+    'bend': BendTextTransform,
     'sine': SineTextTransform,
     'grid': GridTextTransform,
 }
@@ -622,10 +622,10 @@ def coerce_text_transform_stack(value) -> TextTransformStack:
     """Return one canonical ordered stack and reject the old single payload.
 
     >>> coerce_text_transform_stack([
-    ...     {'transform_type': 'curvature', 'curvature': 0.5},
+    ...     {'transform_type': 'bend', 'bend': 0.5},
     ... ])
-    TextTransformStack(transforms=(CurvatureTextTransform(transform_type='curvature', curvature=0.5),))
-    >>> coerce_text_transform_stack({'transform_type': 'curvature'})
+    TextTransformStack(transforms=(BendTextTransform(transform_type='bend', bend=0.5),))
+    >>> coerce_text_transform_stack({'transform_type': 'bend'})
     Traceback (most recent call last):
     ...
     ValueError: text transform stack must be an ordered list

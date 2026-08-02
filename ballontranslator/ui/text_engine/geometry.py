@@ -527,7 +527,7 @@ class TextItemGeometryController:
         return tangents
 
     def visual_rotation_center_in_scene(self) -> QPointF:
-        # Curvature is translated so its visual outline bounds remain centered
+        # Bend is translated so its visual outline bounds remain centered
         # on the logical rectangle; Qt rotation uses that stable visual center.
         return self.item.mapToScene(self.logical_rect().center())
 

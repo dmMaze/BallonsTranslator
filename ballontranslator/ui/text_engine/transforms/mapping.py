@@ -14,13 +14,13 @@ from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import QPainterPath, QPolygonF, QTransform
 
 from ballontranslator.utils.fontformat import (
-    CurvatureTextTransform,
+    BendTextTransform,
     GridTextTransform,
     ProjectiveTextTransform,
     SineTextTransform,
     TextTransformStack,
 )
-from .curvature import CurvatureMapper
+from .bend import BendMapper
 from .grid import GridMapper
 from .sine import SineMapper
 
@@ -298,16 +298,16 @@ def projective_transform_stage(
     return projective_transform_matrix(transform, context.source_bounds)
 
 
-def curvature_transform_stage(
-    transform: CurvatureTextTransform,
+def bend_transform_stage(
+    transform: BendTextTransform,
     context: TransformStageContext,
 ):
     """Build one nonlinear stage without coupling the compiler to its type."""
-    return CurvatureMapper(
+    return BendMapper(
         context.logical_bounds,
         context.source_bounds,
         context.vertical,
-        transform.curvature,
+        transform.bend,
     )
 
 

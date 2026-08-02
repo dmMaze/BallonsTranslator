@@ -1,7 +1,9 @@
 """Expandable controls for composable text transforms."""
 
 from qtpy.QtCore import QCoreApplication, QEvent, QSize, QTimer, Signal, Qt
+from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QMenu,
     QSizePolicy,
@@ -13,6 +15,7 @@ from qtpy.QtWidgets import (
 from ballontranslator.utils.fontformat import FontFormat, TextTransformState
 
 from ...custom_widget import PanelArea
+from ...misc import themed_icon_path
 from .controls import (
     CommittedTransformControl,
     TransformParameterPanel,
@@ -71,6 +74,16 @@ class TextTransformPanel(PanelArea):
             1.0,
             self.scrollContent,
         )
+        self.glyph_slant_control.editor.setProperty(
+            'glyphSlantEditor', True
+        )
+        self.glyph_slant_control.editor.setFixedWidth(84)
+        self.glyph_slant_control.label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.glyph_slant_control.layout().setSpacing(8)
+        self.glyph_slant_control.layout().setStretch(0, 1)
+        self.glyph_slant_control.layout().setStretch(1, 2)
         setattr(self, glyph.name, self.glyph_slant_control)
         self.glyph_slant_control.commit_requested.connect(
             lambda name, value:
@@ -90,7 +103,10 @@ class TextTransformPanel(PanelArea):
 
         self.add_transform_button = QToolButton(self.scrollContent)
         self.add_transform_button.setObjectName('AddTextTransformButton')
-        self.add_transform_button.setText(self.tr('Add Transform'))
+        self.add_transform_button.setText(self.tr('Add'))
+        self.add_transform_button.setToolTip(self.tr('Add Transform'))
+        self.add_transform_button.setAccessibleName(self.tr('Add Transform'))
+        self.add_transform_button.setFixedSize(72, 26)
         self.add_transform_button.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonTextOnly
         )
@@ -98,8 +114,12 @@ class TextTransformPanel(PanelArea):
             QToolButton.ToolButtonPopupMode.InstantPopup
         )
         add_menu = QMenu(self.add_transform_button)
+        add_menu.setObjectName('TextTransformAddMenu')
         for variant in self.transform_variants:
-            action = add_menu.addAction(variant.label())
+            action = add_menu.addAction(
+                QIcon(themed_icon_path(variant.icon_name)),
+                variant.label(),
+            )
             action.triggered.connect(
                 lambda _checked=False, transform_type=variant.transform_type:
                 self.transform_add_requested.emit(transform_type)
@@ -112,11 +132,9 @@ class TextTransformPanel(PanelArea):
         self.transform_mixed_label.setObjectName('TextTransformMixedLabel')
         self.transform_mixed_label.setVisible(False)
 
-        self.transform_rows = QWidget(self.scrollContent)
-        self.transform_rows.setObjectName('TextTransformRows')
-        self.transform_rows_layout = QVBoxLayout(self.transform_rows)
+        self.transform_rows_layout = QVBoxLayout()
         self.transform_rows_layout.setContentsMargins(0, 0, 0, 0)
-        self.transform_rows_layout.setSpacing(6)
+        self.transform_rows_layout.setSpacing(10)
         self.transform_panels = []
         self._transform_panel_types = ()
         self._selected_transform_index = None
@@ -124,12 +142,22 @@ class TextTransformPanel(PanelArea):
         self.transform_layout = QVBoxLayout()
         self.transform_layout.setContentsMargins(8, 8, 8, 8)
         self.transform_layout.setSpacing(6)
-        self.transform_layout.addWidget(self.glyph_slant_control)
-        self.transform_layout.addWidget(
-            self.add_transform_button, alignment=Qt.AlignmentFlag.AlignLeft
+        self.transform_header_layout = QHBoxLayout()
+        self.transform_header_layout.setContentsMargins(0, 0, 0, 0)
+        self.transform_header_layout.setSpacing(6)
+        self.add_transform_layout = QHBoxLayout()
+        self.add_transform_layout.setContentsMargins(0, 0, 0, 0)
+        self.add_transform_layout.addWidget(
+            self.add_transform_button,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
         )
+        self.add_transform_layout.addStretch()
+        self.transform_header_layout.addLayout(self.add_transform_layout, 1)
+        self.transform_header_layout.addWidget(self.glyph_slant_control, 1)
+        self.transform_layout.addLayout(self.transform_header_layout)
+        self.transform_layout.addSpacing(6)
         self.transform_layout.addWidget(self.transform_mixed_label)
-        self.transform_layout.addWidget(self.transform_rows)
+        self.transform_layout.addLayout(self.transform_rows_layout)
         self.setContentLayout(self.transform_layout)
         self._base_width_hint = super().sizeHint().width()
         self._sync_content_height()
@@ -220,7 +248,7 @@ class TextTransformPanel(PanelArea):
         }
         for index, transform_type in enumerate(transform_types):
             panel = TransformParameterPanel(
-                index, variants[transform_type], self.transform_rows
+                index, variants[transform_type], self.scrollContent
             )
             panel.commit_requested.connect(
                 self.transform_commit_requested.emit
@@ -313,7 +341,6 @@ class TextTransformPanel(PanelArea):
         )
         mixed = common_sequence is None
         self.transform_mixed_label.setVisible(mixed)
-        self.transform_rows.setVisible(not mixed)
         if mixed:
             self.clear_transform_selection()
             self._rebuild_transform_panels(())

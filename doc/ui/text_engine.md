@@ -2,7 +2,7 @@
 
 Start here before changing text layout, editing, effects, geometry, or export.
 The code and tests are authoritative; this guide identifies ownership and the
-cross-file invariants that are easiest to break. For Projective, Curvature,
+cross-file invariants that are easiest to break. For Projective, Bend,
 Sine Wave, Grid, or Glyph Slant, continue with
 [Composable text transforms](text_transforms.md).
 

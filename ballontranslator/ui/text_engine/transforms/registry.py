@@ -8,8 +8,8 @@ from qtpy.QtCore import QCoreApplication, QRectF
 from qtpy.QtGui import QTransform
 
 from ballontranslator.utils.fontformat import (
-    TEXT_TRANSFORM_CURVATURE_MAX,
-    TEXT_TRANSFORM_CURVATURE_MIN,
+    TEXT_TRANSFORM_BEND_MAX,
+    TEXT_TRANSFORM_BEND_MIN,
     TEXT_TRANSFORM_GLYPH_SLANT_MAX,
     TEXT_TRANSFORM_GLYPH_SLANT_MIN,
     TEXT_TRANSFORM_GRID_DIVISION_MAX,
@@ -40,7 +40,7 @@ from .mapping import (
     CompiledTransformStage,
     MatrixTransformMapper,
     TransformStageContext,
-    curvature_transform_stage,
+    bend_transform_stage,
     grid_transform_stage,
     projective_transform_stage,
     rect_polygon,
@@ -62,6 +62,8 @@ class TransformControlSpec:
     decimals: int = 1
     choices: tuple = ()
     shortcut: Callable[[], str] = None
+    section: Callable[[], str] = None
+    section_columns: int = 2
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,7 @@ class TextTransformVariantSpec:
 
     transform_type: str
     label: Callable[[], str]
+    icon_name: str
     stage_factory: Callable
     controls: Tuple[TransformControlSpec, ...] = ()
 
@@ -83,7 +86,7 @@ PROJECTIVE_CONTROLS = (
         'horizontal_scale_control',
         'horizontal_scale',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Horizontal Scale'
+            'TextTransformPanel', 'Horizontal'
         ),
         100.0,
         TEXT_TRANSFORM_SCALE_MIN,
@@ -92,12 +95,15 @@ PROJECTIVE_CONTROLS = (
         shortcut=lambda: QCoreApplication.translate(
             'TextTransformPanel', 'Shortcut: S → X'
         ),
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Scale'
+        ),
     ),
     TransformControlSpec(
         'vertical_scale_control',
         'vertical_scale',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Vertical Scale'
+            'TextTransformPanel', 'Vertical'
         ),
         100.0,
         TEXT_TRANSFORM_SCALE_MIN,
@@ -106,34 +112,43 @@ PROJECTIVE_CONTROLS = (
         shortcut=lambda: QCoreApplication.translate(
             'TextTransformPanel', 'Shortcut: S → Y'
         ),
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Scale'
+        ),
     ),
     TransformControlSpec(
         'horizontal_slant_control',
         'horizontal_slant',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Horizontal Slant'
+            'TextTransformPanel', 'Horizontal'
         ),
         1.0,
         TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
         TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
         '\N{DEGREE SIGN}',
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Slant'
+        ),
     ),
     TransformControlSpec(
         'vertical_slant_control',
         'vertical_slant',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Vertical Slant'
+            'TextTransformPanel', 'Vertical'
         ),
         1.0,
         TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
         TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
         '\N{DEGREE SIGN}',
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Slant'
+        ),
     ),
     TransformControlSpec(
         'rotation_x_control',
         'rotation_x',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Rotation X'
+            'TextTransformPanel', 'X'
         ),
         1.0,
         TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
@@ -142,12 +157,16 @@ PROJECTIVE_CONTROLS = (
         shortcut=lambda: QCoreApplication.translate(
             'TextTransformPanel', 'Shortcut: R → X'
         ),
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Rotation'
+        ),
+        section_columns=3,
     ),
     TransformControlSpec(
         'rotation_y_control',
         'rotation_y',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Rotation Y'
+            'TextTransformPanel', 'Y'
         ),
         1.0,
         TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
@@ -156,12 +175,16 @@ PROJECTIVE_CONTROLS = (
         shortcut=lambda: QCoreApplication.translate(
             'TextTransformPanel', 'Shortcut: R → Y'
         ),
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Rotation'
+        ),
+        section_columns=3,
     ),
     TransformControlSpec(
         'rotation_z_control',
         'rotation_z',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Rotation Z'
+            'TextTransformPanel', 'Z'
         ),
         1.0,
         TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MIN,
@@ -170,6 +193,10 @@ PROJECTIVE_CONTROLS = (
         shortcut=lambda: QCoreApplication.translate(
             'TextTransformPanel', 'Shortcut: R (or R → Z)'
         ),
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Rotation'
+        ),
+        section_columns=3,
     ),
     TransformControlSpec(
         'perspective_control',
@@ -196,16 +223,16 @@ GLYPH_SLANT_CONTROL = TransformControlSpec(
     '\N{DEGREE SIGN}',
 )
 
-CURVATURE_CONTROLS = (
+BEND_CONTROLS = (
     TransformControlSpec(
-        'curvature_control',
-        'curvature',
+        'bend_control',
+        'bend',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Curvature'
+            'TextTransformPanel', 'Amount'
         ),
         100.0,
-        TEXT_TRANSFORM_CURVATURE_MIN,
-        TEXT_TRANSFORM_CURVATURE_MAX,
+        TEXT_TRANSFORM_BEND_MIN,
+        TEXT_TRANSFORM_BEND_MAX,
         '%',
     ),
 )
@@ -215,69 +242,87 @@ SINE_CONTROLS = (
         'sine_frequency_x_control',
         'frequency_x',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Left-to-Right Wave Segments'
+            'TextTransformPanel', 'Segments'
         ),
         1.0,
         TEXT_TRANSFORM_SINE_FREQUENCY_MIN,
         TEXT_TRANSFORM_SINE_FREQUENCY_MAX,
         '',
         decimals=0,
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Left-to-Right Wave'
+        ),
     ),
     TransformControlSpec(
         'sine_phase_x_control',
         'phase_x',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Left-to-Right Wave Shift'
+            'TextTransformPanel', 'Shift'
         ),
         100.0,
         TEXT_TRANSFORM_SINE_PHASE_MIN,
         TEXT_TRANSFORM_SINE_PHASE_MAX,
         '%',
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Left-to-Right Wave'
+        ),
     ),
     TransformControlSpec(
         'sine_amplitude_x_control',
         'amplitude_x',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Wave Height'
+            'TextTransformPanel', 'Height'
         ),
         100.0,
         TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
         TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
         '%',
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Left-to-Right Wave'
+        ),
     ),
     TransformControlSpec(
         'sine_frequency_y_control',
         'frequency_y',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Top-to-Bottom Wave Segments'
+            'TextTransformPanel', 'Segments'
         ),
         1.0,
         TEXT_TRANSFORM_SINE_FREQUENCY_MIN,
         TEXT_TRANSFORM_SINE_FREQUENCY_MAX,
         '',
         decimals=0,
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Top-to-Bottom Wave'
+        ),
     ),
     TransformControlSpec(
         'sine_phase_y_control',
         'phase_y',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Top-to-Bottom Wave Shift'
+            'TextTransformPanel', 'Shift'
         ),
         100.0,
         TEXT_TRANSFORM_SINE_PHASE_MIN,
         TEXT_TRANSFORM_SINE_PHASE_MAX,
         '%',
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Top-to-Bottom Wave'
+        ),
     ),
     TransformControlSpec(
         'sine_amplitude_y_control',
         'amplitude_y',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Wave Width'
+            'TextTransformPanel', 'Width'
         ),
         100.0,
         TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
         TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
         '%',
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Top-to-Bottom Wave'
+        ),
     ),
 )
 
@@ -286,25 +331,31 @@ GRID_CONTROLS = (
         'grid_horizontal_divisions_control',
         'horizontal_divisions',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Horizontal Divisions'
+            'TextTransformPanel', 'Horizontal'
         ),
         1.0,
         TEXT_TRANSFORM_GRID_DIVISION_MIN,
         TEXT_TRANSFORM_GRID_DIVISION_MAX,
         '',
         decimals=0,
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Divisions'
+        ),
     ),
     TransformControlSpec(
         'grid_vertical_divisions_control',
         'vertical_divisions',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Vertical Divisions'
+            'TextTransformPanel', 'Vertical'
         ),
         1.0,
         TEXT_TRANSFORM_GRID_DIVISION_MIN,
         TEXT_TRANSFORM_GRID_DIVISION_MAX,
         '',
         decimals=0,
+        section=lambda: QCoreApplication.translate(
+            'TextTransformPanel', 'Divisions'
+        ),
     ),
     TransformControlSpec(
         'grid_interpolation_control',
@@ -340,22 +391,25 @@ TEXT_TRANSFORM_VARIANTS = (
         lambda: QCoreApplication.translate(
             'TextTransformPanel', 'Scale / Slant / 3D'
         ),
+        'text_transform_projective.svg',
         projective_transform_stage,
         PROJECTIVE_CONTROLS,
     ),
     TextTransformVariantSpec(
-        'curvature',
+        'bend',
         lambda: QCoreApplication.translate(
-            'TextTransformPanel', 'Curvature'
+            'TextTransformPanel', 'Bend'
         ),
-        curvature_transform_stage,
-        CURVATURE_CONTROLS,
+        'text_transform_bend.svg',
+        bend_transform_stage,
+        BEND_CONTROLS,
     ),
     TextTransformVariantSpec(
         'sine',
         lambda: QCoreApplication.translate(
             'TextTransformPanel', 'Sine Wave'
         ),
+        'text_transform_sine.svg',
         sine_transform_stage,
         SINE_CONTROLS,
     ),
@@ -364,6 +418,7 @@ TEXT_TRANSFORM_VARIANTS = (
         lambda: QCoreApplication.translate(
             'TextTransformPanel', 'Grid'
         ),
+        'text_transform_grid.svg',
         grid_transform_stage,
         GRID_CONTROLS,
     ),

@@ -2,23 +2,23 @@
 
 import math
 
-from qtpy.QtCore import QEvent, Signal, Qt
-from qtpy.QtGui import QIcon, QKeyEvent
+from qtpy.QtCore import QEvent, QPoint, QRect, QSize, Signal, Qt
+from qtpy.QtGui import QIcon, QKeyEvent, QPainter
 from qtpy.QtWidgets import (
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QComboBox,
     QLineEdit,
     QSizePolicy,
-    QStyle,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ...adaptive_wrap_layout import AdaptiveWrapLayout
 from ...custom_widget import SmallSizeControlLabel
+from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
 
 
@@ -68,14 +68,88 @@ class _TransformValueEdit(QLineEdit):
 
     def sizeHint(self):
         hint = super().sizeHint()
-        hint.setWidth(84)
+        hint.setWidth(56)
         return hint
 
     def minimumSizeHint(self):
         hint = super().minimumSizeHint()
-        hint.setWidth(64)
+        hint.setWidth(56)
         return hint
 
+
+class _TransformIntegerEdit(_TransformValueEdit):
+    """Text editor with the same compact SVG steppers as page ranges.
+
+    >>> _TransformIntegerEdit.__name__
+    '_TransformIntegerEdit'
+    """
+
+    step_requested = Signal(int)
+    ICON_SIZE = 12
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setProperty('integerStepper', True)
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        hint.setWidth(80)
+        return hint
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        hint.setWidth(80)
+        return hint
+
+    def _button_rects(self):
+        button_size = 16
+        right = self.width() - 4
+        y = (self.height() - button_size) // 2
+        up_rect = QRect(right - button_size, y, button_size, button_size)
+        down_rect = QRect(
+            up_rect.left() - button_size - 1,
+            y,
+            button_size,
+            button_size,
+        )
+        return up_rect, down_rect
+
+    @staticmethod
+    def _event_pos(event) -> QPoint:
+        if hasattr(event, 'position'):
+            return event.position().toPoint()
+        return event.pos()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        up_rect, down_rect = self._button_rects()
+        for rect, icon_name in (
+            (down_rect, 'chevron-down.svg'),
+            (up_rect, 'chevron-up.svg'),
+        ):
+            pixmap = render_svg_pixmap(
+                themed_icon_path(icon_name),
+                self.ICON_SIZE,
+                self.ICON_SIZE,
+                self.devicePixelRatioF(),
+            )
+            painter.drawPixmap(
+                rect.center().x() - self.ICON_SIZE // 2,
+                rect.center().y() - self.ICON_SIZE // 2,
+                pixmap,
+            )
+        painter.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = self._event_pos(event)
+            up_rect, down_rect = self._button_rects()
+            if up_rect.contains(pos) or down_rect.contains(pos):
+                self.step_requested.emit(1 if up_rect.contains(pos) else -1)
+                event.accept()
+                return
+        return super().mousePressEvent(event)
 
 class CommittedTransformControl(QWidget):
     """One committed numeric transform editor."""
@@ -103,6 +177,7 @@ class CommittedTransformControl(QWidget):
         decimals: int = 1,
     ):
         super().__init__(parent)
+        self.setObjectName('TextTransformControl')
         if display_factor == 0 or not math.isfinite(display_factor):
             raise ValueError('display_factor must be finite and non-zero')
         if canonical_minimum > canonical_maximum:
@@ -128,20 +203,27 @@ class CommittedTransformControl(QWidget):
             text=title,
             alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
         )
+        self.label.setObjectName('TextTransformParamLabel')
         self.label.setWordWrap(True)
         self.label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
-        self.editor = _TransformValueEdit(self)
+        self.editor = (
+            _TransformIntegerEdit(self)
+            if self.decimals == 0
+            else _TransformValueEdit(self)
+        )
+        self.editor.setObjectName('TextTransformParamEditor')
         self.editor.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.editor.setMinimumWidth(64)
-        self.editor.setMaximumWidth(84)
+        self.editor.setFixedSize(80 if self.decimals == 0 else 56, 22)
         self.editor.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
         self.editor.textEdited.connect(self._on_text_edited)
         self.editor.returnPressed.connect(self.commit_pending)
         self.editor.installEventFilter(self)
+        if isinstance(self.editor, _TransformIntegerEdit):
+            self.editor.step_requested.connect(self._step_integer)
 
         self.label.drag_started.connect(self._start_drag)
         self.label.size_ctrl_changed.connect(self._move_drag)
@@ -331,6 +413,39 @@ class CommittedTransformControl(QWidget):
         self._restore_display()
         self.preview_canceled.emit(self.param_name)
 
+    def _step_integer(self, direction: int):
+        self.user_interacted.emit()
+        canonical_step = self._display_to_canonical(
+            1.0 if direction > 0 else -1.0
+        )
+        if self.state == self.PENDING_TEXT:
+            try:
+                canonical_value = self._parse(self.editor.text())
+            except (TypeError, ValueError):
+                self.cancel_pending()
+                return
+            canonical_value = min(
+                max(canonical_value + canonical_step, self.canonical_minimum),
+                self.canonical_maximum,
+            )
+            self.state = self.IDLE
+            self._model_value = canonical_value
+            self._model_values = (canonical_value,)
+            self._restore_display()
+            self.commit_requested.emit(self.param_name, canonical_value)
+            return
+        if not self._model_values:
+            return
+        display_delta = self._canonical_to_display(canonical_step)
+        limits = self._drag_limits()
+        if limits is not None:
+            display_delta = min(max(display_delta, limits[0]), limits[1])
+        if display_delta:
+            self.drag_commit_requested.emit(
+                self.param_name,
+                self._display_to_canonical(display_delta),
+            )
+
 
 class CommittedTransformChoiceControl(QWidget):
     """One immediately committed transform choice."""
@@ -340,11 +455,14 @@ class CommittedTransformChoiceControl(QWidget):
 
     def __init__(self, title, param_name, choices, parent=None):
         super().__init__(parent)
+        self.setObjectName('TextTransformControl')
         self.param_name = param_name
         self.choices = tuple(choices)
         self.label = QLabel(title, self)
+        self.label.setObjectName('TextTransformParamLabel')
         self.label.setWordWrap(True)
         self.combobox = QComboBox(self)
+        self.combobox.setObjectName('TextTransformParamEditor')
         for value, label in self.choices:
             self.combobox.addItem(label(), value)
         self.combobox.activated.connect(self._commit_index)
@@ -401,17 +519,26 @@ class TransformParameterPanel(QFrame):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        title = QLabel(variant.label(), self)
-        title.setObjectName('TextTransformParameterTitle')
-        title.setSizePolicy(
+        self.title_icon_label = QLabel(self)
+        self.title_icon_label.setObjectName('TextTransformParameterIcon')
+        self.title_icon_label.setFixedSize(16, 16)
+        self.title_icon_label.setPixmap(render_svg_pixmap(
+            themed_icon_path(variant.icon_name),
+            16,
+            16,
+            self.devicePixelRatioF(),
+        ))
+
+        self.title_label = QLabel(variant.label(), self)
+        self.title_label.setObjectName('TextTransformParameterTitle')
+        self.title_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        standard = getattr(QStyle, 'StandardPixmap', QStyle)
         self.move_up_button = QToolButton(self)
         self.move_up_button.setObjectName('TextTransformMoveButton')
         self.move_up_button.setIcon(
-            self.style().standardIcon(standard.SP_ArrowUp)
+            QIcon(themed_icon_path('chevron-up.svg'))
         )
         self.move_up_button.setToolTip(self.tr('Move Up'))
         self.move_up_button.setAccessibleName(self.tr('Move Up'))
@@ -422,7 +549,7 @@ class TransformParameterPanel(QFrame):
         self.move_down_button = QToolButton(self)
         self.move_down_button.setObjectName('TextTransformMoveButton')
         self.move_down_button.setIcon(
-            self.style().standardIcon(standard.SP_ArrowDown)
+            QIcon(themed_icon_path('chevron-down.svg'))
         )
         self.move_down_button.setToolTip(self.tr('Move Down'))
         self.move_down_button.setAccessibleName(self.tr('Move Down'))
@@ -444,6 +571,7 @@ class TransformParameterPanel(QFrame):
         action_widget = QWidget(self)
         action_widget.setObjectName('TextTransformPanelActions')
         action_widget.setFixedWidth(66)
+        self.action_widget = action_widget
         action_layout = QHBoxLayout(action_widget)
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(4)
@@ -453,17 +581,23 @@ class TransformParameterPanel(QFrame):
             self.close_button,
         ):
             button.setFixedSize(18, 18)
+            button.setIconSize(QSize(12, 12))
             action_layout.addWidget(button)
 
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.addWidget(title)
+        header_layout.setSpacing(6)
+        header_layout.addWidget(self.title_icon_label)
+        header_layout.addWidget(self.title_label)
         header_layout.addWidget(action_widget)
 
         self.controls = {}
         controls_widget = QWidget(self)
         controls_widget.setObjectName('TextTransformPanelControls')
-        controls_layout = AdaptiveWrapLayout(controls_widget)
+        controls_layout = QVBoxLayout(controls_widget)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(6)
+        grouped_controls = {}
         for spec in variant.controls:
             if spec.choices:
                 control = CommittedTransformChoiceControl(
@@ -488,6 +622,26 @@ class TransformParameterPanel(QFrame):
                     shortcut = spec.shortcut()
                     control.label.setToolTip(shortcut)
                     control.editor.setToolTip(shortcut)
+            control.layout().setSpacing(8)
+            control.layout().setStretch(0, 1)
+            control.layout().setStretch(1, 2)
+            control.label.setWordWrap(False)
+            control.label.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            editor = (
+                control.combobox
+                if isinstance(control, CommittedTransformChoiceControl)
+                else control.editor
+            )
+            editor.setProperty('cardEditor', True)
+            editor.setMinimumWidth(0)
+            editor.setMaximumWidth(16777215)
+            editor.setFixedHeight(22)
+            editor.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
             control.commit_requested.connect(
                 lambda name, value, self=self:
                 self.commit_requested.emit(self.index, name, value)
@@ -509,10 +663,45 @@ class TransformParameterPanel(QFrame):
                     self.preview_canceled.emit(self.index, name)
                 )
             self.controls[spec.attribute_name] = control
-            controls_layout.addWidget(control)
+            section = spec.section() if spec.section is not None else None
+            grouped_controls.setdefault(section, []).append((spec, control))
+
+        section_order = ([None] if None in grouped_controls else []) + [
+            section for section in grouped_controls if section is not None
+        ]
+        self.section_labels = []
+        self.control_grids = []
+        for section in section_order:
+            if section is not None:
+                section_label = QLabel(section, controls_widget)
+                section_label.setObjectName('TextTransformSectionTitle')
+                controls_layout.addWidget(section_label)
+                self.section_labels.append(section_label)
+            grid = QGridLayout()
+            grid.setContentsMargins(4 if section is not None else 0, 0, 0, 0)
+            grid.setHorizontalSpacing(8)
+            grid.setVerticalSpacing(4)
+            section_controls = grouped_controls[section]
+            column_count = max(
+                spec.section_columns for spec, _control in section_controls
+            )
+            for column in range(column_count):
+                grid.setColumnStretch(column, 1)
+            for control_index, (_spec, control) in enumerate(section_controls):
+                control.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Preferred,
+                )
+                grid.addWidget(
+                    control,
+                    control_index // column_count,
+                    control_index % column_count,
+                )
+            controls_layout.addLayout(grid)
+            self.control_grids.append(grid)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setContentsMargins(8, 6, 12, 8)
         layout.setSpacing(6)
         layout.addLayout(header_layout)
         layout.addWidget(controls_widget)
@@ -557,6 +746,7 @@ class TransformParameterPanel(QFrame):
             control.cancel_pending()
 
     def _sync_action_visibility(self) -> None:
+        self.action_widget.setVisible(self._hovered)
         for button in (
             self.move_up_button,
             self.move_down_button,

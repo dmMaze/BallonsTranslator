@@ -51,6 +51,7 @@ Important areas:
 - Prefer clear ownership names over broad global names. A helper named for the boundary that consumes it is easier to review than a shared API with hidden registration state.
 - In code review, check both sides of every simplification: the new direct path should be obvious, and the old path should be gone enough that future readers do not have to understand both.
 - Tests should protect behavior and failure modes, not obsolete architecture. After simplifying a feature, adjust tests to cover fallback behavior and real public helpers instead of preserving removed injection or wrapper APIs.
+- Do not test incidental widget hierarchy, object names, exact sizes, margins, spacing, stretch factors, or other cosmetic implementation details. Protect observable behavior and failure modes; verify styling with themed visual checks instead.
 
 ## Performance Rules
 

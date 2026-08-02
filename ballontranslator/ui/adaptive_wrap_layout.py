@@ -3,7 +3,7 @@
 from typing import Sequence
 
 from qtpy.QtCore import QRect, QSize
-from qtpy.QtWidgets import QLayout, QLayoutItem, QStyle
+from qtpy.QtWidgets import QLayout, QLayoutItem, QSizePolicy, QStyle
 
 
 def _pack_preferred_widths(
@@ -145,6 +145,26 @@ class AdaptiveWrapLayout(QLayout):
                 min(preferred_widths[index], available_width)
                 for index in row
             ]
+            expanding = [
+                position
+                for position, index in enumerate(row)
+                if items[index].widget() is not None
+                and items[index].widget().sizePolicy().horizontalPolicy()
+                in (
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.MinimumExpanding,
+                )
+            ]
+            spare_width = max(
+                0,
+                available_width
+                - sum(widths)
+                - horizontal_spacing * (len(row) - 1),
+            )
+            if expanding and spare_width:
+                extra, remainder = divmod(spare_width, len(expanding))
+                for offset, position in enumerate(expanding):
+                    widths[position] += extra + (offset < remainder)
             heights = [
                 self._item_height(items[index], width)
                 for index, width in zip(row, widths)

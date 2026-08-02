@@ -1925,6 +1925,10 @@ PanelArea {
     border-width: 0px;
 }
 
+ScrollBar {
+    background-color: transparent;
+}
+
 
 PanelGroupBox {
     border: 1px solid @borderColor;
@@ -2001,9 +2005,9 @@ DeleteStyleButton::hover {
 }
 
 QFrame#TextTransformParameterPanel {
-    background-color: @transtexteditBackgroundColor;
+    background-color: @widgetBackgroundColor;
     border: 1px solid @borderColor;
-    border-radius: 5px;
+    border-radius: 6px;
 }
 
 QFrame#TextTransformParameterPanel[selected="true"] {
@@ -2016,20 +2020,115 @@ QFrame#TextTransformParameterPanel QWidget#TextTransformPanelControls {
     background-color: transparent;
 }
 
+QWidget#TextTransformControl {
+    background-color: transparent;
+}
+
+QMenu#TextTransformAddMenu::item {
+    padding-left: 12px;
+    font-size: 13px;
+}
+
 QFrame#TextTransformParameterPanel QLabel#TextTransformParameterTitle {
+    font-size: 13px;
     font-weight: 600;
 }
 
 QToolButton#AddTextTransformButton {
-    padding: 3px 8px;
-    border: 1px solid @borderColor;
-    border-radius: 4px;
-    background-color: @pushBtnBackgroundColor;
+    min-width: 52px;
+    max-width: 52px;
+    min-height: 24px;
+    max-height: 24px;
+    padding: 0px 14px 0px 4px;
+    color: white;
+    font-size: 12px;
+    border: 1px solid rgb(30, 147, 229);
+    border-radius: 6px;
+    background-color: rgb(30, 147, 229);
 }
 
-QToolButton#AddTextTransformButton:hover,
+QToolButton#AddTextTransformButton:hover {
+    background-color: #4ba7ee;
+}
+
+QToolButton#AddTextTransformButton:pressed {
+    background-color: #187fc3;
+}
+
+QToolButton#AddTextTransformButton::menu-indicator {
+    image: url(resources/icons/chevron-down-white.svg);
+    width: 10px;
+    height: 10px;
+    subcontrol-origin: padding;
+    subcontrol-position: right center;
+    right: 4px;
+}
+
 QToolButton#TextTransformMoveButton:hover {
     background-color: @borderColor;
+}
+
+QLabel#TextTransformParamLabel,
+QLineEdit#TextTransformParamEditor,
+QComboBox#TextTransformParamEditor {
+    font-size: 12px;
+}
+
+QLineEdit#TextTransformParamEditor,
+QComboBox#TextTransformParamEditor {
+    min-height: 20px;
+    max-height: 20px;
+    height: 20px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+}
+
+QLineEdit#TextTransformParamEditor {
+    min-width: 54px;
+    max-width: 54px;
+    padding-left: 0px;
+    padding-right: 0px;
+}
+
+QLineEdit#TextTransformParamEditor[integerStepper="true"] {
+    min-width: 80px;
+    max-width: 80px;
+    padding-right: 36px;
+}
+
+QLineEdit#TextTransformParamEditor[glyphSlantEditor="true"] {
+    min-width: 84px;
+    max-width: 84px;
+}
+
+QFrame#TextTransformParameterPanel
+QLineEdit#TextTransformParamEditor[cardEditor="true"],
+QFrame#TextTransformParameterPanel
+QComboBox#TextTransformParamEditor[cardEditor="true"] {
+    min-width: 0px;
+    max-width: 1000px;
+}
+
+QLineEdit#TextTransformParamEditor:hover,
+QLineEdit#TextTransformParamEditor:focus,
+QComboBox#TextTransformParamEditor:hover,
+QComboBox#TextTransformParamEditor:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QComboBox#TextTransformParamEditor::drop-down {
+    border: none;
+    background-color: transparent;
+}
+
+QLabel#TextTransformSectionTitle {
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
+    font-weight: 600;
 }
 
 QToolButton#TextTransformMoveButton,
@@ -2046,6 +2145,11 @@ QToolButton#TextTransformCloseButton:hover {
 QLabel#TextTransformMixedLabel {
     color: @qwidgetForegroundColor;
     font-style: italic;
+}
+
+QWidget#TextAdvancedFormatTopSection,
+QWidget#TextAdvancedFormatUnit {
+    background-color: transparent;
 }
 
 /* Suggestion Popup (Spell Checker) */
