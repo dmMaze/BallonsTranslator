@@ -777,14 +777,17 @@ class SceneTextManager(QObject):
     def _on_canvas_selection_changed(self):
         self.on_incanvas_selection_changed()
 
-    def on_incanvas_selection_changed(self):
+    def on_incanvas_selection_changed(self) -> None:
         if self.canvas.textEditMode():
             textitems = self.canvas.selected_text_items()
             self.textEditList.set_selected_list([t.idx for t in textitems])
-            if len(textitems) == 1:
-                self.formatpanel.set_textblk_item(textitems[-1])
-            else:
-                self.formatpanel.set_textblk_item(multi_select=bool(textitems))
+            self._update_selection_panels(textitems)
+
+    def _update_selection_panels(self, textitems: List[TextBlkItem]) -> None:
+        if len(textitems) == 1:
+            self.formatpanel.set_textblk_item(textitems[-1])
+        else:
+            self.formatpanel.set_textblk_item(multi_select=bool(textitems))
 
     def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
         
@@ -1092,19 +1095,29 @@ class SceneTextManager(QObject):
             else:
                 self.formatpanel.set_active_format(fontformat)
 
-    def on_transwidget_selection_changed(self):
+    def on_transwidget_selection_changed(self) -> None:
+        editing_item = self.canvas.editing_textblkitem
+        if editing_item is not None and editing_item.isEditing():
+            # end_edit reselects its item, so finish it before applying the
+            # pair list's authoritative selection.
+            editing_item.endEdit()
+
         selitems = self.canvas.selected_text_items()
         selset = {pw.idx: pw for pw in self.textEditList.checked_list}
         self.canvas.block_selection_signal = True
-        for blkitem in selitems:
-            if blkitem.idx not in selset:
-                blkitem.setSelected(False)
-            else:
-                selset.pop(blkitem.idx)
-        for idx in selset:
-            self.textblk_item_list[idx].setSelected(True)
-        self.canvas.block_selection_signal = False
-        self.on_incanvas_selection_changed()
+        try:
+            for blkitem in selitems:
+                if blkitem.idx not in selset:
+                    blkitem.setSelected(False)
+                else:
+                    selset.pop(blkitem.idx)
+            for idx in selset:
+                self.textblk_item_list[idx].setSelected(True)
+        finally:
+            self.canvas.block_selection_signal = False
+        # Refresh transform/format consumers without syncing back into the
+        # pair list and discarding its Shift/drag anchor.
+        self._update_selection_panels(self.canvas.selected_text_items())
 
     def on_textedit_list_focusout(self):
         fw = self.app.focusWidget()

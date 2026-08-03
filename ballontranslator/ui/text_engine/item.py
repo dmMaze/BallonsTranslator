@@ -456,35 +456,36 @@ class TextBlkItem(QGraphicsTextItem):
         char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
         char_fmt.setFontLetterSpacing(reset_spacing_val * 100)
         cursor.select(QTextCursor.SelectionType.Document)
-        self.set_cursor_cfmt(cursor, char_fmt, True)
-        cursor.endEditBlock()
-
-        # QTextCursor formatting emits contentsChanged synchronously while the
-        # old layout is still attached. Keep the writing-mode flag aligned with
-        # that layout until the formatting transaction has finished, otherwise
-        # effect repaint can enter the new vertical-only stroke path through an
-        # old horizontal layout.
-        if self.fontformat is not None:
-            self.fontformat.vertical = vertical
-
-        if vertical:
-            layout = VerticalTextDocumentLayout(doc, self.fontformat)
-        else:
-            layout = HorizontalTextDocumentLayout(doc, self.fontformat)
-        self.layout = layout
-        doc.setDocumentLayout(layout)
-        layout.setEffectPadding(effect_padding)
         controller = self.geometry_controller
-        controller.initialize_layout(
-            persistent_cache=controller.preview is None,
-        )
-        layout.size_enlarged.connect(self.on_document_enlarged)
-        layout.documentSizeChanged.connect(self.docSizeChanged)
-        
-        if valid_layout:
-            layout.setMaxSize(rect.width(), rect.height())
-            controller.refresh_surface_mapper()
-            self.repaint_background()
+        with controller.defer_compilation():
+            self.set_cursor_cfmt(cursor, char_fmt, True)
+            cursor.endEditBlock()
+
+            # QTextCursor formatting emits contentsChanged synchronously while
+            # the old layout is still attached. Keep the writing-mode flag
+            # aligned with that layout until the formatting transaction has
+            # finished, otherwise effect repaint can enter the new vertical-only
+            # stroke path through an old horizontal layout.
+            if self.fontformat is not None:
+                self.fontformat.vertical = vertical
+
+            if vertical:
+                layout = VerticalTextDocumentLayout(doc, self.fontformat)
+            else:
+                layout = HorizontalTextDocumentLayout(doc, self.fontformat)
+            self.layout = layout
+            doc.setDocumentLayout(layout)
+            layout.setEffectPadding(effect_padding)
+            controller.initialize_layout(
+                persistent_cache=controller.preview is None,
+            )
+            layout.size_enlarged.connect(self.on_document_enlarged)
+            layout.documentSizeChanged.connect(self.docSizeChanged)
+
+            if valid_layout:
+                layout.setMaxSize(rect.width(), rect.height())
+                controller.refresh_surface_mapper()
+                self.repaint_background()
         if is_editing:
             self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
             self.setFocus()

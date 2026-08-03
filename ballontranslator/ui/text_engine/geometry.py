@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 import math
-from typing import Optional, TYPE_CHECKING
+from typing import Iterator, Optional, TYPE_CHECKING
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRect, QRectF, QSizeF, Qt
@@ -59,6 +59,7 @@ class TextItemGeometryController:
         )
         self._compiled_input_key = None
         self._compile_deferred = False
+        self._compile_defer_depth = 0
         self.layout_renderer = None
         self.visual_mapper = None
         self.surface_renderer = None
@@ -79,6 +80,7 @@ class TextItemGeometryController:
         )
         self._compiled_input_key = None
         self._compile_deferred = False
+        self._compile_defer_depth = 0
 
     def item_change(self, change, value, base_item_change):
         item = self.item
@@ -157,6 +159,17 @@ class TextItemGeometryController:
             self._update_depth -= 1
             if self._update_depth == 0:
                 self._flush_update()
+
+    @contextmanager
+    def defer_compilation(self) -> Iterator[None]:
+        """Compile once after a transient layout transaction settles."""
+        self._compile_defer_depth += 1
+        try:
+            yield
+        finally:
+            self._compile_defer_depth -= 1
+            if self._compile_defer_depth == 0:
+                self.flush_deferred_compilation()
 
     def request_update(self) -> None:
         self._update_dirty = True
@@ -780,7 +793,9 @@ class TextItemGeometryController:
     def refresh_compiled_geometry(self, *, force: bool = False) -> bool:
         # Rich-text formatting emits several intermediate document sizes.
         # Only the settled geometry is observable after the edit block.
-        if self.item.is_formatting and not force:
+        if (
+            self.item.is_formatting or self._compile_defer_depth > 0
+        ) and not force:
             self._compile_deferred = True
             return False
         self._compile_deferred = False

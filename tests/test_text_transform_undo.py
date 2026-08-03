@@ -3,7 +3,7 @@ import json
 import math
 import os
 import unittest
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import patch
 
 import cv2
@@ -1073,7 +1073,14 @@ class TextTransformPanelTest(TextTransformTestBase):
                         checked_list=[SimpleNamespace(idx=0)]
                     ),
                     textblk_item_list=[item],
-                    on_incanvas_selection_changed=sync_selection,
+                    formatpanel=SimpleNamespace(
+                        set_textblk_item=lambda *_args, **_kwargs:
+                        sync_selection()
+                    ),
+                )
+                manager._update_selection_panels = MethodType(
+                    SceneTextManager._update_selection_panels,
+                    manager,
                 )
                 SceneTextManager.on_transwidget_selection_changed(manager)
 

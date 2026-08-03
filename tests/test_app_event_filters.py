@@ -160,6 +160,7 @@ class AppEventFilterOrderingTest(unittest.TestCase):
         finally:
             LinuxMoveResize.starSystemResize = original_resize
             QApplication.instance().removeEventFilter(window)
+            window.close()
             window.deleteLater()
 
         self.assertTrue(handled)

@@ -862,7 +862,12 @@ class TextEditListScrollArea(QScrollArea):
         pairwidget.e_source.setVisible(self.source_visible)
         pairwidget.setVisible(True)
 
-    def on_widget_checkstate_changed(self, pwc: TransPairWidget, shift_pressed: bool, ctrl_pressed: bool):
+    def on_widget_checkstate_changed(
+        self,
+        pwc: TransPairWidget,
+        shift_pressed: bool,
+        ctrl_pressed: bool,
+    ) -> None:
         if self.drag is not None:
             return
         
@@ -885,7 +890,9 @@ class TextEditListScrollArea(QScrollArea):
                 if ctrl_pressed:
                     sel_min, sel_max = min(old_idx_list[0], tgt_w.idx), max(old_idx_list[-1], tgt_w.idx)
                 else:
-                    sel_min, sel_max = min(self.sel_anchor_widget.idx, tgt_w.idx), max(self.sel_anchor_widget.idx, tgt_w.idx)
+                    anchor = self.sel_anchor_widget or self.checked_list[0]
+                    self.sel_anchor_widget = anchor
+                    sel_min, sel_max = min(anchor.idx, tgt_w.idx), max(anchor.idx, tgt_w.idx)
                 new_check_list = list(range(sel_min, sel_max + 1))
         elif ctrl_pressed:
             new_check_set = set(old_idx_list)
@@ -932,25 +939,38 @@ class TextEditListScrollArea(QScrollArea):
             if pwc.checked:
                 pwc.e_trans.focus_in.emit(pwc.idx)
 
-    def set_selected_list(self, selection_indices: List):
+    def set_selected_list(self, selection_indices: List[int]) -> None:
         self.clearDrag()
 
-        old_sel_set, new_sel_set = set([pw.idx for pw in self.checked_list]), set(selection_indices)
+        old_sel_set = {pw.idx for pw in self.checked_list}
+        new_sel_set = set(selection_indices)
+        if old_sel_set == new_sel_set:
+            if not self.checked_list:
+                self.sel_anchor_widget = None
+            elif self.sel_anchor_widget not in self.checked_list:
+                self.sel_anchor_widget = self.checked_list[0]
+            return
+
         to_remove = old_sel_set.difference(new_sel_set)
         to_add = new_sel_set.difference(old_sel_set)
-        self.sel_anchor_widget = None
+        if (
+            self.sel_anchor_widget is not None
+            and self.sel_anchor_widget.idx not in new_sel_set
+        ):
+            self.sel_anchor_widget = None
 
-        for idx in to_remove:
+        for idx in sorted(to_remove):
             pw = self.pairwidget_list[idx]
             pw._set_checked_state(False)
             self.checked_list.remove(pw)
 
-        for ii, idx in enumerate(to_add):
+        for idx in sorted(to_add):
             pw = self.pairwidget_list[idx]
             pw._set_checked_state(True)
             self.checked_list.append(pw)
-            if ii == 0:
-                self.sel_anchor_widget = pw
+        self.checked_list.sort(key=lambda pw: pw.idx)
+        if self.checked_list and self.sel_anchor_widget is None:
+            self.sel_anchor_widget = self.checked_list[0]
 
     def clearAllSelected(self, emit_signal=True):
         self.sel_anchor_widget = None
@@ -961,7 +981,11 @@ class TextEditListScrollArea(QScrollArea):
             if emit_signal:
                 self.selection_changed.emit()
 
-    def removeWidget(self, widget: TransPairWidget, remove_checked: bool = True):
+    def removeWidget(
+        self,
+        widget: TransPairWidget,
+        remove_checked: bool = True,
+    ) -> None:
         widget.setVisible(False)
         if remove_checked:
             if self.sel_anchor_widget is not None and self.sel_anchor_widget.idx == widget.idx:
@@ -969,6 +993,8 @@ class TextEditListScrollArea(QScrollArea):
             if widget in self.checked_list:
                 widget._set_checked_state(False)
                 self.checked_list.remove(widget)
+            if self.sel_anchor_widget is None and self.checked_list:
+                self.sel_anchor_widget = self.checked_list[0]
         self.vlayout.removeWidget(widget)
     
     def focusOutEvent(self, e: QFocusEvent) -> None:
