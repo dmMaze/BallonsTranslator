@@ -488,7 +488,9 @@ def glyph_geometry(
             translation = QTransform.fromTranslate(
                 position.x() + offset.x(), position.y() + offset.y()
             )
-            glyph_to_item = _composed_transform(translation, shear, orientation)
+            # Vertical orientation establishes the glyph's visible axes;
+            # slant in item space afterward so rotated glyphs lean correctly.
+            glyph_to_item = _composed_transform(translation, orientation, shear)
             glyph_path = _raw_glyph_path(raw_font, glyph_index)
             if not native_color_glyphs and not glyph_path.isEmpty():
                 mapped_path = glyph_to_item.map(glyph_path)
