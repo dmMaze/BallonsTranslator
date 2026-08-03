@@ -505,6 +505,15 @@ class RTDetrV2TextDetector(TextDetectorBase):
             'description': 'Detect text blocks.',
             'display_name': 'Detect Text'
         },
+        # options UI shows raw values; no option i18n yet:
+        # all=全部, text_bubble=框內字, text_free=框外字
+        'text_region_filter': {
+            'value': 'all',
+            'type': 'selector',
+            'options': ['all', 'text_bubble', 'text_free'],
+            'description': 'Keep all text, only text inside speech bubbles, or only text outside speech bubbles.',
+            'display_name': 'Text Region Filter'
+        },
         'merge_duplicates': {
             'value': True,
             'type': 'checkbox',
@@ -557,6 +566,11 @@ class RTDetrV2TextDetector(TextDetectorBase):
     @property
     def detect_text(self) -> bool:
         return bool(self.get_param_value('detect_text'))
+
+    @property
+    def text_region_filter(self) -> str:
+        value = self.get_param_value('text_region_filter')
+        return value if value in {'all', 'text_bubble', 'text_free'} else 'all'
 
     @property
     def merge_duplicates(self) -> bool:
@@ -653,7 +667,10 @@ class RTDetrV2TextDetector(TextDetectorBase):
                 # ONNX output format is [x_min, y_min, x_max, y_max]
                 x1, y1, x2, y2 = map(int, box)
                 coords = [x1, y1, x2, y2]
-                if label == 0 and self.detect_bubbles:
+                needs_bubble_boxes = (
+                    self.detect_bubbles or self.text_region_filter != 'all'
+                )
+                if label == 0 and needs_bubble_boxes:
                     b_boxes.append(coords)
                 elif label in [1, 2] and self.detect_text:
                     t_boxes.append(coords)
@@ -678,9 +695,24 @@ class RTDetrV2TextDetector(TextDetectorBase):
         bub_list = bub_boxes.tolist() if bub_boxes.size > 0 else []
 
         for tb_rect in txt_boxes:
-            local_block_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+            x1, y1, x2, y2 = tb_rect
+            current_tb_rect_list = tb_rect.tolist()
+            best_bubble = None
+            for bb in bub_list:
+                if does_rectangle_fit(bb, current_tb_rect_list):
+                    best_bubble = bb
+                    break
+                elif do_rectangles_overlap(bb, current_tb_rect_list):
+                    if best_bubble is None:
+                        best_bubble = bb
 
-            inpaint_regions = get_inpaint_bboxes(tb_rect.tolist(), img, self.logger)
+            text_class = "text_bubble" if best_bubble else "text_free"
+            if self.text_region_filter not in {'all', text_class}:
+                continue
+
+            # Build the mask only after filtering so excluded text is not erased.
+            local_block_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+            inpaint_regions = get_inpaint_bboxes(current_tb_rect_list, img, self.logger)
             for r_x1, r_y1, r_x2, r_y2 in inpaint_regions:
                 cv2.rectangle(local_block_mask, (r_x1, r_y1), (r_x2, r_y2), 255, -1)
 
@@ -697,25 +729,14 @@ class RTDetrV2TextDetector(TextDetectorBase):
 
             final_inpaint_mask = cv2.bitwise_or(final_inpaint_mask, local_block_mask)
 
-            x1, y1, x2, y2 = tb_rect
-            current_tb_rect_list = tb_rect.tolist()
-            best_bubble = None
-            for bb in bub_list:
-                if does_rectangle_fit(bb, current_tb_rect_list):
-                    best_bubble = bb
-                    break
-                elif do_rectangles_overlap(bb, current_tb_rect_list):
-                    if best_bubble is None:
-                        best_bubble = bb
-
             block_to_add = TextBlock(
                 xyxy=current_tb_rect_list,
                 lines=[[[x1, y1], [x2, y1], [x2, y2], [x1, y2]]],
                 det_model=self.name,
-                label="text_bubble" if best_bubble else "text_free",
+                label=text_class,
             )
             setattr(block_to_add, 'bubble_xyxy', best_bubble)
-            setattr(block_to_add, 'text_class', "text_bubble" if best_bubble else "text_free")
+            setattr(block_to_add, 'text_class', text_class)
             blocks.append(block_to_add)
 
         self.logger.debug(
@@ -778,6 +799,7 @@ class RTDetrV2TextDetector(TextDetectorBase):
             "mask_unification_method",
             "detect_bubbles",
             "detect_text",
+            "text_region_filter",
             "merge_duplicates",
             "merge_duplicates_iou",
             "remove_contained_text",

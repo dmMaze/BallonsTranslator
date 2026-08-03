@@ -409,6 +409,12 @@ MODULE_PARAM_CATALOG = {
     ('textdetector', 'ctbd', 'slice_threshold_ratio', 'display_name'): {
         "source": 'Slice Threshold Ratio', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Slice Threshold Ratio'),
     },
+    ('textdetector', 'ctbd', 'text_region_filter', 'description'): {
+        "source": 'Keep all text, only text inside speech bubbles, or only text outside speech bubbles.', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Keep all text, only text inside speech bubbles, or only text outside speech bubbles.'),
+    },
+    ('textdetector', 'ctbd', 'text_region_filter', 'display_name'): {
+        "source": 'Text Region Filter', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'Text Region Filter'),
+    },
     ('textdetector', 'ctd', '', 'description'): {
         "source": 'ComicTextDetector', "translate": lambda: QCoreApplication.translate('ModuleParamTranslator', 'ComicTextDetector'),
     },
