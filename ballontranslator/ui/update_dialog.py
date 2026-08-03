@@ -140,7 +140,7 @@ class UpdateReleaseDialog(QDialog):
         self.setFixedWidth(RELEASE_WINDOW_WIDTH)
         window_type = getattr(Qt, 'WindowType', Qt)
         widget_attribute = getattr(Qt, 'WidgetAttribute', Qt)
-        self.setWindowFlags(window_type.Popup | window_type.FramelessWindowHint)
+        self.setWindowFlags(window_type.Dialog | window_type.FramelessWindowHint)
         self.setAttribute(widget_attribute.WA_TranslucentBackground)
 
         release_info = result.release_info
@@ -204,9 +204,38 @@ class UpdateReleaseDialog(QDialog):
             metadata_label.setWordWrap(True)
             layout.addWidget(metadata_label)
 
+        normalized_language = (display_language or '').replace('_', '-').casefold()
+        sponsor_url = (
+            'https://afdian.com/a/dmMaze'
+            if normalized_language == 'zh-cn'
+            else 'https://patreon.com/dreMaze'
+        )
+        sponsor_link_text = self.tr('sponsoring this project')
+        sponsor_link = (
+            f'<a style="color: rgb(30, 147, 229); text-decoration: none;" '
+            f'href="{sponsor_url}">{sponsor_link_text}</a>'
+        )
+        sponsor_message = QLabel(surface)
+        sponsor_message.setObjectName('UpdateReleaseSponsorMessage')
+        sponsor_message.setText(
+            self.tr('Consider %1 if it has been helpful to you.').replace(
+                '%1', sponsor_link
+            )
+        )
+        sponsor_message.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        sponsor_message.setOpenExternalLinks(True)
+        sponsor_message.setWordWrap(True)
+        layout.addWidget(sponsor_message)
+
+        notes_section = QVBoxLayout()
+        notes_section.setContentsMargins(0, 0, 0, 0)
+        notes_section.setSpacing(4)
+
         notes_heading = QLabel(self.tr("What's new"), surface)
         notes_heading.setObjectName('UpdateReleaseNotesHeading')
-        layout.addWidget(notes_heading)
+        notes_section.addWidget(notes_heading)
 
         notes_frame = QFrame(surface)
         notes_frame.setObjectName('UpdateReleaseNotesCard')
@@ -242,7 +271,8 @@ class UpdateReleaseDialog(QDialog):
         self.release_notes.document().setTextWidth(notes_text_width)
         self._resize_release_notes()
         notes_layout.addWidget(self.release_notes)
-        layout.addWidget(notes_frame)
+        notes_section.addWidget(notes_frame)
+        layout.addLayout(notes_section)
 
         if allow_update:
             restart_notice = QLabel(

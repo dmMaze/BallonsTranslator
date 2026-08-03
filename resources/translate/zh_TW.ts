@@ -17,96 +17,121 @@
 <context>
     <name>BottomBar</name>
     <message>
-        <source>Enable/disable ocr</source>
-        <translation type="obsolete">啟用/禁用OCR</translation>
-    </message>
-    <message>
-        <source>Enable/disable translation</source>
-        <translation type="obsolete">啟用/禁用機翻</translation>
-    </message>
-    <message>
-        <source>translate page</source>
-        <translation type="obsolete">翻譯本頁</translation>
-    </message>
-    <message>
-        <source>stop</source>
-        <translation type="obsolete">停止</translation>
-    </message>
-    <message>
-        <source>translate current page</source>
-        <translation type="obsolete">翻譯本頁</translation>
-    </message>
-    <message>
-        <source>stop translation</source>
-        <translation type="obsolete">停止翻譯</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="578"/>
-        <source>Enable/disable paint mode</source>
-        <translation>啟用/禁用畫板</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="582"/>
-        <source>Enable/disable text edit mode</source>
-        <translation>啟用/禁用文本編輯</translation>
-    </message>
-    <message>
-        <source>Original image transparency: </source>
-        <translation type="obsolete">原圖透明度: </translation>
-    </message>
-    <message>
-        <source>Lettering layer transparency: </source>
-        <translation type="obsolete">嵌字層透明度</translation>
-    </message>
-    <message>
-        <source>Original image transparency</source>
-        <translation type="obsolete">原圖透明度</translation>
-    </message>
-    <message>
-        <source>Lettering layer transparency</source>
-        <translation type="obsolete">嵌字層透明度</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="588"/>
-        <source>Original image opacity</source>
-        <translation>原圖不透明度</translation>
-    </message>
-    <message>
-        <source>Lettering layer opacity</source>
-        <translation type="obsolete">嵌字層不透明度</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="592"/>
-        <source>Text layer opacity</source>
-        <translation>嵌字層不透明度</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="563"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="597"/>
         <source>Text Detector</source>
         <translation>文本檢測</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="567"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="601"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="568"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="602"/>
         <source>Inpaint</source>
         <translation>圖像修復</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="570"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="604"/>
         <source>Translator</source>
         <translation>翻譯器</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="612"/>
+        <source>Enable/disable paint mode</source>
+        <translation>啟用/禁用畫板</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="616"/>
+        <source>Enable/disable text edit mode</source>
+        <translation>啟用/禁用文本編輯</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="622"/>
+        <source>Original image opacity</source>
+        <translation>原圖不透明度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="626"/>
+        <source>Text layer opacity</source>
+        <translation>嵌字層不透明度</translation>
+    </message>
+    <message>
+        <source>Enable/disable ocr</source>
+        <translation type="vanished">啟用/禁用OCR</translation>
+    </message>
+    <message>
+        <source>Enable/disable translation</source>
+        <translation type="vanished">啟用/禁用機翻</translation>
+    </message>
+    <message>
+        <source>translate page</source>
+        <translation type="vanished">翻譯本頁</translation>
+    </message>
+    <message>
+        <source>stop</source>
+        <translation type="vanished">停止</translation>
+    </message>
+    <message>
+        <source>translate current page</source>
+        <translation type="vanished">翻譯本頁</translation>
+    </message>
+    <message>
+        <source>stop translation</source>
+        <translation type="vanished">停止翻譯</translation>
+    </message>
+    <message>
+        <source>Original image transparency: </source>
+        <translation type="vanished">原圖透明度: </translation>
+    </message>
+    <message>
+        <source>Lettering layer transparency: </source>
+        <translation type="vanished">嵌字層透明度</translation>
+    </message>
+    <message>
+        <source>Original image transparency</source>
+        <translation type="vanished">原圖透明度</translation>
+    </message>
+    <message>
+        <source>Lettering layer transparency</source>
+        <translation type="vanished">嵌字層透明度</translation>
+    </message>
+    <message>
+        <source>Lettering layer opacity</source>
+        <translation type="vanished">嵌字層不透明度</translation>
     </message>
 </context>
 <context>
     <name>Canvas</name>
     <message>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1035"/>
+        <source>Copy</source>
+        <translation>複製</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1037"/>
+        <source>Paste</source>
+        <translation>黏貼</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/canvas.py" line="1039"/>
         <source>Delete</source>
         <translation>刪除</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1041"/>
+        <source>Copy source text</source>
+        <translation>複製原文</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1043"/>
+        <source>Paste source text</source>
+        <translation>黏貼原文</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1045"/>
+        <source>Delete and Recover removed text</source>
+        <translation>刪除並恢復被抹除文字</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/canvas.py" line="1050"/>
@@ -119,14 +144,14 @@
         <translation>自動排版</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1035"/>
-        <source>Copy</source>
-        <translation>複製</translation>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1052"/>
+        <source>Reset Angle</source>
+        <translation>角度復位</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1037"/>
-        <source>Paste</source>
-        <translation>黏貼</translation>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1053"/>
+        <source>Squeeze</source>
+        <translation>收縮</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/canvas.py" line="1055"/>
@@ -149,34 +174,9 @@
         <translation>OCR，翻譯並抹字</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1045"/>
-        <source>Delete and Recover removed text</source>
-        <translation>刪除並恢復被抹除文字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1052"/>
-        <source>Reset Angle</source>
-        <translation>角度復位</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1041"/>
-        <source>Copy source text</source>
-        <translation>複製原文</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1043"/>
-        <source>Paste source text</source>
-        <translation>黏貼原文</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/canvas.py" line="1059"/>
         <source>inpaint</source>
         <translation>抹字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1053"/>
-        <source>Squeeze</source>
-        <translation>收縮</translation>
     </message>
 </context>
 <context>
@@ -190,23 +190,20 @@
 <context>
     <name>ConfigPanel</name>
     <message>
-        <source>Text Detection</source>
-        <translation type="obsolete">文本檢測</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="448"/>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="774"/>
+        <source>Settings</source>
+        <translation>設置</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="465"/>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="530"/>
-        <source>OCR</source>
-        <translation>文本識別</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="461"/>
+        <source>Modules</source>
+        <translation>自動化模組</translation>
     </message>
     <message>
-        <source>Inpaint</source>
-        <translation type="obsolete">圖像修復</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="467"/>
-        <source>Translator</source>
-        <translation>翻譯器</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="462"/>
+        <source>General</source>
+        <translation>常規</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="464"/>
@@ -215,159 +212,21 @@
         <translation>檢測器</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="465"/>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="530"/>
+        <source>OCR</source>
+        <translation>文本識別</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="466"/>
         <location filename="../../ballontranslator/ui/configpanel.py" line="533"/>
         <source>Inpainter</source>
         <translation>修復工具</translation>
     </message>
     <message>
-        <source>DL Module</source>
-        <translation type="obsolete">自動化模組</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="462"/>
-        <source>General</source>
-        <translation>常規</translation>
-    </message>
-    <message>
-        <source>Startup</source>
-        <translation type="obsolete">啟動</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="547"/>
-        <source>Reopen last project on startup</source>
-        <translation>啟動時打開上次項目</translation>
-    </message>
-    <message>
-        <source>Lettering</source>
-        <translation type="obsolete">嵌字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="676"/>
-        <source>decide by program</source>
-        <translation>由程序決定</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="677"/>
-        <source>use global setting</source>
-        <translation>使用全局設置</translation>
-    </message>
-    <message>
-        <source>font size</source>
-        <translation type="obsolete">字體大小</translation>
-    </message>
-    <message>
-        <source>stroke</source>
-        <translation type="obsolete">輪廓</translation>
-    </message>
-    <message>
-        <source>font &amp; stroke color</source>
-        <translation type="obsolete">字體與輪廓顏色</translation>
-    </message>
-    <message>
-        <source>alignment</source>
-        <translation type="obsolete">對齊方式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="720"/>
-        <source>Auto layout</source>
-        <translation>橫排自動排版</translation>
-    </message>
-    <message>
-        <source>Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to &quot;decide by program.&quot;</source>
-        <translation type="obsolete">自動斷句並分行.</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="724"/>
-        <source>To uppercase</source>
-        <translation>小寫轉大寫</translation>
-    </message>
-    <message>
-        <source>effect</source>
-        <translation type="obsolete">特效</translation>
-    </message>
-    <message>
-        <source>shortcut</source>
-        <translation type="obsolete">快捷鍵</translation>
-    </message>
-    <message>
-        <source>stroke size</source>
-        <translation type="obsolete">輪廓大小</translation>
-    </message>
-    <message>
-        <source>font color</source>
-        <translation type="obsolete">字體顏色</translation>
-    </message>
-    <message>
-        <source>stroke color</source>
-        <translation type="obsolete">輪廓顏色</translation>
-    </message>
-    <message>
-        <source>Save</source>
-        <translation type="obsolete">保存</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="689"/>
-        <source>Font Size</source>
-        <translation>大小</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="693"/>
-        <source>Stroke Size</source>
-        <translation>輪廓大小</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="697"/>
-        <source>Font Color</source>
-        <translation>字體顏色</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="700"/>
-        <source>Stroke Color</source>
-        <translation>輪廓顏色</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="704"/>
-        <source>Effect</source>
-        <translation>特效</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="707"/>
-        <source>Alignment</source>
-        <translation>對齊方式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="733"/>
-        <source>Result image format</source>
-        <translation>結果圖格式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="739"/>
-        <source>Quality</source>
-        <translation>質量</translation>
-    </message>
-    <message>
-        <source>Shortcut</source>
-        <translation type="obsolete">快捷鍵</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="721"/>
-        <source>Split translation into multi-lines according to the extracted balloon region.</source>
-        <translation>自動斷句並分行</translation>
-    </message>
-    <message>
-        <source>Adjust font size adaptively if it is set to &quot;decide by program.&quot;</source>
-        <translation type="obsolete">自動排版時調整字體大小</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="711"/>
-        <source>Writing-mode</source>
-        <translation>書寫方向</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="487"/>
-        <source>Empty cache after RUN</source>
-        <translation>RUN後清空快取</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="467"/>
+        <source>Translator</source>
+        <translation>翻譯器</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="468"/>
@@ -375,29 +234,14 @@
         <translation>自動化流程</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="490"/>
-        <source>Empty cache after RUN to save memory.</source>
-        <translation>RUN後清空快取以節省記憶體</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="469"/>
+        <source>LLM Profile</source>
+        <translation>LLM 配置卡</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="520"/>
-        <source>Unload All Models</source>
-        <translation>清空已載入的模型</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="714"/>
-        <source>Keep existing</source>
-        <translation>保留已有格式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="714"/>
-        <source>Always use global setting</source>
-        <translation>總是使用全局設置</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="714"/>
-        <source>Font Family</source>
-        <translation>字體</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="470"/>
+        <source>Application</source>
+        <translation>應用</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="471"/>
@@ -405,18 +249,19 @@
         <translation>嵌字</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="727"/>
-        <source>Independent text styles for each projects</source>
-        <translation>在每個項目下建立獨立的字體樣式</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="472"/>
+        <source>Spell Checker</source>
+        <translation>拼寫檢查</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="730"/>
-        <source>Show only custom fonts</source>
-        <translation>只顯示 fonts 文件夾下的字體</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="487"/>
+        <source>Empty cache after RUN</source>
+        <translation>RUN後清空快取</translation>
     </message>
     <message>
-        <source>Startup &amp; Updates</source>
-        <translation type="obsolete">啟動與更新</translation>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="490"/>
+        <source>Empty cache after RUN to save memory.</source>
+        <translation>RUN後清空快取以節省記憶體</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="495"/>
@@ -434,9 +279,65 @@
         <translation>預備所選模組</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="520"/>
+        <source>Unload All Models</source>
+        <translation>清空已載入的模型</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="547"/>
+        <source>Reopen last project on startup</source>
+        <translation>啟動時打開上次項目</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="550"/>
         <source>Check update on startup</source>
         <translation>啟動時檢查更新</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="553"/>
+        <source>Enable</source>
+        <translation>啟用</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="556"/>
+        <source>Apply for source text</source>
+        <translation>應用到源文本</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="564"/>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="571"/>
+        <source>Higher value, slower analysis</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="570"/>
+        <source>Edit Distance</source>
+        <translation>編輯距離</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="585"/>
+        <source>Dictionary Words...</source>
+        <translation>字典</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="592"/>
+        <source>Repository Dictionaries</source>
+        <translation>Github 來源的字典</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="607"/>
+        <source>External Dictionaries</source>
+        <translation>外部字典</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="618"/>
+        <source>Add Dictionary...</source>
+        <translation>載入字典</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="621"/>
+        <source>Remove Selected</source>
+        <translation>刪除所選</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="638"/>
@@ -479,89 +380,104 @@
         <translation>PyPI 鏡像</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="676"/>
+        <source>decide by program</source>
+        <translation>由程序決定</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="677"/>
+        <source>use global setting</source>
+        <translation>使用全局設置</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="689"/>
+        <source>Font Size</source>
+        <translation>大小</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="693"/>
+        <source>Stroke Size</source>
+        <translation>輪廓大小</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="697"/>
+        <source>Font Color</source>
+        <translation>字體顏色</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="700"/>
+        <source>Stroke Color</source>
+        <translation>輪廓顏色</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="704"/>
+        <source>Effect</source>
+        <translation>特效</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="707"/>
+        <source>Alignment</source>
+        <translation>對齊方式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="711"/>
+        <source>Writing-mode</source>
+        <translation>書寫方向</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="714"/>
+        <source>Keep existing</source>
+        <translation>保留已有格式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="714"/>
+        <source>Always use global setting</source>
+        <translation>總是使用全局設置</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="714"/>
+        <source>Font Family</source>
+        <translation>字體</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="720"/>
+        <source>Auto layout</source>
+        <translation>橫排自動排版</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="721"/>
+        <source>Split translation into multi-lines according to the extracted balloon region.</source>
+        <translation>自動斷句並分行</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="724"/>
+        <source>To uppercase</source>
+        <translation>小寫轉大寫</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="727"/>
+        <source>Independent text styles for each projects</source>
+        <translation>在每個項目下建立獨立的字體樣式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="730"/>
+        <source>Show only custom fonts</source>
+        <translation>只顯示 fonts 文件夾下的字體</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="733"/>
+        <source>Result image format</source>
+        <translation>結果圖格式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="739"/>
+        <source>Quality</source>
+        <translation>質量</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="744"/>
         <source>Intermediate image format</source>
         <translation>中間圖格式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="448"/>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="774"/>
-        <source>Settings</source>
-        <translation>設置</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="461"/>
-        <source>Modules</source>
-        <translation>自動化模組</translation>
-    </message>
-    <message>
-        <source>Module Actions</source>
-        <translation type="vanished">模組管理</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="469"/>
-        <source>LLM Profile</source>
-        <translation>LLM 配置卡</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="470"/>
-        <source>Application</source>
-        <translation>應用</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="472"/>
-        <source>Spell Checker</source>
-        <translation>拼寫檢查</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="553"/>
-        <source>Enable</source>
-        <translation>啟用</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="556"/>
-        <source>Apply for source text</source>
-        <translation>應用到源文本</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="564"/>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="571"/>
-        <source>Higher value, slower analysis</source>
-        <translation></translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="570"/>
-        <source>Edit Distance</source>
-        <translation>編輯距離</translation>
-    </message>
-    <message>
-        <source>Max spelling difference in letters. Higher values search deeper but perform slower.</source>
-        <translation type="vanished">允許的最大拼寫錯誤字元數。數值越大匹配範圍越廣，但搜索速度越慢。</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="585"/>
-        <source>Dictionary Words...</source>
-        <translation>字典</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="592"/>
-        <source>Repository Dictionaries</source>
-        <translation>Github 來源的字典</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="607"/>
-        <source>External Dictionaries</source>
-        <translation>外部字典</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="618"/>
-        <source>Add Dictionary...</source>
-        <translation>載入字典</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="621"/>
-        <source>Remove Selected</source>
-        <translation>刪除所選</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="781"/>
@@ -616,6 +532,90 @@
         <source>Dictionary files (*.txt *.dic)</source>
         <translation>字典文件 (*.txt *.dic)</translation>
     </message>
+    <message>
+        <source>Text Detection</source>
+        <translation type="vanished">文本檢測</translation>
+    </message>
+    <message>
+        <source>Inpaint</source>
+        <translation type="vanished">圖像修復</translation>
+    </message>
+    <message>
+        <source>DL Module</source>
+        <translation type="vanished">自動化模組</translation>
+    </message>
+    <message>
+        <source>Startup</source>
+        <translation type="vanished">啟動</translation>
+    </message>
+    <message>
+        <source>Lettering</source>
+        <translation type="vanished">嵌字</translation>
+    </message>
+    <message>
+        <source>font size</source>
+        <translation type="vanished">字體大小</translation>
+    </message>
+    <message>
+        <source>stroke</source>
+        <translation type="vanished">輪廓</translation>
+    </message>
+    <message>
+        <source>font &amp; stroke color</source>
+        <translation type="vanished">字體與輪廓顏色</translation>
+    </message>
+    <message>
+        <source>alignment</source>
+        <translation type="vanished">對齊方式</translation>
+    </message>
+    <message>
+        <source>Split translation into multi-lines according to the extracted balloon region. The font size will be adaptively resized if it is set to &quot;decide by program.&quot;</source>
+        <translation type="vanished">自動斷句並分行.</translation>
+    </message>
+    <message>
+        <source>effect</source>
+        <translation type="vanished">特效</translation>
+    </message>
+    <message>
+        <source>shortcut</source>
+        <translation type="vanished">快捷鍵</translation>
+    </message>
+    <message>
+        <source>stroke size</source>
+        <translation type="vanished">輪廓大小</translation>
+    </message>
+    <message>
+        <source>font color</source>
+        <translation type="vanished">字體顏色</translation>
+    </message>
+    <message>
+        <source>stroke color</source>
+        <translation type="vanished">輪廓顏色</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="vanished">保存</translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <translation type="vanished">快捷鍵</translation>
+    </message>
+    <message>
+        <source>Adjust font size adaptively if it is set to &quot;decide by program.&quot;</source>
+        <translation type="vanished">自動排版時調整字體大小</translation>
+    </message>
+    <message>
+        <source>Startup &amp; Updates</source>
+        <translation type="vanished">啟動與更新</translation>
+    </message>
+    <message>
+        <source>Module Actions</source>
+        <translation type="vanished">模組管理</translation>
+    </message>
+    <message>
+        <source>Max spelling difference in letters. Higher values search deeper but perform slower.</source>
+        <translation type="vanished">允許的最大拼寫錯誤字元數。數值越大匹配範圍越廣，但搜索速度越慢。</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>
@@ -642,13 +642,13 @@
 <context>
     <name>DrawingPanel</name>
     <message>
-        <source>Mask Transparency</source>
-        <translation type="obsolete">掩膜透明度</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="353"/>
         <source>Mask Opacity</source>
         <translation>掩膜不透明度</translation>
+    </message>
+    <message>
+        <source>Mask Transparency</source>
+        <translation type="vanished">掩膜透明度</translation>
     </message>
 </context>
 <context>
@@ -665,6 +665,13 @@
     </message>
 </context>
 <context>
+    <name>FloatingSuggestionLabel</name>
+    <message>
+        <source>Add</source>
+        <translation type="obsolete">添加</translation>
+    </message>
+</context>
+<context>
     <name>FontFormatPanel</name>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="290"/>
@@ -677,42 +684,9 @@
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="316"/>
-        <source>Change font color</source>
-        <translation>改變文字顏色</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="345"/>
-        <source>Change stroke color</source>
-        <translation>改變文字輪廓顏色</translation>
-    </message>
-    <message>
-        <source>Stroke width: </source>
-        <translation type="obsolete">輪廓寬度: </translation>
-    </message>
-    <message>
-        <source>line spacing: </source>
-        <translation type="obsolete">行間距: </translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="389"/>
-        <source>Global Font Format</source>
-        <translation>全局字體格式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="336"/>
-        <source>Stroke</source>
-        <translation>輪廓</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="333"/>
-        <source>Change stroke width</source>
-        <translation>修改輪廓寬度</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="358"/>
-        <source>Change letter spacing</source>
-        <translation>修改字元間距</translation>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="297"/>
+        <source>Change font size</source>
+        <translation>改變字體大小</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="307"/>
@@ -720,13 +694,45 @@
         <translation>修改行距</translation>
     </message>
     <message>
-        <source>Effect</source>
-        <translation type="obsolete">特效</translation>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="316"/>
+        <source>Change font color</source>
+        <translation>改變文字顏色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="297"/>
-        <source>Change font size</source>
-        <translation>改變字體大小</translation>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="333"/>
+        <source>Change stroke width</source>
+        <translation>修改輪廓寬度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="336"/>
+        <source>Stroke</source>
+        <translation>輪廓</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="345"/>
+        <source>Change stroke color</source>
+        <translation>改變文字輪廓顏色</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="358"/>
+        <source>Change letter spacing</source>
+        <translation>修改字元間距</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="374"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="380"/>
+        <source>Angle</source>
+        <translation>角度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="389"/>
+        <source>Global Font Format</source>
+        <translation>全局字體格式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="399"/>
+        <source>Advanced Text Format</source>
+        <translation>進階字體格式</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="405"/>
@@ -754,15 +760,16 @@
         <translation>譯文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="399"/>
-        <source>Advanced Text Format</source>
-        <translation>進階字體格式</translation>
+        <source>Stroke width: </source>
+        <translation type="vanished">輪廓寬度: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="374"/>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="380"/>
-        <source>Angle</source>
-        <translation>角度</translation>
+        <source>line spacing: </source>
+        <translation type="vanished">行間距: </translation>
+    </message>
+    <message>
+        <source>Effect</source>
+        <translation type="vanished">特效</translation>
     </message>
 </context>
 <context>
@@ -965,10 +972,6 @@
         <translation>大小</translation>
     </message>
     <message>
-        <source>pen thickness </source>
-        <translation type="obsolete">畫筆大小 </translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="79"/>
         <source>Shape</source>
         <translation>形狀</translation>
@@ -987,6 +990,10 @@
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="92"/>
         <source>Inpainter</source>
         <translation>修復工具</translation>
+    </message>
+    <message>
+        <source>pen thickness </source>
+        <translation type="vanished">畫筆大小 </translation>
     </message>
 </context>
 <context>
@@ -1016,7 +1023,7 @@
     <name>InpainterStatusButton</name>
     <message>
         <source>Inpainter: </source>
-        <translation type="obsolete">修復工具: </translation>
+        <translation type="vanished">修復工具: </translation>
     </message>
 </context>
 <context>
@@ -1090,11 +1097,6 @@
         <translation>新建配置卡</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1722"/>
-        <source>Restore Built-in Profiles</source>
-        <translation>恢復內建預設卡</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1670"/>
         <source>Import Profiles</source>
         <translation>導入預設</translation>
@@ -1103,6 +1105,11 @@
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1671"/>
         <source>The clipboard does not contain valid LLM profile JSON.</source>
         <translation>剪貼簿中不包含有效的 LLM 預設 JSON。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1722"/>
+        <source>Restore Built-in Profiles</source>
+        <translation>恢復內建預設卡</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1723"/>
@@ -1128,96 +1135,168 @@
 <context>
     <name>LeftBar</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="115"/>
-        <source>Open Folder ...</source>
-        <translation>打開文件夾...</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="119"/>
-        <source>Open Project ... *.json</source>
-        <translation>打開項目文件...*.json</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="122"/>
-        <source>Save Project</source>
-        <translation>保存項目</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="126"/>
-        <source>Export as Doc</source>
-        <translation>導出為word文件</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="128"/>
-        <source>Import from Doc</source>
-        <translation>導入word文件</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="149"/>
-        <source>Open Recent</source>
-        <translation>打開最近</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="265"/>
-        <source>Select Directory</source>
-        <translation>選擇文件夾</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="272"/>
-        <source>Import *.docx</source>
-        <translation>導入*.docx</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="104"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="110"/>
         <source>Global Search (Ctrl+G)</source>
         <translation>全局尋找 (Ctrl+G)</translation>
     </message>
     <message>
-        <source>Export soure text as TXT</source>
-        <translation type="obsolete">原文導出為 TXT</translation>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="121"/>
+        <source>Open Folder ...</source>
+        <translation>打開文件夾...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="133"/>
-        <source>Export translation as TXT</source>
-        <translation>譯文導出為 TXT</translation>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="125"/>
+        <source>Open Project ... *.json</source>
+        <translation>打開項目文件...*.json</translation>
     </message>
     <message>
-        <source>Export soure text as markdown</source>
-        <translation type="obsolete">原文導出為 Markdown</translation>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="128"/>
+        <source>Save Project</source>
+        <translation>保存項目</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="138"/>
-        <source>Export translation as markdown</source>
-        <translation>譯文導出為 Markdown</translation>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="132"/>
+        <source>Export as Doc</source>
+        <translation>導出為word文件</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="141"/>
-        <source>Import translation from TXT/markdown</source>
-        <translation>從 TXT/Markdown 導入譯文</translation>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="134"/>
+        <source>Import from Doc</source>
+        <translation>導入word文件</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="131"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="137"/>
         <source>Export source text as TXT</source>
         <translation>原文導出為 TXT</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="136"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="139"/>
+        <source>Export translation as TXT</source>
+        <translation>譯文導出為 TXT</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="142"/>
         <source>Export source text as markdown</source>
         <translation>原文導出為 Markdown</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="171"/>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="172"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="144"/>
+        <source>Export translation as markdown</source>
+        <translation>譯文導出為 Markdown</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="147"/>
+        <source>Import translation from TXT/markdown</source>
+        <translation>從 TXT/Markdown 導入譯文</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="155"/>
+        <source>Open Recent</source>
+        <translation>打開最近</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="177"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="178"/>
         <source>Run</source>
         <translation>Run</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="271"/>
+        <source>Select Directory</source>
+        <translation>選擇文件夾</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="278"/>
+        <source>Import *.docx</source>
+        <translation>導入*.docx</translation>
+    </message>
+    <message>
+        <source>Export soure text as TXT</source>
+        <translation type="vanished">原文導出為 TXT</translation>
+    </message>
+    <message>
+        <source>Export soure text as markdown</source>
+        <translation type="vanished">原文導出為 Markdown</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="187"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="600"/>
+        <source>Updating: </source>
+        <translation>更新中: </translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="282"/>
+        <source>Keyword substitution for source text</source>
+        <translation>替換原文關鍵字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="286"/>
+        <source>Keyword substitution for machine translation source text</source>
+        <translation>替換機翻前文本關鍵字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="290"/>
+        <source>Keyword substitution for machine translation</source>
+        <translation>替換機翻結果中的關鍵字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="569"/>
+        <source>Checking...</source>
+        <translation>檢查中...</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="578"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="592"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="593"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="594"/>
+        <source>Downloading update: </source>
+        <translation>下載更新: </translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="591"/>
+        <source>Backing up current version: </source>
+        <translation>備份當前版本:</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="595"/>
+        <source>Saving local changes: </source>
+        <translation>保存本地更改: </translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="596"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="597"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="598"/>
+        <source>Installing update: </source>
+        <translation>安裝更新: </translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="623"/>
+        <source>Already up-to-date.</source>
+        <translation>版本已是最新</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="644"/>
+        <source>Failed to check for updates.</source>
+        <translation>更新檢查失敗</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="706"/>
         <source>Failed to load project </source>
         <translation>項目載入失敗 </translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="751"/>
+        <source>Failed to load project from</source>
+        <translation>無法從所選路徑載入項目：</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="810"/>
+        <source>Restart to apply changes?&#x20;
+</source>
+        <translation>重啟程序以應用更改?\n</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="1666"/>
@@ -1235,68 +1314,14 @@
         <translation>保存中...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1962"/>
-        <source>Export to </source>
-        <translation>導出至 </translation>
-    </message>
-    <message>
-        <source>Keyword substitution for OCR</source>
-        <translation type="obsolete">替換OCR文本中的關鍵字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="290"/>
-        <source>Keyword substitution for machine translation</source>
-        <translation>替換機翻結果中的關鍵字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="810"/>
-        <source>Restart to apply changes? 
-</source>
-        <translation>重啟程序以應用更改?\n</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="1837"/>
         <source>Import Text Styles</source>
         <translation>導入字體樣式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1847"/>
-        <source>Failed to load from {p}</source>
-        <translation>無法導入{p}</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="1851"/>
         <source>Save Text Styles</source>
         <translation>導出字體樣式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1868"/>
-        <source>Failed save to {savep}</source>
-        <translation>無法保存到{savep}</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="751"/>
-        <source>Failed to load project from</source>
-        <translation>無法從所選路徑載入項目：</translation>
-    </message>
-    <message>
-        <source>Are you sure to run image translation again?
-All existing translation results will be cleared!</source>
-        <translation type="obsolete">確定要重新運行嗎？現有翻譯結果將被清空！</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="282"/>
-        <source>Keyword substitution for source text</source>
-        <translation>替換原文關鍵字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="591"/>
-        <source>Backing up current version: </source>
-        <translation>備份當前版本:</translation>
-    </message>
-    <message>
-        <source>Confirmation</source>
-        <translation type="vanished">確認</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="1894"/>
@@ -1344,106 +1369,9 @@ All existing translation results will be cleared!</source>
         <translation>從目標文件導入失敗 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="286"/>
-        <source>Keyword substitution for machine translation source text</source>
-        <translation>替換機翻前文本關鍵字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="187"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="600"/>
-        <source>Updating: </source>
-        <translation>更新中: </translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="569"/>
-        <source>Checking...</source>
-        <translation>檢查中...</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="578"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="592"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="593"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="594"/>
-        <source>Downloading update: </source>
-        <translation>下載更新: </translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="595"/>
-        <source>Saving local changes: </source>
-        <translation>保存本地更改: </translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="596"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="597"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="598"/>
-        <source>Installing update: </source>
-        <translation>安裝更新: </translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="623"/>
-        <source>Already up-to-date.</source>
-        <translation>版本已是最新</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="644"/>
-        <source>Failed to check for updates.</source>
-        <translation>更新檢查失敗</translation>
-    </message>
-    <message>
-        <source>Update Available</source>
-        <translation type="vanished">更新可用</translation>
-    </message>
-    <message>
-        <source>A new version is available.</source>
-        <translation type="vanished">發現新版本</translation>
-    </message>
-    <message>
-        <source>Published: </source>
-        <translation type="vanished">發布: </translation>
-    </message>
-    <message>
-        <source>No release notes.</source>
-        <translation type="vanished">無更新摘要</translation>
-    </message>
-    <message>
-        <source>Update</source>
-        <translation type="vanished">更新</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation type="vanished">取消</translation>
-    </message>
-    <message>
-        <source>Update Installed</source>
-        <translation type="vanished">更新已安裝</translation>
-    </message>
-    <message>
-        <source>Update installed. Restart BallonsTranslator to use the new version.</source>
-        <translation type="vanished">更新已安裝.重啟以應用更新.</translation>
-    </message>
-    <message>
-        <source>If you are not a developer, you can ignore the following git information.</source>
-        <translation type="vanished">不是開發者可以忽略下面 git 相關資訊</translation>
-    </message>
-    <message>
-        <source>Restart Now</source>
-        <translation type="vanished">重啟軟體</translation>
-    </message>
-    <message>
-        <source>Later</source>
-        <translation type="vanished">稍後</translation>
-    </message>
-    <message>
-        <source>&quot;Run&quot; will clear previous results, &quot;Continue&quot; will try to run from previous progress</source>
-        <translation type="vanished">&quot;運行&quot; 會清空先前結果, &quot;繼續&quot;會從上次進度繼續</translation>
-    </message>
-    <message>
-        <source>Run</source>
-        <translation type="vanished">運行</translation>
-    </message>
-    <message>
-        <source>Continue</source>
-        <translation type="vanished">繼續</translation>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1962"/>
+        <source>Export to </source>
+        <translation>導出至 </translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="1996"/>
@@ -1552,17 +1480,88 @@ All existing translation results will be cleared!</source>
         <source>Fill URL</source>
         <translation>填入 URL</translation>
     </message>
+    <message>
+        <source>Keyword substitution for OCR</source>
+        <translation type="vanished">替換OCR文本中的關鍵字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1847"/>
+        <source>Failed to load from {p}</source>
+        <translation>無法導入{p}</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1868"/>
+        <source>Failed save to {savep}</source>
+        <translation>無法保存到{savep}</translation>
+    </message>
+    <message>
+        <source>Are you sure to run image translation again?
+All existing translation results will be cleared!</source>
+        <translation type="vanished">確定要重新運行嗎？現有翻譯結果將被清空！</translation>
+    </message>
+    <message>
+        <source>Confirmation</source>
+        <translation type="vanished">確認</translation>
+    </message>
+    <message>
+        <source>Update Available</source>
+        <translation type="vanished">更新可用</translation>
+    </message>
+    <message>
+        <source>A new version is available.</source>
+        <translation type="vanished">發現新版本</translation>
+    </message>
+    <message>
+        <source>Published: </source>
+        <translation type="vanished">發布: </translation>
+    </message>
+    <message>
+        <source>No release notes.</source>
+        <translation type="vanished">無更新摘要</translation>
+    </message>
+    <message>
+        <source>Update</source>
+        <translation type="vanished">更新</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="vanished">取消</translation>
+    </message>
+    <message>
+        <source>Update Installed</source>
+        <translation type="vanished">更新已安裝</translation>
+    </message>
+    <message>
+        <source>Update installed. Restart BallonsTranslator to use the new version.</source>
+        <translation type="vanished">更新已安裝.重啟以應用更新.</translation>
+    </message>
+    <message>
+        <source>If you are not a developer, you can ignore the following git information.</source>
+        <translation type="vanished">不是開發者可以忽略下面 git 相關資訊</translation>
+    </message>
+    <message>
+        <source>Restart Now</source>
+        <translation type="vanished">重啟軟體</translation>
+    </message>
+    <message>
+        <source>Later</source>
+        <translation type="vanished">稍後</translation>
+    </message>
+    <message>
+        <source>&quot;Run&quot; will clear previous results, &quot;Continue&quot; will try to run from previous progress</source>
+        <translation type="vanished">&quot;運行&quot; 會清空先前結果, &quot;繼續&quot;會從上次進度繼續</translation>
+    </message>
+    <message>
+        <source>Run</source>
+        <translation type="vanished">運行</translation>
+    </message>
+    <message>
+        <source>Continue</source>
+        <translation type="vanished">繼續</translation>
+    </message>
 </context>
 <context>
     <name>ModuleManager</name>
-    <message>
-        <source>Invalid</source>
-        <translation type="obsolete">不可用</translation>
-    </message>
-    <message>
-        <source>Set Inpainter...</source>
-        <translation type="obsolete">正在初始化修復工具...</translation>
-    </message>
     <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1354"/>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1681"/>
@@ -1656,9 +1655,44 @@ All existing translation results will be cleared!</source>
         <source>Selected modules are ready.</source>
         <translation>所選模組已就緒</translation>
     </message>
+    <message>
+        <source>Invalid</source>
+        <translation type="vanished">不可用</translation>
+    </message>
+    <message>
+        <source>Set Inpainter...</source>
+        <translation type="vanished">正在初始化修復工具...</translation>
+    </message>
 </context>
 <context>
     <name>ModuleParamTranslator</name>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="8"/>
+        <source>Inpaint using the selected image-capable LLM profile.</source>
+        <translation>使用選中的 LLM 配置修圖</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="11"/>
+        <source>Delay between LLM image cleanup requests in seconds.</source>
+        <translation>請求之間的延遲時間（秒）</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="14"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="101"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="569"/>
+        <source>Delay</source>
+        <translation>延遲</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="17"/>
+        <source>Send each text block crop separately instead of sending the whole image.</source>
+        <translation>發送裁剪後的文本塊而不是整張圖</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="20"/>
+        <source>Inpaint By Block</source>
+        <translation>逐塊修復</translation>
+    </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="23"/>
         <source>Global request limit for LLM image cleanup.</source>
@@ -1688,6 +1722,13 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="578"/>
         <source>Proxy address used for the OpenAI-compatible client.</source>
         <translation>用於相容 OpenAI 格式用戶端的代理地址。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="38"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="113"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="581"/>
+        <source>Proxy</source>
+        <translation>代理</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="41"/>
@@ -1749,6 +1790,18 @@ All existing translation results will be cleared!</source>
         <translation>設備</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="65"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="83"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="92"/>
+        <source>Inpaint Size</source>
+        <translation>修復尺寸</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="74"/>
+        <source>model</source>
+        <translation>模型</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="77"/>
         <source>step</source>
         <translation>步數</translation>
@@ -1779,6 +1832,11 @@ All existing translation results will be cleared!</source>
         <translation>最大生成 Token 數</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="134"/>
+        <source>Max New Tokens</source>
+        <translation>最大新 Token 數</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="137"/>
         <source>OCR using Google Lens Protobuf API (requests backend)</source>
         <translation>使用 Google Lens Protobuf API</translation>
@@ -1803,9 +1861,22 @@ All existing translation results will be cleared!</source>
         <translation>處理 OCR 結果的換行符</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="146"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="179"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="200"/>
+        <source>Newline Handling</source>
+        <translation>換行符處理</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="149"/>
         <source>Convert text to lowercase except first letter of sentences.</source>
         <translation>將文本轉換為小寫，但句子首字母除外</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="152"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="206"/>
+        <source>No Uppercase</source>
+        <translation>不強制轉大寫</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="155"/>
@@ -1822,6 +1893,11 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="161"/>
         <source>Target language code (e.g., &apos;ja&apos;, &apos;en&apos;, &apos;ru&apos;).</source>
         <translation>目標語言代碼（例如 &apos;ja&apos;, &apos;en&apos;, &apos;ru&apos;）。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="164"/>
+        <source>Target Language</source>
+        <translation>目標語言</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="167"/>
@@ -1845,44 +1921,26 @@ All existing translation results will be cleared!</source>
         <translation>選擇如何處理 OCR 結果中的換行符</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="146"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="179"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="200"/>
-        <source>Newline Handling</source>
-        <translation>換行符處理</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="65"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="83"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="92"/>
-        <source>Inpaint Size</source>
-        <translation>修復尺寸</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="134"/>
-        <source>Max New Tokens</source>
-        <translation>最大新 Token 數</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="152"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="206"/>
-        <source>No Uppercase</source>
-        <translation>不強制轉大寫</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="164"/>
-        <source>Target Language</source>
-        <translation>目標語言</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="182"/>
         <source>OCR using Google Vision API</source>
         <translation>使用 Google Vision API 進行 OCR</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="185"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="542"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="641"/>
+        <source>API Key</source>
+        <translation>API 金鑰</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="191"/>
         <source>Language codes separated by commas (BCP-47)</source>
         <translation>以逗號分隔的語言代碼 (BCP-47)</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="194"/>
+        <source>Language Hints</source>
+        <translation>語言提示</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="203"/>
@@ -1901,16 +1959,15 @@ All existing translation results will be cleared!</source>
         <translation></translation>
     </message>
     <message>
-        <source>Not a OCR, just return original text.</source>
-        <translation type="vanished">只返回原文本</translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="221"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="230"/>
+        <source>Chunk Size</source>
+        <translation>分塊大小</translation>
     </message>
     <message>
-        <source>NOTICE</source>
-        <translation type="vanished">注意</translation>
-    </message>
-    <message>
-        <source>本地部署的 Paddle OCR-VL 服務 (POST /layout-parsing)</source>
-        <translation type="vanished">本地部署的 Paddle OCR-VL 服務 (POST /layout-parsing)</translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="236"/>
+        <source>本地部署的 Paddle OCR-VL 服务 (POST /layout-parsing)</source>
+        <translation>本地部署的 Paddle OCR-VL 服務 (POST /layout-parsing)</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="239"/>
@@ -1918,9 +1975,19 @@ All existing translation results will be cleared!</source>
         <translation>最大重試次數</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="242"/>
+        <source>Prettify Markdown</source>
+        <translation>美化 Markdown</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="245"/>
         <source>retry interval</source>
         <translation>重試間隔</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="248"/>
+        <source>Server URL</source>
+        <translation>伺服器 URL</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="251"/>
@@ -1938,8 +2005,14 @@ All existing translation results will be cleared!</source>
         <translation>識別批次大小（更大 = 更快，占用更多視訊記憶體）</translation>
     </message>
     <message>
-        <source>星河雲(糰子翻譯器) OCR API</source>
-        <translation type="vanished">星河雲(糰子翻譯器) OCR API</translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="263"/>
+        <source>Recognition Batch Size</source>
+        <translation>識別批次大小</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="266"/>
+        <source>星河云(团子翻译器) OCR API</source>
+        <translation>星河雲(糰子翻譯器) OCR API</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="269"/>
@@ -1952,183 +2025,6 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="443"/>
         <source>User</source>
         <translation>使用者名稱</translation>
-    </message>
-    <message>
-        <source>是否強制擴展圖片像素，會導致識別速度下降</source>
-        <translation type="vanished">是否強制擴展圖片像素，會導致識別速度下降</translation>
-    </message>
-    <message>
-        <source>刪除舊 Token 並重新申請</source>
-        <translation type="vanished">刪除舊 Token 並重新申請</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="302"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="485"/>
-        <source>更新 Token</source>
-        <translation>更新 Token</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="413"/>
-        <source>ComicTextDetector</source>
-        <translation>ComicTextDetector</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="425"/>
-        <source>font size max</source>
-        <translation>最大字號</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="428"/>
-        <source>font size min</source>
-        <translation>最小字號</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="431"/>
-        <source>font size multiplier</source>
-        <translation>字號乘數</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="434"/>
-        <source>mask dilate size</source>
-        <translation>掩膜膨脹尺寸</translation>
-    </message>
-    <message>
-        <source>星河雲(糰子翻譯器) OCR 文字檢測器</source>
-        <translation type="vanished">星河雲(糰子翻譯器) OCR 文字檢測器</translation>
-    </message>
-    <message>
-        <source>IoU閾值</source>
-        <translation type="vanished">IoU閾值</translation>
-    </message>
-    <message>
-        <source>最大字號</source>
-        <translation type="vanished">最大字號</translation>
-    </message>
-    <message>
-        <source>最小字號</source>
-        <translation type="vanished">最小字號</translation>
-    </message>
-    <message>
-        <source>字號乘數</source>
-        <translation type="vanished">字號乘數</translation>
-    </message>
-    <message>
-        <source>標籤</source>
-        <translation type="vanished">標籤</translation>
-    </message>
-    <message>
-        <source>掩碼擴張尺寸</source>
-        <translation type="vanished">掩膜擴張尺寸</translation>
-    </message>
-    <message>
-        <source>合併文本行</source>
-        <translation type="vanished">合併文本行</translation>
-    </message>
-    <message>
-        <source>模型路徑</source>
-        <translation type="vanished">模型路徑</translation>
-    </message>
-    <message>
-        <source>豎排文本</source>
-        <translation type="vanished">豎排文本</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="524"/>
-        <source>appId</source>
-        <translation>appId</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="530"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="536"/>
-        <source>token</source>
-        <translation>token</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="539"/>
-        <source>Return source text as translation</source>
-        <translation>將原文作為譯文返回</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="545"/>
-        <source>context</source>
-        <translation>上下文</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="551"/>
-        <source>formality</source>
-        <translation>正式程度</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="194"/>
-        <source>Language Hints</source>
-        <translation>語言提示</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="8"/>
-        <source>Inpaint using the selected image-capable LLM profile.</source>
-        <translation>使用選中的 LLM 配置修圖</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="11"/>
-        <source>Delay between LLM image cleanup requests in seconds.</source>
-        <translation>請求之間的延遲時間（秒）</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="14"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="101"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="569"/>
-        <source>Delay</source>
-        <translation>延遲</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="17"/>
-        <source>Send each text block crop separately instead of sending the whole image.</source>
-        <translation>發送裁剪後的文本塊而不是整張圖</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="20"/>
-        <source>Inpaint By Block</source>
-        <translation>逐塊修復</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="38"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="113"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="581"/>
-        <source>Proxy</source>
-        <translation>代理</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="74"/>
-        <source>model</source>
-        <translation>模型</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="185"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="542"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="641"/>
-        <source>API Key</source>
-        <translation>API 金鑰</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="221"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="230"/>
-        <source>Chunk Size</source>
-        <translation>分塊大小</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="242"/>
-        <source>Prettify Markdown</source>
-        <translation>美化 Markdown</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="248"/>
-        <source>Server URL</source>
-        <translation>伺服器 URL</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="263"/>
-        <source>Recognition Batch Size</source>
-        <translation>識別批次大小</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="275"/>
@@ -2147,6 +2043,11 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="455"/>
         <source>Filtrate</source>
         <translation>過濾</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="284"/>
+        <source>是否强制扩展图片像素，会导致识别速度下降</source>
+        <translation>是否強制擴展圖片像素，會導致識別速度下降</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="287"/>
@@ -2173,40 +2074,21 @@ All existing translation results will be cleared!</source>
         <translation>最佳化</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="416"/>
-        <source>Max split batch size</source>
-        <translation>最大分批數</translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="299"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="482"/>
+        <source>删除旧 Token 并重新申请</source>
+        <translation>刪除舊 Token 並重新申請</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="419"/>
-        <source>Detect Size</source>
-        <translation>檢測尺寸</translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="302"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="485"/>
+        <source>更新 Token</source>
+        <translation>更新 Token</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="305"/>
         <source>RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.</source>
         <translation>RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) 用於文本/氣泡檢測。</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="236"/>
-        <source>本地部署的 Paddle OCR-VL 服务 (POST /layout-parsing)</source>
-        <translation>本地部署的 Paddle OCR-VL 服務 (POST /layout-parsing)</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="266"/>
-        <source>星河云(团子翻译器) OCR API</source>
-        <translation>星河雲(糰子翻譯器) OCR API</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="284"/>
-        <source>是否强制扩展图片像素，会导致识别速度下降</source>
-        <translation>是否強制擴展圖片像素，會導致識別速度下降</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="299"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="482"/>
-        <source>删除旧 Token 并重新申请</source>
-        <translation>刪除舊 Token 並重新申請</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="308"/>
@@ -2379,6 +2261,41 @@ All existing translation results will be cleared!</source>
         <translation>切片閾值比例</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="413"/>
+        <source>ComicTextDetector</source>
+        <translation>ComicTextDetector</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="416"/>
+        <source>Max split batch size</source>
+        <translation>最大分批數</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="419"/>
+        <source>Detect Size</source>
+        <translation>檢測尺寸</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="425"/>
+        <source>font size max</source>
+        <translation>最大字號</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="428"/>
+        <source>font size min</source>
+        <translation>最小字號</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="431"/>
+        <source>font size multiplier</source>
+        <translation>字號乘數</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="434"/>
+        <source>mask dilate size</source>
+        <translation>掩膜膨脹尺寸</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="437"/>
         <source>星河云(团子翻译器) OCR 文字检测器</source>
         <translation>星河雲(糰子翻譯器) OCR 文字檢測器</translation>
@@ -2469,19 +2386,30 @@ All existing translation results will be cleared!</source>
         <translation>豎排文本</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="662"/>
-        <source>DAT Path</source>
-        <translation type="unfinished"></translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="524"/>
+        <source>appId</source>
+        <translation>appId</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="665"/>
-        <source>J2KEngine.dll Path</source>
-        <translation type="unfinished"></translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="530"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="536"/>
+        <source>token</source>
+        <translation>token</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="668"/>
-        <source>ehnd-kor.dll Path (optional)</source>
-        <translation type="unfinished"></translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="539"/>
+        <source>Return source text as translation</source>
+        <translation>將原文作為譯文返回</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="545"/>
+        <source>context</source>
+        <translation>上下文</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="551"/>
+        <source>formality</source>
+        <translation>正式程度</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="554"/>
@@ -2600,6 +2528,85 @@ All existing translation results will be cleared!</source>
         <source>Yandex Cloud API Key</source>
         <translation>Yandex Cloud API 金鑰</translation>
     </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="662"/>
+        <source>DAT Path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="665"/>
+        <source>J2KEngine.dll Path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_i18n_catalog.py" line="668"/>
+        <source>ehnd-kor.dll Path (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not a OCR, just return original text.</source>
+        <translation type="vanished">只返回原文本</translation>
+    </message>
+    <message>
+        <source>NOTICE</source>
+        <translation type="vanished">注意</translation>
+    </message>
+    <message>
+        <source>本地部署的 Paddle OCR-VL 服務 (POST /layout-parsing)</source>
+        <translation type="vanished">本地部署的 Paddle OCR-VL 服務 (POST /layout-parsing)</translation>
+    </message>
+    <message>
+        <source>星河雲(糰子翻譯器) OCR API</source>
+        <translation type="vanished">星河雲(糰子翻譯器) OCR API</translation>
+    </message>
+    <message>
+        <source>是否強制擴展圖片像素，會導致識別速度下降</source>
+        <translation type="vanished">是否強制擴展圖片像素，會導致識別速度下降</translation>
+    </message>
+    <message>
+        <source>刪除舊 Token 並重新申請</source>
+        <translation type="vanished">刪除舊 Token 並重新申請</translation>
+    </message>
+    <message>
+        <source>星河雲(糰子翻譯器) OCR 文字檢測器</source>
+        <translation type="vanished">星河雲(糰子翻譯器) OCR 文字檢測器</translation>
+    </message>
+    <message>
+        <source>IoU閾值</source>
+        <translation type="vanished">IoU閾值</translation>
+    </message>
+    <message>
+        <source>最大字號</source>
+        <translation type="vanished">最大字號</translation>
+    </message>
+    <message>
+        <source>最小字號</source>
+        <translation type="vanished">最小字號</translation>
+    </message>
+    <message>
+        <source>字號乘數</source>
+        <translation type="vanished">字號乘數</translation>
+    </message>
+    <message>
+        <source>標籤</source>
+        <translation type="vanished">標籤</translation>
+    </message>
+    <message>
+        <source>掩碼擴張尺寸</source>
+        <translation type="vanished">掩膜擴張尺寸</translation>
+    </message>
+    <message>
+        <source>合併文本行</source>
+        <translation type="vanished">合併文本行</translation>
+    </message>
+    <message>
+        <source>模型路徑</source>
+        <translation type="vanished">模型路徑</translation>
+    </message>
+    <message>
+        <source>豎排文本</source>
+        <translation type="vanished">豎排文本</translation>
+    </message>
 </context>
 <context>
     <name>ModuleSelectionWidget</name>
@@ -2672,10 +2679,6 @@ All existing translation results will be cleared!</source>
 <context>
     <name>ModuleThread</name>
     <message>
-        <source>Failed to set </source>
-        <translation type="obsolete">無法設置 </translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="169"/>
         <source>Checking dependencies</source>
         <translation>檢查依賴庫</translation>
@@ -2705,12 +2708,16 @@ All existing translation results will be cleared!</source>
         <source>Module task failed.</source>
         <translation>運行失敗</translation>
     </message>
+    <message>
+        <source>Failed to set </source>
+        <translation type="vanished">無法設置 </translation>
+    </message>
 </context>
 <context>
     <name>OCRConfigPanel</name>
     <message>
         <source>Keyword substitution for OCR results</source>
-        <translation type="obsolete">替換OCR文本中的關鍵字</translation>
+        <translation type="vanished">替換OCR文本中的關鍵字</translation>
     </message>
     <message>
         <source>Delete and restore region where OCR return empty string.</source>
@@ -2850,10 +2857,6 @@ All existing translation results will be cleared!</source>
 <context>
     <name>PenConfigPanel</name>
     <message>
-        <source>alpha value</source>
-        <translation type="obsolete">alpha值</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="136"/>
         <source>Color</source>
         <translation>顏色</translation>
@@ -2867,10 +2870,6 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="145"/>
         <source>Thickness</source>
         <translation>大小</translation>
-    </message>
-    <message>
-        <source>pen thickness </source>
-        <translation type="obsolete">畫筆大小 </translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="150"/>
@@ -2887,64 +2886,67 @@ All existing translation results will be cleared!</source>
         <source>Rectangle</source>
         <translation>方形</translation>
     </message>
+    <message>
+        <source>alpha value</source>
+        <translation type="vanished">alpha值</translation>
+    </message>
+    <message>
+        <source>pen thickness </source>
+        <translation type="vanished">畫筆大小 </translation>
+    </message>
 </context>
 <context>
     <name>PresetListWidget</name>
     <message>
         <source>preset</source>
-        <translation type="obsolete">預設</translation>
+        <translation type="vanished">預設</translation>
     </message>
     <message>
         <source>Delete</source>
-        <translation type="obsolete">刪除</translation>
+        <translation type="vanished">刪除</translation>
     </message>
     <message>
         <source>New preset</source>
-        <translation type="obsolete">新建預設</translation>
+        <translation type="vanished">新建預設</translation>
     </message>
     <message>
         <source>Load preset</source>
-        <translation type="obsolete">載入預設</translation>
+        <translation type="vanished">載入預設</translation>
     </message>
 </context>
 <context>
     <name>PresetPanel</name>
     <message>
         <source>New</source>
-        <translation type="obsolete">新建</translation>
+        <translation type="vanished">新建</translation>
     </message>
     <message>
         <source>Create new preset: </source>
-        <translation type="obsolete">新建預設: </translation>
+        <translation type="vanished">新建預設: </translation>
     </message>
     <message>
         <source>Delete</source>
-        <translation type="obsolete">刪除</translation>
+        <translation type="vanished">刪除</translation>
     </message>
     <message>
         <source>Load</source>
-        <translation type="obsolete">載入</translation>
+        <translation type="vanished">載入</translation>
     </message>
     <message>
         <source>Load preset as global format</source>
-        <translation type="obsolete">載入預設為全局字體格式</translation>
+        <translation type="vanished">載入預設為全局字體格式</translation>
     </message>
     <message>
         <source>Exit</source>
-        <translation type="obsolete">退出</translation>
+        <translation type="vanished">退出</translation>
     </message>
     <message>
         <source>Text Style Presets</source>
-        <translation type="obsolete">字體樣式預設</translation>
+        <translation type="vanished">字體樣式預設</translation>
     </message>
 </context>
 <context>
     <name>ProfileCardWidget</name>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1028"/>
-        <source>Copy Profile as JSON</source>
-        <translation>複製預設 JSON</translation>
-    </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="373"/>
         <source>Double click the name to edit. Right click for profile actions.</source>
@@ -2986,10 +2988,6 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="392"/>
         <source>Thinking Level</source>
         <translation>思考級別</translation>
-    </message>
-    <message>
-        <source>Invalid Repeat Count</source>
-        <translation type="vanished">無效的重試次數</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="393"/>
@@ -3086,15 +3084,6 @@ All existing translation results will be cleared!</source>
         <translation>對圖像修復的額外要求</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="510"/>
-        <source>Text Model</source>
-        <translation>文本模型</translation>
-    </message>
-    <message>
-        <source>Retries when response count does not match source count.</source>
-        <translation type="vanished">返回翻譯條數不匹配時重試</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="415"/>
         <source>Maximum generated response tokens, not input/context tokens.</source>
         <translation>限制的最大輸出 token 數量, 並非輸入/上下文 token 數.</translation>
@@ -3144,8 +3133,9 @@ All existing translation results will be cleared!</source>
         <translation>API 金鑰</translation>
     </message>
     <message>
-        <source>Model</source>
-        <translation type="vanished">模型</translation>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="510"/>
+        <source>Text Model</source>
+        <translation>文本模型</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="514"/>
@@ -3161,40 +3151,6 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="524"/>
         <source>Delete current model</source>
         <translation>刪除當前模型</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1406"/>
-        <source>Text translation model used by LLMTranslator. Click to disable text translation for this profile.</source>
-        <translation>LLMTranslator 使用的模型. 點擊禁用文本翻譯能力</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1408"/>
-        <source>Text translation model used by LLMTranslator. Click to enable text translation for this profile.</source>
-        <translation>LLMTranslator 使用的模型. 點擊啟用文本翻譯能力</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1420"/>
-        <source>Vision OCR model used by LLMOCR. Click to disable vision OCR for this profile.</source>
-        <translation>LLMOCR 使用的視覺模型. 點擊禁用視覺能力</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1422"/>
-        <source>Vision OCR model used by LLMOCR. Click to enable vision OCR for this profile.</source>
-        <translation>LLMOCR 使用的視覺模型. 點擊啟用視覺能力</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1434"/>
-        <source>Image cleanup model used by LLMInpaint. Click to disable image cleanup for this profile.</source>
-        <translation>LLMInpainter 使用的修復模型. 點擊禁用圖像生成能力</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1436"/>
-        <source>Image cleanup model used by LLMInpaint. Click to enable image cleanup for this profile.</source>
-        <translation>LLMInpainter 使用的修復模型. 點擊啟用圖像生成能力</translation>
-    </message>
-    <message>
-        <source>Model used by this profile.</source>
-        <translation type="vanished">這份配置卡的選中模型</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="563"/>
@@ -3248,6 +3204,11 @@ All existing translation results will be cleared!</source>
         <translation>複製</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1028"/>
+        <source>Copy Profile as JSON</source>
+        <translation>複製預設 JSON</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1030"/>
         <source>Set for Translator</source>
         <translation>設為翻譯器</translation>
@@ -3278,6 +3239,62 @@ All existing translation results will be cleared!</source>
         <translation>圖像模型名稱</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1406"/>
+        <source>Text translation model used by LLMTranslator. Click to disable text translation for this profile.</source>
+        <translation>LLMTranslator 使用的模型. 點擊禁用文本翻譯能力</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1408"/>
+        <source>Text translation model used by LLMTranslator. Click to enable text translation for this profile.</source>
+        <translation>LLMTranslator 使用的模型. 點擊啟用文本翻譯能力</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1420"/>
+        <source>Vision OCR model used by LLMOCR. Click to disable vision OCR for this profile.</source>
+        <translation>LLMOCR 使用的視覺模型. 點擊禁用視覺能力</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1422"/>
+        <source>Vision OCR model used by LLMOCR. Click to enable vision OCR for this profile.</source>
+        <translation>LLMOCR 使用的視覺模型. 點擊啟用視覺能力</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1434"/>
+        <source>Image cleanup model used by LLMInpaint. Click to disable image cleanup for this profile.</source>
+        <translation>LLMInpainter 使用的修復模型. 點擊禁用圖像生成能力</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1436"/>
+        <source>Image cleanup model used by LLMInpaint. Click to enable image cleanup for this profile.</source>
+        <translation>LLMInpainter 使用的修復模型. 點擊啟用圖像生成能力</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1472"/>
+        <source>Required API key is configured.</source>
+        <translation>API key 已填入</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1476"/>
+        <source>Required API key is missing.</source>
+        <translation>API 金鑰 不能為空</translation>
+    </message>
+    <message>
+        <source>Invalid Repeat Count</source>
+        <translation type="vanished">無效的重試次數</translation>
+    </message>
+    <message>
+        <source>Retries when response count does not match source count.</source>
+        <translation type="vanished">返回翻譯條數不匹配時重試</translation>
+    </message>
+    <message>
+        <source>Model</source>
+        <translation type="vanished">模型</translation>
+    </message>
+    <message>
+        <source>Model used by this profile.</source>
+        <translation type="vanished">這份配置卡的選中模型</translation>
+    </message>
+    <message>
         <source>Disable text translation for this profile.</source>
         <translation type="vanished">禁用文本翻譯能力</translation>
     </message>
@@ -3301,35 +3318,9 @@ All existing translation results will be cleared!</source>
         <source>Enable image cleanup for this profile.</source>
         <translation type="vanished">啟用圖像修復能力</translation>
     </message>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1472"/>
-        <source>Required API key is configured.</source>
-        <translation>API key 已填入</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1476"/>
-        <source>Required API key is missing.</source>
-        <translation>API 金鑰 不能為空</translation>
-    </message>
 </context>
 <context>
     <name>ProgressMessageBox</name>
-    <message>
-        <source>Detecting: </source>
-        <translation type="obsolete">檢測: </translation>
-    </message>
-    <message>
-        <source>OCR: </source>
-        <translation type="obsolete">OCR: </translation>
-    </message>
-    <message>
-        <source>Inpainting: </source>
-        <translation type="obsolete">修復: </translation>
-    </message>
-    <message>
-        <source>Translating: </source>
-        <translation type="obsolete">翻譯: </translation>
-    </message>
     <message>
         <location filename="../../ballontranslator/ui/custom_widget/message.py" line="150"/>
         <location filename="../../ballontranslator/ui/custom_widget/message.py" line="177"/>
@@ -3341,9 +3332,30 @@ All existing translation results will be cleared!</source>
         <source>trying to stop...</source>
         <translation>正在嘗試停止...</translation>
     </message>
+    <message>
+        <source>Detecting: </source>
+        <translation type="vanished">檢測: </translation>
+    </message>
+    <message>
+        <source>OCR: </source>
+        <translation type="vanished">OCR: </translation>
+    </message>
+    <message>
+        <source>Inpainting: </source>
+        <translation type="vanished">修復: </translation>
+    </message>
+    <message>
+        <source>Translating: </source>
+        <translation type="vanished">翻譯: </translation>
+    </message>
 </context>
 <context>
     <name>RectPanel</name>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="197"/>
+        <source>Dilate</source>
+        <translation>膨脹</translation>
+    </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="205"/>
         <source>method 1</source>
@@ -3353,6 +3365,11 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="206"/>
         <source>method 2</source>
         <translation>方法2</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="207"/>
+        <source>Use Existing Mask</source>
+        <translation>使用區域已有掩膜</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="210"/>
@@ -3370,23 +3387,14 @@ All existing translation results will be cleared!</source>
         <translation>圖像修復</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="216"/>
-        <source>Delete</source>
-        <translation>刪除</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="197"/>
-        <source>Dilate</source>
-        <translation>膨脹</translation>
-    </message>
-    <message>
-        <source>kernel size: </source>
-        <translation type="obsolete">核大小: </translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="214"/>
         <source>Space</source>
         <translation>空格</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="216"/>
+        <source>Delete</source>
+        <translation>刪除</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="217"/>
@@ -3399,9 +3407,8 @@ All existing translation results will be cleared!</source>
         <translation>修復工具</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="207"/>
-        <source>Use Existing Mask</source>
-        <translation>使用區域已有掩膜</translation>
+        <source>kernel size: </source>
+        <translation type="vanished">核大小: </translation>
     </message>
 </context>
 <context>
@@ -3623,6 +3630,42 @@ All existing translation results will be cleared!</source>
     </message>
 </context>
 <context>
+    <name>SpellCheckManager</name>
+    <message>
+        <source>Install Dependency</source>
+        <translation type="obsolete">安裝依賴包</translation>
+    </message>
+    <message>
+        <source>The required package &apos;pyspellchecker&apos; is not installed. Would you like to install it now?</source>
+        <translation type="obsolete">依賴包 &apos;pyspellchecker&apos; 未安裝. 立刻安裝?</translation>
+    </message>
+    <message>
+        <source>Installing pyspellchecker...</source>
+        <translation type="obsolete">正在安裝 pyspellchecker</translation>
+    </message>
+    <message>
+        <source>Installation Complete</source>
+        <translation type="obsolete">安裝完畢</translation>
+    </message>
+    <message>
+        <source>Package &apos;pyspellchecker&apos; installed successfully!</source>
+        <translation type="obsolete">&apos;pyspellchecker&apos; 安裝成功</translation>
+    </message>
+    <message>
+        <source>Unknown error</source>
+        <translation type="obsolete">未知錯誤</translation>
+    </message>
+    <message>
+        <source>Installation Failed</source>
+        <translation type="obsolete">安裝失敗</translation>
+    </message>
+    <message>
+        <source>Failed to install &apos;pyspellchecker&apos;:
+</source>
+        <translation type="obsolete">&apos;pyspellchecker&apos; 安裝失敗</translation>
+    </message>
+</context>
+<context>
     <name>TextAdvancedFormatPanel</name>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="318"/>
@@ -3645,14 +3688,14 @@ All existing translation results will be cleared!</source>
         <translation>文本不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="364"/>
-        <source>Shadow</source>
-        <translation>陰影</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="344"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="364"/>
+        <source>Shadow</source>
+        <translation>陰影</translation>
     </message>
 </context>
 <context>
@@ -3666,106 +3709,106 @@ All existing translation results will be cleared!</source>
     <name>TextEffectPanel</name>
     <message>
         <source>Effect</source>
-        <translation type="obsolete">特效</translation>
+        <translation type="vanished">特效</translation>
     </message>
     <message>
         <source>Opacity</source>
-        <translation type="obsolete">不透明度</translation>
+        <translation type="vanished">不透明度</translation>
     </message>
     <message>
         <source>Shadow</source>
-        <translation type="obsolete">陰影</translation>
+        <translation type="vanished">陰影</translation>
     </message>
     <message>
         <source>Change shadow color</source>
-        <translation type="obsolete">修改陰影顏色</translation>
+        <translation type="vanished">修改陰影顏色</translation>
     </message>
     <message>
         <source>Apply</source>
-        <translation type="obsolete">應用</translation>
+        <translation type="vanished">應用</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="obsolete">取消</translation>
+        <translation type="vanished">取消</translation>
     </message>
     <message>
         <source>Opacity: </source>
-        <translation type="obsolete">不透明度: </translation>
+        <translation type="vanished">不透明度: </translation>
     </message>
     <message>
         <source>radius: </source>
-        <translation type="obsolete">半徑: </translation>
+        <translation type="vanished">半徑: </translation>
     </message>
     <message>
         <source>strength: </source>
-        <translation type="obsolete">強度: </translation>
+        <translation type="vanished">強度: </translation>
     </message>
     <message>
         <source>x offset: </source>
-        <translation type="obsolete">x偏移: </translation>
+        <translation type="vanished">x偏移: </translation>
     </message>
     <message>
         <source>y offset: </source>
-        <translation type="obsolete">y偏移: </translation>
+        <translation type="vanished">y偏移: </translation>
     </message>
     <message>
         <source>radius</source>
-        <translation type="obsolete">半徑</translation>
+        <translation type="vanished">半徑</translation>
     </message>
     <message>
         <source>strength</source>
-        <translation type="obsolete">強度</translation>
+        <translation type="vanished">強度</translation>
     </message>
     <message>
         <source>x offset</source>
-        <translation type="obsolete">x偏移</translation>
+        <translation type="vanished">x偏移</translation>
     </message>
     <message>
         <source>y offset</source>
-        <translation type="obsolete">y偏移</translation>
+        <translation type="vanished">y偏移</translation>
     </message>
 </context>
 <context>
     <name>TextEffectPanelDeprecated</name>
     <message>
         <source>Effect</source>
-        <translation type="obsolete">特效</translation>
+        <translation type="vanished">特效</translation>
     </message>
     <message>
         <source>Opacity</source>
-        <translation type="obsolete">不透明度</translation>
+        <translation type="vanished">不透明度</translation>
     </message>
     <message>
         <source>Shadow</source>
-        <translation type="obsolete">陰影</translation>
+        <translation type="vanished">陰影</translation>
     </message>
     <message>
         <source>Change shadow color</source>
-        <translation type="obsolete">修改陰影顏色</translation>
+        <translation type="vanished">修改陰影顏色</translation>
     </message>
     <message>
         <source>radius</source>
-        <translation type="obsolete">半徑</translation>
+        <translation type="vanished">半徑</translation>
     </message>
     <message>
         <source>strength</source>
-        <translation type="obsolete">強度</translation>
+        <translation type="vanished">強度</translation>
     </message>
     <message>
         <source>x offset</source>
-        <translation type="obsolete">x偏移</translation>
+        <translation type="vanished">x偏移</translation>
     </message>
     <message>
         <source>y offset</source>
-        <translation type="obsolete">y偏移</translation>
+        <translation type="vanished">y偏移</translation>
     </message>
     <message>
         <source>Apply</source>
-        <translation type="obsolete">應用</translation>
+        <translation type="vanished">應用</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="obsolete">取消</translation>
+        <translation type="vanished">取消</translation>
     </message>
 </context>
 <context>
@@ -3814,10 +3857,6 @@ All existing translation results will be cleared!</source>
 <context>
     <name>TextShadowGroup</name>
     <message>
-        <source>Shadow</source>
-        <translation type="obsolete">陰影</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="69"/>
         <source>Set X offset</source>
         <translation>X 偏移量</translation>
@@ -3852,36 +3891,40 @@ All existing translation results will be cleared!</source>
         <source>Offset</source>
         <translation>偏移量</translation>
     </message>
+    <message>
+        <source>Shadow</source>
+        <translation type="vanished">陰影</translation>
+    </message>
 </context>
 <context>
     <name>TextStyleArea</name>
     <message>
         <source>Style</source>
-        <translation type="obsolete">樣式</translation>
+        <translation type="vanished">樣式</translation>
     </message>
     <message>
         <source>New Text Style</source>
-        <translation type="obsolete">新建字體樣式</translation>
+        <translation type="vanished">新建字體樣式</translation>
     </message>
     <message>
         <source>Remove All</source>
-        <translation type="obsolete">清空</translation>
+        <translation type="vanished">清空</translation>
     </message>
     <message>
         <source>Remove all styles?</source>
-        <translation type="obsolete">清空所有樣式?</translation>
+        <translation type="vanished">清空所有樣式?</translation>
     </message>
     <message>
         <source>Remove all</source>
-        <translation type="obsolete">清空</translation>
+        <translation type="vanished">清空</translation>
     </message>
     <message>
         <source>Import Text Styles</source>
-        <translation type="obsolete">導入字體樣式</translation>
+        <translation type="vanished">導入字體樣式</translation>
     </message>
     <message>
         <source>Export Text Styles</source>
-        <translation type="obsolete">導出字體樣式</translation>
+        <translation type="vanished">導出字體樣式</translation>
     </message>
 </context>
 <context>
@@ -3948,22 +3991,6 @@ All existing translation results will be cleared!</source>
 </context>
 <context>
     <name>TextTransformPanel</name>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/transforms/panel.py" line="106"/>
-        <source>Add</source>
-        <translation>添加</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/transforms/panel.py" line="107"/>
-        <location filename="../../ballontranslator/ui/text_engine/transforms/panel.py" line="108"/>
-        <source>Add Transform</source>
-        <translation>添加變形</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/transforms/panel.py" line="130"/>
-        <source>Mixed</source>
-        <translation>混合</translation>
-    </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="90"/>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="124"/>
@@ -4129,89 +4156,160 @@ All existing translation results will be cleared!</source>
         <source>Grid</source>
         <translation>網格</translation>
     </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/transforms/panel.py" line="106"/>
+        <source>Add</source>
+        <translation>添加</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/transforms/panel.py" line="107"/>
+        <location filename="../../ballontranslator/ui/text_engine/transforms/panel.py" line="108"/>
+        <source>Add Transform</source>
+        <translation>添加變形</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/transforms/panel.py" line="130"/>
+        <source>Mixed</source>
+        <translation>混合</translation>
+    </message>
 </context>
 <context>
     <name>ThreadBase</name>
     <message>
         <source>Execution error</source>
-        <translation type="obsolete">執行錯誤</translation>
+        <translation type="vanished">執行錯誤</translation>
     </message>
 </context>
 <context>
     <name>TitleBar</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="311"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="317"/>
         <source>Edit</source>
         <translation>編輯</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="313"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="319"/>
         <source>Undo</source>
         <translation>撤銷</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="316"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="322"/>
         <source>Redo</source>
         <translation>重做</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="319"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="325"/>
         <source>Search</source>
         <translation>搜索</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="322"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="328"/>
         <source>Global Search</source>
         <translation>全局搜索</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="341"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="332"/>
+        <source>Keyword substitution for machine translation source text</source>
+        <translation>替換機翻前文本關鍵字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="334"/>
+        <source>Keyword substitution for machine translation</source>
+        <translation>替換機翻結果中的關鍵字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="336"/>
+        <source>Keyword substitution for source text</source>
+        <translation>替換原文關鍵字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="347"/>
         <source>View</source>
         <translation>視圖</translation>
     </message>
     <message>
-        <source>Drawing Board </source>
-        <translation type="obsolete">畫板 </translation>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="351"/>
+        <source>Display Language</source>
+        <translation>界面語言</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="361"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="365"/>
+        <source>Drawing Board</source>
+        <translation>畫板</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="367"/>
         <source>Text Editor</source>
         <translation>編輯器</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="369"/>
+        <source>Import Text Styles</source>
+        <translation>導入字體樣式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="370"/>
+        <source>Export Text Styles</source>
+        <translation>導出字體樣式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="371"/>
+        <source>Dark Mode</source>
+        <translation>深色模式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="375"/>
         <source>Show Text Detection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="370"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="376"/>
         <source>Show OCR</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="371"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="377"/>
         <source>Show Translation</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="372"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="378"/>
         <source>Show Inpainting</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="400"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="406"/>
         <source>Go</source>
         <translation>轉到</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="401"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="407"/>
         <source>Previous Page</source>
         <translation>上一頁</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="403"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="409"/>
         <source>Next Page</source>
         <translation>下一頁</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="420"/>
+        <source>Tools</source>
+        <translation>工具</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="433"/>
+        <source>Sponsor</source>
+        <translation>贊助</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="446"/>
+        <source>Afdian</source>
+        <translation>愛發電</translation>
+    </message>
+    <message>
+        <source>Drawing Board </source>
+        <translation type="vanished">畫板 </translation>
     </message>
     <message>
         <source>Run</source>
@@ -4223,31 +4321,11 @@ All existing translation results will be cleared!</source>
     </message>
     <message>
         <source>Text Style Presets</source>
-        <translation type="obsolete">字體樣式預設</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="365"/>
-        <source>Dark Mode</source>
-        <translation>深色模式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="328"/>
-        <source>Keyword substitution for machine translation</source>
-        <translation>替換機翻結果中的關鍵字</translation>
+        <translation type="vanished">字體樣式預設</translation>
     </message>
     <message>
         <source>Keyword substitution for OCR results</source>
-        <translation type="obsolete">替換OCR文本中的關鍵字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="345"/>
-        <source>Display Language</source>
-        <translation>界面語言</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="359"/>
-        <source>Drawing Board</source>
-        <translation>畫板</translation>
+        <translation type="vanished">替換OCR文本中的關鍵字</translation>
     </message>
     <message>
         <source>Enable Text Dection</source>
@@ -4267,36 +4345,11 @@ All existing translation results will be cleared!</source>
     </message>
     <message>
         <source>Text Styles Panel</source>
-        <translation type="obsolete">字體樣式面板</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="363"/>
-        <source>Import Text Styles</source>
-        <translation>導入字體樣式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="364"/>
-        <source>Export Text Styles</source>
-        <translation>導出字體樣式</translation>
+        <translation type="vanished">字體樣式面板</translation>
     </message>
     <message>
         <source>Run without update textstyle</source>
         <translation type="vanished">Run且不覆蓋已有字體樣式</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="330"/>
-        <source>Keyword substitution for source text</source>
-        <translation>替換原文關鍵字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="326"/>
-        <source>Keyword substitution for machine translation source text</source>
-        <translation>替換機翻前文本關鍵字</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="414"/>
-        <source>Tools</source>
-        <translation>工具</translation>
     </message>
 </context>
 <context>
@@ -4371,28 +4424,6 @@ All existing translation results will be cleared!</source>
 <context>
     <name>TranslateThread</name>
     <message>
-        <source>The selected language is not supported by </source>
-        <translation type="obsolete">所選語言不被目標翻譯器支持</translation>
-    </message>
-    <message>
-        <source>support list: </source>
-        <translation type="obsolete">支持語言列表: </translation>
-    </message>
-    <message>
-        <source>Failed to set translator </source>
-        <translation type="obsolete">翻譯器設置失敗 </translation>
-    </message>
-    <message>
-        <source> is required for </source>
-        <translation type="vanished">是翻譯器必填項</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="621"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="659"/>
-        <source>Translation Failed.</source>
-        <translation>翻譯失敗.</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="484"/>
         <source>Creating module</source>
         <translation>創建模組</translation>
@@ -4408,6 +4439,12 @@ All existing translation results will be cleared!</source>
         <translation>安裝庫</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="621"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="659"/>
+        <source>Translation Failed.</source>
+        <translation>翻譯失敗.</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="624"/>
         <location filename="../../ballontranslator/ui/module_manager.py" line="661"/>
         <source>Page</source>
@@ -4418,30 +4455,25 @@ All existing translation results will be cleared!</source>
         <source>{param} is required for {translator}</source>
         <translation>{param} 是翻譯器 {translator} 必填項</translation>
     </message>
+    <message>
+        <source>The selected language is not supported by </source>
+        <translation type="vanished">所選語言不被目標翻譯器支持</translation>
+    </message>
+    <message>
+        <source>support list: </source>
+        <translation type="vanished">支持語言列表: </translation>
+    </message>
+    <message>
+        <source>Failed to set translator </source>
+        <translation type="vanished">翻譯器設置失敗 </translation>
+    </message>
+    <message>
+        <source> is required for </source>
+        <translation type="vanished">是翻譯器必填項</translation>
+    </message>
 </context>
 <context>
     <name>TranslatorConfigPanel</name>
-    <message>
-        <source>Source </source>
-        <translation type="obsolete">源語言 </translation>
-    </message>
-    <message>
-        <source>Target </source>
-        <translation type="obsolete">目標語言 </translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="676"/>
-        <source>Keyword substitution for machine translation</source>
-        <translation>替換機翻結果中的關鍵字</translation>
-    </message>
-    <message>
-        <source>Source</source>
-        <translation type="vanished">源語言</translation>
-    </message>
-    <message>
-        <source>Target</source>
-        <translation type="vanished">目標語言</translation>
-    </message>
     <message>
         <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="648"/>
         <source>Config</source>
@@ -4461,6 +4493,27 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="668"/>
         <source>Keyword substitution for machine translation source text</source>
         <translation>替換機翻前文本關鍵字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="676"/>
+        <source>Keyword substitution for machine translation</source>
+        <translation>替換機翻結果中的關鍵字</translation>
+    </message>
+    <message>
+        <source>Source </source>
+        <translation type="vanished">源語言 </translation>
+    </message>
+    <message>
+        <source>Target </source>
+        <translation type="vanished">目標語言 </translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation type="vanished">源語言</translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation type="vanished">目標語言</translation>
     </message>
     <message>
         <source>Translate each text block individually</source>
@@ -4522,15 +4575,15 @@ All existing translation results will be cleared!</source>
     <name>TranslatorStatusButton</name>
     <message>
         <source>Translator: </source>
-        <translation type="obsolete">翻譯器： </translation>
+        <translation type="vanished">翻譯器： </translation>
     </message>
     <message>
         <source>Source: </source>
-        <translation type="obsolete">源語言: </translation>
+        <translation type="vanished">源語言: </translation>
     </message>
     <message>
         <source>Target: </source>
-        <translation type="obsolete">目標語言: </translation>
+        <translation type="vanished">目標語言: </translation>
     </message>
 </context>
 <context>
@@ -4546,32 +4599,42 @@ All existing translation results will be cleared!</source>
         <translation>發現新版本</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="207"/>
+        <location filename="../../ballontranslator/ui/update_dialog.py" line="213"/>
+        <source>sponsoring this project</source>
+        <translation>贊助</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/update_dialog.py" line="221"/>
+        <source>Consider %1 if it has been helpful to you.</source>
+        <translation>如果這個項目對你有所幫助，請考慮%1。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/update_dialog.py" line="236"/>
         <source>What&apos;s new</source>
         <translation>更新內容</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="236"/>
+        <location filename="../../ballontranslator/ui/update_dialog.py" line="265"/>
         <source>No release notes.</source>
         <translation>無更新摘要</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="249"/>
+        <location filename="../../ballontranslator/ui/update_dialog.py" line="279"/>
         <source>Updating will restart the app.</source>
         <translation>更新會立即重啟軟體</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="263"/>
+        <location filename="../../ballontranslator/ui/update_dialog.py" line="293"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="268"/>
+        <location filename="../../ballontranslator/ui/update_dialog.py" line="298"/>
         <source>Update</source>
         <translation>更新</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="268"/>
+        <location filename="../../ballontranslator/ui/update_dialog.py" line="298"/>
         <source>Close</source>
         <translation>關閉</translation>
     </message>

@@ -297,7 +297,10 @@ never waits for compilation.
 Glyph Slant uses Qt-produced glyph runs and leans each glyph around its own
 baseline while preserving line breaks, advances, and cursor indices. A box
 shear cannot provide those semantics. Outline glyphs use paths; pathless/color
-glyphs use the bounded raster fallback.
+glyphs use the bounded raster fallback. For vertical characters that Qt lays
+out with a rotated orientation, that orientation is applied before the
+item-space slant so the visible glyph, rather than its unrotated source axes,
+is slanted.
 
 The fixed order is:
 

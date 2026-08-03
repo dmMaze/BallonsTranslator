@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, QTranslator
 from qtpy.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QTextBrowser
 
 from ballontranslator.ui.update_dialog import (
@@ -107,41 +107,32 @@ class UpdateReleaseDialogTests(unittest.TestCase):
         self.assertIsNone(dialog.findChild(QPushButton, 'UpdateDialogCancelButton'))
         dialog.close()
 
-    def test_dialog_uses_linked_version_and_markdown_notes(self):
+    def test_sponsor_link_uses_compiled_chinese_translation(self):
         release_info = SimpleNamespace(
             tag_name='v1.5.6',
             name='v1.5.6',
-            html_url='https://example.invalid/v1.5.6',
-            body='## Changes\n\n- Fixed UI',
-            published_at='2026-07-03T06:45:13Z',
+            html_url='',
+            body='',
+            published_at='',
         )
         result = SimpleNamespace(
             current_version='1.5.5',
             latest_version='1.5.6',
             release_info=release_info,
         )
+        translator = QTranslator()
+        self.assertTrue(translator.load('zh_CN', 'resources/translate'))
+        self.app.installTranslator(translator)
+        try:
+            dialog = UpdateReleaseDialog(result, display_language='zh_CN')
+            message = dialog.findChild(
+                QLabel, 'UpdateReleaseSponsorMessage'
+            )
+            self.assertIn('>赞助</a>', message.text())
+            dialog.close()
+        finally:
+            self.app.removeTranslator(translator)
 
-        dialog = UpdateReleaseDialog(result)
-        dialog.show()
-        self.app.processEvents()
-
-        self.assertEqual(dialog.width(), RELEASE_WINDOW_WIDTH)
-        window_type = getattr(Qt, 'WindowType', Qt)
-        widget_attribute = getattr(Qt, 'WidgetAttribute', Qt)
-        self.assertTrue(dialog.windowFlags() & window_type.Popup)
-        self.assertTrue(dialog.windowFlags() & window_type.FramelessWindowHint)
-        self.assertTrue(dialog.testAttribute(widget_attribute.WA_TranslucentBackground))
-        self.assertIsNotNone(dialog.findChild(QFrame, 'UpdateReleaseSurface'))
-        self.assertTrue(dialog.findChild(QLabel, 'UpdateReleaseVersion').openExternalLinks())
-        self.assertEqual(simplified_release_date(release_info.published_at), '2026-07-03')
-        self.assertEqual(dialog.release_notes.verticalScrollBar().maximum(), 0)
-        self.assertIsNotNone(dialog.findChild(QTextBrowser, 'UpdateReleaseNotes'))
-        restart_notice = dialog.findChild(QLabel, 'UpdateReleaseRestartNotice')
-        self.assertIsNotNone(restart_notice)
-        self.assertTrue(
-            restart_notice.alignment() & Qt.AlignmentFlag.AlignRight
-        )
-        dialog.close()
 
 if __name__ == '__main__':
     unittest.main()

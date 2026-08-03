@@ -650,6 +650,11 @@ QLabel#UpdateReleaseMetadata {
     font-size: 12px;
 }
 
+QLabel#UpdateReleaseSponsorMessage {
+    color: @titleBarColor;
+    font-size: 12px;
+}
+
 QLabel#UpdateReleaseRestartNotice {
     color: @titleBarColor;
     font-size: 12px;
