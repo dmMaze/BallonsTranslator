@@ -1,236 +1,149 @@
 # Composable text transforms
 
-Read [Text engine](text_engine.md) first. This guide records the transform
-contracts that span persistence, UI transactions, geometry, rendering, and
-interaction. The code and focused tests remain authoritative.
+Read [Text engine](text_engine.md) first. This guide is an orientation to the
+transform subsystem: where it fits, who owns each part, and which contracts are
+easy to break. The code and focused tests are authoritative for individual
+controls and algorithms.
 
-## Core model
-
-There are two transform layers:
+## Mental model
 
 ```text
 QTextDocument + SceneTextLayout
   -> Glyph Slant around each shaped glyph baseline
   -> fill, stroke, shadow, gradient
   -> ordered global stack: Projective / Bend / Sine Wave / Grid
-  -> item-local visual geometry
   -> QGraphicsItem position and rotation
 ```
 
-Glyph Slant is a pre-stack typography effect and is not reorderable. The global
-stack transforms the completed text/effect box, preserves order, and allows
-duplicate types.
+Glyph Slant is a typography effect applied before the global stack. It is not
+reorderable. The global stack transforms the completed text-and-effects box;
+its order is significant and duplicate transform types are allowed.
 
-The compiler produces one global mapping:
+`compile_text_transform_stack()` is the transform-stack compiler. It receives
+the committed, normalized stack plus the current logical bounds, padded source
+bounds, and writing mode. Registered stage factories turn each active entry
+into a matrix or nonlinear mapper, and the compiler returns one
+`CompiledTextTransform` for `TextItemGeometryController` to store and install.
 
-- Matrix-only stages collapse to one native `QTransform`.
-- If any active stage is nonlinear, every active stage enters one
-  `CompositeTextTransformMapper` and the completed source surface is warped
+| Compiled output | Purpose |
+| --- | --- |
+| `native_matrix` | Qt item transform for a matrix-only stack; identity on the nonlinear path |
+| `surface_mapper` | Complete nonlinear mapping used for painting and visual/input geometry |
+| `stages` | Per-entry input context and optional mapper used to position and edit selected-stage controls inside the full stack |
+
+That one result drives painting, bounds, hit testing, cursor/IME mapping,
+resize, and selected-stage overlays. It has two execution outcomes:
+
+- With no nonlinear stage, matrix stages collapse into one native
+  `QTransform`.
+- With any nonlinear stage, all active stages enter one
+  `CompositeTextTransformMapper`, and the completed source surface is warped
   once.
 
-Never install matrix stages natively as well as inside a composite mapper.
+Never install a matrix stage natively as well as inside the composite mapper.
 Item position and built-in rotation remain outside the stack.
+
+Projective currently follows the matrix path; Bend, Sine Wave, and Grid follow
+the nonlinear path. Glyph Slant remains the separate pre-stack effect shown
+above.
 
 ## Owners
 
 | Concern | Owner |
 | --- | --- |
-| Immutable values, stack, state, persistence | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
-| Stage math, matrix adapter, composite mapper | [`ui/text_engine/transforms/mapping.py`](../../ballontranslator/ui/text_engine/transforms/mapping.py) |
-| Variant registry and stack compiler | [`ui/text_engine/transforms/registry.py`](../../ballontranslator/ui/text_engine/transforms/registry.py) |
-| Item transform and render lifecycle | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
-| Selection-scoped preview and commit transactions | [`ui/text_engine/transforms/editor.py`](../../ballontranslator/ui/text_engine/transforms/editor.py) |
-| Expandable transform panel, cards, and controls | [`ui/text_engine/transforms/panel.py`](../../ballontranslator/ui/text_engine/transforms/panel.py), [`ui/text_engine/transforms/controls.py`](../../ballontranslator/ui/text_engine/transforms/controls.py) |
-| Transform undo command | [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
-| Glyph Slant | [`ui/text_engine/rendering/glyph_slant.py`](../../ballontranslator/ui/text_engine/rendering/glyph_slant.py) |
-| Bend mapping and final surface warp | [`ui/text_engine/transforms/bend.py`](../../ballontranslator/ui/text_engine/transforms/bend.py), [`ui/text_engine/rendering/surface.py`](../../ballontranslator/ui/text_engine/rendering/surface.py) |
-| Sine Wave mapping | [`ui/text_engine/transforms/sine.py`](../../ballontranslator/ui/text_engine/transforms/sine.py) |
-| Grid mapping and selected-stage overlay | [`ui/text_engine/transforms/grid.py`](../../ballontranslator/ui/text_engine/transforms/grid.py), [`ui/text_engine/transforms/grid_control.py`](../../ballontranslator/ui/text_engine/transforms/grid_control.py) |
-| Projective matrix and selected-stage overlay | [`ui/text_engine/transforms/mapping.py`](../../ballontranslator/ui/text_engine/transforms/mapping.py), [`ui/text_engine/transforms/projective_control.py`](../../ballontranslator/ui/text_engine/transforms/projective_control.py) |
-| Resize/rotation overlay | [`ui/text_engine/shape_control.py`](../../ballontranslator/ui/text_engine/shape_control.py) |
+| Normalized model values, stack, and persistence | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
+| Stage math and composite mapping | [`ui/text_engine/transforms/`](../../ballontranslator/ui/text_engine/transforms/) |
+| Variant registration and compilation policy | [`ui/text_engine/transforms/registry.py`](../../ballontranslator/ui/text_engine/transforms/registry.py) |
+| Item geometry, installed mapping, and render lifecycle | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
+| Selection-scoped preview and commit | [`ui/text_engine/transforms/editor.py`](../../ballontranslator/ui/text_engine/transforms/editor.py) |
+| Panel and variant controls | [`ui/text_engine/transforms/panel.py`](../../ballontranslator/ui/text_engine/transforms/panel.py), [`ui/text_engine/transforms/controls.py`](../../ballontranslator/ui/text_engine/transforms/controls.py) |
+| Canvas undo and paired-editor coordination | [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py), [`ui/text_engine/editing/manager.py`](../../ballontranslator/ui/text_engine/editing/manager.py) |
+| Shared rubber-band and modal-event routing | [`ui/canvas.py`](../../ballontranslator/ui/canvas.py) |
+| Final surface warp and Glyph Slant painting | [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
+| Selected-stage canvas overlays | [`ui/text_engine/transforms/grid_control.py`](../../ballontranslator/ui/text_engine/transforms/grid_control.py), [`ui/text_engine/transforms/projective_control.py`](../../ballontranslator/ui/text_engine/transforms/projective_control.py) |
 
 New variants extend the model, registry, and stage factory. Do not add
-transform-type branches to `TextBlkItem` or `TextItemGeometryController`.
+variant-specific branches to `TextBlkItem` or `TextItemGeometryController`.
 
-## Persistence and editing state
+## State, persistence, and undo
 
-`TextTransform` subclasses are frozen canonical values with a stable
-`transform_type`, normalized fields, `is_neutral()`, and runtime-only
-`is_nonlinear` capability metadata.
+`TextTransform` subclasses are immutable model values with a stable
+`transform_type`, an exact neutral state, and runtime-only `is_nonlinear`
+capability metadata. Before commit, normalization rejects non-finite input,
+constrains values to supported ranges and precision, and validates
+variant-specific structure. `TextTransformStack` is an immutable ordered tuple;
+neutral entries remain in model and UI state but are skipped by the compiler.
 
-Current global variants are:
+`TextTransformState` combines the complete stack with `glyph_slant_angle`; undo
+must snapshot both so it restores the complete visible transform state.
+Project JSON stores only this committed, normalized model data. Preview values,
+matrices, mappers, bounds, and caches are derived state and must not be
+serialized.
 
-- `ProjectiveTextTransform`: horizontal/vertical scale and sequential slant,
-  X/Y/Z planar rotation, and normalized perspective, compiled together into
-  one centered native `QTransform`;
-- `BendTextTransform`: nonlinear and mapper-based;
-- `SineTextTransform`: nonlinear horizontal and vertical sine shears. Integer
-  frequencies count half-waves from 0 to 64; phase and perpendicular-box
-  amplitude use 0 to 1. The x-axis wave runs first so the combined map
-  has an exact inverse;
-- `GridTextTransform`: nonlinear free-form deformation with normalized control
-  points, 1 to 32 horizontal and vertical cell divisions, and Straight or
-  Smooth interpolation. A 1 by 1 grid has four corner handles. Their canonical
-  interpolation values are `bilinear` and `catmull_rom`.
+Persisted transform entries must use a registered type, known fields, and valid
+in-range values; omitted fields may use the variant's defined defaults. Passive
+loading follows the permissive recovery policy in `AGENTS.md`.
 
-`TextTransformStack` is an immutable ordered tuple. Neutral entries remain in
-the model for stable UI structure and persistence but are skipped at runtime.
-`TextTransformState` combines the stack with `glyph_slant_angle`, so one undo
-operation captures the complete visible state.
+`TextTransformEditSession` owns transient UI state. Typed edits commit at their
+normal editing boundary; drags preview and then create one command or cancel.
+Before a structural edit, save, undo/redo, page change, or scene replacement,
+resolve pending values and previews so stack indices cannot move underneath
+active controls.
 
-Project JSON stores only canonical values:
-
-```json
-{
-  "text_transform": [
-    {"transform_type":"projective","horizontal_scale":1.1,
-     "vertical_scale":1.0,"horizontal_slant":8.0,"vertical_slant":0.0,
-     "rotation_x":15.0,"rotation_y":-20.0,"rotation_z":5.0,
-     "perspective":0.4},
-    {"transform_type":"bend","bend":0.35}
-  ],
-  "glyph_slant_angle": 10.0
-}
+```text
+panel or canvas control
+  -> TextTransformEditSession transient preview
+     -> cancel: restore prior state
+     -> commit: create one SetTextTransformCommand
+        -> committed normalized state on each selected item
+        -> geometry compilation, painting, and overlay refresh
 ```
 
-Do not serialize preview values, matrices, mappers, bounds, layout generations,
-or raster caches. Passive project loading discards invalid optional entries
-according to `AGENTS.md`; live model and compiler boundaries use typed canonical
-values.
-
-### UI and undo
-
-The Text Transform panel generates transform cards from
-`TEXT_TRANSFORM_VARIANTS`.
-Add appends and selects the new entry, delete removes one indexed entry, and
-move swaps adjacent entries.
-Typed values commit on Return/focus-out; label dragging previews transient state
-and commits one command on release; Escape cancels the preview. Integer labels
-move one step per eight pixels, and every drag saturates at the shared valid range
-without accumulating hidden overshoot.
-
-Cards have one selected index. Clicking a card or manually interacting with one
-of its parameters selects it; selecting another card replaces that selection,
-and deleting the selected entry clears it. Selecting a Grid or Projective card
-for exactly one text block binds its global overlay and hides the normal shape
-overlay. The two transform overlays are mutually exclusive and follow the same
-selection, deletion, item-switch, and text-editing lifecycle.
-Circle handles use Ctrl or Shift to toggle selection, rubber-band selection can
-start with either mouse button inside the grid or on the surrounding canvas,
-and dragging any selected handle moves the selected set in one preview and one
-undo transaction. Grid-owned right-button selection is consumed without
-opening the Canvas context menu.
-
-The Canvas owns one scene-space rubber-band gesture and visual. Normal canvas
-selection applies it to scene items while an active Grid delegates completion
-to the Grid controller's handle-selection rule; Grid does not keep a second
-rectangle or gesture state.
-
-With at least one Grid handle selected, `G`, `R`, and `S` start reusable modal
-Move, Rotate, and Scale operations. The initial mouse-to-selection offset is
-preserved. Left click commits one undo command; right click or Escape restores
-the operation-start points without creating a command. Starting another modal
-operation also restores those points before switching modes. During Move, `X`
-or `Y` restores the start points and constrains subsequent movement to the
-corresponding canvas axis. Rotate and Scale use the selected-handle center and
-show a dotted origin-to-pointer guide; constrained movement shows its active
-axis line.
-
-The Projective controller is fixed in device pixels and follows the selected
-stage's fixed matrix pivot without growing with text geometry or canvas zoom.
-Its three mutually perpendicular X, Y, and Z rings use one small display-only
-X/Y tilt so no axis collapses under the fixed front view. Perspective previews
-must not recenter the controller from their asymmetric visual bounding box.
-Direct ring dragging edits that rotation axis.
-`R` defaults to Z; pressing X, Y, or Z restores the operation-start transform
-and constrains rotation to that axis. `S` scales both dimensions; X or Y resets
-and constrains the corresponding pre-rotation scale. Switching between `R` and
-`S` also restores the start transform. Left click commits one undo command;
-right click or Escape cancels.
-
-The selected Grid overlay batch-maps handle coordinates through the compiled
-stage suffix. Its guide lines are one transient raster warped by that same
-mapper instead of thousands of scalar scene-path mappings; the overlay remains
-global UI state and is never included in text export.
-
-Grid control points are stored as normalized coordinates, so font, spacing,
-writing-mode, and text-box geometry changes rebuild the stage against settled
-logical bounds instead of leaving the controller attached to stale pixels.
-Straight interpolation is bilinear within each cell. Smooth interpolation uses a
-tensor-product Catmull-Rom interpolation: it passes through every handle while
-neighboring handles curve the coordinates between them. A 1 by 1 grid produces
-the same result in either mode because it has no interior neighbors to create
-additional bending.
-
-Before a structural edit, `TextTransformEditSession` commits pending typed
-values and cancels previews so indices cannot move under an active control.
-Save, undo/redo, page change, and scene replacement also resolve transient
-state.
-
-For selected items, one user action creates one `SetTextTransformCommand` with
-complete before/after states for every target. That command owns transform
+One user action creates one `SetTextTransformCommand` containing complete
+before/after transform states for its targets. This command owns transform
 state and overlay refresh only. It must not consume `QTextDocument` history or
-modify paired-editor text; `TextEditCommand`, `TextItemEditCommand`, and
-`SceneTextManager` own those paths.
+modify paired-editor text; text-edit commands and `SceneTextManager` own those
+paths.
 
-Multi-selection exposes indexed controls only when all targets share the same
-sequence of transform types. Matching indices may have mixed values. When
-stack shapes differ, existing indices are not reinterpreted; append remains
-safe.
+For multiple selected items, indexed controls are meaningful only when all
+targets have the same sequence of transform types; matching indices may still
+show mixed values. Do not reinterpret existing indices when stack shapes
+differ, although appending a new stage remains safe.
 
-## Compiler and installation
+## Compilation, geometry, and rendering
 
-`compile_text_transform_stack()` is the policy boundary. For every active
-operation in forward order it:
+Each stage is built against the bounds produced by the preceding stages, so
+reordering changes the result. Compilation depends on the immutable stack,
+writing mode, logical rectangle, and padded source rectangle. Rich-text edits
+can expose intermediate sizes; defer compilation until the edit settles, then
+publish the installed geometry once.
 
-1. builds context from current logical bounds, padded source bounds, and
-   writing mode;
-2. asks the registered stage factory for a matrix or mapper;
-3. validates matrix finiteness, invertibility, and projective horizon safety;
-4. folds adjacent matrix stages;
-5. advances bounds only when a later stage needs them.
-
-Later stages see earlier output bounds, so reordering is semantically visible.
-
-### Matrix-only stack
+The compiler rejects non-finite or non-invertible matrices and projective
+transforms that cross their source horizon, and it folds adjacent matrix
+stages. Projective scale, slant, rotation, and perspective form one homography
+during compilation; painting must not reconstruct those components.
 
 ```text
-active matrix stages
-  -> combined QTransform
-  -> CompiledTextTransform.native_matrix
-  -> no surface mapper
+matrix-only stack                    stack with a nonlinear stage
+-----------------                    ----------------------------
+active matrix stages                 all active stages
+  -> one combined QTransform           -> matrix adapters + nonlinear mappers
+  -> native item transform              -> one composite mapper
+  -> no surface warp                    -> identity native stack transform
+                                         -> one final surface warp
 ```
 
-The matrix is installed through the existing item transform path. One
-Projective stage computes its complete homography when its parameters or input
-bounds change; painting never assembles its scale, slant, rotation, or depth
-components. `compensated_native_transform_matrix()` preserves the intended order of
-item-local stack transform followed by Qt's built-in item rotation. Keep its
-identity and zero-rotation fast paths exact; floating residue in a neutral
-matrix can activate unnecessary custom geometry and cache behavior.
+Qt applies its built-in item rotation and base transform in an order different
+from the stack's semantics. The native path therefore installs a compensated
+matrix so the item-local stack still precedes built-in rotation. Preserve exact
+identity and zero-rotation fast paths; floating residue can incorrectly enable
+custom geometry and caches.
 
-### Stack containing a nonlinear stage
+After deferred compilation, emit `visual_geometry_changed` only after
+installing the settled geometry so shape and transform overlays never observe
+stale bounds.
 
-```text
-all active stages
-  -> MatrixTransformMapper / nonlinear mapper stages
-  -> one CompositeTextTransformMapper
-  -> identity native stack matrix
-  -> one final inverse-sampled surface
-```
-
-The controller compiles by immutable stack, writing mode, logical rectangle,
-and padded source rectangle. Rich-text formatting can emit intermediate sizes,
-so compilation is deferred until its edit block settles. The settled flush
-publishes `visual_geometry_changed` after installing the rebuilt mapper, which
-keeps shape and Grid overlays synchronized for every transform variant and
-formatting setter. Reusing compiled output still requires reinstalling it
-because page/layout lifecycle code may have detached the mapper or changed Qt's
-matrix.
-
-## Mapper and rendering contract
-
-A nonlinear stage must provide stable point and vectorized raster inversion:
+A nonlinear mapper must provide the complete interaction and raster contract:
 
 ```python
 forward_point(source)
@@ -238,22 +151,19 @@ forward_arrays(source_x, source_y)
 inverse_point(visual, previous_source=None, *, extrapolate=False)
 inverse_arrays(visual_x, visual_y, *, return_valid=False)
 visual_bounds(source_rect=None)
+map_rect_path(source_rect)
 geometry_key
 ```
 
-- Forward mapping drives outlines, handles, bounds, and composition.
-- Array forward mapping batches dense controller and overlay geometry.
-- Point inversion drives hit testing and resize.
-- `previous_source` preserves branch continuity near seams.
-- `extrapolate=True` is reserved for reshape beyond the visible mapped surface.
-- Array inversion is the raster hot path and returns a validity mask when
-  requested.
-- Visual bounds must include interior extrema, not only the mapped outer edge.
-- `geometry_key` includes every input that changes mapping.
+`previous_source` preserves branch continuity near folds. Extrapolation is only
+for reshape beyond the visible mapped surface; ordinary hit testing stays
+bounded. Array inversion supplies a validity mask for raster and dense overlay
+work. Bounds must include interior extrema, and `geometry_key` must contain
+every input that changes the mapping.
 
-The composite applies forward stages in order and inverse stages in reverse.
-Painting, outline geometry, hit testing, cursor mapping, and resize must share
-this same mapping boundary.
+Forward stages run in order and inverse stages in reverse. Painting, outlines,
+handles, hit testing, cursor/IME geometry, and resize must all cross the same
+mapping boundary.
 
 The effective render paths are:
 
@@ -264,118 +174,81 @@ The effective render paths are:
 | Glyph Slant, no nonlinear stage | Custom glyph layout | Identity or matrix | No |
 | Any active nonlinear stage | Native or custom glyph layout | Composite mapper | Once |
 
-For nonlinear output, `TextItemGeometryController.paint_item()` captures fill,
-gradient, stroke, and shadow into one padded source pixmap, inverse-maps it in
-bounded row bands, draws it once, then overlays the mapped caret. Sampling uses
-premultiplied alpha to avoid colored fringes. Settled text uses cubic sampling
-at a raster tier no smaller than the device scale when the bounded allocation
-policy permits; live parameter and resize previews retain the cheaper bilinear
-path.
+For nonlinear output, capture fill, gradient, stroke, and shadow into one
+padded source surface, inverse-map it once, and draw editing UI over the mapped
+destination where necessary. Matrix-only stacks stay on Qt's native path.
+Effect padding changes the source rectangle, not the persistent logical text
+rectangle.
 
-Cache keys include mapping geometry, layout generation, Glyph Slant render
-state, effect/background generation, document revision, and live selection
-state. The renderer separately caches inverse remap coordinates by mapper
-geometry, source/destination rectangles, and render scale. Text, selection,
-and IME changes regenerate surface pixels through that existing map; mapper
-geometry changes and item/page release discard it. Editing retains the final
-surface: caret-only repaints reuse it and run a transparent source-layout probe
-to preserve Qt's native blink visibility, selection changes select a new
-surface key, and each IME event explicitly invalidates transient preedit
-pixels. Resize and parameter previews remain uncached. Raster size and quality
-remain bounded; interactive allocation failure may degrade with a warning,
-while export failure is reported after the Qt paint callback.
+### Cache boundaries
 
-Grid's dense Newton inverse uses separately compiled bilinear and Catmull-Rom
-Numba kernels after an asynchronous launch warm-up. Numba owns cache validation and
-stores the signatures under `.btrans_cache/numba`, which survives application
-updates; a missing, stale, or incompatible entry is compiled in the background.
-Until warm-up succeeds, Grid keeps using the NumPy inverse so the Qt thread
-never waits for compilation.
+The subsystem caches work at four boundaries because geometry and pixels
+change independently:
 
-## Glyph Slant and effects
+| Cached work | Reuse and invalidation boundary |
+| --- | --- |
+| Compiled transform | Reuse while stack, writing mode, logical rectangle, and source rectangle match. Reapply cached output because page or layout lifecycle code may have detached the mapper or changed Qt's matrix. |
+| Glyph geometry | Keep committed and preview geometry separate and bounded. Layout generation and Glyph Slant render state determine reuse. |
+| Nonlinear inverse-remap coordinates | Reuse across text, selection, and IME changes while mapper geometry, source/destination rectangles, and render scale match. |
+| Final nonlinear surface pixels | Key by layout, glyph/effect state, document content, and selection. Do not retain this cache during parameter or resize previews. |
 
-Glyph Slant uses Qt-produced glyph runs and leans each glyph around its own
-baseline while preserving line breaks, advances, and cursor indices. A box
-shear cannot provide those semantics. Outline glyphs use paths; pathless/color
-glyphs use the bounded raster fallback. For vertical characters that Qt lays
-out with a rotated orientation, that orientation is applied before the
-item-space slant so the visible glyph, rather than its unrotated source axes,
-is slanted.
+A caret-only repaint may reuse final surface pixels, but it must run a
+transparent source-layout probe so Qt updates native blink visibility.
+Selection belongs in the surface key, while every IME event explicitly
+invalidates transient preedit pixels.
 
-The fixed order is:
-
-```text
-Qt shaping -> Glyph Slant -> fill/stroke/shadow -> global stack
-```
-
-Do not make Glyph Slant reorderable without redesigning shaping, cursor
-geometry, effect masks, UI, undo, and persistence. Fill and effects must reuse
-the same slanted glyph geometry.
-
-Effect padding participates in the source rectangle and may grow or shrink. It
-is derived layout state and must not create document history. Returning Glyph
-Slant or the stack to neutral must restore native effects, refresh gradient
-geometry, clear transformed surfaces, and release transformed-only owners.
+All transform cache namespaces and item-owned render caches must be releasable
+on item/page removal and return to neutral. Grid's optional compiled inverse
+kernels are runtime acceleration, not transform-result caches: warm them
+outside the Qt thread and keep the working fallback until they are ready.
 
 ## Interaction invariants
 
-### Hit testing, selection, and caret
+Qt's text control remains authoritative for shaping, cursor, selection, IME,
+and document history. Visual input is inverse-mapped into source-layout
+coordinates; output rectangles and overlays are mapped forward. 
 
-Qt's text control remains the editor. Visual input is inverse-mapped to source
-layout coordinates; `inputMethodQuery()` maps point and rectangle results back
-to visual space.
+The following details are easy to regress during otherwise local changes:
 
-Qt normally invalidates source-local dirty rectangles. A nonlinear warp can
-move selection and caret pixels outside them, so editing changes request a full
-`TextBlkItem.update()` while a surface warp is active.
-
-During source capture, both layouts defer caret painting and retain the cursor
-position. After the warp, the controller uses the layout-owned horizontal
-caret for vertical text and Qt's native rectangle for horizontal text, maps it
-through the composite, and paints it over the completed destination with
-`RasterOp_NotDestination`. Selection remains part of source capture.
-
-### Resize
-
-Every resize event is derived from one frozen drag-start coordinate frame.
-`TextBlkShapeControl.beginResize()` stores the initial logical/absolute
-rectangles, opposite scene anchor, source handle, and a frozen
-scene-to-source mapper. Each pointer sample maps through that frozen transform,
-updates a rectangle relative to the initial one, and restores the opposite
-visual handle to its original scene position.
-
-Only this reshape mapper uses branch-aware `extrapolate=True`. Ordinary text
-hit testing retains bounded seam behavior. Mapping through geometry changed by
-the previous event creates feedback and can collapse an outward bend drag.
-
-## Lifecycle and optimization rules
-
-- Skip neutral entries but retain them in model/UI state.
-- Fold matrix stages and keep the native path when no nonlinear stage is active.
-- With nonlinear stages, compose mappings and warp the completed surface once.
-- Compile once per distinct stack, writing mode, logical rect, and source rect.
-- Keep preview and committed glyph caches separate and bounded.
-- Increment layout generation only for layout geometry changes.
-- Do not retain final-surface caches during active interaction.
-- Release glyph, effect, and surface namespaces when items/pages are removed.
-- Treat activation and return to neutral as symmetric lifecycle transitions.
-- Test horizontal and vertical writing with effects, editing, resize, rotation,
-  and export.
+- A nonlinear warp can move editing pixels outside Qt's source-local dirty
+  rectangles, so cursor, selection, and IME changes must repaint the whole
+  `TextBlkItem`. Keep editing UI on the same source-to-visual mapping boundary
+  as the text.
+- Resize maps every pointer sample through geometry frozen at drag start.
+  Reusing geometry changed by an earlier sample creates feedback and can
+  reverse or collapse an outward drag.
+- The panel and canvas overlays share one selected stack index. A selected Grid
+  or Projective stage for exactly one text block owns the transform overlay and
+  hides the normal shape overlay. These overlays are mutually exclusive,
+  follow selection and editing lifecycle, and never appear in export.
+- Grid-owned right-button selection is consumed without opening the Canvas
+  context menu.
+- The Canvas owns the only scene-space rubber-band gesture and visual. An
+  active Grid reuses it for handle selection; do not add a second rectangle or
+  mouse lifecycle.
+- Grid control points are normalized. Text, font, writing-mode, or box changes
+  rebuild their stage against settled bounds rather than retaining stale pixel
+  coordinates.
+- Glyph Slant remains outside `QTextDocument` layout so Qt keeps ownership of
+  shaping, wrapping, cursor indices, and selection. Fill, effects, and bounds
+  must reuse the same slanted glyph geometry.
+- Activation and return to neutral are symmetric lifecycle transitions: native
+  effects and geometry must be restored, gradient geometry refreshed, and
+  transformed-only state released.
 
 ## Adding a variant
 
-1. Add a frozen canonical `TextTransform` subclass and stable
-   `transform_type` in `fontformat.py`; define exact neutral state and set
-   `is_nonlinear` only when `QTransform` cannot represent it.
-2. Register the model type and a `TextTransformVariantSpec` with localized
-   controls.
-3. Implement one stage factory returning a validated matrix or a complete
-   mapper using the incoming stage bounds.
-4. Keep model and runtime registry keys equal and preserve permissive project
-   loading of invalid optional entries.
-5. Test persistence, neutral/active states, order, duplicates, matrix/nonlinear
-   composition, preview/cancel/commit, multi-selection undo, both writing modes,
-   effects, input mapping, resize, and export.
+1. Add an immutable normalized `TextTransform` subclass with a stable
+   `transform_type`, exact neutral state, and correct `is_nonlinear` capability.
+2. Register its model type, localized controls, and stage factory under the
+   same stable key.
+3. Return either a validated matrix or a mapper satisfying the complete
+   geometry contract; use the incoming stage bounds.
+4. Preserve tolerant loading of invalid optional project data and avoid new
+   item/controller type branches.
+5. Cover persistence, neutral/active lifecycle, stack order, preview and
+   cancel/commit, undo isolation, both writing modes, effects, interaction, and
+   export as applicable.
 
 A nonlinear variant without stable point inversion and vectorized array
 inversion does not fit this architecture.
@@ -383,19 +256,10 @@ inversion does not fit this architecture.
 ## Focused verification
 
 [`tests/test_text_transform_undo.py`](../../tests/test_text_transform_undo.py)
-covers persistence, registry/UI structure, multi-item undo and paired-editor
-isolation, compiler composition, rendering paths, cache lifecycle,
-cursor/selection mapping, and frozen-coordinate resize.
+is the main focused regression suite. Run its relevant tests first, then broaden
+according to the ownership boundaries changed:
 
 ```bash
-python -m py_compile \
-  ballontranslator/utils/fontformat.py \
-  ballontranslator/ui/text_engine/geometry.py \
-  ballontranslator/ui/text_engine/transforms/mapping.py \
-  ballontranslator/ui/text_engine/transforms/registry.py \
-  ballontranslator/ui/text_engine/transforms/editor.py \
-  ballontranslator/ui/text_engine/transforms/projective_control.py
-
 QT_API=pyqt6 QT_QPA_PLATFORM=offscreen \
   /opt/miniconda3/envs/common/bin/python -m unittest \
   discover -s tests -p 'test_text_transform_undo.py'
@@ -403,6 +267,5 @@ QT_API=pyqt6 QT_QPA_PLATFORM=offscreen \
 git diff --check
 ```
 
-Painting changes also need a themed-app pass covering both writing modes,
-neutral/matrix/nonlinear stacks, Glyph Slant with effects, typing and selection,
-resize/rotation, zoomed interaction, and export.
+Rendering or interaction changes still need a themed-app pass covering the
+affected writing modes and neutral, matrix, and nonlinear states.

@@ -121,6 +121,9 @@ class TextItemGeometryController:
         self._flush_update()
 
     def canonical(self) -> TextTransformState:
+        """Return the committed model state, excluding any active preview."""
+        # Persistence and transform undo use the TextBlock-owned format.
+        # item.fontformat may be a temporary render copy during formatting.
         fontformat = self.item.blk.fontformat
         if not isinstance(fontformat.text_transform, TextTransformStack):
             raise ValueError('live font format requires a typed transform stack')
@@ -130,6 +133,7 @@ class TextItemGeometryController:
         )
 
     def effective(self) -> TextTransformState:
+        """Return the preview state when active, otherwise committed state."""
         return self.preview if self.preview is not None else self.canonical()
 
     def is_neutral(self) -> bool:
@@ -309,6 +313,8 @@ class TextItemGeometryController:
         if stage is None:
             return None
         record, mapper, prefix = stage
+        # Controls are expressed at this Grid's output, so their mapper keeps
+        # the selected stage and every later stage while excluding its prefix.
         suffix_stages = (mapper,) + tuple(
             stage.mapper
             for stage in self.compiled.stages[stack_index + 1:]
@@ -499,6 +505,8 @@ class TextItemGeometryController:
             return visual_mapper.inverse_point(
                 visual_point,
                 previous_source,
+                # A reshape may continue outside the warped surface. Ordinary
+                # text hit testing deliberately keeps the bounded inverse.
                 extrapolate=True,
             )
 

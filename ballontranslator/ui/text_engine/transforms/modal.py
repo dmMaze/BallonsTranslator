@@ -71,6 +71,8 @@ class ModalPointTransform:
         self.start_mouse = QPointF(mouse)
         self.current_mouse = QPointF(mouse)
         self._rotation_degrees = 0.0
+        # A mode switch restarts from begin()'s points; the owning control
+        # resets its model preview too, so modal previews never compound.
         self.result_points = tuple(
             QPointF(point) for point in self.initial_points
         )
@@ -94,6 +96,7 @@ class ModalPointTransform:
         self.start_mouse = QPointF(mouse)
         self.current_mouse = QPointF(mouse)
         self._rotation_degrees = 0.0
+        # Changing the axis restarts the same operation-start transaction.
         self.result_points = tuple(
             QPointF(point) for point in self.initial_points
         )

@@ -890,6 +890,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         )
         item.setRect(new_abs)
 
+        # Resizing changes nonlinear geometry, so restore the untouched visual
+        # handle to the scene position captured at drag start.
         moved_anchor = self._item_handle_points_in_scene(item)[
             self._resize_opposite_idx
         ]

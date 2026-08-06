@@ -233,6 +233,8 @@ class Canvas(QGraphicsScene):
         self.vscroll_bar = self.gv.verticalScrollBar()
         self.hscroll_bar = self.gv.horizontalScrollBar()
         # self.default_cursor = self.gv.cursor()
+        # Grid handle selection reuses this scene-owned gesture so there is one
+        # mouse lifecycle and one rubber-band visual to cancel or finish.
         self.rubber_band = self.addWidget(QRubberBand(QRubberBand.Shape.Rectangle))
         self.rubber_band.hide()
         self.rubber_band.setZValue(100)

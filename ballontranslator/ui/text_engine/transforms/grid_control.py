@@ -330,6 +330,8 @@ class TextGridTransformControl(QGraphicsPathItem):
         painter.save()
         try:
             painter.setTransform(item_to_control, True)
+            # Warp one guide surface; mapping dense guide segments as separate
+            # scene paths makes Grid interaction stall at high subdivision.
             self._overlay_renderer.paint(
                 painter,
                 option,
