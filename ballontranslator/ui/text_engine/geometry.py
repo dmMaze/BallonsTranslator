@@ -1,5 +1,6 @@
 """Geometry and transform lifecycle for one ``TextBlkItem``."""
 
+from collections.abc import Generator
 from contextlib import contextmanager
 import math
 from typing import Iterator, Optional, TYPE_CHECKING
@@ -165,7 +166,7 @@ class TextItemGeometryController:
                 self._flush_update()
 
     @contextmanager
-    def defer_compilation(self) -> Iterator[None]:
+    def defer_compilation(self) -> "Generator[None, None, None]":
         """Compile once after a transient layout transaction settles."""
         self._compile_defer_depth += 1
         try:

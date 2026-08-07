@@ -107,7 +107,7 @@ class MoveBlkItemsCommand(QUndoCommand):
             before = (
                 QPointF(before_positions[index])
                 if before_positions is not None
-                else item.oldPos + logical_offset
+                else item._old_pos + logical_offset
             )
             after = (
                 QPointF(after_positions[index])
@@ -116,14 +116,14 @@ class MoveBlkItemsCommand(QUndoCommand):
             )
             self.old_pos_lst.append(before)
             self.new_pos_lst.append(after)
-            item.oldPos = item.pos()
+            item._old_pos = item.pos()
         if self.old_pos_lst == self.new_pos_lst:
             self.setObsolete(True)
 
     def _apply(self, positions: Sequence[QPointF]):
         for item, position in zip(self.items, positions):
             item.set_logical_position(position)
-            item.oldPos = item.pos()
+            item._old_pos = item.pos()
 
     def redo(self):
         self._apply(self.new_pos_lst)
@@ -151,12 +151,12 @@ class MoveByKeyCommand(QUndoCommand):
     def undo(self):
         for blk, pos in zip(self.blkitems, self.ori_pos_list):
             blk.set_logical_position(pos)
-            blk.oldPos = blk.pos()
+            blk._old_pos = blk.pos()
 
     def redo(self):
         for blk, pos in zip(self.blkitems, self.end_pos_list):
             blk.set_logical_position(pos)
-            blk.oldPos = blk.pos()
+            blk._old_pos = blk.pos()
 
     def mergeWith(self, other: QUndoCommand) -> bool:
         canmerge = (
@@ -219,24 +219,24 @@ class ReshapeItemCommand(QUndoCommand):
     def __init__(self, item: TextBlkItem):
         super(ReshapeItemCommand, self).__init__()
         self.item = item
-        self.oldRect = item.oldRect
-        self.newRect = item.absBoundingRect(qrect=True)
+        self._old_rect = item._old_rect
+        self._new_rect = item.absBoundingRect(qrect=True)
         self.idx = -1
 
     def redo(self):
         if self.idx < 0:
             self.idx += 1
             return
-        self.item.setRect(self.newRect)
+        self.item.setRect(self._new_rect)
 
     def undo(self):
-        self.item.setRect(self.oldRect)
+        self.item.setRect(self._old_rect)
 
     def mergeWith(self, command: QUndoCommand):
         item = command.item
         if self.item != item:
             return False
-        self.newRect = item.absBoundingRect(qrect=True)
+        self._new_rect = item.absBoundingRect(qrect=True)
         return True
 
 

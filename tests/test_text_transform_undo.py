@@ -3236,7 +3236,7 @@ class TextTransformGeometryTest(TextTransformTestBase):
                     before.width() - 80,
                     before.height() + 60,
                 )
-                item.oldRect = QRectF(before)
+                item._old_rect = QRectF(before)
                 item.setRect(after)
                 stack.push(ReshapeItemCommand(item))
                 stack.push(

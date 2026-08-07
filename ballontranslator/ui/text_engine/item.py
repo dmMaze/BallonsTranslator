@@ -57,8 +57,8 @@ class TextBlkItem(QGraphicsTextItem):
         self.idx = idx
         
         self.stroke_qcolor = QColor(0, 0, 0)
-        self.oldPos = QPointF()
-        self.oldRect = QRectF()
+        self._old_pos = QPointF()
+        self._old_rect = QRectF()
         self.repaint_on_changed = True
 
         self.is_formatting = False
@@ -309,7 +309,7 @@ class TextBlkItem(QGraphicsTextItem):
         return changed
 
     def startReshape(self):
-        self.oldRect = self.absBoundingRect(qrect=True)
+        self._old_rect = self.absBoundingRect(qrect=True)
         self.reshaping = True
         # disable background repainting to avoid heavy redrawing in the whole process
         self.effect_renderer.clear_cached_surface()
@@ -703,7 +703,7 @@ class TextBlkItem(QGraphicsTextItem):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.is_editting():
                 self.geometry_controller.begin_input_mapping()
-            self.oldPos = self.pos()
+            self._old_pos = self.pos()
             self.leftbutton_pressed.emit(self.idx)
         result = super().mousePressEvent(event)
         self._update_nonlinear_editing_ui()

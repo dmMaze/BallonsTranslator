@@ -614,7 +614,7 @@ class SceneTextManager(QObject):
             item: QPointF(item.logical_position()) for item in selections
         }
         for item in selections:
-            item.oldPos = item.pos()
+            item._old_pos = item.pos()
         self.changeHoveringWidget(self.pairwidget_list[blk_id].e_trans)
 
     def onTextBlkItemEndEdit(self, blk_id: int):
