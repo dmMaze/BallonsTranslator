@@ -28,7 +28,6 @@ from ballontranslator.utils.config import (
     save_text_styles,
     text_styles,
 )
-from ballontranslator.utils.fontformat import TextTransformState
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
@@ -77,22 +76,6 @@ class PageListView(QListWidget):
         return super().contextMenuEvent(e)
 
 mainwindow_cls = Widget if shared.HEADLESS else FramelessWindow
-
-
-def _apply_global_text_transforms(block: TextBlock, global_format: FontFormat) -> bool:
-    """Copy normalized global stack/layout transform state."""
-    state = TextTransformState(
-        global_format.text_transform,
-        global_format.glyph_slant_angle,
-    )
-    if (
-        block.fontformat.text_transform == state.stack
-        and block.fontformat.glyph_slant_angle == state.glyph_slant_angle
-    ):
-        return False
-    block.fontformat.text_transform = state.stack
-    block.fontformat.glyph_slant_angle = state.glyph_slant_angle
-    return True
 
 
 class MainWindow(mainwindow_cls):
@@ -1641,7 +1624,6 @@ class MainWindow(mainwindow_cls):
                     sw = blk.stroke_width
                     if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
-                    _apply_global_text_transforms(blk, gf)
 
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (enable_detect or enable_translate)

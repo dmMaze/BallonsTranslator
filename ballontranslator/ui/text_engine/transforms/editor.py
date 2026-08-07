@@ -1,6 +1,7 @@
 """Selection-scoped editing transactions for composable text transforms."""
 
 import copy
+from typing import TYPE_CHECKING
 
 from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import (
@@ -14,6 +15,10 @@ from ballontranslator.utils.fontformat import (
 
 from ... import shared_widget as SW
 from ..editing.commands import SetTextTransformCommand
+
+if TYPE_CHECKING:
+    from ..formatting.panel import FontFormatPanel
+    from .panel import TextTransformPanel
 
 
 GLYPH_SLANT_INDEX = -1
@@ -41,7 +46,11 @@ class TextTransformEditSession:
     []
     """
 
-    def __init__(self, host, controls) -> None:
+    def __init__(
+        self,
+        host: "FontFormatPanel",
+        controls: "TextTransformPanel",
+    ) -> None:
         self.host = host
         self.controls = controls
         self.items = []

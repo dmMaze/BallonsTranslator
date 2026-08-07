@@ -202,6 +202,7 @@ class TextProjectiveTransformControl(QGraphicsPathItem):
         cancel_edit,
     ):
         binding_changed = self.item is not item or self.stack_index != stack_index
+        refresh_geometry = binding_changed or not self.isVisible()
         if binding_changed and self._modal_transform.active:
             self._finish_modal(False)
         if self.item is not item:
@@ -215,7 +216,8 @@ class TextProjectiveTransformControl(QGraphicsPathItem):
         self._commit_transform = commit_transform
         self._cancel_edit = cancel_edit
         self.show()
-        self.requestGeometryRefresh()
+        if refresh_geometry:
+            self.requestGeometryRefresh()
 
     def clear(self):
         if self._modal_transform.active:

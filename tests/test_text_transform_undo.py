@@ -47,6 +47,7 @@ from ballontranslator.ui.text_engine.editing.commands import (
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.transforms.panel import TextTransformPanel
+from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.transforms.controls import (
     CommittedTransformControl,
 )
@@ -94,6 +95,7 @@ from ballontranslator.utils.fontformat import (
     TextTransformState,
 )
 from ballontranslator.utils import shared
+from ballontranslator.utils import config as C
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.textblock import TextBlock
 
@@ -784,6 +786,48 @@ class TextTransformPanelTest(TextTransformTestBase):
         )
         self.addCleanup(panel.deleteLater)
         return panel
+
+    def test_stack_shape_update_syncs_content_height_once(self):
+        panel = self._make_panel()
+        with patch.object(
+            panel,
+            '_sync_content_height',
+            wraps=panel._sync_content_height,
+        ) as sync_height:
+            panel.set_transform(transform_state(GridTextTransform()))
+
+        sync_height.assert_called_once_with()
+
+    def test_selected_item_updates_transform_panel_once(self):
+        previous_canvas = getattr(SW, 'canvas', None)
+        previous_active_format = C.active_format
+        canvas = Canvas()
+        SW.canvas = canvas
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        self.addCleanup(setattr, C, 'active_format', previous_active_format)
+        self.addCleanup(canvas.gv.deleteLater)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        item.set_text_transform(transform_state(GridTextTransform()))
+
+        with patch.object(
+            shared,
+            'register_view_widget',
+            lambda *_args: None,
+            create=True,
+        ):
+            format_panel = FontFormatPanel(self.app)
+        format_panel.global_format = FontFormat()
+        self.addCleanup(format_panel.deleteLater)
+
+        with patch.object(
+            format_panel.texttransform_panel,
+            '_set_transform_states',
+            wraps=format_panel.texttransform_panel._set_transform_states,
+        ) as set_transform_states:
+            format_panel.set_textblk_item(item)
+
+        set_transform_states.assert_called_once()
 
     def test_add_menu_and_hover_actions_are_generated_from_registry(self):
         panel = self._make_panel()
@@ -2988,6 +3032,163 @@ class TextTransformRenderingTest(TextTransformTestBase):
 
 
 class TextTransformGeometryTest(TextTransformTestBase):
+    def test_canvas_coalesces_view_geometry_refreshes(self):
+        canvas = Canvas()
+        with (
+            patch.object(
+                canvas.txtblkShapeControl, 'requestGeometryRefresh'
+            ) as shape_refresh,
+            patch.object(
+                canvas.txtblkGridControl, 'requestGeometryRefresh'
+            ) as grid_refresh,
+            patch.object(
+                canvas.txtblkProjectiveControl, 'requestGeometryRefresh'
+            ) as projective_refresh,
+        ):
+            canvas.hscroll_bar.valueChanged.emit(1)
+            canvas.vscroll_bar.valueChanged.emit(1)
+            canvas.gv.view_resized.emit()
+            self.app.processEvents()
+
+            shape_refresh.assert_called_once_with()
+            grid_refresh.assert_called_once_with()
+            projective_refresh.assert_called_once_with()
+
+            shape_refresh.reset_mock()
+            grid_refresh.reset_mock()
+            projective_refresh.reset_mock()
+            canvas.refresh_text_shape_control()
+            canvas.gv.deleteLater()
+            QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            self.app.processEvents()
+            shape_refresh.assert_not_called()
+            grid_refresh.assert_not_called()
+            projective_refresh.assert_not_called()
+
+    def test_shape_control_refreshes_once_per_settled_geometry_change(self):
+        canvas = Canvas()
+        canvas.imgtrans_proj = SimpleNamespace(img_valid=True)
+        canvas.baseLayer.setRect(0, 0, 1200, 800)
+        canvas.setSceneRect(canvas.baseLayer.boundingRect())
+        canvas.gv.resize(600, 400)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        control = canvas.txtblkShapeControl
+        control.setBlkItem(item)
+        canvas.gv.show()
+        self.app.processEvents()
+        self.addCleanup(canvas.gv.close)
+
+        with patch.object(
+            control,
+            'updateBoundingRect',
+            wraps=control.updateBoundingRect,
+        ) as refresh_geometry:
+            canvas.scaleImage(1.1)
+            self.app.processEvents()
+            refresh_geometry.assert_called_once_with()
+
+            refresh_geometry.reset_mock()
+            center = control.visualCenterInScene()
+            control.rotateFromScene(center + QPointF(100, 100), 0.0)
+            refresh_geometry.assert_called_once_with()
+
+            refresh_geometry.reset_mock()
+            handle_index = 4
+            control.beginResize(handle_index)
+            control.resizeFromScene(
+                handle_index,
+                control.handleScenePoint(handle_index) + QPointF(20, 20),
+            )
+            refresh_geometry.assert_called_once_with()
+            control.finishResize()
+
+    def test_transform_preview_skips_hidden_shape_and_commit_rebind(self):
+        canvas = Canvas()
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        before_grid = GridTextTransform(2, 2)
+        before = transform_state(before_grid)
+        after = transform_state(
+            before_grid.with_value('horizontal_divisions', 3)
+        )
+        item.set_text_transform(before)
+        canvas.txtblkShapeControl.setBlkItem(item)
+        callbacks = {
+            'begin_edit': lambda _index: None,
+            'preview_points': lambda _index, _points: None,
+            'commit_points': lambda _index, _points: None,
+            'cancel_edit': lambda _index: None,
+        }
+        canvas.bind_text_grid_control(item, 0, **callbacks)
+        self.assertFalse(canvas.txtblkShapeControl.isVisible())
+        notifications = []
+        item.visual_geometry_changed.connect(
+            lambda: notifications.append(True)
+        )
+
+        with (
+            patch.object(
+                canvas.txtblkShapeControl,
+                'updateBoundingRect',
+                wraps=canvas.txtblkShapeControl.updateBoundingRect,
+            ) as hidden_shape_refresh,
+            patch.object(
+                item.geometry_controller,
+                'grid_control_geometry',
+                wraps=item.geometry_controller.grid_control_geometry,
+            ) as grid_refresh,
+        ):
+            item.set_text_transform(after, preview=True)
+            hidden_shape_refresh.assert_not_called()
+            grid_refresh.assert_called_once_with(0)
+
+            hidden_shape_refresh.reset_mock()
+            grid_refresh.reset_mock()
+            notifications.clear()
+            self.assertTrue(item.set_text_transform(after, preview=False))
+            canvas.bind_text_grid_control(item, 0, **callbacks)
+            hidden_shape_refresh.assert_not_called()
+            grid_refresh.assert_not_called()
+            self.assertEqual(notifications, [])
+
+    def test_projective_control_same_target_rebind_is_idempotent(self):
+        canvas = Canvas()
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        item.set_text_transform(transform_state(ProjectiveTextTransform()))
+        callbacks = {
+            'begin_edit': lambda _index: None,
+            'preview_transform': lambda _index, _transform: None,
+            'commit_transform': lambda _index, _transform: None,
+            'cancel_edit': lambda _index: None,
+        }
+        canvas.bind_text_projective_control(item, 0, **callbacks)
+
+        with patch.object(
+            canvas.txtblkProjectiveControl,
+            'requestGeometryRefresh',
+        ) as refresh_geometry:
+            canvas.bind_text_projective_control(item, 0, **callbacks)
+
+        refresh_geometry.assert_not_called()
+
+    def test_content_padding_change_refreshes_gradient_once(self):
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.fontformat.gradient_enabled = True
+        renderer = item.effect_renderer
+        with (
+            patch.object(
+                renderer,
+                '_effect_padding',
+                return_value=renderer.padding() + 10.0,
+            ),
+            patch.object(renderer, '_refresh_gradient_geometry') as refresh,
+        ):
+            item.on_content_changed()
+
+        refresh.assert_called_once_with()
+
     def test_settled_format_geometry_notifies_visual_controllers(self):
         for transform in (
             ProjectiveTextTransform(1.2, 0.9, 8.0),

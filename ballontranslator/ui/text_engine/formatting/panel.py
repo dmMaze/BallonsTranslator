@@ -545,7 +545,13 @@ class FontFormatPanel(Widget):
     def onAngleCtrlChanged(self, delta: int):
         self.angleBox.setValue(round(self.angleBox.value()) + delta)
 
-    def set_active_format(self, font_format: FontFormat, multi_size=False):
+    def set_active_format(
+        self,
+        font_format: FontFormat,
+        multi_size: bool = False,
+        *,
+        update_transform_panel: bool = True,
+    ) -> None:
         C.active_format = font_format
         self.familybox.blockSignals(True)
         font_size = round(font_format.font_size, 1)
@@ -572,7 +578,8 @@ class FontFormatPanel(Widget):
         
         self.familybox.blockSignals(False)
         self.textadvancedfmt_panel.set_active_format(font_format)
-        self.texttransform_panel.set_active_format(font_format)
+        if update_transform_panel:
+            self.texttransform_panel.set_active_format(font_format)
 
     def set_globalfmt_title(self):
         active_text_style_label = self.active_text_style_label()
@@ -644,7 +651,11 @@ class FontFormatPanel(Widget):
                 if self.textblk_item is not None:
                     self.textblk_item.fontformat = copy.deepcopy(C.active_format)
                 self.textblk_item = None
-                self.set_active_format(self.global_format, multi_select)
+                self.set_active_format(
+                    self.global_format,
+                    multi_select,
+                    update_transform_panel=not transform_items,
+                )
                 self.set_globalfmt_title()
             if transform_items:
                 self.texttransform_panel.set_transform_items(transform_items)
@@ -662,5 +673,4 @@ class FontFormatPanel(Widget):
                 self.textblk_item = textblk_item
                 multi_size = not textblk_item.isEditing() and textblk_item.isMultiFontSize()
                 self.set_active_format(blk_fmt, multi_size)
-                self.texttransform_panel.set_transform_items(transform_items)
                 self.textstyle_panel.setTitle(f'TextBlock #{textblk_item.idx}')

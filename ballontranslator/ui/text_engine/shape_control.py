@@ -343,6 +343,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
         self.setData(CONTROL_ITEM_DATA_KEY, True)
         self.setVisible(False)
+        self.setZValue(1)
 
         self.angleLabel = QLabel(parent)
         self.angleLabel.setText("{:.1f}\N{DEGREE SIGN}".format(0.0))
@@ -350,11 +351,11 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.angleLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.angleLabel.setHidden(True)
 
-        self.current_scale = 1.0
-        self.need_rescale = False
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
-    def requestGeometryRefresh(self):
+    def requestGeometryRefresh(self) -> None:
+        if not self.isVisible():
+            return
         if self.blk_item is not None:
             self.updateBoundingRect()
         else:
@@ -451,8 +452,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.show()
         self.requestGeometryRefresh()
 
-    def _on_item_geometry_changed(self, *_args):
-        self.updateBoundingRect()
+    def _on_item_geometry_changed(self, *_args: object) -> None:
+        self.requestGeometryRefresh()
 
     def updateBoundingRect(self):
         if self.blk_item is None:
@@ -888,7 +889,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
             new_local.width(),
             new_local.height(),
         )
-        item.setRect(new_abs)
+        # Publish only the settled geometry after restoring the visual anchor.
+        item.setRect(new_abs, notify=False)
 
         # Resizing changes nonlinear geometry, so restore the untouched visual
         # handle to the scene position captured at drag start.
@@ -905,7 +907,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             )
         item.setPos(item.pos() + parent_delta)
         item.blk._bounding_rect = item.absBoundingRect()
-        self.requestGeometryRefresh()
+        item.visual_geometry_changed.emit()
 
     def beginRotation(self, scene_pos: QPointF, idx: int = None):
         if idx is not None:
@@ -925,7 +927,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
         pointer_angle = math.degrees(math.atan2(rotate_vec.y(), rotate_vec.x()))
         preview_angle = pointer_angle + rotate_start
         self.blk_item.setRotation(preview_angle)
-        self.requestGeometryRefresh()
         return preview_angle
 
     def finishRotationPreview(self, original_angle: float) -> float:
@@ -933,7 +934,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
         # Keep the model angle as the command's sole owner during preview.
         self.blk_item.setRotation(original_angle)
         self.finishProxyDrag()
-        self.updateBoundingRect()
         return preview_angle
 
     def ctrlblockPressed(self):
@@ -966,25 +966,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
         for ctrl in self.ctrlblock_group:
             ctrl.show()
         self.requestGeometryRefresh()
-
-    def updateScale(self, scale: float):
-        if not self.isVisible():
-            if scale != self.current_scale:
-                self.need_rescale = True
-                self.current_scale = scale
-            return
-
-        self.current_scale = scale
-        # The handles ignore scene/view transforms, so their device size is stable.
-        for ctrl in self.ctrlblock_group:
-            ctrl.updateEdgeWidth(CBEDGE_WIDTH)
-        self.requestGeometryRefresh()
-
-    def show(self) -> None:
-        super().show()
-        if self.need_rescale:
-            self.need_rescale = False
-        self.setZValue(1)
 
     def startEditing(self):
         self.setCursor(Qt.CursorShape.IBeamCursor)

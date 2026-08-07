@@ -156,8 +156,8 @@ class TextBlkItem(QGraphicsTextItem):
         if not (self.hasFocus() and self.pre_editing):
             # Text edits can change glyph overhang, effect extents, and the
             # logical gradient envelope without changing the FontFormat.
-            self._update_effect_padding()
-            if self.fontformat.gradient_enabled:
+            padding_changed = self._update_effect_padding()
+            if self.fontformat.gradient_enabled and not padding_changed:
                 self._refresh_gradient_geometry()
             if self.repaint_on_changed:
                 if not self.repainting:
@@ -273,8 +273,9 @@ class TextBlkItem(QGraphicsTextItem):
         *,
         preview: bool = False,
     ) -> bool:
+        effective_before = self.geometry_controller.effective()
         changed = self.geometry_controller.set(state, preview=preview)
-        if changed:
+        if changed and self.geometry_controller.effective() != effective_before:
             self.visual_geometry_changed.emit()
         return changed
 
@@ -318,14 +319,23 @@ class TextBlkItem(QGraphicsTextItem):
         self.reshaping = False
         self.repaint_background()
 
-    def setRect(self, rect: Union[List, QRectF], padding=True, repaint=True, update_blk_rect=True) -> None:
+    def setRect(
+        self,
+        rect: Union[List, QRectF],
+        padding: bool = True,
+        repaint: bool = True,
+        update_blk_rect: bool = True,
+        *,
+        notify: bool = True,
+    ) -> None:
         self.geometry_controller.set_rect(
             rect,
             padding=padding,
             repaint=repaint,
             update_blk_rect=update_blk_rect,
         )
-        self.visual_geometry_changed.emit()
+        if notify:
+            self.visual_geometry_changed.emit()
 
     def documentSize(self):
         return self.layout.documentSize()

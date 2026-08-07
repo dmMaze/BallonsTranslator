@@ -132,6 +132,45 @@ class MoveBlkItemsCommand(QUndoCommand):
         self._apply(self.old_pos_lst)
 
 
+class MoveByKeyCommand(QUndoCommand):
+    def __init__(
+        self,
+        blkitems: List[TextBlkItem],
+        direction: QPointF,
+    ) -> None:
+        super().__init__()
+        self.blkitems = blkitems
+        self.direction = direction
+        self.ori_pos_list = []
+        self.end_pos_list = []
+        for blk in blkitems:
+            pos = blk.logical_position()
+            self.ori_pos_list.append(pos)
+            self.end_pos_list.append(pos + direction)
+
+    def undo(self):
+        for blk, pos in zip(self.blkitems, self.ori_pos_list):
+            blk.set_logical_position(pos)
+            blk.oldPos = blk.pos()
+
+    def redo(self):
+        for blk, pos in zip(self.blkitems, self.end_pos_list):
+            blk.set_logical_position(pos)
+            blk.oldPos = blk.pos()
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        canmerge = (
+            self.blkitems == other.blkitems
+            and self.direction == other.direction
+        )
+        if canmerge:
+            self.end_pos_list = other.end_pos_list
+        return canmerge
+
+    def id(self):
+        return 1
+
+
 class ApplyFontformatCommand(QUndoCommand):
     """Apply one captured whole-format value to the selected text items."""
 

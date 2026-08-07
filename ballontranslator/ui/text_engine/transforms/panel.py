@@ -281,7 +281,6 @@ class TextTransformPanel(PanelArea):
             and self._selected_transform_index >= count
         ):
             self.clear_transform_selection()
-        self._sync_content_height()
 
     def select_transform(self, index: int, *, emit: bool = True):
         index = int(index)
@@ -344,10 +343,10 @@ class TextTransformPanel(PanelArea):
         if mixed:
             self.clear_transform_selection()
             self._rebuild_transform_panels(())
-            return
-        self._rebuild_transform_panels(common_sequence)
-        for index, panel in enumerate(self.transform_panels):
-            panel.set_values([state.stack[index] for state in states])
+        else:
+            self._rebuild_transform_panels(common_sequence)
+            for index, panel in enumerate(self.transform_panels):
+                panel.set_values([state.stack[index] for state in states])
         self._sync_content_height()
 
     def set_active_format(self, font_format: FontFormat):
