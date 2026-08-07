@@ -15,7 +15,16 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem
 
-from ballontranslator.utils.fontformat import ProjectiveTextTransform
+from ballontranslator.utils.fontformat import (
+    ProjectiveTextTransform,
+    TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
+    TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
+    TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MAX,
+    TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MIN,
+    TEXT_TRANSFORM_PRECISION,
+    TEXT_TRANSFORM_SCALE_MAX,
+    TEXT_TRANSFORM_SCALE_MIN,
+)
 
 from ...cursor import rotateCursorList
 from .modal import ModalPointTransform
@@ -31,6 +40,11 @@ PROJECTIVE_AXIS_COLORS = {
     'y': QColor(90, 190, 70),
     'z': QColor(65, 125, 235),
 }
+
+
+def _canonical_ui_value(value: float) -> float:
+    value = round(value, TEXT_TRANSFORM_PRECISION)
+    return 0.0 if value == 0.0 else value
 
 
 def _display_rotation(point):
@@ -362,19 +376,49 @@ class TextProjectiveTransformControl(QGraphicsPathItem):
         tool = self._modal_transform
         if tool.mode == tool.ROTATE:
             axis = tool.axis or 'z'
+            minimum, maximum = (
+                (
+                    TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MIN,
+                    TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MAX,
+                )
+                if axis == 'z'
+                else (
+                    TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
+                    TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
+                )
+            )
+            value = getattr(initial, f'rotation_{axis}')
+            value = min(
+                max(value + tool.rotation_delta(), minimum), maximum
+            )
             transform = initial.with_value(
                 f'rotation_{axis}',
-                getattr(initial, f'rotation_{axis}')
-                + tool.rotation_delta(),
+                _canonical_ui_value(value),
             )
         else:
             factor = tool.scale_factor()
             updates = {}
             if tool.axis != 'y':
-                updates['horizontal_scale'] = initial.horizontal_scale * factor
+                updates['horizontal_scale'] = _canonical_ui_value(
+                    min(
+                        max(
+                            initial.horizontal_scale * factor,
+                            TEXT_TRANSFORM_SCALE_MIN,
+                        ),
+                        TEXT_TRANSFORM_SCALE_MAX,
+                    )
+                )
             if tool.axis != 'x':
-                updates['vertical_scale'] = initial.vertical_scale * factor
-            transform = replace(initial, **updates).normalized()
+                updates['vertical_scale'] = _canonical_ui_value(
+                    min(
+                        max(
+                            initial.vertical_scale * factor,
+                            TEXT_TRANSFORM_SCALE_MIN,
+                        ),
+                        TEXT_TRANSFORM_SCALE_MAX,
+                    )
+                )
+            transform = replace(initial, **updates)
         self._modal_latest_transform = transform
         self._preview_transform(self.stack_index, transform)
         return True

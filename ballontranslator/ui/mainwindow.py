@@ -50,6 +50,7 @@ from .run_pipeline_dialog import RunPipelineDialog
 from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .text_engine.editing.commands import GlobalRepalceAllCommand
+from .text_engine.transforms.grid import start_grid_numba_warmup
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
@@ -173,6 +174,8 @@ class MainWindow(mainwindow_cls):
                     show_release_info=show_release_info,
                 ),
             )
+        # The callback cannot run until construction returns to the event loop.
+        QTimer.singleShot(0, start_grid_numba_warmup)
 
     def setupThread(self):
         self.imsave_thread = ImgSaveThread()

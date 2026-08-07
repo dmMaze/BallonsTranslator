@@ -17,11 +17,6 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.utils import shared as C
-from ballontranslator.utils.fontformat import (
-    TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-    TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-    normalize_text_transform_value,
-)
 from .glyph import (
     GLOBAL_GLYPH_GEOMETRY_CACHE,
     GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE,
@@ -394,11 +389,6 @@ class GlyphSlantLayoutRenderer:
         angle: float,
         persistent_cache: bool,
     ) -> bool:
-        angle = normalize_text_transform_value(
-            angle,
-            TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-            TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-        )
         angle_changed = angle != self.glyph_slant_angle
         # Global-stack previews do not alter glyph geometry, so keep using the
         # committed global entry instead of creating a redundant scratch copy.

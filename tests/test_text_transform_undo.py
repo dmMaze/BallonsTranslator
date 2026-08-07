@@ -385,6 +385,26 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
             projective_transform_matrix(transform, rect),
         )
 
+    def test_persisted_transform_values_are_not_range_validated(self):
+        font_format = FontFormat(
+            text_transform=[{
+                'transform_type': 'projective',
+                'horizontal_scale': 5.0,
+            }],
+            glyph_slant_angle=50.0,
+        )
+        block = TextBlock([0, 0, 20, 10])
+        block.fontformat = font_format
+        restored = TextBlock(
+            **json.loads(json.dumps(block, cls=TextBlkEncoder))
+        )
+
+        self.assertEqual(
+            restored.fontformat.text_transform[0].horizontal_scale,
+            5.0,
+        )
+        self.assertEqual(restored.fontformat.glyph_slant_angle, 50.0)
+
     def test_bend_mapper_round_trips_both_writing_modes(self):
         for vertical in (False, True):
             logical = (
@@ -468,8 +488,11 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
             amplitude_x=0.0, amplitude_y=0.0
         ).is_neutral())
         self.assertFalse(SineTextTransform().is_neutral())
-        with self.assertRaises(ValueError):
-            SineTextTransform(frequency_x=0.5).normalized()
+        self.assertEqual(
+            TextTransformStack((SineTextTransform(frequency_x=0.5),))[0]
+            .frequency_x,
+            0.5,
+        )
 
     def test_sine_mapper_round_trips_ordered_axes_at_extreme_values(self):
         logical = QRectF(10, 20, 420, 160)
@@ -524,15 +547,14 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
         )
 
     def test_grid_payload_divisions_and_interpolation_round_trip(self):
-        grid = GridTextTransform(3, 2, 'catmull_rom').normalized()
+        grid = GridTextTransform(3, 2, 'catmull_rom')
         self.assertEqual(len(grid.control_points), 12)
         self.assertTrue(grid.is_neutral())
         self.assertEqual(
-            len(GridTextTransform().normalized().control_points),
+            len(GridTextTransform().control_points),
             4,
         )
-        with self.assertRaises(ValueError):
-            GridTextTransform(33, 1).normalized()
+        self.assertEqual(len(GridTextTransform(33, 1).control_points), 68)
 
         points = list(grid.control_points)
         points[5] = (0.7, 0.35)
@@ -554,7 +576,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
     def test_grid_bilinear_and_catmull_rom_differ_between_anchors(self):
         logical = QRectF(0, 0, 400, 200)
         source = logical.adjusted(-10, -10, 10, 10)
-        base = GridTextTransform(2, 2).normalized()
+        base = GridTextTransform(2, 2)
         points = list(base.control_points)
         points[4] = (0.7, 0.3)
         bilinear = GridMapper(
@@ -602,7 +624,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
         )
         for interpolation in ('bilinear', 'catmull_rom'):
             with self.subTest(interpolation=interpolation):
-                grid = GridTextTransform(2, 2, interpolation).normalized()
+                grid = GridTextTransform(2, 2, interpolation)
                 points = list(grid.control_points)
                 points[4] = (0.6, 0.4)
                 mapper = GridMapper(
@@ -648,7 +670,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
         mapper = GridMapper(
             QRectF(0, 0, 1000, 500),
             QRectF(0, 0, 1000, 500),
-            GridTextTransform(2, 2, 'bilinear', points).normalized(),
+            GridTextTransform(2, 2, 'bilinear', points),
         )
         axis = np.linspace(0.25, 0.75, 41, dtype=np.float32)
         source_x, source_y = np.meshgrid(axis * 1000, axis * 500)
@@ -674,7 +696,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
     def test_bilinear_grid_outline_keeps_padded_cell_boundary_kinks(self):
         logical = QRectF(0, 0, 100, 100)
         source = logical.adjusted(-10, -20, 30, 20)
-        grid = GridTextTransform(2, 1).normalized()
+        grid = GridTextTransform(2, 1)
         points = list(grid.control_points)
         points[1] = (0.5, -1.0)
         points[4] = (0.5, 1.0)
@@ -689,7 +711,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
 
     def test_catmull_rom_bounds_scale_with_deformation_not_box_size(self):
         logical = QRectF(0, 0, 400, 200)
-        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        grid = GridTextTransform(2, 2, 'catmull_rom')
         points = list(grid.control_points)
         points[4] = (0.55, 0.45)
         bounds = GridMapper(
@@ -703,7 +725,7 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
     def test_grid_compiles_as_one_ordered_composable_surface_mapper(self):
         logical = QRectF(10, 20, 420, 160)
         source = logical.adjusted(-12, -12, 12, 12)
-        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        grid = GridTextTransform(2, 2, 'catmull_rom')
         points = list(grid.control_points)
         points[4] = (0.62, 0.38)
         stack = TextTransformStack((
@@ -824,7 +846,7 @@ class TextTransformPanelTest(TextTransformTestBase):
     def test_transform_cards_select_on_card_and_parameter_interaction(self):
         panel = self._make_panel()
         panel.set_transform(transform_state(
-            GridTextTransform().normalized(),
+            GridTextTransform(),
             ProjectiveTextTransform(),
         ))
         selected = []
@@ -855,7 +877,7 @@ class TextTransformPanelTest(TextTransformTestBase):
             (ProjectiveTextTransform(), 'rotation_x'),
             (BendTextTransform(), 'bend'),
             (SineTextTransform(), 'frequency_x'),
-            (GridTextTransform().normalized(), 'horizontal_divisions'),
+            (GridTextTransform(), 'horizontal_divisions'),
         )
         panel.show()
         self.app.processEvents()
@@ -904,6 +926,29 @@ class TextTransformPanelTest(TextTransformTestBase):
         self.assertEqual(controls['frequency_x'].drag_step, 0.125)
         self.assertEqual(controls['amplitude_x'].editor.text(), '10.0%')
 
+    def test_controls_canonicalize_values_before_emitting(self):
+        floating = CommittedTransformControl(
+            'Shift', 'phase_x', 100.0, 0.0, 1.0, '%', 1.0,
+        )
+        integer = CommittedTransformControl(
+            'Segments', 'frequency_x', 1.0, 0.0, 64.0, '', 0.125,
+            decimals=0,
+        )
+        self.addCleanup(floating.deleteLater)
+        self.addCleanup(integer.deleteLater)
+
+        self.assertEqual(floating._parse('12.3456789%'), 0.123457)
+        self.assertEqual(integer._display_to_canonical(2.5), 2)
+        self.assertEqual(integer._parse('2'), 2)
+        self.assertIsInstance(integer._parse('0'), int)
+        with self.assertRaises(ValueError):
+            integer._parse('2.5')
+        integer.set_model_value(2)
+        integer.editor.setText('2.5')
+        integer._on_text_edited()
+        self.assertFalse(integer.commit_pending())
+        self.assertEqual(integer.editor.text(), '2')
+
     def test_integer_drag_uses_eight_pixels_per_step_and_stops_at_range_end(self):
         integer = CommittedTransformControl(
             'Segments', 'frequency_x', 1.0, 0.0, 64.0, '', 0.125,
@@ -918,7 +963,10 @@ class TextTransformPanelTest(TextTransformTestBase):
         integer._start_drag()
         integer._move_drag(7)
         integer._move_drag(1)
-        self.assertEqual(integer_previews, [0.0, 1.0])
+        self.assertEqual(integer_previews, [0, 1])
+        self.assertTrue(all(
+            isinstance(value, int) for value in integer_previews
+        ))
         self.assertEqual(integer.editor.text(), '3')
         integer_steps = []
         integer.drag_commit_requested.connect(
@@ -930,14 +978,15 @@ class TextTransformPanelTest(TextTransformTestBase):
             Qt.MouseButton.LeftButton,
             pos=up_rect.center(),
         )
-        self.assertEqual(integer_steps, [1.0])
+        self.assertEqual(integer_steps, [1])
         integer.set_model_value(64)
         QTest.mouseClick(
             integer.editor,
             Qt.MouseButton.LeftButton,
             pos=up_rect.center(),
         )
-        self.assertEqual(integer_steps, [1.0])
+        self.assertEqual(integer_steps, [1])
+        self.assertIsInstance(integer_steps[0], int)
 
         bounded = CommittedTransformControl(
             'Shift', 'phase_x', 100.0, 0.0, 1.0, '%', 1.0,
@@ -970,11 +1019,54 @@ class TextTransformPanelTest(TextTransformTestBase):
         self.assertEqual(bounded.editor.text(), 'Δ +10.0%')
         self.assertAlmostEqual(bounded_previews[-1], 0.1)
 
+    def test_grid_division_drag_preserves_integer_through_panel_signal(self):
+        previous_canvas = getattr(SW, 'canvas', None)
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        stack = QUndoStack()
+        SW.canvas = SimpleNamespace(push_undo_command=stack.push)
+        panel = self._make_panel()
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.set_text_transform(transform_state(GridTextTransform()))
+        session = TextTransformEditSession(SimpleNamespace(), panel)
+        session.replace_targets([item])
+        panel.set_transform_items([item])
+        previews = []
+        panel.transform_preview_requested.connect(
+            lambda index, name, value: previews.append((index, name, value))
+        )
+        control = panel.transform_panels[0].controls[
+            'horizontal_divisions'
+        ]
+
+        control._start_drag()
+        control._move_drag(8)
+
+        self.assertEqual(previews, [(0, 'horizontal_divisions', 1)])
+        self.assertIsInstance(previews[0][2], int)
+        updated = item._effective_text_transform().stack[0]
+        self.assertEqual(updated.horizontal_divisions, 2)
+        self.assertIsInstance(updated.horizontal_divisions, int)
+        control._finish_drag()
+        self.assertEqual(
+            item.blk.fontformat.text_transform[0].horizontal_divisions,
+            2,
+        )
+        self.assertIsInstance(
+            item.blk.fontformat.text_transform[0].horizontal_divisions,
+            int,
+        )
+        self.assertEqual(stack.count(), 1)
+        stack.undo()
+        self.assertEqual(
+            item.blk.fontformat.text_transform[0].horizontal_divisions,
+            1,
+        )
+
     def test_grid_parameter_selection_binds_controller_and_delete_clears_it(self):
         panel = self._make_panel()
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.set_text_transform(transform_state(
-            GridTextTransform().normalized()
+            GridTextTransform()
         ))
         stack = QUndoStack()
         bindings = []
@@ -1048,7 +1140,7 @@ class TextTransformPanelTest(TextTransformTestBase):
         self.addCleanup(setattr, SW, 'canvas', previous_canvas)
         for transform, control_name in (
             (ProjectiveTextTransform(), 'txtblkProjectiveControl'),
-            (GridTextTransform().normalized(), 'txtblkGridControl'),
+            (GridTextTransform(), 'txtblkGridControl'),
         ):
             with self.subTest(transform=transform.transform_type):
                 canvas = Canvas()
@@ -1184,7 +1276,7 @@ class TextTransformUndoTest(TextTransformTestBase):
         scene.addItem(base)
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(base)
-        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        grid = GridTextTransform(2, 2, 'catmull_rom')
         item.set_text_transform(transform_state(grid))
         stack = QUndoStack()
         SW.canvas = SimpleNamespace(push_undo_command=stack.push)
@@ -1256,7 +1348,7 @@ class TextTransformUndoTest(TextTransformTestBase):
         previous_canvas = getattr(SW, 'canvas', None)
         self.addCleanup(setattr, SW, 'canvas', previous_canvas)
         item, _ = self._make_pair(0, TEST_LINES[0], False)
-        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        grid = GridTextTransform(2, 2, 'catmull_rom')
         points = list(grid.control_points)
         points[4] = (0.56, 0.44)
         grid = grid.with_control_points(points)
@@ -2302,7 +2394,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 item = TextBlkItem(block, 0)
                 scene = QGraphicsScene()
                 scene.addItem(item)
-                grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+                grid = GridTextTransform(2, 2, 'catmull_rom')
                 points = list(grid.control_points)
                 points[4] = (0.56, 0.44)
                 item.set_text_transform(transform_state(
@@ -2476,7 +2568,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
         nonlinear_transforms = (
             BendTextTransform(0.7),
             SineTextTransform(),
-            GridTextTransform().normalized().with_control_points((
+            GridTextTransform().with_control_points((
                 (0.0, 0.0),
                 (1.05, 0.0),
                 (0.0, 1.0),
@@ -2901,7 +2993,7 @@ class TextTransformGeometryTest(TextTransformTestBase):
             ProjectiveTextTransform(1.2, 0.9, 8.0),
             ProjectiveTextTransform(rotation_y=25.0, perspective=0.5),
             BendTextTransform(0.55),
-            GridTextTransform().normalized().with_control_points((
+            GridTextTransform().with_control_points((
                 (0.0, 0.0),
                 (1.1, 0.05),
                 (-0.05, 1.0),
@@ -3117,6 +3209,13 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             center + QPointF(0.0, PROJECTIVE_CONTROL_RADIUS)
         ))
         self.assertAlmostEqual(previews[-1][1].rotation_z, 90.0)
+        with patch.object(
+            controller._modal_transform,
+            'rotation_delta',
+            return_value=500.0,
+        ):
+            self.assertTrue(controller._preview_modal())
+        self.assertEqual(previews[-1][1].rotation_z, 180.0)
 
         self.assertTrue(press(Qt.Key.Key_X))
         self.assertEqual(previews[-1][1], initial)
@@ -3124,9 +3223,32 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             center - QPointF(0.0, PROJECTIVE_CONTROL_RADIUS)
         ))
         self.assertNotEqual(previews[-1][1].rotation_x, 0.0)
+        with patch.object(
+            controller._modal_transform,
+            'rotation_delta',
+            return_value=500.0,
+        ):
+            self.assertTrue(controller._preview_modal())
+        self.assertEqual(previews[-1][1].rotation_x, 89.0)
 
         self.assertTrue(press(Qt.Key.Key_S))
         self.assertEqual(previews[-1][1], initial)
+        with patch.object(
+            controller._modal_transform,
+            'scale_factor',
+            return_value=10.0,
+        ):
+            self.assertTrue(controller._preview_modal())
+        self.assertEqual(previews[-1][1].horizontal_scale, 4.0)
+        self.assertEqual(previews[-1][1].vertical_scale, 4.0)
+        with patch.object(
+            controller._modal_transform,
+            'scale_factor',
+            return_value=0.0,
+        ):
+            self.assertTrue(controller._preview_modal())
+        self.assertEqual(previews[-1][1].horizontal_scale, 0.1)
+        self.assertEqual(previews[-1][1].vertical_scale, 0.1)
         scale_start = QPointF(controller._modal_transform.start_mouse)
         vector = scale_start - center
         self.assertTrue(controller._update_modal(center + vector * 1.5))
@@ -3390,7 +3512,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         )
 
     def test_grid_overlay_tracks_composed_stack_in_both_writing_modes(self):
-        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        grid = GridTextTransform(2, 2, 'catmull_rom')
         points = list(grid.control_points)
         points[4] = (0.62, 0.38)
         stack = transform_state(
@@ -3501,7 +3623,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(base)
         item.set_text_transform(transform_state(
-            GridTextTransform().normalized()
+            GridTextTransform()
         ))
         controller = TextGridTransformControl()
         controller.setParentItem(base)
@@ -3636,7 +3758,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         scene.addItem(base)
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(base)
-        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        grid = GridTextTransform(2, 2, 'catmull_rom')
         points = list(grid.control_points)
         points[4] = (0.56, 0.44)
         grid = grid.with_control_points(points)
@@ -3727,7 +3849,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         scene.addItem(base)
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(base)
-        grid = GridTextTransform(2, 2, 'catmull_rom').normalized()
+        grid = GridTextTransform(2, 2, 'catmull_rom')
         item.set_text_transform(transform_state(grid))
         controller = TextGridTransformControl()
         controller.setParentItem(base)
@@ -3800,7 +3922,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(canvas.textLayer)
         item.set_text_transform(transform_state(
-            GridTextTransform(2, 2, 'bilinear').normalized()
+            GridTextTransform(2, 2, 'bilinear')
         ))
         previews = []
         committed = []
@@ -3871,7 +3993,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(canvas.textLayer)
         item.set_text_transform(transform_state(
-            GridTextTransform(2, 2, 'bilinear').normalized()
+            GridTextTransform(2, 2, 'bilinear')
         ))
         canvas.bind_text_grid_control(
             item,
@@ -3945,7 +4067,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(canvas.textLayer)
         item.set_text_transform(transform_state(
-            GridTextTransform(2, 2, 'bilinear').normalized()
+            GridTextTransform(2, 2, 'bilinear')
         ))
         canvas.bind_text_grid_control(
             item,
@@ -4044,27 +4166,23 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         canvas.gv.show()
         self.app.processEvents()
         self.addCleanup(canvas.gv.close)
-        start = canvas.gv.mapFromScene(QPointF(80, 80))
-        end = canvas.gv.mapFromScene(QPointF(180, 160))
+        start = QPointF(80, 80)
+        end = QPointF(180, 160)
 
-        QTest.mousePress(
-            canvas.gv.viewport(),
-            Qt.MouseButton.RightButton,
-            Qt.KeyboardModifier.NoModifier,
+        self.assertTrue(canvas._begin_rubber_band(
             start,
-        )
-        QTest.mouseMove(canvas.gv.viewport(), end)
-        self.app.processEvents()
+            Qt.KeyboardModifier.NoModifier,
+            Qt.MouseButton.RightButton,
+            target='scene',
+            on_update=canvas._select_scene_items_in_rect,
+        ))
+        self.assertTrue(canvas._update_rubber_band(end))
 
         self.assertTrue(canvas.rubber_band.isVisible())
         self.assertTrue(selectable.isSelected())
-        QTest.mouseRelease(
-            canvas.gv.viewport(),
-            Qt.MouseButton.RightButton,
-            Qt.KeyboardModifier.NoModifier,
-            end,
-        )
-        self.app.processEvents()
+        self.assertTrue(canvas._finish_rubber_band(
+            end, Qt.MouseButton.RightButton
+        ))
         self.assertFalse(canvas.rubber_band.isVisible())
 
     def test_bend_resize_uses_frozen_drag_coordinates(self):
@@ -4180,7 +4298,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         )
         item = TextBlkItem(block, 0)
         item.setParentItem(base)
-        grid = GridTextTransform(2, 2, 'bilinear').normalized()
+        grid = GridTextTransform(2, 2, 'bilinear')
         points = list(grid.control_points)
         points[4] = (0.35, 0.65)
         item.set_text_transform(transform_state(
@@ -4245,7 +4363,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                     BendTextTransform(0.65),
                 ),
                 transform_state(
-                    GridTextTransform().normalized().with_control_points((
+                    GridTextTransform().with_control_points((
                         (0.0, 0.0),
                         (1.08, 0.04),
                         (-0.04, 1.0),

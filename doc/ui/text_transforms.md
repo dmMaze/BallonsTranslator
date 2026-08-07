@@ -20,7 +20,7 @@ reorderable. The global stack transforms the completed text-and-effects box;
 its order is significant and duplicate transform types are allowed.
 
 `compile_text_transform_stack()` is the transform-stack compiler. It receives
-the committed, normalized stack plus the current logical bounds, padded source
+the committed stack plus the current logical bounds, padded source
 bounds, and writing mode. Registered stage factories turn each active entry
 into a matrix or nonlinear mapper, and the compiler returns one
 `CompiledTextTransform` for `TextItemGeometryController` to store and install.
@@ -51,7 +51,7 @@ above.
 
 | Concern | Owner |
 | --- | --- |
-| Normalized model values, stack, and persistence | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
+| Model values, stack, and persistence | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
 | Stage math and composite mapping | [`ui/text_engine/transforms/`](../../ballontranslator/ui/text_engine/transforms/) |
 | Variant registration and compilation policy | [`ui/text_engine/transforms/registry.py`](../../ballontranslator/ui/text_engine/transforms/registry.py) |
 | Item geometry, installed mapping, and render lifecycle | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
@@ -69,20 +69,21 @@ variant-specific branches to `TextBlkItem` or `TextItemGeometryController`.
 
 `TextTransform` subclasses are immutable model values with a stable
 `transform_type`, an exact neutral state, and runtime-only `is_nonlinear`
-capability metadata. Before commit, normalization rejects non-finite input,
-constrains values to supported ranges and precision, and validates
-variant-specific structure. `TextTransformStack` is an immutable ordered tuple;
-neutral entries remain in model and UI state but are skipped by the compiler.
+capability metadata. UI controls constrain edits to their supported ranges and
+canonical precision before producing model values. The model does not clamp or
+range-validate persisted parameters. `TextTransformStack` is an immutable
+ordered tuple; neutral entries remain in model and UI state but are skipped by
+the compiler.
 
 `TextTransformState` combines the complete stack with `glyph_slant_angle`; undo
 must snapshot both so it restores the complete visible transform state.
-Project JSON stores only this committed, normalized model data. Preview values,
+Project JSON stores only this committed model data. Preview values,
 matrices, mappers, bounds, and caches are derived state and must not be
 serialized.
 
-Persisted transform entries must use a registered type, known fields, and valid
-in-range values; omitted fields may use the variant's defined defaults. Passive
-loading follows the permissive recovery policy in `AGENTS.md`.
+Persisted transform entries use a registered type and known fields; parameter
+values are assumed valid, and omitted fields may use the variant's defaults.
+Passive loading still ignores structurally unknown transform entries.
 
 `TextTransformEditSession` owns transient UI state. Typed edits commit at their
 normal editing boundary; drags preview and then create one command or cancel.
@@ -95,7 +96,7 @@ panel or canvas control
   -> TextTransformEditSession transient preview
      -> cancel: restore prior state
      -> commit: create one SetTextTransformCommand
-        -> committed normalized state on each selected item
+        -> committed state on each selected item
         -> geometry compilation, painting, and overlay refresh
 ```
 
@@ -238,7 +239,7 @@ The following details are easy to regress during otherwise local changes:
 
 ## Adding a variant
 
-1. Add an immutable normalized `TextTransform` subclass with a stable
+1. Add an immutable `TextTransform` subclass with a stable
    `transform_type`, exact neutral state, and correct `is_nonlinear` capability.
 2. Register its model type, localized controls, and stage factory under the
    same stable key.

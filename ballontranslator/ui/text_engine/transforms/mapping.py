@@ -156,7 +156,6 @@ def projective_transform_matrix(
     >>> matrix.map(QPointF(50, 25))
     PyQt6.QtCore.QPointF(50.0, 25.0)
     """
-    transform = transform.normalized()
     if transform.is_neutral():
         return QTransform()
     if rect.width() <= 0.0 or rect.height() <= 0.0:

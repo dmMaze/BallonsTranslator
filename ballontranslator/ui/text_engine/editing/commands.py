@@ -69,7 +69,7 @@ class SetTextTransformCommand(QUndoCommand):
         after: Sequence[TextTransformState],
         refresh_callback: Optional[Callable[[], None]] = None,
     ) -> Optional["SetTextTransformCommand"]:
-        """Build a command, or return ``None`` for a normalized no-op."""
+        """Build a command, or return ``None`` for an unchanged state."""
         command = cls(items, before, after, refresh_callback)
         return None if command.before == command.after else command
 

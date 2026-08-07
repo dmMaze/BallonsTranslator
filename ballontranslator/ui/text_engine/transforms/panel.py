@@ -34,8 +34,8 @@ class TextTransformPanel(PanelArea):
     """
 
     transform_commit_requested = Signal(int, str, object)
-    transform_preview_requested = Signal(int, str, float)
-    transform_drag_commit_requested = Signal(int, str, float)
+    transform_preview_requested = Signal(int, str, object)
+    transform_drag_commit_requested = Signal(int, str, object)
     transform_preview_canceled = Signal(int, str)
     transform_add_requested = Signal(str)
     transform_remove_requested = Signal(int)

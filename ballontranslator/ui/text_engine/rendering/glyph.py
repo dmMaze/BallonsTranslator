@@ -46,11 +46,6 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.ui.misc import ndarray2pixmap, pixmap2ndarray
-from ballontranslator.utils.fontformat import (
-    TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-    TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-    normalize_text_transform_value,
-)
 
 
 GLYPH_STROKE_FORMAT_PROPERTY = 0x100000 + 1239
@@ -211,11 +206,6 @@ GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE = WeightedGlyphGeometryCache(
 
 def glyph_slant_transform(angle: float, baseline_y: float) -> QTransform:
     """Build ``x' = x - tan(angle) * (y - baseline_y)``."""
-    angle = normalize_text_transform_value(
-        angle,
-        TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-        TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-    )
     tangent = math.tan(math.radians(angle))
     return QTransform(1.0, 0.0, -tangent, 1.0, tangent * baseline_y, 0.0)
 

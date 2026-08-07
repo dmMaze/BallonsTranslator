@@ -17,6 +17,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ballontranslator.utils.fontformat import TEXT_TRANSFORM_PRECISION
+
 from ...custom_widget import SmallSizeControlLabel
 from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
@@ -184,8 +186,8 @@ class CommittedTransformControl(QWidget):
     DRAG_PREVIEW = 'DRAG_PREVIEW'
 
     commit_requested = Signal(str, object)
-    preview_requested = Signal(str, float)
-    drag_commit_requested = Signal(str, float)
+    preview_requested = Signal(str, object)
+    drag_commit_requested = Signal(str, object)
     preview_canceled = Signal(str)
     user_interacted = Signal()
 
@@ -263,8 +265,12 @@ class CommittedTransformControl(QWidget):
     def _canonical_to_display(self, value: float) -> float:
         return value * self.display_factor
 
-    def _display_to_canonical(self, value: float) -> float:
-        return value / self.display_factor
+    def _display_to_canonical(self, value: float) -> int | float:
+        canonical_value = float(value) / self.display_factor
+        if self.decimals == 0:
+            return int(canonical_value)
+        canonical_value = round(canonical_value, TEXT_TRANSFORM_PRECISION)
+        return 0.0 if canonical_value == 0.0 else canonical_value
 
     def _format(self, canonical_value: float) -> str:
         return (
@@ -272,18 +278,29 @@ class CommittedTransformControl(QWidget):
             f'{self.suffix}'
         )
 
-    def _parse(self, text: str) -> float:
+    def _parse(self, text: str) -> int | float:
         text = text.strip()
         if self.suffix and text.endswith(self.suffix):
             text = text[:-len(self.suffix)].strip()
-        canonical_value = self._display_to_canonical(float(text))
+        display_value = float(text)
+        unrounded_value = display_value / self.display_factor
         if (
-            not math.isfinite(canonical_value)
-            or not self.canonical_minimum
+            not math.isfinite(unrounded_value)
+            or (
+                self.decimals == 0
+                and not unrounded_value.is_integer()
+            )
+        ):
+            raise ValueError
+        canonical_value = self._display_to_canonical(display_value)
+        if (
+            not self.canonical_minimum
             <= canonical_value
             <= self.canonical_maximum
         ):
             raise ValueError
+        if self.decimals == 0:
+            return canonical_value
         return 0.0 if canonical_value == 0.0 else canonical_value
 
     def _restore_display(self):
@@ -527,8 +544,8 @@ class TransformParameterPanel(QFrame):
     """
 
     commit_requested = Signal(int, str, object)
-    preview_requested = Signal(int, str, float)
-    drag_commit_requested = Signal(int, str, float)
+    preview_requested = Signal(int, str, object)
+    drag_commit_requested = Signal(int, str, object)
     preview_canceled = Signal(int, str)
     remove_requested = Signal(int)
     move_requested = Signal(int, int)

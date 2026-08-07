@@ -6,6 +6,7 @@ from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import (
     GridTextTransform,
     ProjectiveTextTransform,
+    TEXT_TRANSFORM_PRECISION,
     TextTransformStack,
     TextTransformState,
     create_text_transform,
@@ -16,6 +17,16 @@ from ..editing.commands import SetTextTransformCommand
 
 
 GLYPH_SLANT_INDEX = -1
+
+
+def _canonical_grid_points(points) -> tuple:
+    return tuple(
+        tuple(
+            round(float(value), TEXT_TRANSFORM_PRECISION) or 0.0
+            for value in point
+        )
+        for point in points
+    )
 
 
 class TextTransformEditSession:
@@ -77,6 +88,10 @@ class TextTransformEditSession:
             raise IndexError('text transform index is no longer current')
         transforms = list(state.stack)
         transforms[index] = transforms[index].with_value(param_name, value)
+        if isinstance(transforms[index], GridTextTransform):
+            transforms[index] = transforms[index].with_control_points(
+                _canonical_grid_points(transforms[index].control_points)
+            )
         return TextTransformState(
             TextTransformStack(tuple(transforms)),
             state.glyph_slant_angle,
@@ -348,7 +363,9 @@ class TextTransformEditSession:
         if not isinstance(transform, GridTextTransform):
             raise ValueError('selected transform is not a Grid transform')
         transforms = list(state.stack)
-        transforms[index] = transform.with_control_points(points)
+        transforms[index] = transform.with_control_points(
+            _canonical_grid_points(points)
+        )
         return TextTransformState(
             TextTransformStack(tuple(transforms)),
             state.glyph_slant_angle,
@@ -411,7 +428,6 @@ class TextTransformEditSession:
             raise IndexError('projective transform index is no longer current')
         if not isinstance(state.stack[index], ProjectiveTextTransform):
             raise ValueError('selected transform is not a Projective transform')
-        transform = transform.normalized()
         transforms = list(state.stack)
         transforms[index] = transform
         return TextTransformState(

@@ -1,16 +1,39 @@
 """Invertible free-form grid mapping for transformed text surfaces."""
 
 import math
+import threading
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import QPainterPath
 
 from ballontranslator.utils.fontformat import GridTextTransform
+from ballontranslator.utils.logger import logger as LOGGER
 
 
 _numba_inverse_grid_arrays = None
 _numba_backend_checked = False
+
+
+def start_grid_numba_warmup() -> threading.Thread:
+    """Load or compile Grid kernels outside the Qt event thread."""
+    def warmup() -> None:
+        try:
+            from .grid_numba import warm_grid_numba_cache
+            warm_grid_numba_cache()
+            LOGGER.info('Grid transform acceleration is ready.')
+        except Exception as error:
+            LOGGER.warning(
+                f'Grid transform acceleration is unavailable: {error}'
+            )
+
+    thread = threading.Thread(
+        target=warmup,
+        name='GridNumbaWarmup',
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 def _compiled_inverse_grid_arrays(*args, **kwargs):
@@ -37,7 +60,7 @@ class GridMapper:
 
     >>> mapper = GridMapper(
     ...     QRectF(0, 0, 100, 50), QRectF(0, 0, 100, 50),
-    ...     GridTextTransform().normalized(),
+    ...     GridTextTransform(),
     ... )
     >>> point = mapper.forward_point(QPointF(25, 20))
     >>> (point.x(), point.y())
@@ -60,7 +83,7 @@ class GridMapper:
     ) -> None:
         self.logical_rect = QRectF(logical_rect)
         self.source_rect = QRectF(source_rect)
-        self.transform = transform.normalized()
+        self.transform = transform
         if self.logical_rect.width() <= 0.0 or self.logical_rect.height() <= 0.0:
             raise ValueError('grid rectangle must have positive dimensions')
         self.horizontal = self.transform.horizontal_divisions

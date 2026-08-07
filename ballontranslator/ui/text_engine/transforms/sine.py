@@ -38,7 +38,7 @@ class SineMapper:
             raise ValueError('sine rectangle must have positive dimensions')
         self.logical_rect = QRectF(logical_rect)
         self.source_rect = QRectF(source_rect)
-        self.transform = transform.normalized()
+        self.transform = transform
         self.horizontal_amplitude = (
             self.transform.amplitude_y * self.logical_rect.width()
             if self.transform.frequency_y

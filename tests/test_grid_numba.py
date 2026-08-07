@@ -36,7 +36,7 @@ class GridNumbaTest(unittest.TestCase):
                 mapper = GridMapper(
                     logical,
                     source,
-                    GridTextTransform(1, 1, interpolation).normalized(),
+                    GridTextTransform(1, 1, interpolation),
                 )
                 restored_x, restored_y, valid = mapper.inverse_arrays(
                     visual_x, visual_y, return_valid=True
@@ -70,7 +70,7 @@ class GridNumbaTest(unittest.TestCase):
         mapper = GridMapper(
             QRectF(0, 0, 1000, 500),
             QRectF(0, 0, 1000, 500),
-            GridTextTransform(2, 2, 'bilinear', points).normalized(),
+            GridTextTransform(2, 2, 'bilinear', points),
         )
         axis = np.linspace(0.25, 0.75, 81, dtype=np.float32)
         source_x, source_y = np.meshgrid(axis * 1000, axis * 500)

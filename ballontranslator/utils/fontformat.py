@@ -6,7 +6,6 @@ from dataclasses import (
     replace,
 )
 import enum
-import math
 import re
 import copy
 from typing import ClassVar, Iterator, Sequence
@@ -40,7 +39,6 @@ TEXT_TRANSFORM_SINE_AMPLITUDE_MIN = 0.0
 TEXT_TRANSFORM_SINE_AMPLITUDE_MAX = 1.0
 TEXT_TRANSFORM_GRID_DIVISION_MIN = 1
 TEXT_TRANSFORM_GRID_DIVISION_MAX = 32
-TEXT_TRANSFORM_GRID_INTERPOLATION_TYPES = ('bilinear', 'catmull_rom')
 TEXT_TRANSFORM_PRECISION = 6
 
 
@@ -55,8 +53,8 @@ def _transform_value_field_names(
 class TextTransform:
     """Immutable base value for a persisted text-transform variant.
 
-    Subclasses expose stable component names and normalization. Persistence
-    stores ``transform_type`` with the variant-specific component payload.
+    Subclasses expose stable component names. Persistence stores
+    ``transform_type`` with the variant-specific component payload.
 
     >>> ProjectiveTextTransform().transform_type
     'projective'
@@ -67,15 +65,12 @@ class TextTransform:
     # the completed text surface must be inverse-warped instead.
     is_nonlinear: ClassVar[bool] = False
 
-    def normalized(self) -> "TextTransform":
-        raise NotImplementedError
-
     def with_value(self, name: str, value: float) -> "TextTransform":
         if name not in _transform_value_field_names(self):
             raise ValueError(
                 f'unknown {self.transform_type} transform field {name}'
             )
-        return replace(self, **{name: value}).normalized()
+        return replace(self, **{name: value})
 
     def is_neutral(self) -> bool:
         raise NotImplementedError
@@ -88,8 +83,8 @@ class ProjectiveTextTransform(TextTransform):
     X and Y stop short of edge-on because a projected flat plane is singular
     at exactly 90 degrees.
 
-    >>> ProjectiveTextTransform(rotation_x=90).normalized().rotation_x
-    89.0
+    >>> ProjectiveTextTransform(rotation_x=45).rotation_x
+    45
     """
 
     horizontal_scale: float = 1.0
@@ -102,60 +97,15 @@ class ProjectiveTextTransform(TextTransform):
     perspective: float = 0.0
     transform_type: str = dataclass_field(init=False, default='projective')
 
-    def normalized(self) -> "ProjectiveTextTransform":
-        return ProjectiveTextTransform(
-            normalize_text_transform_value(
-                self.horizontal_scale,
-                TEXT_TRANSFORM_SCALE_MIN,
-                TEXT_TRANSFORM_SCALE_MAX,
-            ),
-            normalize_text_transform_value(
-                self.vertical_scale,
-                TEXT_TRANSFORM_SCALE_MIN,
-                TEXT_TRANSFORM_SCALE_MAX,
-            ),
-            normalize_text_transform_value(
-                self.horizontal_slant,
-                TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
-                TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
-            ),
-            normalize_text_transform_value(
-                self.vertical_slant,
-                TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN,
-                TEXT_TRANSFORM_PROJECTIVE_SLANT_MAX,
-            ),
-            normalize_text_transform_value(
-                self.rotation_x,
-                TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
-                TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
-            ),
-            normalize_text_transform_value(
-                self.rotation_y,
-                TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MIN,
-                TEXT_TRANSFORM_PROJECTIVE_ROTATION_XY_MAX,
-            ),
-            normalize_text_transform_value(
-                self.rotation_z,
-                TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MIN,
-                TEXT_TRANSFORM_PROJECTIVE_ROTATION_Z_MAX,
-            ),
-            normalize_text_transform_value(
-                self.perspective,
-                TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MIN,
-                TEXT_TRANSFORM_PROJECTIVE_PERSPECTIVE_MAX,
-            ),
-        )
-
     def is_neutral(self) -> bool:
-        normalized = self.normalized()
         return (
-            normalized.horizontal_scale == 1.0
-            and normalized.vertical_scale == 1.0
-            and normalized.horizontal_slant == 0.0
-            and normalized.vertical_slant == 0.0
-            and normalized.rotation_x == 0.0
-            and normalized.rotation_y == 0.0
-            and normalized.rotation_z == 0.0
+            self.horizontal_scale == 1.0
+            and self.vertical_scale == 1.0
+            and self.horizontal_slant == 0.0
+            and self.vertical_slant == 0.0
+            and self.rotation_x == 0.0
+            and self.rotation_y == 0.0
+            and self.rotation_z == 0.0
         )
 
 
@@ -167,35 +117,8 @@ class BendTextTransform(TextTransform):
     transform_type: str = dataclass_field(init=False, default='bend')
     is_nonlinear: ClassVar[bool] = True
 
-    def normalized(self) -> "BendTextTransform":
-        return BendTextTransform(
-            normalize_text_transform_value(
-                self.bend,
-                TEXT_TRANSFORM_BEND_MIN,
-                TEXT_TRANSFORM_BEND_MAX,
-            )
-        )
-
     def is_neutral(self) -> bool:
         return self.bend == 0.0
-
-
-def _normalize_sine_frequency(value: Union[int, float, np.number]) -> int:
-    if isinstance(value, bool) or not isinstance(
-        value, (int, float, np.number)
-    ):
-        raise ValueError('sine frequencies must be integers from 0 to 64')
-    numeric = float(value)
-    if not math.isfinite(numeric) or not numeric.is_integer():
-        raise ValueError('sine frequencies must be integers from 0 to 64')
-    frequency = int(numeric)
-    if not (
-        TEXT_TRANSFORM_SINE_FREQUENCY_MIN
-        <= frequency
-        <= TEXT_TRANSFORM_SINE_FREQUENCY_MAX
-    ):
-        raise ValueError('sine frequencies must be integers from 0 to 64')
-    return frequency
 
 
 @dataclass(frozen=True)
@@ -205,9 +128,9 @@ class SineTextTransform(TextTransform):
     Frequencies count half-waves. The x-axis wave is applied first so the
     paired mappings remain exactly invertible at every supported value.
 
-    >>> SineTextTransform().normalized().is_neutral()
+    >>> SineTextTransform().is_neutral()
     False
-    >>> SineTextTransform(frequency_x=0).normalized().is_neutral()
+    >>> SineTextTransform(frequency_x=0).is_neutral()
     True
     """
 
@@ -220,57 +143,14 @@ class SineTextTransform(TextTransform):
     transform_type: str = dataclass_field(init=False, default='sine')
     is_nonlinear: ClassVar[bool] = True
 
-    def normalized(self) -> "SineTextTransform":
-        return SineTextTransform(
-            _normalize_sine_frequency(self.frequency_x),
-            _normalize_sine_frequency(self.frequency_y),
-            normalize_text_transform_value(
-                self.phase_x,
-                TEXT_TRANSFORM_SINE_PHASE_MIN,
-                TEXT_TRANSFORM_SINE_PHASE_MAX,
-            ),
-            normalize_text_transform_value(
-                self.phase_y,
-                TEXT_TRANSFORM_SINE_PHASE_MIN,
-                TEXT_TRANSFORM_SINE_PHASE_MAX,
-            ),
-            normalize_text_transform_value(
-                self.amplitude_x,
-                TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
-                TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
-            ),
-            normalize_text_transform_value(
-                self.amplitude_y,
-                TEXT_TRANSFORM_SINE_AMPLITUDE_MIN,
-                TEXT_TRANSFORM_SINE_AMPLITUDE_MAX,
-            ),
-        )
-
     def is_neutral(self) -> bool:
-        normalized = self.normalized()
         return (
-            normalized.frequency_x == 0
-            or normalized.amplitude_x == 0.0
+            self.frequency_x == 0
+            or self.amplitude_x == 0.0
         ) and (
-            normalized.frequency_y == 0
-            or normalized.amplitude_y == 0.0
+            self.frequency_y == 0
+            or self.amplitude_y == 0.0
         )
-
-
-def _normalize_grid_division(value: Union[int, float, np.number]) -> int:
-    if isinstance(value, bool) or not isinstance(value, (int, float, np.number)):
-        raise ValueError('grid divisions must be integers from 1 to 32')
-    numeric = float(value)
-    if not math.isfinite(numeric) or not numeric.is_integer():
-        raise ValueError('grid divisions must be integers from 1 to 32')
-    division = int(numeric)
-    if not (
-        TEXT_TRANSFORM_GRID_DIVISION_MIN
-        <= division
-        <= TEXT_TRANSFORM_GRID_DIVISION_MAX
-    ):
-        raise ValueError('grid divisions must be integers from 1 to 32')
-    return division
 
 
 def _default_grid_control_points(horizontal: int, vertical: int) -> tuple:
@@ -282,34 +162,6 @@ def _default_grid_control_points(horizontal: int, vertical: int) -> tuple:
         for row in range(vertical + 1)
         for column in range(horizontal + 1)
     )
-
-
-def _normalize_grid_control_points(
-    points: Sequence[Sequence[float]], horizontal: int, vertical: int
-) -> tuple:
-    expected = (horizontal + 1) * (vertical + 1)
-    if not isinstance(points, (list, tuple)) or len(points) != expected:
-        raise ValueError(f'grid transform requires {expected} control points')
-    normalized = []
-    for point in points:
-        if not isinstance(point, (list, tuple)) or len(point) != 2:
-            raise ValueError('grid control points must be finite coordinate pairs')
-        coordinates = []
-        for value in point:
-            if isinstance(value, bool) or not isinstance(
-                value, (int, float, np.number)
-            ):
-                raise ValueError(
-                    'grid control points must be finite coordinate pairs'
-                )
-            value = float(value)
-            if not math.isfinite(value):
-                raise ValueError(
-                    'grid control points must be finite coordinate pairs'
-                )
-            coordinates.append(round(value, TEXT_TRANSFORM_PRECISION))
-        normalized.append(tuple(coordinates))
-    return tuple(normalized)
 
 
 def _interpolate_grid_point_bilinear(
@@ -366,9 +218,9 @@ class GridTextTransform(TextTransform):
     Division counts describe cells, so the neutral 1 by 1 grid has four
     corner handles.
 
-    >>> len(GridTextTransform().normalized().control_points)
+    >>> len(GridTextTransform().control_points)
     4
-    >>> GridTextTransform(horizontal_divisions=2).normalized().is_neutral()
+    >>> GridTextTransform(horizontal_divisions=2).is_neutral()
     True
     """
 
@@ -380,78 +232,56 @@ class GridTextTransform(TextTransform):
     is_nonlinear: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
-        if self.control_points:
-            try:
-                points = tuple(tuple(point) for point in self.control_points)
-            except TypeError as error:
-                raise ValueError(
-                    'grid control points must be coordinate pairs'
-                ) from error
-            object.__setattr__(self, 'control_points', points)
-
-    def normalized(self) -> "GridTextTransform":
-        horizontal = _normalize_grid_division(self.horizontal_divisions)
-        vertical = _normalize_grid_division(self.vertical_divisions)
-        if self.interpolation not in TEXT_TRANSFORM_GRID_INTERPOLATION_TYPES:
-            raise ValueError(
-                f'unsupported grid interpolation type {self.interpolation!r}'
-            )
-        points = (
-            _normalize_grid_control_points(
-                self.control_points, horizontal, vertical
-            )
-            if self.control_points
-            else _default_grid_control_points(horizontal, vertical)
+        points = self.control_points or _default_grid_control_points(
+            self.horizontal_divisions,
+            self.vertical_divisions,
         )
-        return GridTextTransform(
-            horizontal,
-            vertical,
-            self.interpolation,
-            points,
+        object.__setattr__(
+            self,
+            'control_points',
+            tuple(tuple(point) for point in points),
         )
 
     def with_value(
         self, name: str, value: Union[int, float, str]
     ) -> "GridTextTransform":
-        current = self.normalized()
         if name in {'horizontal_divisions', 'vertical_divisions'}:
             horizontal = (
-                _normalize_grid_division(value)
+                value
                 if name == 'horizontal_divisions'
-                else current.horizontal_divisions
+                else self.horizontal_divisions
             )
             vertical = (
-                _normalize_grid_division(value)
+                value
                 if name == 'vertical_divisions'
-                else current.vertical_divisions
+                else self.vertical_divisions
             )
             points = _resample_grid_control_points(
-                current.control_points,
-                current.horizontal_divisions,
-                current.vertical_divisions,
+                self.control_points,
+                self.horizontal_divisions,
+                self.vertical_divisions,
                 horizontal,
                 vertical,
             )
             return GridTextTransform(
                 horizontal,
                 vertical,
-                current.interpolation,
+                self.interpolation,
                 points,
-            ).normalized()
+            )
         if name == 'interpolation':
-            return replace(current, interpolation=value).normalized()
+            return replace(self, interpolation=value)
         return super().with_value(name, value)
 
     def with_control_points(
         self, points: Sequence[Sequence[float]]
     ) -> "GridTextTransform":
-        return replace(self, control_points=tuple(points)).normalized()
+        return replace(self, control_points=tuple(points))
 
     def is_neutral(self) -> bool:
-        normalized = self.normalized()
-        return normalized.control_points == _default_grid_control_points(
-            normalized.horizontal_divisions,
-            normalized.vertical_divisions,
+        return self.control_points == _default_grid_control_points(
+            self.horizontal_divisions,
+            self.vertical_divisions,
         )
 
 
@@ -516,43 +346,6 @@ class TextTransformState:
         object.__setattr__(
             self, 'stack', coerce_text_transform_stack(self.stack)
         )
-        object.__setattr__(
-            self,
-            'glyph_slant_angle',
-            normalize_text_transform_value(
-                self.glyph_slant_angle,
-                TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-                TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-            ),
-        )
-
-
-def normalize_text_transform_value(
-    value: float,
-    minimum: float,
-    maximum: float,
-) -> float:
-    """Return a finite, clamped canonical text-transform component.
-
-    Persistence validates stored values before normalization; this pure helper
-    defines the canonical value shared by the model, UI, and undo commands.
-
-    >>> normalize_text_transform_value(4.5, 0.1, 4.0)
-    4.0
-    >>> normalize_text_transform_value(-0.0, -45.0, 45.0)
-    0.0
-    >>> normalize_text_transform_value(float("nan"), 0.1, 4.0)
-    Traceback (most recent call last):
-    ...
-    ValueError: text transform values must be finite numbers
-    """
-    if isinstance(value, bool) or not isinstance(value, (int, float, np.number)):
-        raise ValueError("text transform values must be finite numbers")
-    value = float(value)
-    if not math.isfinite(value):
-        raise ValueError("text transform values must be finite numbers")
-    value = round(min(max(value, minimum), maximum), TEXT_TRANSFORM_PRECISION)
-    return 0.0 if value == 0.0 else value
 
 
 TEXT_TRANSFORM_TYPES = {
@@ -576,26 +369,20 @@ def create_text_transform(transform_type: str) -> TextTransform:
     transform_class = TEXT_TRANSFORM_TYPES.get(transform_type)
     if transform_class is None:
         raise ValueError(f'unsupported text transform type {transform_type}')
-    return transform_class().normalized()
+    return transform_class()
 
 
 def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
-    """Normalize a live value or construct a canonical persisted payload.
+    """Return a live value or construct one typed persisted payload.
 
     >>> transform = coerce_text_transform(
     ...     {'transform_type': 'projective', 'rotation_z': 5}
     ... )
     >>> transform.rotation_z
-    5.0
-    >>> coerce_text_transform(
-    ...     {'transform_type': 'projective', 'horizontal_scale': 5}
-    ... )
-    Traceback (most recent call last):
-    ...
-    ValueError: persisted projective transform values must be canonical
+    5
     """
     if isinstance(value, TextTransform):
-        return value.normalized()
+        return value
     if not isinstance(value, dict):
         raise ValueError('text transform must be a value or typed payload')
     payload = dict(value)
@@ -611,19 +398,7 @@ def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
         raise ValueError(
             f'unsupported {transform_type} transform fields: {sorted(unexpected)}'
         )
-    transform = transform_class(**payload)
-    normalized = transform.normalized()
-    comparison = transform
-    if isinstance(transform, GridTextTransform) and not transform.control_points:
-        comparison = replace(
-            transform,
-            control_points=normalized.control_points,
-        )
-    if comparison != normalized:
-        raise ValueError(
-            f'persisted {transform_type} transform values must be canonical'
-        )
-    return normalized
+    return transform_class(**payload)
 
 
 def coerce_text_transform_stack(
@@ -632,7 +407,7 @@ def coerce_text_transform_stack(
         Sequence[Union[TextTransform, dict]],
     ],
 ) -> TextTransformStack:
-    """Return one canonical ordered stack and reject the old single payload.
+    """Return one ordered stack and reject the old single payload.
 
     >>> coerce_text_transform_stack([
     ...     {'transform_type': 'bend', 'bend': 0.5},
@@ -769,18 +544,6 @@ class FontFormat(Config):
                     self.text_transform,
                 )
                 self.text_transform = TextTransformStack()
-        try:
-            self.glyph_slant_angle = normalize_text_transform_value(
-                self.glyph_slant_angle,
-                TEXT_TRANSFORM_GLYPH_SLANT_MIN,
-                TEXT_TRANSFORM_GLYPH_SLANT_MAX,
-            )
-        except ValueError as error:
-            LOGGER.warning(
-                'Ignoring invalid Glyph Slant config (%s); using 0.',
-                error,
-            )
-            self.glyph_slant_angle = 0.0
         self.deprecated_attributes = {}
 
     def to_serializable_dict(self) -> dict:
