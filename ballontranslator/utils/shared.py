@@ -158,6 +158,28 @@ check_local_file_hash = True
 
 FONT_FAMILIES: set = None
 CUSTOM_FONTS = []
+# Windows 自带的老旧字体：渲染时可能触发 DirectWrite CreateFontFaceFromHDC 告警
+LEGACY_FONTS = frozenset({
+    "MS Sans Serif", "MS Serif", "Small Fonts",
+    "System", "Fixedsys", "Terminal",
+    "Courier", "Modern", "Roman", "Script",
+})
+
+
+def get_filtered_font_list(font_list, excluded=None) -> list:
+    """Return ``font_list`` minus the excluded font names.
+
+    >>> get_filtered_font_list(['Arial', 'Times', 'Courier'], ['Times'])
+    ['Arial', 'Courier']
+    >>> get_filtered_font_list(['Arial', 'Times'])
+    ['Arial', 'Times']
+    """
+    if excluded is None:
+        excluded = []
+    excluded_set = set(excluded)
+    return [f for f in font_list if f not in excluded_set]
+
+
 pbar = {}
 runtime_widget_set = set()
 

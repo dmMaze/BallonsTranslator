@@ -308,6 +308,7 @@ class ProgramConfig(Config):
     expand_tadvanced_panel: bool = True
     text_transform_panel: bool = True
     expand_ttransform_panel: bool = True
+    excluded_fonts: List[str] = field(default_factory=lambda: list())
 
     @staticmethod
     def load(cfg_path: str):
