@@ -64,19 +64,26 @@ class TextStylePresetReorderingTest(unittest.TestCase):
 
     def test_reordering_moves_widget_and_saved_style_together(self) -> None:
         panel = self._make_panel('First', 'Second', 'Third')
+        panel.flayout.setGeometry(QRect(0, 0, 2000, 200))
         first_label, _, third_label = self._labels(panel)
+        self.assertTrue(panel.scrollContent.acceptDrops())
+        self.assertFalse(first_label.acceptDrops())
+        self.assertFalse(first_label.stylelabel.acceptDrops())
         QTest.mouseClick(third_label, Qt.MouseButton.LeftButton)
         self.assertIs(panel.active_text_style_label, third_label)
         third_item = panel.flayout.itemAt(2)
         mime_data = QMimeData()
         mime_data.setData(presets.TextStyleLabel.text_style_mime_type, b'')
         drop_event = Mock()
+        drop_event.type.return_value = QEvent.Type.Drop
         drop_event.source.return_value = third_label
         drop_event.mimeData.return_value = mime_data
-        drop_event.position.return_value = QPointF(0, first_label.height() / 2)
+        drop_event.position.return_value = QPointF(
+            first_label.geometry().left(), first_label.geometry().center().y()
+        )
 
         with patch.object(presets, 'save_text_styles') as save_styles:
-            first_label.dropEvent(drop_event)
+            handled = panel.eventFilter(panel.scrollContent, drop_event)
 
         expected_names = ['Third', 'First', 'Second']
         self.assertEqual(
@@ -87,6 +94,7 @@ class TextStylePresetReorderingTest(unittest.TestCase):
             expected_names,
         )
         self.assertIs(panel.flayout.itemAt(0), third_item)
+        self.assertTrue(handled)
         drop_event.acceptProposedAction.assert_called_once_with()
         save_styles.assert_called_once_with()
 

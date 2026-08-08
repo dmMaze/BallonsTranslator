@@ -45,6 +45,7 @@ class StyleLabel(QLineEdit):
 
         self.editingFinished.connect(self.edit_finished)
         self.setEnabled(False)
+        self.setAcceptDrops(False)
         
         if style_name is not None:
             self.setText(style_name)
@@ -71,14 +72,12 @@ class TextStyleLabel(Widget):
     delete_btn_clicked = Signal()
     stylelabel_activated = Signal(bool)
     apply_fontfmt = Signal(FontFormat)
-    reorder_requested = Signal(object, object, bool)
 
     def __init__(self, style_name: str = '', parent: Widget = None, fontfmt: FontFormat = None, active_stylename_edited: Signal = None):
         super().__init__(parent=parent)
         self._double_clicked = False
         self._drag_start_pos: Optional[QPoint] = None
         self.active = False
-        self.setAcceptDrops(True)
         if fontfmt is None:
             if C.active_format is None:
                 self.fontfmt = FontFormat()
@@ -206,34 +205,6 @@ class TextStyleLabel(Widget):
             drag.exec(Qt.DropAction.MoveAction)
             return
         return super().mouseMoveEvent(event)
-
-    def dragEnterEvent(self, event: Any) -> None:
-        if self._is_text_style_drag(event):
-            event.acceptProposedAction()
-            return
-        event.ignore()
-
-    def dragMoveEvent(self, event: Any) -> None:
-        if self._is_text_style_drag(event):
-            event.acceptProposedAction()
-            return
-        event.ignore()
-
-    def dropEvent(self, event: Any) -> None:
-        source = event.source()
-        if self._is_text_style_drag(event) and source is not self:
-            insert_after = _drop_event_position(event).x() >= self.width() / 2
-            self.reorder_requested.emit(source, self, insert_after)
-            event.acceptProposedAction()
-            return
-        event.ignore()
-
-    @classmethod
-    def _is_text_style_drag(cls, event: Any) -> bool:
-        return (
-            isinstance(event.source(), cls)
-            and event.mimeData().hasFormat(cls.text_style_mime_type)
-        )
 
     def updatePreview(self):
         font = self.stylelabel.font()
@@ -444,23 +415,9 @@ class TextStylePresetPanel(PanelArea):
         textstylelabel.delete_btn_clicked.connect(self.on_deletebtn_clicked)
         textstylelabel.stylelabel_activated.connect(self.on_stylelabel_activated)
         textstylelabel.apply_fontfmt.connect(self.apply_fontfmt)
-        textstylelabel.reorder_requested.connect(self.reorderStyleLabel)
 
-    def reorderStyleLabel(self, source: TextStyleLabel, target: TextStyleLabel, insert_after: bool) -> None:
-        """Move one displayed style and its persistent format to the same index."""
-        source_index = self._style_label_index(source)
-        target_index = self._style_label_index(target)
-        if source_index is None or target_index is None:
-            return
-
-        target_index += int(insert_after)
-        if source_index < target_index:
-            target_index -= 1
-        self._moveStyleLabelToIndex(source, target_index)
-
-    def _moveStyleLabelToIndex(self, source: TextStyleLabel, target_index: int) -> None:
-        source_index = self._style_label_index(source)
-        if source_index is None:
+    def _moveStyleLabelToIndex(self, source_index: int, target_index: int) -> None:
+        if not 0 <= source_index < self.count():
             return
         target_index = max(0, min(target_index, self.count() - 1))
         if source_index == target_index:
@@ -480,17 +437,23 @@ class TextStylePresetPanel(PanelArea):
         return None
 
     def eventFilter(self, watched: object, event: QEvent) -> bool:
-        if watched is self.scrollContent and event.type() in (
+        if watched is not self.scrollContent:
+            return super().eventFilter(watched, event)
+
+        event_type = event.type()
+        if event_type in (
             QEvent.Type.DragEnter,
             QEvent.Type.DragMove,
             QEvent.Type.Drop,
         ):
-            if not TextStyleLabel._is_text_style_drag(event):
+            source = event.source()
+            if not (
+                isinstance(source, TextStyleLabel)
+                and event.mimeData().hasFormat(TextStyleLabel.text_style_mime_type)
+            ):
                 return super().eventFilter(watched, event)
-            if event.type() == QEvent.Type.Drop:
-                self._reorderStyleAtPosition(
-                    event.source(), _drop_event_position(event)
-                )
+            if event_type == QEvent.Type.Drop:
+                self._reorderStyleAtPosition(source, _drop_event_position(event))
             event.acceptProposedAction()
             return True
         return super().eventFilter(watched, event)
@@ -511,9 +474,10 @@ class TextStylePresetPanel(PanelArea):
                 insert_index = index
                 break
 
+        # Removing an earlier source shifts the pre-move drop index left by one.
         if source_index < insert_index:
             insert_index -= 1
-        self._moveStyleLabelToIndex(source, insert_index)
+        self._moveStyleLabelToIndex(source_index, insert_index)
 
     def on_deletebtn_clicked(self):
         w: TextStyleLabel = self.sender()
