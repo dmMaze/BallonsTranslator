@@ -244,7 +244,7 @@ class TextProjectiveTransformControl(QGraphicsPathItem):
     def _projective_transform(self):
         if self.item is None:
             return None
-        stack = self.item._effective_text_transform().stack
+        stack = self.item._effective_text_transform()
         if self.stack_index < 0 or self.stack_index >= len(stack):
             return None
         transform = stack[self.stack_index]

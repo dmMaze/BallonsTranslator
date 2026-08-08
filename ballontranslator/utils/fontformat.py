@@ -287,10 +287,12 @@ class GridTextTransform(TextTransform):
 
 @dataclass(frozen=True)
 class TextTransformStack:
-    """Immutable ordered text-geometry operations.
+    """Complete immutable text-transform value.
 
-    Empty means no geometry transform. Neutral entries remain present for the
-    editor but are skipped by the runtime compiler.
+    ``transforms`` contains the ordered global geometry operations. Glyph
+    Slant remains a fixed layout effect applied before those operations.
+    Neutral entries remain present for the editor but are skipped by the
+    runtime compiler.
 
     >>> stack = TextTransformStack((BendTextTransform(0.5),))
     >>> stack.has_nonlinear
@@ -298,6 +300,7 @@ class TextTransformStack:
     """
 
     transforms: tuple[TextTransform, ...] = ()
+    glyph_slant_angle: float = 0.0
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -316,35 +319,20 @@ class TextTransformStack:
         return self.transforms[index]
 
     def is_neutral(self) -> bool:
-        return all(transform.is_neutral() for transform in self.transforms)
+        return (
+            not self.has_active_stages
+            and self.glyph_slant_angle == 0.0
+        )
+
+    @property
+    def has_active_stages(self) -> bool:
+        return any(not transform.is_neutral() for transform in self.transforms)
 
     @property
     def has_nonlinear(self) -> bool:
         return any(
             not transform.is_neutral() and transform.is_nonlinear
             for transform in self.transforms
-        )
-
-
-@dataclass(frozen=True)
-class TextTransformState:
-    """Complete immutable state edited by the transform undo command.
-
-    Geometry operations stay ordered while Glyph Slant remains one layout
-    effect applied before that geometry.
-
-    >>> TextTransformState().glyph_slant_angle
-    0.0
-    """
-
-    stack: TextTransformStack = dataclass_field(
-        default_factory=TextTransformStack
-    )
-    glyph_slant_angle: float = 0.0
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self, 'stack', coerce_text_transform_stack(self.stack)
         )
 
 
@@ -412,7 +400,7 @@ def coerce_text_transform_stack(
     >>> coerce_text_transform_stack([
     ...     {'transform_type': 'bend', 'bend': 0.5},
     ... ])
-    TextTransformStack(transforms=(BendTextTransform(transform_type='bend', bend=0.5),))
+    TextTransformStack(transforms=(BendTextTransform(transform_type='bend', bend=0.5),), glyph_slant_angle=0.0)
     >>> coerce_text_transform_stack({'transform_type': 'bend'})
     Traceback (most recent call last):
     ...
@@ -500,20 +488,33 @@ class FontFormat(Config):
     _style_name: str = ''
     line_spacing_type: int = LineSpacingType.Proportional
 
-    # Direct in-memory owner; persistence stores an ordered list of payloads.
+    # Runtime owns one value; persistence keeps its existing list and flat
+    # Glyph Slant fields for project/config compatibility.
     text_transform: Union[TextTransformStack, List] = field(
         default_factory=TextTransformStack
     )
-    glyph_slant_angle: float = 0.0
-
     deprecated_attributes: dict = field(default_factory = lambda: dict())
 
     @property
     def size_pt(self):
         return px2pt(self.font_size)
 
-    def __post_init__(self):
+    @property
+    def glyph_slant_angle(self) -> float:
+        """Compatibility view of the stack-owned Glyph Slant value."""
+        return self.text_transform.glyph_slant_angle
+
+    @glyph_slant_angle.setter
+    def glyph_slant_angle(self, value: float) -> None:
+        self.text_transform = replace(
+            self.text_transform,
+            glyph_slant_angle=value,
+        )
+
+    def __post_init__(self) -> None:
         da = self.deprecated_attributes
+        # nested_dataclass routes the compatibility-only JSON field here.
+        glyph_slant_angle = da.get('glyph_slant_angle')
         if len(da) > 0:
             if 'size' in da:
                 self.font_size = pt2px(da['size'])
@@ -544,6 +545,11 @@ class FontFormat(Config):
                     self.text_transform,
                 )
                 self.text_transform = TextTransformStack()
+        if glyph_slant_angle is not None:
+            self.text_transform = replace(
+                self.text_transform,
+                glyph_slant_angle=glyph_slant_angle,
+            )
         self.deprecated_attributes = {}
 
     def to_serializable_dict(self) -> dict:
@@ -552,6 +558,9 @@ class FontFormat(Config):
         serialized['text_transform'] = [
             asdict(transform) for transform in self.text_transform
         ]
+        serialized['glyph_slant_angle'] = (
+            self.text_transform.glyph_slant_angle
+        )
         return serialized
 
     def deepcopy(self):

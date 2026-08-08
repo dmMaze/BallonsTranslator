@@ -71,12 +71,13 @@ variant-specific branches to `TextBlkItem` or `TextItemGeometryController`.
 `transform_type`, an exact neutral state, and runtime-only `is_nonlinear`
 capability metadata. UI controls constrain edits to their supported ranges and
 canonical precision before producing model values. The model does not clamp or
-range-validate persisted parameters. `TextTransformStack` is an immutable
-ordered tuple; neutral entries remain in model and UI state but are skipped by
-the compiler.
+range-validate persisted parameters. `TextTransformStack` is an immutable value
+containing the ordered operation tuple and Glyph Slant angle; neutral entries
+remain in model and UI state but are skipped by the compiler.
 
-`TextTransformState` combines the complete stack with `glyph_slant_angle`; undo
-must snapshot both so it restores the complete visible transform state.
+`TextTransformStack` combines the ordered global operations with the fixed
+pre-stack `glyph_slant_angle`; undo snapshots that one immutable value so it
+restores the complete visible transform state.
 Project JSON stores only this committed model data. Preview values,
 matrices, mappers, bounds, and caches are derived state and must not be
 serialized.

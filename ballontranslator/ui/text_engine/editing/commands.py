@@ -11,7 +11,7 @@ from ..item import TextBlkItem, TextBlock
 from .widgets import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
     FontFormat,
-    TextTransformState,
+    TextTransformStack,
 )
 from ...misc import doc_replace, doc_replace_no_shift
 from ..shape_control import TextBlkShapeControl
@@ -43,46 +43,40 @@ class SetTextTransformCommand(QUndoCommand):
     def __init__(
         self,
         items: Sequence[TextBlkItem],
-        before: Sequence[TextTransformState],
-        after: Sequence[TextTransformState],
+        before: Sequence[TextTransformStack],
+        after: Sequence[TextTransformStack],
         refresh_callback: Optional[Callable[[], None]] = None,
-    ):
+    ) -> None:
         super().__init__()
         self.items = tuple(items)
         if len(self.items) != len(before) or len(self.items) != len(after):
             raise ValueError("items, before, and after must have the same length")
-        self.before = tuple(
-            TextTransformState(value.stack, value.glyph_slant_angle)
-            for value in before
-        )
-        self.after = tuple(
-            TextTransformState(value.stack, value.glyph_slant_angle)
-            for value in after
-        )
+        self.before = tuple(before)
+        self.after = tuple(after)
         self.refresh_callback = refresh_callback
 
     @classmethod
     def create(
         cls,
         items: Sequence[TextBlkItem],
-        before: Sequence[TextTransformState],
-        after: Sequence[TextTransformState],
+        before: Sequence[TextTransformStack],
+        after: Sequence[TextTransformStack],
         refresh_callback: Optional[Callable[[], None]] = None,
     ) -> Optional["SetTextTransformCommand"]:
         """Build a command, or return ``None`` for an unchanged state."""
         command = cls(items, before, after, refresh_callback)
         return None if command.before == command.after else command
 
-    def _apply(self, states: Sequence[TextTransformState]):
+    def _apply(self, states: Sequence[TextTransformStack]) -> None:
         for item, state in zip(self.items, states):
             item.set_text_transform(state, preview=False)
         if self.refresh_callback is not None:
             self.refresh_callback()
 
-    def redo(self):
+    def redo(self) -> None:
         self._apply(self.after)
 
-    def undo(self):
+    def undo(self) -> None:
         self._apply(self.before)
 
 

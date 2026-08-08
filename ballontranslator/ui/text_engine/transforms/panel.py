@@ -12,7 +12,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ballontranslator.utils.fontformat import FontFormat, TextTransformState
+from ballontranslator.utils.fontformat import FontFormat, TextTransformStack
 
 from ...custom_widget import PanelArea
 from ...misc import themed_icon_path
@@ -310,13 +310,11 @@ class TextTransformPanel(PanelArea):
         if emit:
             self.transform_selected.emit(-1)
 
-    def _set_transform_states(self, states):
+    def _set_transform_states(self, states) -> None:
         states = [
             state
-            if isinstance(state, TextTransformState)
-            else TextTransformState(
-                state.text_transform, state.glyph_slant_angle
-            )
+            if isinstance(state, TextTransformStack)
+            else state.text_transform
             for state in states
         ]
         glyph_values = [state.glyph_slant_angle for state in states]
@@ -329,7 +327,7 @@ class TextTransformPanel(PanelArea):
         self.glyph_slant_control.set_model_value(common_glyph, glyph_values)
 
         sequences = [
-            tuple(transform.transform_type for transform in state.stack)
+            tuple(transform.transform_type for transform in state)
             for state in states
         ]
         common_sequence = (
@@ -346,24 +344,18 @@ class TextTransformPanel(PanelArea):
         else:
             self._rebuild_transform_panels(common_sequence)
             for index, panel in enumerate(self.transform_panels):
-                panel.set_values([state.stack[index] for state in states])
+                panel.set_values([state[index] for state in states])
         self._sync_content_height()
 
-    def set_active_format(self, font_format: FontFormat):
+    def set_active_format(self, font_format: FontFormat) -> None:
         self._set_transform_states([font_format])
 
-    def set_transform_items(self, items):
+    def set_transform_items(self, items) -> None:
         self._set_transform_states(
-            [
-                TextTransformState(
-                    item.blk.fontformat.text_transform,
-                    item.blk.fontformat.glyph_slant_angle,
-                )
-                for item in items
-            ]
+            [item.blk.fontformat.text_transform for item in items]
         )
 
-    def set_transform(self, state):
+    def set_transform(self, state: TextTransformStack) -> None:
         self._set_transform_states([state])
 
     def iter_transform_controls(self):

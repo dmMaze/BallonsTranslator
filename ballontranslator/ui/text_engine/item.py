@@ -11,7 +11,7 @@ from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
     FontFormat,
-    TextTransformState,
+    TextTransformStack,
     pt2px,
 )
 from ..misc import td_pattern, table_pattern
@@ -238,7 +238,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
         self.repaint_background()
 
-    def _effective_text_transform(self) -> TextTransformState:
+    def _effective_text_transform(self) -> TextTransformStack:
         return self.geometry_controller.effective()
 
     def _text_transform_is_neutral(self) -> bool:
@@ -269,7 +269,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def set_text_transform(
         self,
-        state: TextTransformState = None,
+        state: TextTransformStack = None,
         *,
         preview: bool = False,
     ) -> bool:
@@ -774,9 +774,6 @@ class TextBlkItem(QGraphicsTextItem):
         # persistent TextBlock owner. Canonical transform state must win when
         # producing a save/undo format snapshot.
         fontformat.text_transform = self.blk.fontformat.text_transform
-        fontformat.glyph_slant_angle = (
-            self.blk.fontformat.glyph_slant_angle
-        )
         return fontformat
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True, set_effect=True):
@@ -849,12 +846,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.fontformat.gradient_size = ffmat.gradient_size
         
         self.fontformat.merge(ffmat)
-        self.set_text_transform(
-            TextTransformState(
-                self.fontformat.text_transform,
-                self.fontformat.glyph_slant_angle,
-            )
-        )
+        self.set_text_transform(self.fontformat.text_transform)
 
         self.repainting = False
         if self.fontformat.gradient_enabled:
