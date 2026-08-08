@@ -1,4 +1,4 @@
-from qtpy.QtWidgets import QLayout, QWidgetItem, QLayoutItem, QWidgetItem, QWidget
+from qtpy.QtWidgets import QLayout, QWidgetItem, QLayoutItem, QWidget
 from qtpy.QtCore import QParallelAnimationGroup, Qt, QPropertyAnimation, QEasingCurve, QSize, QRect, QPoint
 from typing import List
 
@@ -43,6 +43,23 @@ class FlowLayout(QLayout):
 
     def insertItem(self, idx:int, item):
         self._items.insert(idx, item)
+
+    def moveItem(self, source_index: int, target_index: int) -> bool:
+        """Move an existing layout item without replacing its Qt wrapper."""
+        if not 0 <= source_index < len(self._items):
+            return False
+
+        target_index = max(0, min(target_index, len(self._items) - 1))
+        if source_index == target_index:
+            return False
+
+        item = self._items.pop(source_index)
+        self._items.insert(target_index, item)
+        if self.needAni:
+            animation = self._anis.pop(source_index)
+            self._anis.insert(target_index, animation)
+        self.invalidate()
+        return True
 
     def addItem(self, item):
         self._items.append(item)
