@@ -335,6 +335,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="906"/>
+        <source>Hide Unused Fonts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="909"/>
+        <source>Font Exclusion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="538"/>
         <source>Result image format</source>
         <translation type="unfinished"></translation>
@@ -347,6 +357,66 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="549"/>
         <source>Intermediate image format</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FontExcludeDialog</name>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="141"/>
+        <source>Font Exclusion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="148"/>
+        <source>Search fonts...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="157"/>
+        <source>Available Fonts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="170"/>
+        <source>Hide selected fonts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="175"/>
+        <source>Show selected fonts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="183"/>
+        <source>Hidden Fonts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="194"/>
+        <source>Add Legacy Fonts to Hidden List</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="218"/>
+        <source>Legacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="279"/>
+        <source>Legacy Fonts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="280"/>
+        <source>No additional legacy fonts detected on this system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="296"/>
+        <source>Added {count} legacy font(s) to the hidden list:
+
+{fonts}</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
