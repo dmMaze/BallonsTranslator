@@ -178,7 +178,7 @@ class TextItemGeometryController:
             return
         self._update_dirty = False
         self.item.refresh_cache_policy()
-        if self.item.is_editting():
+        if self.item.isEditing():
             self.item.updateMicroFocus()
 
     def compensated_matrix(
@@ -756,10 +756,10 @@ class TextItemGeometryController:
             item.layout.documentSizeChanged.emit(QSizeF(final_size))
 
     def requires_no_cache(self) -> bool:
-        return self.compiled.requires_no_cache
+        return not self.compiled.is_identity
 
     def requires_custom_resize(self) -> bool:
-        return self.compiled.requires_custom_resize
+        return not self.compiled.is_identity
 
     def _set_surface_mapper(self, mapper) -> bool:
         """Install the compiler's sole optional nonlinear surface mapper."""
@@ -786,10 +786,6 @@ class TextItemGeometryController:
         self.item.update()
         self.request_update()
         return geometry_changed
-
-    def refresh_surface_mapper(self) -> bool:
-        """Compatibility boundary for layout replacement and padding changes."""
-        return self.refresh_compiled_geometry()
 
     def refresh_compiled_geometry(self, *, force: bool = False) -> bool:
         # Rich-text formatting emits several intermediate document sizes.
@@ -972,7 +968,7 @@ class TextItemGeometryController:
             else self.layout_renderer.render_cache_key()
         )
         selection_key = None
-        if self.item.is_editting():
+        if self.item.isEditing():
             cursor = self.item.textCursor()
             if cursor.hasSelection():
                 selection_key = (
@@ -1009,7 +1005,7 @@ class TextItemGeometryController:
                 layout.defer_cursor_paint = previous
 
         interactive = (
-            self.item.is_editting()
+            self.item.isEditing()
             or self.item.reshaping
             or self.preview is not None
         )
@@ -1036,7 +1032,7 @@ class TextItemGeometryController:
                     not self.item.reshaping and self.preview is None
                 ),
             )
-            if cache_hit and self.item.is_editting():
+            if cache_hit and self.item.isEditing():
                 self._probe_surface_cursor(
                     painter, option, widget, base_paint
                 )
@@ -1144,7 +1140,7 @@ class TextItemGeometryController:
     def _apply_box(self, compiled: CompiledTextTransform) -> bool:
         self.item.setFlag(
             QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges,
-            compiled.requires_custom_resize,
+            not compiled.is_identity,
         )
         with self.update_transaction():
             changed = self.install(compiled)
@@ -1224,7 +1220,7 @@ class TextItemGeometryController:
 
     def set(
         self,
-        state: TextTransformStack = None,
+        state: TextTransformStack,
         *,
         preview: bool = False,
     ) -> bool:
@@ -1232,12 +1228,9 @@ class TextItemGeometryController:
         item = self.item
         canonical = self.canonical()
         current = self.effective()
-        if state is None:
-            target = current if preview else canonical
-        elif isinstance(state, TextTransformStack):
-            target = state
-        else:
+        if not isinstance(state, TextTransformStack):
             raise TypeError('text transform edits require TextTransformStack')
+        target = state
 
         if preview:
             if target == current:

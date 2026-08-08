@@ -385,6 +385,17 @@ class ExtendedTextTransformModelTest(TextTransformTestBase):
             projective_transform_matrix(transform, rect),
         )
 
+    def test_live_transform_boundaries_require_typed_stacks(self):
+        rect = QRectF(0, 0, 100, 50)
+        with self.assertRaisesRegex(TypeError, 'requires TextTransformStack'):
+            compile_text_transform_stack(
+                [ProjectiveTextTransform()], rect, rect, False
+            )
+
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        with self.assertRaisesRegex(TypeError, 'require TextTransformStack'):
+            item.set_text_transform(None)
+
     def test_persisted_transform_values_are_not_range_validated(self):
         font_format = FontFormat(
             text_transform=[{
@@ -785,6 +796,21 @@ class TextTransformPanelTest(TextTransformTestBase):
         self.addCleanup(panel.deleteLater)
         return panel
 
+    @staticmethod
+    def _set_stack(panel, state):
+        panel._set_transform_states([state])
+
+    def test_panel_normalizes_font_formats_only_at_its_public_boundary(self):
+        panel = self._make_panel()
+        state = transform_state(GridTextTransform())
+        font_format = FontFormat()
+        font_format.text_transform = state
+
+        panel.set_active_format(font_format)
+        self.assertEqual(panel._transform_panel_types, ('grid',))
+        with self.assertRaisesRegex(TypeError, 'requires TextTransformStack'):
+            panel._set_transform_states([font_format])
+
     def test_stack_shape_update_syncs_content_height_once(self):
         panel = self._make_panel()
         with patch.object(
@@ -792,7 +818,7 @@ class TextTransformPanelTest(TextTransformTestBase):
             '_sync_content_height',
             wraps=panel._sync_content_height,
         ) as sync_height:
-            panel.set_transform(transform_state(GridTextTransform()))
+            self._set_stack(panel, transform_state(GridTextTransform()))
 
         sync_height.assert_called_once_with()
 
@@ -843,7 +869,8 @@ class TextTransformPanelTest(TextTransformTestBase):
         panel.add_transform_button.menu().actions()[0].trigger()
         self.assertEqual(added, ['projective'])
 
-        panel.set_transform(
+        self._set_stack(
+            panel,
             transform_state(ProjectiveTextTransform(), BendTextTransform())
         )
         operation_panel = panel.transform_panels[0]
@@ -861,9 +888,12 @@ class TextTransformPanelTest(TextTransformTestBase):
     def test_panel_grows_until_its_scrollable_maximum(self):
         panel = self._make_panel()
         initial_height = panel.sizeHint().height()
-        panel.set_transform(transform_state(*(
-            ProjectiveTextTransform() for _index in range(10)
-        )))
+        self._set_stack(
+            panel,
+            transform_state(*(
+                ProjectiveTextTransform() for _index in range(10)
+            )),
+        )
         self.assertGreater(panel.sizeHint().height(), initial_height)
         self.assertEqual(panel.sizeHint().height(), panel.MAX_CONTENT_HEIGHT)
         self.assertEqual(panel.maximumHeight(), panel.MAX_CONTENT_HEIGHT)
@@ -887,10 +917,13 @@ class TextTransformPanelTest(TextTransformTestBase):
 
     def test_transform_cards_select_on_card_and_parameter_interaction(self):
         panel = self._make_panel()
-        panel.set_transform(transform_state(
-            GridTextTransform(),
-            ProjectiveTextTransform(),
-        ))
+        self._set_stack(
+            panel,
+            transform_state(
+                GridTextTransform(),
+                ProjectiveTextTransform(),
+            ),
+        )
         selected = []
         panel.transform_selected.connect(selected.append)
 
@@ -925,7 +958,7 @@ class TextTransformPanelTest(TextTransformTestBase):
         self.app.processEvents()
         for transform, parameter in cases:
             with self.subTest(transform=transform.transform_type):
-                panel.set_transform(transform_state(transform))
+                self._set_stack(panel, transform_state(transform))
                 panel.clear_transform_selection(emit=False)
                 label = panel.transform_panels[0].controls[parameter].label
                 QTest.mousePress(
@@ -947,7 +980,7 @@ class TextTransformPanelTest(TextTransformTestBase):
 
     def test_sine_controls_use_wave_language_and_percentage_values(self):
         panel = self._make_panel()
-        panel.set_transform(transform_state(SineTextTransform()))
+        self._set_stack(panel, transform_state(SineTextTransform()))
         controls = panel.transform_panels[0].controls
         self.assertEqual(
             [control.label.text() for control in controls.values()],
@@ -1191,7 +1224,7 @@ class TextTransformPanelTest(TextTransformTestBase):
                 state = transform_state(transform)
                 item.set_text_transform(state)
                 panel = self._make_panel()
-                panel.set_transform(state)
+                self._set_stack(panel, state)
                 SW.canvas = canvas
                 session = TextTransformEditSession(SimpleNamespace(), panel)
                 panel.transform_panels[0].card_clicked.emit(0)
@@ -1794,6 +1827,14 @@ class TextTransformUndoTest(TextTransformTestBase):
 
 
 class TextTransformRenderingTest(TextTransformTestBase):
+    def test_item_exposes_the_export_effect_error_value(self):
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        failure = RuntimeError('incomplete transformed export')
+
+        item.effect_renderer.export_error = failure
+
+        self.assertIs(item.export_effect_error, failure)
+
     def test_nonlinear_surface_sampling_tracks_render_quality(self):
         class IdentityMapper:
             geometry_key = ('identity',)

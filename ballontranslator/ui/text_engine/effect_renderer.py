@@ -198,9 +198,6 @@ class TextEffectRenderer:
             )
         return self.item._text_transform_is_neutral()
 
-    def _effective_text_transform(self):
-        return self.item._effective_text_transform()
-
     def _has_layout_distortion(self) -> bool:
         return self.geometry_controller.has_layout_distortion()
 
@@ -219,7 +216,7 @@ class TextEffectRenderer:
     def paint_item(self, painter: QPainter, option, widget: QWidget, base_paint) -> None:
         """Paint effects around the host item's normal text pass."""
         if self._text_transform_is_neutral():
-            editing = self.item.is_editting()
+            editing = self.item.isEditing()
             if editing and self.background_pixmap is not None:
                 painter.save()
                 painter.setRenderHint(
@@ -686,10 +683,6 @@ class TextEffectRenderer:
         else:
             self.force_tiles = False
         self.export_render = enabled
-
-    @property
-    def export_effect_error(self):
-        return self.export_error
 
     def _raise_or_defer_export_effect_error(self, error: Exception) -> bool:
         """Raise at a Python boundary or defer across Qt's paint callback.

@@ -36,7 +36,7 @@ class FloatingSuggestionLabel(QWidget):
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setFixedHeight(28)
-        self.scroll_area.wheelEvent = self.scroll_area_wheel_event
+        self.scroll_area.wheelEvent = self.wheelEvent
         
         self.scroll_content = QWidget()
         self.scroll_content.setObjectName("scroll_content")
@@ -96,13 +96,6 @@ class FloatingSuggestionLabel(QWidget):
             pass
 
     def wheelEvent(self, event):
-        scrollbar = self.scroll_area.horizontalScrollBar()
-        if scrollbar:
-            delta = event.angleDelta().y() or event.angleDelta().x()
-            scrollbar.setValue(scrollbar.value() - delta // 2)
-            event.accept()
-
-    def scroll_area_wheel_event(self, event):
         scrollbar = self.scroll_area.horizontalScrollBar()
         if scrollbar:
             delta = event.angleDelta().y() or event.angleDelta().x()

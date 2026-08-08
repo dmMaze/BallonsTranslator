@@ -72,12 +72,8 @@ class TextTransformEditSession:
         controls.transform_selected.connect(self.select_transform)
 
     @staticmethod
-    def _state_for_format(font_format) -> TextTransformStack:
-        return font_format.text_transform
-
-    @classmethod
-    def _state_for_item(cls, item) -> TextTransformStack:
-        return cls._state_for_format(item.blk.fontformat)
+    def _state_for_item(item) -> TextTransformStack:
+        return item.blk.fontformat.text_transform
 
     @staticmethod
     def _with_value(
@@ -117,7 +113,7 @@ class TextTransformEditSession:
     def _current_states(self):
         if self.items:
             return [self._state_for_item(item) for item in self.items]
-        return [self._state_for_format(self.host.global_format)]
+        return [self.host.global_format.text_transform]
 
     @staticmethod
     def _has_common_stack_shape(states) -> bool:
@@ -218,9 +214,7 @@ class TextTransformEditSession:
             )
             if active_format is None:
                 return
-            self.controls.set_transform(
-                self._state_for_format(active_format)
-            )
+            self.controls.set_active_format(active_format)
         if refresh_shape:
             self._refresh_geometry()
         self._sync_transform_controller()

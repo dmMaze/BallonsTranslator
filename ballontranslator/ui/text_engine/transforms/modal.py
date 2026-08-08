@@ -28,14 +28,7 @@ class ModalPointTransform:
     MODES = frozenset((TRANSLATE, ROTATE, SCALE))
 
     def __init__(self) -> None:
-        self.mode = None
-        self.axis = None
-        self.initial_points = ()
-        self.result_points = ()
-        self.origin = QPointF()
-        self.start_mouse = QPointF()
-        self.current_mouse = QPointF()
-        self._rotation_degrees = 0.0
+        self._reset()
 
     @property
     def active(self) -> bool:

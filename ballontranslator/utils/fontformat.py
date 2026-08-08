@@ -389,30 +389,6 @@ def coerce_text_transform(value: Union[TextTransform, dict]) -> TextTransform:
     return transform_class(**payload)
 
 
-def coerce_text_transform_stack(
-    value: Union[
-        TextTransformStack,
-        Sequence[Union[TextTransform, dict]],
-    ],
-) -> TextTransformStack:
-    """Return one ordered stack and reject the old single payload.
-
-    >>> coerce_text_transform_stack([
-    ...     {'transform_type': 'bend', 'bend': 0.5},
-    ... ])
-    TextTransformStack(transforms=(BendTextTransform(transform_type='bend', bend=0.5),), glyph_slant_angle=0.0)
-    >>> coerce_text_transform_stack({'transform_type': 'bend'})
-    Traceback (most recent call last):
-    ...
-    ValueError: text transform stack must be an ordered list
-    """
-    if isinstance(value, TextTransformStack):
-        return value
-    if not isinstance(value, (list, tuple)):
-        raise ValueError('text transform stack must be an ordered list')
-    return TextTransformStack(tuple(value))
-
-
 def pt2px(pt, to_int=False) -> float:
     if to_int:
         return int(round(pt * shared.LDPI / 72.))

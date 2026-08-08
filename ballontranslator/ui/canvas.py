@@ -462,7 +462,7 @@ class Canvas(QGraphicsScene):
                 item.set_ui_guide_suppressed(True)
             if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
                 blk_item = self.txtblkShapeControl.blk_item
-                if blk_item.is_editting():
+                if blk_item.isEditing():
                     blk_item.endEdit(keep_focus=False)
 
             for item in control_visibility:

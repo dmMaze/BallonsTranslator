@@ -719,11 +719,3 @@ class CompiledTextTransform:
     @property
     def needs_local_handle_frames(self) -> bool:
         return self.surface_mapper is not None or self.has_projective_mapping
-
-    @property
-    def requires_no_cache(self) -> bool:
-        return not self.is_identity
-
-    @property
-    def requires_custom_resize(self) -> bool:
-        return not self.is_identity

@@ -320,6 +320,14 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     def documentSize(self) -> QSizeF:
         return QSizeF(self.max_width, self.max_height)
 
+    def frameBoundingRect(self, frame: QTextFrame) -> QRectF:
+        return QRectF(
+            0,
+            0,
+            max(self.document().pageSize().width(), self.max_width),
+            2147483647,
+        )
+
     def documentChanged(self, position: int, charsRemoved: int, charsAdded: int) -> None:
         if not self.relayout_on_changed:
             return
@@ -1082,9 +1090,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.line_spaces_lst.append(blk_line_spaces)
         self.per_char_records.append(char_records)
 
-    def frameBoundingRect(self, frame: QTextFrame):
-        return QRectF(0, 0, max(self.document().pageSize().width(), self.max_width), 2147483647)
-
     def setLetterSpacing(self, letter_spacing: float):
         if self.letter_spacing != letter_spacing:
             self.letter_spacing = letter_spacing
@@ -1155,9 +1160,6 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 break
             blk = blk.next()
         return blk.position() + off
-
-    def frameBoundingRect(self, frame: QTextFrame):
-        return QRectF(0, 0, max(self.document().pageSize().width(), self.max_width), 2147483647)
 
     def layoutBlock(self, block: QTextBlock):
         doc = self.document()

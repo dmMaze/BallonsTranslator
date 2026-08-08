@@ -91,18 +91,6 @@ class GlyphGeometry(NamedTuple):
     fallbacks: Tuple[FallbackGlyph, ...]
     bounds: QRectF
 
-    @property
-    def path(self) -> QPainterPath:
-        """Return a compatibility union without changing paint fill rules."""
-        combined = QPainterPath()
-        for glyph_path in self.paths:
-            combined = (
-                QPainterPath(glyph_path)
-                if combined.isEmpty()
-                else combined.united(glyph_path)
-            )
-        return combined
-
 
 def _glyph_geometry_cache_weight(geometry: GlyphGeometry) -> int:
     """Conservatively estimate Python and C++ path storage for eviction."""

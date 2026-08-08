@@ -382,13 +382,6 @@ class GlyphSlantLayoutRenderer:
         angle: float,
         persistent_cache: bool = True,
     ) -> bool:
-        return self._set_angle(angle, persistent_cache)
-
-    def _set_angle(
-        self,
-        angle: float,
-        persistent_cache: bool,
-    ) -> bool:
         angle_changed = angle != self.glyph_slant_angle
         # Global-stack previews do not alter glyph geometry, so keep using the
         # committed global entry instead of creating a redundant scratch copy.

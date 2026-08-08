@@ -1,5 +1,7 @@
 """Expandable controls for composable text transforms."""
 
+from typing import Sequence
+
 from qtpy.QtCore import QCoreApplication, QEvent, QSize, QTimer, Signal, Qt
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
@@ -310,13 +312,11 @@ class TextTransformPanel(PanelArea):
         if emit:
             self.transform_selected.emit(-1)
 
-    def _set_transform_states(self, states) -> None:
-        states = [
-            state
-            if isinstance(state, TextTransformStack)
-            else state.text_transform
-            for state in states
-        ]
+    def _set_transform_states(
+        self, states: Sequence[TextTransformStack]
+    ) -> None:
+        if not all(isinstance(state, TextTransformStack) for state in states):
+            raise TypeError('transform panel requires TextTransformStack values')
         glyph_values = [state.glyph_slant_angle for state in states]
         common_glyph = (
             glyph_values[0]
@@ -348,15 +348,12 @@ class TextTransformPanel(PanelArea):
         self._sync_content_height()
 
     def set_active_format(self, font_format: FontFormat) -> None:
-        self._set_transform_states([font_format])
+        self._set_transform_states([font_format.text_transform])
 
     def set_transform_items(self, items) -> None:
         self._set_transform_states(
             [item.blk.fontformat.text_transform for item in items]
         )
-
-    def set_transform(self, state: TextTransformStack) -> None:
-        self._set_transform_states([state])
 
     def iter_transform_controls(self):
         yield self.glyph_slant_control
