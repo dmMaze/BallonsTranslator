@@ -1,4 +1,5 @@
 import copy
+from typing import Iterable
 
 from qtpy.QtWidgets import (
     QApplication,
@@ -243,22 +244,21 @@ class FontFamilyComboBox(QFontComboBox):
         if ffamily in shared.FONT_FAMILIES:
             self.param_changed.emit('font_family', ffamily)
 
-    def update_font_list(self, font_list):
-        self.currentFontChanged.disconnect(self.on_fontfamily_changed)
-        current_font = self.currentFont().family()
-        self.clear()
-        self.addItems(font_list)
+    def update_font_list(self, font_list: Iterable[str]) -> None:
+        font_list = list(font_list)
+        if font_list == [self.itemText(i) for i in range(self.count())]:
+            return
 
-        # If the current font is not in the list, use the first available font
-        if current_font not in font_list:
-            if font_list:  # If the list is not empty, use the first one.
-                current_font = list(font_list)[0]
-            else:  # Don't add anything if the list is empty.
-                self.currentFontChanged.connect(self.on_fontfamily_changed)
-                return
-    
-        self.setCurrentText(current_font)
-        self.currentFontChanged.connect(self.on_fontfamily_changed)
+        current_font = self.currentText()
+        self.currentFontChanged.disconnect(self.on_fontfamily_changed)
+        try:
+            self.clear()
+            self.addItems(font_list)
+            # Keep an applied hidden font visible in the editable field without
+            # putting it back in the popup or changing the underlying format.
+            self.setCurrentText(current_font)
+        finally:
+            self.currentFontChanged.connect(self.on_fontfamily_changed)
 
     def on_return_pressed(self):
         self.return_pressed = True

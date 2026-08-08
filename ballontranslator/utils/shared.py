@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Iterable, List, Optional
 import os
 import os.path as osp
 import json
@@ -166,18 +166,22 @@ LEGACY_FONTS = frozenset({
 })
 
 
-def get_filtered_font_list(font_list, excluded=None) -> list:
-    """Return ``font_list`` minus the excluded font names.
+def get_filtered_font_list(
+    font_list: Iterable[str],
+    excluded: Optional[Iterable[str]] = None,
+) -> List[str]:
+    """Return a sorted font list without the excluded names.
 
-    >>> get_filtered_font_list(['Arial', 'Times', 'Courier'], ['Times'])
+    >>> get_filtered_font_list(['Times', 'Arial', 'Courier'], ['Times'])
     ['Arial', 'Courier']
     >>> get_filtered_font_list(['Arial', 'Times'])
     ['Arial', 'Times']
     """
-    if excluded is None:
-        excluded = []
-    excluded_set = set(excluded)
-    return [f for f in font_list if f not in excluded_set]
+    excluded_set = set(excluded or ())
+    return sorted(
+        (font for font in font_list if font not in excluded_set),
+        key=str.casefold,
+    )
 
 
 pbar = {}

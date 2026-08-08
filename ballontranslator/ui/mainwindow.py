@@ -488,9 +488,9 @@ class MainWindow(mainwindow_cls):
         self.configPanel.save_config.connect(self.save_config)
         self.configPanel.check_update.connect(self.check_for_updates)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
-        self.configPanel.show_only_custom_font.connect(self.on_show_only_custom_font)
-        self.configPanel.font_exclusion_changed.connect(self.on_font_exclusion_changed)
-        self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
+        self.configPanel.font_list_changed.connect(self.on_show_only_custom_font)
+        if pcfg.let_show_only_custom_fonts_flag or pcfg.excluded_fonts:
+            self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
@@ -666,17 +666,13 @@ class MainWindow(mainwindow_cls):
             pcfg.text_styles_path = text_style_path
             save_text_styles()
 
-    def on_show_only_custom_font(self, only_custom: bool):
+    def on_show_only_custom_font(self, only_custom: bool) -> None:
         if only_custom:
             font_list = shared.CUSTOM_FONTS
         else:
             font_list = shared.FONT_FAMILIES
         font_list = shared.get_filtered_font_list(font_list, pcfg.excluded_fonts)
         self.textPanel.formatpanel.familybox.update_font_list(font_list)
-
-    def on_font_exclusion_changed(self):
-        """Re-apply the font exclusion filter to the font combobox."""
-        self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
     def openDir(self, directory: str):
         try:
