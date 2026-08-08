@@ -1257,6 +1257,7 @@ class TextItemGeometryController:
         )
         if target == current and not model_changed and not render_format_changed:
             return False
+        had_preview = self.preview is not None
         was_visual_neutral = self.visual_is_neutral()
         was_effect_neutral = (
             item.effect_renderer._text_transform_is_neutral()
@@ -1271,6 +1272,10 @@ class TextItemGeometryController:
             was_visual_neutral=was_visual_neutral,
             was_effect_neutral=was_effect_neutral,
         )
+        if had_preview and not visual_changed:
+            # Committing identical preview geometry still switches surface
+            # quality and glyph caches back to their persistent render path.
+            item.update()
         changed = (
             model_changed
             or render_format_changed

@@ -578,7 +578,7 @@ class SceneTextManager(QObject):
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]
-        self.formatpanel.text_transform_editor.select_transform(-1)
+        self.formatpanel.text_transform_session.select_transform(-1)
         self.txtblkShapeControl.setBlkItem(blk_item)
         self.canvas.editing_textblkitem = blk_item
         self.formatpanel.set_textblk_item(blk_item)

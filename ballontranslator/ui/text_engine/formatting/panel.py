@@ -31,7 +31,7 @@ from ...custom_widget import (
 )
 from ..item import TextBlkItem
 from .advanced import TextAdvancedFormatPanel
-from ..transforms.editor import TextTransformEditSession
+from ..transforms.edit_session import TextTransformEditSession
 from ..transforms.panel import TextTransformPanel
 from .presets import TextStylePresetPanel
 from .commands import handle_ffmt_change
@@ -406,7 +406,7 @@ class FontFormatPanel(Widget):
             config_name='text_transform_panel',
             config_expand_name='expand_ttransform_panel',
         )
-        self.text_transform_editor = TextTransformEditSession(
+        self.text_transform_session = TextTransformEditSession(
             self,
             self.texttransform_panel,
         )
@@ -505,16 +505,16 @@ class FontFormatPanel(Widget):
             func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True, **func_kwargs)
 
     def resolve_text_transform_edits_for_save(self):
-        self.text_transform_editor.resolve_for_save()
+        self.text_transform_session.resolve_for_save()
 
     def resolve_text_transform_edits_for_history_change(self):
-        self.text_transform_editor.resolve_for_history_change()
+        self.text_transform_session.resolve_for_history_change()
 
     def resolve_text_transform_edits_for_page_change(self):
-        self.text_transform_editor.resolve_for_page_change()
+        self.text_transform_session.resolve_for_page_change()
 
     def cancel_text_transform_edits_for_scene_change(self):
-        self.text_transform_editor.cancel_for_scene_change()
+        self.text_transform_session.cancel_for_scene_change()
 
     def update_text_style_label(self):
         if self.global_mode():
@@ -617,7 +617,7 @@ class FontFormatPanel(Widget):
     def set_textblk_item(self, textblk_item: TextBlkItem = None, multi_select:bool=False):
         # A selection transition is a transaction boundary for transform text.
         # Commit against the old target list before replacing it.
-        self.text_transform_editor.finish_pending_edits()
+        self.text_transform_session.finish_pending_edits()
         if textblk_item is not None:
             transform_items = [textblk_item]
         elif multi_select:
@@ -642,7 +642,7 @@ class FontFormatPanel(Widget):
                 # the retained local item when comparing effective owners.
                 transform_items = [self.textblk_item]
 
-        self.text_transform_editor.replace_targets(transform_items)
+        self.text_transform_session.replace_targets(transform_items)
 
         if textblk_item is None:
             if not preserve_local_owner:

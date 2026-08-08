@@ -1,4 +1,4 @@
-"""Selection-scoped editing transactions for composable text transforms."""
+"""Selection-scoped edit sessions for composable text transforms."""
 
 import copy
 from dataclasses import replace
@@ -63,8 +63,12 @@ class TextTransformEditSession:
         self.selected_index = None
 
         controls.transform_commit_requested.connect(self.commit_value)
-        controls.transform_preview_requested.connect(self.preview_delta)
-        controls.transform_drag_commit_requested.connect(self.commit_drag)
+        controls.transform_preview_requested.connect(
+            self.preview_parameter_delta
+        )
+        controls.transform_drag_commit_requested.connect(
+            self.commit_parameter_delta
+        )
         controls.transform_preview_canceled.connect(self.cancel_preview)
         controls.transform_add_requested.connect(self.add_transform)
         controls.transform_remove_requested.connect(self.remove_transform)
@@ -125,15 +129,13 @@ class TextTransformEditSession:
             sequence == sequences[0] for sequence in sequences
         )
 
-    def _refresh_geometry(self) -> None:
-        for item in self.items:
-            item.update()
-
     def _sync_transform_controller(self) -> None:
         canvas = getattr(SW, 'canvas', None)
         if canvas is None or not hasattr(canvas, 'clear_text_transform_controls'):
             return
         selected = getattr(self, 'selected_index', None)
+        # Canvas overlays bind callbacks to one concrete item and stack index,
+        # so they are valid only while that ownership remains unambiguous.
         if selected is not None and len(self.items) == 1:
             stack = self._state_for_item(self.items[0])
             if (
@@ -162,6 +164,8 @@ class TextTransformEditSession:
                     cancel_edit=self.cancel_projective_edit,
                 )
                 return
+        # Deselection, multi-selection, or a stage without an overlay must
+        # release any controller that was bound by an earlier selection.
         canvas.clear_text_transform_controls()
 
     def select_transform(self, index: int) -> None:
@@ -187,20 +191,20 @@ class TextTransformEditSession:
         if not self.items:
             if before[0] != after[0]:
                 self._set_global_state(after[0])
-            self.refresh_controls(refresh_shape=False)
+            self._sync_transform_ui()
             return
         command = SetTextTransformCommand.create(
             self.items,
             before,
             after,
-            self.refresh_controls,
+            self._sync_transform_ui,
         )
         if command is not None:
             SW.canvas.push_undo_command(command)
         else:
-            self.refresh_controls(refresh_shape=False)
+            self._sync_transform_ui()
 
-    def refresh_controls(self, refresh_shape=True) -> None:
+    def _sync_transform_ui(self) -> None:
         if self.items:
             self.controls.set_transform_items(self.items)
             if len(self.items) == 1 and C.active_format is not None:
@@ -215,8 +219,6 @@ class TextTransformEditSession:
             if active_format is None:
                 return
             self.controls.set_active_format(active_format)
-        if refresh_shape:
-            self._refresh_geometry()
         self._sync_transform_controller()
 
     def replace_targets(self, items) -> None:
@@ -240,7 +242,7 @@ class TextTransformEditSession:
             index != GLYPH_SLANT_INDEX
             and not self._has_common_stack_shape(before)
         ):
-            self.refresh_controls(refresh_shape=False)
+            self._sync_transform_ui()
             return
         try:
             after = [
@@ -248,7 +250,7 @@ class TextTransformEditSession:
                 for state in before
             ]
         except (AttributeError, IndexError, ValueError):
-            self.refresh_controls(refresh_shape=False)
+            self._sync_transform_ui()
             return
         self._commit_states(before, after)
 
@@ -263,7 +265,7 @@ class TextTransformEditSession:
         try:
             transform = create_text_transform(transform_type)
         except ValueError:
-            self.refresh_controls(refresh_shape=False)
+            self._sync_transform_ui()
             return
         before = self._current_states()
         after = [
@@ -290,7 +292,7 @@ class TextTransformEditSession:
             or index < 0
             or any(index >= len(state) for state in before)
         ):
-            self.refresh_controls(refresh_shape=False)
+            self._sync_transform_ui()
             return
         selected = getattr(self, 'selected_index', None)
         if selected == index:
@@ -320,7 +322,7 @@ class TextTransformEditSession:
                 for state in before
             )
         ):
-            self.refresh_controls(refresh_shape=False)
+            self._sync_transform_ui()
             return
         selected = getattr(self, 'selected_index', None)
         if selected == index:
@@ -463,7 +465,7 @@ class TextTransformEditSession:
         self.projective_before = None
         self.projective_index = None
 
-    def preview_delta(
+    def preview_parameter_delta(
         self,
         index: int,
         param_name: str,
@@ -476,12 +478,14 @@ class TextTransformEditSession:
             and not self._has_common_stack_shape(current)
         ):
             self.cancel_preview()
-            self.refresh_controls(refresh_shape=False)
+            self._sync_transform_ui()
             return
+        changed_items = {}
         if self.drag_key != key or self.drag_before is None:
             if self.drag_before is not None:
                 for item in self.items:
-                    item.clear_text_transform_preview()
+                    if item.clear_text_transform_preview():
+                        changed_items[id(item)] = item
             self.drag_key = key
             self.drag_before = current
         if not self.items:
@@ -498,20 +502,19 @@ class TextTransformEditSession:
                 for state in self.drag_before
             ]
         except (AttributeError, IndexError, ValueError):
+            for item in changed_items.values():
+                item.update()
             self.cancel_preview()
             return
-        geometry_changed = False
         for item, state in zip(self.items, preview_after):
             if item._effective_text_transform() == state:
                 continue
-            geometry_changed = (
-                item.set_text_transform(state, preview=True)
-                or geometry_changed
-            )
-        if geometry_changed:
-            self._refresh_geometry()
+            if item.set_text_transform(state, preview=True):
+                changed_items[id(item)] = item
+        for item in changed_items.values():
+            item.update()
 
-    def commit_drag(
+    def commit_parameter_delta(
         self,
         index: int,
         param_name: str,
@@ -540,18 +543,14 @@ class TextTransformEditSession:
         self._commit_states(before, after)
 
     def cancel_preview(self, *_key) -> None:
-        geometry_changed = False
         if self.drag_before is not None:
             for item in self.items:
-                geometry_changed = (
-                    item.clear_text_transform_preview() or geometry_changed
-                )
+                if item.clear_text_transform_preview():
+                    item.update()
         self.drag_before = None
         self.drag_key = None
         if not self.items:
-            self.refresh_controls(refresh_shape=False)
-        elif geometry_changed:
-            self._refresh_geometry()
+            self._sync_transform_ui()
 
     def cancel_control_previews(self) -> None:
         self.controls.cancel_transform_previews()

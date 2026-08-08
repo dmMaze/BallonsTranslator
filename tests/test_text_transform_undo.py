@@ -52,7 +52,9 @@ from ballontranslator.ui.text_engine.transforms.controls import (
     CommittedTransformControl,
 )
 from ballontranslator.ui.text_engine.shape_control import TextBlkShapeControl
-from ballontranslator.ui.text_engine.transforms.editor import TextTransformEditSession
+from ballontranslator.ui.text_engine.transforms.edit_session import (
+    TextTransformEditSession,
+)
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.text_engine.rendering.glyph import (
@@ -1342,6 +1344,128 @@ class TextTransformPanelTest(TextTransformTestBase):
 
 
 class TextTransformUndoTest(TextTransformTestBase):
+    def test_parameter_preview_repaints_only_changed_items(self):
+        states = (
+            transform_state(ProjectiveTextTransform(horizontal_scale=1.0)),
+            transform_state(ProjectiveTextTransform(horizontal_scale=1.2)),
+        )
+        preview_changes = (True, False)
+        cancel_changes = (False, True)
+        updates = []
+
+        def make_item(index, state):
+            return SimpleNamespace(
+                blk=SimpleNamespace(
+                    fontformat=FontFormat(text_transform=state)
+                ),
+                _effective_text_transform=lambda: state,
+                set_text_transform=(
+                    lambda _state, *, preview=False:
+                    preview_changes[index]
+                ),
+                clear_text_transform_preview=(
+                    lambda: cancel_changes[index]
+                ),
+                update=lambda: updates.append(index),
+            )
+
+        session = object.__new__(TextTransformEditSession)
+        session.items = [
+            make_item(index, state)
+            for index, state in enumerate(states)
+        ]
+        session.drag_before = None
+        session.drag_key = None
+
+        session.preview_parameter_delta(0, 'horizontal_scale', 0.1)
+        self.assertEqual(updates, [0])
+
+        updates.clear()
+        session.preview_parameter_delta(0, 'vertical_scale', 0.1)
+        self.assertCountEqual(updates, [0, 1])
+        self.assertEqual(len(updates), 2)
+
+        updates.clear()
+        session.cancel_preview()
+        self.assertEqual(updates, [1])
+
+    def test_command_transitions_schedule_repaint_without_session_repaint(self):
+        previous_canvas = getattr(SW, 'canvas', None)
+        previous_active_format = C.active_format
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        self.addCleanup(setattr, C, 'active_format', previous_active_format)
+        C.active_format = None
+
+        transitions = (
+            (
+                'matrix',
+                transform_state(ProjectiveTextTransform(horizontal_scale=1.2)),
+            ),
+            ('surface', transform_state(BendTextTransform(0.4))),
+            ('glyph-layout', transform_state(glyph_slant_angle=10.0)),
+        )
+        for render_path, after in transitions:
+            with self.subTest(render_path=render_path):
+                scene = QGraphicsScene()
+                item, _ = self._make_pair(0, TEST_LINES[0], False)
+                scene.addItem(item)
+                repaints = []
+                scene.changed.connect(repaints.append)
+                self.app.processEvents()
+                repaints.clear()
+
+                refreshed_states = []
+                session = object.__new__(TextTransformEditSession)
+                session.items = [item]
+                session.controls = SimpleNamespace(
+                    set_transform_items=lambda _items: refreshed_states.append(
+                        item.blk.fontformat.text_transform
+                    )
+                )
+                session.selected_index = None
+                SW.canvas = SimpleNamespace(
+                    clear_text_transform_controls=lambda: None,
+                )
+                stack = QUndoStack()
+                command = SetTextTransformCommand.create(
+                    [item], [NEUTRAL], [after], session._sync_transform_ui
+                )
+
+                stack.push(command)
+                self.app.processEvents()
+                self.assertTrue(repaints)
+                self.assertEqual(refreshed_states[-1], after)
+
+                repaints.clear()
+                stack.undo()
+                self.app.processEvents()
+                self.assertTrue(repaints)
+                self.assertEqual(refreshed_states[-1], NEUTRAL)
+
+                repaints.clear()
+                stack.redo()
+                self.app.processEvents()
+                self.assertTrue(repaints)
+                self.assertEqual(refreshed_states[-1], after)
+
+                stack.undo()
+                item.set_text_transform(after, preview=True)
+                self.app.processEvents()
+                repaints.clear()
+                stack.push(SetTextTransformCommand(
+                    [item], [NEUTRAL], [after], session._sync_transform_ui
+                ))
+                self.app.processEvents()
+                self.assertTrue(
+                    repaints,
+                    f'{render_path} preview commit did not schedule repaint',
+                )
+                self.assertIsNone(item.geometry_controller.preview)
+                self.assertEqual(refreshed_states[-1], after)
+
+                item.geometry_controller.release_render_resources()
+                scene.removeItem(item)
+
     def test_grid_modal_preview_switch_and_cancel_do_not_create_undo(self):
         previous_canvas = getattr(SW, 'canvas', None)
         self.addCleanup(setattr, SW, 'canvas', previous_canvas)

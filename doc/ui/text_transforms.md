@@ -55,7 +55,7 @@ above.
 | Stage math and composite mapping | [`ui/text_engine/transforms/`](../../ballontranslator/ui/text_engine/transforms/) |
 | Variant registration and compilation policy | [`ui/text_engine/transforms/registry.py`](../../ballontranslator/ui/text_engine/transforms/registry.py) |
 | Item geometry, installed mapping, and render lifecycle | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
-| Selection-scoped preview and commit | [`ui/text_engine/transforms/editor.py`](../../ballontranslator/ui/text_engine/transforms/editor.py) |
+| Selection-scoped preview and commit | [`ui/text_engine/transforms/edit_session.py`](../../ballontranslator/ui/text_engine/transforms/edit_session.py) |
 | Panel and variant controls | [`ui/text_engine/transforms/panel.py`](../../ballontranslator/ui/text_engine/transforms/panel.py), [`ui/text_engine/transforms/controls.py`](../../ballontranslator/ui/text_engine/transforms/controls.py) |
 | Canvas undo and paired-editor coordination | [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py), [`ui/text_engine/editing/manager.py`](../../ballontranslator/ui/text_engine/editing/manager.py) |
 | Shared rubber-band and modal-event routing | [`ui/canvas.py`](../../ballontranslator/ui/canvas.py) |
