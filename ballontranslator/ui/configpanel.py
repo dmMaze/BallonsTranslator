@@ -6,6 +6,7 @@ from qtpy.QtWidgets import (
     QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox,
     QSplitter, QScrollArea, QLineEdit, QStackedWidget, QMessageBox,
     QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem,
+    QDialog, QDialogButtonBox, QAbstractItemView,
     QFrame,
 )
 from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection, QTimer
@@ -130,6 +131,177 @@ class ConfigTextLabel(QLabel):
         self.setFont(font)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.setOpenExternalLinks(True)
+
+
+class FontExcludeDialog(QDialog):
+    """Dialog for selecting which fonts to exclude from the font list."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(self.tr("Font Exclusion"))
+        self.setMinimumSize(700, 500)
+
+        layout = QVBoxLayout(self)
+
+        # Search bar
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText(self.tr("Search fonts..."))
+        self.search_edit.textChanged.connect(self._filter_lists)
+        layout.addWidget(self.search_edit)
+
+        # Side-by-side list widgets
+        lists_layout = QHBoxLayout()
+
+        # Available fonts list
+        left_layout = QVBoxLayout()
+        left_layout.addWidget(QLabel(self.tr("Available Fonts")))
+        self.available_list = QListWidget()
+        self.available_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
+        left_layout.addWidget(self.available_list)
+        lists_layout.addLayout(left_layout)
+
+        # Center buttons
+        btn_layout = QVBoxLayout()
+        btn_layout.addStretch()
+        self.hide_btn = QPushButton(">")
+        self.hide_btn.setFixedWidth(40)
+        self.hide_btn.setToolTip(self.tr("Hide selected fonts"))
+        self.hide_btn.clicked.connect(self._hide_fonts)
+        btn_layout.addWidget(self.hide_btn)
+        self.show_btn = QPushButton("<")
+        self.show_btn.setFixedWidth(40)
+        self.show_btn.setToolTip(self.tr("Show selected fonts"))
+        self.show_btn.clicked.connect(self._show_fonts)
+        btn_layout.addWidget(self.show_btn)
+        btn_layout.addStretch()
+        lists_layout.addLayout(btn_layout)
+
+        # Excluded fonts list
+        right_layout = QVBoxLayout()
+        right_layout.addWidget(QLabel(self.tr("Hidden Fonts")))
+        self.excluded_list = QListWidget()
+        self.excluded_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
+        right_layout.addWidget(self.excluded_list)
+        lists_layout.addLayout(right_layout)
+
+        layout.addLayout(lists_layout)
+
+        # Legacy fonts button
+        self.legacy_btn = QPushButton(self.tr("Add Legacy Fonts to Hidden List"))
+        self.legacy_btn.clicked.connect(self._on_add_legacy_fonts)
+        layout.addWidget(self.legacy_btn)
+
+        # OK / Cancel buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        # Populate lists
+        self._populate_lists()
+
+    def _add_font_item(self, list_widget: QListWidget, font_name: str):
+        """Add a font name to a list widget.
+
+        Legacy fonts skip the typeface preview and get a "[Legacy]" suffix.
+        The original font name is stored in ``Qt.UserRole``.
+        """
+        from ballontranslator.utils.shared import LEGACY_FONTS
+
+        is_legacy = font_name in LEGACY_FONTS
+        display = f"{font_name} [{self.tr('Legacy')}]" if is_legacy else font_name
+        item = QListWidgetItem(display)
+        item.setData(Qt.ItemDataRole.UserRole, font_name)
+        if not is_legacy:
+            item.setFont(QFont(font_name, 11))
+        list_widget.addItem(item)
+
+    @staticmethod
+    def _real_name(item: QListWidgetItem) -> str:
+        """Return the original font name stored in UserRole."""
+        name = item.data(Qt.ItemDataRole.UserRole)
+        return name if name else item.text()
+
+    def _populate_lists(self):
+        from ballontranslator.utils import shared
+        from ballontranslator.utils.config import pcfg
+
+        self.available_list.clear()
+        self.excluded_list.clear()
+
+        for font in shared.get_filtered_font_list(shared.FONT_FAMILIES, pcfg.excluded_fonts):
+            self._add_font_item(self.available_list, font)
+
+        for font in pcfg.excluded_fonts:
+            self._add_font_item(self.excluded_list, font)
+
+    def _filter_lists(self):
+        text = self.search_edit.text().lower()
+        for i in range(self.available_list.count()):
+            item = self.available_list.item(i)
+            item.setHidden(bool(text) and text not in self._real_name(item).lower())
+        for i in range(self.excluded_list.count()):
+            item = self.excluded_list.item(i)
+            item.setHidden(bool(text) and text not in self._real_name(item).lower())
+
+    def _hide_fonts(self):
+        for item in self.available_list.selectedItems():
+            self.available_list.takeItem(self.available_list.row(item))
+            self._add_font_item(self.excluded_list, self._real_name(item))
+
+    def _show_fonts(self):
+        for item in self.excluded_list.selectedItems():
+            self.excluded_list.takeItem(self.excluded_list.row(item))
+            self._add_font_item(self.available_list, self._real_name(item))
+
+    def _on_add_legacy_fonts(self):
+        """Detect legacy Windows fonts and add them to the hidden list automatically."""
+        from ballontranslator.utils import shared
+        from ballontranslator.utils.shared import LEGACY_FONTS
+
+        # Fonts that exist on this system AND are legacy
+        exist_legacy = shared.FONT_FAMILIES & LEGACY_FONTS
+        already_excluded = {
+            self._real_name(self.excluded_list.item(i))
+            for i in range(self.excluded_list.count())
+        }
+        to_add = sorted(exist_legacy - already_excluded)
+
+        if not to_add:
+            QMessageBox.information(
+                self,
+                self.tr("Legacy Fonts"),
+                self.tr("No additional legacy fonts detected on this system."),
+            )
+            return
+
+        for font_name in to_add:
+            self._add_font_item(self.excluded_list, font_name)
+            # Remove from available list
+            for i in range(self.available_list.count()):
+                if self._real_name(self.available_list.item(i)) == font_name:
+                    self.available_list.takeItem(i)
+                    break
+
+        QMessageBox.information(
+            self,
+            self.tr("Legacy Fonts"),
+            self.tr(
+                "Added {count} legacy font(s) to the hidden list:\n\n{fonts}"
+            ).replace("{count}", str(len(to_add))).replace("{fonts}", "\n".join(to_add)),
+        )
+
+    def get_excluded_fonts(self) -> List[str]:
+        return [
+            self._real_name(self.excluded_list.item(i))
+            for i in range(self.excluded_list.count())
+        ]
 
 
 class ConfigSubBlock(Widget):
@@ -431,6 +603,7 @@ class ConfigPanel(FramelessWindow):
     check_update = Signal()
     reload_textstyle = Signal(bool)
     show_only_custom_font = Signal(bool)
+    font_exclusion_changed = Signal()
 
     dictionary_urls = DICTIONARY_URLS
 
@@ -729,6 +902,12 @@ class ConfigPanel(FramelessWindow):
 
         self.let_show_only_custom_fonts, sublock = typesettingConfigPanel.addCheckBox(self.tr("Show only custom fonts"))
         self.let_show_only_custom_fonts.stateChanged.connect(self.on_show_only_custom_fonts)
+
+        self.exclude_fonts_btn = QPushButton(self.tr('Hide Unused Fonts'), parent=self)
+        self.exclude_fonts_btn.clicked.connect(self.on_exclude_fonts_clicked)
+        typesettingConfigPanel.addBlockWidget(
+            self.exclude_fonts_btn, self.tr('Font Exclusion'),
+        )
 
         self.rst_imgformat_combobox, imsave_sublock = applicationConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP', 'JXL'], self.tr('Result image format'))
         self.rst_imgformat_combobox.activated.connect(self.on_rst_imgformat_changed)
@@ -1049,6 +1228,13 @@ class ConfigPanel(FramelessWindow):
     def on_show_only_custom_fonts(self):
         pcfg.let_show_only_custom_fonts_flag = self.let_show_only_custom_fonts.isChecked()
         self.show_only_custom_font.emit(pcfg.let_show_only_custom_fonts_flag)
+
+    def on_exclude_fonts_clicked(self):
+        dialog = FontExcludeDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            pcfg.excluded_fonts = dialog.get_excluded_fonts()
+            self.font_exclusion_changed.emit()
+            self.save_config.emit()
 
     def focusOnTranslator(self):
         self.focusPipelineModule('translator')
