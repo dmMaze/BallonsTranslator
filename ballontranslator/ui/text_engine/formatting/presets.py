@@ -1,8 +1,8 @@
-from typing import List
+from typing import Any, List, Optional
 
-from qtpy.QtWidgets import QMenu, QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
-from qtpy.QtCore import Signal, Qt, QRectF
-from qtpy.QtGui import QMouseEvent, QFontMetrics, QColor, QPixmap, QPainter, QContextMenuEvent
+from qtpy.QtWidgets import QApplication, QMenu, QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
+from qtpy.QtCore import QEvent, QMimeData, QPoint, Signal, Qt, QRectF
+from qtpy.QtGui import QDrag, QFontMetrics, QColor, QPixmap, QPainter, QContextMenuEvent, QMouseEvent
 
 
 from ballontranslator.utils.fontformat import FontFormat
@@ -10,6 +10,13 @@ from ballontranslator.utils.config import save_text_styles, text_styles
 from ballontranslator.utils import config as C
 from ...custom_widget import PanelArea, Widget, FlowLayout
 from ...misc import themed_icon_url
+
+
+def _drop_event_position(event: Any) -> QPoint:
+    position = getattr(event, 'position', None)
+    if callable(position):
+        return position().toPoint()
+    return event.pos()
 
 
 class ArrowLeftButton(QPushButton):
@@ -38,6 +45,7 @@ class StyleLabel(QLineEdit):
 
         self.editingFinished.connect(self.edit_finished)
         self.setEnabled(False)
+        self.setAcceptDrops(False)
         
         if style_name is not None:
             self.setText(style_name)
@@ -59,6 +67,7 @@ class StyleLabel(QLineEdit):
 
 class TextStyleLabel(Widget):
 
+    text_style_mime_type = 'application/x-ballonstranslator-text-style'
     style_name_edited = Signal()
     delete_btn_clicked = Signal()
     stylelabel_activated = Signal(bool)
@@ -67,6 +76,7 @@ class TextStyleLabel(Widget):
     def __init__(self, style_name: str = '', parent: Widget = None, fontfmt: FontFormat = None, active_stylename_edited: Signal = None):
         super().__init__(parent=parent)
         self._double_clicked = False
+        self._drag_start_pos: Optional[QPoint] = None
         self.active = False
         if fontfmt is None:
             if C.active_format is None:
@@ -84,7 +94,7 @@ class TextStyleLabel(Widget):
         self.stylelabel.edit_finished.connect(self.on_style_name_edited)
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
-        self.setToolTip(self.tr('Click to set as Global format. Double click to edit name.'))
+        self.setToolTip(self.tr('Click to set as Global format. Double click to edit name. Drag to reorder.'))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         BTN_SIZE = 14
@@ -164,6 +174,7 @@ class TextStyleLabel(Widget):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = None
             if self._double_clicked:
                 self._double_clicked = False
             else:
@@ -171,6 +182,29 @@ class TextStyleLabel(Widget):
                 self.setActive(active)
                 self.stylelabel_activated.emit(active)
         return super().mouseReleaseEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.pos()
+        return super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if (
+            self._drag_start_pos is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+            and (event.pos() - self._drag_start_pos).manhattanLength()
+            >= QApplication.startDragDistance()
+        ):
+            self._drag_start_pos = None
+            drag = QDrag(self)
+            mime_data = QMimeData()
+            mime_data.setData(self.text_style_mime_type, b'')
+            drag.setMimeData(mime_data)
+            drag.setPixmap(self.grab())
+            drag.setHotSpot(event.pos())
+            drag.exec(Qt.DropAction.MoveAction)
+            return
+        return super().mouseMoveEvent(event)
 
     def updatePreview(self):
         font = self.stylelabel.font()
@@ -289,6 +323,8 @@ class TextStylePresetPanel(PanelArea):
         self.flayout.addWidget(self.new_btn)
         self.flayout.addWidget(self.clear_btn)
         self.setContentLayout(self.flayout)
+        self.scrollContent.setAcceptDrops(True)
+        self.scrollContent.installEventFilter(self)
 
     def on_newbtn_clicked(self, clicked = None):
         textstylelabel = self.new_textstyle_label()
@@ -317,9 +353,7 @@ class TextStylePresetPanel(PanelArea):
             else:
                 preset_name = self.default_preset_name + sno
         textstylelabel = TextStyleLabel(preset_name, active_stylename_edited=self.active_stylename_edited)
-        textstylelabel.stylelabel_activated.connect(self.on_stylelabel_activated)
-        textstylelabel.delete_btn_clicked.connect(self.on_deletebtn_clicked)
-        textstylelabel.apply_fontfmt.connect(self.apply_fontfmt)
+        self._connect_style_label(textstylelabel)
         self.flayout.insertWidget(self.count(), textstylelabel)
         text_styles.append(textstylelabel.fontfmt)
         save_text_styles()
@@ -374,10 +408,76 @@ class TextStylePresetPanel(PanelArea):
 
     def _add_style_label(self, fontfmt: FontFormat):
         textstylelabel = TextStyleLabel(fontfmt=fontfmt, active_stylename_edited=self.active_stylename_edited)
+        self._connect_style_label(textstylelabel)
+        self.flayout.insertWidget(self.count(), textstylelabel)
+
+    def _connect_style_label(self, textstylelabel: TextStyleLabel) -> None:
         textstylelabel.delete_btn_clicked.connect(self.on_deletebtn_clicked)
         textstylelabel.stylelabel_activated.connect(self.on_stylelabel_activated)
         textstylelabel.apply_fontfmt.connect(self.apply_fontfmt)
-        self.flayout.insertWidget(self.count(), textstylelabel)
+
+    def _moveStyleLabelToIndex(self, source_index: int, target_index: int) -> None:
+        if not 0 <= source_index < self.count():
+            return
+        target_index = max(0, min(target_index, self.count() - 1))
+        if source_index == target_index:
+            return
+
+        # Preserve the existing QLayoutItem wrapper while the native drag ends.
+        self.flayout.moveItem(source_index, target_index)
+        text_styles.insert(target_index, text_styles.pop(source_index))
+        self.resizeToContent()
+        save_text_styles()
+
+    def _style_label_index(self, label: TextStyleLabel) -> Optional[int]:
+        for index in range(self.count()):
+            item = self.flayout.itemAt(index)
+            if item is not None and item.widget() is label:
+                return index
+        return None
+
+    def eventFilter(self, watched: object, event: QEvent) -> bool:
+        if watched is not self.scrollContent:
+            return super().eventFilter(watched, event)
+
+        event_type = event.type()
+        if event_type in (
+            QEvent.Type.DragEnter,
+            QEvent.Type.DragMove,
+            QEvent.Type.Drop,
+        ):
+            source = event.source()
+            if not (
+                isinstance(source, TextStyleLabel)
+                and event.mimeData().hasFormat(TextStyleLabel.text_style_mime_type)
+            ):
+                return super().eventFilter(watched, event)
+            if event_type == QEvent.Type.Drop:
+                self._reorderStyleAtPosition(source, _drop_event_position(event))
+            event.acceptProposedAction()
+            return True
+        return super().eventFilter(watched, event)
+
+    def _reorderStyleAtPosition(self, source: TextStyleLabel, position: QPoint) -> None:
+        source_index = self._style_label_index(source)
+        if source_index is None:
+            return
+
+        insert_index = self.count()
+        for index in range(self.count()):
+            label = self.flayout.itemAt(index).widget()
+            geometry = label.geometry()
+            if position.y() < geometry.top() or (
+                position.y() <= geometry.bottom()
+                and position.x() < geometry.center().x()
+            ):
+                insert_index = index
+                break
+
+        # Removing an earlier source shifts the pre-move drop index left by one.
+        if source_index < insert_index:
+            insert_index -= 1
+        self._moveStyleLabelToIndex(source_index, insert_index)
 
     def on_deletebtn_clicked(self):
         w: TextStyleLabel = self.sender()
