@@ -488,9 +488,9 @@ class MainWindow(mainwindow_cls):
         self.configPanel.save_config.connect(self.save_config)
         self.configPanel.check_update.connect(self.check_for_updates)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
-        self.configPanel.show_only_custom_font.connect(self.on_show_only_custom_font)
-        if pcfg.let_show_only_custom_fonts_flag:
-            self.on_show_only_custom_font(True)
+        self.configPanel.font_list_changed.connect(self.on_show_only_custom_font)
+        if pcfg.let_show_only_custom_fonts_flag or pcfg.excluded_fonts:
+            self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
@@ -666,11 +666,12 @@ class MainWindow(mainwindow_cls):
             pcfg.text_styles_path = text_style_path
             save_text_styles()
 
-    def on_show_only_custom_font(self, only_custom: bool):
+    def on_show_only_custom_font(self, only_custom: bool) -> None:
         if only_custom:
             font_list = shared.CUSTOM_FONTS
         else:
             font_list = shared.FONT_FAMILIES
+        font_list = shared.get_filtered_font_list(font_list, pcfg.excluded_fonts)
         self.textPanel.formatpanel.familybox.update_font_list(font_list)
 
     def openDir(self, directory: str):
@@ -854,6 +855,9 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
         self.titleBar.merge_tool_trigger.connect(self.on_open_merge_tool)
+        self.titleBar.font_exclusion_trigger.connect(
+            self.configPanel.show_font_exclusion_dialog
+        )
 
         shortcutA = QShortcut(QKeySequence("A"), self)
         shortcutA.activated.connect(self.shortcutBefore)

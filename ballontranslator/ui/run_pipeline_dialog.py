@@ -2,13 +2,12 @@ import os
 
 from qtpy.QtCore import (
     QEvent,
-    QPointF,
     QSize,
     QSignalBlocker,
     Qt,
     Signal,
 )
-from qtpy.QtGui import QIcon, QMouseEvent, QPainter, QPalette, QPen
+from qtpy.QtGui import QIcon, QMouseEvent
 from qtpy.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -36,7 +35,7 @@ from qtpy.QtWidgets import (
 
 from .icon_rendering import render_svg_pixmap
 from .misc import themed_icon_path
-from .framelesswindow import FramelessMoveResize
+from .framelesswindow import DialogCloseButton, FramelessMoveResize
 from .llm_modality import (
     LLM_MODALITY_IMAGE,
     LLM_MODALITY_IMAGE_COLOR,
@@ -64,47 +63,6 @@ from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 RUN_PIPELINE_DIALOG_WIDTH = 510
 RUN_PIPELINE_SETTING_CONTROL_WIDTH = 100
 RUN_PIPELINE_GLOSSARY_DISPLAY_WIDTH = 100
-
-
-class DialogCloseButton(QAbstractButton):
-    """Small title-bar button that paints its own close glyph.
-
-    >>> DialogCloseButton.__name__
-    'DialogCloseButton'
-    """
-
-    def __init__(self, parent: QWidget = None):
-        super().__init__(parent)
-        self.setObjectName('RunPipelineCloseButton')
-        self.setFixedSize(26, 26)
-        self.setToolTip(self.tr('Close'))
-        self.setAccessibleName(self.tr('Close'))
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        render_hint = getattr(QPainter, 'RenderHint', QPainter).Antialiasing
-        painter.setRenderHint(render_hint)
-
-        if self.underMouse() or self.isDown():
-            color_role = getattr(QPalette, 'ColorRole', QPalette)
-            background = self.palette().color(color_role.Highlight)
-            background.setAlpha(55 if self.isDown() else 35)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(background)
-            painter.drawRoundedRect(self.rect(), 6, 6)
-
-        color_role = getattr(QPalette, 'ColorRole', QPalette)
-        color = self.palette().color(color_role.WindowText)
-        color.setAlpha(210)
-        pen = QPen(color)
-        pen.setWidthF(1.6)
-        pen.setCapStyle(getattr(getattr(Qt, 'PenCapStyle', Qt), 'RoundCap'))
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        inset = 8.5
-        end = self.width() - inset
-        painter.drawLine(QPointF(inset, inset), QPointF(end, end))
-        painter.drawLine(QPointF(end, inset), QPointF(inset, end))
 
 
 class PipelineModuleButton(QAbstractButton):

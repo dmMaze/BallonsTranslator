@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Iterable, List, Optional
 import os
 import os.path as osp
 import json
@@ -158,6 +158,32 @@ check_local_file_hash = True
 
 FONT_FAMILIES: set = None
 CUSTOM_FONTS = []
+# Windows 自带的老旧字体：渲染时可能触发 DirectWrite CreateFontFaceFromHDC 告警
+LEGACY_FONTS = frozenset({
+    "MS Sans Serif", "MS Serif", "Small Fonts",
+    "System", "Fixedsys", "Terminal",
+    "Courier", "Modern", "Roman", "Script",
+})
+
+
+def get_filtered_font_list(
+    font_list: Iterable[str],
+    excluded: Optional[Iterable[str]] = None,
+) -> List[str]:
+    """Return a sorted font list without the excluded names.
+
+    >>> get_filtered_font_list(['Times', 'Arial', 'Courier'], ['Times'])
+    ['Arial', 'Courier']
+    >>> get_filtered_font_list(['Arial', 'Times'])
+    ['Arial', 'Times']
+    """
+    excluded_set = set(excluded or ())
+    return sorted(
+        (font for font in font_list if font not in excluded_set),
+        key=str.casefold,
+    )
+
+
 pbar = {}
 runtime_widget_set = set()
 

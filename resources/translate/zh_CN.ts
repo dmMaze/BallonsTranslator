@@ -465,6 +465,16 @@
         <translation>只显示 fonts 文件夹下的字体</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="906"/>
+        <source>Hide Unused Fonts</source>
+        <translation>隐藏不使用的字体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="909"/>
+        <source>Font Exclusion</source>
+        <translation>字体排除</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="733"/>
         <source>Result image format</source>
         <translation>结果图格式</translation>
@@ -615,6 +625,68 @@
     <message>
         <source>Max spelling difference in letters. Higher values search deeper but perform slower.</source>
         <translation type="vanished">允许的最大拼写错误字符数。数值越大匹配范围越广，但搜索速度越慢。</translation>
+    </message>
+</context>
+<context>
+    <name>FontExcludeDialog</name>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="141"/>
+        <source>Font Exclusion</source>
+        <translation>字体排除</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="148"/>
+        <source>Search fonts...</source>
+        <translation>搜索字体...</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="157"/>
+        <source>Available Fonts</source>
+        <translation>可用字体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="170"/>
+        <source>Hide selected fonts</source>
+        <translation>隐藏所选字体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="175"/>
+        <source>Show selected fonts</source>
+        <translation>显示所选字体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="183"/>
+        <source>Hidden Fonts</source>
+        <translation>已隐藏字体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="194"/>
+        <source>Add Legacy Fonts to Hidden List</source>
+        <translation>将旧版字体添加到隐藏列表</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="218"/>
+        <source>Legacy</source>
+        <translation>旧版</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="279"/>
+        <source>Legacy Fonts</source>
+        <translation>旧版字体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="280"/>
+        <source>No additional legacy fonts detected on this system.</source>
+        <translation>系统中未检测到其他旧版字体。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="296"/>
+        <source>Added {count} legacy font(s) to the hidden list:
+
+{fonts}</source>
+        <translation>已将 {count} 个旧版字体添加到隐藏列表：
+
+{fonts}</translation>
     </message>
 </context>
 <context>

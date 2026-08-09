@@ -1,4 +1,5 @@
 import copy
+from typing import Iterable
 
 from qtpy.QtWidgets import (
     QApplication,
@@ -11,7 +12,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QFocusEvent, QTextCursor, QKeyEvent, QFont
+from qtpy.QtGui import QFocusEvent, QTextCursor, QKeyEvent
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
@@ -238,27 +239,34 @@ class FontFamilyComboBox(QFontComboBox):
         self.setLineEdit(lineedit)
         self.return_pressed = False
         
-    def apply_fontfamily(self):
-        ffamily = self.currentFont().family()
+    def apply_fontfamily(self) -> None:
+        ffamily = self.currentText()
         if ffamily in shared.FONT_FAMILIES:
             self.param_changed.emit('font_family', ffamily)
 
-    def update_font_list(self, font_list):
-        self.currentFontChanged.disconnect(self.on_fontfamily_changed)
-        current_font = self.currentFont().family()
-        self.clear()
-        self.addItems(font_list)
+    def set_displayed_font(self, font_family: str) -> None:
+        """Show a family without changing the filtered popup model."""
+        index = self.findText(font_family)
+        self.setCurrentIndex(index)
+        if index < 0:
+            # setCurrentFont() rebuilds QFontComboBox's database-backed model.
+            self.setEditText(font_family)
 
-        # If the current font is not in the list, use the first available font
-        if current_font not in font_list:
-            if font_list:  # If the list is not empty, use the first one.
-                current_font = list(font_list)[0]
-            else:  # Don't add anything if the list is empty.
-                self.currentFontChanged.connect(self.on_fontfamily_changed)
-                return
-    
-        self.setCurrentText(current_font)
-        self.currentFontChanged.connect(self.on_fontfamily_changed)
+    def update_font_list(self, font_list: Iterable[str]) -> None:
+        font_list = list(font_list)
+        if font_list == [self.itemText(i) for i in range(self.count())]:
+            return
+
+        current_font = self.currentText()
+        self.currentFontChanged.disconnect(self.on_fontfamily_changed)
+        try:
+            self.clear()
+            self.addItems(font_list)
+            # Keep an applied hidden font visible in the editable field without
+            # putting it back in the popup or changing the underlying format.
+            self.set_displayed_font(current_font)
+        finally:
+            self.currentFontChanged.connect(self.on_fontfamily_changed)
 
     def on_return_pressed(self):
         self.return_pressed = True
@@ -562,8 +570,7 @@ class FontFormatPanel(Widget):
         if multi_size:
             font_size += "+"
         self.fontsizebox.fcombobox.setCurrentText(font_size)
-        self.familybox.setCurrentText(font_format.font_family)
-        self.familybox.setCurrentFont(QFont(font_format.font_family))
+        self.familybox.set_displayed_font(font_format.font_family)
         self.colorPicker.setPickerColor(font_format.foreground_color())
         self.strokeColorPicker.setPickerColor(font_format.stroke_color())
         self.strokeWidthBox.setValue(font_format.stroke_width)

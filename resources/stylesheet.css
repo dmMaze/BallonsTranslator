@@ -704,6 +704,129 @@ QPushButton#UpdateDialogPrimaryButton:pressed {
     background-color: #187fc3;
 }
 
+QDialog#FontExcludeDialog {
+    background-color: transparent;
+}
+
+QFrame#FontExcludeSurface {
+    color: @qwidgetForegroundColor;
+    background-color: @qwidgetBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 12px;
+}
+
+QWidget#FontExcludeTitleBar,
+QLabel#FontExcludeTitle,
+QLabel#FontExcludeListTitle {
+    background-color: transparent;
+}
+
+QLabel#FontExcludeTitle {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+QLabel#FontExcludeListTitle {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLineEdit#FontExcludeSearch {
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0px 8px;
+    color: @qwidgetForegroundColor;
+    background-color: @transtexteditBackgroundColor;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+QLineEdit#FontExcludeSearch:focus {
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QListWidget#FontExcludeAvailableList,
+QListWidget#FontExcludeHiddenList {
+    padding: 4px;
+    color: @qwidgetForegroundColor;
+    background-color: @emptyContentBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+}
+
+QListWidget#FontExcludeAvailableList::item,
+QListWidget#FontExcludeHiddenList::item {
+    min-height: 24px;
+    padding: 0px 6px;
+    border-radius: 4px;
+}
+
+QListWidget#FontExcludeAvailableList::item:hover,
+QListWidget#FontExcludeHiddenList::item:hover {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QListWidget#FontExcludeAvailableList::item:selected,
+QListWidget#FontExcludeHiddenList::item:selected {
+    color: white;
+    background-color: rgb(30, 147, 229);
+}
+
+QPushButton#FontExcludeMoveButton {
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    max-height: 32px;
+    padding: 0px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: 1px solid @borderColor;
+    border-radius: 6px;
+    font-size: 15px;
+}
+
+QPushButton#FontExcludeMoveButton:hover,
+QPushButton#FontExcludeSecondaryButton:hover,
+QPushButton#FontExcludeLegacyButton:hover {
+    border-color: rgb(30, 147, 229);
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QPushButton#FontExcludeLegacyButton,
+QPushButton#FontExcludePrimaryButton,
+QPushButton#FontExcludeSecondaryButton {
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+QPushButton#FontExcludeLegacyButton,
+QPushButton#FontExcludeSecondaryButton {
+    color: @qwidgetForegroundColor;
+    background-color: @qwidgetBackgroundColor;
+    border: 1px solid @borderColor;
+}
+
+QPushButton#FontExcludePrimaryButton {
+    color: white;
+    background-color: rgb(30, 147, 229);
+    border: 1px solid rgb(30, 147, 229);
+}
+
+QPushButton#FontExcludePrimaryButton:hover {
+    background-color: #4ba7ee;
+}
+
+QPushButton#FontExcludePrimaryButton:pressed {
+    background-color: #187fc3;
+}
+
 QDialog#RunPipelineDialog {
     background-color: transparent;
 }
