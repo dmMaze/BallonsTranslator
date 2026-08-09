@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -9,8 +10,10 @@ from qtpy.QtCore import QLocale
 
 
 SYSLANG = QLocale.system().name()
-TRANSLATION_CONTEXT = 'ModuleParamTranslator'
-GENERATED_CATALOG_PATH = Path('ballontranslator/ui/_generated/module_param_i18n_catalog.py')
+TRANSLATION_CONTEXT = 'ModuleParamDialog'
+GENERATED_CATALOG_PATH = Path(
+    'ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py'
+)
 ModuleParamKey = Tuple[str, str, str, str]
 
 
@@ -142,11 +145,25 @@ def _ui_python_files(program_dir: Path):
 
 
 def run_lupdate(program_dir: Path, translate_path: Path) -> None:
-    command = ['pyside6-lupdate', '-verbose', *_ui_python_files(program_dir), '-ts', str(translate_path)]
-    try:
-        subprocess.run(command, check=True)
-    except FileNotFoundError as exc:
-        raise SystemExit('pyside6-lupdate was not found on PATH.') from exc
+    environment_bin = Path(sys.executable).resolve().parent
+    candidates = ('pyside6-lupdate', 'pylupdate6', 'pylupdate5')
+    lupdate = next(
+        (
+            str(environment_bin / name)
+            for name in candidates
+            if (environment_bin / name).is_file()
+        ),
+        None,
+    )
+    if lupdate is None:
+        lupdate = next(
+            (shutil.which(name) for name in candidates if shutil.which(name)),
+            None,
+        )
+    if lupdate is None:
+        raise SystemExit('No Python-capable Qt lupdate executable was found.')
+    command = [lupdate, '-verbose', *_ui_python_files(program_dir), '-ts', str(translate_path)]
+    subprocess.run(command, check=True)
 
 
 if __name__ == '__main__':

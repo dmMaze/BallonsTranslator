@@ -87,7 +87,10 @@ QWidget#ConfigContentScrollContent QWidget#ParamLabelAboveRow {
 
 QWidget#ConfigContentScrollContent QLineEdit,
 QWidget#ConfigContentScrollContent QComboBox,
-QWidget#ConfigContentScrollContent QPlainTextEdit {
+QWidget#ConfigContentScrollContent QPlainTextEdit,
+QWidget#ModuleParamContent QLineEdit,
+QWidget#ModuleParamContent QComboBox,
+QWidget#ModuleParamContent QPlainTextEdit {
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 6px;
@@ -95,31 +98,41 @@ QWidget#ConfigContentScrollContent QPlainTextEdit {
 }
 
 QWidget#ConfigContentScrollContent QLineEdit,
-QWidget#ConfigContentScrollContent QComboBox {
+QWidget#ConfigContentScrollContent QComboBox,
+QWidget#ModuleParamContent QLineEdit,
+QWidget#ModuleParamContent QComboBox {
     height: 26px;
 }
 
-QWidget#ConfigContentScrollContent QLineEdit {
+QWidget#ConfigContentScrollContent QLineEdit,
+QWidget#ModuleParamContent QLineEdit {
     padding: 0px 8px;
 }
 
-QWidget#ConfigContentScrollContent QComboBox {
+QWidget#ConfigContentScrollContent QComboBox,
+QWidget#ModuleParamContent QComboBox {
     padding-left: 8px;
 }
 
-QWidget#ConfigContentScrollContent QPlainTextEdit {
+QWidget#ConfigContentScrollContent QPlainTextEdit,
+QWidget#ModuleParamContent QPlainTextEdit {
     padding: 4px 8px;
 }
 
 QWidget#ConfigContentScrollContent QLineEdit:focus,
 QWidget#ConfigContentScrollContent QComboBox:hover,
 QWidget#ConfigContentScrollContent QComboBox:focus,
-QWidget#ConfigContentScrollContent QPlainTextEdit:focus {
+QWidget#ConfigContentScrollContent QPlainTextEdit:focus,
+QWidget#ModuleParamContent QLineEdit:focus,
+QWidget#ModuleParamContent QComboBox:hover,
+QWidget#ModuleParamContent QComboBox:focus,
+QWidget#ModuleParamContent QPlainTextEdit:focus {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
-QWidget#ConfigContentScrollContent QComboBox::drop-down {
+QWidget#ConfigContentScrollContent QComboBox::drop-down,
+QWidget#ModuleParamContent QComboBox::drop-down {
     border: none;
 }
 
@@ -218,19 +231,19 @@ QWidget#ConfigContentScrollContent QWidget#PipelineModuleOptions {
     background-color: @emptyContentBackgroundColor;
 }
 
-QWidget#ConfigContentScrollContent QWidget#PipelineModuleHeader {
-    background-color: @emptyContentBackgroundColor;
-    border-left: 3px solid transparent;
+QWidget#ConfigContentScrollContent QCheckBox#PipelineModuleActionCheckBox {
+    font-size: 13px;
+}
+
+QPushButton#DrawingInpainterConfigButton {
+    padding: 2px;
+    background-color: transparent;
+    border: none;
     border-radius: 4px;
 }
 
-QWidget#ConfigContentScrollContent QWidget#PipelineModuleHeader[jumpHighlighted="true"] {
-    background-color: rgba(30, 147, 229, 28);
-    border-left: 3px solid rgb(30, 147, 229);
-}
-
-QWidget#ConfigContentScrollContent QCheckBox#PipelineModuleActionCheckBox {
-    font-size: 13px;
+QPushButton#DrawingInpainterConfigButton:hover {
+    background-color: rgba(30, 147, 229, 20%);
 }
 
 QWidget#ConfigContentScrollContent QLabel#ParamFieldLabel,
@@ -566,7 +579,12 @@ QGroupBox#LLMProfileCard QWidget#LLMProfileDetailSection,
 QGroupBox#LLMProfileCard QWidget#ParamLabelAboveRow,
 QGroupBox#LLMProfileCard QLabel#ParamLabelAboveLabel,
 QGroupBox#LLMProfileCard QLabel#ParamFieldLabel,
-QGroupBox#LLMProfileCard QCheckBox#ParamCheckBox {
+QGroupBox#LLMProfileCard QCheckBox#ParamCheckBox,
+QWidget#ModuleParamContent,
+QWidget#ModuleParamContent QWidget#ParamLabelAboveRow,
+QWidget#ModuleParamContent QLabel#ParamLabelAboveLabel,
+QWidget#ModuleParamContent QLabel#ParamFieldLabel,
+QWidget#ModuleParamContent QCheckBox#ParamCheckBox {
     background-color: @widgetBackgroundColor;
     font-size: 13px;
 }
@@ -719,6 +737,34 @@ QWidget#FontExcludeTitleBar,
 QLabel#FontExcludeTitle,
 QLabel#FontExcludeListTitle {
     background-color: transparent;
+}
+
+QDialog#ModuleParamDialog {
+    background-color: transparent;
+}
+
+QFrame#ModuleParamSurface {
+    color: @qwidgetForegroundColor;
+    background-color: @widgetBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 12px;
+}
+
+QWidget#ModuleParamTitleBar,
+QLabel#ModuleParamTitle,
+QLabel#ModuleParamEmptyLabel,
+QScrollArea#ModuleParamScrollArea,
+QScrollArea#ModuleParamScrollArea QWidget#qt_scrollarea_viewport {
+    background-color: @widgetBackgroundColor;
+}
+
+QLabel#ModuleParamTitle {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+QLabel#ModuleParamEmptyLabel {
+    font-size: 13px;
 }
 
 QLabel#FontExcludeTitle {
@@ -904,8 +950,21 @@ QFrame#RunPipelineStages {
     border: none;
 }
 
+QFrame#RunPipelineStages QWidget#RunPipelineModuleActivator {
+    background-color: transparent;
+    border: none;
+}
+
+QFrame#RunPipelineStages QWidget#RunPipelineModuleActivator[moduleActive="false"]:hover {
+    background-color: rgba(30, 147, 229, 20%);
+    border-radius: 5px;
+}
+
 QFrame#RunPipelineStages QAbstractButton#RunPipelineModuleButton {
+    min-width: 24px;
+    max-width: 24px;
     min-height: 24px;
+    max-height: 24px;
     padding: 0px;
     background-color: transparent;
     border: none;
@@ -916,18 +975,25 @@ QFrame#RunPipelineStages QLabel#RunPipelineModuleIcon {
     border: none;
 }
 
-QFrame#RunPipelineStages QLabel#RunPipelineModuleLabel {
-    color: @qwidgetForegroundColor;
-    background-color: transparent;
-    font-size: 13px;
-}
-
 QFrame#RunPipelineStages QAbstractButton#RunPipelineModuleButton:hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-QFrame#RunPipelineStages QLabel#RunPipelineModuleLabel[moduleActive="false"] {
-    color: @borderColor;
+QFrame#RunPipelineStages QToolButton#RunPipelineModuleConfigButton,
+QFrame#RunPipelineStages QToolButton#RunPipelineModuleDeactivateButton {
+    min-width: 22px;
+    max-width: 22px;
+    min-height: 22px;
+    max-height: 22px;
+    padding: 1px;
+    background-color: transparent;
+    border: none;
+    border-radius: 4px;
+}
+
+QFrame#RunPipelineStages QToolButton#RunPipelineModuleConfigButton:hover,
+QFrame#RunPipelineStages QToolButton#RunPipelineModuleDeactivateButton:hover {
+    background-color: rgba(30, 147, 229, 20%);
 }
 
 QWidget#RunPipelineSettingsSection,
@@ -1521,9 +1587,9 @@ QCheckBox#TransChecker::indicator:hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-QToolButton#BottomBarModuleToolButton {
+QToolButton#BottomBarModuleToolButton,
+QComboBox#RunPipelineModuleSelector {
     min-height: 22px;
-    padding: 1px 24px 1px 8px;
     border: none;
     border-radius: 5px;
     background-color: rgba(0, 0, 0, 0);
@@ -1531,11 +1597,27 @@ QToolButton#BottomBarModuleToolButton {
     font-size: 13px;
 }
 
+QToolButton#BottomBarModuleToolButton {
+    padding: 1px 24px 1px 8px;
+}
+
+QComboBox#RunPipelineModuleSelector {
+    padding: 1px 0px 1px 8px;
+}
+
 QToolButton#BottomBarModuleToolButton:hover,
 QToolButton#BottomBarModuleToolButton:pressed,
-QToolButton#BottomBarModuleToolButton:open {
+QToolButton#BottomBarModuleToolButton:open,
+QComboBox#RunPipelineModuleSelector:hover,
+QComboBox#RunPipelineModuleSelector:on {
     border: none;
     background-color: rgba(30, 147, 229, 20%);
+}
+
+QComboBox#RunPipelineModuleSelector[moduleActive="false"],
+QComboBox#RunPipelineModuleSelector[moduleActive="false"]:hover {
+    color: @borderColor;
+    background-color: transparent;
 }
 
 QToolButton#BottomBarModuleToolButton::menu-indicator {

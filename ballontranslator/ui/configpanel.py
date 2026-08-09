@@ -12,7 +12,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt, Signal, QSize, QItemSelection, QTimer
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
-from .custom_widget import ConfigComboBox, ScrollBar, Widget
+from .custom_widget import ConfigComboBox, NoBorderPushBtn, ScrollBar, Widget
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.version import APP_VERSION
@@ -39,7 +39,6 @@ from ballontranslator.utils.shared import (
     TITLEBAR_HEIGHT,
 )
 from ballontranslator.utils.logger import logger as LOGGER
-from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 from .llm_profile_widgets import LLMProfilesWidget
 from .framelesswindow import (
     DialogCloseButton,
@@ -55,10 +54,6 @@ SECTION_ALIASES = {
     'startup': 'application',
     'save': 'application',
     'modules': 'pipeline',
-    'detector': 'pipeline',
-    'ocr': 'pipeline',
-    'inpainter': 'pipeline',
-    'translator': 'pipeline',
 }
 PRESERVE_ACTIVE_WIDGET_CLASS_NAMES = {
     'FontExcludeDialog',
@@ -676,6 +671,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     check_update = Signal()
     reload_textstyle = Signal(bool)
     font_list_changed = Signal(bool)
+    show_pre_MT_keyword_window = Signal()
+    show_MT_keyword_window = Signal()
+    show_OCR_keyword_window = Signal()
 
     dictionary_urls = DICTIONARY_URLS
 
@@ -706,10 +704,6 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         moduleTableItem = self.configTable.addHeader(self.tr('Modules'))
         generalTableItem = self.configTable.addHeader(self.tr('General'))
         
-        label_text_det = self.tr('Detector')
-        label_text_ocr = self.tr('OCR')
-        label_inpaint = self.tr('Inpainter')
-        label_translator = self.tr('Translator')
         label_pipeline = self.tr('Pipeline')
         label_llm_profile = self.tr('LLM Profile')
         label_application = self.tr('Application')
@@ -767,25 +761,31 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.unload_model_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
         module_actions_layout.addWidget(self.unload_model_btn)
         pipeline_options_layout.addWidget(module_actions)
+
+        self.replaceOCRkeywordBtn = NoBorderPushBtn(
+            self.tr('Keyword substitution for source text'),
+            self,
+        )
+        self.replaceOCRkeywordBtn.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.replaceOCRkeywordBtn.clicked.connect(self.show_OCR_keyword_window)
+        pipeline_options_layout.addWidget(self.replaceOCRkeywordBtn)
+        self.replacePreMTkeywordBtn = NoBorderPushBtn(
+            self.tr('Keyword substitution for machine translation source text'),
+            self,
+        )
+        self.replacePreMTkeywordBtn.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.replacePreMTkeywordBtn.clicked.connect(
+            self.show_pre_MT_keyword_window
+        )
+        pipeline_options_layout.addWidget(self.replacePreMTkeywordBtn)
+        self.replaceMTkeywordBtn = NoBorderPushBtn(
+            self.tr('Keyword substitution for machine translation'),
+            self,
+        )
+        self.replaceMTkeywordBtn.setFixedWidth(CONFIG_COMBOBOX_LONG)
+        self.replaceMTkeywordBtn.clicked.connect(self.show_MT_keyword_window)
+        pipeline_options_layout.addWidget(self.replaceMTkeywordBtn)
         pipelineConfigPanel.vlayout.addWidget(pipeline_options)
-
-        self.detect_config_panel = TextDetectConfigPanel(self.tr('Detector'), scrollWidget=self)
-        self.detect_sub_block = pipelineConfigPanel.addBlockWidget(self.detect_config_panel)
-
-        self.ocr_config_panel = OCRConfigPanel(self.tr('OCR'), scrollWidget=self)
-        self.ocr_sub_block = pipelineConfigPanel.addBlockWidget(self.ocr_config_panel)
-
-        self.inpaint_config_panel = InpaintConfigPanel(self.tr('Inpainter'), scrollWidget=self)
-        self.inpaint_sub_block = pipelineConfigPanel.addBlockWidget(self.inpaint_config_panel)
-
-        self.trans_config_panel = TranslatorConfigPanel(label_translator, scrollWidget=self)
-        self.trans_sub_block = pipelineConfigPanel.addBlockWidget(self.trans_config_panel)
-        self.pipeline_module_panels = {
-            'detector': self.detect_config_panel,
-            'ocr': self.ocr_config_panel,
-            'inpainter': self.inpaint_config_panel,
-            'translator': self.trans_config_panel,
-        }
         self.llm_profiles_panel = LLMProfilesWidget(scrollWidget=self)
         llmProfileConfigPanel.addBlockWidget(self.llm_profiles_panel)
 
@@ -1063,22 +1063,8 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
 
     def showSection(self, section_key: str):
         section_key = SECTION_ALIASES.get(section_key, section_key)
-        self._highlightPipelineModule(None)
         self.configContent.showSection(section_key)
         self.configTable.setCurrentSection(section_key)
-
-    def _highlightPipelineModule(self, module_key: str = None):
-        for key, panel in getattr(self, 'pipeline_module_panels', {}).items():
-            panel.setJumpHighlighted(key == module_key)
-
-    def focusPipelineModule(self, module_key: str):
-        panel = self.pipeline_module_panels[module_key]
-        self.showConfigDialog('pipeline')
-        panel.updateModuleParamWidget()
-        if panel.visibleWidget is not None:
-            panel.visibleWidget.show()
-        self._highlightPipelineModule(module_key)
-        self.configContent.scrollWidgetToTop('pipeline', panel.header_widget)
 
     def on_open_onstartup_changed(self):
         pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
@@ -1333,24 +1319,11 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.font_list_changed.emit(pcfg.let_show_only_custom_fonts_flag)
         self.save_config.emit()
 
-    def focusOnTranslator(self):
-        self.focusPipelineModule('translator')
-
     def focusOnLLMProfile(self, profile_id: str, expand_details: bool = True, target: str = 'api_key'):
         self.showConfigDialog('llm_profile')
         self.llm_profiles_panel.focusProfileControl(profile_id, target=target, expand_details=expand_details)
 
-    def focusOnInpaint(self):
-        self.focusPipelineModule('inpainter')
-
-    def focusOnDetect(self):
-        self.focusPipelineModule('detector')
-
-    def focusOnOCR(self):
-        self.focusPipelineModule('ocr')
-
     def hideEvent(self, e) -> None:
-        self._highlightPipelineModule(None)
         if hasattr(self, 'llm_profiles_panel'):
             self.llm_profiles_panel.collapseProfiles()
         self.save_config.emit()

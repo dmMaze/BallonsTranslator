@@ -221,6 +221,8 @@ class PageProgressRangeBar(QWidget):
         return event.position() if hasattr(event, 'position') else event.pos()
 
     def _handle_index_at(self, pos):
+        if not self.page_names:
+            return -1
         track_y = self._track_rect().center().y()
         hit_radius = self.HANDLE_RADIUS + 2
         for page_index in {self.start_index, self.end_index}:
