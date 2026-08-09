@@ -66,6 +66,8 @@ Important areas:
 
 ## UI Styling Rules
 
+- For lightweight tool or settings dialogs that should match the config panel, prefer a frameless `Qt.Dialog` with a transparent outer widget, a rounded theme-token-backed `QFrame` surface, and object-name-scoped stylesheet rules. Keep native titled dialogs for platform-native workflows and do not make confirmations, progress dialogs, or other costly-to-dismiss flows close on an outside click.
+- Keep control and list typography consistent with the application UI. Do not assign content fonts to selector rows merely to preview them; use a dedicated preview when the content font itself must be shown.
 - Keep config-panel styling scoped. Prefer object names and section-specific selectors such as `ConfigContentScrollContent`, profile-card object names, or spell-check object names over broad `QWidget`, `QLabel`, `QCheckBox`, or `QListWidget` rules that can leak into unrelated panels.
 - Use existing theme tokens from `resources/themes.json` and `resources/stylesheet.css` instead of hard-coded colors, except for established project accent values such as `rgb(30, 147, 229)`.
 - When swapping or aligning panel colors, treat background ownership explicitly: the left section list, config content panel, cards, labels, titles, inline rows, and item views may each paint their own background. Make labels and title widgets match their local container, and avoid changing push-button colors unless that is specifically requested.
@@ -79,6 +81,7 @@ Important areas:
 
 ## Qt Event Filter Rules
 
+- Reuse `OutsideClickFramelessMixin` from `ballontranslator.ui.framelesswindow` for lightweight frameless widgets or dialogs that center on their parent, drag from a `title_bar`, close on Escape/outside click, and expose a `close_button`. Put the mixin before the Qt widget base; keep its default `hide()` behavior for panels, override `_dismiss_transient_window()` with `reject()` for dialogs with staged edits, and override `_preserve_on_outside_click()` when owned popups or dialogs must keep the parent open.
 - Treat `QApplication` and `QCoreApplication` event filters as global hooks. Install them only while the behavior is active when possible, and remove them on hide, collapse, close, or destroy.
 - In app-wide `eventFilter` methods, check cheap relevance first, such as visibility, expected receiver, `isinstance(watched, QWidget)`, or `isinstance(event, QMouseEvent)`, before calling `event.type()`, `globalPosition()`, `globalPos()`, or widget-specific event methods.
 - In widget-local filters, guard with the watched object first, for example `if obj is not target: return super().eventFilter(obj, event)`, before reading event details.

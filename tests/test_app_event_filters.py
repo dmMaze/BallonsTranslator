@@ -29,7 +29,7 @@ def qapp():
 
 _APP = qapp()
 
-from ballontranslator.ui.configpanel import ConfigPanel
+from ballontranslator.ui.configpanel import ConfigPanel, FontExcludeDialog
 from ballontranslator.ui.custom_widget.label import ColorPickerLabel
 from ballontranslator.ui.icon_rendering import render_svg_pixmap
 from ballontranslator.ui.menu_style import MenuStyleFilter
@@ -55,13 +55,11 @@ class TypeSensitiveEvent(QEvent):
 class MinimalConfigPanel(ConfigPanel):
     def __init__(self):
         QDialog.__init__(self)
-        self._outside_click_filter_installed = False
 
-    def _widgetInsidePanel(self, widget) -> bool:
-        return False
 
-    def _activeWidgetInWhitelist(self) -> bool:
-        return False
+class MinimalFontExcludeDialog(FontExcludeDialog):
+    def __init__(self):
+        QDialog.__init__(self)
 
 
 class AppEventFilterOrderingTest(unittest.TestCase):
@@ -74,6 +72,18 @@ class AppEventFilterOrderingTest(unittest.TestCase):
         finally:
             panel.close()
             panel.deleteLater()
+
+        self.assertFalse(event.type_requested)
+
+    def test_font_exclude_dialog_ignores_non_widget_events_before_type(self):
+        dialog = MinimalFontExcludeDialog()
+        dialog.show()
+        event = TypeSensitiveEvent()
+        try:
+            dialog.eventFilter(QObject(), event)
+        finally:
+            dialog.close()
+            dialog.deleteLater()
 
         self.assertFalse(event.type_requested)
 

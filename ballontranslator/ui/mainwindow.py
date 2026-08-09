@@ -855,6 +855,9 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
         self.titleBar.merge_tool_trigger.connect(self.on_open_merge_tool)
+        self.titleBar.font_exclusion_trigger.connect(
+            self.configPanel.show_font_exclusion_dialog
+        )
 
         shortcutA = QShortcut(QKeySequence("A"), self)
         shortcutA.activated.connect(self.shortcutBefore)

@@ -12,7 +12,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QFocusEvent, QTextCursor, QKeyEvent, QFont
+from qtpy.QtGui import QFocusEvent, QTextCursor, QKeyEvent
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
@@ -239,10 +239,18 @@ class FontFamilyComboBox(QFontComboBox):
         self.setLineEdit(lineedit)
         self.return_pressed = False
         
-    def apply_fontfamily(self):
-        ffamily = self.currentFont().family()
+    def apply_fontfamily(self) -> None:
+        ffamily = self.currentText()
         if ffamily in shared.FONT_FAMILIES:
             self.param_changed.emit('font_family', ffamily)
+
+    def set_displayed_font(self, font_family: str) -> None:
+        """Show a family without changing the filtered popup model."""
+        index = self.findText(font_family)
+        self.setCurrentIndex(index)
+        if index < 0:
+            # setCurrentFont() rebuilds QFontComboBox's database-backed model.
+            self.setEditText(font_family)
 
     def update_font_list(self, font_list: Iterable[str]) -> None:
         font_list = list(font_list)
@@ -256,7 +264,7 @@ class FontFamilyComboBox(QFontComboBox):
             self.addItems(font_list)
             # Keep an applied hidden font visible in the editable field without
             # putting it back in the popup or changing the underlying format.
-            self.setCurrentText(current_font)
+            self.set_displayed_font(current_font)
         finally:
             self.currentFontChanged.connect(self.on_fontfamily_changed)
 
@@ -562,8 +570,7 @@ class FontFormatPanel(Widget):
         if multi_size:
             font_size += "+"
         self.fontsizebox.fcombobox.setCurrentText(font_size)
-        self.familybox.setCurrentText(font_format.font_family)
-        self.familybox.setCurrentFont(QFont(font_format.font_family))
+        self.familybox.set_displayed_font(font_format.font_family)
         self.colorPicker.setPickerColor(font_format.foreground_color())
         self.strokeColorPicker.setPickerColor(font_format.stroke_color())
         self.strokeWidthBox.setValue(font_format.stroke_width)

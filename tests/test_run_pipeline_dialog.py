@@ -716,6 +716,15 @@ class RunPipelineDialogTests(unittest.TestCase):
             [action.text() for action in title_bar.sponsorToolBtn.menu().actions()],
             ['Patreon', 'Afdian'],
         )
+        self.assertEqual(
+            [
+                action.text()
+                for action in title_bar.toolsToolBtn.menu().actions()
+                if not action.isSeparator()
+            ],
+            ['区域合并工具', 'Font Exclusion'],
+        )
+        self.assertTrue(hasattr(title_bar, 'font_exclusion_trigger'))
         with patch(
             'ballontranslator.ui.mainwindowbars.QDesktopServices.openUrl'
         ) as open_url:

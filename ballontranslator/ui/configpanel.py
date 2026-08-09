@@ -1,15 +1,15 @@
 import os
-from typing import List, Union, Tuple
+from typing import List, Optional, Union, Tuple
 
 from qtpy.QtWidgets import (
     QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout,
     QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox,
     QSplitter, QScrollArea, QLineEdit, QStackedWidget, QMessageBox,
     QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem,
-    QDialog, QDialogButtonBox, QAbstractItemView,
+    QDialog, QAbstractItemView,
     QFrame,
 )
-from qtpy.QtCore import Qt, Signal, QSize, QEvent, QItemSelection, QTimer
+from qtpy.QtCore import Qt, Signal, QSize, QItemSelection, QTimer
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
 from .custom_widget import ConfigComboBox, ScrollBar, Widget
@@ -41,7 +41,11 @@ from ballontranslator.utils.shared import (
 from ballontranslator.utils.logger import logger as LOGGER
 from .module_parse_widgets import InpaintConfigPanel, TextDetectConfigPanel, TranslatorConfigPanel, OCRConfigPanel
 from .llm_profile_widgets import LLMProfilesWidget
-from .framelesswindow import FramelessMoveResize, FramelessWindow
+from .framelesswindow import (
+    DialogCloseButton,
+    FramelessWindow,
+    OutsideClickFramelessMixin,
+)
 from ballontranslator.ui.spellcheck import DICTIONARY_URLS, SpellCheckManager, DictionaryManagerDialog, DictDownloadThread
 
 
@@ -57,6 +61,7 @@ SECTION_ALIASES = {
     'translator': 'pipeline',
 }
 PRESERVE_ACTIVE_WIDGET_CLASS_NAMES = {
+    'FontExcludeDialog',
     'FrameLessMessageBox',
     'ImgtransProgressMessageBox',
     'KeywordSubWidget',
@@ -135,19 +140,52 @@ class ConfigTextLabel(QLabel):
         self.setOpenExternalLinks(True)
 
 
-class FontExcludeDialog(QDialog):
+class FontExcludeDialog(OutsideClickFramelessMixin, QDialog):
     """Dialog for selecting which fonts to exclude from the font list."""
 
     def __init__(self, parent: QWidget = None) -> None:
-        super().__init__(parent)
+        window_type = getattr(Qt, 'WindowType', Qt)
+        super().__init__(
+            parent,
+            window_type.Dialog | window_type.FramelessWindowHint,
+        )
+        self.setObjectName('FontExcludeDialog')
         self.setWindowTitle(self.tr("Font Exclusion"))
-        self.setMinimumSize(700, 500)
+        self.setWindowModality(Qt.WindowModality.NonModal)
+        self.setMinimumSize(640, 440)
+        self.resize(760, 540)
+        widget_attribute = getattr(Qt, 'WidgetAttribute', Qt)
+        self.setAttribute(widget_attribute.WA_TranslucentBackground)
+        self.setAttribute(widget_attribute.WA_DeleteOnClose)
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(5, 5, 5, 5)
+
+        surface = QFrame(self)
+        surface.setObjectName('FontExcludeSurface')
+        root_layout.addWidget(surface)
+
+        layout = QVBoxLayout(surface)
+        layout.setContentsMargins(22, 16, 22, 18)
+        layout.setSpacing(14)
+
+        self.title_bar = QWidget(surface)
+        self.title_bar.setObjectName('FontExcludeTitleBar')
+        title_layout = QHBoxLayout(self.title_bar)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        self.title_label = QLabel(self.tr('Font Exclusion'), self.title_bar)
+        self.title_label.setObjectName('FontExcludeTitle')
+        title_layout.addWidget(self.title_label)
+        title_layout.addStretch()
+        self.close_button = DialogCloseButton(self.title_bar)
+        self.close_button.clicked.connect(self.reject)
+        title_layout.addWidget(self.close_button)
+        layout.addWidget(self.title_bar)
 
         # Search bar
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText(self.tr("Search fonts..."))
+        self.search_edit = QLineEdit(surface)
+        self.search_edit.setObjectName('FontExcludeSearch')
+        self.search_edit.setPlaceholderText(self.tr("Filter Fonts"))
         self.search_edit.textChanged.connect(self._filter_lists)
         layout.addWidget(self.search_edit)
 
@@ -156,22 +194,29 @@ class FontExcludeDialog(QDialog):
 
         # Available fonts list
         left_layout = QVBoxLayout()
-        left_layout.addWidget(QLabel(self.tr("Available Fonts")))
-        self.available_list = QListWidget()
+        left_layout.setSpacing(6)
+        available_title = QLabel(self.tr("Available Fonts"), surface)
+        available_title.setObjectName('FontExcludeListTitle')
+        left_layout.addWidget(available_title)
+        self.available_list = QListWidget(surface)
+        self.available_list.setObjectName('FontExcludeAvailableList')
         self._configure_font_list(self.available_list)
         left_layout.addWidget(self.available_list)
         lists_layout.addLayout(left_layout)
 
         # Center buttons
         btn_layout = QVBoxLayout()
+        btn_layout.setSpacing(8)
         btn_layout.addStretch()
-        self.hide_btn = QPushButton(">")
-        self.hide_btn.setFixedWidth(40)
+        self.hide_btn = QPushButton(">", surface)
+        self.hide_btn.setObjectName('FontExcludeMoveButton')
+        self.hide_btn.setFixedWidth(34)
         self.hide_btn.setToolTip(self.tr("Hide selected fonts"))
         self.hide_btn.clicked.connect(self._hide_fonts)
         btn_layout.addWidget(self.hide_btn)
-        self.show_btn = QPushButton("<")
-        self.show_btn.setFixedWidth(40)
+        self.show_btn = QPushButton("<", surface)
+        self.show_btn.setObjectName('FontExcludeMoveButton')
+        self.show_btn.setFixedWidth(34)
         self.show_btn.setToolTip(self.tr("Show selected fonts"))
         self.show_btn.clicked.connect(self._show_fonts)
         btn_layout.addWidget(self.show_btn)
@@ -180,35 +225,47 @@ class FontExcludeDialog(QDialog):
 
         # Excluded fonts list
         right_layout = QVBoxLayout()
-        right_layout.addWidget(QLabel(self.tr("Hidden Fonts")))
-        self.excluded_list = QListWidget()
+        right_layout.setSpacing(6)
+        excluded_title = QLabel(self.tr("Hidden Fonts"), surface)
+        excluded_title.setObjectName('FontExcludeListTitle')
+        right_layout.addWidget(excluded_title)
+        self.excluded_list = QListWidget(surface)
+        self.excluded_list.setObjectName('FontExcludeHiddenList')
         self._configure_font_list(self.excluded_list)
         right_layout.addWidget(self.excluded_list)
         lists_layout.addLayout(right_layout)
 
         layout.addLayout(lists_layout)
 
-        # Legacy fonts button
-        self.legacy_btn = QPushButton(self.tr("Add Legacy Fonts to Hidden List"))
-        self.legacy_btn.clicked.connect(self._on_add_legacy_fonts)
-        layout.addWidget(self.legacy_btn)
+        action_layout = QHBoxLayout()
+        action_layout.setContentsMargins(0, 4, 0, 0)
+        action_layout.setSpacing(8)
 
-        # OK / Cancel buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        self.legacy_btn = QPushButton(
+            self.tr("Hide Legacy Fonts"),
+            surface,
         )
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+        self.legacy_btn.setObjectName('FontExcludeLegacyButton')
+        self.legacy_btn.clicked.connect(self._on_add_legacy_fonts)
+        action_layout.addWidget(self.legacy_btn)
+        action_layout.addStretch()
+
+        self.cancel_button = QPushButton(self.tr('Cancel'), surface)
+        self.cancel_button.setObjectName('FontExcludeSecondaryButton')
+        self.cancel_button.clicked.connect(self.reject)
+        action_layout.addWidget(self.cancel_button)
+        self.ok_button = QPushButton(self.tr('OK'), surface)
+        self.ok_button.setObjectName('FontExcludePrimaryButton')
+        self.ok_button.setDefault(True)
+        self.ok_button.clicked.connect(self.accept)
+        action_layout.addWidget(self.ok_button)
+        layout.addLayout(action_layout)
 
         # Populate lists
         self._populate_lists()
 
     @staticmethod
     def _configure_font_list(list_widget: QListWidget) -> None:
-        font = list_widget.font()
-        font.setPointSize(11)
-        list_widget.setFont(font)
         list_widget.setUniformItemSizes(True)
         list_widget.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
@@ -217,16 +274,17 @@ class FontExcludeDialog(QDialog):
     def _add_font_item(self, list_widget: QListWidget, font_name: str) -> None:
         """Add a font name to a list widget.
 
-        Legacy fonts skip the typeface preview and get a "[Legacy]" suffix.
-        The original font name is stored in ``Qt.UserRole``.
+        Legacy fonts get a "[Legacy]" suffix. The original font name is stored
+        in ``Qt.UserRole``.
         """
         is_legacy = font_name in LEGACY_FONTS
         display = f"{font_name} [{self.tr('Legacy')}]" if is_legacy else font_name
         item = QListWidgetItem(display)
         item.setData(Qt.ItemDataRole.UserRole, font_name)
-        if not is_legacy:
-            item.setFont(QFont(font_name, 11))
         list_widget.addItem(item)
+
+    def _dismiss_transient_window(self) -> None:
+        self.reject()
 
     @staticmethod
     def _real_name(item: QListWidgetItem) -> str:
@@ -605,7 +663,7 @@ class ConfigTable(QTreeView):
                 self.section_pressed.emit(section_key)
 
 
-class ConfigPanel(FramelessWindow):
+class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     """Non-modal frameless settings window.
 
     >>> issubclass(ConfigPanel, FramelessWindow)
@@ -626,7 +684,7 @@ class ConfigPanel(FramelessWindow):
         window_type = getattr(Qt, 'WindowType', Qt)
         # Establish the owned top-level type before frameless initialization.
         super().__init__(parent, window_type.Dialog)
-        self._outside_click_filter_installed = False
+        self.font_exclude_dialog: Optional[FontExcludeDialog] = None
         self.setObjectName("ConfigPanel")
         # QNSWindow composites a transparent outer inset as an opaque black band.
         opaque_frame = ON_WINDOWS or ON_MACOS
@@ -918,7 +976,7 @@ class ConfigPanel(FramelessWindow):
         self.let_show_only_custom_fonts.stateChanged.connect(self.on_show_only_custom_fonts)
 
         self.exclude_fonts_btn = QPushButton(self.tr('Hide Unused Fonts'), parent=self)
-        self.exclude_fonts_btn.clicked.connect(self.on_exclude_fonts_clicked)
+        self.exclude_fonts_btn.clicked.connect(self.show_font_exclusion_dialog)
         typesettingConfigPanel.addBlockWidget(
             self.exclude_fonts_btn, self.tr('Font Exclusion'),
         )
@@ -999,7 +1057,6 @@ class ConfigPanel(FramelessWindow):
             self.showSection(section_key)
         elif self.configContent.currentIndex() < 0:
             self.showSection('application')
-        self._installOutsideClickFilter()
         self.show()
         self.raise_()
         self.activateWindow()
@@ -1243,15 +1300,35 @@ class ConfigPanel(FramelessWindow):
         pcfg.let_show_only_custom_fonts_flag = self.let_show_only_custom_fonts.isChecked()
         self.font_list_changed.emit(pcfg.let_show_only_custom_fonts_flag)
 
-    def on_exclude_fonts_clicked(self) -> None:
-        dialog = FontExcludeDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            excluded_fonts = dialog.get_excluded_fonts()
-            if excluded_fonts == pcfg.excluded_fonts:
-                return
-            pcfg.excluded_fonts = excluded_fonts
-            self.font_list_changed.emit(pcfg.let_show_only_custom_fonts_flag)
-            self.save_config.emit()
+    def show_font_exclusion_dialog(self) -> None:
+        dialog = self.font_exclude_dialog
+        if dialog is not None:
+            dialog.raise_()
+            dialog.activateWindow()
+            return
+
+        dialog = FontExcludeDialog(self.parentWidget() or self)
+        dialog.accepted.connect(self._apply_pending_font_exclusions)
+        dialog.finished.connect(self._clear_font_exclude_dialog)
+        self.font_exclude_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _apply_pending_font_exclusions(self) -> None:
+        dialog = self.font_exclude_dialog
+        if dialog is not None:
+            self._apply_font_exclusions(dialog.get_excluded_fonts())
+
+    def _clear_font_exclude_dialog(self, _result: int) -> None:
+        self.font_exclude_dialog = None
+
+    def _apply_font_exclusions(self, excluded_fonts: List[str]) -> None:
+        if excluded_fonts == pcfg.excluded_fonts:
+            return
+        pcfg.excluded_fonts = excluded_fonts
+        self.font_list_changed.emit(pcfg.let_show_only_custom_fonts_flag)
+        self.save_config.emit()
 
     def focusOnTranslator(self):
         self.focusPipelineModule('translator')
@@ -1273,89 +1350,11 @@ class ConfigPanel(FramelessWindow):
         self._highlightPipelineModule(None)
         if hasattr(self, 'llm_profiles_panel'):
             self.llm_profiles_panel.collapseProfiles()
-        self._removeOutsideClickFilter()
         self.save_config.emit()
         return super().hideEvent(e)
 
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        parent = self.parentWidget()
-        if parent is None:
-            return
-        geometry = self.frameGeometry()
-        geometry.moveCenter(parent.window().frameGeometry().center())
-        self.move(geometry.topLeft())
-
-    def keyPressEvent(self, event) -> None:
-        if event.key() == Qt.Key.Key_Escape:
-            self.hide()
-            event.accept()
-            return
-        return super().keyPressEvent(event)
-
-    def _installOutsideClickFilter(self):
-        if self._outside_click_filter_installed:
-            return
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
-            self._outside_click_filter_installed = True
-
-    def _removeOutsideClickFilter(self):
-        if not self._outside_click_filter_installed:
-            return
-        app = QApplication.instance()
-        if app is not None:
-            app.removeEventFilter(self)
-        self._outside_click_filter_installed = False
-
-    def eventFilter(self, watched, event):
-        if not self.isVisible() or not isinstance(watched, QWidget):
-            return QWidget.eventFilter(self, watched, event)
-
-        event_type = event.type()
-        if event_type == QEvent.Type.MouseButtonPress:
-            if (
-                QApplication.activePopupWidget() is None
-                and not self._widgetInsidePanel(watched)
-                and not self._activeWidgetInWhitelist()
-            ):
-                self.hide()
-
-        handled = super().eventFilter(watched, event)
-        if handled:
-            return True
-        if (
-            self._widgetInsidePanel(watched)
-            and isinstance(event, QMouseEvent)
-            and event_type == QEvent.Type.MouseButtonPress
-            and event.button() == Qt.MouseButton.LeftButton
-            and self._can_drag_title(watched)
-        ):
-            FramelessMoveResize.startSystemMove(
-                self,
-                self._global_mouse_pos(event),
-            )
-            return True
-        return handled
-
-    @staticmethod
-    def _global_mouse_pos(event: QMouseEvent):
-        if hasattr(event, 'globalPosition'):
-            return event.globalPosition().toPoint()
-        return event.globalPos()
-
-    def _can_drag_title(self, watched: QWidget) -> bool:
-        if watched is self.close_button or self.close_button.isAncestorOf(watched):
-            return False
-        return watched is self.title_bar or self.title_bar.isAncestorOf(watched)
-
-    def _widgetInsidePanel(self, widget) -> bool:
-        while widget is not None:
-            if widget is self:
-                return True
-            widget = widget.parentWidget()
-        return False
+    def _preserve_on_outside_click(self) -> bool:
+        return self._activeWidgetInWhitelist()
 
     def _activeWidgetInWhitelist(self) -> bool:
         return any(
