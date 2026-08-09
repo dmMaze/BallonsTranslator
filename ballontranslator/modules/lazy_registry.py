@@ -14,7 +14,7 @@ from ballontranslator.utils.registry import ModuleSpec
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.torch_install_helper import detect_nvidia_gpus
 
-from .base import CUSTOM_MODULE_ROOT, MODULE_ROOT, MODULE_SCRIPTS
+from .base import CUSTOM_MODULE_ROOT, MODULE_ROOT, MODULE_SCRIPTS, torch_available
 
 
 UNKNOWN = object()
@@ -88,6 +88,22 @@ def _torch_package_backend():
     if local_version.startswith('xpu'):
         return 'xpu'
     return None
+
+
+def probe_torch_package() -> Tuple[Optional[str], Optional[str]]:
+    """Return installed Torch version and inferred device without importing Torch.
+
+    >>> version, device = probe_torch_package()
+    >>> (version is None) == (device is None)
+    True
+    """
+
+    if not torch_available():
+        return None, None
+    version = _package_version('torch')
+    if version is None:
+        return None, None
+    return version, _torch_package_backend() or 'cpu'
 
 
 @lru_cache(maxsize=1)

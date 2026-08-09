@@ -39,7 +39,7 @@ class TorchInstallHelperTests(unittest.TestCase):
         self.assertEqual(request.backend, 'pip')
         self.assertEqual(
             request.requirements,
-            ['torch', 'torchvision', 'torchaudio', 'einops'],
+            ['torch', 'torchvision', 'einops'],
         )
         self.assertEqual(request.env['INDEX_URL'], 'https://download.pytorch.org/whl/xpu')
         self.assertNotIn('FIND_LINKS', request.env)
@@ -65,7 +65,7 @@ class TorchInstallHelperTests(unittest.TestCase):
         self.assertIsNone(request.profile)
         self.assertEqual(request.requirements, ['torch==2.7.1', 'torchvision'])
 
-    def test_forced_cpu_keeps_plain_torch_install(self):
+    def test_forced_cpu_uses_cpu_profile(self):
         request = prepare_torch_install_request(
             ['torch', 'einops'],
             env={'PATH': '/bin'},
@@ -74,9 +74,43 @@ class TorchInstallHelperTests(unittest.TestCase):
             torch_device='cpu',
         )
 
-        self.assertIsNone(request.profile)
+        self.assertEqual(request.profile.name, 'cpu')
+        self.assertEqual(request.backend, 'pip')
         self.assertEqual(request.device, 'cpu')
-        self.assertEqual(request.requirements, ['torch', 'einops'])
+        self.assertEqual(
+            request.requirements,
+            ['torch==2.10.0', 'torchvision==0.25.0', 'einops'],
+        )
+        self.assertEqual(request.env['INDEX_URL'], 'https://download.pytorch.org/whl/cpu')
+        self.assertNotIn('FIND_LINKS', request.env)
+
+    def test_cpu_profile_uses_aliyun_cpu_wheels_with_pypi_mirror(self):
+        manager = PyPackageManager(
+            backend='auto',
+            env={'PATH': '/bin', 'INDEX_URL': ALIYUN_PYPI_MIRROR},
+        )
+
+        command = manager.build_install_commands(['torch'], torch_device='cpu')[0]
+
+        self.assertIn('torch==2.10.0', command)
+        self.assertIn(ALIYUN_PYPI_MIRROR, command)
+        self.assertIn('https://mirrors.aliyun.com/pytorch-wheels/cpu', command)
+        self.assertNotIn('--extra-index-url', command)
+
+    def test_auto_cpu_keeps_default_install_path_on_macos(self):
+        with mock.patch(
+            'ballontranslator.utils.torch_install_helper.sys.platform',
+            'darwin',
+        ):
+            request = prepare_torch_install_request(
+                ['torch'],
+                env={'PATH': '/bin'},
+                gpu_detector=lambda: [],
+                xpu_detector=lambda: [],
+            )
+
+        self.assertIsNone(request.profile)
+        self.assertEqual(request.requirements, ['torch'])
 
     def test_forced_cuda_uses_default_cuda_profile_without_probe_result(self):
         request = prepare_torch_install_request(
@@ -202,14 +236,13 @@ class TorchInstallHelperTests(unittest.TestCase):
         torch_command, other_command = commands
         self.assertIn('torch', torch_command)
         self.assertIn('torchvision', torch_command)
-        self.assertIn('torchaudio', torch_command)
         self.assertNotIn('einops', torch_command)
         self.assertIn('-i', torch_command)
         self.assertIn('https://download.pytorch.org/whl/xpu', torch_command)
         self.assertIn('einops', other_command)
         self.assertNotIn('https://download.pytorch.org/whl/xpu', other_command)
 
-    def test_package_manager_forced_cpu_builds_plain_install_command(self):
+    def test_package_manager_forced_cpu_builds_cpu_install_command(self):
         manager = PyPackageManager(backend='pip', env={'PATH': '/bin'})
 
         with mock.patch(
@@ -218,10 +251,81 @@ class TorchInstallHelperTests(unittest.TestCase):
         ):
             commands = manager.build_install_commands(['torch', 'einops'], torch_device='cpu')
 
-        self.assertEqual(len(commands), 1)
-        self.assertIn('torch', commands[0])
-        self.assertIn('einops', commands[0])
-        self.assertNotIn('https://download.pytorch.org/whl/xpu', commands[0])
+        self.assertEqual(len(commands), 2)
+        torch_command, other_command = commands
+        self.assertIn('torch==2.10.0', torch_command)
+        self.assertIn('https://download.pytorch.org/whl/cpu', torch_command)
+        self.assertIn('-i', torch_command)
+        self.assertNotIn('-f', torch_command)
+        self.assertNotIn('einops', torch_command)
+        self.assertIn('einops', other_command)
+        self.assertNotIn('--force-reinstall', torch_command)
+        self.assertNotIn('https://download.pytorch.org/whl/xpu', torch_command)
+
+    def test_package_manager_uninstalls_existing_torch_packages_before_install(self):
+        manager = PyPackageManager(backend='pip', env={'PATH': '/bin'})
+
+        with mock.patch.object(
+            manager,
+            '_runtime_constraint_files',
+            return_value=[],
+        ), mock.patch(
+            'ballontranslator.utils.py_package_manager._distribution_installed',
+            side_effect=lambda package: package in {'torch', 'torchvision'},
+        ), mock.patch(
+            'ballontranslator.utils.py_package_manager.subprocess.run',
+            return_value=mock.Mock(returncode=0, stdout='removed'),
+        ) as uninstall, mock.patch(
+            'ballontranslator.utils.py_package_manager.package_installer.install',
+            return_value=package_installer.InstallResult(True, []),
+        ) as install:
+            result = manager.install(['torch'], torch_device='cpu')
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            uninstall.call_args.args[0][3:],
+            ['uninstall', '-y', 'torch', 'torchvision'],
+        )
+        self.assertNotIn('--force-reinstall', install.call_args.kwargs['extra_args'])
+
+    def test_package_manager_stops_when_torch_uninstall_fails(self):
+        manager = PyPackageManager(backend='pip', env={'PATH': '/bin'})
+        with mock.patch(
+            'ballontranslator.utils.py_package_manager._distribution_installed',
+            side_effect=lambda package: package == 'torch',
+        ), mock.patch(
+            'ballontranslator.utils.py_package_manager.subprocess.run',
+            return_value=mock.Mock(returncode=1, stdout='locked'),
+        ), mock.patch(
+            'ballontranslator.utils.py_package_manager.package_installer.install',
+        ) as install:
+            result = manager.install(['torch'], torch_device='cpu')
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, 'locked')
+        install.assert_not_called()
+
+    def test_pinned_torch_uninstalls_only_the_requested_family_package(self):
+        manager = PyPackageManager(backend='pip', env={'PATH': '/bin'})
+
+        with mock.patch(
+            'ballontranslator.utils.py_package_manager._distribution_installed',
+            return_value=True,
+        ):
+            requests = manager._prepare_install_requests(['torch==2.7.1'])
+            command = manager._torch_uninstall_command(requests)
+
+        self.assertEqual(command[3:], ['uninstall', '-y', 'torch'])
+
+    def test_cpu_profile_uses_pip_for_pytorch_index(self):
+        manager = PyPackageManager(backend='uv', env={'PATH': '/bin'})
+
+        commands = manager.build_install_commands(['torch'], torch_device='cpu')
+
+        self.assertIn('-m', commands[0])
+        self.assertIn('pip', commands[0])
+        self.assertIn('https://download.pytorch.org/whl/cpu', commands[0])
 
     def test_package_manager_forced_cuda_version_builds_matching_command(self):
         manager = PyPackageManager(backend='pip', env={'PATH': '/bin'})

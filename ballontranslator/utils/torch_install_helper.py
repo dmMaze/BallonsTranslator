@@ -13,7 +13,7 @@ from packaging.utils import canonicalize_name
 from ballontranslator.utils import shared
 
 
-TORCH_FAMILY_PACKAGES = {'torch', 'torchvision', 'torchaudio'}
+TORCH_FAMILY_PACKAGES = {'torch', 'torchvision'}
 TORCH_INSTALL_DEVICE_OPTIONS = ('cpu', 'cuda', 'xpu')
 TORCH_CUDA_VERSION_OPTIONS = ('cu128', 'cu118')
 TORCH_CUDA_CUTOFF = 7.5
@@ -86,7 +86,6 @@ OLDER_NVIDIA_PROFILE = TorchInstallProfile(
     requirements=(
         'torch==2.7.1',
         'torchvision==0.22.1',
-        'torchaudio==2.7.1',
     ),
     index_url='https://download.pytorch.org/whl/cu118',
 )
@@ -96,9 +95,14 @@ NEWER_NVIDIA_PROFILE = TorchInstallProfile(
     requirements=(
         'torch==2.10.0',
         'torchvision==0.25.0',
-        'torchaudio==2.10.0',
     ),
     index_url='https://download.pytorch.org/whl/cu128',
+)
+
+CPU_PROFILE = TorchInstallProfile(
+    name='cpu',
+    requirements=NEWER_NVIDIA_PROFILE.requirements,
+    index_url='https://download.pytorch.org/whl/cpu',
 )
 
 INTEL_XPU_PROFILE = TorchInstallProfile(
@@ -106,7 +110,6 @@ INTEL_XPU_PROFILE = TorchInstallProfile(
     requirements=(
         'torch',
         'torchvision',
-        'torchaudio',
     ),
     index_url='https://download.pytorch.org/whl/xpu',
     use_aliyun_find_links=False,
@@ -129,7 +132,7 @@ def prepare_torch_install_request(
     ...     gpu_detector=lambda: [NvidiaGpuInfo('RTX 4090', 8.9)],
     ... )
     >>> request.requirements[:4]
-    ['torch==2.10.0', 'torchvision==0.25.0', 'torchaudio==2.10.0', 'einops']
+    ['torch==2.10.0', 'torchvision==0.25.0', 'einops']
     >>> request.env['FIND_LINKS']
     'https://mirrors.aliyun.com/pytorch-wheels/cu128'
     >>> prepare_torch_install_request(['torch'], torch_device='xpu').device
@@ -173,6 +176,8 @@ def _env_for_torch_profile(env: dict, profile: TorchInstallProfile) -> dict:
     'https://mirrors.aliyun.com/pytorch-wheels/cu128'
     >>> env['INDEX_URL']
     'https://mirrors.aliyun.com/pypi/simple'
+    >>> _env_for_torch_profile({}, CPU_PROFILE)['INDEX_URL']
+    'https://download.pytorch.org/whl/cpu'
     >>> _env_for_torch_profile({'INDEX_URL': ALIYUN_PYPI_MIRROR}, INTEL_XPU_PROFILE)['INDEX_URL']
     'https://download.pytorch.org/whl/xpu'
     """
@@ -232,7 +237,8 @@ def select_torch_install_profile_for_device(
     }
 
     if torch_device == 'cpu':
-        return None, 'cpu'
+        profile = CPU_PROFILE if sys.platform in {'win32', 'linux'} else None
+        return profile, 'cpu'
     if torch_device == 'cuda':
         if torch_cuda_version in profile_by_cuda_version:
             return profile_by_cuda_version[torch_cuda_version], 'cuda'
@@ -251,8 +257,8 @@ def _cached_preferred_torch_install_profile(
     """Return the cached automatic torch install target.
 
     >>> profile, device = _cached_preferred_torch_install_profile(lambda: [], lambda: [])
-    >>> (profile, device)
-    (None, 'cpu')
+    >>> (profile.name, device)
+    ('cpu', 'cpu')
     """
 
     if gpu_detector is not None or xpu_detector is not None:
@@ -281,7 +287,8 @@ def _detect_preferred_torch_install_profile(
     profile = select_torch_xpu_install_profile(detector())
     if profile is not None:
         return profile, 'xpu'
-    return None, 'cpu'
+    profile = CPU_PROFILE if sys.platform in {'win32', 'linux'} else None
+    return profile, 'cpu'
 
 
 def select_torch_xpu_install_profile(xpus: Sequence[IntelXpuInfo]) -> Optional[TorchInstallProfile]:

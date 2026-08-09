@@ -29,7 +29,6 @@ from ballontranslator.utils.shared import (
     CONFIG_COMBOBOX_SHORT,
     CONFIG_CONTENT_MARGIN,
     CONFIG_CONTENT_MARGINS,
-    CONFIG_CONTENT_ROW_SPACING,
     CONFIG_FONTSIZE_CONTENT,
     CONFIG_FONTSIZE_TABLE,
     LEGACY_FONTS,
@@ -39,6 +38,7 @@ from ballontranslator.utils.shared import (
     TITLEBAR_HEIGHT,
 )
 from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.modules.lazy_registry import probe_torch_package
 from .llm_profile_widgets import LLMProfilesWidget
 from .framelesswindow import (
     DialogCloseButton,
@@ -62,6 +62,7 @@ PRESERVE_ACTIVE_WIDGET_CLASS_NAMES = {
     'KeywordSubWidget',
     'MessageBox',
     'ProgressMessageBox',
+    'TorchInstallHelperDialog',
 }
 
 class CustomIntValidator(QIntValidator):
@@ -668,6 +669,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     save_config = Signal()
     unload_models = Signal()
     prepare_selected_modules = Signal()
+    reinstall_torch = Signal()
     check_update = Signal()
     reload_textstyle = Signal(bool)
     font_list_changed = Signal(bool)
@@ -721,7 +723,26 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         pipeline_options.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         pipeline_options_layout = QVBoxLayout(pipeline_options)
         pipeline_options_layout.setContentsMargins(0, 0, 0, 0)
-        pipeline_options_layout.setSpacing(CONFIG_CONTENT_ROW_SPACING)
+        pipeline_options_layout.setSpacing(CONFIG_CONTENT_MARGIN)
+
+        torch_status_row = QWidget()
+        torch_status_row.setObjectName('ConfigInlineRow')
+        torch_status_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        torch_status_layout = QHBoxLayout(torch_status_row)
+        torch_status_layout.setContentsMargins(0, 0, 0, 0)
+        torch_status_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        torch_label = QLabel(self.tr('Torch'))
+        torch_label.setObjectName('TorchInfoLabel')
+        torch_status_layout.addWidget(torch_label)
+        self.torch_status_label = QLabel()
+        self.torch_status_label.setObjectName('TorchInfoLabel')
+        torch_status_layout.addWidget(self.torch_status_label)
+        torch_status_layout.addStretch()
+        self.reinstall_torch_btn = QPushButton(parent=self)
+        self.reinstall_torch_btn.clicked.connect(self.reinstall_torch)
+        torch_status_layout.addWidget(self.reinstall_torch_btn)
+        pipeline_options_layout.addWidget(torch_status_row)
+        self.refreshTorchStatus()
 
         self.empty_runcache_checker = QCheckBox(self.tr('Empty cache after RUN'))
         self.empty_runcache_checker.setObjectName('PipelineModuleActionCheckBox')
@@ -744,6 +765,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         )
         self.package_auto_install_checker.stateChanged.connect(self.on_package_auto_install_changed)
         pipeline_options_layout.addWidget(self.package_auto_install_checker)
+
         module_actions = QWidget()
         module_actions.setObjectName('ConfigInlineRow')
         module_actions.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -1046,6 +1068,24 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_package_auto_install_changed(self):
         pcfg.package_manager.auto_install_missing_packages = self.package_auto_install_checker.isChecked()
 
+    def refreshTorchStatus(self) -> None:
+        version, device = probe_torch_package()
+        if version is not None:
+            status = self.tr(
+                'Installed ({version}, {device})'
+            ).format(version=version, device=device)
+        else:
+            status = self.tr('Not installed')
+        self.torch_status_label.setText(status)
+        self.reinstall_torch_btn.setText(
+            self.tr('Reinstall Torch') if version is not None else self.tr('Install Torch')
+        )
+        self.reinstall_torch_btn.setEnabled(True)
+
+    def setTorchInstalling(self) -> None:
+        self.torch_status_label.setText(self.tr('Installing...'))
+        self.reinstall_torch_btn.setEnabled(False)
+
     def addConfigBlock(self, header: str, parent_item: TableItem, section_key: str) -> ConfigBlock:
         cb = ConfigBlock(parent=self)
         self.configContent.addConfigBlock(cb, section_key)
@@ -1053,6 +1093,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         return cb
 
     def showConfigDialog(self, section_key: str = None):
+        self.refreshTorchStatus()
         if section_key is not None:
             self.showSection(section_key)
         elif self.configContent.currentIndex() < 0:

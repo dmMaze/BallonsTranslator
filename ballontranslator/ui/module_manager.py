@@ -1386,6 +1386,7 @@ class ModuleManager(QObject):
 
         config_panel.unload_models.connect(self.unload_all_models)
         config_panel.prepare_selected_modules.connect(self.prepareSelectedModules)
+        config_panel.reinstall_torch.connect(self.reinstallTorch)
 
 
     def _thread_for_module_key(self, module_key: str) -> ModuleThread:
@@ -1612,6 +1613,24 @@ class ModuleManager(QObject):
             return True, None, None
         return confirm_torch_install_device(requirements, parent=self.parent_widget)
 
+    def reinstallTorch(self) -> None:
+        if self.package_install_thread is None or self.package_install_thread.isRunning():
+            LOGGER.warning('Package installation is already running.')
+            return
+        accepted, torch_device, torch_cuda_version = confirm_torch_install_device(
+            ['torch'], parent=self.config_panel,
+        )
+        if not accepted:
+            return
+        self.config_panel.setTorchInstalling()
+        self._show_package_install_dialog(['torch'])
+        if not self.package_install_thread.installPackages(
+            ['torch'],
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
+        ):
+            self.config_panel.refreshTorchStatus()
+
     def _show_package_install_dialog(self, requirements: List[str]):
         if shared.HEADLESS:
             LOGGER.info(f'Installing package(s): {", ".join(requirements)}')
@@ -1628,6 +1647,8 @@ class ModuleManager(QObject):
     def on_batch_package_install_finished(self):
         if not shared.HEADLESS:
             self.prepare_msgbox.done(0)
+        if self.config_panel is not None:
+            self.config_panel.refreshTorchStatus()
 
         queue = self._pending_batch_package_queue
         on_success = self._pending_batch_package_success

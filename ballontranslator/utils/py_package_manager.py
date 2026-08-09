@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import shlex
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -14,6 +15,7 @@ from ballontranslator.utils import package_installer
 from ballontranslator.utils.package_installer import InstallResult
 from ballontranslator.utils.torch_install_helper import (
     TORCH_FAMILY_PACKAGES,
+    TorchInstallRequest,
     detect_nvidia_gpus,
     has_plain_unpinned_torch,
     prepare_torch_install_request,
@@ -393,6 +395,12 @@ class PyPackageManager:
             torch_device=torch_device,
             torch_cuda_version=torch_cuda_version,
         )
+        return self._build_install_commands(requests)
+
+    def _build_install_commands(
+        self,
+        requests: Iterable[TorchInstallRequest],
+    ) -> List[List[str]]:
         constraint_files = self._runtime_constraint_files()
         return [
             package_installer.build_install_command(
@@ -418,11 +426,35 @@ class PyPackageManager:
             torch_device=torch_device,
             torch_cuda_version=torch_cuda_version,
         )
+        uninstall_command = self._torch_uninstall_command(requests)
         if progress_callback is not None:
             progress_callback({
                 'event': 'installing_packages',
                 'message': self._installing_packages_summary(requirements),
             })
+        if uninstall_command:
+            try:
+                completed = subprocess.run(
+                    uninstall_command,
+                    env=self.env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    shell=False,
+                )
+                result = InstallResult(
+                    completed.returncode == 0,
+                    uninstall_command,
+                    returncode=completed.returncode,
+                    stdout=completed.stdout or '',
+                )
+            except Exception as e:
+                result = InstallResult(False, uninstall_command, returncode=-1, error=str(e))
+            if not result.ok:
+                return result
         constraint_files = self._runtime_constraint_files()
         final_result = None
         for request in requests:
@@ -448,14 +480,17 @@ class PyPackageManager:
         torch_device: Optional[str] = None,
         torch_cuda_version: Optional[str] = None,
     ) -> str:
-        return '\n'.join(
-            shlex.join(command)
-            for command in self.build_install_commands(
-                requirements,
-                torch_device=torch_device,
-                torch_cuda_version=torch_cuda_version,
-            )
+        requirements = list(requirements)
+        requests = self._prepare_install_requests(
+            requirements,
+            torch_device=torch_device,
+            torch_cuda_version=torch_cuda_version,
         )
+        commands = self._build_install_commands(requests)
+        uninstall_command = self._torch_uninstall_command(requests)
+        if uninstall_command:
+            commands.insert(0, uninstall_command)
+        return '\n'.join(shlex.join(command) for command in commands)
 
     def torch_install_device(self, requirements: Iterable[str]) -> str:
         """Return the device selected by torch install probing.
@@ -512,7 +547,7 @@ class PyPackageManager:
         requirements: Iterable[str],
         torch_device: Optional[str] = None,
         torch_cuda_version: Optional[str] = None,
-    ):
+    ) -> List[TorchInstallRequest]:
         request = prepare_torch_install_request(
             requirements=requirements,
             env=self.env,
@@ -550,6 +585,22 @@ class PyPackageManager:
                 env=dict(self.env),
             ))
         return requests
+
+    @staticmethod
+    def _torch_uninstall_command(requests: Iterable[TorchInstallRequest]) -> List[str]:
+        requested_packages = {
+            canonicalize_name(Requirement(requirement).name)
+            for request in requests
+            for requirement in request.requirements
+        }
+        installed_packages = [
+            package_name
+            for package_name in ('torch', 'torchvision')
+            if package_name in requested_packages and _distribution_installed(package_name)
+        ]
+        if not installed_packages:
+            return []
+        return [sys.executable, '-m', 'pip', 'uninstall', '-y', *installed_packages]
 
     def _runtime_constraint_files(self) -> List[str]:
         """Return constraint files that protect loaded core native packages.

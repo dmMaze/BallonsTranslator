@@ -14,6 +14,7 @@ from qtpy.QtWidgets import (
 )
 
 from .package_manager import create_package_manager
+from ballontranslator.modules.lazy_registry import probe_torch_package
 from ballontranslator.utils.torch_install_helper import TORCH_CUDA_VERSION_OPTIONS, TORCH_INSTALL_DEVICE_OPTIONS
 
 
@@ -53,6 +54,7 @@ class TorchInstallHelperDialog(QDialog):
         super().__init__(parent)
         self.requirements = list(dict.fromkeys(requirements))
         self.package_manager = create_package_manager()
+        self.torch_is_installed = probe_torch_package()[0] is not None
 
         self.setWindowTitle(self.tr('Torch Install Helper'))
         layout = QVBoxLayout(self)
@@ -122,16 +124,20 @@ class TorchInstallHelperDialog(QDialog):
         self.update_command_preview()
 
     def update_note_text(self):
-        device_note = self.tr(
+        notes = [self.tr(
             'NVIDIA: choose CUDA. Intel Arc/Core Ultra: choose XPU. Not sure: choose CPU.'
-        )
-        if self.selected_device() != 'cuda':
-            self.note_text.setText(device_note)
-            return
-        cuda_note = self.tr(
-            'CUDA 12.8 is for RTX 20 / GTX 16 or newer. CUDA 11.8 is for GTX 10 or older.'
-        )
-        self.note_text.setText(device_note + '\n\n' + cuda_note)
+        )]
+        if self.selected_device() == 'cuda':
+            notes.append(self.tr(
+                'CUDA 12.8 is for RTX 20 / GTX 16 or newer. CUDA 11.8 is for GTX 10 or older.'
+            ))
+        if self.torch_is_installed:
+            notes.append(self.tr(
+                'Existing Torch packages will be removed before installation. If Torch is already loaded, '
+                'restart the app before installing; otherwise removal may fail. '
+                'Restart after a successful installation to use the new Torch version.'
+            ))
+        self.note_text.setText('\n\n'.join(notes))
 
     def update_command_preview(self):
         try:
