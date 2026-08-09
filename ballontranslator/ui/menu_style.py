@@ -81,13 +81,19 @@ class DropDownStyleFilter(QObject):
             if record is None or record[0] is not combo:
                 # Follow the C++ widget lifetime; Python wrappers may disappear
                 # earlier or be recreated by the binding.
-                combo.destroyed.connect(
-                    lambda _obj=None, key=key: self._delegates.pop(key, None)
-                )
+                combo.setProperty('_dropDownStyleRegistryKey', key)
+                combo.destroyed.connect(self._discard_combo_delegate)
         else:
             delegate = record[2]
         if view.itemDelegate() is not delegate:
             view.setItemDelegate(delegate)
+
+    def _discard_combo_delegate(self, combo: QObject = None) -> None:
+        if combo is None:
+            return
+        key = combo.property('_dropDownStyleRegistryKey')
+        if key is not None:
+            self._delegates.pop(int(key), None)
 
 
 class _DropDownItemDelegate(QStyledItemDelegate):
@@ -187,10 +193,16 @@ class MenuStyleFilter(QObject):
         overlay = _MenuBorderOverlay(menu)
         self._menu_border_overlays[key] = (menu, overlay)
         # QMenu owns the QWidget; the registry only mirrors that lifetime.
-        menu.destroyed.connect(
-            lambda _obj=None, key=key: self._menu_border_overlays.pop(key, None)
-        )
+        menu.setProperty('_menuStyleRegistryKey', key)
+        menu.destroyed.connect(self._discard_menu_border_overlay)
         return overlay
+
+    def _discard_menu_border_overlay(self, menu: QObject = None) -> None:
+        if menu is None:
+            return
+        key = menu.property('_menuStyleRegistryKey')
+        if key is not None:
+            self._menu_border_overlays.pop(int(key), None)
 
     def eventFilter(self, watched, event):
         if not isinstance(watched, QMenu):

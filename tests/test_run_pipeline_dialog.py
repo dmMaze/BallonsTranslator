@@ -1,13 +1,15 @@
-import os
+import gc
 import json
+import os
 import tempfile
 import unittest
+import weakref
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QObject, QPoint, Qt
+from qtpy.QtCore import QObject, QEvent, QPoint, Qt
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QApplication,
@@ -372,6 +374,18 @@ class RunPipelineDialogTests(unittest.TestCase):
         dialog.close()
         self.assertEqual(self.save_config_mock.call_count, 5)
 
+    def test_dialog_is_collectable_after_deferred_delete(self):
+        dialog = RunPipelineDialog()
+        dialog_ref = weakref.ref(dialog)
+
+        dialog.deleteLater()
+        del dialog
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        gc.collect()
+
+        self.assertIsNone(dialog_ref())
+
     def test_pipeline_general_settings_update_config_and_emit_actions(self):
         dialog = RunPipelineDialog(translator_metadata={
             'supported_src_list': ['Japanese', 'English'],
@@ -647,6 +661,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             result = 0
             preserve_style = False
             pages = ['page-2']
+            deleted_count = 0
 
             def __init__(self, parent, project=None, translator_metadata=None):
                 self.parent = parent
@@ -663,6 +678,9 @@ class RunPipelineDialogTests(unittest.TestCase):
 
             def selected_pages(self):
                 return self.pages
+
+            def deleteLater(self):
+                type(self).deleted_count += 1
 
         with patch('ballontranslator.ui.mainwindow.RunPipelineDialog', FakeDialog):
             FakeDialog.result = FakeDialog.CONTINUE
@@ -688,6 +706,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             FakeDialog.result = 0
             MainWindow.run_imgtrans(owner)
             self.assertEqual(calls, [])
+            self.assertEqual(FakeDialog.deleted_count, 4)
 
     def test_view_actions_only_control_bottom_bar_visibility(self):
         window = QMainWindow()

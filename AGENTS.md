@@ -88,6 +88,14 @@ Important areas:
 - For outside-click handling, prefer widget-target mouse press rules and explicit popup/dialog whitelists over broad geometry or `QWindow` event interpretation.
 - For risky app-wide filter changes, add an offscreen Qt regression that sends an irrelevant watched object or non-mouse event and proves the filter ignores it before requesting `event.type()`.
 
+## Qt Signal and QObject Lifetime Rules
+
+- Do not connect a child or transient QObject signal to a lambda, nested function, or `functools.partial` that captures its parent, another widget, or another transient QObject. Qt parent ownership destroys the native children, but the binding may retain the Python callback and invalid wrappers after native deletion.
+- Prefer a direct bound QObject slot. For repeated menu actions or rows, store small values with `QAction.setData()` or `QObject.setProperty()` and read them through `sender()`, or expose a typed row signal and connect it to the owner's bound method.
+- A lambda that captures no QObject is not automatically a leak; do not replace fixed-lifetime or pure-Python callbacks without a demonstrated lifecycle problem.
+- Treat `close()` and `hide()` as visibility changes, not deletion. For one-shot modal dialogs, read required state after `exec_()` and call `deleteLater()` in `finally`; preserve intentional cached panels.
+- For lifecycle fixes, add a focused offscreen regression that processes deferred deletes and verifies behavior plus wrapper/registry release, and run it under both PyQt5 and PyQt6 when binding behavior is relevant.
+
 ## Code Comment Rules
 - Include a standard Python >>> doctest snippet in the docstring of core classes and complex functions.
 - Add the minimum comments needed to make code review efficient.

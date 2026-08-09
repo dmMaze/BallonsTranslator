@@ -1,13 +1,25 @@
+import gc
 import os
 import sys
 import unittest
+import weakref
 from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QObject, QEvent, QPoint, QPointF, Qt
 from qtpy.QtGui import QColor, QMouseEvent
-from qtpy.QtWidgets import QApplication, QColorDialog, QDialog, QLabel, QMenu, QTextEdit, QWidget
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import (
+    QApplication,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QLabel,
+    QMenu,
+    QTextEdit,
+    QWidget,
+)
 from qtpy import API_NAME
 
 from ballontranslator.utils import shared
@@ -32,7 +44,9 @@ _APP = qapp()
 from ballontranslator.ui.configpanel import ConfigPanel, FontExcludeDialog
 from ballontranslator.ui.custom_widget.label import ColorPickerLabel
 from ballontranslator.ui.icon_rendering import render_svg_pixmap
-from ballontranslator.ui.menu_style import MenuStyleFilter
+from ballontranslator.ui.menu_style import DropDownStyleFilter, MenuStyleFilter
+from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
+from ballontranslator.ui.spellcheck import AddWordItemWidget, WordListItemWidget
 from ballontranslator.ui.text_engine.editing.widgets import FloatingSuggestionLabel
 
 if API_NAME in ('PyQt6', 'PySide6'):
@@ -214,6 +228,89 @@ class MenuStyleFilterTest(unittest.TestCase):
         action.setChecked(False)
         self.filter.eventFilter(menu, QEvent(QEvent.Type.Show))
         self.assertEqual(action.text(), original_text)
+
+    def test_transient_style_records_follow_widget_destruction(self):
+        dropdown_filter = DropDownStyleFilter(QApplication.instance())
+        combo = QComboBox()
+        dropdown_filter._style_view(combo, combo.view())
+        self.assertEqual(len(dropdown_filter._delegates), 1)
+
+        menu = QMenu()
+        self.filter._menu_border_overlay(menu, create=True)
+        self.assertEqual(len(self.filter._menu_border_overlays), 1)
+
+        combo.deleteLater()
+        menu.deleteLater()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        QApplication.processEvents()
+
+        self.assertEqual(dropdown_filter._delegates, {})
+        self.assertEqual(self.filter._menu_border_overlays, {})
+
+
+class DynamicCallbackLifecycleTest(unittest.TestCase):
+    def test_module_menu_action_selects_its_stored_value(self):
+        widget = ModuleSelectionWidget('Module', 'translate.svg')
+        widget.selector.addItems(['First', 'Second'])
+        widget.selector.setCurrentText('First')
+
+        widget.rebuildMenu()
+        second_action = next(
+            action for action in widget.menu.actions()
+            if action.data() == 'Second'
+        )
+        second_action.trigger()
+
+        self.assertEqual(widget.selector.currentText(), 'Second')
+        widget.deleteLater()
+
+    def test_replaced_suggestion_button_is_collectable_and_still_dispatches(self):
+        class Editor(QTextEdit):
+            def __init__(self):
+                super().__init__()
+                self.replacements = []
+
+            def _replace_word(self, cursor, replacement):
+                self.replacements.append((cursor, replacement))
+
+        editor = Editor()
+        popup = FloatingSuggestionLabel(editor)
+        popup.set_suggestions('cursor', 'word', ['first'])
+        old_button = popup.buttons_layout.itemAt(0).widget()
+        old_button_ref = weakref.ref(old_button)
+
+        popup.set_suggestions('cursor', 'word', ['second'])
+        del old_button
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        QApplication.processEvents()
+        gc.collect()
+        self.assertIsNone(old_button_ref())
+
+        new_button = popup.buttons_layout.itemAt(0).widget()
+        new_button.click()
+        self.assertEqual(editor.replacements, [('cursor', 'second')])
+
+        QApplication.instance().removeEventFilter(popup)
+        popup.deleteLater()
+        editor.deleteLater()
+
+    def test_dictionary_rows_emit_values_without_callback_wrappers(self):
+        deleted = []
+        row = WordListItemWidget('Hello')
+        row.delete_requested.connect(deleted.append)
+        row.delete_btn.click()
+        self.assertEqual(deleted, ['Hello'])
+
+        added = []
+        add_row = AddWordItemWidget()
+        add_row.word_added.connect(added.append)
+        add_row.input_field.setText('  NeW Word  ')
+        QTest.keyClick(add_row.input_field, Qt.Key.Key_Return)
+        self.assertEqual(added, ['new word'])
+        self.assertEqual(add_row.input_field.text(), '')
+
+        row.deleteLater()
+        add_row.deleteLater()
 
 
 

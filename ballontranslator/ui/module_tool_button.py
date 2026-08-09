@@ -1,4 +1,5 @@
 import json
+from typing import Callable
 
 from qtpy.QtCore import QEvent, QSize, Qt, Signal
 from qtpy.QtGui import QIcon, QPainter
@@ -185,9 +186,16 @@ def _checked_action_text(text: str, checked: bool) -> str:
     return text + ('\t\u2713' if checked else '')
 
 
-def _add_bottom_menu_action(menu: QMenu, text: str, checked: bool, callback):
+def _add_bottom_menu_action(
+    menu: QMenu,
+    text: str,
+    checked: bool,
+    data: object,
+    slot: Callable[[bool], None],
+) -> QAction:
     action = QAction(_checked_action_text(text, checked), menu)
-    action.triggered.connect(callback)
+    action.setData(data)
+    action.triggered.connect(slot)
     menu.addAction(action)
     return action
 
@@ -348,7 +356,8 @@ class ModuleSelectionWidget(Widget):
                 self.menu,
                 module,
                 module == current_module,
-                lambda checked=False, value=module: self.selector.setCurrentText(value),
+                module,
+                self._select_module_action,
             )
         if self._has_llm_modality():
             self._addLlmProfileMenus(current_module)
@@ -400,7 +409,8 @@ class ModuleSelectionWidget(Widget):
                 source_menu,
                 lang,
                 lang == self.src_selector.currentText(),
-                lambda checked=False, value=lang: self.src_selector.setCurrentText(value),
+                lang,
+                self._select_source_language_action,
             )
 
         target_menu = _bottom_submenu(
@@ -414,8 +424,24 @@ class ModuleSelectionWidget(Widget):
                 target_menu,
                 lang,
                 lang == self.tgt_selector.currentText(),
-                lambda checked=False, value=lang: self.tgt_selector.setCurrentText(value),
+                lang,
+                self._select_target_language_action,
             )
+
+    def _select_module_action(self, _checked: bool = False) -> None:
+        action = self.sender()
+        if isinstance(action, QAction):
+            self.selector.setCurrentText(str(action.data()))
+
+    def _select_source_language_action(self, _checked: bool = False) -> None:
+        action = self.sender()
+        if isinstance(action, QAction):
+            self.src_selector.setCurrentText(str(action.data()))
+
+    def _select_target_language_action(self, _checked: bool = False) -> None:
+        action = self.sender()
+        if isinstance(action, QAction):
+            self.tgt_selector.setCurrentText(str(action.data()))
 
     def selectLLMProfile(self, profile_id: str):
         if not self._has_llm_modality():
@@ -465,8 +491,16 @@ class ModuleSelectionWidget(Widget):
                     menu,
                     option,
                     selected_profile and option == current_value,
-                    lambda checked=False, pid=profile_id, key=value_attr, value=option: self.selectLLMProfileSetting(pid, key, value),
+                    (profile_id, value_attr, option),
+                    self._select_profile_setting_action,
                 )
+
+    def _select_profile_setting_action(self, _checked: bool = False) -> None:
+        action = self.sender()
+        if not isinstance(action, QAction):
+            return
+        profile_id, key, value = action.data()
+        self.selectLLMProfileSetting(profile_id, key, value)
 
     def _buttonTextForProfile(self, profile) -> str:
         if self._is_text_modality():

@@ -118,7 +118,8 @@ class FloatingSuggestionLabel(QWidget):
                 
         for i, sug in enumerate(suggestions):
             btn = QPushButton(sug, self.scroll_content)
-            btn.clicked.connect(lambda checked=False, s=sug: self.apply_suggestion(s))
+            btn.setProperty('suggestion', sug)
+            btn.clicked.connect(self._apply_clicked_suggestion)
             self.buttons_layout.addWidget(btn)
             
             # Stylize borders and round corners so they form a single seamless block
@@ -178,6 +179,13 @@ class FloatingSuggestionLabel(QWidget):
             
         popup_width = scroll_area_width + add_btn_width
         self.setFixedSize(popup_width, 28)
+
+    def _apply_clicked_suggestion(self, _checked: bool = False) -> None:
+        button = self.sender()
+        if isinstance(button, QPushButton):
+            suggestion = button.property('suggestion')
+            if suggestion is not None:
+                self.apply_suggestion(str(suggestion))
         
     def apply_suggestion(self, replacement):
         self.editor._replace_word(self.cursor, replacement)

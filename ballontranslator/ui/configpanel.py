@@ -1126,9 +1126,12 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         SpellCheckManager.get_instance().notify_config_changed()
         self.save_config.emit()
 
-    def open_words_manager(self):
+    def open_words_manager(self) -> None:
         dialog = DictionaryManagerDialog(self)
-        dialog.exec_()
+        try:
+            dialog.exec_()
+        finally:
+            dialog.deleteLater()
 
     def on_repo_dict_item_changed(self, item):
         url, filename = item.data(Qt.ItemDataRole.UserRole)

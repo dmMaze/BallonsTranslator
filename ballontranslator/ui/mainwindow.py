@@ -1711,21 +1711,24 @@ class MainWindow(mainwindow_cls):
         )
         dialog.translate_source_changed.connect(self.on_trans_src_changed)
         dialog.translate_target_changed.connect(self.on_trans_tgt_changed)
-        result = dialog.exec_()
-        if result == RunPipelineDialog.CONTINUE:
+        try:
+            result = dialog.exec_()
+            if result == RunPipelineDialog.CONTINUE:
+                self._run_imgtrans_wo_textstyle_update = False
+                self.on_run_imgtrans(continue_mode=True)
+                return
+            if result == RunPipelineDialog.RENDER:
+                self._run_imgtrans_wo_textstyle_update = (
+                    dialog.render_without_text_style_update.isChecked()
+                )
+                self.on_run_imgtrans(render_only=True)
+                return
+            if result != RunPipelineDialog.RUN:
+                return
             self._run_imgtrans_wo_textstyle_update = False
-            self.on_run_imgtrans(continue_mode=True)
-            return
-        if result == RunPipelineDialog.RENDER:
-            self._run_imgtrans_wo_textstyle_update = (
-                dialog.render_without_text_style_update.isChecked()
-            )
-            self.on_run_imgtrans(render_only=True)
-            return
-        if result != RunPipelineDialog.RUN:
-            return
-        self._run_imgtrans_wo_textstyle_update = False
-        self.on_run_imgtrans(pages_to_process=dialog.selected_pages())
+            self.on_run_imgtrans(pages_to_process=dialog.selected_pages())
+        finally:
+            dialog.deleteLater()
 
     def on_run_imgtrans(
         self,

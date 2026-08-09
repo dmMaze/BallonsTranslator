@@ -551,12 +551,15 @@ class DictDownloadThread(QThread):
 class WordListItemWidget(QWidget):
     """Custom QWidget representing a single custom word in the manager dialog.
 
-    >>> widget = WordListItemWidget("hello", lambda w: None)
+    >>> widget = WordListItemWidget("hello")
     >>> isinstance(widget, WordListItemWidget)
     True
     """
-    def __init__(self, word, on_delete_callback, parent=None):
+    delete_requested = Signal(str)
+
+    def __init__(self, word: str, parent: QWidget = None) -> None:
         super().__init__(parent)
+        self.word = word
         self.setFixedHeight(36)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 0, 12, 0)
@@ -588,7 +591,7 @@ class WordListItemWidget(QWidget):
                 border-radius: 4px;
             }
         """)
-        self.delete_btn.clicked.connect(lambda: on_delete_callback(word))
+        self.delete_btn.clicked.connect(self._request_delete)
         self.delete_btn.setVisible(False)
         self.delete_btn.setAutoDefault(False)
         self.delete_btn.setDefault(False)
@@ -596,6 +599,9 @@ class WordListItemWidget(QWidget):
         layout.addWidget(self.label)
         layout.addStretch()
         layout.addWidget(self.delete_btn)
+
+    def _request_delete(self, _checked: bool = False) -> None:
+        self.delete_requested.emit(self.word)
 
     def enterEvent(self, event):
         self.delete_btn.setVisible(True)
@@ -606,33 +612,39 @@ class WordListItemWidget(QWidget):
         super().leaveEvent(event)
 
 
+class _AddWordLineEdit(QLineEdit):
+    add_requested = Signal()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.add_requested.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 class AddWordItemWidget(QWidget):
     """Custom QWidget containing input line and add button for entering custom words.
 
-    >>> widget = AddWordItemWidget(lambda w: None)
+    >>> widget = AddWordItemWidget()
     >>> isinstance(widget, AddWordItemWidget)
     True
     """
-    def __init__(self, on_add_callback, parent=None):
+    word_added = Signal(str)
+
+    def __init__(self, parent: QWidget = None) -> None:
         super().__init__(parent)
         self.setFixedHeight(36)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(12)
 
-        self.input_field = QLineEdit(self)
+        self.input_field = _AddWordLineEdit(self)
         self.input_field.setPlaceholderText(self.tr("Add new word..."))
         self.input_field.setFixedHeight(26)
         self.input_field.setStyleSheet("font-family: 'Segoe UI', Arial; font-size: 13px;")
         
-        # Override keyPressEvent to prevent Enter key from propagating and closing QDialog
-        def input_key_press(event):
-            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                self.trigger_add()
-                event.accept()
-            else:
-                QLineEdit.keyPressEvent(self.input_field, event)
-        self.input_field.keyPressEvent = input_key_press
+        self.input_field.add_requested.connect(self.trigger_add)
 
         self.add_btn = QPushButton("+", self)
         self.add_btn.setFixedSize(26, 26)
@@ -663,12 +675,11 @@ class AddWordItemWidget(QWidget):
 
         layout.addWidget(self.input_field)
         layout.addWidget(self.add_btn)
-        self.on_add_callback = on_add_callback
 
-    def trigger_add(self):
+    def trigger_add(self, _checked: bool = False) -> None:
         word = self.input_field.text().strip().lower()
         if word:
-            self.on_add_callback(word)
+            self.word_added.emit(word)
             self.input_field.clear()
             self.input_field.setFocus()
 
@@ -724,14 +735,16 @@ class DictionaryManagerDialog(QDialog):
 
         for word in sorted(self.manager.custom_words):
             item = QListWidgetItem(self.list_widget)
-            widget = WordListItemWidget(word, self.delete_word, self)
+            widget = WordListItemWidget(word, self)
+            widget.delete_requested.connect(self.delete_word)
             item.setSizeHint(QSize(0, 36))
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
 
         input_item = QListWidgetItem(self.list_widget)
         input_item.setFlags(input_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-        input_widget = AddWordItemWidget(self.add_word, self)
+        input_widget = AddWordItemWidget(self)
+        input_widget.word_added.connect(self.add_word)
         input_item.setSizeHint(QSize(0, 36))
         self.list_widget.addItem(input_item)
         self.list_widget.setItemWidget(input_item, input_widget)

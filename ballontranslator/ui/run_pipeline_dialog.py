@@ -217,6 +217,7 @@ class RunPipelineDialog(QDialog):
         self.project = project
         self.translator_metadata = translator_metadata or {}
         self._app_event_filter_installed = False
+        self._checkbox_settings: dict[QCheckBox, tuple[object, str]] = {}
         self.setObjectName('RunPipelineDialog')
         self.setWindowTitle(self.tr('Run'))
         self.setMinimumWidth(RUN_PIPELINE_DIALOG_WIDTH)
@@ -286,28 +287,40 @@ class RunPipelineDialog(QDialog):
 
         self.run_button = QPushButton(self.tr('Run'), surface)
         self.run_button.setObjectName('RunPipelinePrimaryButton')
-        self.run_button.clicked.connect(lambda: self.done(self.RUN))
+        self.run_button.clicked.connect(self._finish_run)
 
         self.continue_button = QPushButton(self.tr('Continue'), surface)
         self.continue_button.setObjectName('RunPipelineSecondaryButton')
         self.continue_button.setDefault(True)
-        self.continue_button.clicked.connect(lambda: self.done(self.CONTINUE))
+        self.continue_button.clicked.connect(self._finish_continue)
         button_row.addWidget(self.continue_button)
         button_row.addWidget(self.run_button)
 
         self.render_button = QPushButton(self.tr('Render'), surface)
         self.render_button.setObjectName('RunPipelinePrimaryButton')
-        self.render_button.clicked.connect(lambda: self.done(self.RENDER))
+        self.render_button.clicked.connect(self._finish_render)
         self.render_button.hide()
         button_row.addWidget(self.render_button)
         layout.addLayout(button_row)
 
         self.workflow_selector.currentIndexChanged.connect(self._set_pipeline_page)
-        self.finished.connect(lambda _result: save_config())
+        self.finished.connect(self._save_config_on_finish)
         self._set_pipeline_page(self.workflow_selector.currentIndex(), persist=False)
         initial_height = self.sizeHint().height()
         self.setMinimumHeight(initial_height)
         self.resize(RUN_PIPELINE_DIALOG_WIDTH, initial_height)
+
+    def _finish_run(self, _checked: bool = False) -> None:
+        self.done(self.RUN)
+
+    def _finish_continue(self, _checked: bool = False) -> None:
+        self.done(self.CONTINUE)
+
+    def _finish_render(self, _checked: bool = False) -> None:
+        self.done(self.RENDER)
+
+    def _save_config_on_finish(self, _result: int) -> None:
+        save_config()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -455,15 +468,9 @@ class RunPipelineDialog(QDialog):
                 inactive_icon_name=inactive_icon,
             )
             button.setChecked(pcfg.module.stage_enabled(stage_index))
-            button.toggled.connect(
-                lambda checked,
-                stage_index=stage_index,
-                section_index=display_index: self._on_stage_toggled(
-                    stage_index,
-                    section_index,
-                    checked,
-                )
-            )
+            button.setProperty('stageIndex', stage_index)
+            button.setProperty('sectionIndex', display_index)
+            button.toggled.connect(self._on_stage_button_toggled)
             stage_layout.addWidget(
                 button,
                 display_index // 2,
@@ -533,14 +540,26 @@ class RunPipelineDialog(QDialog):
         object_name: str,
         text: str,
         checked: bool,
-        on_toggled,
+        target: object,
+        attribute: str,
     ) -> QCheckBox:
         checkbox = QCheckBox(text, parent)
         checkbox.setObjectName(object_name)
         checkbox.setChecked(checked)
-        checkbox.toggled.connect(on_toggled)
+        self._checkbox_settings[checkbox] = (target, attribute)
+        checkbox.toggled.connect(self._on_checkbox_setting_toggled)
         layout.addWidget(checkbox)
         return checkbox
+
+    def _on_checkbox_setting_toggled(self, checked: bool) -> None:
+        checkbox = self.sender()
+        if not isinstance(checkbox, QCheckBox):
+            return
+        target_and_attribute = self._checkbox_settings.get(checkbox)
+        if target_and_attribute is None:
+            return
+        target, attribute = target_and_attribute
+        setattr(target, attribute, checked)
 
     def _build_detector_settings(self, section: QWidget, layout: QVBoxLayout):
         self.keep_existing_lines = self._add_checkbox_setting(
@@ -549,7 +568,8 @@ class RunPipelineDialog(QDialog):
             'RunPipelineKeepExistingLines',
             self.tr('Keep Existing Lines'),
             pcfg.module.keep_exist_textlines,
-            lambda checked: setattr(pcfg.module, 'keep_exist_textlines', checked),
+            pcfg.module,
+            'keep_exist_textlines',
         )
 
     def _build_ocr_settings(self, section: QWidget, layout: QVBoxLayout):
@@ -559,7 +579,8 @@ class RunPipelineDialog(QDialog):
             'RunPipelineRemoveEmptyTextblocks',
             self.tr('Remove empty textblocks'),
             pcfg.restore_ocr_empty,
-            lambda checked: setattr(pcfg, 'restore_ocr_empty', checked),
+            pcfg,
+            'restore_ocr_empty',
         )
         self.font_detection = self._add_checkbox_setting(
             section,
@@ -567,7 +588,8 @@ class RunPipelineDialog(QDialog):
             'RunPipelineFontDetection',
             self.tr('Font Detection'),
             pcfg.module.ocr_font_detect,
-            lambda checked: setattr(pcfg.module, 'ocr_font_detect', checked),
+            pcfg.module,
+            'ocr_font_detect',
         )
 
         postprocess_label = QLabel(self.tr('Letter Case'), section)
@@ -595,12 +617,8 @@ class RunPipelineDialog(QDialog):
             button = QRadioButton(text, postprocess_options_row)
             button.setObjectName('RunPipelineOCRTextPostprocessOption')
             button.setChecked(pcfg.module.ocr_text_postprocess == mode)
-            button.toggled.connect(
-                lambda checked, mode=mode: self._on_ocr_text_postprocess_toggled(
-                    mode,
-                    checked,
-                )
-            )
+            button.setProperty('textPostprocessMode', mode)
+            button.toggled.connect(self._on_ocr_text_postprocess_toggled)
             self.ocr_text_postprocess_group.addButton(button)
             self.ocr_text_postprocess_buttons[mode] = button
             postprocess_layout.addWidget(button)
@@ -608,10 +626,12 @@ class RunPipelineDialog(QDialog):
                 postprocess_layout.addStretch()
         layout.addWidget(postprocess_options_row)
 
-    @staticmethod
-    def _on_ocr_text_postprocess_toggled(mode: str, checked: bool):
-        if checked:
-            pcfg.module.ocr_text_postprocess = mode
+    def _on_ocr_text_postprocess_toggled(self, checked: bool) -> None:
+        button = self.sender()
+        if checked and isinstance(button, QRadioButton):
+            pcfg.module.ocr_text_postprocess = button.property(
+                'textPostprocessMode'
+            )
 
     def _build_inpainting_settings(self, section: QWidget, layout: QVBoxLayout):
         self.skip_simple_cases = self._add_checkbox_setting(
@@ -620,7 +640,8 @@ class RunPipelineDialog(QDialog):
             'RunPipelineSkipSimpleCases',
             self.tr('Skip simple cases'),
             pcfg.module.check_need_inpaint,
-            lambda checked: setattr(pcfg.module, 'check_need_inpaint', checked),
+            pcfg.module,
+            'check_need_inpaint',
         )
         self.filter_mask_by_text_boxes = self._add_checkbox_setting(
             section,
@@ -628,7 +649,8 @@ class RunPipelineDialog(QDialog):
             'RunPipelineFilterMaskByTextBoxes',
             self.tr('Filter mask by text boxes'),
             pcfg.module.filter_mask_by_bboxes,
-            lambda checked: setattr(pcfg.module, 'filter_mask_by_bboxes', checked),
+            pcfg.module,
+            'filter_mask_by_bboxes',
         )
 
     def _translation_options(self, key: str, current: str):
@@ -943,15 +965,8 @@ class RunPipelineDialog(QDialog):
             body.setVisible(header.isChecked())
             self.module_settings_headers[key] = header
             self.module_settings_bodies[key] = body
-            header.toggled.connect(
-                lambda expanded, key=key, header=header, body=body:
-                self._set_module_settings_expanded(
-                    key,
-                    header,
-                    body,
-                    expanded,
-                )
-            )
+            header.setProperty('settingsKey', key)
+            header.toggled.connect(self._on_settings_header_toggled)
         else:
             body = section
             body_layout = section_layout
@@ -960,6 +975,15 @@ class RunPipelineDialog(QDialog):
         if show_header:
             return section, body, body_layout
         return section, body_layout
+
+    def _on_settings_header_toggled(self, expanded: bool) -> None:
+        header = self.sender()
+        if not isinstance(header, ExpandingToolButton):
+            return
+        key = header.property('settingsKey')
+        body = self.module_settings_bodies.get(key)
+        if body is not None:
+            self._set_module_settings_expanded(key, header, body, expanded)
 
     def _project_page_names(self):
         pages = getattr(self.project, 'pages', None)
@@ -995,6 +1019,16 @@ class RunPipelineDialog(QDialog):
             )
         self._refresh_progress()
         self._fit_to_current_workflow()
+
+    def _on_stage_button_toggled(self, checked: bool) -> None:
+        button = self.sender()
+        if not isinstance(button, PipelineModuleButton):
+            return
+        self._on_stage_toggled(
+            int(button.property('stageIndex')),
+            int(button.property('sectionIndex')),
+            checked,
+        )
 
     def _set_module_settings_expanded(
         self,
