@@ -1375,33 +1375,14 @@ class ModuleManager(QObject):
         self.imgtrans_thread.finish_blktrans.connect(self.on_finish_blktrans)
         self.imgtrans_thread.pipeline_stopped.connect(self.on_imgtrans_thread_stopped)
 
-        self.translator_panel = translator_panel = config_panel.trans_config_panel        
-        translator_params = merge_config_module_params(
+        merge_config_module_params(
             cfg_module.translator_params, GET_VALID_TRANSLATORS(), TRANSLATORS.get)
-        translator_panel.addModulesParamWidgets(translator_params, cfg_module.translator)
-        translator_panel.translator_changed.connect(self.selectTranslator)
-        translator_panel.paramwidget_edited.connect(self.on_translatorparam_edited)
-
-        self.inpaint_panel = inpainter_panel = config_panel.inpaint_config_panel
-        inpainter_params = merge_config_module_params(
+        merge_config_module_params(
             cfg_module.inpainter_params, GET_VALID_INPAINTERS(), INPAINTERS.get)
-        inpainter_panel.addModulesParamWidgets(inpainter_params, cfg_module.inpainter)
-        inpainter_panel.paramwidget_edited.connect(self.on_inpainterparam_edited)
-        inpainter_panel.inpainter_changed.connect(self.selectInpainter)
-
-        self.textdetect_panel = textdetector_panel = config_panel.detect_config_panel
-        textdetector_params = merge_config_module_params(
+        merge_config_module_params(
             cfg_module.textdetector_params, GET_VALID_TEXTDETECTORS(), TEXTDETECTORS.get)
-        textdetector_panel.addModulesParamWidgets(textdetector_params, cfg_module.textdetector)
-        textdetector_panel.paramwidget_edited.connect(self.on_textdetectorparam_edited)
-        textdetector_panel.detector_changed.connect(self.selectTextDetector)
-
-        self.ocr_panel = ocr_panel = config_panel.ocr_config_panel
-        ocr_params = merge_config_module_params(
+        merge_config_module_params(
             cfg_module.ocr_params, GET_VALID_OCR(), OCR.get)
-        ocr_panel.addModulesParamWidgets(ocr_params, cfg_module.ocr)
-        ocr_panel.paramwidget_edited.connect(self.on_ocrparam_edited)
-        ocr_panel.ocr_changed.connect(self.selectOCR)
 
         config_panel.unload_models.connect(self.unload_all_models)
         config_panel.prepare_selected_modules.connect(self.prepareSelectedModules)
@@ -1939,24 +1920,12 @@ class ModuleManager(QObject):
         package_running = self.package_install_thread is not None and self.package_install_thread.isRunning()
         return package_running or any(thread.isRunning() for thread in module_threads)
 
-    def _selected_module_name(self, module_key: str) -> str:
-        panel = {
-            'textdetector': self.textdetect_panel,
-            'ocr': self.ocr_panel,
-            'translator': self.translator_panel,
-            'inpainter': self.inpaint_panel,
-        }[module_key]
-        selected = panel.module_combobox.currentText()
-        if selected:
-            return selected
-        return getattr(cfg_module, module_key)
-
     def _selected_modules(self) -> List[tuple]:
         return [
-            ('textdetector', self._selected_module_name('textdetector')),
-            ('ocr', self._selected_module_name('ocr')),
-            ('translator', self._selected_module_name('translator')),
-            ('inpainter', self._selected_module_name('inpainter')),
+            ('textdetector', cfg_module.textdetector),
+            ('ocr', cfg_module.ocr),
+            ('translator', cfg_module.translator),
+            ('inpainter', cfg_module.inpainter),
         ]
 
     def prepareSelectedModules(self):
@@ -2256,20 +2225,33 @@ class ModuleManager(QObject):
         self.run_canvas_inpaint = True
         self.inpaint(**inpaint_dict)
     
-    def on_translatorparam_edited(self, param_key: str, param_content: dict):
-        self.updatePanelParam('translator', self.translator_panel, self.translator, param_key, param_content)
+    def moduleParams(self, module_key: str, module_name: str) -> dict:
+        return cfg_module.get_params(module_key).get(module_name)
 
-    def on_inpainterparam_edited(self, param_key: str, param_content: dict):
-        self.updatePanelParam('inpainter', self.inpaint_panel, self.inpainter, param_key, param_content)
+    def moduleRuntimeActionsEnabled(
+        self,
+        module_key: str,
+        module_name: str,
+    ) -> bool:
+        active_module = self._active_module(module_key)
+        return active_module is not None and active_module.name == module_name
 
-    def on_textdetectorparam_edited(self, param_key: str, param_content: dict):
-        self.updatePanelParam('textdetector', self.textdetect_panel, self.textdetector, param_key, param_content)
+    def _active_module(self, module_key: str):
+        return {
+            'translator': self.translator,
+            'inpainter': self.inpainter,
+            'textdetector': self.textdetector,
+            'ocr': self.ocr,
+        }[module_key]
 
-    def on_ocrparam_edited(self, param_key: str, param_content: dict):
-        self.updatePanelParam('ocr', self.ocr_panel, self.ocr, param_key, param_content)
-
-    def updatePanelParam(self, module_key: str, panel, active_module, param_key: str, param_content: dict):
-        module_name = panel.module_combobox.currentText()
+    def onModuleParamEdited(
+        self,
+        module_key: str,
+        module_name: str,
+        param_key: str,
+        param_content: dict,
+    ) -> None:
+        active_module = self._active_module(module_key)
         if active_module is not None and active_module.name == module_name:
             self.updateModuleSetupParam(active_module, param_key, param_content)
             cfg_module.get_params(module_key)[module_name] = active_module.params

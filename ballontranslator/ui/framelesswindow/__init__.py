@@ -61,7 +61,7 @@ class OutsideClickFramelessMixin:
     """Provide centered, draggable, outside-click-closing window behavior.
 
     Place this mixin before the widget base class. Subclasses must expose
-    ``title_bar`` and ``close_button`` attributes. Override
+    ``title_bar`` and optionally ``close_button`` attributes. Override
     ``_dismiss_transient_window`` when hiding is not the desired close
     behavior.
 
@@ -152,7 +152,10 @@ class OutsideClickFramelessMixin:
         return event.globalPos()
 
     def _can_drag_title(self, watched: QWidget) -> bool:
-        if watched is self.close_button or self.close_button.isAncestorOf(watched):
+        close_button = getattr(self, 'close_button', None)
+        if close_button is not None and (
+            watched is close_button or close_button.isAncestorOf(watched)
+        ):
             return False
         return watched is self.title_bar or self.title_bar.isAncestorOf(watched)
 

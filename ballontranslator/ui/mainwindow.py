@@ -1,6 +1,6 @@
 import os.path as osp
 import os, re, traceback, sys
-from typing import List, Union
+from typing import List, Optional, Union
 from pathlib import Path
 import subprocess
 from functools import partial
@@ -53,7 +53,7 @@ from .text_engine.transforms.grid import start_grid_numba_warmup
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
-from .module_param_i18n import ModuleParamTranslator, register_module_param_translator
+from .module_parse_widgets import ModuleParamDialog
 from . import shared_widget as SW
 from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox, ProgressMessageBox
 
@@ -111,12 +111,10 @@ class MainWindow(mainwindow_cls):
         self.show_llm_model_dialog.connect(self.on_show_llm_model_dialog)
         shared.show_llm_base_url_dialog_in_mainthread = self.show_llm_base_url_dialog.emit
         self.show_llm_base_url_dialog.connect(self.on_show_llm_base_url_dialog)
-        if not shared.HEADLESS:
-            self.module_param_translator = ModuleParamTranslator(parent=self)
-            register_module_param_translator(self.module_param_translator)
         shared.register_view_widget = self.register_view_widget
 
         self.backup_blkstyles = []
+        self.module_param_dialog: Optional[ModuleParamDialog] = None
         self._run_imgtrans_wo_textstyle_update = False
         self._render_only = False
         self._render_global_format = None
@@ -183,13 +181,13 @@ class MainWindow(mainwindow_cls):
         screen_size = QGuiApplication.primaryScreen().geometry().size()
         self.setMinimumWidth(screen_size.width() // 2)
         self.configPanel = ConfigPanel(self)
-        self.configPanel.trans_config_panel.show_pre_MT_keyword_window.connect(
+        self.configPanel.show_pre_MT_keyword_window.connect(
             self.show_pre_MT_keyword_window
         )
-        self.configPanel.trans_config_panel.show_MT_keyword_window.connect(
+        self.configPanel.show_MT_keyword_window.connect(
             self.show_MT_keyword_window
         )
-        self.configPanel.trans_config_panel.show_OCR_keyword_window.connect(
+        self.configPanel.show_OCR_keyword_window.connect(
             self.show_OCR_keyword_window
         )
 
@@ -257,7 +255,7 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
         self.bottomBar.textlayerSlider.valueChanged.connect(self.canvas.setTextLayerTransparencyBySlider)
         
-        self.drawingPanel = DrawingPanel(self.canvas, self.configPanel.inpaint_config_panel)
+        self.drawingPanel = DrawingPanel(self.canvas)
         self.textPanel = TextPanel(self.app)
         self.textPanel.formatpanel.foldTextBtn.checkStateChanged.connect(self.fold_textarea)
         self.textPanel.formatpanel.sourceBtn.checkStateChanged.connect(self.show_source_text)
@@ -355,29 +353,19 @@ class MainWindow(mainwindow_cls):
             metadata['lang_source'],
             metadata['lang_target'],
         )
-        self.configPanel.trans_config_panel.setTranslatorMetadata(
-            metadata['name'],
-            metadata['supported_src_list'],
-            metadata['supported_tgt_list'],
-            metadata['lang_source'],
-            metadata['lang_target'],
-        )
-
     def on_module_selection_changed(self, module_key: str, module_name: str):
         profile_id = ''
         if module_key == 'translator':
             self.setTranslatorSelectionFromMetadata(module_name)
             profile_id = pcfg.module.translator_llm_id
         elif module_key == 'textdetector':
-            self.configPanel.detect_config_panel.setDetector(module_name)
             self.bottomBar.textdet_selector.setSelectedValue(module_name)
         elif module_key == 'ocr':
-            self.configPanel.ocr_config_panel.setOCR(module_name)
             self.bottomBar.ocr_selector.setSelectedValue(module_name)
             profile_id = pcfg.module.ocr_llm_id
         elif module_key == 'inpainter':
-            self.configPanel.inpaint_config_panel.setInpainter(module_name)
             self.bottomBar.inpaint_selector.setSelectedValue(module_name)
+            self.drawingPanel.setInpainter(module_name)
             profile_id = pcfg.module.inpaint_llm_id
         if profile_id:
             self.configPanel.llm_profiles_panel.refreshSelectionBorders(profile_id)
@@ -404,6 +392,10 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.textdet_selector.setSelectedValue(pcfg.module.textdetector)
         self.bottomBar.ocr_selector.setSelectedValue(pcfg.module.ocr)
         self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
+        self.drawingPanel.setInpainterOptions(
+            GET_VALID_INPAINTERS(),
+            pcfg.module.inpainter,
+        )
 
         self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
         module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
@@ -438,11 +430,11 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.ocr_selector.edit_clicked.connect(self.focus_llm_profile)
         self.bottomBar.ocr_selector.selector.currentTextChanged.connect(self.on_ocr_changed)
         self.bottomBar.ocr_selector.llm_profile_changed.connect(self.on_ocr_llm_profile_changed)
+        self.drawingPanel.inpainter_changed.connect(module_manager.selectInpainter)
+        self.drawingPanel.inpainter_config_requested.connect(self.to_inpaint_config)
         for idx, action in enumerate(self.titleBar.moduleVisibilityActions):
             self._set_module_tool_visibility(idx, action.isChecked())
 
-        self.configPanel.trans_config_panel.llm_profile_changed.connect(self.on_llm_profile_changed)
-        self.configPanel.trans_config_panel.llm_profile_config_clicked.connect(self.focus_llm_profile)
         self.configPanel.llm_profiles_panel.profile_ui_updated.connect(self.on_llm_profile_ui_updated)
         self.configPanel.llm_profiles_panel.profile_summary_changed.connect(self.on_llm_profile_summary_changed)
         self.configPanel.llm_profiles_panel.set_translator_requested.connect(
@@ -1396,7 +1388,7 @@ class MainWindow(mainwindow_cls):
                 editing_textitem.startEdit()
         
     def to_trans_config(self):
-        self.configPanel.focusOnTranslator()
+        self.show_module_param_dialog('translator', pcfg.module.translator)
 
     def focus_llm_profile(self, profile_id: str = None, expand_details: bool = True, target: str = 'api_key'):
         self.configPanel.focusOnLLMProfile(
@@ -1406,32 +1398,103 @@ class MainWindow(mainwindow_cls):
         )
 
     def to_inpaint_config(self):
-        self.configPanel.focusOnInpaint()
+        self.show_module_param_dialog('inpainter', pcfg.module.inpainter)
 
     def to_ocr_config(self):
-        self.configPanel.focusOnOCR()
+        self.show_module_param_dialog('ocr', pcfg.module.ocr)
 
     def to_detect_config(self):
-        self.configPanel.focusOnDetect()
+        self.show_module_param_dialog('textdetector', pcfg.module.textdetector)
+
+    def show_module_param_dialog(
+        self,
+        module_type: str,
+        module_name: str,
+    ) -> None:
+        current = self.module_param_dialog
+        if current is not None and current.isVisible():
+            if (
+                current.module_type == module_type
+                and current.module_key == module_name
+            ):
+                current.raise_()
+                current.activateWindow()
+                return
+            current.close()
+
+        parent = self.sender()
+        if not isinstance(parent, RunPipelineDialog):
+            parent = self
+        dialog = ModuleParamDialog(
+            module_type,
+            module_name,
+            self.module_manager.moduleParams(module_type, module_name),
+            self.module_manager.moduleRuntimeActionsEnabled(
+                module_type,
+                module_name,
+            ),
+            parent,
+        )
+        dialog.paramwidget_edited.connect(
+            self.module_manager.onModuleParamEdited
+        )
+        dialog.finished.connect(self._clear_module_param_dialog)
+        dialog.destroyed.connect(
+            self._clear_destroyed_module_param_dialog
+        )
+        if isinstance(parent, RunPipelineDialog):
+            parent.finished.connect(dialog.close)
+        self.module_param_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _clear_module_param_dialog(self, _result=None) -> None:
+        if self.sender() is self.module_param_dialog:
+            self.module_param_dialog = None
+
+    def _clear_destroyed_module_param_dialog(self, _dialog=None) -> None:
+        current = self.module_param_dialog
+        if current is None:
+            return
+        try:
+            current.objectName()
+        except RuntimeError:
+            self.module_param_dialog = None
+
+    def on_run_module_selected(
+        self,
+        module_type: str,
+        module_name: str,
+    ) -> None:
+        setter = {
+            'textdetector': self.module_manager.selectTextDetector,
+            'ocr': self.module_manager.selectOCR,
+            'translator': self.module_manager.selectTranslator,
+            'inpainter': self.module_manager.selectInpainter,
+        }[module_type]
+        setter(module_name)
+        dialog = self.sender()
+        if module_type == 'translator' and isinstance(
+            dialog,
+            RunPipelineDialog,
+        ):
+            dialog.setTranslatorMetadata(
+                self.module_manager.translator_metadata(module_name)
+            )
 
     def on_textdet_changed(self):
         module = self.bottomBar.textdet_selector.selector.currentText()
-        tgt_selector = self.configPanel.detect_config_panel.module_combobox
-        if tgt_selector.currentText() != module and module in GET_VALID_TEXTDETECTORS():
-            tgt_selector.setCurrentText(module)
+        self.module_manager.selectTextDetector(module)
 
     def on_ocr_changed(self):
         module = self.bottomBar.ocr_selector.selector.currentText()
-        tgt_selector = self.configPanel.ocr_config_panel.module_combobox
-        if tgt_selector.currentText() != module and module in GET_VALID_OCR():
-            tgt_selector.setCurrentText(module)
+        self.module_manager.selectOCR(module)
         self.bottomBar.ocr_selector.updateButtonText()
 
     def on_trans_changed(self):
         module = self.bottomBar.trans_selector.selector.currentText()
-        tgt_selector = self.configPanel.trans_config_panel.module_combobox
-        if tgt_selector.currentText() != module and module in GET_VALID_TRANSLATORS():
-            tgt_selector.setCurrentText(module)
+        self.module_manager.selectTranslator(module)
         self.bottomBar.trans_selector.updateButtonText()
 
     def on_llm_profile_changed(self, profile_id: str):
@@ -1439,7 +1502,6 @@ class MainWindow(mainwindow_cls):
             pcfg.module.translator_llm_id = profile_id
             self.configPanel.llm_profiles_panel.syncProfile(profile_id)
             self.configPanel.llm_profiles_panel.setSelectedProfile('translator', profile_id)
-        self.configPanel.trans_config_panel.refreshLLMProfiles()
         self.bottomBar.trans_selector.updateButtonText()
 
     def on_ocr_llm_profile_changed(self, profile_id: str):
@@ -1457,7 +1519,6 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.inpaint_selector.updateButtonText()
 
     def on_llm_profile_ui_updated(self):
-        self.configPanel.trans_config_panel.refreshLLMProfiles()
         self.bottomBar.trans_selector.updateButtonText()
         self.bottomBar.ocr_selector.updateButtonText()
         self.bottomBar.inpaint_selector.updateButtonText()
@@ -1497,9 +1558,7 @@ class MainWindow(mainwindow_cls):
 
     def on_inpaint_changed(self):
         module = self.bottomBar.inpaint_selector.selector.currentText()
-        tgt_selector = self.configPanel.inpaint_config_panel.module_combobox
-        if tgt_selector.currentText() != module and module in GET_VALID_INPAINTERS():
-            tgt_selector.setCurrentText(module)
+        self.module_manager.selectInpainter(module)
         self.bottomBar.inpaint_selector.updateButtonText()
 
     def translateBlkitemList(self, blkitem_list: List, mode: int) -> bool:
@@ -1711,6 +1770,11 @@ class MainWindow(mainwindow_cls):
         )
         dialog.translate_source_changed.connect(self.on_trans_src_changed)
         dialog.translate_target_changed.connect(self.on_trans_tgt_changed)
+        dialog.module_selected.connect(self.on_run_module_selected)
+        dialog.module_config_requested.connect(self.show_module_param_dialog)
+        self.module_manager.module_selection_changed.connect(
+            dialog.setModuleSelection
+        )
         try:
             result = dialog.exec_()
             if result == RunPipelineDialog.CONTINUE:

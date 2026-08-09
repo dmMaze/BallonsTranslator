@@ -62,8 +62,9 @@ class StrokeImgItem(QGraphicsItem):
         self.init_rect = rect
         self.update(rect)
 
-    def finishPainting(self):
-        self.painter.end()
+    def finishPainting(self) -> None:
+        if self.painter.isActive():
+            self.painter.end()
         self.is_painting = False
 
     def clip(self, mask_only=False, format=QImage.Format.Format_ARGB32_Premultiplied) -> Tuple[List, np.ndarray, QImage]:

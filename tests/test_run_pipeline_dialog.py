@@ -23,18 +23,19 @@ from qtpy.QtWidgets import (
     QSpinBox,
     QStackedWidget,
     QToolButton,
+    QWidget,
 )
 
 from ballontranslator.ui.run_pipeline_dialog import (
+    PipelineModuleActivator,
     PipelineModuleButton,
     RunPipelineDialog,
 )
 from ballontranslator.ui.configpanel import ConfigPanel
+from ballontranslator.ui.drawingpanel import DrawingPanel
+from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.llm_profile_widgets import ProfileDetailsWidget
-from ballontranslator.ui.module_parse_widgets import (
-    TextDetectConfigPanel,
-    TranslatorConfigPanel,
-)
+from ballontranslator.ui.module_parse_widgets import ModuleParamDialog
 from ballontranslator.ui.page_range_progress import PageRangeProgressWidget
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.mainwindowbars import TitleBar
@@ -50,7 +51,6 @@ from ballontranslator.utils.config import (
 )
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
-from ballontranslator.utils.shared import CONFIG_MODULE_PARAM_BODY_MIN_WIDTH
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS
 from ballontranslator.modules.translators import base as translator_base
@@ -227,11 +227,17 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         module_buttons = dialog.findChildren(PipelineModuleButton, 'RunPipelineModuleButton')
         self.assertEqual(len(module_buttons), 4)
+        activators = dialog.findChildren(
+            PipelineModuleActivator,
+            'RunPipelineModuleActivator',
+        )
+        self.assertEqual(len(activators), 4)
+        self.assertTrue(all(not activator.selector.isHidden() for activator in activators))
         self.assertTrue(all(button.isChecked() for button in module_buttons))
         module_buttons[0].click()
         self.assertFalse(module_buttons[0].isChecked())
         self.assertFalse(pcfg.module.enable_detect)
-        self.assertFalse(module_buttons[0].text_label.property('moduleActive'))
+        self.assertFalse(activators[0].selector.isHidden())
         self.assertEqual(module_buttons[0].icon_label.size().width(), 20)
         icon_pixmap = module_buttons[0].icon_label.pixmap()
         self.assertEqual(
@@ -373,6 +379,40 @@ class RunPipelineDialogTests(unittest.TestCase):
         dialog.show()
         dialog.close()
         self.assertEqual(self.save_config_mock.call_count, 5)
+
+    def test_module_activator_selector_and_auxiliary_actions(self):
+        dialog = RunPipelineDialog()
+        activator = dialog.module_activators[0]
+        selections = []
+        config_requests = []
+        dialog.module_selected.connect(
+            lambda *args: selections.append(args)
+        )
+        dialog.module_config_requested.connect(
+            lambda *args: config_requests.append(args)
+        )
+
+        if activator.selector.count() > 1:
+            activator.selector.setCurrentIndex(
+                (activator.selector.currentIndex() + 1)
+                % activator.selector.count()
+            )
+            self.assertEqual(
+                selections[-1],
+                ('textdetector', activator.selector.currentText()),
+            )
+        activator.config_button.click()
+        self.assertEqual(
+            config_requests[-1],
+            ('textdetector', activator.selector.currentText()),
+        )
+        activator.button.setChecked(True)
+        activator.deactivate_button.click()
+        self.assertFalse(activator.button.isChecked())
+        activator.button.click()
+        self.assertTrue(activator.button.isChecked())
+        self.assertFalse(activator.selector.isHidden())
+        dialog.close()
 
     def test_dialog_is_collectable_after_deferred_delete(self):
         dialog = RunPipelineDialog()
@@ -546,26 +586,91 @@ class RunPipelineDialogTests(unittest.TestCase):
             )
         self.assertEqual(result, '後臺')
 
-    def test_keyword_substitution_buttons_live_below_translator_params(self):
-        panel = TranslatorConfigPanel('Translator')
+    def test_pipeline_keeps_global_keyword_substitution_actions(self):
+        panel = ConfigPanel()
         actions = []
         panel.show_OCR_keyword_window.connect(lambda: actions.append('ocr'))
         panel.show_pre_MT_keyword_window.connect(lambda: actions.append('pre_mt'))
         panel.show_MT_keyword_window.connect(lambda: actions.append('mt'))
 
-        params_index = next(
-            index
-            for index in range(panel.vlayout.count())
-            if panel.vlayout.itemAt(index).layout() is panel.params_layout
-        )
         for button in (
             panel.replaceOCRkeywordBtn,
             panel.replacePreMTkeywordBtn,
             panel.replaceMTkeywordBtn,
         ):
-            self.assertGreater(panel.vlayout.indexOf(button), params_index)
             button.click()
         self.assertEqual(actions, ['ocr', 'pre_mt', 'mt'])
+        self.assertFalse(hasattr(panel, 'pipeline_module_panels'))
+        panel.close()
+
+    def test_module_param_dialog_saves_on_close_and_is_deleted(self):
+        params = {
+            'delay': {
+                'type': 'line_editor',
+                'value': 1,
+                'display_name': 'Delay',
+            }
+        }
+        with patch(
+            'ballontranslator.ui.module_parse_widgets.save_config'
+        ) as save:
+            dialog = ModuleParamDialog('ocr', 'demo', params, False)
+            changes = []
+            dialog.paramwidget_edited.connect(
+                lambda *args: changes.append(args)
+            )
+            dialog_ref = weakref.ref(dialog)
+            dialog.show()
+            self.app.processEvents()
+            dialog.param_widget.param_widgets['delay'].setText('2')
+            self.assertEqual(changes[-1][:3], ('ocr', 'demo', 'delay'))
+            dialog.close()
+            save.assert_called_once_with()
+            del dialog
+            QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            self.app.processEvents()
+            gc.collect()
+            self.assertIsNone(dialog_ref())
+
+    def test_module_param_dialog_shows_empty_message(self):
+        with patch('ballontranslator.ui.module_parse_widgets.save_config'):
+            dialog = ModuleParamDialog('ocr', 'empty', None, False)
+            empty_label = dialog.findChild(QLabel, 'ModuleParamEmptyLabel')
+            self.assertEqual(empty_label.text(), 'No configurable param')
+            dialog.close()
+
+    def test_module_param_dialog_closes_and_deletes_on_outside_click(self):
+        outside = QWidget()
+        outside.show()
+        with patch(
+            'ballontranslator.ui.module_parse_widgets.save_config'
+        ) as save:
+            dialog = ModuleParamDialog('ocr', 'empty', None, False)
+            dialog_ref = weakref.ref(dialog)
+            dialog.show()
+            self.app.processEvents()
+            QTest.mouseClick(outside, Qt.MouseButton.LeftButton)
+            self.app.processEvents()
+            save.assert_called_once_with()
+            del dialog
+            QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            self.app.processEvents()
+            gc.collect()
+            self.assertIsNone(dialog_ref())
+        outside.close()
+
+    def test_drawing_inpainter_selectors_are_independent_and_synchronized(self):
+        panel = DrawingPanel(Canvas())
+        panel.setInpainterOptions(['first', 'second'], 'first')
+        brush_row, rect_row = panel._inpainter_selector_rows()
+        self.assertIsNot(brush_row.selector, rect_row.selector)
+
+        changes = []
+        panel.inpainter_changed.connect(changes.append)
+        brush_row.selector.setCurrentText('second')
+
+        self.assertEqual(rect_row.selector.currentText(), 'second')
+        self.assertEqual(changes, ['second'])
         panel.close()
 
 
@@ -640,19 +745,23 @@ class RunPipelineDialogTests(unittest.TestCase):
 
     def test_mainwindow_dispatches_the_selected_pipeline_action(self):
         calls = []
+
+        class FakeSignal:
+            def connect(self, _slot):
+                pass
+
         owner = SimpleNamespace(
             imgtrans_proj=SimpleNamespace(is_all_pages_no_text=True),
             on_run_imgtrans=lambda **kwargs: calls.append(kwargs),
             module_manager=SimpleNamespace(
                 translator_metadata=lambda: {},
+                module_selection_changed=FakeSignal(),
             ),
             on_trans_src_changed=lambda _source: None,
             on_trans_tgt_changed=lambda _target: None,
+            on_run_module_selected=lambda _module_type, _module_name: None,
+            show_module_param_dialog=lambda _module_type, _module_name: None,
         )
-
-        class FakeSignal:
-            def connect(self, _slot):
-                pass
 
         class FakeDialog:
             RUN = RunPipelineDialog.RUN
@@ -669,6 +778,8 @@ class RunPipelineDialogTests(unittest.TestCase):
                 self.translator_metadata = translator_metadata
                 self.translate_source_changed = FakeSignal()
                 self.translate_target_changed = FakeSignal()
+                self.module_selected = FakeSignal()
+                self.module_config_requested = FakeSignal()
                 self.render_without_text_style_update = SimpleNamespace(
                     isChecked=lambda: self.preserve_style
                 )
@@ -678,6 +789,9 @@ class RunPipelineDialogTests(unittest.TestCase):
 
             def selected_pages(self):
                 return self.pages
+
+            def setModuleSelection(self, _module_type, _module_name):
+                pass
 
             def deleteLater(self):
                 type(self).deleted_count += 1
