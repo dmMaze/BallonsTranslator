@@ -624,7 +624,15 @@ class ModuleParamDialog(OutsideClickFramelessMixin, QDialog):
         )
 
     def _dismiss_transient_window(self) -> None:
+        parent = self.parentWidget()
+        parent_window = parent.window() if parent is not None else None
         self.close()
+        if (
+            parent_window is not None
+            and parent_window.windowModality() != Qt.WindowModality.NonModal
+        ):
+            # Windows can miss this handoff when close() runs in the mouse filter.
+            parent_window.activateWindow()
 
     def _preserve_on_outside_click(self) -> bool:
         active_modal = QApplication.activeModalWidget()
