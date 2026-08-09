@@ -24,7 +24,7 @@ CORE_IMPORT_PROBES = (
 
 def _platform_import_probes() -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
     if sys.platform == 'win32':
-        return (('win32api', ()),)
+        return (('win32api', ()), ('win32con', ()), ('win32gui', ()),)
     if sys.platform == 'darwin':
         return (('objc', ()), ('Cocoa', ()), ('Quartz', ()),)
     return ()
@@ -170,13 +170,26 @@ def _install_core_requirements_for_failures(
         print('Missing/invalid core imports:')
         for failure in failures:
             print(f'  - {failure}')
-    print(f'Installing core requirements from {requirements_path}...')
-
-    result = install_core_requirements(
-        str(requirements_path),
-        backend=backend,
-        env=env,
+    repair_pywin32 = sys.platform == 'win32' and any(
+        failure.startswith(('pywin32', 'win32api:', 'win32con:', 'win32gui:'))
+        for failure in failures
     )
+    if repair_pywin32:
+        print('Reinstalling core requirement: pywin32...')
+        # Metadata can survive an incomplete pywin32 installation.
+        result = package_installer.install(
+            requirements=['pywin32'],
+            backend=backend,
+            extra_args='--force-reinstall',
+            env=env,
+        )
+    else:
+        print(f'Installing core requirements from {requirements_path}...')
+        result = install_core_requirements(
+            str(requirements_path),
+            backend=backend,
+            env=env,
+        )
     if not result.ok:
         raise RuntimeError(
             'Failed to install core Python requirements.\n'

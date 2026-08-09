@@ -35,6 +35,21 @@ class FakeProcess:
 
 class CoreRequirementsTests(unittest.TestCase):
 
+    def test_missing_win32gui_forces_pywin32_reinstall(self):
+        with mock.patch.object(core_requirements.sys, 'platform', 'win32'), mock.patch(
+            'ballontranslator.utils.core_requirements.package_installer.install',
+            return_value=InstallResult(True, []),
+        ) as install:
+            probes = core_requirements._platform_import_probes()
+            core_requirements._install_core_requirements_for_failures(
+                core_requirements.Path('/tmp/requirements.txt'), [],
+                ["win32gui: No module named 'win32gui'"], 'auto', {},
+            )
+
+        self.assertIn(('win32gui', ()), probes)
+        self.assertEqual(install.call_args.kwargs['requirements'], ['pywin32'])
+        self.assertEqual(install.call_args.kwargs['extra_args'], '--force-reinstall')
+
     def test_healthy_core_imports_do_not_install(self):
         with mock.patch('ballontranslator.utils.core_requirements.check_core_imports', return_value=[]), \
                 mock.patch('ballontranslator.utils.core_requirements.install_core_requirements') as install:
