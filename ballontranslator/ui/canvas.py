@@ -959,9 +959,10 @@ class Canvas(QGraphicsScene):
                 self.gv.viewportTransform(),
             )
 
-    def updateCanvas(self):
+    def updateCanvas(self) -> None:
         self.editing_textblkitem = None
-        self.stroke_img_item = None
+        if self.stroke_img_item is not None:
+            self.removeItem(self.stroke_img_item)
         self.erase_img_key = None
         self.txtblkShapeControl.setBlkItem(None)
         self.mid_btn_pressed = False
@@ -1141,7 +1142,14 @@ class Canvas(QGraphicsScene):
 
     def removeItem(self, item: QGraphicsItem) -> None:
         self.block_selection_signal = True
-        super().removeItem(item)
+        if isinstance(item, StrokeImgItem):
+            # A stroke paints into its QImage until mouse release. Cleanup can
+            # also happen first through activation, hiding, or a page change.
+            item.finishPainting()
+            if item is self.stroke_img_item and self.erase_img_key is not None:
+                self.drawingLayer.removeQImage(self.erase_img_key)
+        if item.scene() is self:
+            super().removeItem(item)
         if isinstance(item, StrokeImgItem):
             item.setParentItem(None)
             self.stroke_img_item = None
