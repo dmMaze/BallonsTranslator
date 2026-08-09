@@ -145,7 +145,29 @@ Remove-Item -Recurse -Force $UvTempDir
 
 # Step 6: Create Final Zip Archive
 Write-Host "Creating final zip package: $ZipFile ..."
-Compress-Archive -Path $DestDir -DestinationPath $ZipFile
+# Compress-Archive stores Windows separators, so write portable entry names explicitly.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$ArchiveRoot = (Resolve-Path $DestDir).Path
+$Archive = [System.IO.Compression.ZipFile]::Open(
+    $ZipFile,
+    [System.IO.Compression.ZipArchiveMode]::Create
+)
+try {
+    Get-ChildItem -LiteralPath $ArchiveRoot -File -Recurse -Force |
+        Where-Object { $_.FullName -notmatch '[\\/]__pycache__[\\/]' } |
+        ForEach-Object {
+            $RelativePath = $_.FullName.Substring($ArchiveRoot.Length + 1).Replace('\', '/')
+            $EntryName = "$DestName/$RelativePath"
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $Archive,
+                $_.FullName,
+                $EntryName,
+                [System.IO.Compression.CompressionLevel]::Optimal
+            ) | Out-Null
+        }
+} finally {
+    $Archive.Dispose()
+}
 
 # Clean up build temp directory
 Write-Host "Cleaning up temporary build folder..."
