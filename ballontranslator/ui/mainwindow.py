@@ -1688,6 +1688,9 @@ class MainWindow(mainwindow_cls):
                     if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
 
+                    # Apply the complete global text-transform stack.
+                    blk.fontformat.text_transform = gf.text_transform
+
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (enable_detect or enable_translate)
         
