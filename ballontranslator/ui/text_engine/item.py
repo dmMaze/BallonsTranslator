@@ -272,13 +272,16 @@ class TextBlkItem(QGraphicsTextItem):
     ) -> bool:
         effective_before = self.geometry_controller.effective()
         changed = self.geometry_controller.set(state, preview=preview)
-        if changed and self.geometry_controller.effective() != effective_before:
+        # A neutral Grid division edit changes controller topology without
+        # changing the compiled text geometry or requiring a full repaint.
+        if self.geometry_controller.effective() != effective_before:
             self.visual_geometry_changed.emit()
         return changed
 
     def clear_text_transform_preview(self) -> bool:
+        effective_before = self.geometry_controller.effective()
         changed = self.geometry_controller.clear_preview()
-        if changed:
+        if self.geometry_controller.effective() != effective_before:
             self.visual_geometry_changed.emit()
         return changed
 
