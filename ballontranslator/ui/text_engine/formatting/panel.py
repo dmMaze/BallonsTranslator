@@ -626,6 +626,11 @@ class FontFormatPanel(Widget):
         if update_transform_panel:
             self.texttransform_panel.set_active_format(font_format)
 
+    def set_letter_spacing_value(self, value: float) -> None:
+        C.active_format.letter_spacing = value
+        if not self.letterSpacingBox.hasFocus():
+            self.letterSpacingBox.setValue(value)
+
     def set_globalfmt_title(self):
         active_text_style_label = self.active_text_style_label()
         if active_text_style_label is None:
@@ -694,7 +699,13 @@ class FontFormatPanel(Widget):
                 # Store the current text block's format before switching to global.
                 # This existing owner switch must preserve the complete transform.
                 if self.textblk_item is not None:
-                    self.textblk_item.fontformat = copy.deepcopy(C.active_format)
+                    active_format = copy.deepcopy(C.active_format)
+                    # The control mirrors the cursor's inline spacing while
+                    # the model field remains the legacy item-wide default.
+                    active_format.letter_spacing = (
+                        self.textblk_item.fontformat.letter_spacing
+                    )
+                    self.textblk_item.fontformat = active_format
                 self.textblk_item = None
                 self.set_active_format(
                     self.global_format,
@@ -708,6 +719,7 @@ class FontFormatPanel(Widget):
         else:
             if not self.restoring_textblk:
                 blk_fmt = textblk_item.get_fontformat()
+                blk_fmt.letter_spacing = textblk_item.letter_spacing_value()
                 # Preserve gradient properties from the text block's format
                 if hasattr(textblk_item.fontformat, 'gradient_enabled'):
                     blk_fmt.gradient_enabled = textblk_item.fontformat.gradient_enabled

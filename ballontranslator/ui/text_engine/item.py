@@ -19,13 +19,17 @@ from .layout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
 from .effect_renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
 from .annotations import (
+    AnnotationProperty,
     TEXT_COMBINE_ALL,
     apply_emphasis,
+    apply_letter_spacing,
     apply_text_combine_upright,
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
+    letter_spacing_value,
     load_rich_text_html,
+    set_document_letter_spacing_writing_mode,
     text_combine_upright_values,
     to_rich_text_html,
 )
@@ -51,6 +55,7 @@ class TextBlkItem(QGraphicsTextItem):
     propagate_user_edited = Signal(int, str, bool)
     visual_geometry_changed = Signal()
     emphasis_format_changed = Signal(str, str)
+    letter_spacing_format_changed = Signal(float)
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -110,8 +115,12 @@ class TextBlkItem(QGraphicsTextItem):
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
         super().setTextCursor(cursor)
-        self.emphasis_format_changed.emit(*self.emphasis_values())
+        self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
+
+    def _emit_inline_format_changed(self) -> None:
+        self.emphasis_format_changed.emit(*self.emphasis_values())
+        self.letter_spacing_format_changed.emit(self.letter_spacing_value())
 
     def _update_nonlinear_editing_ui(self) -> None:
         controller = getattr(self, 'geometry_controller', None)
@@ -234,7 +243,6 @@ class TextBlkItem(QGraphicsTextItem):
                 self.setPlainText(blk.translation)
         else:
             self.load_rich_text_html(blk.rich_text)
-            self.setLetterSpacing(font_fmt.letter_spacing, repaint_background=False)
             cursor = self.textCursor()
             cursor.clearSelection()
             cursor.movePosition(QTextCursor.MoveOperation.Start)
@@ -447,6 +455,11 @@ class TextBlkItem(QGraphicsTextItem):
         if is_editing:
             cursor = self.textCursor()
             cursor_pos = (cursor.position(), cursor.anchor().__pos__())
+            insertion_format = (
+                None
+                if cursor.hasSelection()
+                else QTextCharFormat(cursor.charFormat())
+            )
 
         valid_layout = True
         doc = self.document()
@@ -470,19 +483,18 @@ class TextBlkItem(QGraphicsTextItem):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         doc.documentLayout().blockSignals(True)
 
-        # Preserve BASE writing-mode letter-spacing semantics. Glyph slant is
-        # layout-only and must not rewrite the document's spacing behavior.
-        reset_spacing_val = 1 if vertical else self.fontformat.letter_spacing
-        cursor = QTextCursor(doc)
-        cursor.joinPreviousEditBlock()
-        char_fmt = QTextCharFormat()
-        char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-        char_fmt.setFontLetterSpacing(reset_spacing_val * 100)
-        cursor.select(QTextCursor.SelectionType.Document)
         controller = self.geometry_controller
         with controller.defer_compilation():
-            self.set_cursor_cfmt(cursor, char_fmt, True)
-            cursor.endEditBlock()
+            block_change_signal = self.block_change_signal
+            self.block_change_signal = True
+            try:
+                set_document_letter_spacing_writing_mode(
+                    doc,
+                    vertical=vertical,
+                    fallback=self.fontformat.letter_spacing,
+                )
+            finally:
+                self.block_change_signal = block_change_signal
 
             # QTextCursor formatting emits contentsChanged synchronously while
             # the old layout is still attached. Keep the writing-mode flag
@@ -522,6 +534,22 @@ class TextBlkItem(QGraphicsTextItem):
                 cursor.setPosition(
                     max(position, anchor), QTextCursor.MoveMode.KeepAnchor
                 )
+            if insertion_format is not None:
+                spacing = letter_spacing_value(
+                    insertion_format,
+                    self.fontformat.letter_spacing,
+                )
+                insertion_format.setProperty(
+                    AnnotationProperty.LETTER_SPACING,
+                    spacing,
+                )
+                insertion_format.setFontLetterSpacingType(
+                    QFont.SpacingType.PercentageSpacing
+                )
+                insertion_format.setFontLetterSpacing(
+                    100 if vertical else spacing * 100
+                )
+                cursor.setCharFormat(insertion_format)
             self.setTextCursor(cursor)
         if self.fontformat.gradient_enabled:
             self._refresh_gradient_geometry()
@@ -594,7 +622,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.textCursor().insertText('\n')
             return
         super().keyPressEvent(e)
-        self.emphasis_format_changed.emit(*self.emphasis_values())
+        self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
 
     def undo(self) -> None:
@@ -731,13 +759,13 @@ class TextBlkItem(QGraphicsTextItem):
             self.startEdit(pos=event.pos())
         else:
             super().mouseDoubleClickEvent(event)
-        self.emphasis_format_changed.emit(*self.emphasis_values())
+        self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super().mouseMoveEvent(event)  
         if self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
-            self.emphasis_format_changed.emit(*self.emphasis_values())
+            self._emit_inline_format_changed()
             self._update_nonlinear_editing_ui()
         else:
             self.moving.emit(self)
@@ -753,7 +781,7 @@ class TextBlkItem(QGraphicsTextItem):
             self._old_pos = self.pos()
             self.leftbutton_pressed.emit(self.idx)
         result = super().mousePressEvent(event)
-        self.emphasis_format_changed.emit(*self.emphasis_values())
+        self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
         return result
 
@@ -766,7 +794,7 @@ class TextBlkItem(QGraphicsTextItem):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.geometry_controller.end_input_mapping()
-            self.emphasis_format_changed.emit(*self.emphasis_values())
+            self._emit_inline_format_changed()
             self._update_nonlinear_editing_ui()
 
     def dragEnterEvent(self, event) -> None:
@@ -804,13 +832,22 @@ class TextBlkItem(QGraphicsTextItem):
         block_change_signal = self.block_change_signal
         self.block_change_signal = True
         try:
-            load_rich_text_html(self.document(), html)
+            load_rich_text_html(
+                self.document(),
+                html,
+                letter_spacing_fallback=self.fontformat.letter_spacing,
+                vertical=self.fontformat.vertical,
+            )
         finally:
             self.block_change_signal = block_change_signal
 
     def insert_from_mime_data(self, mime: QMimeData) -> bool:
         cursor = self.textCursor()
-        inserted = insert_rich_text_mime(cursor, mime)
+        inserted = insert_rich_text_mime(
+            cursor,
+            mime,
+            vertical=self.fontformat.vertical,
+        )
         if inserted:
             self.setTextCursor(cursor)
         return inserted
@@ -882,9 +919,14 @@ class TextBlkItem(QGraphicsTextItem):
             format.setFontWeight(fweight)
         format.setFontItalic(ffmat.italic)
         format.setFontUnderline(ffmat.underline)
-        if not ffmat.vertical:
-            format.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-            format.setFontLetterSpacing(ffmat.letter_spacing * 100)
+        format.setProperty(
+            AnnotationProperty.LETTER_SPACING,
+            ffmat.letter_spacing,
+        )
+        format.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+        format.setFontLetterSpacing(
+            100 if ffmat.vertical else ffmat.letter_spacing * 100
+        )
         cursor.setCharFormat(format)
         cursor.select(QTextCursor.SelectionType.Document)
         cursor.setBlockCharFormat(format)
@@ -908,8 +950,6 @@ class TextBlkItem(QGraphicsTextItem):
         op.setAlignment(alignment_qt_flag)
         doc.setDefaultTextOption(op)
         
-        if ffmat.vertical:
-            self.setLetterSpacing(ffmat.letter_spacing)
         self.setLineSpacing(ffmat.line_spacing)
         
         # Preserve gradient properties
@@ -1060,6 +1100,12 @@ class TextBlkItem(QGraphicsTextItem):
     def emphasis_values(self) -> tuple[str, str]:
         return emphasis_values(self.textCursor().charFormat())
 
+    def letter_spacing_value(self) -> float:
+        return letter_spacing_value(
+            self.textCursor().charFormat(),
+            self.fontformat.letter_spacing,
+        )
+
     def _apply_inline_format(
         self,
         apply_format: Callable[[QTextCursor], None],
@@ -1141,25 +1187,24 @@ class TextBlkItem(QGraphicsTextItem):
             self.update()
         self.is_formatting = False
 
-    def setLetterSpacing(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False, force=False):
-        self.is_formatting = True
-        self.fontformat.letter_spacing = value
-        if self.fontformat.vertical:
-            self.layout.setLetterSpacing(value)
-        else:
-            cursor = QTextCursor(self.document())
-            char_fmt = QTextCharFormat()
-            char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-            char_fmt.setFontLetterSpacing(value * 100)
-            cursor.select(QTextCursor.SelectionType.Document)
-            self.set_cursor_cfmt(cursor, char_fmt, True)
-
-        self.geometry_controller.flush_deferred_compilation()
-        if repaint_background:
-            self.repaint_background()
-            self.update()
-
-        self.is_formatting = False
+    def setLetterSpacing(self, value: float) -> None:
+        update_item_default = not self.isEditing()
+        if update_item_default:
+            self.old_ffmt_values = {
+                'letter_spacing': self.fontformat.letter_spacing
+            }
+            self.fontformat.letter_spacing = value
+            self.layout.letter_spacing = value
+        try:
+            self._apply_inline_format(
+                lambda cursor: apply_letter_spacing(
+                    cursor,
+                    value,
+                    vertical=self.fontformat.vertical,
+                )
+            )
+        finally:
+            self.old_ffmt_values = None
 
     def setFontColor(self, value: Tuple, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, force=False):
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)

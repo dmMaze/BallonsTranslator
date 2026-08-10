@@ -9,7 +9,6 @@ from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
-    QFont,
     QLinearGradient,
     QPainter,
     QPen,
@@ -389,6 +388,8 @@ class TextEffectRenderer:
         load_rich_text_html(
             doc,
             to_rich_text_html(self.document()),
+            letter_spacing_fallback=self.fontformat.letter_spacing,
+            vertical=self.fontformat.vertical,
         )
         doc.setDefaultTextOption(self.document().defaultTextOption())
         cursor = QTextCursor(doc)
@@ -400,7 +401,6 @@ class TextEffectRenderer:
             Qt.PenCapStyle.RoundCap,
             Qt.PenJoinStyle.RoundJoin,
         )
-        letter_spacing = self.fontformat.letter_spacing * 100
         while block.isValid():
             it = block.begin()
             while not it.atEnd():
@@ -422,11 +422,6 @@ class TextEffectRenderer:
                 char_format.setProperty(
                     GLYPH_DILATED_STROKE_FORMAT_PROPERTY, True
                 )
-                if letter_spacing != 100 and not self.fontformat.vertical:
-                    char_format.setFontLetterSpacingType(
-                        QFont.SpacingType.PercentageSpacing
-                    )
-                    char_format.setFontLetterSpacing(letter_spacing)
                 cursor.mergeCharFormat(char_format)
                 it += 1
             block = block.next()

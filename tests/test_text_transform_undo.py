@@ -855,6 +855,39 @@ class TextTransformPanelTest(TextTransformTestBase):
 
         set_transform_states.assert_called_once()
 
+    def test_cursor_letter_spacing_does_not_replace_item_default(self):
+        previous_canvas = getattr(SW, 'canvas', None)
+        previous_active_format = C.active_format
+        canvas = Canvas()
+        SW.canvas = canvas
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        self.addCleanup(setattr, C, 'active_format', previous_active_format)
+        self.addCleanup(canvas.gv.deleteLater)
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.setParentItem(canvas.textLayer)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setLetterSpacing(1.8)
+
+        with patch.object(
+            shared,
+            'register_view_widget',
+            lambda *_args: None,
+            create=True,
+        ):
+            format_panel = FontFormatPanel(self.app)
+        format_panel.global_format = FontFormat()
+        self.addCleanup(format_panel.deleteLater)
+
+        format_panel.set_textblk_item(item)
+        self.assertEqual(format_panel.letterSpacingBox.value(), 1.8)
+        format_panel.set_textblk_item()
+
+        self.assertEqual(item.fontformat.letter_spacing, 1.15)
+
     def test_add_menu_and_hover_actions_are_generated_from_registry(self):
         panel = self._make_panel()
         self.assertEqual(panel.add_transform_button.text(), 'Add')

@@ -538,6 +538,9 @@ class SceneTextManager(QObject):
         textblk_item.emphasis_format_changed.connect(
             self.on_emphasis_format_changed
         )
+        textblk_item.letter_spacing_format_changed.connect(
+            self.on_letter_spacing_format_changed
+        )
         textblk_item.pasted.connect(self.onBlkitemPaste)
         return textblk_item
 
@@ -590,6 +593,11 @@ class SceneTextManager(QObject):
             self.formatpanel.textadvancedfmt_panel.set_tate_chu_yoko_enabled(
                 item.tate_chu_yoko_enabled()
             )
+
+    def on_letter_spacing_format_changed(self, value: float) -> None:
+        item = self.sender()
+        if item is self.formatpanel.textblk_item:
+            self.formatpanel.set_letter_spacing_value(value)
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]

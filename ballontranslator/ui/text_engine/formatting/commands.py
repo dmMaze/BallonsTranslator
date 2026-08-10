@@ -109,11 +109,10 @@ def ffmt_change_bold(param_name: str, values: str, act_ffmt: FontFormat, is_glob
     for blkitem, value in zip(blkitems, values):
         blkitem.setFontWeight(value, **set_kwargs)
 
-@font_formating(push_undostack=True)
+@font_formating()
 def ffmt_change_letter_spacing(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
-        blkitem.setLetterSpacing(value, **set_kwargs)
+        blkitem.setLetterSpacing(value)
 
 @font_formating(push_undostack=True)
 def ffmt_change_line_spacing(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):

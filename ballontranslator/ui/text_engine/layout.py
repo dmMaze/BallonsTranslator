@@ -12,7 +12,7 @@ from functools import lru_cache, cached_property
 from ..misc import pixmap2ndarray, LruIgnoreArg
 from ballontranslator.utils import shared as C
 from ballontranslator.utils.fontformat import pt2px, FontFormat, LineSpacingType
-from .annotations import text_combine_upright_ranges
+from .annotations import letter_spacing_value, text_combine_upright_ranges
 from .rendering.indexing import (
     _grapheme_count,
     _utf16_char_at,
@@ -138,10 +138,18 @@ def _block_cursor_position(block: QTextBlock, cursor_position: int) -> int:
 
 
 class CharFontFormat:
-    def __init__(self, fcmt: QTextCharFormat) -> None:
+    def __init__(
+        self,
+        fcmt: QTextCharFormat,
+        letter_spacing_fallback: float = 1.0,
+    ) -> None:
         font = fcmt.font()
         self.font = font
         self.font_metrics = QFontMetricsF(font)
+        self.letter_spacing = letter_spacing_value(
+            fcmt,
+            letter_spacing_fallback,
+        )
 
     @cached_property
     def br(self) -> QRectF:
@@ -382,7 +390,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             while not it.atEnd():
                 fragment = it.fragment()
                 fcmt = fragment.charFormat()
-                cfmt = CharFontFormat(fcmt)
+                cfmt = CharFontFormat(fcmt, self.letter_spacing)
                 charfmt_lst.append(cfmt)
                 if cfmt.size > self._max_font_size:
                     self._max_font_size = cfmt.size
@@ -1220,7 +1228,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
     
     def layoutBlock(self, block: QTextBlock):
         doc = self.document()
-        ls = self.letter_spacing
 
         block.clearLayout()
         doc_margin = self._effect_padding
@@ -1329,7 +1336,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     space_shift = num_lspaces * cfmt.space_width
                 line_char_ids.append(char_idx)
                 space_w = cfmt.space_width
-                let_sp_offset = cfmt.tbr.height() * (ls - 1)
+                let_sp_offset = (
+                    cfmt.tbr.height() * (cfmt.letter_spacing - 1)
+                )
 
                 tbr_h = cfmt.tbr.height() + let_sp_offset
                 char = (
@@ -1360,7 +1369,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     text_combine_height = max(
                         cfmt.tbr.height(), natural_bounds.height()
                     )
-                    let_sp_offset = text_combine_height * (ls - 1)
+                    let_sp_offset = (
+                        text_combine_height * (cfmt.letter_spacing - 1)
+                    )
                     tbr_h = text_combine_height + let_sp_offset
                     text_combine_line_width = (
                         cfmt.tbr.width()
@@ -1536,13 +1547,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)
         self.per_char_records.append(char_records)
-
-    def setLetterSpacing(self, letter_spacing: float):
-        if self.letter_spacing != letter_spacing:
-            self.letter_spacing = letter_spacing
-            self.reLayout()
-
-
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
 

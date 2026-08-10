@@ -1,16 +1,17 @@
-"""Persistent rich-text annotations unsupported by Qt's HTML subset.
+"""Rich-text extensions that Qt cannot export by itself.
 
-Qt remains the live editing model.  Annotation meaning is stored on character
-formats, while a small versioned metadata record carries those properties
-through the existing ``TextBlock.rich_text`` HTML boundary.
+Qt remains the live editing model. Character-format properties carry live
+meaning; one semantic inline HTML boundary stores emphasis, tate-chu-yoko,
+letter spacing, and their exact application-owned values.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 from enum import IntEnum
-from html import escape
+from html import escape, unescape
 from html.parser import HTMLParser
-import json
+import math
 from typing import Optional
 from uuid import uuid4
 
@@ -22,15 +23,16 @@ from qtpy.QtGui import (
     QTextDocument,
     QTextDocumentFragment,
     QTextFormat,
+    QFont,
 )
 
 from ballontranslator.utils.logger import logger as LOGGER
 
 
-RICH_TEXT_METADATA_NAME = 'ballontranslator-rich-text'
-RICH_TEXT_METADATA_VERSION = 1
 RICH_TEXT_MIME_TYPE = 'application/x-ballonstranslator-rich-text'
 MAX_RICH_TEXT_MIME_BYTES = 16 * 1024 * 1024
+LETTER_SPACING_ATTRIBUTE = 'data-btrans-letter-spacing'
+TEXT_COMBINE_ID_ATTRIBUTE = 'data-btrans-text-combine-id'
 
 
 def _enum_value(value: object) -> int:
@@ -53,6 +55,9 @@ class AnnotationProperty(IntEnum):
     # future ruby range. The ID preserves adjacent combined-run boundaries.
     TEXT_COMBINE_UPRIGHT = _enum_value(QTextFormat.Property.UserProperty) + 1340
     TEXT_COMBINE_ID = _enum_value(QTextFormat.Property.UserProperty) + 1341
+
+    # Qt does not round-trip QFont letter spacing through QTextDocument HTML.
+    LETTER_SPACING = _enum_value(QTextFormat.Property.UserProperty) + 1380
 
 
 EMPHASIS_STYLES = (
@@ -78,198 +83,340 @@ DEFAULT_EMPHASIS_POSITION = 'over right'
 TEXT_COMBINE_NONE = 'none'
 TEXT_COMBINE_ALL = 'all'
 MAX_ANNOTATION_ID_LENGTH = 128
+MIN_LETTER_SPACING = 0.0
+MAX_LETTER_SPACING = 10.0
 
 
-class _RichTextMetadataParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.contents = []
+@dataclass(frozen=True)
+class _InlineExtension:
+    """Formatting Qt drops when serializing HTML.
+
+    >>> _InlineExtension().is_empty()
+    True
+    """
+
+    emphasis_style: str = 'none'
+    emphasis_position: str = DEFAULT_EMPHASIS_POSITION
+    text_combine_id: str = ''
+    letter_spacing: Optional[float] = None
+
+    def is_empty(self) -> bool:
+        return (
+            self.emphasis_style == 'none'
+            and not self.text_combine_id
+            and self.letter_spacing is None
+        )
+
+
+def _canonical_letter_spacing(value: object) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    if (
+        not math.isfinite(value)
+        or value < MIN_LETTER_SPACING
+        or value > MAX_LETTER_SPACING
+    ):
+        return None
+    return value
+
+
+def _parse_letter_spacing_attribute(value: object) -> Optional[float]:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    return _canonical_letter_spacing(parsed)
+
+
+def _style_declarations(value: object) -> dict[str, str]:
+    if not isinstance(value, str):
+        return {}
+    declarations = {}
+    for declaration in value.split(';'):
+        name, separator, style_value = declaration.partition(':')
+        if separator:
+            declarations[name.strip().lower()] = style_value.strip().lower()
+    return declarations
+
+
+def _span_extension(
+    inherited: _InlineExtension,
+    attrs: list,
+) -> _InlineExtension:
+    attributes = {str(name).lower(): value for name, value in attrs}
+    styles = _style_declarations(attributes.get('style'))
+    extension = inherited
+
+    if 'text-emphasis-style' in styles:
+        style = styles['text-emphasis-style']
+        if style not in EMPHASIS_STYLES:
+            LOGGER.warning('Ignoring invalid text emphasis style: %r', style)
+            style = 'none'
+        position = styles.get(
+            'text-emphasis-position',
+            inherited.emphasis_position,
+        )
+        if position not in EMPHASIS_POSITIONS:
+            LOGGER.warning(
+                'Ignoring invalid text emphasis position: %r', position
+            )
+            position = DEFAULT_EMPHASIS_POSITION
+        extension = replace(
+            extension,
+            emphasis_style=style,
+            emphasis_position=position,
+        )
+
+    if 'text-combine-upright' in styles:
+        value = styles['text-combine-upright']
+        if value == TEXT_COMBINE_ALL:
+            group_id = attributes.get(TEXT_COMBINE_ID_ATTRIBUTE)
+            if not group_id:
+                group_id = uuid4().hex
+            elif len(group_id) > MAX_ANNOTATION_ID_LENGTH:
+                LOGGER.warning('Ignoring overlong tate-chu-yoko group ID')
+                group_id = uuid4().hex
+            extension = replace(extension, text_combine_id=group_id)
+        elif value == TEXT_COMBINE_NONE:
+            extension = replace(extension, text_combine_id='')
+        else:
+            LOGGER.warning('Ignoring invalid text-combine-upright: %r', value)
+            extension = replace(extension, text_combine_id='')
+
+    if LETTER_SPACING_ATTRIBUTE in attributes:
+        spacing = _parse_letter_spacing_attribute(
+            attributes[LETTER_SPACING_ATTRIBUTE]
+        )
+        if spacing is None:
+            LOGGER.warning(
+                'Ignoring invalid inline letter spacing: %r',
+                attributes[LETTER_SPACING_ATTRIBUTE],
+            )
+        extension = replace(extension, letter_spacing=spacing)
+    return extension
+
+
+def _letter_spacing_modifier(
+    value: float,
+    vertical: bool,
+) -> QTextCharFormat:
+    modifier = QTextCharFormat()
+    modifier.setProperty(AnnotationProperty.LETTER_SPACING, value)
+    modifier.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+    modifier.setFontLetterSpacing(100.0 if vertical else value * 100.0)
+    return modifier
+
+
+def _apply_document_letter_spacing(
+    document: QTextDocument,
+    value: float,
+    vertical: bool,
+) -> None:
+    cursor = QTextCursor(document)
+    cursor.select(QTextCursor.SelectionType.Document)
+    modifier = _letter_spacing_modifier(value, vertical)
+    cursor.mergeCharFormat(modifier)
+    cursor.mergeBlockCharFormat(modifier)
+
+
+def _utf16_length(text: str) -> int:
+    return len(text.encode('utf-16-le')) // 2
+
+
+def _document_blocks(document: QTextDocument) -> tuple[QTextBlock, ...]:
+    blocks = []
+    block = document.firstBlock()
+    while block.isValid():
+        blocks.append(block)
+        block = block.next()
+    return tuple(blocks)
+
+
+class _InlineExtensionRangeParser(HTMLParser):
+    """Read inline extensions using loaded Qt block positions.
+
+    >>> _parse_letter_spacing_attribute('1.15')
+    1.15
+    """
+
+    def __init__(self, document: QTextDocument) -> None:
+        super().__init__(convert_charrefs=False)
+        self.blocks = _document_blocks(document)
+        self.block_index = -1
+        self.block_offset = 0
+        self.in_block = False
+        self.extension = _InlineExtension()
+        self.extension_stack: list[_InlineExtension] = []
+        self.ranges: list[tuple[int, int, _InlineExtension]] = []
+
+    def _start_block(self) -> None:
+        self.block_index += 1
+        self.block_offset = 0
+        self.in_block = True
+
+    def _current_block(self) -> Optional[QTextBlock]:
+        if self.block_index < 0 and self.blocks:
+            self._start_block()
+        if 0 <= self.block_index < len(self.blocks):
+            return self.blocks[self.block_index]
+        return None
+
+    def _advance_text(self, text: str) -> None:
+        block = self._current_block()
+        length = _utf16_length(text)
+        if block is not None and not self.extension.is_empty() and length:
+            start = block.position() + self.block_offset
+            if (
+                self.ranges
+                and self.ranges[-1][0] + self.ranges[-1][1] == start
+                and self.ranges[-1][2] == self.extension
+            ):
+                old_start, old_length, extension = self.ranges[-1]
+                self.ranges[-1] = (
+                    old_start,
+                    old_length + length,
+                    extension,
+                )
+            else:
+                self.ranges.append((start, length, self.extension))
+        self.block_offset += length
+
+    def _advance_object(self) -> None:
+        block = self._current_block()
+        if block is not None and self.block_offset < _utf16_length(block.text()):
+            self._advance_text('\ufffc')
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
-        if tag.lower() != 'meta':
+        tag = tag.lower()
+        if tag in ('p', 'li'):
+            self._start_block()
+        if tag == 'span':
+            self.extension_stack.append(self.extension)
+            self.extension = _span_extension(self.extension, attrs)
+        elif tag == 'br':
+            self._advance_object()
+        elif tag == 'img':
+            self._advance_object()
+
+    def handle_startendtag(self, tag: str, attrs: list) -> None:
+        tag = tag.lower()
+        if tag in ('br', 'img'):
+            self._advance_object()
             return
-        attributes = {str(name).lower(): value for name, value in attrs}
-        if attributes.get('name') == RICH_TEXT_METADATA_NAME:
-            self.contents.append(attributes.get('content', ''))
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
 
-    handle_startendtag = handle_starttag
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag == 'span' and self.extension_stack:
+            self.extension = self.extension_stack.pop()
+        elif tag in ('p', 'li'):
+            self.in_block = False
+
+    def handle_data(self, data: str) -> None:
+        if self.in_block or (
+            self.block_index < 0 and not self.extension.is_empty()
+        ):
+            self._advance_text(data)
+
+    def handle_entityref(self, name: str) -> None:
+        if self.in_block or (
+            self.block_index < 0 and not self.extension.is_empty()
+        ):
+            self._advance_text(unescape(f'&{name};'))
+
+    def handle_charref(self, name: str) -> None:
+        if self.in_block or (
+            self.block_index < 0 and not self.extension.is_empty()
+        ):
+            self._advance_text(unescape(f'&#{name};'))
 
 
-def _read_metadata(html: str) -> Optional[dict]:
-    parser = _RichTextMetadataParser()
+def _inline_extension_ranges_from_html(
+    document: QTextDocument,
+    html: str,
+) -> tuple[tuple[int, int, _InlineExtension], ...]:
+    parser = _InlineExtensionRangeParser(document)
     try:
         parser.feed(html)
         parser.close()
     except (ValueError, TypeError) as error:
-        LOGGER.warning('Unable to parse rich-text annotation metadata: %s', error)
-        return None
-    if not parser.contents:
-        return None
-    if len(parser.contents) > 1:
-        LOGGER.warning('Ignoring duplicate rich-text annotation metadata')
-    try:
-        payload = json.loads(parser.contents[0])
-    except (json.JSONDecodeError, TypeError) as error:
-        LOGGER.warning('Ignoring malformed rich-text annotation metadata: %s', error)
-        return None
-    if not isinstance(payload, dict):
-        LOGGER.warning('Ignoring non-object rich-text annotation metadata')
-        return None
-    if payload.get('version') != RICH_TEXT_METADATA_VERSION:
-        LOGGER.warning(
-            'Ignoring unsupported rich-text annotation metadata version: %r',
-            payload.get('version'),
-        )
-        return None
-    return payload
+        LOGGER.warning('Unable to parse rich-text extensions: %s', error)
+        return ()
+    return tuple(parser.ranges)
 
 
-def _valid_emphasis_entry(
-    entry: object,
-    document_end: int,
-) -> Optional[tuple[int, int, str, str]]:
-    if not isinstance(entry, dict) or entry.get('kind') != 'emphasis':
-        return None
-    start = entry.get('start')
-    length = entry.get('length')
-    style = entry.get('style')
-    position = entry.get('position', DEFAULT_EMPHASIS_POSITION)
-    if (
-        type(start) is not int
-        or type(length) is not int
-        or start < 0
-        or length <= 0
-        or start + length > document_end
-        or style not in EMPHASIS_STYLES
-        or style == 'none'
-        or position not in EMPHASIS_POSITIONS
-    ):
-        return None
-    return start, length, style, position
-
-
-def _valid_text_combine_entry(
-    entry: object,
-    document_end: int,
-) -> Optional[tuple[int, int, str]]:
-    if not isinstance(entry, dict) or entry.get('kind') != 'text-combine-upright':
-        return None
-    start = entry.get('start')
-    length = entry.get('length')
-    value = entry.get('value')
-    group_id = entry.get('id')
-    if (
-        type(start) is not int
-        or type(length) is not int
-        or start < 0
-        or length <= 0
-        or start + length > document_end
-        or value != TEXT_COMBINE_ALL
-        or not isinstance(group_id, str)
-        or not group_id
-        or len(group_id) > MAX_ANNOTATION_ID_LENGTH
-    ):
-        return None
-    return start, length, group_id
-
-
-def _restore_annotations(document: QTextDocument, payload: dict) -> None:
-    entries = payload.get('annotations', [])
-    if not isinstance(entries, list):
-        LOGGER.warning('Ignoring invalid rich-text annotation list')
-        return
+def _apply_inline_extension_ranges(
+    document: QTextDocument,
+    ranges: tuple[tuple[int, int, _InlineExtension], ...],
+    vertical: bool,
+) -> None:
     document_end = max(0, document.characterCount() - 1)
     cursor = QTextCursor(document)
-    cursor.beginEditBlock()
-    try:
-        for entry in entries:
-            modifier = QTextCharFormat()
-            emphasis = _valid_emphasis_entry(entry, document_end)
-            text_combine = _valid_text_combine_entry(entry, document_end)
-            if emphasis is not None:
-                start, length, style, position = emphasis
-                modifier.setProperty(AnnotationProperty.EMPHASIS_STYLE, style)
-                modifier.setProperty(
-                    AnnotationProperty.EMPHASIS_POSITION, position
-                )
-            elif text_combine is not None:
-                start, length, group_id = text_combine
-                modifier.setProperty(
-                    AnnotationProperty.TEXT_COMBINE_UPRIGHT,
-                    TEXT_COMBINE_ALL,
-                )
-                modifier.setProperty(
-                    AnnotationProperty.TEXT_COMBINE_ID,
-                    group_id,
-                )
-            else:
-                LOGGER.warning('Ignoring invalid rich-text annotation: %r', entry)
-                continue
-            cursor.setPosition(start)
-            cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
-            cursor.mergeCharFormat(modifier)
-    finally:
-        cursor.endEditBlock()
+    for start, length, extension in ranges:
+        if start < 0 or length <= 0 or start + length > document_end:
+            LOGGER.warning(
+                'Ignoring out-of-range rich-text extension: %r',
+                (start, length, extension),
+            )
+            continue
+        modifier = QTextCharFormat()
+        if extension.emphasis_style != 'none':
+            modifier.setProperty(
+                AnnotationProperty.EMPHASIS_STYLE,
+                extension.emphasis_style,
+            )
+            modifier.setProperty(
+                AnnotationProperty.EMPHASIS_POSITION,
+                extension.emphasis_position,
+            )
+        if extension.text_combine_id:
+            modifier.setProperty(
+                AnnotationProperty.TEXT_COMBINE_UPRIGHT,
+                TEXT_COMBINE_ALL,
+            )
+            modifier.setProperty(
+                AnnotationProperty.TEXT_COMBINE_ID,
+                extension.text_combine_id,
+            )
+        if extension.letter_spacing is not None:
+            modifier.setProperty(
+                AnnotationProperty.LETTER_SPACING,
+                extension.letter_spacing,
+            )
+            modifier.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
+            modifier.setFontLetterSpacing(
+                100.0 if vertical else extension.letter_spacing * 100.0
+            )
+        cursor.setPosition(start)
+        cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+        cursor.mergeCharFormat(modifier)
 
 
-def load_rich_text_html(document: QTextDocument, html: str) -> None:
-    """Load old Qt HTML or extended annotation HTML into ``document``.
-
-    >>> isinstance(RICH_TEXT_METADATA_VERSION, int)
-    True
-    """
-    payload = _read_metadata(html)
+def load_rich_text_html(
+    document: QTextDocument,
+    html: str,
+    *,
+    letter_spacing_fallback: Optional[float] = None,
+    vertical: bool = False,
+) -> None:
+    """Load old Qt HTML or semantic extension HTML into ``document``."""
     undo_enabled = document.isUndoRedoEnabled()
     document.setUndoRedoEnabled(False)
     try:
         document.setHtml(html)
-        if payload is not None:
-            _restore_annotations(document, payload)
+        extension_ranges = _inline_extension_ranges_from_html(document, html)
+        fallback = _canonical_letter_spacing(letter_spacing_fallback)
+        if fallback is not None:
+            # Old HTML has no inline spacing. Seed its item-wide value; the
+            # next save writes explicit spans for every resulting range.
+            _apply_document_letter_spacing(document, fallback, vertical)
+        _apply_inline_extension_ranges(document, extension_ranges, vertical)
     finally:
         document.setUndoRedoEnabled(undo_enabled)
-
-
-def _emphasis_entries(document: QTextDocument) -> list[dict]:
-    entries = []
-    block = document.firstBlock()
-    while block.isValid():
-        iterator = block.begin()
-        while not iterator.atEnd():
-            fragment = iterator.fragment()
-            if fragment.isValid() and fragment.length() > 0:
-                char_format = fragment.charFormat()
-                style = str(
-                    char_format.property(AnnotationProperty.EMPHASIS_STYLE) or ''
-                )
-                position = str(
-                    char_format.property(AnnotationProperty.EMPHASIS_POSITION)
-                    or DEFAULT_EMPHASIS_POSITION
-                )
-                if (
-                    style in EMPHASIS_STYLES
-                    and style != 'none'
-                    and position in EMPHASIS_POSITIONS
-                ):
-                    entry = {
-                        'kind': 'emphasis',
-                        'start': fragment.position(),
-                        'length': fragment.length(),
-                        'style': style,
-                        'position': position,
-                    }
-                    if (
-                        entries
-                        and entries[-1]['start'] + entries[-1]['length']
-                        == entry['start']
-                        and entries[-1]['style'] == style
-                        and entries[-1]['position'] == position
-                    ):
-                        entries[-1]['length'] += entry['length']
-                    else:
-                        entries.append(entry)
-            iterator += 1
-        block = block.next()
-    return entries
 
 
 def text_combine_upright_values(
@@ -315,53 +462,258 @@ def text_combine_upright_ranges(
     return tuple(ranges)
 
 
-def _text_combine_entries(document: QTextDocument) -> list[dict]:
-    entries = []
+def _inline_extension_ranges(
+    document: QTextDocument,
+) -> list[tuple[int, int, _InlineExtension]]:
+    fragments = []
+    has_explicit_spacing = False
     block = document.firstBlock()
     while block.isValid():
-        for start, length, group_id in text_combine_upright_ranges(block):
-            entries.append(
-                {
-                    'kind': 'text-combine-upright',
-                    'start': block.position() + start,
-                    'length': length,
-                    'value': TEXT_COMBINE_ALL,
-                    'id': group_id,
-                }
-            )
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid() and fragment.length() > 0:
+                spacing = _canonical_letter_spacing(
+                    fragment.charFormat().property(
+                        AnnotationProperty.LETTER_SPACING
+                    )
+                )
+                has_explicit_spacing = (
+                    has_explicit_spacing or spacing is not None
+                )
+                fragments.append(
+                    (
+                        fragment.position(),
+                        fragment.length(),
+                        fragment.charFormat(),
+                        spacing,
+                    )
+                )
+            iterator += 1
         block = block.next()
-    return entries
+
+    ranges = []
+    for start, length, char_format, spacing in fragments:
+        emphasis_style, emphasis_position = emphasis_values(char_format)
+        _combine_value, text_combine_id = text_combine_upright_values(
+            char_format
+        )
+        extension = _InlineExtension(
+            emphasis_style=emphasis_style,
+            emphasis_position=emphasis_position,
+            text_combine_id=text_combine_id,
+            letter_spacing=(
+                1.0 if has_explicit_spacing and spacing is None else spacing
+            ),
+        )
+        if extension.is_empty():
+            continue
+        if (
+            ranges
+            and ranges[-1][0] + ranges[-1][1] == start
+            and ranges[-1][2] == extension
+        ):
+            old_start, old_length, old_extension = ranges[-1]
+            ranges[-1] = (
+                old_start,
+                old_length + length,
+                old_extension,
+            )
+        else:
+            ranges.append((start, length, extension))
+    return ranges
+
+
+def _format_spacing_number(value: float) -> str:
+    if math.isclose(value, 0.0, abs_tol=1e-12):
+        value = 0.0
+    return format(value, '.12g')
+
+
+def _inline_extension_span(text: str, extension: _InlineExtension) -> str:
+    styles = []
+    attributes = []
+    if extension.emphasis_style != 'none':
+        styles.extend(
+            (
+                f'text-emphasis-style: {extension.emphasis_style}',
+                f'text-emphasis-position: {extension.emphasis_position}',
+            )
+        )
+    if extension.text_combine_id:
+        styles.append('text-combine-upright: all')
+        attributes.append(
+            f'{TEXT_COMBINE_ID_ATTRIBUTE}="'
+            f'{escape(extension.text_combine_id, quote=True)}"'
+        )
+    if extension.letter_spacing is not None:
+        multiplier = _format_spacing_number(extension.letter_spacing)
+        css_spacing = _format_spacing_number(
+            extension.letter_spacing - 1.0
+        )
+        styles.append(f'letter-spacing: {css_spacing}em')
+        attributes.append(f'{LETTER_SPACING_ATTRIBUTE}="{multiplier}"')
+    style_attribute = f'style="{"; ".join(styles)};"'
+    suffix = ' '.join((style_attribute, *attributes))
+    return f'<span {suffix}>{text}</span>'
+
+
+class _InlineExtensionHTMLExporter(HTMLParser):
+    """Inject inline extensions without replacing Qt's HTML serializer.
+
+    >>> _format_spacing_number(1.15)
+    '1.15'
+    """
+
+    def __init__(
+        self,
+        document: QTextDocument,
+        ranges: list[tuple[int, int, _InlineExtension]],
+    ) -> None:
+        super().__init__(convert_charrefs=False)
+        self.blocks = _document_blocks(document)
+        self.ranges = ranges
+        self.range_index = 0
+        self.block_index = -1
+        self.block_offset = 0
+        self.in_block = False
+        self.output: list[str] = []
+
+    def _start_block(self) -> None:
+        self.block_index += 1
+        self.block_offset = 0
+        self.in_block = True
+
+    def _current_block(self) -> Optional[QTextBlock]:
+        if 0 <= self.block_index < len(self.blocks):
+            return self.blocks[self.block_index]
+        return None
+
+    def _extension_at(self, position: int) -> Optional[_InlineExtension]:
+        while self.range_index < len(self.ranges):
+            start, length, _value = self.ranges[self.range_index]
+            if start + length > position:
+                break
+            self.range_index += 1
+        if self.range_index >= len(self.ranges):
+            return None
+        start, length, extension = self.ranges[self.range_index]
+        if start <= position < start + length:
+            return extension
+        return None
+
+    def _append_text(self, raw: str, decoded: Optional[str] = None) -> None:
+        if not self.in_block:
+            self.output.append(raw)
+            return
+        block = self._current_block()
+        if block is None:
+            self.output.append(raw)
+            return
+        decoded = raw if decoded is None else decoded
+        if raw != decoded:
+            position = block.position() + self.block_offset
+            extension = self._extension_at(position)
+            self.output.append(
+                raw
+                if extension is None
+                else _inline_extension_span(raw, extension)
+            )
+            self.block_offset += _utf16_length(decoded)
+            return
+
+        segments: list[tuple[Optional[_InlineExtension], str]] = []
+        for character in raw:
+            position = block.position() + self.block_offset
+            extension = self._extension_at(position)
+            if segments and segments[-1][0] == extension:
+                old_extension, old_text = segments[-1]
+                segments[-1] = (old_extension, old_text + character)
+            else:
+                segments.append((extension, character))
+            self.block_offset += _utf16_length(character)
+        for extension, text in segments:
+            self.output.append(
+                text
+                if extension is None
+                else _inline_extension_span(text, extension)
+            )
+
+    def _advance_object(self) -> None:
+        block = self._current_block()
+        if block is not None and self.block_offset < _utf16_length(block.text()):
+            self.block_offset += 1
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        tag = tag.lower()
+        if tag in ('p', 'li'):
+            self._start_block()
+        self.output.append(self.get_starttag_text())
+        if tag in ('br', 'img'):
+            self._advance_object()
+
+    def handle_startendtag(self, tag: str, attrs: list) -> None:
+        self.output.append(self.get_starttag_text())
+        if tag.lower() in ('br', 'img'):
+            self._advance_object()
+
+    def handle_endtag(self, tag: str) -> None:
+        self.output.append(f'</{tag}>')
+        if tag.lower() in ('p', 'li'):
+            self.in_block = False
+
+    def handle_data(self, data: str) -> None:
+        self._append_text(data)
+
+    def handle_entityref(self, name: str) -> None:
+        raw = f'&{name};'
+        self._append_text(raw, unescape(raw))
+
+    def handle_charref(self, name: str) -> None:
+        raw = f'&#{name};'
+        self._append_text(raw, unescape(raw))
+
+    def handle_comment(self, data: str) -> None:
+        self.output.append(f'<!--{data}-->')
+
+    def handle_decl(self, decl: str) -> None:
+        if decl.lower().startswith('doctype html'):
+            self.output.append('<!DOCTYPE html>')
+        else:
+            self.output.append(f'<!{decl}>')
+
+    def handle_pi(self, data: str) -> None:
+        self.output.append(f'<?{data}>')
+
+    def unknown_decl(self, data: str) -> None:
+        self.output.append(f'<![{data}]>')
+
+
+def _add_inline_extensions(
+    document: QTextDocument,
+    html: str,
+) -> str:
+    ranges = _inline_extension_ranges(document)
+    if not ranges:
+        return html
+    parser = _InlineExtensionHTMLExporter(document, ranges)
+    try:
+        parser.feed(html)
+        parser.close()
+    except (ValueError, TypeError) as error:
+        LOGGER.warning('Unable to export rich-text extensions: %s', error)
+        return html
+    return ''.join(parser.output)
 
 
 def to_rich_text_html(
     document: QTextDocument,
     html: Optional[str] = None,
 ) -> str:
-    """Add versioned annotation metadata to Qt's existing HTML output."""
+    """Extend Qt's HTML with semantic inline formatting."""
     if html is None:
         html = document.toHtml()
-    entries = sorted(
-        _emphasis_entries(document) + _text_combine_entries(document),
-        key=lambda entry: (entry['start'], entry['kind']),
-    )
-    if not entries:
-        return html
-    payload = json.dumps(
-        {
-            'version': RICH_TEXT_METADATA_VERSION,
-            'annotations': entries,
-        },
-        ensure_ascii=False,
-        separators=(',', ':'),
-    )
-    metadata = (
-        f'<meta name="{RICH_TEXT_METADATA_NAME}" '
-        f'content="{escape(payload, quote=True)}" />'
-    )
-    head_end = html.lower().find('</head>')
-    if head_end < 0:
-        return metadata + html
-    return html[:head_end] + metadata + html[head_end:]
+    return _add_inline_extensions(document, html)
 
 
 def emphasis_values(char_format: QTextCharFormat) -> tuple[str, str]:
@@ -388,6 +740,79 @@ def apply_emphasis(cursor: QTextCursor, style: str, position: str) -> None:
     modifier.setProperty(AnnotationProperty.EMPHASIS_STYLE, style)
     modifier.setProperty(AnnotationProperty.EMPHASIS_POSITION, position)
     cursor.mergeCharFormat(modifier)
+
+
+def letter_spacing_value(
+    char_format: QTextCharFormat,
+    fallback: float = 1.0,
+) -> float:
+    """Return semantic character spacing as a font-size multiplier."""
+    value = _canonical_letter_spacing(
+        char_format.property(AnnotationProperty.LETTER_SPACING)
+    )
+    if value is not None:
+        return value
+    fallback_value = _canonical_letter_spacing(fallback)
+    return 1.0 if fallback_value is None else fallback_value
+
+
+def apply_letter_spacing(
+    cursor: QTextCursor,
+    value: float,
+    *,
+    vertical: bool,
+) -> None:
+    """Merge character spacing into a selection or insertion format."""
+    canonical_value = _canonical_letter_spacing(value)
+    if canonical_value is None:
+        raise ValueError(f'unsupported letter spacing: {value!r}')
+    cursor.mergeCharFormat(
+        _letter_spacing_modifier(canonical_value, vertical)
+    )
+
+
+def set_document_letter_spacing_writing_mode(
+    document: QTextDocument,
+    *,
+    vertical: bool,
+    fallback: float,
+) -> None:
+    """Preserve semantic spacing while changing its Qt shaping value."""
+    fallback_value = _canonical_letter_spacing(fallback)
+    fallback = 1.0 if fallback_value is None else fallback_value
+    ranges = []
+    block = document.firstBlock()
+    while block.isValid():
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid() and fragment.length() > 0:
+                ranges.append(
+                    (
+                        fragment.position(),
+                        fragment.length(),
+                        letter_spacing_value(fragment.charFormat(), fallback),
+                    )
+                )
+            iterator += 1
+        block = block.next()
+
+    cursor = QTextCursor(document)
+    cursor.beginEditBlock()
+    try:
+        if not ranges:
+            _apply_document_letter_spacing(document, fallback, vertical)
+        for start, length, value in ranges:
+            cursor.setPosition(start)
+            cursor.setPosition(
+                start + length,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            cursor.mergeCharFormat(
+                _letter_spacing_modifier(value, vertical)
+            )
+    finally:
+        cursor.endEditBlock()
 
 
 def apply_text_combine_upright(
@@ -434,7 +859,7 @@ def _remap_text_combine_ids(document: QTextDocument) -> None:
 
 
 def create_rich_text_mime(cursor: QTextCursor) -> QMimeData:
-    """Create interoperable clipboard data plus exact annotation metadata."""
+    """Create interoperable clipboard data with exact inline extensions."""
     mime = QMimeData()
     if not cursor.hasSelection():
         return mime
@@ -444,7 +869,7 @@ def create_rich_text_mime(cursor: QTextCursor) -> QMimeData:
     target.insertFragment(QTextDocumentFragment(cursor))
     extended_html = to_rich_text_html(document)
     mime.setText(document.toPlainText())
-    mime.setHtml(document.toHtml())
+    mime.setHtml(extended_html)
     mime.setData(
         RICH_TEXT_MIME_TYPE,
         QByteArray(extended_html.encode('utf-8')),
@@ -452,7 +877,12 @@ def create_rich_text_mime(cursor: QTextCursor) -> QMimeData:
     return mime
 
 
-def insert_rich_text_mime(cursor: QTextCursor, mime: QMimeData) -> bool:
+def insert_rich_text_mime(
+    cursor: QTextCursor,
+    mime: QMimeData,
+    *,
+    vertical: bool = False,
+) -> bool:
     """Insert the custom rich-text representation when it is valid."""
     if not mime.hasFormat(RICH_TEXT_MIME_TYPE):
         return False
@@ -466,7 +896,7 @@ def insert_rich_text_mime(cursor: QTextCursor, mime: QMimeData) -> bool:
         LOGGER.warning('Ignoring non-UTF-8 rich-text clipboard payload')
         return False
     document = QTextDocument()
-    load_rich_text_html(document, html)
+    load_rich_text_html(document, html, vertical=vertical)
     _remap_text_combine_ids(document)
     cursor.insertFragment(QTextDocumentFragment(document))
     return True

@@ -20,12 +20,15 @@ from qtpy.QtWidgets import QApplication, QGraphicsScene
 
 from ballontranslator.ui.misc import doc_replace, pixmap2ndarray
 from ballontranslator.ui.text_engine.annotations import (
-    RICH_TEXT_METADATA_NAME,
+    LETTER_SPACING_ATTRIBUTE,
+    TEXT_COMBINE_ID_ATTRIBUTE,
     apply_emphasis,
+    apply_letter_spacing,
     apply_text_combine_upright,
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
+    letter_spacing_value,
     load_rich_text_html,
     text_combine_upright_ranges,
     text_combine_upright_values,
@@ -70,7 +73,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.translation = text
         return TextBlkItem(block, 0)
 
-    def test_old_qt_html_loads_without_metadata_or_format_loss(self):
+    def test_old_qt_html_loads_without_extensions_or_format_loss(self):
         source = QTextDocument()
         source.setPlainText('old rich text')
         cursor = QTextCursor(source)
@@ -86,9 +89,12 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         self.assertEqual(restored.toPlainText(), 'old rich text')
         self.assertTrue(_format_at(restored, 0, 3).font().bold())
-        self.assertNotIn(RICH_TEXT_METADATA_NAME, to_rich_text_html(restored))
+        self.assertNotIn(
+            'text-emphasis-style',
+            to_rich_text_html(restored),
+        )
 
-    def test_metadata_round_trip_uses_qt_positions_and_keeps_fragment_style(self):
+    def test_emphasis_inline_round_trip_keeps_fragment_style(self):
         source = QTextDocument()
         source.setPlainText('A𠮷B')
         cursor = QTextCursor(source)
@@ -108,7 +114,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         legacy_reader = QTextDocument()
         legacy_reader.setHtml(html)
 
-        self.assertIn(RICH_TEXT_METADATA_NAME, html)
+        self.assertTrue(html.startswith('<!DOCTYPE html>'))
+        self.assertIn('text-emphasis-style: filled sesame', html)
+        self.assertIn('text-emphasis-position: under left', html)
+        self.assertNotIn('ballontranslator-rich-text', html)
         self.assertEqual(restored.toPlainText(), 'A𠮷B')
         self.assertEqual(legacy_reader.toPlainText(), 'A𠮷B')
         self.assertTrue(_format_at(legacy_reader, 1, 2).font().bold())
@@ -124,16 +133,13 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertTrue(restored_format.font().italic())
         self.assertEqual(restored_format.foreground().color(), QColor('#c02040'))
 
-    def test_invalid_metadata_drops_only_the_annotation(self):
+    def test_invalid_inline_extension_drops_only_the_annotation(self):
         source = QTextDocument()
         source.setPlainText('safe text')
         html = source.toHtml().replace(
-            '</head>',
-            '<meta name="ballontranslator-rich-text" '
-            'content="{&quot;version&quot;:1,&quot;annotations&quot;:['
-            '{&quot;kind&quot;:&quot;emphasis&quot;,&quot;start&quot;:999,'
-            '&quot;length&quot;:1,&quot;style&quot;:&quot;filled dot&quot;,'
-            '&quot;position&quot;:&quot;over right&quot;}]}" /></head>',
+            'safe text',
+            '<span style="text-emphasis-style: sparks; '
+            'text-emphasis-position: over right;">safe</span> text',
         )
         restored = QTextDocument()
 
@@ -143,6 +149,27 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(
             emphasis_values(_format_at(restored, 0)),
             ('none', 'over right'),
+        )
+
+    def test_invalid_letter_spacing_keeps_legacy_fallback(self):
+        source = QTextDocument()
+        source.setPlainText('safe text')
+        html = source.toHtml().replace(
+            'safe text',
+            f'<span {LETTER_SPACING_ATTRIBUTE}="wide">safe</span> text',
+        )
+        restored = QTextDocument()
+
+        load_rich_text_html(
+            restored,
+            html,
+            letter_spacing_fallback=1.25,
+        )
+
+        self.assertEqual(restored.toPlainText(), 'safe text')
+        self.assertEqual(
+            letter_spacing_value(_format_at(restored, 0)),
+            1.25,
         )
 
     def test_selection_and_insertion_format_are_independent(self):
@@ -172,6 +199,212 @@ class RichTextAnnotationTest(unittest.TestCase):
             ('open circle', 'under left'),
         )
 
+    def test_letter_spacing_selection_and_insertion_are_independent(self):
+        document = QTextDocument()
+        document.setPlainText('ABC')
+        cursor = QTextCursor(document)
+        cursor.setPosition(1)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        apply_letter_spacing(cursor, 1.4, vertical=False)
+
+        cursor.clearSelection()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        apply_letter_spacing(cursor, 0.8, vertical=False)
+        cursor.insertText('D')
+
+        self.assertEqual(letter_spacing_value(_format_at(document, 0)), 1.0)
+        self.assertEqual(letter_spacing_value(_format_at(document, 1)), 1.4)
+        self.assertEqual(letter_spacing_value(_format_at(document, 2)), 1.0)
+        self.assertEqual(letter_spacing_value(_format_at(document, 3)), 0.8)
+
+    def test_letter_spacing_inline_html_round_trip(self):
+        source = QTextDocument()
+        source.setPlainText('A𠮷&B\nCD')
+        cursor = QTextCursor(source)
+        cursor.setPosition(1)
+        cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+        apply_letter_spacing(cursor, 1.35, vertical=False)
+
+        html = to_rich_text_html(source)
+        restored = QTextDocument()
+        load_rich_text_html(restored, html)
+        restored_with_conflicting_fallback = QTextDocument()
+        load_rich_text_html(
+            restored_with_conflicting_fallback,
+            html,
+            letter_spacing_fallback=2.0,
+        )
+        legacy_reader = QTextDocument()
+        legacy_reader.setHtml(html)
+
+        self.assertIn('style="letter-spacing: 0.35em;"', html)
+        self.assertIn(
+            f'{LETTER_SPACING_ATTRIBUTE}="1.35"',
+            html,
+        )
+        self.assertEqual(restored.toPlainText(), 'A𠮷&B\nCD')
+        self.assertEqual(letter_spacing_value(_format_at(restored, 0)), 1.0)
+        self.assertEqual(letter_spacing_value(_format_at(restored, 1, 2)), 1.35)
+        self.assertEqual(letter_spacing_value(_format_at(restored, 3)), 1.35)
+        self.assertEqual(letter_spacing_value(_format_at(restored, 4)), 1.0)
+        self.assertEqual(letter_spacing_value(_format_at(restored, 6)), 1.0)
+        self.assertEqual(
+            letter_spacing_value(
+                _format_at(restored_with_conflicting_fallback, 0)
+            ),
+            1.0,
+        )
+        self.assertEqual(
+            letter_spacing_value(
+                _format_at(restored_with_conflicting_fallback, 1)
+            ),
+            1.35,
+        )
+        self.assertEqual(legacy_reader.toPlainText(), 'A𠮷&B\nCD')
+        self.assertEqual(
+            _format_at(legacy_reader, 1, 2).font().letterSpacing(),
+            135.0,
+        )
+
+    def test_old_item_spacing_migrates_to_inline_html(self):
+        source = QTextDocument()
+        source.setPlainText('legacy')
+        old_html = source.toHtml()
+
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                block = TextBlock([0, 0, 300, 300])
+                block._bounding_rect = [0, 0, 300, 300]
+                block.translation = 'legacy'
+                block.rich_text = old_html
+                block.fontformat.vertical = vertical
+                block.fontformat.letter_spacing = 1.35
+                item = TextBlkItem(block, 0)
+
+                for position in range(len('legacy')):
+                    self.assertEqual(
+                        letter_spacing_value(
+                            _format_at(item.document(), position)
+                        ),
+                        1.35,
+                    )
+                migrated_html = item.toHtml()
+                self.assertIn('style="letter-spacing: 0.35em;"', migrated_html)
+                self.assertIn(
+                    f'{LETTER_SPACING_ATTRIBUTE}="1.35"',
+                    migrated_html,
+                )
+                restored = QTextDocument()
+                load_rich_text_html(restored, migrated_html)
+                self.assertEqual(
+                    letter_spacing_value(_format_at(restored, 0)),
+                    1.35,
+                )
+
+    def test_item_letter_spacing_uses_selection_then_insertion_format(self):
+        item = self._make_item(False, text='ABC')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setLetterSpacing(1.5)
+
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 0)),
+            1.15,
+        )
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 1)),
+            1.5,
+        )
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 2)),
+            1.15,
+        )
+        self.assertEqual(item.fontformat.letter_spacing, 1.15)
+
+        cursor = item.textCursor()
+        cursor.clearSelection()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        item.setTextCursor(cursor)
+        item.setLetterSpacing(0.8)
+        cursor = item.textCursor()
+        cursor.insertText('D')
+        item.setTextCursor(cursor)
+
+        self.assertEqual(item.toPlainText(), 'ABCD')
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 3)),
+            0.8,
+        )
+        self.assertEqual(item.fontformat.letter_spacing, 1.15)
+
+    def test_nonediting_letter_spacing_updates_the_item_default(self):
+        item = self._make_item(False, text='ABC')
+
+        item.setLetterSpacing(1.6)
+
+        self.assertEqual(item.fontformat.letter_spacing, 1.6)
+        for position in range(3):
+            self.assertEqual(
+                letter_spacing_value(_format_at(item.document(), position)),
+                1.6,
+            )
+
+    def test_vertical_letter_spacing_is_per_character_and_survives_switch(self):
+        item = self._make_item(False, text='甲乙丙')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setLetterSpacing(2.0)
+
+        item.setVertical(True)
+        heights = [bottom - top for top, bottom in item.layout.y_offset_lst[0]]
+        self.assertGreater(heights[1], heights[0])
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 1)),
+            2.0,
+        )
+        self.assertEqual(
+            _format_at(item.document(), 1).font().letterSpacing(),
+            100.0,
+        )
+
+        item.setVertical(False)
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 1)),
+            2.0,
+        )
+        self.assertEqual(
+            _format_at(item.document(), 1).font().letterSpacing(),
+            200.0,
+        )
+
+    def test_spacing_insertion_format_survives_writing_mode_switch(self):
+        item = self._make_item(False, text='ABC')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        item.setTextCursor(cursor)
+        item.setLetterSpacing(0.75)
+
+        item.setVertical(True)
+        cursor = item.textCursor()
+        cursor.insertText('D')
+        item.setTextCursor(cursor)
+
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 3)),
+            0.75,
+        )
+        self.assertEqual(
+            _format_at(item.document(), 3).font().letterSpacing(),
+            100.0,
+        )
+
     def test_nonediting_item_applies_to_document_and_restores_cursor(self):
         item = self._make_item()
         cursor = item.textCursor()
@@ -198,19 +431,32 @@ class RichTextAnnotationTest(unittest.TestCase):
         cursor.setPosition(0)
         cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
         apply_emphasis(cursor, 'open sesame', 'over right')
+        apply_text_combine_upright(cursor, True)
+        apply_letter_spacing(cursor, 1.4, vertical=False)
 
         mime = create_rich_text_mime(cursor)
         target = QTextDocument()
         inserted = insert_rich_text_mime(QTextCursor(target), mime)
 
         self.assertTrue(inserted)
+        self.assertIn(LETTER_SPACING_ATTRIBUTE, mime.html())
+        self.assertIn('text-emphasis-style: open sesame', mime.html())
+        self.assertIn('text-combine-upright: all', mime.html())
         self.assertEqual(target.toPlainText(), 'copy')
         self.assertEqual(
             emphasis_values(_format_at(target, 0, 4)),
             ('open sesame', 'over right'),
         )
+        self.assertEqual(
+            letter_spacing_value(_format_at(target, 0, 4)),
+            1.4,
+        )
+        self.assertEqual(
+            text_combine_upright_values(_format_at(target, 0, 4))[0],
+            'all',
+        )
 
-    def test_text_combine_metadata_round_trip_keeps_legacy_html_readable(self):
+    def test_text_combine_inline_round_trip_keeps_qt_html_readable(self):
         source = QTextDocument()
         source.setPlainText('A12B')
         cursor = QTextCursor(source)
@@ -222,6 +468,9 @@ class RichTextAnnotationTest(unittest.TestCase):
         char_format.setForeground(QColor('#2070c0'))
         cursor.mergeCharFormat(char_format)
         apply_text_combine_upright(cursor, True)
+        _value, source_group_id = text_combine_upright_values(
+            _format_at(source, 1, 2)
+        )
 
         html = to_rich_text_html(source)
         restored = QTextDocument()
@@ -229,6 +478,8 @@ class RichTextAnnotationTest(unittest.TestCase):
         legacy_reader = QTextDocument()
         legacy_reader.setHtml(html)
 
+        self.assertIn('text-combine-upright: all', html)
+        self.assertIn(TEXT_COMBINE_ID_ATTRIBUTE, html)
         self.assertEqual(restored.toPlainText(), 'A12B')
         self.assertEqual(legacy_reader.toPlainText(), 'A12B')
         self.assertEqual(
@@ -239,7 +490,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             _format_at(restored, 1, 2)
         )
         self.assertEqual(value, 'all')
-        self.assertTrue(group_id)
+        self.assertEqual(group_id, source_group_id)
         restored_format = _format_at(restored, 1, 2)
         self.assertTrue(restored_format.font().bold())
         self.assertTrue(restored_format.font().italic())
@@ -975,6 +1226,26 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(
             text_combine_upright_values(_format_at(item.document(), 0))[0],
             'all',
+        )
+
+    def test_document_undo_redo_restores_letter_spacing(self):
+        item = self._make_item(False, text='ABC')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setLetterSpacing(1.8)
+
+        item.document().undo()
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 1)),
+            1.15,
+        )
+        item.document().redo()
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 1)),
+            1.8,
         )
 
     def test_panel_exposes_stable_values_and_emits_one_edit(self):

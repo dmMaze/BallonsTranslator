@@ -29,7 +29,7 @@ math, UI, and selected transform controls live in `transforms/`.
 | Block text, logical rectangle, angle, metadata | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
 | Persistent typography and transforms | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
 | Live Qt integration | `TextBlkItem` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
-| Inline rich-text annotations | `QTextDocument` character formats plus the versioned HTML boundary | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
+| Inline rich-text annotations | `QTextDocument` character formats plus the semantic HTML boundary | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
 | Horizontal and vertical layout | `SceneTextLayout` subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py) |
 | Fill, stroke, shadow, gradient, raster bounds | `TextEffectRenderer` | [`ui/text_engine/effect_renderer.py`](../../ballontranslator/ui/text_engine/effect_renderer.py), [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
 | Derived geometry and visual/input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
@@ -68,17 +68,22 @@ and surface resources.
 ### Inline annotations
 
 Qt character-format user properties are the live source of truth for emphasis,
-tate-chu-yoko, and future range-bound features such as ruby.
-`TextBlock.rich_text` remains an HTML string: `annotations.py` adds a compact
-versioned metadata record on save and restores it after Qt loads the ordinary
-HTML. HTML written before this layer has no record and follows the same load
-path; malformed optional entries are discarded without losing the base
-document.
+tate-chu-yoko, character spacing, and future range-bound features such as ruby.
+`TextBlock.rich_text` remains an HTML string. `annotations.py` extends Qt's
+ordinary HTML with semantic inline `span` markup. Standard CSS carries
+emphasis, tate-chu-yoko, and approximate external character spacing;
+application-owned `data-*` attributes carry only the exact spacing multiplier
+and tate group identity that CSS cannot represent. Extended output uses the
+HTML5 doctype so those attributes remain standard HTML. HTML written before
+this layer has none of these attributes and follows the same load path;
+malformed optional values are discarded without losing the base document.
 
 Tate-chu-yoko stores a stable group ID as well as the `all` enabled value. One
 application or insertion-format session therefore remains one
 vertical cell even when its inherited character styling creates several Qt
-fragments, while adjacent independent applications remain separate cells. The
+fragments, while adjacent independent applications remain separate cells. CSS
+stores `text-combine-upright: all`; `data-btrans-text-combine-id` stores that
+stable identity. The
 vertical layout groups that ordinary text into one `QTextLine`; its established
 placement boundary owns cursor geometry, hit testing, effects, and emphasis
 positioning. Like Photoshop, the run keeps its natural horizontal advance and
@@ -93,12 +98,29 @@ Horizontal layout preserves the annotation without a visual change. Whitespace
 inside the grouped range remains part of that horizontal run rather than
 becoming vertical leading.
 
-Keep the envelope generic but add annotation behavior incrementally: reserve
-stable property IDs, validate one annotation kind, coalesce its fragment ranges
-for persistence, and give the existing layout/render owners its metrics and
-paint hook. Do not introduce a parallel editable document model or a position
-side table. Internal clipboard data uses the same extended representation,
-with ordinary HTML and plain-text fallbacks.
+Keep one shared inline range boundary: reserve stable live property IDs,
+coalesce equal extension values, emit one semantic span per resulting text
+segment, and restore all supported properties after Qt loads the ordinary
+HTML. Give the existing layout/render owners each feature's metrics and paint
+hook; do not introduce a parallel editable document model or a position side
+table. Internal clipboard data uses the same extended representation, with
+ordinary HTML and plain-text fallbacks.
+
+Character spacing uses the same selection/insertion behavior as other inline
+formats. Qt imports but does not export CSS `letter-spacing`, and the existing
+value is a per-glyph-width multiplier rather than CSS's additive length. Each
+saved range therefore uses standard `letter-spacing` in `em` as the closest
+external representation plus `data-btrans-letter-spacing` for the exact
+multiplier. `FontFormat.letter_spacing` remains the item-wide compatibility and
+default value: rich text without the exact inline attribute is seeded from it
+on load and gains explicit spans on the next save. The attribute's absence is
+the pre-feature compatibility signal; there is no separate rich-text version.
+Horizontal layout lets Qt consume the per-range font spacing. Vertical layout
+keeps Qt's horizontal shaping at normal spacing and applies each leading
+fragment's semantic multiplier to that character cell; switching writing mode
+must retain the range values. Effect-document clones and internal clipboard
+insertion load the same inline representation instead of replacing ranges with
+the item-wide fallback.
 
 ## Coordinate spaces
 
@@ -135,6 +157,10 @@ painting, and optional input mapping.
   text uses the Chinese mixed-layout path: proportional Roman characters rotate
   clockwise, CLREQ vertical punctuation rotates by class, and pause/stop marks
   use the Mainland upper-right placement. Horizontal layout is unaffected.
+- Character spacing is range-bound document state once text exists. A selection
+  changes only that range; no selection changes the insertion format. The
+  item-wide `FontFormat` field remains a legacy/default fallback, not a second
+  source that may overwrite restored ranges.
 - `VerticalTextDocumentLayout.reLayoutForResize()` has a width-only fast path:
   it translates settled columns when height and padding are unchanged. Height,
   padding, or minimum-width changes still require a full relayout.
