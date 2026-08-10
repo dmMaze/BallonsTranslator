@@ -209,15 +209,38 @@ class TextItemGeometryController:
         """Return the Qt paint bounds with the managed display size."""
         rect = QRectF(base_rect)
         rect.setSize(self.display_rect.size())
+        source_paint_rect = self.source_paint_rect()
+        rect = rect.united(source_paint_rect)
         if self.visual_mapper is not None:
             rect = rect.united(
-                self.visual_mapper.visual_bounds(self.source_rect())
+                self.visual_mapper.visual_bounds(source_paint_rect)
             )
         return rect
 
     def source_rect(self) -> QRectF:
         """Return the unwarped local paint surface, including effect padding."""
         return QRectF(QPointF(), self.display_rect.size())
+
+    def source_paint_rect(self) -> QRectF:
+        """Include derived ink overhang without changing logical geometry."""
+        rect = self.source_rect()
+        layout = getattr(self.item, 'layout', None)
+        candidates = [self.layout_ink_bounds()]
+        if layout is not None:
+            candidates.append(layout.annotation_ink_bounds())
+        padding = self.item.padding()
+        for candidate in candidates:
+            if candidate.isEmpty():
+                continue
+            rect = rect.united(
+                candidate.adjusted(
+                    -padding,
+                    -padding,
+                    padding,
+                    padding,
+                )
+            )
+        return rect
 
     def logical_rect(self) -> QRectF:
         """Return the untransformed, effect-free local rectangle."""
@@ -232,12 +255,27 @@ class TextItemGeometryController:
         return rect.adjusted(padding, padding, -padding, -padding)
 
     def shape(self) -> QPainterPath:
+        layout = getattr(self.item, 'layout', None)
+        annotation_bounds = (
+            QRectF()
+            if layout is None
+            else layout.annotation_ink_bounds()
+        )
         if self.visual_mapper is not None:
-            return self.visual_mapper.map_rect_path(self.logical_rect())
+            path = self.visual_mapper.map_rect_path(self.logical_rect())
+            if not annotation_bounds.isEmpty():
+                path = path.united(
+                    self.visual_mapper.map_rect_path(annotation_bounds)
+                )
+            return path
         path = QPainterPath()
         path.addRect(
             self.source_rect() if self.is_neutral() else self.logical_rect()
         )
+        if not annotation_bounds.isEmpty():
+            annotation_path = QPainterPath()
+            annotation_path.addRect(annotation_bounds)
+            path = path.united(annotation_path)
         return path
 
     def contains(self, point: QPointF) -> bool:
@@ -1019,7 +1057,7 @@ class TextItemGeometryController:
                 painter,
                 option,
                 mapper,
-                self.source_rect(),
+                self.source_paint_rect(),
                 cache_key,
                 cache_allowed=(
                     not export_render

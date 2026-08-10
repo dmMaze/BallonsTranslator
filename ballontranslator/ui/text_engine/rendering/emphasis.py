@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable, Iterator, NamedTuple, Optional
 
-from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QFont,
@@ -17,12 +17,17 @@ from qtpy.QtGui import (
     QTransform,
 )
 
-from ..annotations import emphasis_values
+from ..annotations import (
+    TEXT_COMBINE_ALL,
+    emphasis_values,
+    text_combine_upright_values,
+)
 from .glyph import (
     GLYPH_STROKE_FORMAT_PROPERTY,
     GlyphGeometry,
     PaintSpan,
     draw_glyph_geometry,
+    glyph_geometry,
     logical_span_rect,
     resolve_paint_spans,
 )
@@ -71,13 +76,10 @@ def _mark_extent(
     bounds = _mark_path(style, char_format).boundingRect()
     ink_extent = bounds.width() if vertical else bounds.height()
     gap = QFontMetricsF(char_format.font()).height() * EMPHASIS_GAP_SCALE
-    outline = char_format.textOutline()
-    outline_outset = (
-        outline.widthF() / 2
-        if outline.style() != Qt.PenStyle.NoPen
-        else 0.0
-    )
-    return ink_extent + gap + outline_outset
+    # Stroke rendering temporarily injects an outline into a cloned document.
+    # Effect padding owns that extra ink; counting it here would reflow the
+    # clone away from the live fill geometry.
+    return ink_extent + gap
 
 
 def emphasis_margins(
@@ -181,13 +183,29 @@ def _iter_emphasis_marks(
         if context is None
         else _effect_spans(block, line, context)
     )
+    combined_unit = vertical and any(
+        span.start <= line_start < span.start + span.length
+        and text_combine_upright_values(span.char_format)[0]
+        == TEXT_COMBINE_ALL
+        for span in spans
+    )
+    if combined_unit:
+        # A combined run occupies one vertical typographic unit.
+        # If fragment styles differ, the first emphasized fragment owns its
+        # single mark while every base glyph keeps its own normal formatting.
+        graphemes = ((line_start, line_end),)
     for span in spans:
         style, position = emphasis_values(span.char_format)
         if style == 'none':
             continue
         span_end = span.start + span.length
         for start, end in graphemes:
-            if not (span.start <= start < span_end):
+            owns_mark = (
+                span.start < line_end and span_end > line_start
+                if combined_unit
+                else span.start <= start < span_end
+            )
+            if not owns_mark:
                 continue
             text = _utf16_slice(block.text(), start, end - start)
             if not text or text.isspace():
@@ -199,6 +217,17 @@ def _iter_emphasis_marks(
                 offset,
                 orientation,
             )
+            if combined_unit:
+                run_bounds = glyph_geometry(
+                    line,
+                    line_start,
+                    line.textLength(),
+                    offset,
+                    orientation,
+                    0.0,
+                ).bounds
+                if not run_bounds.isEmpty():
+                    cell = run_bounds
             if cell.isEmpty():
                 continue
             path_bounds = _mark_path(style, span.char_format).boundingRect()
@@ -225,6 +254,8 @@ def _iter_emphasis_marks(
                 _mark_geometry(center, style, span.char_format),
                 span.char_format,
             )
+            if combined_unit:
+                return
 
 
 def draw_emphasis_marks(
@@ -237,7 +268,7 @@ def draw_emphasis_marks(
     offset: QPointF = QPointF(),
     orientation: QTransform = QTransform(),
 ) -> None:
-    """Paint one mark per emphasized grapheme using fragment styling."""
+    """Paint one mark per emphasized typographic unit using fragment style."""
     for mark in _iter_emphasis_marks(
         block,
         line,

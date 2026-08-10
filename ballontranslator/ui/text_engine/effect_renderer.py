@@ -26,7 +26,10 @@ from ballontranslator.utils.logger import logger as LOGGER
 from ..misc import ndarray2pixmap, pixmap2ndarray
 from .layout import HorizontalTextDocumentLayout, VerticalTextDocumentLayout
 from .annotations import load_rich_text_html, to_rich_text_html
-from .rendering.glyph import GLYPH_STROKE_FORMAT_PROPERTY
+from .rendering.glyph import (
+    GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
+    GLYPH_STROKE_FORMAT_PROPERTY,
+)
 from .rendering.shadow import apply_shadow_effect
 from .rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
@@ -173,7 +176,7 @@ class TextEffectRenderer:
 
     def boundingRect(self):
         if self.geometry_controller.uses_surface_warp():
-            return self.geometry_controller.source_rect()
+            return self.geometry_controller.source_paint_rect()
         return self.item.boundingRect()
 
     def logical_unpadded_rect(self):
@@ -224,7 +227,7 @@ class TextEffectRenderer:
                     QPainter.RenderHint.SmoothPixmapTransform
                 )
                 painter.drawPixmap(
-                    self.boundingRect().toRect(), self.background_pixmap
+                    self.boundingRect().topLeft(), self.background_pixmap
                 )
                 painter.restore()
 
@@ -240,7 +243,7 @@ class TextEffectRenderer:
                     QPainter.RenderHint.SmoothPixmapTransform
                 )
                 painter.drawPixmap(
-                    self.boundingRect().toRect(), self.background_pixmap
+                    self.boundingRect().topLeft(), self.background_pixmap
                 )
                 painter.restore()
             return
@@ -413,6 +416,12 @@ class TextEffectRenderer:
                     QTextCursor.MoveMode.KeepAnchor,
                 )
                 char_format.setTextOutline(stroke_pen)
+                # Annotation glyphs are painted from paths. A filled-mask
+                # dilation avoids QPen self-intersection cavities on small
+                # components such as emphasis dots and exclamation points.
+                char_format.setProperty(
+                    GLYPH_DILATED_STROKE_FORMAT_PROPERTY, True
+                )
                 if letter_spacing != 100 and not self.fontformat.vertical:
                     char_format.setFontLetterSpacingType(
                         QFont.SpacingType.PercentageSpacing
@@ -828,7 +837,7 @@ class TextEffectRenderer:
                 self.surface_raster_error = previous_raster_error
         return target_map
 
-    def _repaint_neutral_background(self):
+    def _repaint_neutral_background(self) -> None:
         """Rebuild effects with the BASE pixmap and composition path."""
         empty = self.document().isEmpty()
         if self.repainting or self.reshaping:
@@ -836,45 +845,69 @@ class TextEffectRenderer:
 
         paint_stroke, paint_shadow = self._effect_flags()
         if (not paint_shadow and not paint_stroke) or empty:
+            changed = self.background_pixmap is not None
             self.background_pixmap = None
             self.background_pixmap_scale = None
+            if changed:
+                self.item.update()
             return
 
         self.repainting = True
         try:
             font_size = self.layout.max_font_size(to_px=True)
-            target_map = QPixmap(self.boundingRect().size().toSize())
-            target_map.fill(Qt.GlobalColor.transparent)
+            surface_rect = self.boundingRect()
+            target_map = self._new_effect_pixmap(
+                1.0, surface_rect
+            )
             painter = QPainter(target_map)
-            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-
-            if paint_stroke:
-                self._paint_cloned_document_stroke(painter)
-            else:
-                self.document().drawContents(painter)
-
-            if paint_shadow:
-                radius = int(round(self.fontformat.shadow_radius * font_size))
-                xoffset = int(self.fontformat.shadow_offset[0] * font_size)
-                yoffset = int(self.fontformat.shadow_offset[1] * font_size)
-                shadow_map, _ = apply_shadow_effect(
-                    target_map,
-                    self.fontformat.shadow_color,
-                    self.fontformat.shadow_strength,
-                    radius,
+            if not painter.isActive():
+                raise EffectRasterAllocationError(
+                    'unable to begin neutral effect painter'
                 )
-                composition = painter.compositionMode()
-                painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_DestinationOver
+            try:
+                painter.setRenderHints(
+                    _VECTOR_EFFECT_RENDER_HINTS
+                    | QPainter.RenderHint.SmoothPixmapTransform
                 )
-                painter.drawPixmap(xoffset, yoffset, shadow_map)
-                painter.setCompositionMode(composition)
 
-            painter.end()
+                painter.save()
+                try:
+                    painter.translate(-surface_rect.topLeft())
+                    if paint_stroke:
+                        self._paint_cloned_document_stroke(painter)
+                    else:
+                        self.document().drawContents(painter)
+                finally:
+                    painter.restore()
+
+                if paint_shadow:
+                    radius = int(round(
+                        self.fontformat.shadow_radius
+                        * font_size
+                    ))
+                    xoffset = self.fontformat.shadow_offset[0] * font_size
+                    yoffset = self.fontformat.shadow_offset[1] * font_size
+                    shadow_map, _ = apply_shadow_effect(
+                        target_map,
+                        self.fontformat.shadow_color,
+                        self.fontformat.shadow_strength,
+                        radius,
+                    )
+                    composition = painter.compositionMode()
+                    painter.setCompositionMode(
+                        QPainter.CompositionMode.CompositionMode_DestinationOver
+                    )
+                    painter.drawPixmap(QPointF(xoffset, yoffset), shadow_map)
+                    painter.setCompositionMode(composition)
+            finally:
+                painter.end()
             self.background_pixmap = target_map
             self.background_pixmap_scale = 1.0
         finally:
             self.repainting = False
+        # Non-editing items have a Qt device-coordinate cache around this
+        # private effect cache. Invalidate it whenever the pixmap changes.
+        self.item.update()
 
     def repaint_background(self, render_scale: float = 1.0):
         if self._text_transform_is_neutral():

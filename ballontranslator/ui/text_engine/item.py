@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 from qtpy.QtWidgets import QApplication, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
@@ -19,11 +19,14 @@ from .layout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
 from .effect_renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
 from .annotations import (
+    TEXT_COMBINE_ALL,
     apply_emphasis,
+    apply_text_combine_upright,
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
     load_rich_text_html,
+    text_combine_upright_values,
     to_rich_text_html,
 )
 
@@ -1029,8 +1032,11 @@ class TextBlkItem(QGraphicsTextItem):
     def emphasis_values(self) -> tuple[str, str]:
         return emphasis_values(self.textCursor().charFormat())
 
-    def setEmphasis(self, style: str, position: str) -> None:
-        """Apply emphasis to a selection or the active insertion format."""
+    def _apply_inline_format(
+        self,
+        apply_format: Callable[[QTextCursor], None],
+    ) -> None:
+        """Run one selection/insertion formatting transaction."""
         cursor = self.textCursor()
         restore_cursor = not self.isEditing()
         cursor_position = cursor.position()
@@ -1040,7 +1046,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.is_formatting = True
         cursor.beginEditBlock()
         try:
-            apply_emphasis(cursor, style, position)
+            apply_format(cursor)
         finally:
             cursor.endEditBlock()
             if restore_cursor:
@@ -1053,6 +1059,24 @@ class TextBlkItem(QGraphicsTextItem):
             self.setTextCursor(cursor)
             self.is_formatting = False
         self.geometry_controller.flush_deferred_compilation()
+
+    def setEmphasis(self, style: str, position: str) -> None:
+        """Apply emphasis to a selection or the active insertion format."""
+        self._apply_inline_format(
+            lambda cursor: apply_emphasis(cursor, style, position)
+        )
+
+    def tate_chu_yoko_enabled(self) -> bool:
+        value, _group_id = text_combine_upright_values(
+            self.textCursor().charFormat()
+        )
+        return value == TEXT_COMBINE_ALL
+
+    def setTateChuYoko(self, enabled: bool) -> None:
+        """Combine one selected run, or change the insertion format."""
+        self._apply_inline_format(
+            lambda cursor: apply_text_combine_upright(cursor, enabled)
+        )
 
     def setGradientEnabled(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
         self.fontformat.gradient_enabled = value
@@ -1282,7 +1306,7 @@ class TextBlkItem(QGraphicsTextItem):
         h: float,
         set_layout_maxsize=False,
         set_blk_size=True,
-    ):
+    ) -> None:
         self.geometry_controller.resize(
             w,
             h,

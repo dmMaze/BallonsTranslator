@@ -11,13 +11,24 @@ from functools import lru_cache, cached_property
 from ..misc import pixmap2ndarray, LruIgnoreArg
 from ballontranslator.utils import shared as C
 from ballontranslator.utils.fontformat import pt2px, FontFormat, LineSpacingType
+from .annotations import text_combine_upright_ranges
 from .rendering.indexing import (
     _grapheme_count,
     _utf16_char_at,
     _utf16_length,
     _utf16_slice,
 )
-from .rendering.emphasis import draw_emphasis_marks, emphasis_margins
+from .rendering.emphasis import (
+    draw_emphasis_marks,
+    emphasis_ink_bounds,
+    emphasis_margins,
+)
+from .rendering.glyph import draw_slanted_line
+from .rendering.tate_chu_yoko import (
+    tate_chu_yoko_ink_bounds,
+    tate_chu_yoko_natural_bounds,
+    tate_chu_yoko_transform,
+)
 
 PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 
@@ -252,6 +263,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         """
         return None
 
+    def annotation_ink_bounds(self) -> QRectF:
+        """Return annotation paint overflow without changing layout bounds."""
+        return QRectF()
+
     def _begin_layout_generation(self):
         self.layout_generation += 1
 
@@ -414,6 +429,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.line_draw = line_draw_qt6 if C.FLAG_QT6 else line_draw_qt5
 
         self.per_char_records = []
+        self.text_combine_ranges = []
+        self._annotation_ink_bounds = QRectF()
+        self._cursor_update_rect = QRectF()
         self._resize_layout_max_width = None
         self._resize_layout_available_height = None
         self._resize_layout_padding = None
@@ -428,6 +446,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.layout_left = 0
         self.line_spaces_lst = []
         self.per_char_records = []
+        self.text_combine_ranges = []
         self.draw_shifted = 0
         self.shrink_height = 0
         self.shrink_width = 0
@@ -442,7 +461,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         enlarged = False
         x_shift = 0
         if self.layout_left < doc_margin:
-            x_shift  = doc_margin - self.layout_left
+            x_shift = doc_margin - self.layout_left
             self.max_width += x_shift
             self.available_width = self.max_width - 2*doc_margin
             enlarged = True
@@ -465,6 +484,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 for ii, xoffset in enumerate(self.x_offset_lst):
                     self.x_offset_lst[ii] = xoffset + x_shift
         self.updateDrawOffsets()
+        self._refresh_annotation_ink_bounds()
         self._resize_layout_max_width = self.max_width
         self._resize_layout_available_height = self.available_height
         self._resize_layout_padding = self._effect_padding
@@ -505,6 +525,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             x_offset + x_shift for x_offset in self.x_offset_lst
         ]
         self.layout_left += x_shift
+        self._refresh_annotation_ink_bounds()
         self._resize_layout_max_width = self.max_width
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
@@ -523,8 +544,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             layout = block.layout()
             blk_text = block.text()
+            has_text_combine = bool(self.text_combine_ranges[blk_no])
+            utf16_indexing = custom_rendering or has_text_combine
             blk_text_len = (
-                _utf16_length(blk_text) if custom_rendering else len(blk_text)
+                _utf16_length(blk_text) if utf16_indexing else len(blk_text)
             )
             
             line_spaces_lst = self.line_spaces_lst[blk_no]
@@ -537,6 +560,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 line = layout.lineAt(ii)
                 if line.textLength() == 0:
                     continue
+                if self.is_tate_chu_yoko_line(block, ii):
+                    # The run-level transform performs all cell alignment.
+                    continue
                 num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
                 char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
                 if char_idx < 0:
@@ -544,7 +570,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 char = (
                     _utf16_char_at(blk_text, char_idx)
-                    if custom_rendering
+                    if utf16_indexing
                     else blk_text[char_idx]
                 )
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
@@ -562,7 +588,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if char in PUNSET_VERNEEDROTATE:
                     char = (
                         _utf16_char_at(blk_text, char_idx)
-                        if custom_rendering
+                        if utf16_indexing
                         else blk_text[char_idx]
                     )
                     if char.isalpha():
@@ -609,6 +635,162 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
 
+    def _line_record(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> dict:
+        layout = block.layout()
+        line = layout.lineAt(line_number)
+        if not line.isValid():
+            return {}
+        block_number = block.blockNumber()
+        if not 0 <= block_number < len(self.per_char_records):
+            return {}
+        return self.per_char_records[block_number].get(line.textStart(), {})
+
+    def is_tate_chu_yoko_line(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> bool:
+        """Return whether one vertical layout line is a combined run."""
+        return 'text_combine_height' in self._line_record(block, line_number)
+
+    @staticmethod
+    def _line_cursor_x(line: QTextLine, position: int) -> float:
+        value = line.cursorToX(position)
+        if isinstance(value, (tuple, list)):
+            value = value[0]
+        return float(value)
+
+    def tate_chu_yoko_cell_rect(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> Optional[QRectF]:
+        """Return the untransformed vertical cell reserved for a run."""
+        record = self._line_record(block, line_number)
+        cell_width = record.get('text_combine_width')
+        cell_height = record.get('text_combine_height')
+        if cell_width is None or cell_height is None:
+            return None
+        line = block.layout().lineAt(line_number)
+        line_width = record.get('line_width', cell_width)
+        return QRectF(
+            line.x() + (line_width - cell_width) / 2,
+            line.y(),
+            cell_width,
+            cell_height,
+        )
+
+    def annotation_ink_bounds(self) -> QRectF:
+        """Return cached Tate-chu-yoko and attached emphasis ink."""
+        return QRectF(self._annotation_ink_bounds)
+
+    def _refresh_annotation_ink_bounds(self) -> None:
+        """Measure paint overflow after final line placement.
+
+        >>> callable(VerticalTextDocumentLayout._refresh_annotation_ink_bounds)
+        True
+        """
+        bounds = QRectF()
+        block = self.document().firstBlock()
+        while block.isValid():
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                cell = self.tate_chu_yoko_cell_rect(block, line_number)
+                if cell is None:
+                    continue
+                placement = self.vertical_line_placement(
+                    block, line_number
+                )
+                if placement is None:
+                    continue
+                line, offset, orientation = placement
+                candidates = (
+                    cell,
+                    tate_chu_yoko_ink_bounds(line, cell),
+                    emphasis_ink_bounds(
+                        block,
+                        line,
+                        vertical=True,
+                        offset=offset,
+                        orientation=orientation,
+                    ),
+                )
+                for candidate in candidates:
+                    if candidate.isEmpty():
+                        continue
+                    bounds = (
+                        QRectF(candidate)
+                        if bounds.isEmpty()
+                        else bounds.united(candidate)
+                    )
+            block = block.next()
+        self._annotation_ink_bounds = bounds
+
+    def _tate_chu_yoko_hit_position(
+        self,
+        line: QTextLine,
+        transform: QTransform,
+        point: QPointF,
+    ) -> int:
+        """Map one horizontal cell back to its ordinary text cursor.
+
+        >>> callable(VerticalTextDocumentLayout._tate_chu_yoko_hit_position)
+        True
+        """
+        line_start = line.textStart()
+        line_end = line_start + line.textLength()
+        start_x = transform.map(
+            QPointF(self._line_cursor_x(line, line_start), line.y())
+        ).x()
+        end_x = transform.map(
+            QPointF(self._line_cursor_x(line, line_end), line.y())
+        ).x()
+        if start_x <= end_x:
+            if point.x() <= start_x:
+                return line_start
+            if point.x() >= end_x:
+                return line_end
+        else:
+            if point.x() >= start_x:
+                return line_start
+            if point.x() <= end_x:
+                return line_end
+        inverse, invertible = transform.inverted()
+        if not invertible:
+            return line_start
+        return line.xToCursor(
+            inverse.map(point).x(),
+            QTextLine.CursorBetweenCharacters,
+        )
+
+    def _tate_chu_yoko_hit_test(
+        self,
+        point: QPointF,
+    ) -> Optional[int]:
+        """Hit-test visible overhang without widening its layout column."""
+        block = self.document().firstBlock()
+        while block.isValid():
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                cell = self.tate_chu_yoko_cell_rect(block, line_number)
+                if cell is None or not cell.contains(point):
+                    continue
+                placement = self.vertical_line_placement(
+                    block, line_number
+                )
+                if placement is None:
+                    continue
+                line, _offset, transform = placement
+                return block.position() + self._tate_chu_yoko_hit_position(
+                    line, transform, point
+                )
+            block = block.next()
+        return None
+
     def vertical_line_placement(
         self,
         block: QTextBlock,
@@ -619,6 +801,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         line = text_layout.lineAt(line_number)
         if not line.isValid() or line.textLength() <= 0:
             return None
+        text_combine_cell = self.tate_chu_yoko_cell_rect(block, line_number)
+        if text_combine_cell is not None:
+            return (
+                line,
+                QPointF(),
+                tate_chu_yoko_transform(line, text_combine_cell),
+            )
         block_number = block.blockNumber()
         block_text = block.text()
         block_text_length = _utf16_length(block_text)
@@ -650,7 +839,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         return line, QPointF(x_offset, y_offset), orientation
 
     def source_cursor_rect(self, cursor_position: int):
-        """Return the horizontal caret used by vertical text painting."""
+        """Return the caret owned by the vertical source layout."""
         block = self.document().firstBlock()
         while block.isValid():
             cpos = _block_cursor_position(block, cursor_position)
@@ -659,6 +848,31 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 line = layout.lineForTextPosition(cpos)
                 if not line.isValid():
                     return QRectF()
+                line_number = line.lineNumber()
+                text_combine_cell = self.tate_chu_yoko_cell_rect(
+                    block, line_number
+                )
+                if text_combine_cell is not None:
+                    placement = self.vertical_line_placement(
+                        block, line_number
+                    )
+                    if placement is None:
+                        return QRectF()
+                    _line, _offset, transform = placement
+                    cursor_x = self._line_cursor_x(line, cpos)
+                    mapped_x = transform.map(
+                        QPointF(cursor_x, line.y())
+                    ).x()
+                    mapped_x = min(
+                        max(mapped_x, text_combine_cell.left()),
+                        text_combine_cell.right(),
+                    )
+                    return QRectF(
+                        mapped_x - 1.0,
+                        text_combine_cell.top(),
+                        2.0,
+                        text_combine_cell.height(),
+                    )
                 position = line.position()
                 x, y = position.x(), position.y()
                 cfmt = self.get_char_fontfmt(block.blockNumber(), cpos)
@@ -694,14 +908,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             has_selection = True
             selection = context_sel[0]
 
-        fm = None
         while block.isValid():
             blk_no = block.blockNumber()
             blpos, bllen = block.position(), block.length()
             layout = block.layout()
             blk_text = block.text()
+            utf16_indexing = custom_rendering or bool(
+                self.text_combine_ranges[blk_no]
+            )
             blk_text_len = (
-                _utf16_length(blk_text) if custom_rendering else len(blk_text)
+                _utf16_length(blk_text) if utf16_indexing else len(blk_text)
             )
             char_records = self.per_char_records[blk_no]
             
@@ -736,11 +952,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 char = (
                     _utf16_char_at(blk_text, char_idx)
-                    if custom_rendering
+                    if utf16_indexing
                     else blk_text[char_idx]
                 )
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
-                fm = cfmt.font_metrics
                 if custom_rendering:
                     if not uniform_block_drawn:
                         render_delegate.draw_vertical_line(
@@ -763,7 +978,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if has_selection:
                     sel_start = selection.cursor.selectionStart() - blpos 
                     sel_end = selection.cursor.selectionEnd() - blpos
-                    if char_idx < sel_end and char_idx >= sel_start:
+                    line_start = line.textStart()
+                    line_end = line_start + line.textLength()
+                    if line_start < sel_end and line_end > sel_start:
                         selected = True
 
                 line_width = -1
@@ -772,7 +989,21 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if line_width < 0:
                     line_width = cfmt.tbr.width()
                 
-                if char in PUNSET_VERNEEDROTATE:
+                placement = self.vertical_line_placement(block, ii)
+                if self.is_tate_chu_yoko_line(block, ii):
+                    if placement is not None:
+                        placed_line, offset, orientation = placement
+                        draw_slanted_line(
+                            painter,
+                            block,
+                            placed_line,
+                            offset,
+                            orientation,
+                            0.0,
+                            context,
+                            self._report_render_failure,
+                        )
+                elif char in PUNSET_VERNEEDROTATE:
                     line_x, line_y = line.x(), line.y()
                     y_x = line_y - line_x
                     y_p_x = line_y + line_x
@@ -784,7 +1015,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 else:
                     self.line_draw(painter, line, xoff, yoff, selected, selection, char_fmt=cfmt, char=char, line_width=line_width)
 
-                placement = self.vertical_line_placement(block, ii)
                 if placement is not None:
                     placed_line, offset, orientation = placement
                     draw_emphasis_marks(
@@ -802,52 +1032,48 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if self.foreground_pixmap is not None:
             painter.drawPixmap(0, 0, self.foreground_pixmap)
 
-        if cursor_block is not None and not self.defer_cursor_paint:
-            block = cursor_block
-            blk_text = block.text()
-            blpos = block.position()
-            bllen = block.length()
-            blk_no = block.blockNumber()
-            layout = block.layout()
-            cpos = _block_cursor_position(block, context.cursorPosition)
-
-            if cpos >= 0:
-                line = layout.lineForTextPosition(cpos)
-                if line.isValid():
-
-                    pos = line.position()
-                    x, y = pos.x(), pos.y()
-                    if line.textLength() == 0 or fm is None:
-                        fm = QFontMetricsF(block.charFormat().font())
-                    else:
-                        num_rspaces, num_lspaces, char_yoffset_lst, line_pos = self.line_spaces_lst[blk_no][line.lineNumber()]
-                        yidx = cpos - line_pos
-                        if yidx >= 0 and yidx < len(char_yoffset_lst):
-                            y = char_yoffset_lst[yidx]
-
-                    painter.setCompositionMode(QPainter.CompositionMode.RasterOp_NotDestination)
-                    painter.fillRect(QRectF(x, y, fm.height(), 2), painter.pen().brush())
-                    if self.has_selection == has_selection:
-                        if C.USE_PYSIDE6:
-                            self.update.emit()
-                        else:
-                            self.update.emit(QRectF(x, y, fm.height(), 2))
-                    else:
-                        if C.USE_PYSIDE6:
-                            self.update.emit()
-                        else:
-                            self.update.emit(QRectF(0, 0, self.max_width, self.max_height))
-            self.has_selection = has_selection  # update this flag when drawing the cursor
+        if not self.defer_cursor_paint:
+            cursor_rect = QRectF()
+            if cursor_block is not None:
+                cursor_rect = self.source_cursor_rect(
+                    context.cursorPosition
+                )
+            if not cursor_rect.isEmpty():
+                painter.setCompositionMode(
+                    QPainter.CompositionMode.RasterOp_NotDestination
+                )
+                painter.fillRect(cursor_rect, painter.pen().brush())
+            if self.has_selection != has_selection:
+                dirty_rect = QRectF(
+                    0, 0, self.max_width, self.max_height
+                )
+            elif cursor_rect != self._cursor_update_rect:
+                dirty_rect = cursor_rect.united(
+                    self._cursor_update_rect
+                )
+            else:
+                dirty_rect = QRectF()
+            self._cursor_update_rect = QRectF(cursor_rect)
+            if not dirty_rect.isEmpty():
+                if C.USE_PYSIDE6:
+                    self.update.emit()
+                else:
+                    self.update.emit(dirty_rect)
+            self.has_selection = has_selection
         painter.restore()
 
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
         point = self.map_input_point(point)
+        text_combine_hit = self._tate_chu_yoko_hit_test(point)
+        if text_combine_hit is not None:
+            return text_combine_hit
         blk = self.document().firstBlock()
         custom_rendering = self.render_delegate is not None
         x, y = point.x(), point.y()
         off = 0
         while blk.isValid():
             blk_no = blk.blockNumber()
+            has_text_combine = bool(self.text_combine_ranges[blk_no])
             blk_char_yoffset = self.y_offset_lst[blk_no]
             nyoffset = len(blk_char_yoffset)
             rect = blk.layout().boundingRect()
@@ -876,9 +1102,19 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                                     break
                             break
                         else:
+                            if self.is_tate_chu_yoko_line(blk, ii):
+                                placement = self.vertical_line_placement(
+                                    blk, ii
+                                )
+                                if placement is not None:
+                                    _line, _offset, transform = placement
+                                    off = self._tate_chu_yoko_hit_position(
+                                        line, transform, point
+                                    )
+                                    break
                             ntr = line.naturalTextRect()
                             off = line.textStart()
-                            if custom_rendering:
+                            if custom_rendering or has_text_combine:
                                 # The feature path consumes Qt UTF-16 glyph
                                 # runs, so never return a caret inside a
                                 # transformed grapheme.
@@ -919,8 +1155,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         is_final_block = block == doc.lastBlock()
         blk_text = block.text()
         custom_rendering = self.render_delegate is not None
+        text_combine_ranges = text_combine_upright_ranges(block)
+        self.text_combine_ranges.append(text_combine_ranges)
+        text_combine_lengths = {
+            start: length for start, length, _group_id in text_combine_ranges
+        }
+        utf16_indexing = custom_rendering or bool(text_combine_ranges)
         blk_text_len = (
-            _utf16_length(blk_text) if custom_rendering else len(blk_text)
+            _utf16_length(blk_text) if utf16_indexing else len(blk_text)
         )
         if blk_text_len != 0:
             block_width = self.block_ideal_width[block_no]
@@ -956,7 +1198,15 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 break
 
             line.setLineWidth(block_width)
-            line.setNumColumns(1)
+            text_combine_length = text_combine_lengths.get(char_idx)
+            is_text_combine = text_combine_length is not None
+            if is_text_combine:
+                combined_text = _utf16_slice(
+                    blk_text, char_idx, text_combine_length
+                )
+                line.setNumColumns(max(1, _grapheme_count(combined_text)))
+            else:
+                line.setNumColumns(1)
             
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
@@ -972,7 +1222,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 continue
 
             num_rspaces, num_lspaces = 0, 0
-            if custom_rendering:
+            if utf16_indexing:
                 text = _utf16_slice(
                     blk_text, char_idx, text_len
                 ).replace('\n', '')
@@ -985,9 +1235,15 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 num_rspaces = text_len - len(text.rstrip())
                 num_lspaces = text_len - len(text.lstrip())
 
+            if is_text_combine:
+                # Whitespace is part of the authored horizontal run, not
+                # vertical column leading around it.
+                num_rspaces = num_lspaces = 0
+
             tbr_h = space_w = let_sp_offset = 0
             char_idx += num_lspaces
             single_char_h = None
+            text_combine_line_width = None
 
             if char_idx < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
@@ -1001,18 +1257,43 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 tbr_h = cfmt.tbr.height() + let_sp_offset
                 char = (
                     _utf16_char_at(blk_text, char_idx)
-                    if custom_rendering
+                    if utf16_indexing
                     else blk_text[char_idx]
                 )
                 is_first_lbracket = char_idx - num_lspaces == 0 and char in PUNSET_BRACKETL
                 if is_first_lbracket:
                     _lbracket_shift = -cfmt.punc_actual_rect(line, char, cache=True, space_shift=space_shift)[0]
 
-                if char in PUNSET_VERNEEDROTATE:
+                if is_text_combine:
+                    # A grouped run has no separate container format. Its
+                    # leading fragment supplies the normal cell while natural
+                    # horizontal flow and every fragment style are retained.
+                    right_margin, left_margin = emphasis_margins(
+                        block, line, vertical=True
+                    )
+                    natural_bounds = tate_chu_yoko_natural_bounds(line)
+                    text_combine_width = max(
+                        cfmt.tbr.width(),
+                        natural_bounds.width(),
+                    )
+                    text_combine_height = max(
+                        cfmt.tbr.height(), natural_bounds.height()
+                    )
+                    let_sp_offset = text_combine_height * (ls - 1)
+                    tbr_h = text_combine_height + let_sp_offset
+                    text_combine_line_width = (
+                        cfmt.tbr.width()
+                        + 2 * max(right_margin, left_margin)
+                    )
+                    char_records[char_idx] = {
+                        'text_combine_height': text_combine_height,
+                        'text_combine_width': text_combine_width,
+                    }
+                elif char in PUNSET_VERNEEDROTATE:
                     tbr, br = cfmt.punc_rect(char)
                     single_char_h = tbr.width()
                     tbr_h = tbr.width() * (
-                        _grapheme_count(text) if custom_rendering else text_len
+                        _grapheme_count(text) if utf16_indexing else text_len
                     )
                     if char.isalpha():
                         cw2 = cfmt.punc_rect(char+char)[1].width()
@@ -1020,13 +1301,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     elif char in {'…', '⋯', '—', '～'}:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                         next_char_idx = char_idx + (
-                            _utf16_length(char) if custom_rendering else 1
+                            _utf16_length(char) if utf16_indexing else 1
                         )
                         if (
                             next_char_idx < blk_text_len
                             and (
                                 _utf16_char_at(blk_text, next_char_idx)
-                                if custom_rendering
+                                if utf16_indexing
                                 else blk_text[next_char_idx]
                             ) == char
                         ):
@@ -1046,7 +1327,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 tbr_h = cfmt.tbr.height() + cfmt.font_metrics.descent()
                 space_w = cfmt.space_width
             
-            if num_lspaces == 0 and tbr_h != 0:
+            if num_lspaces == 0 and tbr_h != 0 and not is_text_combine:
                 ntw = line.naturalTextWidth()
                 shifted = ntw - cfmt.br.width()
                 if is_final_block:
@@ -1076,13 +1357,17 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             else:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 if cfmt is not None:
-                    right_margin, left_margin = emphasis_margins(
-                        block, line, vertical=True
-                    )
-                    width_list.append(
-                        cfmt.tbr.width()
-                        + 2 * max(right_margin, left_margin)
-                    )
+                    if text_combine_line_width is None:
+                        right_margin, left_margin = emphasis_margins(
+                            block, line, vertical=True
+                        )
+                        current_line_width = (
+                            cfmt.tbr.width()
+                            + 2 * max(right_margin, left_margin)
+                        )
+                    else:
+                        current_line_width = text_combine_line_width
+                    width_list.append(current_line_width)
                 else:
                     width_list.append(-1)
 
@@ -1101,7 +1386,15 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     line_spacing = self.line_spacing
                 if len(width_list) == 0:
                     width_list = [block_width]
-                end_line, end_ypos, end_w = line, line_y_offset, width_list[-1]
+                end_line, end_ypos, end_w = (
+                    line,
+                    line_y_offset,
+                    width_list[-1],
+                )
+                if out_of_vspace and text_combine_line_width is not None:
+                    # This line belongs to the next column and therefore did
+                    # not enter the previous column's width list.
+                    end_w = text_combine_line_width
                 idea_line_width = -1
                 if out_of_vspace and end_char and len(width_list) > 1:
                     idea_line_width = max(width_list[:-1])
@@ -1114,19 +1407,27 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     line_char_ids = [char_idx]
                 end_char_id = line_char_ids[-1]
                 for cidx in line_char_ids:
-                    char_records[cidx] = {'line_width': idea_line_width}
+                    char_records.setdefault(cidx, {})[
+                        'line_width'
+                    ] = idea_line_width
                 line_char_ids = []
 
-                x_offset = x_offset - self.calculate_line_spacing(idea_line_width, line_spacing)
+                x_offset -= self.calculate_line_spacing(
+                    idea_line_width, line_spacing
+                )
                 
                 for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
                     line.setPosition(QPointF(x_offset, ypos))
                 if out_of_vspace:
                     if end_char:
                         if not len(line_not_set) == 1:
-                            x_offset = x_offset - self.calculate_line_spacing(end_w, line_spacing)
+                            x_offset -= self.calculate_line_spacing(
+                                end_w, line_spacing
+                            )
                         end_line.setPosition(QPointF(x_offset, end_ypos))
-                        char_records[end_char_id] = {'line_width': end_w}
+                        char_records.setdefault(end_char_id, {})[
+                            'line_width'
+                        ] = end_w
                     else:
                         line_not_set = [end_line]
                         ypos_list = [end_ypos]
@@ -1140,7 +1441,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             strip_space_textlen = (
                 _grapheme_count(text.lstrip())
-                if custom_rendering
+                if utf16_indexing
                 else text_len - num_lspaces
             )
             if strip_space_textlen > 1 and single_char_h is not None:

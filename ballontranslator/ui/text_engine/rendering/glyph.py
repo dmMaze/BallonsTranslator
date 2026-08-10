@@ -49,6 +49,7 @@ from ballontranslator.ui.misc import ndarray2pixmap, pixmap2ndarray
 
 
 GLYPH_STROKE_FORMAT_PROPERTY = 0x100000 + 1239
+GLYPH_DILATED_STROKE_FORMAT_PROPERTY = 0x100000 + 1240
 FALLBACK_RASTER_MAX_SCALE = 8.0
 FALLBACK_RASTER_MAX_PIXELS = 4_194_304
 FALLBACK_RASTER_MAX_DIMENSION = 8192
@@ -821,6 +822,105 @@ def _draw_fallbacks(
             )
 
 
+def _draw_dilated_path_stroke(
+    painter: QPainter,
+    paths: Sequence[QPainterPath],
+    outline: QPen,
+    failure_handler: Optional[Callable[[Exception, bool], None]] = None,
+) -> bool:
+    """Paint an app-effect outline as a filled-glyph dilation.
+
+    Qt's pen stroker can leave a cavity when its radius exceeds a small glyph
+    component. Rasterizing at the active device scale and dilating the filled
+    silhouette matches image-editor layer strokes without changing layout.
+
+    >>> callable(_draw_dilated_path_stroke)
+    True
+    """
+    if (
+        not paths
+        or outline.widthF() <= 0.0
+        or outline.brush().style() != Qt.BrushStyle.SolidPattern
+    ):
+        return False
+
+    bounds = QRectF()
+    for path in paths:
+        path_bounds = path.boundingRect()
+        if path_bounds.isEmpty():
+            continue
+        bounds = (
+            QRectF(path_bounds)
+            if bounds.isNull()
+            else bounds.united(path_bounds)
+        )
+    if bounds.isEmpty():
+        return False
+
+    try:
+        outline_radius = outline.widthF() / 2.0
+        raster_rect, scale, pixel_width, pixel_height = (
+            _fallback_raster_plan(painter, bounds, outline_radius)
+        )
+        source = QImage(
+            pixel_width,
+            pixel_height,
+            QImage.Format.Format_ARGB32,
+        )
+        if source.isNull():
+            raise MemoryError('unable to allocate glyph stroke mask')
+        source.setDevicePixelRatio(scale)
+        source.fill(Qt.GlobalColor.transparent)
+        source_painter = QPainter(source)
+        if not source_painter.isActive():
+            raise MemoryError('unable to begin glyph stroke mask painter')
+        try:
+            source_painter.setRenderHint(
+                QPainter.RenderHint.Antialiasing, True
+            )
+            source_painter.translate(-raster_rect.topLeft())
+            source_painter.setPen(Qt.PenStyle.NoPen)
+            source_painter.setBrush(Qt.GlobalColor.white)
+            for path in paths:
+                source_painter.drawPath(path)
+        finally:
+            source_painter.end()
+
+        rgba = pixmap2ndarray(source, keep_alpha=True)
+        if rgba is None:
+            raise MemoryError('unable to access glyph stroke mask pixels')
+        radius = max(1, math.ceil(outline_radius * scale))
+        diameter = radius * 2 + 1
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (diameter, diameter)
+        )
+        alpha = cv2.dilate(rgba[..., 3], kernel)
+        color = outline.color()
+        stroke = np.empty_like(rgba)
+        stroke[..., 0] = color.red()
+        stroke[..., 1] = color.green()
+        stroke[..., 2] = color.blue()
+        stroke[..., 3] = alpha
+        stroke_pixmap = ndarray2pixmap(stroke)
+        if stroke_pixmap is None or stroke_pixmap.isNull():
+            raise MemoryError('unable to allocate dilated glyph stroke')
+        stroke_pixmap.setDevicePixelRatio(scale)
+        painter.drawPixmap(raster_rect.topLeft(), stroke_pixmap)
+        return True
+    except (
+        MemoryError,
+        OverflowError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        BufferError,
+        cv2.error,
+    ) as error:
+        if failure_handler is not None:
+            failure_handler(GlyphRasterAllocationError(str(error)), True)
+        return False
+
+
 def draw_glyph_geometry(
     painter: QPainter,
     geometry: GlyphGeometry,
@@ -833,11 +933,23 @@ def draw_glyph_geometry(
     if geometry.paths:
         painter.save()
         try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             if outline.style() != Qt.PenStyle.NoPen:
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.setPen(outline)
-                for glyph_path in geometry.paths:
-                    painter.drawPath(glyph_path)
+                dilated = bool(
+                    char_format.property(
+                        GLYPH_DILATED_STROKE_FORMAT_PROPERTY
+                    )
+                ) and _draw_dilated_path_stroke(
+                    painter,
+                    geometry.paths,
+                    outline,
+                    failure_handler,
+                )
+                if not dilated:
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.setPen(outline)
+                    for glyph_path in geometry.paths:
+                        painter.drawPath(glyph_path)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(brush)
             for glyph_path in geometry.paths:
@@ -878,6 +990,7 @@ def draw_uniform_glyph_geometries(
         return
     painter.save()
     try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(brush)
         for geometry in geometries:

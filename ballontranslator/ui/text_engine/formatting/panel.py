@@ -412,6 +412,9 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.emphasis_changed.connect(
             self.on_emphasis_changed
         )
+        self.textadvancedfmt_panel.tate_chu_yoko_changed.connect(
+            self.on_tate_chu_yoko_changed
+        )
         self.texttransform_panel = TextTransformPanel(
             self.tr('Text Transform'),
             config_name='text_transform_panel',
@@ -525,6 +528,16 @@ class FontFormatPanel(Widget):
         if items and not SW.canvas.hasFocus():
             SW.canvas.setFocus()
 
+    def on_tate_chu_yoko_changed(self, enabled: bool) -> None:
+        if self.textblk_item is not None:
+            items = [self.textblk_item]
+        else:
+            items = SW.canvas.selected_text_items()
+        for item in items:
+            item.setTateChuYoko(enabled)
+        if items and not SW.canvas.hasFocus():
+            SW.canvas.setFocus()
+
     def resolve_text_transform_edits_for_save(self):
         self.text_transform_session.resolve_for_save()
 
@@ -602,9 +615,13 @@ class FontFormatPanel(Widget):
             self.textadvancedfmt_panel.set_emphasis_values(
                 'none', 'over right'
             )
+            self.textadvancedfmt_panel.set_tate_chu_yoko_enabled(False)
         else:
             self.textadvancedfmt_panel.set_emphasis_values(
                 *self.textblk_item.emphasis_values()
+            )
+            self.textadvancedfmt_panel.set_tate_chu_yoko_enabled(
+                self.textblk_item.tate_chu_yoko_enabled()
             )
         if update_transform_panel:
             self.texttransform_panel.set_active_format(font_format)

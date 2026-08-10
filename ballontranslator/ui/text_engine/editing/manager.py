@@ -582,9 +582,13 @@ class SceneTextManager(QObject):
         cursor.insertText(text)
 
     def on_emphasis_format_changed(self, style: str, position: str) -> None:
-        if self.sender() is self.formatpanel.textblk_item:
+        item = self.sender()
+        if item is self.formatpanel.textblk_item:
             self.formatpanel.textadvancedfmt_panel.set_emphasis_values(
                 style, position
+            )
+            self.formatpanel.textadvancedfmt_panel.set_tate_chu_yoko_enabled(
+                item.tate_chu_yoko_enabled()
             )
 
     def onTextBlkItemBeginEdit(self, blk_id: int):

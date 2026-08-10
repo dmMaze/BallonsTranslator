@@ -67,12 +67,31 @@ and surface resources.
 
 ### Inline annotations
 
-Qt character-format user properties are the live source of truth for emphasis
-and future range-bound features such as ruby. `TextBlock.rich_text` remains an
-HTML string: `annotations.py` adds a compact versioned metadata record on save
-and restores it after Qt loads the ordinary HTML. HTML written before this
-layer has no record and follows the same load path; malformed optional entries
-are discarded without losing the base document.
+Qt character-format user properties are the live source of truth for emphasis,
+tate-chu-yoko, and future range-bound features such as ruby.
+`TextBlock.rich_text` remains an HTML string: `annotations.py` adds a compact
+versioned metadata record on save and restores it after Qt loads the ordinary
+HTML. HTML written before this layer has no record and follows the same load
+path; malformed optional entries are discarded without losing the base
+document.
+
+Tate-chu-yoko stores a stable group ID as well as the `all` enabled value. One
+application or insertion-format session therefore remains one
+vertical cell even when its inherited character styling creates several Qt
+fragments, while adjacent independent applications remain separate cells. The
+vertical layout groups that ordinary text into one `QTextLine`; its established
+placement boundary owns cursor geometry, hit testing, effects, and emphasis
+positioning. Like Photoshop, the run keeps its natural horizontal advance and
+is centered on the existing vertical line: excess width is derived paint
+overflow and must not widen the column, move neighboring lines, or resize the
+persistent logical border. `TextItemGeometryController.source_paint_rect()`
+extends Qt paint, effect-cache, transformed-surface, and hit geometry to cover
+that overflow. The leading fragment supplies the normal cell height while
+every fragment retains its own paint style; taller inherited ink enlarges that
+cell instead of being clipped.
+Horizontal layout preserves the annotation without a visual change. Whitespace
+inside the grouped range remains part of that horizontal run rather than
+becoming vertical leading.
 
 Keep the envelope generic but add annotation behavior incrementally: reserve
 stable property IDs, validate one annotation kind, coalesce its fragment ranges

@@ -12,9 +12,11 @@ from html import escape
 from html.parser import HTMLParser
 import json
 from typing import Optional
+from uuid import uuid4
 
 from qtpy.QtCore import QByteArray, QMimeData
 from qtpy.QtGui import (
+    QTextBlock,
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
@@ -47,6 +49,11 @@ class AnnotationProperty(IntEnum):
     EMPHASIS_STYLE = _enum_value(QTextFormat.Property.UserProperty) + 1300
     EMPHASIS_POSITION = _enum_value(QTextFormat.Property.UserProperty) + 1301
 
+    # Vertical-language features use a separate range from emphasis and the
+    # future ruby range. The ID preserves adjacent combined-run boundaries.
+    TEXT_COMBINE_UPRIGHT = _enum_value(QTextFormat.Property.UserProperty) + 1340
+    TEXT_COMBINE_ID = _enum_value(QTextFormat.Property.UserProperty) + 1341
+
 
 EMPHASIS_STYLES = (
     'none',
@@ -68,6 +75,9 @@ EMPHASIS_POSITIONS = (
     'under left',
 )
 DEFAULT_EMPHASIS_POSITION = 'over right'
+TEXT_COMBINE_NONE = 'none'
+TEXT_COMBINE_ALL = 'all'
+MAX_ANNOTATION_ID_LENGTH = 128
 
 
 class _RichTextMetadataParser(HTMLParser):
@@ -138,6 +148,31 @@ def _valid_emphasis_entry(
     return start, length, style, position
 
 
+def _valid_text_combine_entry(
+    entry: object,
+    document_end: int,
+) -> Optional[tuple[int, int, str]]:
+    if not isinstance(entry, dict) or entry.get('kind') != 'text-combine-upright':
+        return None
+    start = entry.get('start')
+    length = entry.get('length')
+    value = entry.get('value')
+    group_id = entry.get('id')
+    if (
+        type(start) is not int
+        or type(length) is not int
+        or start < 0
+        or length <= 0
+        or start + length > document_end
+        or value != TEXT_COMBINE_ALL
+        or not isinstance(group_id, str)
+        or not group_id
+        or len(group_id) > MAX_ANNOTATION_ID_LENGTH
+    ):
+        return None
+    return start, length, group_id
+
+
 def _restore_annotations(document: QTextDocument, payload: dict) -> None:
     entries = payload.get('annotations', [])
     if not isinstance(entries, list):
@@ -148,14 +183,28 @@ def _restore_annotations(document: QTextDocument, payload: dict) -> None:
     cursor.beginEditBlock()
     try:
         for entry in entries:
-            values = _valid_emphasis_entry(entry, document_end)
-            if values is None:
+            modifier = QTextCharFormat()
+            emphasis = _valid_emphasis_entry(entry, document_end)
+            text_combine = _valid_text_combine_entry(entry, document_end)
+            if emphasis is not None:
+                start, length, style, position = emphasis
+                modifier.setProperty(AnnotationProperty.EMPHASIS_STYLE, style)
+                modifier.setProperty(
+                    AnnotationProperty.EMPHASIS_POSITION, position
+                )
+            elif text_combine is not None:
+                start, length, group_id = text_combine
+                modifier.setProperty(
+                    AnnotationProperty.TEXT_COMBINE_UPRIGHT,
+                    TEXT_COMBINE_ALL,
+                )
+                modifier.setProperty(
+                    AnnotationProperty.TEXT_COMBINE_ID,
+                    group_id,
+                )
+            else:
                 LOGGER.warning('Ignoring invalid rich-text annotation: %r', entry)
                 continue
-            start, length, style, position = values
-            modifier = QTextCharFormat()
-            modifier.setProperty(AnnotationProperty.EMPHASIS_STYLE, style)
-            modifier.setProperty(AnnotationProperty.EMPHASIS_POSITION, position)
             cursor.setPosition(start)
             cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
             cursor.mergeCharFormat(modifier)
@@ -223,6 +272,67 @@ def _emphasis_entries(document: QTextDocument) -> list[dict]:
     return entries
 
 
+def text_combine_upright_values(
+    char_format: QTextCharFormat,
+) -> tuple[str, str]:
+    """Return the canonical text-combine value and its run ID."""
+    value = str(
+        char_format.property(AnnotationProperty.TEXT_COMBINE_UPRIGHT) or ''
+    )
+    group_id = str(
+        char_format.property(AnnotationProperty.TEXT_COMBINE_ID) or ''
+    )
+    if value != TEXT_COMBINE_ALL or not group_id:
+        return TEXT_COMBINE_NONE, ''
+    return value, group_id
+
+
+def text_combine_upright_ranges(
+    block: QTextBlock,
+) -> tuple[tuple[int, int, str], ...]:
+    """Return contiguous local UTF-16 ranges grouped by their stable ID."""
+    ranges = []
+    iterator = block.begin()
+    while not iterator.atEnd():
+        fragment = iterator.fragment()
+        if fragment.isValid() and fragment.length() > 0:
+            value, group_id = text_combine_upright_values(
+                fragment.charFormat()
+            )
+            if value == TEXT_COMBINE_ALL:
+                start = fragment.position() - block.position()
+                length = fragment.length()
+                if (
+                    ranges
+                    and ranges[-1][0] + ranges[-1][1] == start
+                    and ranges[-1][2] == group_id
+                ):
+                    old_start, old_length, old_id = ranges[-1]
+                    ranges[-1] = (old_start, old_length + length, old_id)
+                else:
+                    ranges.append((start, length, group_id))
+        iterator += 1
+    return tuple(ranges)
+
+
+def _text_combine_entries(document: QTextDocument) -> list[dict]:
+    entries = []
+    block = document.firstBlock()
+    while block.isValid():
+        for start, length, group_id in text_combine_upright_ranges(block):
+            entries.append(
+                {
+                    'kind': 'text-combine-upright',
+                    'start': block.position() + start,
+                    'length': length,
+                    'value': TEXT_COMBINE_ALL,
+                    'id': group_id,
+                }
+            )
+        block = block.next()
+    return entries
+
+
 def to_rich_text_html(
     document: QTextDocument,
     html: Optional[str] = None,
@@ -230,7 +340,10 @@ def to_rich_text_html(
     """Add versioned annotation metadata to Qt's existing HTML output."""
     if html is None:
         html = document.toHtml()
-    entries = _emphasis_entries(document)
+    entries = sorted(
+        _emphasis_entries(document) + _text_combine_entries(document),
+        key=lambda entry: (entry['start'], entry['kind']),
+    )
     if not entries:
         return html
     payload = json.dumps(
@@ -277,6 +390,49 @@ def apply_emphasis(cursor: QTextCursor, style: str, position: str) -> None:
     cursor.mergeCharFormat(modifier)
 
 
+def apply_text_combine_upright(
+    cursor: QTextCursor,
+    enabled: bool,
+) -> None:
+    """Apply one combined-run ID to a selection or insertion format."""
+    modifier = QTextCharFormat()
+    modifier.setProperty(
+        AnnotationProperty.TEXT_COMBINE_UPRIGHT,
+        TEXT_COMBINE_ALL if enabled else TEXT_COMBINE_NONE,
+    )
+    modifier.setProperty(
+        AnnotationProperty.TEXT_COMBINE_ID,
+        uuid4().hex if enabled else '',
+    )
+    cursor.mergeCharFormat(modifier)
+
+
+def _remap_text_combine_ids(document: QTextDocument) -> None:
+    """Give every pasted combined group a document-local identity."""
+    replacements = {}
+    cursor = QTextCursor(document)
+    cursor.beginEditBlock()
+    try:
+        block = document.firstBlock()
+        while block.isValid():
+            for start, length, group_id in text_combine_upright_ranges(block):
+                replacement = replacements.setdefault(group_id, uuid4().hex)
+                modifier = QTextCharFormat()
+                modifier.setProperty(
+                    AnnotationProperty.TEXT_COMBINE_ID,
+                    replacement,
+                )
+                cursor.setPosition(block.position() + start)
+                cursor.setPosition(
+                    block.position() + start + length,
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+                cursor.mergeCharFormat(modifier)
+            block = block.next()
+    finally:
+        cursor.endEditBlock()
+
+
 def create_rich_text_mime(cursor: QTextCursor) -> QMimeData:
     """Create interoperable clipboard data plus exact annotation metadata."""
     mime = QMimeData()
@@ -311,5 +467,6 @@ def insert_rich_text_mime(cursor: QTextCursor, mime: QMimeData) -> bool:
         return False
     document = QTextDocument()
     load_rich_text_html(document, html)
+    _remap_text_combine_ids(document)
     cursor.insertFragment(QTextDocumentFragment(document))
     return True
