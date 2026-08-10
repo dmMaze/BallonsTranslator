@@ -595,7 +595,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             layout = block.layout()
             blk_text = block.text()
             has_text_combine = bool(self.text_combine_ranges[blk_no])
-            utf16_indexing = custom_rendering or has_text_combine
+            utf16_indexing = (
+                custom_rendering
+                or has_text_combine
+                or _utf16_length(blk_text) != len(blk_text)
+            )
             blk_text_len = (
                 _utf16_length(blk_text) if utf16_indexing else len(blk_text)
             )
@@ -998,8 +1002,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blpos, bllen = block.position(), block.length()
             layout = block.layout()
             blk_text = block.text()
-            utf16_indexing = custom_rendering or bool(
-                self.text_combine_ranges[blk_no]
+            utf16_indexing = (
+                custom_rendering
+                or bool(self.text_combine_ranges[blk_no])
+                or _utf16_length(blk_text) != len(blk_text)
             )
             blk_text_len = (
                 _utf16_length(blk_text) if utf16_indexing else len(blk_text)
@@ -1158,7 +1164,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         off = 0
         while blk.isValid():
             blk_no = blk.blockNumber()
+            blk_text = blk.text()
             has_text_combine = bool(self.text_combine_ranges[blk_no])
+            utf16_indexing = (
+                custom_rendering
+                or has_text_combine
+                or _utf16_length(blk_text) != len(blk_text)
+            )
             blk_char_yoffset = self.y_offset_lst[blk_no]
             nyoffset = len(blk_char_yoffset)
             rect = blk.layout().boundingRect()
@@ -1199,10 +1211,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                                     break
                             ntr = line.naturalTextRect()
                             off = line.textStart()
-                            if custom_rendering or has_text_combine:
-                                # The feature path consumes Qt UTF-16 glyph
-                                # runs, so never return a caret inside a
-                                # transformed grapheme.
+                            if utf16_indexing:
+                                # This path consumes Qt UTF-16 positions, so
+                                # never return a caret inside one glyph run.
                                 after = line_bottom - y < y - line_top
                                 if line.textLength() > 1:
                                     after = after or (
@@ -1244,7 +1255,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         text_combine_lengths = {
             start: length for start, length, _group_id in text_combine_ranges
         }
-        utf16_indexing = custom_rendering or bool(text_combine_ranges)
+        utf16_indexing = (
+            custom_rendering
+            or bool(text_combine_ranges)
+            or _utf16_length(blk_text) != len(blk_text)
+        )
         blk_text_len = (
             _utf16_length(blk_text) if utf16_indexing else len(blk_text)
         )

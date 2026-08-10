@@ -148,12 +148,7 @@ def _mark_path(style: str, char_format: QTextCharFormat) -> QPainterPath:
     return path
 
 
-def _mark_geometry(
-    center: QPointF,
-    style: str,
-    char_format: QTextCharFormat,
-) -> GlyphGeometry:
-    path = _mark_path(style, char_format)
+def _mark_geometry(center: QPointF, path: QPainterPath) -> GlyphGeometry:
     bounds = path.boundingRect()
     path.translate(center - bounds.center())
     return GlyphGeometry((path,), (), path.boundingRect())
@@ -230,7 +225,8 @@ def _iter_emphasis_marks(
                     cell = run_bounds
             if cell.isEmpty():
                 continue
-            path_bounds = _mark_path(style, span.char_format).boundingRect()
+            path = _mark_path(style, span.char_format)
+            path_bounds = path.boundingRect()
             gap = (
                 QFontMetricsF(span.char_format.font()).height()
                 * EMPHASIS_GAP_SCALE
@@ -251,7 +247,7 @@ def _iter_emphasis_marks(
                 )
                 center = QPointF(cell.center().x(), y)
             yield EmphasisMark(
-                _mark_geometry(center, style, span.char_format),
+                _mark_geometry(center, path),
                 span.char_format,
             )
             if combined_unit:

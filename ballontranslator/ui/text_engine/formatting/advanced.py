@@ -748,7 +748,6 @@ class TextAdvancedFormatPanel(PanelArea):
         self.gradient_group.enable_checker.setCheckState(font_format.gradient_enabled)
         self.gradient_group.start_picker.setPickerColor(font_format.gradient_start_color)
         self.gradient_group.end_picker.setPickerColor(font_format.gradient_end_color)
-        # self.tate_chu_yoko_checker.setChecked(font_format.font)
 
     def set_emphasis_values(self, style: str, position: str) -> None:
         self.emphasis_group.set_values(style, position)

@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -93,6 +94,25 @@ class RichTextAnnotationTest(unittest.TestCase):
             'text-emphasis-style',
             to_rich_text_html(restored),
         )
+
+    def test_old_qt_html_skips_extension_parser_and_keeps_spacing_fallback(self):
+        source = QTextDocument()
+        source.setPlainText('old rich text')
+        restored = QTextDocument()
+
+        with patch(
+            'ballontranslator.ui.text_engine.annotations.'
+            '_inline_extension_ranges_from_html'
+        ) as parse_extensions:
+            load_rich_text_html(
+                restored,
+                source.toHtml(),
+                letter_spacing_fallback=1.25,
+            )
+
+        parse_extensions.assert_not_called()
+        self.assertEqual(restored.toPlainText(), 'old rich text')
+        self.assertEqual(letter_spacing_value(_format_at(restored, 0)), 1.25)
 
     def test_emphasis_inline_round_trip_keeps_fragment_style(self):
         source = QTextDocument()
@@ -1098,6 +1118,32 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(
             _grapheme_ranges('A𠮷e\u0301👩\u200d👩\u200d👧\u200d👦'),
             ((0, 1), (1, 3), (3, 5), (5, 16)),
+        )
+
+    def test_vertical_emphasis_keeps_supplementary_layout_records_aligned(self):
+        item = self._make_item(True, text='A𠮷B')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setEmphasis('filled dot', 'over right')
+
+        text_layout = item.document().firstBlock().layout()
+        self.assertEqual(
+            [
+                text_layout.lineAt(index).textLength()
+                for index in range(text_layout.lineCount())
+            ],
+            [1, 2, 1],
+        )
+        self.assertEqual(
+            len(item.layout.line_spaces_lst[0]),
+            text_layout.lineCount(),
+        )
+        self.assertEqual(
+            len(item.layout.y_offset_lst[0]),
+            text_layout.lineCount(),
         )
 
     def test_emphasis_adds_css_like_line_and_column_leading(self):

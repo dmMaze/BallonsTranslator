@@ -535,11 +535,8 @@ class SceneTextManager(QObject):
         textblk_item.undo_signal.connect(self.on_textedit_undo)
         textblk_item.redo_signal.connect(self.on_textedit_redo)
         textblk_item.propagate_user_edited.connect(self.on_propagate_textitem_edit)
-        textblk_item.emphasis_format_changed.connect(
-            self.on_emphasis_format_changed
-        )
-        textblk_item.letter_spacing_format_changed.connect(
-            self.on_letter_spacing_format_changed
+        textblk_item.inline_format_changed.connect(
+            self.on_inline_format_changed
         )
         textblk_item.pasted.connect(self.onBlkitemPaste)
         return textblk_item
@@ -584,20 +581,18 @@ class SceneTextManager(QObject):
         cursor = blk_item.textCursor()
         cursor.insertText(text)
 
-    def on_emphasis_format_changed(self, style: str, position: str) -> None:
+    def on_inline_format_changed(self) -> None:
         item = self.sender()
         if item is self.formatpanel.textblk_item:
             self.formatpanel.textadvancedfmt_panel.set_emphasis_values(
-                style, position
+                *item.emphasis_values()
             )
             self.formatpanel.textadvancedfmt_panel.set_tate_chu_yoko_enabled(
                 item.tate_chu_yoko_enabled()
             )
-
-    def on_letter_spacing_format_changed(self, value: float) -> None:
-        item = self.sender()
-        if item is self.formatpanel.textblk_item:
-            self.formatpanel.set_letter_spacing_value(value)
+            self.formatpanel.set_letter_spacing_value(
+                item.letter_spacing_value()
+            )
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]

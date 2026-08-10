@@ -33,6 +33,11 @@ RICH_TEXT_MIME_TYPE = 'application/x-ballonstranslator-rich-text'
 MAX_RICH_TEXT_MIME_BYTES = 16 * 1024 * 1024
 LETTER_SPACING_ATTRIBUTE = 'data-btrans-letter-spacing'
 TEXT_COMBINE_ID_ATTRIBUTE = 'data-btrans-text-combine-id'
+_INLINE_EXTENSION_MARKERS = (
+    'text-emphasis-style',
+    'text-combine-upright',
+    LETTER_SPACING_ATTRIBUTE,
+)
 
 
 def _enum_value(value: object) -> int:
@@ -408,7 +413,15 @@ def load_rich_text_html(
     document.setUndoRedoEnabled(False)
     try:
         document.setHtml(html)
-        extension_ranges = _inline_extension_ranges_from_html(document, html)
+        lowered_html = html.lower()
+        extension_ranges = (
+            _inline_extension_ranges_from_html(document, html)
+            if any(
+                marker in lowered_html
+                for marker in _INLINE_EXTENSION_MARKERS
+            )
+            else ()
+        )
         fallback = _canonical_letter_spacing(letter_spacing_fallback)
         if fallback is not None:
             # Old HTML has no inline spacing. Seed its item-wide value; the

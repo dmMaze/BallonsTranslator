@@ -54,8 +54,7 @@ class TextBlkItem(QGraphicsTextItem):
     push_undo_stack = Signal(int, bool)
     propagate_user_edited = Signal(int, str, bool)
     visual_geometry_changed = Signal()
-    emphasis_format_changed = Signal(str, str)
-    letter_spacing_format_changed = Signal(float)
+    inline_format_changed = Signal()
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -119,8 +118,7 @@ class TextBlkItem(QGraphicsTextItem):
         self._update_nonlinear_editing_ui()
 
     def _emit_inline_format_changed(self) -> None:
-        self.emphasis_format_changed.emit(*self.emphasis_values())
-        self.letter_spacing_format_changed.emit(self.letter_spacing_value())
+        self.inline_format_changed.emit()
 
     def _update_nonlinear_editing_ui(self) -> None:
         controller = getattr(self, 'geometry_controller', None)
@@ -1118,21 +1116,23 @@ class TextBlkItem(QGraphicsTextItem):
         if restore_cursor:
             cursor.select(QTextCursor.SelectionType.Document)
         self.is_formatting = True
-        cursor.beginEditBlock()
         try:
-            apply_format(cursor)
+            cursor.beginEditBlock()
+            try:
+                apply_format(cursor)
+            finally:
+                cursor.endEditBlock()
+                if restore_cursor:
+                    cursor.setPosition(cursor_anchor)
+                    if cursor_position != cursor_anchor:
+                        cursor.setPosition(
+                            cursor_position,
+                            QTextCursor.MoveMode.KeepAnchor,
+                        )
+                self.setTextCursor(cursor)
+            self.geometry_controller.flush_deferred_compilation()
         finally:
-            cursor.endEditBlock()
-            if restore_cursor:
-                cursor.setPosition(cursor_anchor)
-                if cursor_position != cursor_anchor:
-                    cursor.setPosition(
-                        cursor_position,
-                        QTextCursor.MoveMode.KeepAnchor,
-                    )
-            self.setTextCursor(cursor)
             self.is_formatting = False
-        self.geometry_controller.flush_deferred_compilation()
 
     def setEmphasis(self, style: str, position: str) -> None:
         """Apply emphasis to a selection or the active insertion format."""

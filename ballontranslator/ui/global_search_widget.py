@@ -251,7 +251,14 @@ class GlobalReplaceThead(ThreadBase):
                     replace_html = ''
                     if blk.rich_text:
                         ori_html = blk.rich_text
-                        load_rich_text_html(doc, blk.rich_text)
+                        load_rich_text_html(
+                            doc,
+                            blk.rich_text,
+                            letter_spacing_fallback=(
+                                blk.fontformat.letter_spacing
+                            ),
+                            vertical=blk.fontformat.vertical,
+                        )
                         span_list = [[rstitem.start, rstitem.end] for rstitem in rstitem_list]
                         doc_replace(doc, span_list, target)
                         replace_html = to_rich_text_html(doc)

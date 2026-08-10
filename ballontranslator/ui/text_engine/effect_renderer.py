@@ -15,7 +15,6 @@ from qtpy.QtGui import (
     QPixmap,
     QTextCharFormat,
     QTextCursor,
-    QTextDocument,
     QTextLayout,
 )
 from qtpy.QtWidgets import QStyle, QWidget
@@ -24,7 +23,6 @@ from ballontranslator.utils.fontformat import FontFormat, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ..misc import ndarray2pixmap, pixmap2ndarray
 from .layout import HorizontalTextDocumentLayout, VerticalTextDocumentLayout
-from .annotations import load_rich_text_html, to_rich_text_html
 from .rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
@@ -379,19 +377,13 @@ class TextEffectRenderer:
             ) from error
         return pixmap
 
-    def _paint_cloned_document_stroke(self, painter: QPainter):
+    def _paint_cloned_document_stroke(self, painter: QPainter) -> None:
         """Paint stroke through the BASE cloned-document path."""
-        doc = QTextDocument()
+        # Qt's native clone preserves UserProperty values and avoids a full
+        # HTML serialization/parse cycle on every effect refresh.
+        doc = self.document().clone()
         doc.setUndoRedoEnabled(False)
         doc.setDocumentMargin(self.layout.effectPadding())
-        doc.setDefaultFont(self.document().defaultFont())
-        load_rich_text_html(
-            doc,
-            to_rich_text_html(self.document()),
-            letter_spacing_fallback=self.fontformat.letter_spacing,
-            vertical=self.fontformat.vertical,
-        )
-        doc.setDefaultTextOption(self.document().defaultTextOption())
         cursor = QTextCursor(doc)
         block = doc.firstBlock()
         stroke_pen = QPen(
