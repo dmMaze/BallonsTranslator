@@ -271,17 +271,17 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="766"/>
         <source>Keyword substitution for source text</source>
-        <translation type="unfinished">OCR 결과에 대한 키워드 치환</translation>
+        <translation>OCR 결과에 대한 키워드 치환</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="773"/>
         <source>Keyword substitution for machine translation source text</source>
-        <translation type="unfinished">원문에 대한 키워드 치환(전처리)</translation>
+        <translation>원문에 대한 키워드 치환(전처리)</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="782"/>
         <source>Keyword substitution for machine translation</source>
-        <translation type="unfinished">번역문에 대한 키워드 치환(후처리)</translation>
+        <translation>번역문에 대한 키워드 치환(후처리)</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="792"/>
@@ -1254,7 +1254,7 @@
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="789"/>
-        <source>Restart to apply changes?&#x20;
+        <source>Restart to apply changes? 
 </source>
         <translation>변경 사항을 적용하기 위해 다시 시작 하시겠습니까? 
 </translation>

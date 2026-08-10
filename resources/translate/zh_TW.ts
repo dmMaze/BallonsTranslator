@@ -279,17 +279,17 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="766"/>
         <source>Keyword substitution for source text</source>
-        <translation type="unfinished">替換原文關鍵字</translation>
+        <translation>替換原文關鍵字</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="773"/>
         <source>Keyword substitution for machine translation source text</source>
-        <translation type="unfinished">替換機翻前文本關鍵字</translation>
+        <translation>替換機翻前文本關鍵字</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="782"/>
         <source>Keyword substitution for machine translation</source>
-        <translation type="unfinished">替換機翻結果中的關鍵字</translation>
+        <translation>替換機翻結果中的關鍵字</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="792"/>
@@ -475,12 +475,12 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="978"/>
         <source>Hide Unused Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>隱藏不使用的字體</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="981"/>
         <source>Font Exclusion</source>
-        <translation type="unfinished"></translation>
+        <translation>字體排除</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="984"/>
@@ -695,65 +695,67 @@
         <location filename="../../ballontranslator/ui/configpanel.py" line="148"/>
         <location filename="../../ballontranslator/ui/configpanel.py" line="171"/>
         <source>Font Exclusion</source>
-        <translation type="unfinished"></translation>
+        <translation>字體排除</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="183"/>
         <source>Filter Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>字體過濾</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="193"/>
         <source>Available Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>可用字體</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="209"/>
         <source>Hide selected fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>隱藏所選字體</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="215"/>
         <source>Show selected fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>顯示所選字體</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="224"/>
         <source>Hidden Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>已隱藏字體</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="240"/>
         <source>Hide Legacy Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>隱藏舊版字體</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="248"/>
         <source>Cancel</source>
-        <translation type="unfinished"></translation>
+        <translation>取消</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="252"/>
         <source>OK</source>
-        <translation type="unfinished"></translation>
+        <translation>確認</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="341"/>
         <location filename="../../ballontranslator/ui/configpanel.py" line="359"/>
         <source>Legacy Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>舊版字體</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="342"/>
         <source>No additional legacy fonts detected on this system.</source>
-        <translation type="unfinished"></translation>
+        <translation>系統中未檢測到其他舊版字體。</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="361"/>
         <source>Added {count} legacy font(s) to the hidden list:
 
 {fonts}</source>
-        <translation type="unfinished"></translation>
+        <translation>已將 {count} 箇舊版字體添加到隱藏列表：
+
+{fonts}</translation>
     </message>
 </context>
 <context>
@@ -1392,7 +1394,7 @@
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="789"/>
-        <source>Restart to apply changes?&#x20;
+        <source>Restart to apply changes? 
 </source>
         <translation>重啟程序以應用更改?\n</translation>
     </message>
@@ -4067,7 +4069,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/presets.py" line="97"/>
         <source>Click to set as Global format. Double click to edit name. Drag to reorder.</source>
-        <translation type="unfinished"></translation>
+        <translation>單擊設爲全局字體格式，雙擊編輯名稱，拖拽可重排</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/presets.py" line="109"/>
@@ -4165,7 +4167,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="151"/>
         <source>X</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="158"/>
@@ -4182,7 +4184,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="169"/>
         <source>Y</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="176"/>
@@ -4192,7 +4194,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="187"/>
         <source>Z</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="194"/>
@@ -4435,7 +4437,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="427"/>
         <source>Font Exclusion</source>
-        <translation type="unfinished"></translation>
+        <translation>字體排除</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="438"/>
