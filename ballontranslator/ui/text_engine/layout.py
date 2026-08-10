@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 from qtpy.QtCore import Qt, QRectF, QPointF, Signal, QSizeF
 from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransform, QPalette, QPainter, QTextFrame, QTextBlock, QAbstractTextDocumentLayout, QTextLayout, QFont, QFontMetricsF, QTextOption, QTextLine, QTextFormat
@@ -32,16 +33,19 @@ from .rendering.tate_chu_yoko import (
 
 PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 
-# https://www.w3.org/TR/2022/DNOTE-clreq-20220801/#tables_of_chinese_punctuation_marks
-# https://www.w3.org/TR/2022/DNOTE-clreq-20220801/#glyphs_sizes_and_positions_in_character_faces_of_punctuation_marks
-PUNSET_PAUSEORSTOP = {'。', '．', '，', '、', '·', '：', '；', '！', '？'}     # dont need to rotate, 
-PUNSET_ALIGNCENTER = {'。', '．', '，', '、', '·'}
+# CLREQ Appendix A: pause/stop marks stay upright, while parenthetical
+# punctuation, dashes, ellipses, connectors, and indicators rotate.
+PUNSET_PAUSEORSTOP = {
+    '。', '．', '，', '、', '：', '；', '！', '‼', '？', '⁇', '⁈', '⁉',
+}
+PUNSET_ALIGNCENTER = {'·', '・', '‧', '●', '•'}
 PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
 PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗', '〕', '］', '｝', ')'}
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 
-PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '●', '•', '~'}
+PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~'}
 PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF)
+PUNSET_STANDARD_VERTICAL_ROMAN = PUNSET_VERNEEDROTATE.difference(PUNSET_HALF)
 
 PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’'}
 PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘'}
@@ -52,9 +56,22 @@ Miscellaneous_Symbols_Pattern = r'\u2600-\u26FF'  # align center in vertical mod
 vertical_force_aligncentel_pattern = re.compile('[' + Dingbats_vertical_aligncenter + Miscellaneous_Symbols_Pattern + r'⁁⁂⁇⁈⁉⁊⁋⁎※⁑⁒⁕⁖⁘⁙⁛⁜‼‽]')
 
 
-@lru_cache
-def vertical_force_aligncentel(char: str) -> bool:
-    return char in PUNSET_PAUSEORSTOP or vertical_force_aligncentel_pattern.match(char) is not None
+@lru_cache(maxsize=512)
+def _is_non_fullwidth_roman(char: str) -> bool:
+    """Return whether a glyph follows the item-wide Roman orientation.
+
+    >>> _is_non_fullwidth_roman('A')
+    True
+    >>> _is_non_fullwidth_roman('Ａ')
+    False
+    """
+    if char in PUNSET_HALF:
+        return True
+    if unicodedata.east_asian_width(char) in {'F', 'W'}:
+        return False
+    name = unicodedata.name(char, '')
+    return name.startswith('LATIN ') or name.startswith('ROMAN NUMERAL ')
+
 
 @lru_cache(maxsize=512)
 def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:
@@ -414,8 +431,6 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     
 
 class VerticalTextDocumentLayout(SceneTextLayout):
-    vertical_rotation_chars = PUNSET_VERNEEDROTATE
-
     def __init__(self, doc: QTextDocument, fontformat: FontFormat):
         super().__init__(doc, fontformat)
 
@@ -435,6 +450,33 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._resize_layout_max_width = None
         self._resize_layout_available_height = None
         self._resize_layout_padding = None
+
+    def needs_vertical_rotation(self, char: str) -> bool:
+        rotation_chars = (
+            PUNSET_STANDARD_VERTICAL_ROMAN
+            if self.fontformat.standard_vertical_roman_alignment
+            else PUNSET_VERNEEDROTATE
+        )
+        return (
+            char in rotation_chars
+            or (
+                not self.fontformat.standard_vertical_roman_alignment
+                and _is_non_fullwidth_roman(char)
+            )
+        )
+
+    def centers_vertical_glyph(self, char: str) -> bool:
+        if char in PUNSET_PAUSEORSTOP:
+            return self.fontformat.standard_vertical_roman_alignment
+        if (
+            self.fontformat.standard_vertical_roman_alignment
+            and _is_non_fullwidth_roman(char)
+        ):
+            return True
+        return (
+            char in PUNSET_ALIGNCENTER
+            or vertical_force_aligncentel_pattern.match(char) is not None
+        )
 
     @property
     def align_right(self):
@@ -585,7 +627,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if num_lspaces > 0:
                     space_shift = num_lspaces * cfmt.space_width
 
-                if char in PUNSET_VERNEEDROTATE:
+                if self.needs_vertical_rotation(char):
                     char = (
                         _utf16_char_at(blk_text, char_idx)
                         if utf16_indexing
@@ -614,23 +656,58 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             yoff = yoff - (line_width - non_bracket_br[3]) / 2
 
                 else:
-                    # other characters will simply be aligned center for this line
-                    act_rect = cfmt.punc_actual_rect(line, char, cache=True, space_shift=space_shift)
-                    if vertical_force_aligncentel(char):
-                        yoff = -act_rect[1]
+                    standard_roman = (
+                        self.fontformat.standard_vertical_roman_alignment
+                        and _is_non_fullwidth_roman(char)
+                    )
+                    if standard_roman:
+                        # Roman ink has ordinary baseline metrics. Center it
+                        # without priming Qt's process-global glyph raster
+                        # cache during layout.
+                        tight_rect, _ = cfmt.punc_rect(char)
+                        xoff = (
+                            -tight_rect.left()
+                            + (line_width - tight_rect.width()) / 2
+                        )
+                        yoff = (
+                            -line.ascent()
+                            - tight_rect.top()
+                            + (cfmt.tbr.height() - tight_rect.height()) / 2
+                        )
                     else:
-                        yoff = min(cfmt.br.top() - cfmt.tbr.top(), -cfmt.tbr.top() - line.ascent())
-                    xoff = -act_rect[0] + (line_width - act_rect[2]) / 2
-                    # if char in PUNSET_ALIGNTOP:
-                    #     yoff = yoff + (cfmt.tbr.height() - act_rect[3]) / 2
+                        act_rect = cfmt.punc_actual_rect(
+                            line,
+                            char,
+                            cache=True,
+                            space_shift=space_shift,
+                        )
+                        if self.centers_vertical_glyph(char):
+                            xoff = (
+                                -act_rect[0]
+                                + (line_width - act_rect[2]) / 2
+                            )
+                            yoff = (
+                                -act_rect[1]
+                                + (cfmt.tbr.height() - act_rect[3]) / 2
+                            )
+                        elif char in PUNSET_PAUSEORSTOP:
+                            # CLREQ's Mainland convention places stop marks at
+                            # the upper-right of their full character frame.
+                            xoff = -act_rect[0] + line_width - act_rect[2]
+                            yoff = -act_rect[1]
+                        else:
+                            yoff = min(
+                                cfmt.br.top() - cfmt.tbr.top(),
+                                -cfmt.tbr.top() - line.ascent(),
+                            )
+                            xoff = (
+                                -act_rect[0]
+                                + (line_width - act_rect[2]) / 2
+                            )
                     
                     if num_lspaces > 0:
                         xoff -= space_shift
                         yoff += space_shift
-
-                    if char in PUNSET_ALIGNCENTER:
-                        tbr, br = cfmt.punc_rect(char)
-                        yoff += (tbr.height() + cfmt.font_metrics.descent() - act_rect[3]) / 2
 
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
@@ -823,7 +900,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         char = _utf16_char_at(block_text, char_offset)
         x_offset, y_offset = self._draw_offset[block_number][line_number]
         orientation = QTransform()
-        if char in self.vertical_rotation_chars:
+        if self.needs_vertical_rotation(char):
             line_x, line_y = line.x(), line.y()
             orientation = QTransform(
                 0,
@@ -1003,7 +1080,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             context,
                             self._report_render_failure,
                         )
-                elif char in PUNSET_VERNEEDROTATE:
+                elif self.needs_vertical_rotation(char):
                     line_x, line_y = line.x(), line.y()
                     y_x = line_y - line_x
                     y_p_x = line_y + line_x
@@ -1260,7 +1337,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     if utf16_indexing
                     else blk_text[char_idx]
                 )
-                is_first_lbracket = char_idx - num_lspaces == 0 and char in PUNSET_BRACKETL
+                is_first_lbracket = (
+                    char_idx - num_lspaces == 0
+                    and char in PUNSET_BRACKETL
+                    and self.needs_vertical_rotation(char)
+                )
                 if is_first_lbracket:
                     _lbracket_shift = -cfmt.punc_actual_rect(line, char, cache=True, space_shift=space_shift)[0]
 
@@ -1289,7 +1370,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         'text_combine_height': text_combine_height,
                         'text_combine_width': text_combine_width,
                     }
-                elif char in PUNSET_VERNEEDROTATE:
+                elif self.needs_vertical_rotation(char):
                     tbr, br = cfmt.punc_rect(char)
                     single_char_h = tbr.width()
                     tbr_h = tbr.width() * (
@@ -1314,13 +1395,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             tbr_h -= let_sp_offset
                     else:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
-                    tbr_h += let_sp_offset
-                elif vertical_force_aligncentel(char):
-                    if char not in PUNSET_ALIGNCENTER:
-                        tbr_h = cfmt.punc_actual_rect(line, char, cache=True, space_shift=space_shift)[3]
-                    else:
-                        tbr, br = cfmt.punc_rect(char)
-                        tbr_h = tbr.height() + cfmt.font_metrics.descent()
                     tbr_h += let_sp_offset
             elif char_idx - num_lspaces < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx - num_lspaces)

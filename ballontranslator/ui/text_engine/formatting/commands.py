@@ -17,6 +17,11 @@ global_default_set_kwargs = dict(set_selected=False, restore_cursor=False)
 local_default_set_kwargs = dict(set_selected=True, restore_cursor=True)
 
 
+def restore_canvas_view_focus() -> None:
+    # Scene focus keeps the text caret alive; the view owns keyboard input.
+    if not SW.canvas.gv.hasFocus():
+        SW.canvas.gv.setFocus()
+
 
 class TextStyleUndoCommand(QUndoCommand):
 
@@ -67,8 +72,7 @@ def font_formating(push_undostack: bool = False, is_property = True):
                 else:
                     formatting_func(param_name, values, act_ffmt, is_global, blkitems, *args, **kwargs)
             if set_focus:
-                if not SW.canvas.hasFocus():
-                    SW.canvas.setFocus()
+                restore_canvas_view_focus()
         return wrapper
     
     return func_wrapper
@@ -122,6 +126,18 @@ def ffmt_change_vertical(param_name: str, values: bool, act_ffmt: FontFormat, is
     # set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
         blkitem.setVertical(value)
+
+@font_formating(push_undostack=True)
+def ffmt_change_standard_vertical_roman_alignment(
+    param_name: str,
+    values: bool,
+    act_ffmt: FontFormat,
+    is_global: bool,
+    blkitems: List[TextBlkItem],
+    **kwargs,
+) -> None:
+    for blkitem, value in zip(blkitems, values):
+        blkitem.setStandardVerticalRomanAlignment(value)
 
 @font_formating()
 def ffmt_change_frgb(param_name: str, values: tuple, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
@@ -189,8 +205,8 @@ def ffmt_change_angle(param_name: str, values: float, act_ffmt: FontFormat, is_g
             )
         )
 
-    if set_focus and not SW.canvas.hasFocus():
-        SW.canvas.setFocus()
+    if set_focus:
+        restore_canvas_view_focus()
 
 
 @font_formating(push_undostack=True)

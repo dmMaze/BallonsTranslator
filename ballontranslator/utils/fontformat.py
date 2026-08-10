@@ -448,6 +448,7 @@ class FontFormat(Config):
     italic: bool = False
     alignment: int = 0
     vertical: bool = False
+    standard_vertical_roman_alignment: bool = True
     font_weight: int = None
     line_spacing: float = 1.2
     letter_spacing: float = 1.15
@@ -498,6 +499,14 @@ class FontFormat(Config):
                 self.font_weight = da['weight']
             if 'family' in da:
                 self.font_family = da['family']
+
+        if not isinstance(self.standard_vertical_roman_alignment, bool):
+            LOGGER.warning(
+                'Ignoring invalid standard vertical Roman alignment value '
+                '(%r); using the enabled default.',
+                self.standard_vertical_roman_alignment,
+            )
+            self.standard_vertical_roman_alignment = True
 
         self.font_weight = fix_fontweight_qt(self.font_weight)
         if not isinstance(self.text_transform, TextTransformStack):

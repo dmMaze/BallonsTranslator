@@ -528,6 +528,26 @@ class TextBlkItem(QGraphicsTextItem):
         if valid_layout:
             self.visual_geometry_changed.emit()
 
+    def setStandardVerticalRomanAlignment(
+        self,
+        enabled: bool,
+        repaint_background: bool = True,
+    ) -> None:
+        """Set the item-wide Roman orientation used by vertical layout."""
+        enabled = bool(enabled)
+        if self.fontformat.standard_vertical_roman_alignment == enabled:
+            return
+        self.fontformat.standard_vertical_roman_alignment = enabled
+        if not isinstance(self.layout, VerticalTextDocumentLayout):
+            return
+
+        self.layout.reLayout()
+        self.geometry_controller.flush_deferred_compilation()
+        if repaint_background:
+            self.repaint_background()
+        self.update()
+        self.visual_geometry_changed.emit()
+
     def updateUndoSteps(self):
         self.old_undo_steps = self.document().availableUndoSteps()
 
@@ -826,6 +846,14 @@ class TextBlkItem(QGraphicsTextItem):
         self.repainting = True
         if self.fontformat.vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
+        if (
+            self.fontformat.standard_vertical_roman_alignment
+            != ffmat.standard_vertical_roman_alignment
+        ):
+            self.setStandardVerticalRomanAlignment(
+                ffmat.standard_vertical_roman_alignment,
+                repaint_background=False,
+            )
 
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)

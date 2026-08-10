@@ -35,7 +35,7 @@ from .advanced import TextAdvancedFormatPanel
 from ..transforms.edit_session import TextTransformEditSession
 from ..transforms.panel import TextTransformPanel
 from .presets import TextStylePresetPanel
-from .commands import handle_ffmt_change
+from .commands import handle_ffmt_change, restore_canvas_view_focus
 from ... import shared_widget as SW
 
 class LineEdit(QLineEdit):
@@ -525,8 +525,8 @@ class FontFormatPanel(Widget):
             items = SW.canvas.selected_text_items()
         for item in items:
             item.setEmphasis(style, position)
-        if items and not SW.canvas.hasFocus():
-            SW.canvas.setFocus()
+        if items:
+            restore_canvas_view_focus()
 
     def on_tate_chu_yoko_changed(self, enabled: bool) -> None:
         if self.textblk_item is not None:
@@ -535,8 +535,8 @@ class FontFormatPanel(Widget):
             items = SW.canvas.selected_text_items()
         for item in items:
             item.setTateChuYoko(enabled)
-        if items and not SW.canvas.hasFocus():
-            SW.canvas.setFocus()
+        if items:
+            restore_canvas_view_focus()
 
     def resolve_text_transform_edits_for_save(self):
         self.text_transform_session.resolve_for_save()

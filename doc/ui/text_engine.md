@@ -128,6 +128,13 @@ painting, and optional input mapping.
   cursor indices.
 - Vertical layout owns its extra character orientation, punctuation, offsets,
   and column records.
+- `FontFormat.standard_vertical_roman_alignment` is an item-wide persistent
+  switch and defaults to `True`, including when an older project omits it.
+  Enabled vertical text keeps Roman characters upright and centers upright
+  Roman and pause/stop punctuation in their character cells. Disabled vertical
+  text uses the Chinese mixed-layout path: proportional Roman characters rotate
+  clockwise, CLREQ vertical punctuation rotates by class, and pause/stop marks
+  use the Mainland upper-right placement. Horizontal layout is unaffected.
 - `VerticalTextDocumentLayout.reLayoutForResize()` has a width-only fast path:
   it translates settled columns when height and padding are unchanged. Height,
   padding, or minimum-width changes still require a full relayout.
