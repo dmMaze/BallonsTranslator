@@ -210,12 +210,16 @@ QWidget#ConfigContentScrollContent QListWidget#SpellCheckDictionaryList::indicat
     background-color: @emptyContentBackgroundColor;
 }
 
+QWidget#ConfigContentScrollContent QPushButton,
+QWidget#ConfigContentScrollContent QLabel#TorchInfoLabel {
+    font-size: 13px;
+}
+
 QWidget#ConfigContentScrollContent QPushButton {
     min-height: 26px;
     max-height: 26px;
     height: 26px;
     padding: 1px 10px;
-    font-size: 13px;
     border-radius: 4px;
 }
 
