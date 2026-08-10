@@ -842,8 +842,10 @@ class TextBlkItem(QGraphicsTextItem):
         self.fontformat.gradient_angle = ffmat.gradient_angle
         self.fontformat.gradient_size = ffmat.gradient_size
         
+        # Apply while the canonical model still contains the previous
+        # transform; merging first would skip live geometry recompilation.
+        self.set_text_transform(ffmat.text_transform)
         self.fontformat.merge(ffmat)
-        self.set_text_transform(self.fontformat.text_transform)
 
         self.repainting = False
         if self.fontformat.gradient_enabled:
