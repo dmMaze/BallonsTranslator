@@ -203,7 +203,7 @@ class ApplyFontformatCommand(QUndoCommand):
             self.old_fmt_lst,
             self.trans_widget_lst,
         ):
-            item.setHtml(html)
+            item.load_rich_text_html(html)
             item.set_fontformat(fmt)
             item.setRect(rect)
             edit.document().clearUndoRedoStacks()
@@ -288,7 +288,7 @@ class AutoLayoutCommand(QUndoCommand):
             trans_widget.setPlainText(item.toPlainText())
             item.setPlainText('')
             item.setRect(rect, repaint=False)
-            item.setHtml(html)
+            item.load_rich_text_html(html)
             if item.fontformat.letter_spacing != 1:
                 item.setLetterSpacing(item.fontformat.letter_spacing, force=True)
             
@@ -297,7 +297,7 @@ class AutoLayoutCommand(QUndoCommand):
             trans_widget.setPlainText(item.toPlainText())
             item.setPlainText('')
             item.setRect(rect, repaint=False)
-            item.setHtml(html)
+            item.load_rich_text_html(html)
             if item.fontformat.letter_spacing != 1:
                 item.setLetterSpacing(item.fontformat.letter_spacing, force=True)
 

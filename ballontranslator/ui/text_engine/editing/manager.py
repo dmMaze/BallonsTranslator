@@ -535,6 +535,9 @@ class SceneTextManager(QObject):
         textblk_item.undo_signal.connect(self.on_textedit_undo)
         textblk_item.redo_signal.connect(self.on_textedit_redo)
         textblk_item.propagate_user_edited.connect(self.on_propagate_textitem_edit)
+        textblk_item.emphasis_format_changed.connect(
+            self.on_emphasis_format_changed
+        )
         textblk_item.pasted.connect(self.onBlkitemPaste)
         return textblk_item
 
@@ -572,9 +575,17 @@ class SceneTextManager(QObject):
 
     def onBlkitemPaste(self, idx: int):
         blk_item = self.textblk_item_list[idx]
+        if blk_item.insert_from_mime_data(self.app_clipborad.mimeData()):
+            return
         text = self.app_clipborad.text()
         cursor = blk_item.textCursor()
         cursor.insertText(text)
+
+    def on_emphasis_format_changed(self, style: str, position: str) -> None:
+        if self.sender() is self.formatpanel.textblk_item:
+            self.formatpanel.textadvancedfmt_panel.set_emphasis_values(
+                style, position
+            )
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]

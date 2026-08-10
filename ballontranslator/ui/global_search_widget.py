@@ -11,6 +11,7 @@ from .misc import doc_replace
 from ballontranslator.utils.config import pcfg
 from .custom_widget import ProgressMessageBox, Widget, NoBorderPushBtn
 from .text_engine.item import TextBlkItem, TextBlock
+from .text_engine.annotations import load_rich_text_html, to_rich_text_html
 from .text_engine.editing.widgets import TransPairWidget, SourceTextEdit
 from .io_thread import ThreadBase
 from ballontranslator.utils import shared
@@ -250,10 +251,10 @@ class GlobalReplaceThead(ThreadBase):
                     replace_html = ''
                     if blk.rich_text:
                         ori_html = blk.rich_text
-                        doc.setHtml(blk.rich_text)
+                        load_rich_text_html(doc, blk.rich_text)
                         span_list = [[rstitem.start, rstitem.end] for rstitem in rstitem_list]
                         doc_replace(doc, span_list, target)
-                        replace_html = doc.toHtml()
+                        replace_html = to_rich_text_html(doc)
                         replace = doc.toPlainText()
                     else:
                         replace = self.searched_pattern.sub(target, ori)

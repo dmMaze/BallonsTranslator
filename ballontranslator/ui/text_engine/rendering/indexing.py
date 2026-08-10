@@ -39,25 +39,40 @@ def _utf16_char_at(text: str, offset: int) -> str:
     return text[bisect_right(boundaries, offset) - 1]
 
 
-def _grapheme_count(text: str) -> int:
-    """Count Qt grapheme clusters for the vertical one-column layout."""
+@lru_cache(maxsize=1024)
+def _grapheme_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    """Return grapheme ranges in Qt UTF-16 coordinates.
+
+    Qt versions differ in whether a boundary is reported beside every ZWJ.
+    Merge those pieces so annotation painters never split an emoji sequence.
+
+    >>> _grapheme_ranges('A')
+    ((0, 1),)
+    """
     if not text:
-        return 0
+        return ()
     finder = QTextBoundaryFinder(
         QTextBoundaryFinder.BoundaryType.Grapheme,
         text,
     )
     finder.toStart()
+    ranges = []
     previous = 0
     join_next = False
-    count = 0
     while True:
         boundary = finder.toNextBoundary()
         if boundary == -1:
             break
         segment = _utf16_slice(text, previous, boundary - previous)
-        if not join_next and not segment.startswith('\u200d'):
-            count += 1
+        if ranges and (join_next or segment.startswith('\u200d')):
+            ranges[-1] = (ranges[-1][0], boundary)
+        else:
+            ranges.append((previous, boundary))
         join_next = segment.endswith('\u200d')
         previous = boundary
-    return count
+    return tuple(ranges)
+
+
+def _grapheme_count(text: str) -> int:
+    """Count Qt grapheme clusters for the vertical one-column layout."""
+    return len(_grapheme_ranges(text))

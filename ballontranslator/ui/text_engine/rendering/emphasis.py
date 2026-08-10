@@ -1,0 +1,275 @@
+"""CSS-like emphasis-mark metrics and painting for the existing layouts."""
+
+from __future__ import annotations
+
+from typing import Iterable, Iterator, NamedTuple, Optional
+
+from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtGui import (
+    QAbstractTextDocumentLayout,
+    QFont,
+    QFontMetricsF,
+    QPainter,
+    QPainterPath,
+    QTextBlock,
+    QTextCharFormat,
+    QTextLine,
+    QTransform,
+)
+
+from ..annotations import emphasis_values
+from .glyph import (
+    GLYPH_STROKE_FORMAT_PROPERTY,
+    GlyphGeometry,
+    PaintSpan,
+    draw_glyph_geometry,
+    logical_span_rect,
+    resolve_paint_spans,
+)
+from .indexing import _grapheme_ranges, _utf16_slice
+
+
+EMPHASIS_GLYPHS = {
+    'filled dot': '\u2022',
+    'open dot': '\u25e6',
+    'filled circle': '\u25cf',
+    'open circle': '\u25cb',
+    'filled double-circle': '\u25c9',
+    'open double-circle': '\u25ce',
+    'filled triangle': '\u25b2',
+    'open triangle': '\u25b3',
+    'filled sesame': '\ufe45',
+    'open sesame': '\ufe46',
+}
+EMPHASIS_FONT_SCALE = 0.5
+EMPHASIS_GAP_SCALE = 0.08
+
+
+class EmphasisMark(NamedTuple):
+    """One paint-ready mark retaining its source fragment format."""
+
+    geometry: GlyphGeometry
+    char_format: QTextCharFormat
+
+
+def _mark_font(char_format: QTextCharFormat) -> QFont:
+    font = QFont(char_format.font())
+    point_size = font.pointSizeF()
+    if point_size > 0:
+        font.setPointSizeF(max(1.0, point_size * EMPHASIS_FONT_SCALE))
+    elif font.pixelSize() > 0:
+        font.setPixelSize(max(1, round(font.pixelSize() * EMPHASIS_FONT_SCALE)))
+    return font
+
+
+def _mark_extent(
+    style: str,
+    char_format: QTextCharFormat,
+    *,
+    vertical: bool,
+) -> float:
+    bounds = _mark_path(style, char_format).boundingRect()
+    ink_extent = bounds.width() if vertical else bounds.height()
+    gap = QFontMetricsF(char_format.font()).height() * EMPHASIS_GAP_SCALE
+    outline = char_format.textOutline()
+    outline_outset = (
+        outline.widthF() / 2
+        if outline.style() != Qt.PenStyle.NoPen
+        else 0.0
+    )
+    return ink_extent + gap + outline_outset
+
+
+def emphasis_margins(
+    block: QTextBlock,
+    line: QTextLine,
+    *,
+    vertical: bool,
+) -> tuple[float, float]:
+    """Return line-relative margins required by its emphasis marks.
+
+    The two values mean over/under horizontally and right/left vertically.
+    Like CSS ruby spacing, these are leading around the base text rather than
+    a change to the base glyph's own metrics.
+    """
+    first = second = 0.0
+    for span in resolve_paint_spans(block, line, tuple(block.layout().formats())):
+        style, position = emphasis_values(span.char_format)
+        if style == 'none':
+            continue
+        extent = _mark_extent(
+            style,
+            span.char_format,
+            vertical=vertical,
+        )
+        side = position.split()
+        first_side = side[1] == 'right' if vertical else side[0] == 'over'
+        if first_side:
+            first = max(first, extent)
+        else:
+            second = max(second, extent)
+    return first, second
+
+
+def _effect_spans(
+    block: QTextBlock,
+    line: QTextLine,
+    context: QAbstractTextDocumentLayout.PaintContext,
+) -> Iterable[PaintSpan]:
+    additional_formats = tuple(block.layout().formats())
+    effect_selections = tuple(
+        selection
+        for selection in context.selections
+        if bool(selection.format.property(GLYPH_STROKE_FORMAT_PROPERTY))
+    )
+    if not effect_selections or len(effect_selections) != len(context.selections):
+        return resolve_paint_spans(block, line, additional_formats)
+    spans = []
+    line_start = line.textStart()
+    line_end = line_start + line.textLength()
+    for selection in effect_selections:
+        selection_start = selection.cursor.selectionStart() - block.position()
+        selection_end = selection.cursor.selectionEnd() - block.position()
+        if selection_start >= line_end or selection_end <= line_start:
+            continue
+        for span in resolve_paint_spans(
+            block, line, additional_formats, selection
+        ):
+            if selection_start <= span.start < selection_end:
+                spans.append(span)
+    return spans
+
+
+def _mark_path(style: str, char_format: QTextCharFormat) -> QPainterPath:
+    path = QPainterPath()
+    path.addText(QPointF(), _mark_font(char_format), EMPHASIS_GLYPHS[style])
+    return path
+
+
+def _mark_geometry(
+    center: QPointF,
+    style: str,
+    char_format: QTextCharFormat,
+) -> GlyphGeometry:
+    path = _mark_path(style, char_format)
+    bounds = path.boundingRect()
+    path.translate(center - bounds.center())
+    return GlyphGeometry((path,), (), path.boundingRect())
+
+
+def _iter_emphasis_marks(
+    block: QTextBlock,
+    line: QTextLine,
+    *,
+    vertical: bool,
+    context: Optional[QAbstractTextDocumentLayout.PaintContext] = None,
+    offset: QPointF = QPointF(),
+    orientation: QTransform = QTransform(),
+) -> Iterator[EmphasisMark]:
+    """Yield exact mark geometry for painting and effect-bound queries."""
+    line_start = line.textStart()
+    line_end = line_start + line.textLength()
+    graphemes = tuple(
+        (start, end)
+        for start, end in _grapheme_ranges(block.text())
+        if start < line_end and end > line_start
+    )
+    if not graphemes:
+        return
+    spans = (
+        resolve_paint_spans(block, line, tuple(block.layout().formats()))
+        if context is None
+        else _effect_spans(block, line, context)
+    )
+    for span in spans:
+        style, position = emphasis_values(span.char_format)
+        if style == 'none':
+            continue
+        span_end = span.start + span.length
+        for start, end in graphemes:
+            if not (span.start <= start < span_end):
+                continue
+            text = _utf16_slice(block.text(), start, end - start)
+            if not text or text.isspace():
+                continue
+            cell = logical_span_rect(
+                line,
+                start,
+                end - start,
+                offset,
+                orientation,
+            )
+            if cell.isEmpty():
+                continue
+            path_bounds = _mark_path(style, span.char_format).boundingRect()
+            gap = (
+                QFontMetricsF(span.char_format.font()).height()
+                * EMPHASIS_GAP_SCALE
+            )
+            horizontal_side, vertical_side = position.split()
+            if vertical:
+                x = (
+                    cell.right() + gap + path_bounds.width() / 2
+                    if vertical_side == 'right'
+                    else cell.left() - gap - path_bounds.width() / 2
+                )
+                center = QPointF(x, cell.center().y())
+            else:
+                y = (
+                    cell.top() - gap - path_bounds.height() / 2
+                    if horizontal_side == 'over'
+                    else cell.bottom() + gap + path_bounds.height() / 2
+                )
+                center = QPointF(cell.center().x(), y)
+            yield EmphasisMark(
+                _mark_geometry(center, style, span.char_format),
+                span.char_format,
+            )
+
+
+def draw_emphasis_marks(
+    painter: QPainter,
+    block: QTextBlock,
+    line: QTextLine,
+    context: QAbstractTextDocumentLayout.PaintContext,
+    *,
+    vertical: bool,
+    offset: QPointF = QPointF(),
+    orientation: QTransform = QTransform(),
+) -> None:
+    """Paint one mark per emphasized grapheme using fragment styling."""
+    for mark in _iter_emphasis_marks(
+        block,
+        line,
+        vertical=vertical,
+        context=context,
+        offset=offset,
+        orientation=orientation,
+    ):
+        draw_glyph_geometry(painter, mark.geometry, mark.char_format)
+
+
+def emphasis_ink_bounds(
+    block: QTextBlock,
+    line: QTextLine,
+    *,
+    vertical: bool,
+    offset: QPointF = QPointF(),
+    orientation: QTransform = QTransform(),
+) -> QRectF:
+    """Return source-space mark ink for effect padding calculations."""
+    bounds = QRectF()
+    for mark in _iter_emphasis_marks(
+        block,
+        line,
+        vertical=vertical,
+        offset=offset,
+        orientation=orientation,
+    ):
+        mark_bounds = mark.geometry.bounds
+        bounds = (
+            QRectF(mark_bounds)
+            if bounds.isNull()
+            else bounds.united(mark_bounds)
+        )
+    return bounds

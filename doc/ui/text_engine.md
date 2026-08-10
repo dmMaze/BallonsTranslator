@@ -29,6 +29,7 @@ math, UI, and selected transform controls live in `transforms/`.
 | Block text, logical rectangle, angle, metadata | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
 | Persistent typography and transforms | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
 | Live Qt integration | `TextBlkItem` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
+| Inline rich-text annotations | `QTextDocument` character formats plus the versioned HTML boundary | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
 | Horizontal and vertical layout | `SceneTextLayout` subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py) |
 | Fill, stroke, shadow, gradient, raster bounds | `TextEffectRenderer` | [`ui/text_engine/effect_renderer.py`](../../ballontranslator/ui/text_engine/effect_renderer.py), [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
 | Derived geometry and visual/input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
@@ -63,6 +64,22 @@ values.
 Before save, page change, undo/redo, or scene replacement, resolve or cancel
 pending edits and previews. Before removing items, release their effect, glyph,
 and surface resources.
+
+### Inline annotations
+
+Qt character-format user properties are the live source of truth for emphasis
+and future range-bound features such as ruby. `TextBlock.rich_text` remains an
+HTML string: `annotations.py` adds a compact versioned metadata record on save
+and restores it after Qt loads the ordinary HTML. HTML written before this
+layer has no record and follows the same load path; malformed optional entries
+are discarded without losing the base document.
+
+Keep the envelope generic but add annotation behavior incrementally: reserve
+stable property IDs, validate one annotation kind, coalesce its fragment ranges
+for persistence, and give the existing layout/render owners its metrics and
+paint hook. Do not introduce a parallel editable document model or a position
+side table. Internal clipboard data uses the same extended representation,
+with ordinary HTML and plain-text fallbacks.
 
 ## Coordinate spaces
 

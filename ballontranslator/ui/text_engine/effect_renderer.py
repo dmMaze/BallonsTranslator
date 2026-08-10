@@ -25,6 +25,7 @@ from ballontranslator.utils.fontformat import FontFormat, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ..misc import ndarray2pixmap, pixmap2ndarray
 from .layout import HorizontalTextDocumentLayout, VerticalTextDocumentLayout
+from .annotations import load_rich_text_html, to_rich_text_html
 from .rendering.glyph import GLYPH_STROKE_FORMAT_PROPERTY
 from .rendering.shadow import apply_shadow_effect
 from .rendering.raster import (
@@ -382,7 +383,10 @@ class TextEffectRenderer:
         doc.setUndoRedoEnabled(False)
         doc.setDocumentMargin(self.layout.effectPadding())
         doc.setDefaultFont(self.document().defaultFont())
-        doc.setHtml(self.document().toHtml())
+        load_rich_text_html(
+            doc,
+            to_rich_text_html(self.document()),
+        )
         doc.setDefaultTextOption(self.document().defaultTextOption())
         cursor = QTextCursor(doc)
         block = doc.firstBlock()

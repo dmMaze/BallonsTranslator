@@ -1,8 +1,8 @@
 import numpy as np
 from typing import List, Optional, Tuple, Union
 
-from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
-from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, Signal
+from qtpy.QtWidgets import QApplication, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
+from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
                        QBrush, QPen)
@@ -18,6 +18,14 @@ from ..misc import td_pattern, table_pattern
 from .layout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
 from .effect_renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
+from .annotations import (
+    apply_emphasis,
+    create_rich_text_mime,
+    emphasis_values,
+    insert_rich_text_mime,
+    load_rich_text_html,
+    to_rich_text_html,
+)
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
@@ -39,6 +47,7 @@ class TextBlkItem(QGraphicsTextItem):
     push_undo_stack = Signal(int, bool)
     propagate_user_edited = Signal(int, str, bool)
     visual_geometry_changed = Signal()
+    emphasis_format_changed = Signal(str, str)
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -98,6 +107,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
         super().setTextCursor(cursor)
+        self.emphasis_format_changed.emit(*self.emphasis_values())
         self._update_nonlinear_editing_ui()
 
     def _update_nonlinear_editing_ui(self) -> None:
@@ -220,7 +230,7 @@ class TextBlkItem(QGraphicsTextItem):
             if blk.translation:
                 self.setPlainText(blk.translation)
         else:
-            self.setHtml(blk.rich_text)
+            self.load_rich_text_html(blk.rich_text)
             self.setLetterSpacing(font_fmt.letter_spacing, repaint_background=False)
             cursor = self.textCursor()
             cursor.clearSelection()
@@ -540,6 +550,17 @@ class TextBlkItem(QGraphicsTextItem):
                     e.accept()
                     self.pasted.emit(self.idx)
                     return
+            elif e.key() in (Qt.Key.Key_C, Qt.Key.Key_X):
+                cursor = self.textCursor()
+                if cursor.hasSelection():
+                    QApplication.clipboard().setMimeData(
+                        create_rich_text_mime(cursor)
+                    )
+                    if e.key() == Qt.Key.Key_X:
+                        cursor.removeSelectedText()
+                        self.setTextCursor(cursor)
+                e.accept()
+                return
         elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
@@ -550,6 +571,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.textCursor().insertText('\n')
             return
         super().keyPressEvent(e)
+        self.emphasis_format_changed.emit(*self.emphasis_values())
         self._update_nonlinear_editing_ui()
 
     def undo(self) -> None:
@@ -686,11 +708,13 @@ class TextBlkItem(QGraphicsTextItem):
             self.startEdit(pos=event.pos())
         else:
             super().mouseDoubleClickEvent(event)
+        self.emphasis_format_changed.emit(*self.emphasis_values())
         self._update_nonlinear_editing_ui()
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super().mouseMoveEvent(event)  
         if self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
+            self.emphasis_format_changed.emit(*self.emphasis_values())
             self._update_nonlinear_editing_ui()
         else:
             self.moving.emit(self)
@@ -706,6 +730,7 @@ class TextBlkItem(QGraphicsTextItem):
             self._old_pos = self.pos()
             self.leftbutton_pressed.emit(self.idx)
         result = super().mousePressEvent(event)
+        self.emphasis_format_changed.emit(*self.emphasis_values())
         self._update_nonlinear_editing_ui()
         return result
 
@@ -718,6 +743,7 @@ class TextBlkItem(QGraphicsTextItem):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.geometry_controller.end_input_mapping()
+            self.emphasis_format_changed.emit(*self.emphasis_values())
             self._update_nonlinear_editing_ui()
 
     def dragEnterEvent(self, event) -> None:
@@ -747,7 +773,24 @@ class TextBlkItem(QGraphicsTextItem):
             _, td = td_pattern.findall(html)[0]
             html = tables[0] + td + '</body></html>'
 
-        return html.replace('>\n<', '><')
+        html = html.replace('>\n<', '><')
+        return to_rich_text_html(self.document(), html)
+
+    def load_rich_text_html(self, html: str) -> None:
+        """Restore ordinary Qt HTML plus application-owned annotations."""
+        block_change_signal = self.block_change_signal
+        self.block_change_signal = True
+        try:
+            load_rich_text_html(self.document(), html)
+        finally:
+            self.block_change_signal = block_change_signal
+
+    def insert_from_mime_data(self, mime: QMimeData) -> bool:
+        cursor = self.textCursor()
+        inserted = insert_rich_text_mime(cursor, mime)
+        if inserted:
+            self.setTextCursor(cursor)
+        return inserted
 
     def get_fontformat(self) -> FontFormat:
         fmt = self.textCursor().charFormat()
@@ -982,6 +1025,34 @@ class TextBlkItem(QGraphicsTextItem):
         cfmt.setFontUnderline(value)
         self.set_cursor_cfmt(cursor, cfmt, True)
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+
+    def emphasis_values(self) -> tuple[str, str]:
+        return emphasis_values(self.textCursor().charFormat())
+
+    def setEmphasis(self, style: str, position: str) -> None:
+        """Apply emphasis to a selection or the active insertion format."""
+        cursor = self.textCursor()
+        restore_cursor = not self.isEditing()
+        cursor_position = cursor.position()
+        cursor_anchor = cursor.anchor()
+        if restore_cursor:
+            cursor.select(QTextCursor.SelectionType.Document)
+        self.is_formatting = True
+        cursor.beginEditBlock()
+        try:
+            apply_emphasis(cursor, style, position)
+        finally:
+            cursor.endEditBlock()
+            if restore_cursor:
+                cursor.setPosition(cursor_anchor)
+                if cursor_position != cursor_anchor:
+                    cursor.setPosition(
+                        cursor_position,
+                        QTextCursor.MoveMode.KeepAnchor,
+                    )
+            self.setTextCursor(cursor)
+            self.is_formatting = False
+        self.geometry_controller.flush_deferred_compilation()
 
     def setGradientEnabled(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
         self.fontformat.gradient_enabled = value

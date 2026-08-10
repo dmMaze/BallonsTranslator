@@ -5,7 +5,7 @@ from qtpy.QtGui import QTextCharFormat, QTextDocument, QPixmap, QImage, QTransfo
 
 import cv2
 import numpy as np
-from typing import List
+from typing import List, Optional, Tuple
 from functools import lru_cache, cached_property
 
 from ..misc import pixmap2ndarray, LruIgnoreArg
@@ -17,6 +17,7 @@ from .rendering.indexing import (
     _utf16_length,
     _utf16_slice,
 )
+from .rendering.emphasis import draw_emphasis_marks, emphasis_margins
 
 PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 
@@ -608,6 +609,46 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
             block = block.next()
 
+    def vertical_line_placement(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> Optional[Tuple[QTextLine, QPointF, QTransform]]:
+        """Return the established glyph placement for annotation painters."""
+        text_layout = block.layout()
+        line = text_layout.lineAt(line_number)
+        if not line.isValid() or line.textLength() <= 0:
+            return None
+        block_number = block.blockNumber()
+        block_text = block.text()
+        block_text_length = _utf16_length(block_text)
+        _, leading_spaces, _, line_position = self.line_spaces_lst[
+            block_number
+        ][line_number]
+        char_offset = min(
+            line_position + leading_spaces,
+            block_text_length - 1,
+        )
+        if char_offset < 0:
+            return line, QPointF(), QTransform()
+        char = _utf16_char_at(block_text, char_offset)
+        x_offset, y_offset = self._draw_offset[block_number][line_number]
+        orientation = QTransform()
+        if char in self.vertical_rotation_chars:
+            line_x, line_y = line.x(), line.y()
+            orientation = QTransform(
+                0,
+                1,
+                0,
+                -1,
+                0,
+                0,
+                line_y + line_x,
+                line_y - line_x,
+                1,
+            )
+        return line, QPointF(x_offset, y_offset), orientation
+
     def source_cursor_rect(self, cursor_position: int):
         """Return the horizontal caret used by vertical text painting."""
         block = self.document().firstBlock()
@@ -705,6 +746,18 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         render_delegate.draw_vertical_line(
                             painter, block, ii, context
                         )
+                    placement = self.vertical_line_placement(block, ii)
+                    if placement is not None:
+                        placed_line, offset, orientation = placement
+                        draw_emphasis_marks(
+                            painter,
+                            block,
+                            placed_line,
+                            context,
+                            vertical=True,
+                            offset=offset,
+                            orientation=orientation,
+                        )
                     continue
                 selected = False
                 if has_selection:
@@ -730,6 +783,19 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     painter.setTransform(inv_transform, True)
                 else:
                     self.line_draw(painter, line, xoff, yoff, selected, selection, char_fmt=cfmt, char=char, line_width=line_width)
+
+                placement = self.vertical_line_placement(block, ii)
+                if placement is not None:
+                    placed_line, offset, orientation = placement
+                    draw_emphasis_marks(
+                        painter,
+                        block,
+                        placed_line,
+                        context,
+                        vertical=True,
+                        offset=offset,
+                        orientation=orientation,
+                    )
 
             block = block.next()
 
@@ -1010,7 +1076,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             else:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 if cfmt is not None:
-                    width_list.append(cfmt.tbr.width())
+                    right_margin, left_margin = emphasis_margins(
+                        block, line, vertical=True
+                    )
+                    width_list.append(
+                        cfmt.tbr.width()
+                        + 2 * max(right_margin, left_margin)
+                    )
                 else:
                     width_list.append(-1)
 
@@ -1227,18 +1299,31 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
             if idea_height == -1:
                 idea_height = block_height
-                
+
+            over_margin, under_margin = emphasis_margins(
+                block, line, vertical=False
+            )
+            y_offset += over_margin
             line.setPosition(QPointF(doc_margin, y_offset + dy))
             tw = line.naturalTextWidth()
             shrink_width = max(tw, shrink_width)
-            self.shrink_height = max(idea_height + y_offset - doc_margin, self.shrink_height)    #????
-            y_offset += self.calculate_line_spacing(idea_height, self.line_spacing)
+            self.shrink_height = max(
+                idea_height + y_offset - doc_margin + under_margin,
+                self.shrink_height,
+            )
+            y_offset += (
+                self.calculate_line_spacing(idea_height, self.line_spacing)
+                + under_margin
+            )
             line_idx += 1
             char_idx += nchar
             if is_first_block and is_first_line:
-                text_padding = max(text_padding, idea_height)
+                text_padding = max(
+                    text_padding,
+                    idea_height + over_margin + under_margin,
+                )
             elif is_last_block:
-                text_padding = idea_height
+                text_padding = idea_height + over_margin + under_margin
             is_first_line = False
 
         tl.endLayout()
@@ -1298,6 +1383,16 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 finally:
                     if context.clip.isValid():
                         painter.restore()
+            for line_number in range(layout.lineCount()):
+                line = layout.lineAt(line_number)
+                if line.isValid() and line.textLength() > 0:
+                    draw_emphasis_marks(
+                        painter,
+                        block,
+                        line,
+                        context,
+                        vertical=False,
+                    )
             block = block.next()
         
         if self.foreground_pixmap is not None:

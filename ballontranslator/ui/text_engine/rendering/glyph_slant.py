@@ -9,6 +9,7 @@ from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QPainter,
+    QPen,
     QTextBlock,
     QTextCharFormat,
     QTextDocument,
@@ -18,6 +19,7 @@ from qtpy.QtGui import (
 
 from ballontranslator.utils import shared as C
 from .glyph import (
+    GLYPH_STROKE_FORMAT_PROPERTY,
     GLOBAL_GLYPH_GEOMETRY_CACHE,
     GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE,
     draw_slanted_glyph_mask,
@@ -26,6 +28,7 @@ from .glyph import (
     slanted_line_geometry,
     GlyphGeometry,
 )
+from .emphasis import draw_emphasis_marks, emphasis_ink_bounds
 from .indexing import _utf16_char_at, _utf16_length
 
 if TYPE_CHECKING:
@@ -150,36 +153,7 @@ class GlyphSlantLayoutRenderer:
     def _vertical_line_placement(
         self, block: QTextBlock, line_number: int
     ) -> Optional[Tuple[QTextLine, QPointF, QTransform]]:
-        layout = block.layout()
-        line = layout.lineAt(line_number)
-        if not line.isValid() or line.textLength() <= 0:
-            return None
-        block_number = block.blockNumber()
-        block_text = block.text()
-        block_text_length = _utf16_length(block_text)
-        _, leading_spaces, _, line_position = self.line_spaces_lst[block_number][
-            line_number
-        ]
-        char_offset = min(line_position + leading_spaces, block_text_length - 1)
-        if char_offset < 0:
-            return line, QPointF(), QTransform()
-        char = _utf16_char_at(block_text, char_offset)
-        x_offset, y_offset = self._draw_offset[block_number][line_number]
-        orientation = QTransform()
-        if char in self.layout.vertical_rotation_chars:
-            line_x, line_y = line.x(), line.y()
-            orientation = QTransform(
-                0,
-                1,
-                0,
-                -1,
-                0,
-                0,
-                line_y + line_x,
-                line_y - line_x,
-                1,
-            )
-        return line, QPointF(x_offset, y_offset), orientation
+        return self.layout.vertical_line_placement(block, line_number)
 
     def _iter_glyph_line_placements(
         self,
@@ -218,8 +192,49 @@ class GlyphSlantLayoutRenderer:
                 self._draw_glyph_range(
                     painter, selection_start, selection_end
                 )
+            self._draw_emphasis_selection_mask(painter, context)
         finally:
             painter.restore()
+
+    def _draw_emphasis_selection_mask(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        """Include emphasis ink in the vertical transformed-stroke mask."""
+        if not context.selections:
+            return
+        mask_context = QAbstractTextDocumentLayout.PaintContext()
+        mask_context.cursorPosition = -1
+        mask_context.selections = []
+        for selection in context.selections:
+            mask_selection = QAbstractTextDocumentLayout.Selection()
+            mask_selection.cursor = selection.cursor
+            mask_format = QTextCharFormat()
+            mask_format.setProperty(GLYPH_STROKE_FORMAT_PROPERTY, True)
+            mask_format.setForeground(Qt.GlobalColor.white)
+            mask_format.setTextOutline(QPen(Qt.PenStyle.NoPen))
+            mask_selection.format = mask_format
+            mask_context.selections.append(mask_selection)
+
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for line_number in range(layout.lineCount()):
+                placement = self._vertical_line_placement(block, line_number)
+                if placement is None:
+                    continue
+                line, offset, orientation = placement
+                draw_emphasis_marks(
+                    painter,
+                    block,
+                    line,
+                    mask_context,
+                    vertical=True,
+                    offset=offset,
+                    orientation=orientation,
+                )
+            block = block.next()
 
     def _draw_glyph_range(
         self, painter: QPainter, selection_start: int, selection_end: int
@@ -522,6 +537,38 @@ class GlyphSlantLayoutRenderer:
         cached = self.bounds_cache.get(key)
         if cached is not None:
             return QRectF(cached)
-        bounds = self._ensure_geometry_plan()
+        bounds = QRectF(self._ensure_geometry_plan())
+        vertical_placement = getattr(
+            self.layout, 'vertical_line_placement', None
+        )
+        block = document.firstBlock()
+        while block.isValid():
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                if vertical_placement is None:
+                    line = text_layout.lineAt(line_number)
+                    offset = QPointF()
+                    orientation = QTransform()
+                    vertical = False
+                else:
+                    placement = vertical_placement(block, line_number)
+                    if placement is None:
+                        continue
+                    line, offset, orientation = placement
+                    vertical = True
+                mark_bounds = emphasis_ink_bounds(
+                    block,
+                    line,
+                    vertical=vertical,
+                    offset=offset,
+                    orientation=orientation,
+                )
+                if not mark_bounds.isEmpty():
+                    bounds = (
+                        QRectF(mark_bounds)
+                        if bounds.isNull()
+                        else bounds.united(mark_bounds)
+                    )
+            block = block.next()
         self.bounds_cache = {key: QRectF(bounds)}
         return bounds

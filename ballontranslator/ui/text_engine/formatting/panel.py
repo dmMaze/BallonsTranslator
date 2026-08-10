@@ -409,6 +409,9 @@ class FontFormatPanel(Widget):
             config_expand_name='expand_tadvanced_panel',
             on_format_changed=self.on_param_changed
         )
+        self.textadvancedfmt_panel.emphasis_changed.connect(
+            self.on_emphasis_changed
+        )
         self.texttransform_panel = TextTransformPanel(
             self.tr('Text Transform'),
             config_name='text_transform_panel',
@@ -512,6 +515,16 @@ class FontFormatPanel(Widget):
         else:
             func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True, **func_kwargs)
 
+    def on_emphasis_changed(self, style: str, position: str) -> None:
+        if self.textblk_item is not None:
+            items = [self.textblk_item]
+        else:
+            items = SW.canvas.selected_text_items()
+        for item in items:
+            item.setEmphasis(style, position)
+        if items and not SW.canvas.hasFocus():
+            SW.canvas.setFocus()
+
     def resolve_text_transform_edits_for_save(self):
         self.text_transform_session.resolve_for_save()
 
@@ -585,6 +598,14 @@ class FontFormatPanel(Widget):
         
         self.familybox.blockSignals(False)
         self.textadvancedfmt_panel.set_active_format(font_format)
+        if self.textblk_item is None:
+            self.textadvancedfmt_panel.set_emphasis_values(
+                'none', 'over right'
+            )
+        else:
+            self.textadvancedfmt_panel.set_emphasis_values(
+                *self.textblk_item.emphasis_values()
+            )
         if update_transform_panel:
             self.texttransform_panel.set_active_format(font_format)
 
