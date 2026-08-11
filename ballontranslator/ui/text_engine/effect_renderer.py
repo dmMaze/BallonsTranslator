@@ -40,6 +40,7 @@ from .rendering.raster import (
     EffectRasterAllocationError,
     EffectRasterPlan,
     plan_effect_raster,
+    quality_raster_request,
 )
 
 
@@ -51,10 +52,10 @@ _VECTOR_EFFECT_RENDER_HINTS = (
 )
 
 
-class _TransformedEffectState:
-    """Allocate raster/cache state only after a transform needs it.
+class _EffectRasterState:
+    """Allocate raster/cache state only after an effect needs it.
 
-    >>> _TransformedEffectState().cache_generation
+    >>> _EffectRasterState().cache_generation
     0
     """
 
@@ -73,8 +74,8 @@ class _TransformedEffectState:
         self.direct_stroke = False
 
 
-class _TransformedEffectField:
-    """Descriptor keeping transformed-only fields lazy at existing call sites."""
+class _EffectRasterField:
+    """Descriptor keeping raster-only fields lazy at existing call sites."""
 
     def __set_name__(self, owner, name):
         self.name = name
@@ -82,10 +83,10 @@ class _TransformedEffectField:
     def __get__(self, instance, owner):
         if instance is None:
             return self
-        return getattr(instance._transformed_state(), self.name)
+        return getattr(instance._raster_state(), self.name)
 
     def __set__(self, instance, value):
-        setattr(instance._transformed_state(), self.name, value)
+        setattr(instance._raster_state(), self.name, value)
 
 
 class TextEffectRenderer:
@@ -95,38 +96,38 @@ class TextEffectRenderer:
     True
     """
 
-    cache_generation = _TransformedEffectField()
-    cache_rendered_generation = _TransformedEffectField()
-    cache_dirty = _TransformedEffectField()
-    tile_cache = _TransformedEffectField()
-    allocation_warning_generation = _TransformedEffectField()
-    export_render = _TransformedEffectField()
-    export_error = _TransformedEffectField()
-    in_graphics_paint = _TransformedEffectField()
-    capturing_surface = _TransformedEffectField()
-    surface_raster_error = _TransformedEffectField()
-    force_tiles = _TransformedEffectField()
-    direct_stroke = _TransformedEffectField()
+    cache_generation = _EffectRasterField()
+    cache_rendered_generation = _EffectRasterField()
+    cache_dirty = _EffectRasterField()
+    tile_cache = _EffectRasterField()
+    allocation_warning_generation = _EffectRasterField()
+    export_render = _EffectRasterField()
+    export_error = _EffectRasterField()
+    in_graphics_paint = _EffectRasterField()
+    capturing_surface = _EffectRasterField()
+    surface_raster_error = _EffectRasterField()
+    force_tiles = _EffectRasterField()
+    direct_stroke = _EffectRasterField()
 
     def __init__(self, item) -> None:
         self.item = item
         self.background_pixmap = None
         self.background_pixmap_scale = None
-        self._transformed_effect_state = None
+        self._effect_raster_state = None
         self.refreshing_gradient_geometry = False
         self.refreshing_effect_padding = False
         self.has_transient_gradient_ranges = False
 
-    def _transformed_state(self) -> _TransformedEffectState:
-        state = self._transformed_effect_state
+    def _raster_state(self) -> _EffectRasterState:
+        state = self._effect_raster_state
         if state is None:
-            state = _TransformedEffectState()
-            self._transformed_effect_state = state
+            state = _EffectRasterState()
+            self._effect_raster_state = state
         return state
 
     def surface_cache_state(self) -> Tuple[int, bool]:
         """Return final-warp cache inputs without allocating effect state."""
-        state = self._transformed_effect_state
+        state = self._effect_raster_state
         if state is None:
             return 0, False
         return state.cache_generation, state.export_render
@@ -206,43 +207,23 @@ class TextEffectRenderer:
         self.background_pixmap = None
         self.background_pixmap_scale = None
 
+    def requires_no_item_cache(self) -> bool:
+        """Let the effect raster cache see the actual paint-device scale."""
+        return any(self._effect_flags())
+
     def release_caches(self) -> None:
         """Release every item-owned raster cache before page removal."""
         self.clear_cached_surface()
-        state = self._transformed_effect_state
+        state = self._effect_raster_state
         if state is not None:
             state.tile_cache.clear()
-        self._transformed_effect_state = None
+        self._effect_raster_state = None
 
     def paint_item(self, painter: QPainter, option, widget: QWidget, base_paint) -> None:
         """Paint effects around the host item's normal text pass."""
-        if self._text_transform_is_neutral():
-            editing = self.item.isEditing()
-            if editing and self.background_pixmap is not None:
-                painter.save()
-                painter.setRenderHint(
-                    QPainter.RenderHint.SmoothPixmapTransform
-                )
-                painter.drawPixmap(
-                    self.boundingRect().topLeft(), self.background_pixmap
-                )
-                painter.restore()
-
+        if not any(self._effect_flags()):
             option.state = QStyle.State_None
             base_paint(painter, option, widget)
-
-            if not editing and self.background_pixmap is not None:
-                painter.save()
-                painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_DestinationOver
-                )
-                painter.setRenderHint(
-                    QPainter.RenderHint.SmoothPixmapTransform
-                )
-                painter.drawPixmap(
-                    self.boundingRect().topLeft(), self.background_pixmap
-                )
-                painter.restore()
             return
 
         # Effects must be composited before the normal fill. DestinationOver
@@ -257,19 +238,19 @@ class TextEffectRenderer:
             self.in_graphics_paint = was_in_graphics_paint
 
     def finalize_neutral_cache(self) -> None:
-        """Drop active-transform raster state after neutral restoration."""
+        """Invalidate transformed pixels after neutral restoration."""
         self._refresh_gradient_geometry()
-        self.tile_cache.clear()
-        self.force_tiles = False
-        self.direct_stroke = False
-        self.cache_dirty = False
-        self.cache_rendered_generation = -1
-        if any(self._effect_flags()):
-            self.repaint_background()
-        else:
-            self.clear_cached_surface()
+        state = self._effect_raster_state
+        if state is not None:
+            state.tile_cache.clear()
+            state.force_tiles = False
+            state.direct_stroke = False
+            state.cache_dirty = True
+            state.cache_rendered_generation = -1
+        self.clear_cached_surface()
         self.item.update()
-        self._transformed_effect_state = None
+        if not any(self._effect_flags()):
+            self._effect_raster_state = None
 
     def _effect_paint_context(self):
         context = QAbstractTextDocumentLayout.PaintContext()
@@ -824,82 +805,8 @@ class TextEffectRenderer:
                 self.surface_raster_error = previous_raster_error
         return target_map
 
-    def _repaint_neutral_background(self) -> None:
-        """Rebuild effects with the BASE pixmap and composition path."""
-        empty = self.document().isEmpty()
-        if self.repainting or self.reshaping:
-            return
-
-        paint_stroke, paint_shadow = self._effect_flags()
-        if (not paint_shadow and not paint_stroke) or empty:
-            changed = self.background_pixmap is not None
-            self.background_pixmap = None
-            self.background_pixmap_scale = None
-            if changed:
-                self.item.update()
-            return
-
-        self.repainting = True
-        try:
-            font_size = self.layout.max_font_size(to_px=True)
-            surface_rect = self.boundingRect()
-            target_map = self._new_effect_pixmap(
-                1.0, surface_rect
-            )
-            painter = QPainter(target_map)
-            if not painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin neutral effect painter'
-                )
-            try:
-                painter.setRenderHints(
-                    _VECTOR_EFFECT_RENDER_HINTS
-                    | QPainter.RenderHint.SmoothPixmapTransform
-                )
-
-                painter.save()
-                try:
-                    painter.translate(-surface_rect.topLeft())
-                    if paint_stroke:
-                        self._paint_cloned_document_stroke(painter)
-                    else:
-                        self.document().drawContents(painter)
-                finally:
-                    painter.restore()
-
-                if paint_shadow:
-                    radius = int(round(
-                        self.fontformat.shadow_radius
-                        * font_size
-                    ))
-                    xoffset = self.fontformat.shadow_offset[0] * font_size
-                    yoffset = self.fontformat.shadow_offset[1] * font_size
-                    shadow_map, _ = apply_shadow_effect(
-                        target_map,
-                        self.fontformat.shadow_color,
-                        self.fontformat.shadow_strength,
-                        radius,
-                    )
-                    composition = painter.compositionMode()
-                    painter.setCompositionMode(
-                        QPainter.CompositionMode.CompositionMode_DestinationOver
-                    )
-                    painter.drawPixmap(QPointF(xoffset, yoffset), shadow_map)
-                    painter.setCompositionMode(composition)
-            finally:
-                painter.end()
-            self.background_pixmap = target_map
-            self.background_pixmap_scale = 1.0
-        finally:
-            self.repainting = False
-        # Non-editing items have a Qt device-coordinate cache around this
-        # private effect cache. Invalidate it whenever the pixmap changes.
-        self.item.update()
-
     def repaint_background(self, render_scale: float = 1.0):
-        if self._text_transform_is_neutral():
-            self._repaint_neutral_background()
-            return
+        self.item.refresh_cache_policy()
         empty = self.document().isEmpty()
         if self.repainting or self.reshaping or self.pre_editing:
             # Avoid reshape/reentrant work. During IME, reuse the preedit-free
@@ -910,13 +817,15 @@ class TextEffectRenderer:
 
         paint_stroke, paint_shadow = self._effect_flags()
         if not paint_shadow and not paint_stroke or empty:
+            changed = self.background_pixmap is not None
             self.background_pixmap = None
             self.background_pixmap_scale = None
-            self.tile_cache.clear()
-            self.direct_stroke = False
-            self.force_tiles = False
-            self.cache_dirty = False
-            self.cache_rendered_generation = self.cache_generation
+            state = self._effect_raster_state
+            if state is not None:
+                state.tile_cache.clear()
+            self._effect_raster_state = None
+            if changed:
+                self.item.update()
             return
 
         self.tile_cache.clear()
@@ -924,7 +833,9 @@ class TextEffectRenderer:
         try:
             br = self.boundingRect()
             plan = plan_effect_raster(
-                br.width(), br.height(), render_scale
+                br.width(),
+                br.height(),
+                quality_raster_request(render_scale),
             )
             if plan.mode == 'tiles':
                 self.background_pixmap = None
@@ -970,6 +881,7 @@ class TextEffectRenderer:
             self.cache_rendered_generation = self.cache_generation
         finally:
             self.repainting = False
+        self.item.update()
 
 
     def _mark_effect_cache_dirty(self):
@@ -1231,7 +1143,9 @@ class TextEffectRenderer:
             br = self.boundingRect()
             requested_scale = self._paint_device_scale(painter)
             plan = plan_effect_raster(
-                br.width(), br.height(), requested_scale
+                br.width(),
+                br.height(),
+                quality_raster_request(requested_scale),
             )
             if self.force_tiles:
                 plan = EffectRasterPlan(

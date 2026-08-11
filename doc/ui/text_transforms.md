@@ -189,6 +189,12 @@ destination where necessary. Matrix-only stacks stay on Qt's native path.
 Effect padding changes the source rectangle, not the persistent logical text
 rectangle.
 
+Stroke and shadow use the same bounded, device-scale-aware effect raster
+policy for neutral, Glyph Slant, matrix, and nonlinear paths. Effects and
+delegated Glyph Slant painting disable Qt's redundant outer item cache; the
+effect renderer remains the sole raster-cache owner and can therefore rebuild
+at the current view or export scale.
+
 ### Cache boundaries
 
 The subsystem caches work at four boundaries because geometry and pixels

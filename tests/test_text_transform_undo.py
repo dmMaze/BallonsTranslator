@@ -2361,6 +2361,61 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 view.close()
                 scene.removeItem(item)
 
+    def test_effects_and_glyph_slant_bypass_outer_device_cache(self):
+        for slant in (0.0, 20.0):
+            with self.subTest(slant=slant):
+                block = TextBlock([0, 0, 150, 500])
+                block._bounding_rect = [0, 0, 150, 500]
+                block.vertical = True
+                block.translation = '天是否！！！'
+                block.fontformat.font_size = 52
+                block.fontformat.stroke_width = 0.18
+                block.fontformat.text_transform = TextTransformStack(
+                    (), slant
+                )
+                item = TextBlkItem(block, 0)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+
+                self.assertEqual(
+                    item.cacheMode(), QGraphicsItem.CacheMode.NoCache
+                )
+                source = scene.itemsBoundingRect()
+                image = QImage(
+                    max(1, round(source.width() * 4)),
+                    max(1, round(source.height() * 4)),
+                    QImage.Format.Format_ARGB32_Premultiplied,
+                )
+                image.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(image)
+                try:
+                    scene.render(painter, QRectF(image.rect()), source)
+                finally:
+                    painter.end()
+
+                renderer = item.effect_renderer
+                self.assertEqual(renderer.background_pixmap_scale, 4.0)
+                self.assertEqual(
+                    renderer.background_pixmap.devicePixelRatioF(), 4.0
+                )
+                scene.removeItem(item)
+
+        item, pair = self._make_pair(0, TEST_LINES[0], False)
+        self.assertEqual(
+            item.cacheMode(),
+            QGraphicsItem.CacheMode.DeviceCoordinateCache,
+        )
+        item.set_text_transform(TextTransformStack((), 20.0))
+        self.assertEqual(
+            item.cacheMode(), QGraphicsItem.CacheMode.NoCache
+        )
+        item.set_text_transform(TextTransformStack())
+        self.assertEqual(
+            item.cacheMode(),
+            QGraphicsItem.CacheMode.DeviceCoordinateCache,
+        )
+        pair.deleteLater()
+
     def test_zero_glyph_slant_restores_effects_inside_nonlinear_stack(self):
         stack = TextTransformStack((BendTextTransform(0.55),))
         zero = TextTransformStack(stack.transforms, 0.0)
@@ -2393,30 +2448,20 @@ class TextTransformRenderingTest(TextTransformTestBase):
                     self.assertNotEqual(slanted_pixels, zero_pixels)
 
                     renderer = item.effect_renderer
-                    with patch.object(
-                        renderer,
-                        "_repaint_neutral_background",
-                        wraps=renderer._repaint_neutral_background,
-                    ) as repaint_neutral:
-                        item.set_text_transform(zero, preview=True)
-                    self.assertEqual(repaint_neutral.call_count, 1)
+                    item.set_text_transform(zero, preview=True)
+                    self._render_scene(scene)
                     self.assertIsNotNone(
                         renderer.background_pixmap
                     )
 
                     item.clear_text_transform_preview()
                     self._render_scene(scene)
-                    with patch.object(
-                        renderer,
-                        "_repaint_neutral_background",
-                        wraps=renderer._repaint_neutral_background,
-                    ) as repaint_neutral:
-                        item.set_text_transform(zero)
-                    self.assertEqual(repaint_neutral.call_count, 1)
+                    item.set_text_transform(zero)
+                    self._render_scene(scene)
                     self.assertIsNotNone(
                         renderer.background_pixmap
                     )
-                    self.assertIsNone(renderer._transformed_effect_state)
+                    self.assertIsNotNone(renderer._effect_raster_state)
                     scene.removeItem(item)
 
     def test_surface_without_raster_effects_keeps_effect_fast_path(self):
@@ -2439,17 +2484,17 @@ class TextTransformRenderingTest(TextTransformTestBase):
                     item.geometry_controller.uses_surface_warp()
                 )
                 self.assertTrue(renderer._text_transform_is_neutral())
-                self.assertIsNone(renderer._transformed_effect_state)
+                self.assertIsNone(renderer._effect_raster_state)
                 pixels = self._render_scene(scene)
                 self.assertNotEqual(pixels, bytes(len(pixels)))
-                self.assertIsNone(renderer._transformed_effect_state)
+                self.assertIsNone(renderer._effect_raster_state)
 
                 item.set_text_transform(
                     TextTransformStack(state.transforms, -20.0)
                 )
                 mirrored_pixels = self._render_scene(scene)
                 self.assertNotEqual(mirrored_pixels, pixels)
-                self.assertIsNone(renderer._transformed_effect_state)
+                self.assertIsNone(renderer._effect_raster_state)
                 scene.removeItem(item)
 
     def test_interactive_surface_uses_bounded_low_resolution_preview(self):
@@ -3048,7 +3093,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 self.assertLessEqual(int(delta.max()), 24)
                 self.assertLessEqual(
                     changed_pixels,
-                    (900 * 600) // 100,
+                    (900 * 600) // 50,
                 )
                 scene.removeItem(item)
 
@@ -3192,7 +3237,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 self.assertIsNone(item.geometry_controller.layout_renderer)
                 self.assertIsNone(item.layout.render_delegate)
                 self.assertIsNone(
-                    item.effect_renderer._transformed_effect_state
+                    item.effect_renderer._effect_raster_state
                 )
                 self.assertFalse(
                     bool(

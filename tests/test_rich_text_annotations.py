@@ -961,7 +961,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         pixels = bytes(image.bits().asstring(byte_count))
         self.assertTrue(any(pixels[3::4]))
 
-    def test_annotation_effect_cache_stays_at_one_x(self):
+    def test_annotation_effect_cache_tracks_render_scale(self):
         for effect in ('stroke', 'shadow'):
             with self.subTest(effect=effect):
                 block = TextBlock([0, 0, 140, 140])
@@ -1002,9 +1002,9 @@ class RichTextAnnotationTest(unittest.TestCase):
                     painter.end()
 
                 renderer = item.effect_renderer
-                self.assertEqual(renderer.background_pixmap_scale, 1.0)
+                self.assertEqual(renderer.background_pixmap_scale, 4.0)
                 self.assertEqual(
-                    renderer.background_pixmap.devicePixelRatioF(), 1.0
+                    renderer.background_pixmap.devicePixelRatioF(), 4.0
                 )
                 alpha = pixmap2ndarray(
                     renderer.background_pixmap, keep_alpha=True
@@ -1066,7 +1066,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         item.endEdit(keep_focus=False)
         self.app.processEvents()
 
-        item.effect_renderer._repaint_neutral_background()
+        item.repaint_background()
         alpha = pixmap2ndarray(
             item.effect_renderer.background_pixmap, keep_alpha=True
         )[..., 3]

@@ -242,6 +242,10 @@ Important rules:
 - Increment `layout_generation` only when layout geometry changes.
 - Keep the neutral path native and cheap. Allocate specialized renderers only
   while their feature is active.
+- `TextEffectRenderer` owns the device-scale-aware stroke/shadow raster cache
+  for neutral and transformed text alike. Items with effects or delegated
+  glyph painting bypass Qt's outer device-coordinate cache so the renderer
+  sees the real view/export scale instead of stretching a hidden 1x cache.
 - Cache keys must include every input that changes output, but no unrelated
   state. Keep caches bounded by count and memory, namespaced by owner, and
   releasable at page/layout boundaries.

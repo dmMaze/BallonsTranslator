@@ -271,6 +271,8 @@ class TextBlkItem(QGraphicsTextItem):
         use_no_cache = (
             self.isEditing()
             or self.geometry_controller.requires_no_cache()
+            or self.geometry_controller.has_layout_distortion()
+            or self.effect_renderer.requires_no_item_cache()
         )
         cache_mode = (
             QGraphicsItem.CacheMode.NoCache
