@@ -64,6 +64,7 @@ PROFILE_COMMON_PARAM_DEFS = [
     ('temperature', 'line_editor'),
     ('top_p', 'line_editor'),
     ('top_k', 'line_editor'),
+    ('assistant_prefix', 'line_editor'),
     ('frequency_penalty', 'line_editor'),
     ('presence_penalty', 'line_editor'),
     ('low_vram_mode', 'checkbox'),

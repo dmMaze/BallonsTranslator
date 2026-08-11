@@ -622,6 +622,10 @@ class LLMTranslator(BaseTranslator):
             )
         prompt = self._render_user_prompt(tuple(queries), current_glossary)
         messages.append({'role': 'user', 'content': prompt})
+        assistant_prefix = getattr(profile, 'assistant_prefix', '').strip()
+        if assistant_prefix:
+            messages.append({'role': 'assistant', 'content': assistant_prefix})
+        
         return messages, prompt
 
     def build_copy_prompt(self, src_list: List[str]) -> str:
@@ -699,8 +703,6 @@ class LLMTranslator(BaseTranslator):
                     "schema": self._json_schema(),
                 },
             }
-        else:
-            api_args["response_format"] = {"type": "json_object"}
 
         for penalty, api_key in (
             (profile.frequency_penalty, 'frequency_penalty'),
@@ -780,6 +782,7 @@ class LLMTranslator(BaseTranslator):
         return completion.choices[0].message.content
 
     def _parse_response(self, raw_content: str, expected: int) -> List[str]:
+        self.logger.debug(f"RAW LLM RESPONSE:\n{raw_content}")
         json_to_parse = raw_content.strip()
         match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", json_to_parse, re.DOTALL)
         if match:

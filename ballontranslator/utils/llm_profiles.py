@@ -189,6 +189,7 @@ class LLMProfile(Config):
     top_k: int = 0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
+    assistant_prefix: str = ""
     json_schema_response_format: bool = False
     low_vram_mode: bool = False
 
