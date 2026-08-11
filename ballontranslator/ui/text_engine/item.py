@@ -871,10 +871,6 @@ class TextBlkItem(QGraphicsTextItem):
         fontformat.gradient_end_color = self.fontformat.gradient_end_color
         fontformat.gradient_angle = self.fontformat.gradient_angle
         fontformat.gradient_size = self.fontformat.gradient_size
-        # Selection changes can detach the render/UI format cache from the
-        # persistent TextBlock owner. Canonical transform state must win when
-        # producing a save/undo format snapshot.
-        fontformat.text_transform = self.blk.fontformat.text_transform
         return fontformat
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True, set_effect=True):

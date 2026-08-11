@@ -1,4 +1,3 @@
-import copy
 from typing import Iterable
 
 from qtpy.QtWidgets import (
@@ -699,13 +698,15 @@ class FontFormatPanel(Widget):
                 # Store the current text block's format before switching to global.
                 # This existing owner switch must preserve the complete transform.
                 if self.textblk_item is not None:
-                    active_format = copy.deepcopy(C.active_format)
-                    # The control mirrors the cursor's inline spacing while
-                    # the model field remains the legacy item-wide default.
-                    active_format.letter_spacing = (
+                    # Keep the TextBlock-owned object shared with its live
+                    # layout; replacing it desynchronizes fill and effects.
+                    letter_spacing = (
                         self.textblk_item.fontformat.letter_spacing
                     )
-                    self.textblk_item.fontformat = active_format
+                    self.textblk_item.fontformat.merge(C.active_format)
+                    self.textblk_item.fontformat.letter_spacing = (
+                        letter_spacing
+                    )
                 self.textblk_item = None
                 self.set_active_format(
                     self.global_format,

@@ -1,6 +1,5 @@
 """Selection-scoped edit sessions for composable text transforms."""
 
-import copy
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -585,7 +584,11 @@ class TextTransformEditSession:
     def detach_scene_owner(self) -> None:
         host = self.host
         if host.textblk_item is not None:
-            host.textblk_item.fontformat = copy.deepcopy(C.active_format)
+            # Keep the TextBlock and live layout attached to their canonical
+            # format object when the panel returns to its global owner.
+            letter_spacing = host.textblk_item.fontformat.letter_spacing
+            host.textblk_item.fontformat.merge(C.active_format)
+            host.textblk_item.fontformat.letter_spacing = letter_spacing
         host.textblk_item = None
         self.items = []
         self.selected_index = None

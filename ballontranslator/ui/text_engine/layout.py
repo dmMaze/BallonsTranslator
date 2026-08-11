@@ -242,6 +242,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.render_failure_handler = None
         self.defer_cursor_paint = False
         self.deferred_cursor_position = -1
+        self.publishing_size_enlargement = False
         # QWidgetTextControl routes its mouse and drag hit tests through this
         # layout.  Nonlinear visual effects can therefore restore source
         # coordinates here without replacing Qt's editing state machine.
@@ -294,6 +295,14 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
     def _begin_layout_generation(self):
         self.layout_generation += 1
+
+    def _emit_size_enlarged(self) -> None:
+        """Publish a resize without exposing half-settled paint geometry."""
+        self.publishing_size_enlargement = True
+        try:
+            self.size_enlarged.emit()
+        finally:
+            self.publishing_size_enlargement = False
 
     def map_input_point(self, point: QPointF) -> QPointF:
         mapper = self.input_point_mapper
@@ -520,7 +529,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.max_height = self.available_height + doc_margin * 2
             enlarged = True
         if enlarged:
-            self.size_enlarged.emit()
+            self._emit_size_enlarged()
             if x_shift != 0:
                 block = doc.firstBlock()
                 while block.isValid():
@@ -1588,7 +1597,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         if new_height > self.available_height:
             self.max_height = new_height + doc_margin * 2
             self.available_height = new_height
-            self.size_enlarged.emit()
+            self._emit_size_enlarged()
 
         if doc.defaultTextOption().alignment() == Qt.AlignmentFlag.AlignCenter:
             block = doc.firstBlock()

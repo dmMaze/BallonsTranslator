@@ -524,6 +524,11 @@ class GlyphSlantLayoutRenderer:
         return bounds
 
     def ink_bounds(self) -> QRectF:
+        if getattr(self.layout, 'publishing_size_enlargement', False):
+            settled = next(
+                iter(self.bounds_cache.values()), self.geometry_plan_bounds
+            )
+            return QRectF(settled)
         self.ensure_layout_generation()
         document = self.layout.document()
         if document.isEmpty():

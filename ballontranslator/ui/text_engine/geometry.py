@@ -680,7 +680,7 @@ class TextItemGeometryController:
         set_blk_size: bool = True,
     ) -> None:
         """Resize through the current transform strategy's geometry policy."""
-        if self.requires_custom_resize():
+        if self.requires_custom_resize() or self.has_layout_distortion():
             self._resize_transformed(
                 width,
                 height,

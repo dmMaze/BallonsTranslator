@@ -199,6 +199,34 @@ def glyph_slant_transform(angle: float, baseline_y: float) -> QTransform:
     return QTransform(1.0, 0.0, -tangent, 1.0, tangent * baseline_y, 0.0)
 
 
+def _visible_slant_pivot_y(
+    orientation: QTransform,
+    baseline_y: float,
+    source_bounds: QRectF,
+    neutral_bounds: QRectF,
+) -> float:
+    """Return the visible-space anchor for a glyph-local horizontal shear.
+
+    A translated upright glyph still has a horizontal baseline, so its mapped
+    baseline remains the natural pivot. After a quarter turn that baseline is
+    vertical; anchoring a horizontal shear to its old y coordinate translates
+    the whole glyph. Rotated glyphs instead retain their original
+    ink-to-baseline distance along the visible y axis.
+
+    >>> _visible_slant_pivot_y(
+    ...     QTransform(), 12.0, QRectF(0, -6, 4, 6), QRectF(0, 2, 4, 6)
+    ... )
+    12.0
+    """
+    if math.isclose(orientation.m12(), 0.0, abs_tol=1e-9):
+        return orientation.map(QPointF(0.0, baseline_y)).y()
+    source_y_scale = math.hypot(orientation.m21(), orientation.m22())
+    return (
+        neutral_bounds.center().y()
+        - source_bounds.center().y() * source_y_scale
+    )
+
+
 def _mapped_rect(rect: QRectF, transform: QTransform) -> QRectF:
     if rect.isEmpty():
         return QRectF()
@@ -456,7 +484,6 @@ def glyph_geometry(
     fallbacks = []
     bounds = QRectF()
     baseline = line.y() + line.ascent() + offset.y()
-    shear = glyph_slant_transform(angle, baseline)
 
     for run in line.glyphRuns(start, length):
         raw_font = run.rawFont()
@@ -467,26 +494,51 @@ def glyph_geometry(
             translation = QTransform.fromTranslate(
                 position.x() + offset.x(), position.y() + offset.y()
             )
-            # Vertical orientation establishes the glyph's visible axes;
-            # slant in item space afterward so rotated glyphs lean correctly.
-            glyph_to_item = _composed_transform(translation, orientation, shear)
+            neutral_transform = _composed_transform(translation, orientation)
             glyph_path = _raw_glyph_path(raw_font, glyph_index)
             if not native_color_glyphs and not glyph_path.isEmpty():
+                source_bounds = glyph_path.boundingRect()
+            else:
+                source_bounds = raw_font.boundingRect(glyph_index)
+            neutral_bounds = _mapped_rect(source_bounds, neutral_transform)
+
+            # Slant follows the visible axes, but its pivot must follow them
+            # too. This keeps rotated punctuation in its established column.
+            shear = glyph_slant_transform(
+                angle,
+                _visible_slant_pivot_y(
+                    orientation,
+                    baseline,
+                    source_bounds,
+                    neutral_bounds,
+                ),
+            )
+            glyph_to_item = _composed_transform(neutral_transform, shear)
+            if not native_color_glyphs and not glyph_path.isEmpty():
                 mapped_path = glyph_to_item.map(glyph_path)
+                glyph_bounds = mapped_path.boundingRect()
+                if not math.isclose(
+                    orientation.m12(), 0.0, abs_tol=1e-9
+                ):
+                    # Mirrored outlines have different shear extrema. Keep
+                    # their visible center tied to the transformed ink box,
+                    # not whichever contour happens to reach farthest.
+                    target_x = shear.map(neutral_bounds.center()).x()
+                    correction = target_x - glyph_bounds.center().x()
+                    mapped_path.translate(correction, 0.0)
+                    glyph_bounds.translate(correction, 0.0)
                 # Preserve the raw font's per-glyph fill rule. Drawing glyphs
                 # separately prevents overlap cancellation without turning a
                 # legitimate OddEven counter into solid ink.
                 paths.append(mapped_path)
-                glyph_bounds = mapped_path.boundingRect()
             else:
-                raw_bounds = raw_font.boundingRect(glyph_index)
-                glyph_bounds = _mapped_rect(raw_bounds, glyph_to_item)
+                glyph_bounds = _mapped_rect(source_bounds, glyph_to_item)
                 fallbacks.append(
                     FallbackGlyph(
                         _fallback_run(raw_font, glyph_index),
                         glyph_to_item,
                         glyph_bounds,
-                        raw_bounds,
+                        source_bounds,
                         native_color_glyphs,
                     )
                 )
