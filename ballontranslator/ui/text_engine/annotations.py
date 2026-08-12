@@ -484,7 +484,7 @@ def _sanitize_ruby_element(attrs: list, inner_html: str) -> str:
         and not parser.annotation_stack
         and ruby_type in RUBY_TYPES
         and position in RUBY_POSITIONS
-        and align in ('', 'center')
+        and align in ('', 'space-around')
         and overhang in ('', 'none')
         and not trailing_text
         and bool(parser.pairs)
@@ -1323,8 +1323,9 @@ class _RubySemanticHTMLExporter(HTMLParser):
         self.output.append(
             '<ruby style="'
             f'ruby-position: {candidate.position}; '
-            'ruby-align: center; '
-            f'ruby-merge: {merge};">'
+            'ruby-align: space-around; '
+            f'ruby-merge: {merge}; '
+            'ruby-overhang: none;">'
         )
         self.output.append('<span>')
         self._reopen_inline()

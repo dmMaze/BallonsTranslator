@@ -78,6 +78,31 @@ class PaintSpan(NamedTuple):
     char_format: QTextCharFormat
 
 
+def _split_paint_spans(
+    spans: Sequence[PaintSpan],
+    boundaries: Sequence[int],
+) -> Tuple[PaintSpan, ...]:
+    """Split paint only; the attached QTextLayout keeps its shaped runs."""
+    if not boundaries:
+        return tuple(spans)
+    result = []
+    for span in spans:
+        span_end = span.start + span.length
+        position = span.start
+        index = bisect_right(boundaries, position)
+        while index < len(boundaries) and boundaries[index] < span_end:
+            boundary = boundaries[index]
+            result.append(PaintSpan(
+                position, boundary - position, span.char_format
+            ))
+            position = boundary
+            index += 1
+        result.append(PaintSpan(
+            position, span_end - position, span.char_format
+        ))
+    return tuple(result)
+
+
 class FallbackGlyph(NamedTuple):
     run: QGlyphRun
     transform: QTransform
@@ -1237,7 +1262,25 @@ def draw_slanted_line(
     """Paint one already-laid-out line without changing logical geometry."""
     layout = block.layout()
     additional_formats = tuple(layout.formats())
-    normal_spans = resolve_paint_spans(block, line, additional_formats)
+    shift_boundaries = tuple(
+        sorted({
+            boundary
+            for start, end, _shift in horizontal_shifts
+            for boundary in (start, end)
+        })
+    )
+
+    def paint_spans(
+        selection: Optional[QAbstractTextDocumentLayout.Selection] = None,
+    ) -> Tuple[PaintSpan, ...]:
+        return _split_paint_spans(
+            resolve_paint_spans(
+                block, line, additional_formats, selection
+            ),
+            shift_boundaries,
+        )
+
+    normal_spans = paint_spans()
     baseline_y = line.y() + line.ascent() + offset.y()
     geometry_cache = {}
     shift_starts = tuple(start for start, _end, _shift in horizontal_shifts)
@@ -1296,9 +1339,7 @@ def draw_slanted_line(
             selection_range = _selection_range(block, selection, line)
             if selection_range is None:
                 continue
-            for span in resolve_paint_spans(
-                block, line, additional_formats, selection
-            ):
+            for span in paint_spans(selection):
                 if not (
                     selection_range[0] <= span.start
                     and span.start < selection_range[1]
@@ -1320,7 +1361,7 @@ def draw_slanted_line(
 
     selection_spans = []
     for selection in context.selections:
-        spans = resolve_paint_spans(block, line, additional_formats, selection)
+        spans = paint_spans(selection)
         selection_range = _selection_range(block, selection, line)
         if selection_range is None:
             continue

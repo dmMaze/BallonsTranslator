@@ -9,6 +9,8 @@ from qtpy.QtCore import QEvent, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
+    QFont,
+    QFontMetricsF,
     QImage,
     QInputMethodEvent,
     QKeyEvent,
@@ -16,10 +18,12 @@ from qtpy.QtGui import (
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
+    QTextLayout,
 )
 from qtpy.QtWidgets import QApplication, QGraphicsScene
 
 from ballontranslator.ui.text_engine import horizontal_layout
+from ballontranslator.ui.text_engine.rendering import glyph as glyph_rendering
 from ballontranslator.ui.text_engine.annotations import (
     RubyValidationError,
     apply_emphasis,
@@ -38,6 +42,9 @@ from ballontranslator.ui.text_engine.formatting.advanced import RubyFuriganaGrou
 from ballontranslator.ui.text_engine.editing.commands import propagate_user_edit
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering.glyph import resolve_paint_spans
+from ballontranslator.ui.text_engine.rendering.ruby import (
+    _space_around_positions,
+)
 from ballontranslator.utils.fontformat import (
     BendTextTransform,
     ProjectiveTextTransform,
@@ -164,7 +171,7 @@ class RubyFuriganaTest(unittest.TestCase):
             ('<p><ruby><b>東</i><rt>とう</rt></ruby></p>', '東'),
             ('<p><ruby><span>東</rt><rt>とう</rt></ruby></p>', '東'),
             (
-                '<p><ruby style="ruby-align: space-around">'
+                '<p><ruby style="ruby-align: center">'
                 '東<rt>とう</rt></ruby></p>',
                 '東',
             ),
@@ -179,6 +186,26 @@ class RubyFuriganaTest(unittest.TestCase):
                 load_rich_text_html(document, html)
                 self.assertEqual(document.toPlainText(), expected)
                 self.assertEqual(ruby_containers(document), ())
+
+        unsupported = QTextDocument()
+        load_rich_text_html(
+            unsupported,
+            '<p><ruby style="ruby-align: center"><b>東</b>'
+            '<rp>(</rp><rt>とう</rt><rp>)</rp></ruby></p>',
+        )
+        self.assertEqual(unsupported.toPlainText(), '東')
+        self.assertTrue(_select(unsupported, 0, 1).charFormat().font().bold())
+
+        supported = QTextDocument()
+        load_rich_text_html(
+            supported,
+            '<p><ruby style="ruby-overhang: none">'
+            '哈尔滨佛学院<rt>哈佛</rt></ruby></p>',
+        )
+        self.assertEqual(len(ruby_containers(supported)), 1)
+        exported = to_rich_text_html(supported)
+        self.assertIn('ruby-align: space-around', exported)
+        self.assertIn('ruby-overhang: none', exported)
 
     def test_custom_clipboard_round_trip_remaps_both_id_levels(self):
         source = QTextDocument()
@@ -587,6 +614,79 @@ class RubyFuriganaTest(unittest.TestCase):
             [(0, 1), (1, 1), (2, 1), (3, 1)],
         )
 
+    def test_horizontal_wrap_settles_final_ruby_cell_membership(self):
+        for width in (120, 150, 180):
+            with self.subTest(width=width):
+                item = self._item(
+                    text='人人人人', bounds=(0, 0, width, 260)
+                )
+                apply_ruby(
+                    _select(item.document(), 0, 4),
+                    'mono',
+                    'ながい ながい ながい ながい',
+                )
+                item.layout.reLayoutEverything()
+                block = item.document().firstBlock()
+                layout = block.layout()
+                cell_extent = item.layout._ruby_metrics[0][0].extent
+                first_count = max(
+                    1, min(4, int((width + 0.02) // cell_extent))
+                )
+                expected = [(0, first_count)]
+                if first_count < 4:
+                    expected.append((first_count, 4 - first_count))
+                self.assertEqual(
+                    [
+                        (
+                            layout.lineAt(index).textStart(),
+                            layout.lineAt(index).textLength(),
+                        )
+                        for index in range(layout.lineCount())
+                    ],
+                    expected,
+                )
+                for line_index in range(layout.lineCount()):
+                    line = layout.lineAt(line_index)
+                    cells = item.layout._ruby_line_placements(block, line)
+                    self.assertLessEqual(
+                        sum(cell.cell.width() for cell in cells),
+                        width + 0.02,
+                    )
+
+    def test_horizontal_wrap_queries_only_grapheme_endpoints(self):
+        item = self._item(
+            text='😀e\N{COMBINING ACUTE ACCENT}X',
+            bounds=(0, 0, 520, 220),
+        )
+        apply_ruby(
+            _select(item.document(), 0, 4),
+            'mono',
+            'ながい ながい',
+        )
+        item.layout.reLayoutEverything()
+        block = item.document().firstBlock()
+        line = block.layout().lineAt(0)
+        with patch.object(
+            item.layout,
+            '_cursor_x',
+            wraps=item.layout._cursor_x,
+        ) as cursor_x:
+            item.layout._settle_horizontal_ruby_wrap(
+                block, line, item.layout._ruby_metrics[0]
+            )
+        queried = [call.args[-1] for call in cursor_x.call_args_list]
+        self.assertEqual(queried, [0, 2, 4, 5])
+        self.assertNotIn(1, queried)
+        self.assertNotIn(3, queried)
+        units = ruby_containers(item.document())[0].units
+        layout = block.layout()
+        for index in range(layout.lineCount()):
+            line = layout.lineAt(index)
+            line_end = line.textStart() + line.textLength()
+            self.assertFalse(any(
+                unit.start < line_end < unit.end for unit in units
+            ))
+
     def test_paint_span_fragment_lookup_is_single_pass_for_many_mono_units(self):
         for count in (32, 256):
             with self.subTest(count=count):
@@ -602,6 +702,15 @@ class RubyFuriganaTest(unittest.TestCase):
                 item.layout.reLayoutEverything()
                 block = item.document().firstBlock()
                 line = block.layout().lineAt(0)
+                with patch.object(
+                    item.layout,
+                    '_cursor_x',
+                    wraps=item.layout._cursor_x,
+                ) as cursor_x:
+                    item.layout._settle_horizontal_ruby_wrap(
+                        block, line, item.layout._ruby_metrics[0]
+                    )
+                self.assertLessEqual(cursor_x.call_count, count + 1)
                 original = type(item.layout).fragment_format_ranges
                 iterations = 0
                 format_iterations = 0
@@ -623,7 +732,16 @@ class RubyFuriganaTest(unittest.TestCase):
                         format_iterations += 1
                         return super().__iter__()
 
-                formats = CountingFormats(block.layout().formats())
+                synthetic_formats = []
+                for position in range(count):
+                    char_format = QTextCharFormat()
+                    char_format.setProperty(0x101010, position)
+                    format_range = QTextLayout.FormatRange()
+                    format_range.start = position
+                    format_range.length = 1
+                    format_range.format = char_format
+                    synthetic_formats.append(format_range)
+                formats = CountingFormats(synthetic_formats)
                 self.assertEqual(len(formats), count)
 
                 with patch.object(
@@ -716,6 +834,415 @@ class RubyFuriganaTest(unittest.TestCase):
                         Qt.HitTestAccuracy.FuzzyHit,
                     ),
                     (0, 1, 2) if ruby_type == 'group' else (0, 1),
+                )
+
+    def test_cjk_space_around_and_latin_center_share_both_writing_modes(self):
+        def group_item(vertical: bool, reading: str) -> TextBlkItem:
+            item = self._item(
+                vertical=vertical,
+                text='哈尔滨佛学院',
+                bounds=(0, 0, 520, 520),
+            )
+            apply_ruby(
+                _select(item.document(), 0, 6), 'group', reading
+            )
+            item.layout.reLayoutEverything()
+            return item
+
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                cjk = group_item(vertical, '哈佛')
+                block = cjk.document().firstBlock()
+                if vertical:
+                    placement = cjk.layout._vertical_ruby_placements(block)[0]
+                else:
+                    line = block.layout().lineAt(0)
+                    placement = cjk.layout._ruby_line_placements(block, line)[0]
+                self.assertEqual(len(placement.geometries), 2)
+                metrics = QFontMetricsF(placement.char_format.font())
+                advance = (
+                    metrics.height()
+                    if vertical else metrics.horizontalAdvance('哈')
+                )
+                extent = (
+                    placement.cell.height()
+                    if vertical else placement.cell.width()
+                )
+                free = extent - 2 * advance
+                expected = (
+                    placement.cell.top() + free / 4 + advance / 2
+                    if vertical
+                    else placement.cell.left() + free / 4 + advance / 2
+                )
+                actual = (
+                    placement.geometries[0].bounds.center().y()
+                    if vertical
+                    else placement.geometries[0].bounds.center().x()
+                )
+                self.assertAlmostEqual(actual, expected, delta=0.6)
+                centers = [
+                    geometry.bounds.center().y()
+                    if vertical else geometry.bounds.center().x()
+                    for geometry in placement.geometries
+                ]
+                self.assertAlmostEqual(
+                    (centers[0] + centers[1]) / 2,
+                    placement.cell.center().y()
+                    if vertical else placement.cell.center().x(),
+                    delta=0.6,
+                )
+                self.assertGreater(centers[1] - centers[0], advance)
+
+                for reading in ('AB', 'ＡＢ', 'ㄏㄚ'):
+                    latin = group_item(vertical, reading)
+                    block = latin.document().firstBlock()
+                    if vertical:
+                        placement = latin.layout._vertical_ruby_placements(
+                            block
+                        )[0]
+                        centers = [
+                            geometry.bounds.center().y()
+                            for geometry in placement.geometries
+                        ]
+                        self.assertEqual(len(centers), 2)
+                        self.assertAlmostEqual(
+                            centers[1] - centers[0],
+                            QFontMetricsF(
+                                placement.char_format.font()
+                            ).height(),
+                            delta=0.6,
+                        )
+                        self.assertAlmostEqual(
+                            (centers[0] + centers[1]) / 2,
+                            placement.cell.center().y(),
+                            delta=0.6,
+                        )
+                    else:
+                        placement = latin.layout._ruby_line_placements(
+                            block, block.layout().lineAt(0)
+                        )[0]
+                        self.assertEqual(len(placement.geometries), 1)
+                        self.assertAlmostEqual(
+                            placement.geometries[0].bounds.center().x(),
+                            placement.cell.center().x(),
+                            delta=0.6,
+                        )
+
+                mixed_text = '漢字AVㄅ'
+                mixed = group_item(vertical, mixed_text)
+                block = mixed.document().firstBlock()
+                placement = (
+                    mixed.layout._vertical_ruby_placements(block)[0]
+                    if vertical
+                    else mixed.layout._ruby_line_placements(
+                        block, block.layout().lineAt(0)
+                    )[0]
+                )
+                font_metrics = QFontMetricsF(placement.char_format.font())
+                if vertical:
+                    runs = tuple(mixed_text)
+                    self.assertEqual(len(placement.geometries), len(runs))
+                    advances = [font_metrics.height()] * len(runs)
+                else:
+                    runs = tuple(
+                        run for run, _position in _space_around_positions(
+                            mixed_text,
+                            placement.char_format.font(),
+                            placement.cell.width(),
+                            vertical=False,
+                        )
+                    )
+                    self.assertEqual(runs, ('漢', '字AVㄅ'))
+                    self.assertEqual(len(placement.geometries), 2)
+                    advances = [
+                        font_metrics.horizontalAdvance(run) for run in runs
+                    ]
+                    self.assertLess(
+                        font_metrics.horizontalAdvance('AV'),
+                        font_metrics.horizontalAdvance('A')
+                        + font_metrics.horizontalAdvance('V'),
+                    )
+                centers = [
+                    geometry.bounds.center().y()
+                    if vertical else geometry.bounds.center().x()
+                    for geometry in placement.geometries
+                ]
+                expected_gap = (
+                    (
+                        placement.cell.height()
+                        if vertical else placement.cell.width()
+                    ) - sum(advances)
+                ) / 2
+                self.assertAlmostEqual(
+                    centers[1] - centers[0]
+                    - (advances[0] + advances[1]) / 2,
+                    expected_gap,
+                    delta=0.6,
+                )
+                for index in range(1, len(centers) - 1):
+                    self.assertAlmostEqual(
+                        centers[index + 1] - centers[index]
+                        - (advances[index] + advances[index + 1]) / 2,
+                        0.0,
+                        delta=0.6,
+                    )
+
+    def test_horizontal_latin_base_keeps_native_kerning_when_centered(self):
+        def kerning_item() -> TextBlkItem:
+            item = self._item(text='AVX', bounds=(0, 0, 520, 220))
+            char_format = QTextCharFormat()
+            font = QFont('DejaVu Sans')
+            font.setPointSizeF(24.0)
+            char_format.setFont(font)
+            _select(item.document(), 0, 3).mergeCharFormat(char_format)
+            item.layout.reLayoutEverything()
+            return item
+
+        plain = kerning_item()
+        plain_line = plain.document().firstBlock().layout().lineAt(0)
+        plain_cursors = [
+            plain.layout._cursor_x(plain_line, position)
+            for position in range(4)
+        ]
+        metrics = QFontMetricsF(
+            _select(plain.document(), 0, 1).charFormat().font()
+        )
+        self.assertLess(
+            plain_cursors[1] - plain_cursors[0],
+            metrics.horizontalAdvance('A'),
+        )
+
+        item = kerning_item()
+        apply_ruby(
+            _select(item.document(), 0, 2),
+            'group',
+            'とてもながいとうきょう',
+        )
+        item.layout.reLayoutEverything()
+        block = item.document().firstBlock()
+        line = block.layout().lineAt(0)
+        native_cursors = [
+            item.layout._cursor_x(line, position) for position in range(4)
+        ]
+        for position in range(4):
+            self.assertAlmostEqual(
+                native_cursors[position], plain_cursors[position], delta=0.02
+            )
+
+        metric = item.layout._ruby_metrics[0][0]
+        cell = item.layout._ruby_unit_cell(block, line, metric)
+        carets = [
+            item.layout.source_cursor_rect(position).center().x()
+            for position in range(4)
+        ]
+        self.assertAlmostEqual(
+            carets[1] - carets[0],
+            plain_cursors[1] - plain_cursors[0],
+            delta=0.02,
+        )
+        self.assertAlmostEqual(cell.width(), metric.extent, delta=0.6)
+        self.assertAlmostEqual(
+            carets[3] - carets[2],
+            plain_cursors[3] - plain_cursors[2],
+            delta=0.02,
+        )
+        self.assertGreater(carets[2], native_cursors[2])
+
+        image = QImage(520, 220, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(image)
+        try:
+            with patch.object(
+                glyph_rendering,
+                'glyph_geometry',
+                wraps=glyph_rendering.glyph_geometry,
+            ) as geometry:
+                item.layout.draw(
+                    painter, QAbstractTextDocumentLayout.PaintContext()
+                )
+        finally:
+            painter.end()
+        base_spans = {
+            (call.args[1], call.args[2]) for call in geometry.call_args_list
+        }
+        self.assertIn((0, 2), base_spans)
+        self.assertNotIn((0, 1), base_spans)
+        self.assertNotIn((1, 1), base_spans)
+
+    def test_long_annotation_distributes_only_eligible_shorter_base(self):
+        reading = 'とてもながいとうきょう'
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical, base='CJK'):
+                item = self._item(
+                    vertical=vertical,
+                    text='東京',
+                    bounds=(0, 0, 520, 520),
+                )
+                apply_ruby(
+                    _select(item.document(), 0, 2), 'group', reading
+                )
+                item.layout.reLayoutEverything()
+                block = item.document().firstBlock()
+                metric = item.layout._ruby_metrics[0][0]
+                self.assertEqual(metric.base_opportunity_ends, (1,))
+                if vertical:
+                    cell = item.layout._vertical_ruby_unit_cell(block, metric)
+                    advance = metric.base_advance / 2
+                    centers = [
+                        block.layout().lineForTextPosition(index).y()
+                        + advance / 2
+                        for index in range(2)
+                    ]
+                    cursor = item.layout.source_cursor_rect(1)
+                    axis_center = cursor.center().y()
+                    cell_start, cell_end = cell.top(), cell.bottom()
+                else:
+                    line = block.layout().lineAt(0)
+                    cell = item.layout._ruby_unit_cell(block, line, metric)
+                    font_metrics = QFontMetricsF(
+                        _select(item.document(), 0, 1).charFormat().font()
+                    )
+                    advance = font_metrics.horizontalAdvance('東')
+                    edge = metric.base_gap / 2
+                    centers = [
+                        item.layout._cursor_x(line, index) + edge + advance / 2
+                        for index in range(2)
+                    ]
+                    cursor = item.layout.source_cursor_rect(1)
+                    axis_center = cursor.center().x()
+                    cell_start, cell_end = cell.left(), cell.right()
+                self.assertGreater(metric.base_gap, 0.0)
+                self.assertAlmostEqual(
+                    centers[0] - advance / 2 - cell_start,
+                    metric.base_gap / 2,
+                    delta=0.6,
+                )
+                self.assertAlmostEqual(
+                    centers[1] - centers[0] - advance,
+                    metric.base_gap,
+                    delta=0.6,
+                )
+                self.assertAlmostEqual(
+                    cell_end - centers[1] - advance / 2,
+                    metric.base_gap / 2,
+                    delta=0.6,
+                )
+                self.assertAlmostEqual(
+                    (centers[0] + centers[1]) / 2,
+                    (cell_start + cell_end) / 2,
+                    delta=0.6,
+                )
+                self.assertLess(centers[0], axis_center)
+                self.assertLess(axis_center, centers[1])
+
+            with self.subTest(vertical=vertical, base='Latin'):
+                plain = self._item(vertical=vertical, text='AB')
+                item = self._item(
+                    vertical=vertical,
+                    text='AB',
+                    bounds=(0, 0, 520, 520),
+                )
+                apply_ruby(
+                    _select(item.document(), 0, 2), 'group', reading
+                )
+                item.layout.reLayoutEverything()
+                block = item.document().firstBlock()
+                metric = item.layout._ruby_metrics[0][0]
+                self.assertEqual(metric.base_opportunity_ends, ())
+                if vertical:
+                    base_delta = (
+                        block.layout().lineForTextPosition(1).y()
+                        - block.layout().lineForTextPosition(0).y()
+                    )
+                    plain_block = plain.document().firstBlock()
+                    plain_delta = (
+                        plain_block.layout().lineForTextPosition(1).y()
+                        - plain_block.layout().lineForTextPosition(0).y()
+                    )
+                else:
+                    line = block.layout().lineAt(0)
+                    plain_line = plain.document().firstBlock().layout().lineAt(0)
+                    base_delta = (
+                        item.layout._cursor_x(line, 1)
+                        - item.layout._cursor_x(line, 0)
+                    )
+                    plain_delta = (
+                        plain.layout._cursor_x(plain_line, 1)
+                        - plain.layout._cursor_x(plain_line, 0)
+                    )
+                self.assertAlmostEqual(base_delta, plain_delta, delta=0.6)
+
+    def test_vertical_item_resize_uses_actual_one_sided_annotation_width(self):
+        for position in ('over', 'under'):
+            with self.subTest(position=position):
+                item = self._item(
+                    vertical=True,
+                    text='哈尔滨佛学院',
+                    bounds=(0, 0, 344, 300),
+                )
+                apply_ruby(
+                    _select(item.document(), 0, 6),
+                    'group',
+                    '哈佛',
+                    position,
+                )
+                apply_emphasis(
+                    _select(item.document(), 0, 6),
+                    'filled sesame',
+                    'over right' if position == 'over' else 'under left',
+                )
+                item.layout.reLayoutEverything()
+                requested = item.absBoundingRect(qrect=True)
+                requested.setWidth(1.0)
+                item.setRect(requested, padding=False, repaint=False)
+
+                block = item.document().firstBlock()
+                metric = item.layout._ruby_metrics[0][0]
+                base_cell = item.layout._vertical_ruby_base_cell(
+                    block, metric
+                )
+                placement = item.layout._vertical_ruby_placements(block)[0]
+                self.assertAlmostEqual(
+                    metric.annotation_cross_extent,
+                    max(
+                        geometry.bounds.width()
+                        for geometry in placement.geometries
+                    ),
+                    delta=0.02,
+                )
+                ruby_overflow = (
+                    placement.ink_bounds.right() - base_cell.right()
+                    if position == 'over'
+                    else base_cell.left() - placement.ink_bounds.left()
+                )
+                record = item.layout._line_record(block, 0)
+                occupied = (
+                    record['right_margin']
+                    if position == 'over' else record['left_margin']
+                )
+                empty = (
+                    record['left_margin']
+                    if position == 'over' else record['right_margin']
+                )
+                self.assertGreaterEqual(occupied, ruby_overflow)
+                self.assertEqual(empty, 0.0)
+                self.assertAlmostEqual(
+                    item.logical_unpadded_rect().width(),
+                    record['base_width'] + occupied,
+                    delta=0.02,
+                )
+                self.assertLess(
+                    item.logical_unpadded_rect().width(),
+                    record['base_width'] + 2 * occupied - 1.0,
+                )
+
+                effect = item.fontformat.deepcopy()
+                effect.stroke_width = 0.2
+                item.set_fontformat(effect)
+                self.assertGreater(item.padding(), 0.0)
+                self.assertGreaterEqual(
+                    item.boundingRect().width(),
+                    item.logical_unpadded_rect().width() + 2 * item.padding(),
                 )
 
     def test_vertical_wrap_and_both_placements_use_settled_columns(self):

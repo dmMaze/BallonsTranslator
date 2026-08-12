@@ -565,6 +565,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     line_width = char_records[char_idx]['line_width']
                 if line_width < 0:
                     line_width = cfmt.tbr.width()
+                record = char_records.get(char_idx, {})
+                base_width = record.get('base_width', line_width)
+                left_margin = record.get('left_margin', 0.0)
 
                 space_shift = 0
                 if num_lspaces > 0:
@@ -578,7 +581,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     )
                     if char.isalpha():
                         xoff = 0
-                        yoff = -line.ascent() - (line_width - cfmt.font_metrics.capHeight()) / 2
+                        yoff = (
+                            -line.ascent()
+                            - (base_width - cfmt.font_metrics.capHeight()) / 2
+                        )
 
                     else:   # () （）
                         non_bracket_br = format_punc_actual_rect(
@@ -600,9 +606,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         if char in PUNSET_ROTATE_ALIGNL:
                             yoff = yoff
                         elif char in PUNSET_ROTATE_ALIGNR:
-                            yoff = yoff - (line_width - non_bracket_br[3])
+                            yoff = yoff - (base_width - non_bracket_br[3])
                         else:
-                            yoff = yoff - (line_width - non_bracket_br[3]) / 2
+                            yoff = yoff - (base_width - non_bracket_br[3]) / 2
+                    yoff -= left_margin
 
                 else:
                     standard_roman = (
@@ -616,7 +623,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         tight_rect, _ = cfmt.punc_rect(char)
                         xoff = (
                             -tight_rect.left()
-                            + (line_width - tight_rect.width()) / 2
+                            + (base_width - tight_rect.width()) / 2
                         )
                         yoff = (
                             -line.ascent()
@@ -634,7 +641,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         if self.centers_vertical_glyph(char):
                             xoff = (
                                 -act_rect[0]
-                                + (line_width - act_rect[2]) / 2
+                                + (base_width - act_rect[2]) / 2
                             )
                             yoff = (
                                 -act_rect[1]
@@ -643,7 +650,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         elif char in PUNSET_PAUSEORSTOP:
                             # CLREQ's Mainland convention places stop marks at
                             # the upper-right of their full character frame.
-                            xoff = -act_rect[0] + line_width - act_rect[2]
+                            xoff = -act_rect[0] + base_width - act_rect[2]
                             yoff = -act_rect[1]
                         else:
                             yoff = min(
@@ -652,8 +659,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             )
                             xoff = (
                                 -act_rect[0]
-                                + (line_width - act_rect[2]) / 2
+                                + (base_width - act_rect[2]) / 2
                             )
+
+                    xoff += left_margin
 
                     if num_lspaces > 0:
                         xoff -= space_shift
@@ -904,9 +913,20 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if cell_width is None or cell_height is None:
             return None
         line = block.layout().lineAt(line_number)
-        line_width = record.get('line_width', cell_width)
+        base_width = record.get('base_width', cell_width)
+        left_margin = record.get('left_margin', 0.0)
+        line_width = record.get('line_width', base_width)
+        cell_left = (
+            line.x() + left_margin + (base_width - cell_width) / 2
+        )
+        if cell_width <= line_width:
+            # Use an occupied annotation-side margin before Tate ink overhangs.
+            cell_left = max(
+                line.x(),
+                min(cell_left, line.x() + line_width - cell_width),
+            )
         return QRectF(
-            line.x() + (line_width - cell_width) / 2,
+            cell_left,
             line.y(),
             cell_width,
             cell_height,
@@ -951,8 +971,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 else char_format.tbr.width()
             )
             line_width = self._vertical_line_width(block, line_number)
+            record = self._line_record(block, line_number)
+            column_base_width = record.get('base_width', line_width)
+            left_margin = record.get('left_margin', 0.0)
             rect = QRectF(
-                line.x() + (line_width - base_width) / 2,
+                line.x()
+                + left_margin
+                + (column_base_width - base_width) / 2,
                 top,
                 base_width,
                 bottom - top,
@@ -970,8 +995,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         metric: RubyUnitMetrics,
     ) -> QRectF:
         base_bounds = self._vertical_ruby_base_cell(block, metric)
+        edge = metric.base_gap / 2
         return base_bounds.adjusted(
-            0.0, -metric.extra / 2, 0.0, metric.extra / 2
+            0.0, -edge, 0.0, edge
         ) if not base_bounds.isEmpty() else base_bounds
 
     def _vertical_ruby_placements(
@@ -1609,6 +1635,20 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             metric.unit.start - block.position(): metric
             for metric in ruby_metrics
         }
+        ruby_base_leading = {}
+        ruby_base_trailing = {}
+        for metric in ruby_metrics:
+            if metric.extra <= 1e-6:
+                continue
+            unit_start = metric.unit.start - block.position()
+            unit_end = metric.unit.end - block.position()
+            half_gap = metric.base_gap / 2
+            ruby_base_leading[unit_start] = half_gap
+            ruby_base_trailing[unit_end] = half_gap
+            for boundary in metric.base_opportunity_ends:
+                local_boundary = unit_start + boundary
+                ruby_base_leading[local_boundary] = half_gap
+                ruby_base_trailing[local_boundary] = half_gap
         text_combine_lengths = {
             start: length for start, length, _group_id in text_combine_ranges
         }
@@ -1681,15 +1721,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if ruby_metric is None
                 else ruby_metric.unit.end - block.position()
             )
-            ruby_leading = (
-                ruby_metric.extra / 2
-                if ruby_metric is not None and char_idx == ruby_unit_start
-                else 0.0
-            )
-            ruby_trailing = (
-                ruby_metric.extra / 2
-                if ruby_metric is not None and char_idx + text_len >= ruby_unit_end
-                else 0.0
+            ruby_leading = ruby_base_leading.get(char_idx, 0.0)
+            ruby_trailing = ruby_base_trailing.get(
+                char_idx + text_len, 0.0
             )
             group_ruby = (
                 ruby_metric is not None
@@ -1738,7 +1772,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             tbr_h = space_w = spacing_advance = 0
             char_idx += num_lspaces
             single_char_h = None
-            text_combine_line_width = None
+            text_combine_line_metrics = None
 
             if char_idx < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
@@ -1790,9 +1824,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         text_combine_height * (cfmt.letter_spacing - 1)
                     )
                     tbr_h = text_combine_height + spacing_advance
-                    text_combine_line_width = (
-                        cfmt.tbr.width()
-                        + 2 * max(right_margin, left_margin)
+                    text_combine_line_metrics = (
+                        cfmt.tbr.width(),
+                        right_margin,
+                        left_margin,
                     )
                     char_records[char_idx] = {
                         'text_combine_height': text_combine_height,
@@ -1861,7 +1896,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             else:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 if cfmt is not None:
-                    if text_combine_line_width is None:
+                    if text_combine_line_metrics is None:
                         right_margin, left_margin = emphasis_margins(
                             block, line, vertical=True
                         )
@@ -1870,15 +1905,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         )
                         right_margin += ruby_right
                         left_margin += ruby_left
-                        current_line_width = (
-                            cfmt.tbr.width()
-                            + 2 * max(right_margin, left_margin)
+                        current_line_metrics = (
+                            cfmt.tbr.width(),
+                            right_margin,
+                            left_margin,
                         )
                     else:
-                        current_line_width = text_combine_line_width
-                    width_list.append(current_line_width)
+                        current_line_metrics = text_combine_line_metrics
+                    width_list.append(current_line_metrics)
                 else:
-                    width_list.append(-1)
+                    width_list.append((-1.0, 0.0, 0.0))
 
                 char_yoffset_lst.append(char_bottom)
                 for _ in range(num_rspaces):
@@ -1894,31 +1930,47 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 else:
                     line_spacing = self.line_spacing
                 if len(width_list) == 0:
-                    width_list = [block_width]
-                end_line, end_ypos, end_w = (
+                    width_list = [(block_width, 0.0, 0.0)]
+                end_line, end_ypos, end_metrics = (
                     line,
-                    line_y_offset,
+                    line_position_y,
                     width_list[-1],
                 )
-                if out_of_vspace and text_combine_line_width is not None:
+                if out_of_vspace and text_combine_line_metrics is not None:
                     # This line belongs to the next column and therefore did
                     # not enter the previous column's width list.
-                    end_w = text_combine_line_width
-                idea_line_width = -1
+                    end_metrics = text_combine_line_metrics
                 if out_of_vspace and end_char and len(width_list) > 1:
-                    idea_line_width = max(width_list[:-1])
+                    column_metrics = width_list[:-1]
                 else:
-                    idea_line_width = max(width_list)
-                if idea_line_width == -1:
-                    idea_line_width = block_width
+                    column_metrics = width_list
+                idea_base_width = max(
+                    metrics[0] for metrics in column_metrics
+                )
+                if idea_base_width == -1:
+                    idea_base_width = block_width
+                idea_right_margin = max(
+                    metrics[1] for metrics in column_metrics
+                )
+                idea_left_margin = max(
+                    metrics[2] for metrics in column_metrics
+                )
+                idea_line_width = (
+                    idea_base_width
+                    + idea_right_margin
+                    + idea_left_margin
+                )
 
                 if len(line_char_ids) == 0:
                     line_char_ids = [char_idx]
                 end_char_id = line_char_ids[-1]
                 for cidx in line_char_ids:
-                    char_records.setdefault(cidx, {})[
-                        'line_width'
-                    ] = idea_line_width
+                    char_records.setdefault(cidx, {}).update({
+                        'line_width': idea_line_width,
+                        'base_width': idea_base_width,
+                        'right_margin': idea_right_margin,
+                        'left_margin': idea_left_margin,
+                    })
                 line_char_ids = []
 
                 x_offset -= self.calculate_line_spacing(
@@ -1929,18 +1981,29 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     line.setPosition(QPointF(x_offset, ypos))
                 if out_of_vspace:
                     if end_char:
+                        end_base_width = end_metrics[0]
+                        if end_base_width == -1:
+                            end_base_width = block_width
+                        end_width = (
+                            end_base_width
+                            + end_metrics[1]
+                            + end_metrics[2]
+                        )
                         if not len(line_not_set) == 1:
                             x_offset -= self.calculate_line_spacing(
-                                end_w, self.line_spacing
+                                end_width, self.line_spacing
                             )
                         end_line.setPosition(QPointF(x_offset, end_ypos))
-                        char_records.setdefault(end_char_id, {})[
-                            'line_width'
-                        ] = end_w
+                        char_records.setdefault(end_char_id, {}).update({
+                            'line_width': end_width,
+                            'base_width': end_base_width,
+                            'right_margin': end_metrics[1],
+                            'left_margin': end_metrics[2],
+                        })
                     else:
                         line_not_set = [end_line]
                         ypos_list = [end_ypos]
-                        width_list = [end_w]
+                        width_list = [end_metrics]
                         line_char_ids = [end_char_id]
                 else:
                     end_line.setPosition(QPointF(x_offset, end_ypos))

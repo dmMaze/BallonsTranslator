@@ -33,6 +33,9 @@ def _item(
     ruby_type: str,
     reading: str,
     origin: tuple[int, int],
+    base_length: int = 2,
+    emphasis: bool = True,
+    effects: bool = True,
 ) -> TextBlkItem:
     width, height = ((510, 180) if not vertical else (250, 470))
     block = TextBlock([origin[0], origin[1], origin[0] + width, origin[1] + height])
@@ -40,17 +43,18 @@ def _item(
     block.translation = text
     block.vertical = vertical
     block.fontformat.font_size = 34
-    block.fontformat.stroke_width = 0.12
-    block.fontformat.shadow_strength = 0.8
-    block.fontformat.shadow_radius = 0.1
-    block.fontformat.shadow_offset = [0.08, 0.08]
+    if effects:
+        block.fontformat.stroke_width = 0.12
+        block.fontformat.shadow_strength = 0.8
+        block.fontformat.shadow_radius = 0.1
+        block.fontformat.shadow_offset = [0.08, 0.08]
     block.fontformat.text_transform = TextTransformStack((), 14.0)
     item = TextBlkItem(block, 0)
     cursor = QTextCursor(item.document())
     cursor.setPosition(0)
-    cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+    cursor.setPosition(base_length, QTextCursor.MoveMode.KeepAnchor)
     apply_ruby(cursor, ruby_type, reading, position)
-    if ruby_type == 'group':
+    if ruby_type == 'group' and emphasis:
         apply_emphasis(cursor, 'filled sesame', 'over right')
     item.layout.reLayoutEverything()
     item.set_ui_guide_suppressed(True)
@@ -68,7 +72,7 @@ def render(scale: int) -> QImage:
     scene = QGraphicsScene()
     scene.setSceneRect(QRectF(0, 0, width, height))
     title = scene.addSimpleText(
-        'Ruby / Furigana — group + mono, horizontal + vertical',
+        'Ruby / Furigana — space-around, group + mono, horizontal + vertical',
         QFont('Sans Serif', 12),
     )
     title.setBrush(QColor('#665f57'))
@@ -76,7 +80,17 @@ def render(scale: int) -> QImage:
     fixtures = (
         _item('東京、Kana A!', vertical=False, position='over', ruby_type='group', reading='とてもながいとうきょう', origin=(25, 50)),
         _item('日本。Latin B?', vertical=False, position='under', ruby_type='mono', reading='に ほん', origin=(25, 255)),
-        _item('東京、A!', vertical=True, position='over', ruby_type='group', reading='とうきょう', origin=(590, 50)),
+        _item(
+            '哈尔滨佛学院、A!',
+            vertical=True,
+            position='over',
+            ruby_type='group',
+            reading='哈佛',
+            origin=(590, 50),
+            base_length=6,
+            emphasis=False,
+            effects=False,
+        ),
         _item('日本。B?', vertical=True, position='under', ruby_type='mono', reading='にっ ぽん', origin=(860, 50)),
     )
     for item in fixtures:

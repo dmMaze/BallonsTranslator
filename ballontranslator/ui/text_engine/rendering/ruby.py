@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from bisect import bisect_right
 from dataclasses import dataclass
 from typing import Callable, Iterable, Optional
@@ -52,7 +53,7 @@ RUBY_LAYOUT_SPACING_PROPERTY = int(AnnotationProperty.RUBY_POSITION) + 20
 class RubyUnitMetrics:
     """One unit's base and annotation inline measurements.
 
-    >>> RubyUnitMetrics(None, None, 10.0, 14.0).extra
+    >>> RubyUnitMetrics(None, None, 10.0, 14.0, 5.0).extra
     4.0
     """
 
@@ -60,6 +61,9 @@ class RubyUnitMetrics:
     unit: RubyUnitRange
     base_advance: float
     annotation_advance: float
+    annotation_cross_extent: float
+    base_opportunity_ends: tuple[int, ...] = ()
+    base_gap: float = 0.0
 
     @property
     def extent(self) -> float:
@@ -143,11 +147,12 @@ class RubyBlockMetrics:
     units: tuple[RubyUnitMetrics, ...]
     starts: tuple[int, ...]
     ends: tuple[int, ...]
+    base_gap_prefix: tuple[float, ...]
     format_index: Optional[RubyFormatIndex]
 
     @classmethod
     def empty(cls) -> RubyBlockMetrics:
-        return cls((), (), (), None)
+        return cls((), (), (), (0.0,), None)
 
     @classmethod
     def create(
@@ -156,10 +161,14 @@ class RubyBlockMetrics:
         format_index: RubyFormatIndex,
     ) -> RubyBlockMetrics:
         normalized = tuple(units)
+        base_gap_prefix = [0.0]
+        for metric in normalized:
+            base_gap_prefix.append(base_gap_prefix[-1] + metric.base_gap)
         return cls(
             normalized,
             tuple(metric.unit.start for metric in normalized),
             tuple(metric.unit.end for metric in normalized),
+            tuple(base_gap_prefix),
             format_index,
         )
 
@@ -206,6 +215,10 @@ class RubyBlockMetrics:
             return self.units[index]
         return None
 
+    def base_gap_before(self, position: int) -> float:
+        """Return external edge spacing for units ending by ``position``."""
+        return self.base_gap_prefix[bisect_right(self.ends, position)]
+
 
 @dataclass(frozen=True)
 class RubyPlacement:
@@ -237,6 +250,126 @@ def ruby_font(char_format: QTextCharFormat) -> QFont:
         font.setPixelSize(max(1, round(font.pixelSize() * RUBY_FONT_SCALE)))
     font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 100.0)
     return font
+
+
+def _space_around_spacing(
+    text: str,
+    extra: float,
+) -> tuple[tuple[tuple[int, int], ...], tuple[int, ...], float]:
+    """Return graphemes, eligible boundaries, and one full opportunity.
+
+    The two half-size edge spaces together consume one full opportunity.
+    Bopomofo and Latin have no internal Ruby-justification opportunities.
+
+    >>> _space_around_spacing('漢字A', 20.0)[1:]
+    ((1,), 10.0)
+    >>> _space_around_spacing('ㄅㄆ', 20.0)[1:]
+    ((), 20.0)
+    """
+    graphemes = tuple(_grapheme_ranges(text))
+
+    def distributable(start: int, end: int) -> bool:
+        grapheme = _utf16_slice(text, start, end - start)
+        name = unicodedata.name(grapheme[0], '')
+        return any(
+            script in name
+            for script in (
+                'CJK', 'IDEOGRAPHIC', 'HIRAGANA', 'KATAKANA', 'HANGUL',
+            )
+        )
+
+    opportunities = tuple(
+        end
+        for (start, end), (next_start, next_end) in zip(
+            graphemes, graphemes[1:]
+        )
+        if distributable(start, end) and distributable(next_start, next_end)
+    )
+    gap = max(0.0, extra) / (len(opportunities) + 1)
+    return graphemes, opportunities, gap
+
+
+def _space_around_positions(
+    text: str,
+    font: QFont,
+    extent: float,
+    *,
+    vertical: bool,
+) -> tuple[tuple[str, float], ...]:
+    """Return CJK space-around centers along one Ruby inline axis.
+
+    Non-CJK text stays contiguous and centered. Horizontal text remains one
+    shaped run; vertical text remains its ordinary gapless upright stack.
+
+    >>> len(_space_around_positions('AB', QFont(), 100, vertical=False))
+    1
+    >>> len(_space_around_positions('哈佛', QFont(), 100, vertical=False))
+    2
+    >>> len(_space_around_positions('ＡＢ', QFont(), 100, vertical=False))
+    1
+    """
+    ranges, opportunities, _gap = _space_around_spacing(text, 0.0)
+    graphemes = tuple(
+        _utf16_slice(text, start, end - start) for start, end in ranges
+    )
+    if not graphemes:
+        return ()
+    metrics = QFontMetricsF(font)
+    if not vertical and not opportunities:
+        return ((text, extent / 2),)
+    if vertical:
+        runs = tuple(zip(graphemes, ranges))
+        advances = tuple(metrics.height() for _grapheme in graphemes)
+    else:
+        runs = []
+        run_start = 0
+        for opportunity_end in opportunities:
+            runs.append((
+                _utf16_slice(text, run_start, opportunity_end - run_start),
+                (run_start, opportunity_end),
+            ))
+            run_start = opportunity_end
+        text_end = ranges[-1][1]
+        runs.append((
+            _utf16_slice(text, run_start, text_end - run_start),
+            (run_start, text_end),
+        ))
+        runs = tuple(runs)
+        advances = tuple(
+            metrics.horizontalAdvance(run) for run, _range in runs
+        )
+    free = max(0.0, extent - sum(advances))
+    gap = free / (len(opportunities) + 1)
+    cursor = gap / 2
+    positions = []
+    for index, ((run, _range), advance) in enumerate(zip(runs, advances)):
+        positions.append((run, cursor + advance / 2))
+        cursor += advance
+        if index < len(opportunities):
+            cursor += gap
+    return tuple(positions)
+
+
+def _annotation_cross_extent(
+    text: str,
+    char_format: QTextCharFormat,
+) -> float:
+    """Measure the widest actual annotation glyph, not a font maximum."""
+    width = 0.0
+    for grapheme, _position in _space_around_positions(
+        text, char_format.font(), 0.0, vertical=True
+    ):
+        _layout, line = _temporary_line(grapheme, char_format.font())
+        geometry = glyph_geometry(
+            line,
+            0,
+            _utf16_length(grapheme),
+            QPointF(),
+            QTransform(),
+            0.0,
+        )
+        width = max(width, geometry.bounds.width())
+    return width
 
 
 def _format_at(
@@ -362,6 +495,9 @@ def horizontal_ruby_metrics(
     for container in containers:
         for unit in container.units:
             local_start = unit.start - block.position()
+            base_text = _utf16_slice(
+                block_text, local_start, unit.length
+            )
             probe_text, probe_formats = _horizontal_base_probe(
                 block_text, format_index, local_start, unit.length
             )
@@ -374,8 +510,18 @@ def horizontal_ruby_metrics(
             annotation_advance = QFontMetricsF(
                 ruby_format.font()
             ).horizontalAdvance(unit.text)
+            _ranges, opportunities, gap = _space_around_spacing(
+                base_text,
+                max(0.0, annotation_advance - base_advance),
+            )
             metrics.append(RubyUnitMetrics(
-                container, unit, base_advance, annotation_advance
+                container,
+                unit,
+                base_advance,
+                annotation_advance,
+                0.0,
+                opportunities,
+                gap,
             ))
     return RubyBlockMetrics.create(metrics, format_index)
 
@@ -435,8 +581,18 @@ def vertical_ruby_metrics(
                 len(_grapheme_ranges(unit.text))
                 * QFontMetricsF(ruby_format.font()).height()
             )
+            _ranges, opportunities, gap = _space_around_spacing(
+                base_text,
+                max(0.0, annotation_advance - base_advance),
+            )
             metrics.append(RubyUnitMetrics(
-                container, unit, base_advance, annotation_advance
+                container,
+                unit,
+                base_advance,
+                annotation_advance,
+                _annotation_cross_extent(unit.text, ruby_format),
+                opportunities,
+                gap,
             ))
     return RubyBlockMetrics.create(metrics, format_index)
 
@@ -457,7 +613,7 @@ def _remove_ruby_spacing_formats(block: QTextBlock) -> tuple[list, bool]:
 def prepare_horizontal_ruby_layout(
     block: QTextBlock,
 ) -> RubyBlockMetrics:
-    """Reserve long-Ruby inline extent through one transient trailing range."""
+    """Reserve and distribute a shorter base with transient native spacing."""
     formats, _removed = _remove_ruby_spacing_formats(block)
     metrics = horizontal_ruby_metrics(block)
     added = False
@@ -469,60 +625,78 @@ def prepare_horizontal_ruby_layout(
         graphemes = _grapheme_ranges(base_text)
         if not graphemes:
             continue
-        last_start, last_end = graphemes[-1]
         format_index = metrics.format_index
         if format_index is None:
             continue
-        char_format = _format_at(
-            block, local_start + last_start, format_index
-        )
-        font = QFont(char_format.font())
-        if font.letterSpacingType() == QFont.SpacingType.AbsoluteSpacing:
-            existing_spacing = font.letterSpacing()
-        else:
-            glyph = _utf16_slice(base_text, last_start, last_end - last_start)
-            natural = max(0.0, QFontMetricsF(font).horizontalAdvance(glyph))
-            existing_spacing = (
-                natural * (font.letterSpacing() - 100.0) / 100.0
+        spacing_ends = frozenset(metric.base_opportunity_ends)
+        if not spacing_ends:
+            continue
+        spacing_targets = []
+        for start, end in graphemes:
+            if end not in spacing_ends:
+                continue
+            char_format = _format_at(
+                block, local_start + start, format_index
             )
+            font = QFont(char_format.font())
+            if font.letterSpacingType() == QFont.SpacingType.AbsoluteSpacing:
+                existing_spacing = font.letterSpacing()
+            else:
+                glyph = _utf16_slice(base_text, start, end - start)
+                natural = max(
+                    0.0, QFontMetricsF(font).horizontalAdvance(glyph)
+                )
+                existing_spacing = (
+                    natural * (font.letterSpacing() - 100.0) / 100.0
+                )
+            spacing_targets.append((
+                start, end, char_format, existing_spacing
+            ))
         block_text = block.text()
         probe_text, probe_formats = _horizontal_base_probe(
             block_text, format_index, local_start, metric.unit.length
         )
 
-        def advance_with_spacing(spacing: float) -> float:
-            probe_format = QTextCharFormat(char_format)
-            probe_format.setFontLetterSpacingType(
-                QFont.SpacingType.AbsoluteSpacing
-            )
-            probe_format.setFontLetterSpacing(spacing)
-            probe_range = QTextLayout.FormatRange()
-            probe_range.start = last_start
-            probe_range.length = last_end - last_start
-            probe_range.format = probe_format
+        def spacing_ranges(
+            added_spacing: float,
+            offset: int,
+        ) -> list[QTextLayout.FormatRange]:
+            ranges = []
+            for start, end, source_format, existing in spacing_targets:
+                char_format = QTextCharFormat(source_format)
+                char_format.setFontLetterSpacingType(
+                    QFont.SpacingType.AbsoluteSpacing
+                )
+                char_format.setFontLetterSpacing(existing + added_spacing)
+                char_format.setProperty(RUBY_LAYOUT_SPACING_PROPERTY, True)
+                format_range = QTextLayout.FormatRange()
+                format_range.start = offset + start
+                format_range.length = end - start
+                format_range.format = char_format
+                ranges.append(format_range)
+            return ranges
+
+        def advance_with_spacing(added_spacing: float) -> float:
             return _measure_span(
                 probe_text,
-                (*probe_formats, probe_range),
+                (*probe_formats, *spacing_ranges(added_spacing, 0)),
                 0,
                 metric.unit.length,
             )
 
-        adjusted_advance = advance_with_spacing(existing_spacing)
+        adjusted_advance = advance_with_spacing(0.0)
         spacing_response = (
-            advance_with_spacing(existing_spacing + 1.0) - adjusted_advance
+            advance_with_spacing(1.0) - adjusted_advance
         )
-        required_extra = max(0.0, metric.extent - adjusted_advance)
-        char_format.setFontLetterSpacingType(QFont.SpacingType.AbsoluteSpacing)
-        char_format.setFontLetterSpacing(
-            existing_spacing
-            + required_extra / max(1e-6, spacing_response)
+        target_advance = (
+            metric.base_advance
+            + metric.base_gap * len(metric.base_opportunity_ends)
         )
-        char_format.setProperty(RUBY_LAYOUT_SPACING_PROPERTY, True)
-        format_range = QTextLayout.FormatRange()
-        format_range.start = local_start + last_start
-        format_range.length = last_end - last_start
-        format_range.format = char_format
-        formats.append(format_range)
+        required_extra = max(0.0, target_advance - adjusted_advance)
+        formats.extend(spacing_ranges(
+            required_extra / max(1e-6, spacing_response),
+            local_start,
+        ))
         added = True
     if added:
         block.layout().setFormats(formats)
@@ -572,7 +746,8 @@ def ruby_side_margins(
             block, unit.start - block.position(), metrics.format_index
         ).font()).height() * RUBY_GAP_SCALE
         extent = (
-            font_metrics.maxWidth() if vertical else font_metrics.height()
+            metric.annotation_cross_extent
+            if vertical else font_metrics.height()
         ) + gap
         if metric.container.position == 'over':
             first = max(first, extent)
@@ -621,23 +796,38 @@ def _horizontal_geometry(
     position: str,
     glyph_slant_angle: float,
 ) -> tuple[GlyphGeometry, ...]:
-    _layout, line = _temporary_line(text, char_format.font())
-    geometry = glyph_geometry(
-        line, 0, _utf16_length(text), QPointF(), QTransform(), glyph_slant_angle
-    )
-    if geometry.bounds.isEmpty():
-        return ()
     base_height = QFontMetricsF(char_format.font()).height() / RUBY_FONT_SCALE
     gap = base_height * RUBY_GAP_SCALE
-    target_x = cell.center().x()
     target_y = (
-        cell.top() - gap - geometry.bounds.height() / 2
+        cell.top() - gap
         if position == 'over'
-        else cell.bottom() + gap + geometry.bounds.height() / 2
+        else cell.bottom() + gap
     )
-    return (_translated_geometry(
-        geometry, QPointF(target_x, target_y) - geometry.bounds.center()
-    ),)
+    result = []
+    for cluster, inline_center in _space_around_positions(
+        text, char_format.font(), cell.width(), vertical=False
+    ):
+        _layout, line = _temporary_line(cluster, char_format.font())
+        geometry = glyph_geometry(
+            line,
+            0,
+            _utf16_length(cluster),
+            QPointF(),
+            QTransform(),
+            glyph_slant_angle,
+        )
+        if geometry.bounds.isEmpty():
+            continue
+        center_y = (
+            target_y - geometry.bounds.height() / 2
+            if position == 'over'
+            else target_y + geometry.bounds.height() / 2
+        )
+        target = QPointF(cell.left() + inline_center, center_y)
+        result.append(_translated_geometry(
+            geometry, target - geometry.bounds.center()
+        ))
+    return tuple(result)
 
 
 def _vertical_geometries(
@@ -648,18 +838,19 @@ def _vertical_geometries(
     glyph_slant_angle: float,
 ) -> tuple[GlyphGeometry, ...]:
     source = []
-    total_height = 0.0
-    for start, end in _grapheme_ranges(text):
-        grapheme = _utf16_slice(text, start, end - start)
+    for grapheme, inline_center in _space_around_positions(
+        text, char_format.font(), cell.height(), vertical=True
+    ):
         _layout, line = _temporary_line(grapheme, char_format.font())
         geometry = glyph_geometry(
-            line, 0, end - start, QPointF(), QTransform(), glyph_slant_angle
+            line,
+            0,
+            _utf16_length(grapheme),
+            QPointF(),
+            QTransform(),
+            glyph_slant_angle,
         )
-        height = max(
-            geometry.bounds.height(), QFontMetricsF(char_format.font()).height()
-        )
-        source.append((geometry, height))
-        total_height += height
+        source.append((geometry, inline_center))
     if not source:
         return ()
     base_height = QFontMetricsF(char_format.font()).height() / RUBY_FONT_SCALE
@@ -669,19 +860,17 @@ def _vertical_geometries(
         if position == 'over'
         else cell.left() - gap
     )
-    y = cell.center().y() - total_height / 2
     result = []
-    for geometry, height in source:
+    for geometry, inline_center in source:
         center_x = (
             x + geometry.bounds.width() / 2
             if position == 'over'
             else x - geometry.bounds.width() / 2
         )
-        center = QPointF(center_x, y + height / 2)
+        center = QPointF(center_x, cell.top() + inline_center)
         result.append(_translated_geometry(
             geometry, center - geometry.bounds.center()
         ))
-        y += height
     return tuple(result)
 
 

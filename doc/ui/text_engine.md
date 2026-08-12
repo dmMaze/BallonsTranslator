@@ -97,23 +97,29 @@ ordinary HTML and plain-text fallbacks.
 
 Ruby uses semantic `<ruby>`/`<rt>` HTML because Qt otherwise flattens the
 annotation into editable base text. The standard-library preprocessing path
-removes `<rt>` annotation and `<rp>` fallback content before `setHtml()`, restores runtime-only
-container/unit properties to the base range, and tolerantly drops only
-malformed, nested, or unsupported annotations. Export reconstructs group Ruby
-as one base/reading unit and mono Ruby as ordered base/reading pairs; runtime
-IDs are never persisted and both ID levels are remapped on internal paste.
+removes `<rt>` annotation and `<rp>` fallback content before `setHtml()`,
+restores runtime-only container/unit properties to the base range, and
+tolerantly drops only malformed, nested, or unsupported annotations. Export
+reconstructs group Ruby as one base/reading unit and mono Ruby as ordered
+base/reading pairs; runtime IDs are never persisted and both ID levels are
+remapped on internal paste.
 Older builds do not understand this Ruby extension: opening and resaving a
 Ruby-containing project in one lets Qt flatten `<rt>` readings into editable
 text.
 
 `rendering/ruby.py` is the shared measurement and glyph-geometry boundary.
 Horizontal and vertical layouts reserve `max(base advance, annotation
-advance)`, keep group units indivisible, allow mono breaks only between pairs,
+advance)` and use CSS Ruby's initial `space-around` for whichever run is
+shorter. Spacing is added only at adjacent eligible CJK boundaries; Latin,
+Bopomofo, and mixed ineligible boundaries remain contiguous. Group units stay
+indivisible and mono breaks remain limited to boundaries between pairs,
 and reuse the resulting cells for paint, cursor, selection, hit testing, ink
 bounds, effects, and transforms. Ruby derives its font and glyph styling from
 the relevant base fragment at 50% size. When Ruby and emphasis use the same
 side, Ruby stays nearest the base and emphasis consumes the accumulated outer
 margin. Ruby remains annotation text, not editable document characters.
+The supported subset always uses `ruby-overhang: none`; automatic overhang and
+collision handling remain deferred.
 
 Character spacing uses the same selection/insertion behavior as other inline
 formats. Qt imports but does not export CSS `letter-spacing`, and the existing

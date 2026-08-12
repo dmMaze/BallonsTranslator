@@ -28,7 +28,11 @@ from .rendering.emphasis import (
     emphasis_ink_bounds,
     emphasis_margins,
 )
-from .rendering.indexing import _utf16_length, _utf16_slice
+from .rendering.indexing import (
+    _grapheme_ranges,
+    _utf16_length,
+    _utf16_slice,
+)
 from .rendering.glyph import draw_slanted_line
 from .rendering.ruby import (
     RubyBlockMetrics,
@@ -372,19 +376,32 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             return None
         local_position = cursor_position - block.position()
         block_metrics = self._ruby_metrics[block.blockNumber()]
-        metric = block_metrics.containing(cursor_position)
-        if metric is not None:
-            start = metric.unit.start - block.position()
-            end = metric.unit.end - block.position()
-            line = block.layout().lineForTextPosition(start)
-            if line.isValid():
-                cell = self._ruby_unit_cell(block, line, metric)
-                if local_position == end:
-                    x = cell.right()
-                else:
-                    x = self._cursor_x(line, local_position) + metric.extra / 2
-                return QRectF(x - 0.5, cell.top(), 1.0, cell.height())
-        return None
+        if not block_metrics:
+            return None
+        line = block.layout().lineForTextPosition(local_position)
+        if not line.isValid() and local_position > 0:
+            line = block.layout().lineForTextPosition(local_position - 1)
+        if not line.isValid():
+            return None
+        absolute = block.position() + local_position
+        line_start = block.position() + line.textStart()
+        shift = (
+            block_metrics.base_gap_before(absolute)
+            - block_metrics.base_gap_before(line_start)
+        )
+        metric = block_metrics.containing(absolute)
+        if metric is not None and absolute < metric.unit.end:
+            shift = (
+                block_metrics.base_gap_before(metric.unit.start)
+                - block_metrics.base_gap_before(line_start)
+                + metric.base_gap / 2
+            )
+            cell = self._ruby_unit_cell(block, line, metric)
+            top, height = cell.top(), cell.height()
+        else:
+            top, height = line.y(), line.height()
+        x = self._cursor_x(line, local_position) + shift
+        return QRectF(x - 0.5, top, 1.0, height)
 
     def _ruby_unit_cell(
         self,
@@ -395,7 +412,73 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         start = metric.unit.start - block.position()
         end = metric.unit.end - block.position()
         left, right = self._cursor_span(line, start, end)
-        return QRectF(left, line.y(), right - left, line.height())
+        block_metrics = self._ruby_metrics[block.blockNumber()]
+        shift = (
+            block_metrics.base_gap_before(metric.unit.start)
+            - block_metrics.base_gap_before(
+                block.position() + line.textStart()
+            )
+        )
+        return QRectF(
+            left + shift,
+            line.y(),
+            right - left + metric.base_gap,
+            line.height(),
+        )
+
+    def _settle_horizontal_ruby_wrap(
+        self,
+        block: QTextBlock,
+        line: QTextLine,
+        metrics: RubyBlockMetrics,
+    ) -> None:
+        """Fit complete Ruby cells without retrying QTextLine widths."""
+        line_start = line.textStart()
+        line_end = min(
+            line_start + line.textLength(), _utf16_length(block.text())
+        )
+        line_metrics = metrics.overlapping(
+            block.position() + line_start,
+            block.position() + line_end,
+        )
+        if line_end <= line_start or not line_metrics:
+            return
+        candidate_ends = tuple(
+            line_start + end
+            for _start, end in _grapheme_ranges(_utf16_slice(
+                block.text(), line_start, line_end - line_start
+            ))
+        )
+        left = right = self._cursor_x(line, line_start)
+        first_allowed = None
+        last_fit = None
+        metric_index = 0
+        edge_gap = 0.0
+        for position in candidate_ends:
+            cursor_x = self._cursor_x(line, position)
+            left = min(left, cursor_x)
+            right = max(right, cursor_x)
+            absolute = block.position() + position
+            while (
+                metric_index < len(line_metrics)
+                and line_metrics[metric_index].unit.end <= absolute
+            ):
+                edge_gap += line_metrics[metric_index].base_gap
+                metric_index += 1
+            splits_unit = (
+                metric_index < len(line_metrics)
+                and line_metrics[metric_index].unit.start < absolute
+                < line_metrics[metric_index].unit.end
+            )
+            if splits_unit:
+                continue
+            if first_allowed is None:
+                first_allowed = position
+            if right - left + edge_gap <= line.width() + 1e-6:
+                last_fit = position
+        target = last_fit if last_fit is not None else first_allowed
+        if target is not None and target < line_end:
+            line.setNumColumns(target - line_start)
 
     def _ruby_line_placements(
         self,
@@ -441,21 +524,31 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             )
         segments = []
         position = line_start
+        shift = 0.0
         for metric in metrics:
             start = metric.unit.start - block.position()
             end = metric.unit.end - block.position()
             if start > position:
                 left, right = self._cursor_span(line, position, start)
-                segments.append((position, start, 0.0, QRectF(
-                    left, line.y(), right - left, line.height()
+                segments.append((position, start, shift, QRectF(
+                    left + shift,
+                    line.y(),
+                    right - left,
+                    line.height(),
                 )))
             cell = self._ruby_unit_cell(block, line, metric)
-            segments.append((start, end, metric.extra / 2, cell))
+            segments.append((
+                start, end, shift + metric.base_gap / 2, cell
+            ))
+            shift += metric.base_gap
             position = end
         if position < line_end:
             left, right = self._cursor_span(line, position, line_end)
-            segments.append((position, line_end, 0.0, QRectF(
-                left, line.y(), right - left, line.height()
+            segments.append((position, line_end, shift, QRectF(
+                left + shift,
+                line.y(),
+                right - left,
+                line.height(),
             )))
         return tuple(segments)
 
@@ -587,15 +680,33 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 hit_rect = placement.cell.united(placement.ink_bounds)
                 if not hit_rect.contains(point):
                     continue
-                # Base glyphs are centered by this translation at paint.
-                # Undo it before asking Qt for the nearest native caret.
+                # Undo the leading half-opportunity before native cursor hit.
+                line_start = block.position() + line.textStart()
+                shift = (
+                    block_metrics.base_gap_before(metric.unit.start)
+                    - block_metrics.base_gap_before(line_start)
+                    + metric.base_gap / 2
+                )
                 local = int(line.xToCursor(
-                    point.x() - metric.extra / 2
+                    point.x() - shift
                 ))
                 return block.position() + max(
                     local_start, min(local, local_end)
                 )
             block = block.next()
+        return None
+
+    def _ruby_base_hit_test(
+        self,
+        block: QTextBlock,
+        line: QTextLine,
+        point: QPointF,
+    ) -> Optional[int]:
+        for start, end, shift, cell in self._ruby_line_segments(block, line):
+            if not cell.contains(point):
+                continue
+            local = int(line.xToCursor(point.x() - shift))
+            return block.position() + max(start, min(local, end))
         return None
 
     def _paint_ruby_selection_backgrounds(
@@ -739,6 +850,13 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 for ii in range(layout.lineCount()):
                     line = layout.lineAt(ii)
                     ntr = line.naturalTextRect()
+                    ruby_base_hit = None
+                    if self._ruby_metrics[blk.blockNumber()]:
+                        ruby_base_hit = self._ruby_base_hit_test(
+                            blk, line, point
+                        )
+                    if ruby_base_hit is not None:
+                        return ruby_base_hit
                     if ntr.top() < y and ntr.bottom() >= y:
                         off = line.xToCursor(point.x(), QTextLine.CursorBetweenCharacters)
                         relocated = self._relocated_spaces[
@@ -814,6 +932,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 shared_space_row = None
                 line.setLineWidth(self.available_width)
             protect_horizontal_ruby_wrap(block, line, ruby_metrics)
+            self._settle_horizontal_ruby_wrap(block, line, ruby_metrics)
             nchar = line.textLength()
 
             dy = 0
@@ -875,7 +994,13 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 )
                 tw = cursor_right - cursor_left
             else:
-                tw = line.naturalTextWidth()
+                tw = line.naturalTextWidth() + sum(
+                    metric.base_gap
+                    for metric in ruby_metrics.contained(
+                        block.position() + line.textStart(),
+                        block.position() + line.textStart() + nchar,
+                    )
+                )
             shrink_width = max(tw, shrink_width)
             self.shrink_height = max(
                 idea_height + line_y_offset - doc_margin + under_margin,

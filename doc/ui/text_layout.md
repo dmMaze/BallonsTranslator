@@ -79,12 +79,18 @@ layout margins or ink overflow around the same established line placement.
 Ruby/furigana is an attached layout annotation rather than a detached overlay.
 Group Ruby treats its complete base as one indivisible unit; mono Ruby treats
 each base grapheme/reading pair as an indivisible unit and may wrap only
-between pairs. A unit advances by `max(base, annotation)`, centers the shorter
-run, and remains intact even when it is larger than an empty line or column.
+between pairs. A unit advances by `max(base, annotation)`. Whichever run is
+shorter uses CSS Ruby's initial `space-around`: eligible adjacent CJK
+characters receive full inter-character spaces and the two edges receive half
+spaces. Latin, Bopomofo, and other ineligible boundaries remain contiguous;
+runs with no eligible boundary remain centered. A unit remains intact even
+when it is larger than an empty line or column.
 Horizontal annotations run above/below the base; vertical annotations are an
 upright vertical run on the right/left. The settled unit cells also own Ruby
 paint, cursor boundaries, selection background, hit testing, and visible ink
-bounds. Ruby and Tate-chu-yoko overlap is rejected in the first version.
+bounds. Ruby reserves only the occupied side of a vertical column. The
+supported subset uses `ruby-overhang: none`; automatic overhang remains
+deferred. Ruby and Tate-chu-yoko overlap is rejected in the first version.
 
 ## Vertical flow and spacing
 
