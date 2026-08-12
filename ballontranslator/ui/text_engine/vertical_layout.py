@@ -1,0 +1,1685 @@
+import re
+import unicodedata
+import cv2
+import numpy as np
+from functools import lru_cache
+from typing import List, Optional, Tuple
+
+from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
+from qtpy.QtGui import (
+    QAbstractTextDocumentLayout,
+    QBrush,
+    QImage,
+    QPainter,
+    QTextBlock,
+    QTextCharFormat,
+    QTextDocument,
+    QTextLine,
+    QTextOption,
+    QTransform,
+)
+
+from ballontranslator.utils import shared as C
+from ballontranslator.utils.fontformat import FontFormat, TextAlignment
+from ..misc import LruIgnoreArg, pixmap2ndarray
+from .annotations import text_combine_upright_ranges
+from .layout import (
+    CharFontFormat,
+    SceneTextLayout,
+    _block_cursor_position,
+    paint_context_without_selection_ranges,
+)
+from .rendering.emphasis import (
+    draw_emphasis_marks,
+    emphasis_ink_bounds,
+    emphasis_margins,
+)
+from .rendering.glyph import draw_slanted_line
+from .rendering.indexing import (
+    _grapheme_count,
+    _grapheme_ranges,
+    _utf16_char_at,
+    _utf16_length,
+    _utf16_slice,
+)
+from .rendering.tate_chu_yoko import (
+    tate_chu_yoko_ink_bounds,
+    tate_chu_yoko_natural_bounds,
+    tate_chu_yoko_transform,
+)
+
+PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
+
+# CLREQ Appendix A: pause/stop marks stay upright, while parenthetical
+# punctuation, dashes, ellipses, connectors, and indicators rotate.
+PUNSET_PAUSEORSTOP = {
+    '。', '．', '，', '、', '：', '；', '！', '‼', '？', '⁇', '⁈', '⁉',
+}
+PUNSET_ALIGNCENTER = {'·', '・', '‧', '●', '•'}
+PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
+PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗', '〕', '］', '｝', ')'}
+PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
+
+PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~'}
+PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF)
+PUNSET_STANDARD_VERTICAL_ROMAN = PUNSET_VERNEEDROTATE.difference(PUNSET_HALF)
+
+PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’'}
+PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘'}
+
+Dingbats_vertical_aligncenter = r'\u2700-\u275A\u2761-\u2767\u2776-\u27BF'
+Miscellaneous_Symbols_Pattern = r'\u2600-\u26FF'  # align center in vertical mode
+
+vertical_force_aligncentel_pattern = re.compile('[' + Dingbats_vertical_aligncenter + Miscellaneous_Symbols_Pattern + r'⁁⁂⁇⁈⁉⁊⁋⁎※⁑⁒⁕⁖⁘⁙⁛⁜‼‽]')
+
+
+@lru_cache(maxsize=512)
+def _is_non_fullwidth_roman(char: str) -> bool:
+    """Return whether a glyph follows the item-wide Roman orientation.
+
+    >>> _is_non_fullwidth_roman('A')
+    True
+    >>> _is_non_fullwidth_roman('Ａ')
+    False
+    """
+    if char in PUNSET_HALF:
+        return True
+    if unicodedata.east_asian_width(char) in {'F', 'W'}:
+        return False
+    name = unicodedata.name(char, '')
+    return name.startswith('LATIN ') or name.startswith('ROMAN NUMERAL ')
+
+
+def punc_actual_rect(
+    line: QTextLine,
+    family: str,
+    size: float,
+    weight: int,
+    italic: bool,
+    stroke_width: float,
+    h: int = None,
+    w: int = None,
+    space_shift: float = 0,
+) -> List[int]:
+    """Raster-measure one established vertical line's visible ink."""
+    if h is None:
+        h = int(line.height())
+    if w is None:
+        w = int(line.naturalTextWidth())
+    image = QImage(w * 2, h * 2, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    line.draw(painter, QPointF(-line.x() - space_shift, -line.y()))
+    painter.end()
+    mask = pixmap2ndarray(image, keep_alpha=True)
+    if mask is None:
+        return [0, 0, 1, 1]
+    mask = mask[..., -1]
+    actual = np.array(
+        cv2.boundingRect(cv2.findNonZero(mask)), dtype=np.float64
+    )
+    actual[[0, 1]] += stroke_width
+    actual[[2, 3]] -= stroke_width * 2
+    return actual.tolist()
+
+
+def _line_glyph_cache_key(line: QTextLine) -> tuple:
+    """Describe multi-glyph placement omitted by total line metrics.
+
+    >>> _line_glyph_cache_key(QTextLine())
+    ()
+    """
+    if not line.isValid() or line.textLength() <= 1:
+        return ()
+    signature = []
+    for glyph_run in line.glyphRuns():
+        raw_font = glyph_run.rawFont()
+        raw_style = raw_font.style()
+        raw_weight = raw_font.weight()
+        signature.append((
+            raw_font.familyName(),
+            raw_font.styleName(),
+            raw_font.pixelSize(),
+            getattr(raw_style, 'value', raw_style),
+            getattr(raw_weight, 'value', raw_weight),
+            tuple(int(index) for index in glyph_run.glyphIndexes()),
+            tuple(
+                (position.x(), position.y())
+                for position in glyph_run.positions()
+            ),
+        ))
+    return tuple(signature)
+
+
+@lru_cache(maxsize=2048)
+def punc_actual_rect_cached(
+    cached_args: LruIgnoreArg,
+    char: str,
+    family: str,
+    size: float,
+    weight: int,
+    italic: bool,
+    stroke_width: float,
+    h: int,
+    w: int,
+    line_height: float,
+    line_width: float,
+    space_shift: float,
+    glyph_key: tuple,
+) -> List[int]:
+    """Cache actual ink while retaining the live line outside the key.
+
+    >>> callable(punc_actual_rect_cached)
+    True
+    """
+    return punc_actual_rect(
+        cached_args.line,
+        family,
+        size,
+        weight,
+        italic,
+        stroke_width,
+        h,
+        w,
+        space_shift,
+    )
+
+
+def format_punc_actual_rect(
+    char_format: CharFontFormat,
+    line: QTextLine,
+    char: str,
+    *,
+    cache: bool = False,
+    stroke_width: float = 0,
+    h: int = None,
+    w: int = None,
+    space_shift: float = 0,
+) -> List[int]:
+    """Measure visible ink using one line's fragment metrics.
+
+    >>> callable(format_punc_actual_rect)
+    True
+    """
+    if not cache:
+        return punc_actual_rect(
+            line,
+            char_format.family,
+            char_format.size,
+            char_format.weight,
+            char_format.font.italic(),
+            stroke_width,
+            h,
+            w,
+            space_shift,
+        )
+    line_height = line.height()
+    line_width = line.naturalTextWidth()
+    return punc_actual_rect_cached(
+        LruIgnoreArg(line=line),
+        char,
+        char_format.family,
+        char_format.size,
+        char_format.weight,
+        char_format.font.italic(),
+        stroke_width,
+        int(line_height) if h is None else h,
+        int(line_width) if w is None else w,
+        line_height,
+        line_width,
+        space_shift,
+        _line_glyph_cache_key(line),
+    )
+
+
+class VerticalTextDocumentLayout(SceneTextLayout):
+    def __init__(self, doc: QTextDocument, fontformat: FontFormat):
+        super().__init__(doc, fontformat)
+
+        self.line_spaces_lst = []
+        self.min_height = 0
+        self.layout_left = 0
+        self.has_selection = False
+        self.draw_shifted = 0
+
+        self.need_ideal_width = True
+        self.per_char_records = []
+        self.text_combine_ranges = []
+        self._annotation_ink_bounds = QRectF()
+        self._cursor_update_rect = QRectF()
+        self._resize_layout_max_width = None
+        self._resize_layout_available_height = None
+        self._resize_layout_padding = None
+        self._alignment_x_shift = 0.0
+        self._selection_geometry_cache = {}
+
+    def needs_vertical_rotation(self, char: str) -> bool:
+        rotation_chars = (
+            PUNSET_STANDARD_VERTICAL_ROMAN
+            if self.fontformat.standard_vertical_roman_alignment
+            else PUNSET_VERNEEDROTATE
+        )
+        return (
+            char in rotation_chars
+            or (
+                not self.fontformat.standard_vertical_roman_alignment
+                and _is_non_fullwidth_roman(char)
+            )
+        )
+
+    def centers_vertical_glyph(self, char: str) -> bool:
+        if char in PUNSET_PAUSEORSTOP:
+            return self.fontformat.standard_vertical_roman_alignment
+        if (
+            self.fontformat.standard_vertical_roman_alignment
+            and _is_non_fullwidth_roman(char)
+        ):
+            return True
+        return (
+            char in PUNSET_ALIGNCENTER
+            or vertical_force_aligncentel_pattern.match(char) is not None
+        )
+
+    @property
+    def align_right(self):
+        return False
+
+    def _translate_columns(self, x_shift: float) -> None:
+        """Translate every settled vertical-layout x coordinate together."""
+        if abs(x_shift) <= 1e-9:
+            return
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for line_number in range(layout.lineCount()):
+                line = layout.lineAt(line_number)
+                position = line.position()
+                position.setX(position.x() + x_shift)
+                line.setPosition(position)
+            block = block.next()
+        self.x_offset_lst = [
+            x_offset + x_shift for x_offset in self.x_offset_lst
+        ]
+        self.layout_left += x_shift
+
+    def _column_content_width(self) -> float:
+        if not self.x_offset_lst:
+            return 0.0
+        return max(0.0, self.x_offset_lst[0] - self.layout_left)
+
+    def _desired_alignment_x_shift(self) -> float:
+        slack = max(0.0, self.available_width - self._column_content_width())
+        if self.fontformat.alignment == TextAlignment.Left:
+            return -slack
+        if self.fontformat.alignment == TextAlignment.Center:
+            return -slack / 2
+        return 0.0
+
+    def apply_alignment(self) -> bool:
+        """Translate settled columns without reshaping or resizing the box."""
+        desired = self._desired_alignment_x_shift()
+        x_shift = desired - self._alignment_x_shift
+        if abs(x_shift) <= 1e-9:
+            return False
+        self._begin_layout_generation()
+        self._selection_geometry_cache.clear()
+        self._translate_columns(x_shift)
+        self._alignment_x_shift = desired
+        self._refresh_annotation_ink_bounds()
+        return True
+
+    def spacing_change_height_growth(
+        self,
+        selection_start: int,
+        selection_end: int,
+        value: float,
+    ) -> float:
+        """Return height needed to keep a tight single column from wrapping.
+
+        Multi-column blocks retain their fixed-area reflow behavior. This
+        narrowly covers point-like vertical items whose current content was
+        squeezed to exactly one column.
+
+        >>> callable(VerticalTextDocumentLayout.spacing_change_height_growth)
+        True
+        """
+        if selection_end <= selection_start:
+            return 0.0
+
+        column_x = None
+        maximum_bottom = self._effect_padding
+        spacing_delta = 0.0
+        final_line_delta = 0.0
+        final_positive_spacing = 0.0
+        block = self.document().firstBlock()
+        while block.isValid():
+            block_number = block.blockNumber()
+            text = block.text()
+            text_length = _utf16_length(text)
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                line = text_layout.lineAt(line_number)
+                if not line.isValid() or line.textLength() <= 0:
+                    continue
+                if column_x is None:
+                    column_x = line.x()
+                elif abs(line.x() - column_x) > 1e-6:
+                    return 0.0
+
+                _trailing, leading, offsets, line_position = (
+                    self.line_spaces_lst[block_number][line_number]
+                )
+                if offsets:
+                    maximum_bottom = max(maximum_bottom, offsets[-1])
+                char_position = min(
+                    line_position + leading,
+                    text_length - 1,
+                )
+                document_position = block.position() + char_position
+                if char_position < 0:
+                    continue
+
+                char_format = self.get_char_fontfmt(
+                    block_number, char_position
+                )
+                old_value = char_format.letter_spacing
+                record = self._line_record(block, line_number)
+                spacing_unit = record.get(
+                    'text_combine_height', char_format.tbr.height()
+                )
+                final_line_delta = 0.0
+                final_positive_spacing = max(
+                    spacing_unit * (old_value - 1.0), 0.0
+                )
+                if not (
+                    selection_start <= document_position < selection_end
+                ):
+                    continue
+
+                line_delta = spacing_unit * (value - old_value)
+                spacing_delta += line_delta
+                final_line_delta = line_delta
+            block = block.next()
+
+        available_bottom = self.available_height + self._effect_padding
+        # The final glyph's positive trailing advance never forces another
+        # line, so it is existing slack rather than required fit height.
+        unused_height = max(
+            0.0,
+            available_bottom - maximum_bottom + final_positive_spacing,
+        )
+        growth = max(
+            0.0,
+            spacing_delta - final_line_delta - unused_height,
+        )
+        # Match minSize()'s guard against Qt's fractional metric rounding.
+        return 0.0 if growth <= 1e-6 else growth + 0.01
+
+    def reLayout(self):
+        self._begin_layout_generation()
+        self._selection_geometry_cache.clear()
+        self.min_height = 0
+        self.layout_left = 0
+        self.line_spaces_lst = []
+        self.per_char_records = []
+        self.text_combine_ranges = []
+        self.draw_shifted = 0
+        self.shrink_height = 0
+        self.shrink_width = 0
+        self.text_padding = 0
+        self._alignment_x_shift = 0.0
+        doc = self.document()
+        doc_margin = self._effect_padding
+        block = doc.firstBlock()
+        while block.isValid():
+            self.layoutBlock(block)
+            block = block.next()
+
+        enlarged = False
+        x_shift = 0
+        if self.layout_left < doc_margin:
+            x_shift = doc_margin - self.layout_left
+            self.max_width += x_shift
+            self.available_width = self.max_width - 2*doc_margin
+            enlarged = True
+        if self.min_height - doc_margin > self.available_height:
+            self.available_height = self.min_height - doc_margin
+            self.max_height = self.available_height + doc_margin * 2
+            enlarged = True
+        if enlarged:
+            self._emit_size_enlarged()
+        self._translate_columns(x_shift)
+        self._alignment_x_shift = self._desired_alignment_x_shift()
+        self._translate_columns(self._alignment_x_shift)
+        self.updateDrawOffsets()
+        self._refresh_annotation_ink_bounds()
+        self._resize_layout_max_width = self.max_width
+        self._resize_layout_available_height = self.available_height
+        self._resize_layout_padding = self._effect_padding
+        self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
+
+    def reLayoutForResize(self):
+        """Translate a width-only resize; height changes still reflow columns."""
+        if (
+            self._resize_layout_max_width is None
+            or self.available_height
+            != self._resize_layout_available_height
+            or self._effect_padding != self._resize_layout_padding
+        ):
+            self.reLayout()
+            return
+        width_shift = self.max_width - self._resize_layout_max_width
+        if width_shift == 0:
+            self.documentSizeChanged.emit(
+                QSizeF(self.max_width, self.max_height)
+            )
+            return
+        if self.available_width + 1e-9 < self._column_content_width():
+            # The normal path enforces the content's minimum column width.
+            self.reLayout()
+            return
+
+        previous_alignment_shift = self._alignment_x_shift
+        desired_alignment_shift = self._desired_alignment_x_shift()
+        column_shift = (
+            width_shift
+            + desired_alignment_shift
+            - previous_alignment_shift
+        )
+        if abs(column_shift) > 1e-9:
+            self._begin_layout_generation()
+            self._translate_columns(column_shift)
+            self._refresh_annotation_ink_bounds()
+        self._alignment_x_shift = desired_alignment_shift
+        self._resize_layout_max_width = self.max_width
+        self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
+
+    def updateDrawOffsets(self):
+        if self._is_painting_stroke and len(self._draw_offset) > 0:
+            return
+        self._draw_offset.clear()
+        doc = self.document()
+        block = doc.firstBlock()
+        custom_rendering = self.render_delegate is not None
+
+        while block.isValid():
+            blk_no = block.blockNumber()
+            _draw_offsets = []
+            self._draw_offset.append(_draw_offsets)
+
+            layout = block.layout()
+            blk_text = block.text()
+            has_text_combine = bool(self.text_combine_ranges[blk_no])
+            utf16_indexing = (
+                custom_rendering
+                or has_text_combine
+                or _utf16_length(blk_text) != len(blk_text)
+            )
+            blk_text_len = (
+                _utf16_length(blk_text) if utf16_indexing else len(blk_text)
+            )
+
+            line_spaces_lst = self.line_spaces_lst[blk_no]
+            char_records = self.per_char_records[blk_no]
+
+            for ii in range(layout.lineCount()):
+                xy_offsets = [0, 0]
+                _draw_offsets.append(xy_offsets)
+
+                line = layout.lineAt(ii)
+                if line.textLength() == 0:
+                    continue
+                if self.is_tate_chu_yoko_line(block, ii):
+                    # The run-level transform performs all cell alignment.
+                    continue
+                num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
+                char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
+                if char_idx < 0:
+                    continue
+
+                char = (
+                    _utf16_char_at(blk_text, char_idx)
+                    if utf16_indexing
+                    else blk_text[char_idx]
+                )
+                cfmt = self.get_char_fontfmt(blk_no, char_idx)
+
+                line_width = -1
+                if char_idx in char_records:
+                    line_width = char_records[char_idx]['line_width']
+                if line_width < 0:
+                    line_width = cfmt.tbr.width()
+
+                space_shift = 0
+                if num_lspaces > 0:
+                    space_shift = num_lspaces * cfmt.space_width
+
+                if self.needs_vertical_rotation(char):
+                    char = (
+                        _utf16_char_at(blk_text, char_idx)
+                        if utf16_indexing
+                        else blk_text[char_idx]
+                    )
+                    if char.isalpha():
+                        xoff = 0
+                        yoff = -line.ascent() - (line_width - cfmt.font_metrics.capHeight()) / 2
+
+                    else:   # () （）
+                        non_bracket_br = format_punc_actual_rect(
+                            cfmt,
+                            line,
+                            char,
+                            cache=True,
+                            space_shift=space_shift,
+                        )
+                        yoff = -non_bracket_br[1] - non_bracket_br[3]
+                        if char in PUNSET_BRACKETL:
+                            if ii == 0:
+                                xoff = -non_bracket_br[0]
+                            else:
+                                xoff = 0
+                        else:
+                            xoff = -non_bracket_br[0]
+
+                        if char in PUNSET_ROTATE_ALIGNL:
+                            yoff = yoff
+                        elif char in PUNSET_ROTATE_ALIGNR:
+                            yoff = yoff - (line_width - non_bracket_br[3])
+                        else:
+                            yoff = yoff - (line_width - non_bracket_br[3]) / 2
+
+                else:
+                    standard_roman = (
+                        self.fontformat.standard_vertical_roman_alignment
+                        and _is_non_fullwidth_roman(char)
+                    )
+                    if standard_roman:
+                        # Roman ink has ordinary baseline metrics. Center it
+                        # without priming Qt's process-global glyph raster
+                        # cache during layout.
+                        tight_rect, _ = cfmt.punc_rect(char)
+                        xoff = (
+                            -tight_rect.left()
+                            + (line_width - tight_rect.width()) / 2
+                        )
+                        yoff = (
+                            -line.ascent()
+                            - tight_rect.top()
+                            + (cfmt.tbr.height() - tight_rect.height()) / 2
+                        )
+                    else:
+                        act_rect = format_punc_actual_rect(
+                            cfmt,
+                            line,
+                            char,
+                            cache=True,
+                            space_shift=space_shift,
+                        )
+                        if self.centers_vertical_glyph(char):
+                            xoff = (
+                                -act_rect[0]
+                                + (line_width - act_rect[2]) / 2
+                            )
+                            yoff = (
+                                -act_rect[1]
+                                + (cfmt.tbr.height() - act_rect[3]) / 2
+                            )
+                        elif char in PUNSET_PAUSEORSTOP:
+                            # CLREQ's Mainland convention places stop marks at
+                            # the upper-right of their full character frame.
+                            xoff = -act_rect[0] + line_width - act_rect[2]
+                            yoff = -act_rect[1]
+                        else:
+                            yoff = min(
+                                cfmt.br.top() - cfmt.tbr.top(),
+                                -cfmt.tbr.top() - line.ascent(),
+                            )
+                            xoff = (
+                                -act_rect[0]
+                                + (line_width - act_rect[2]) / 2
+                            )
+
+                    if num_lspaces > 0:
+                        xoff -= space_shift
+                        yoff += space_shift
+
+                xy_offsets[0], xy_offsets[1] = xoff, yoff
+            block = block.next()
+
+    def _line_record(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> dict:
+        layout = block.layout()
+        line = layout.lineAt(line_number)
+        if not line.isValid():
+            return {}
+        block_number = block.blockNumber()
+        if not 0 <= block_number < len(self.per_char_records):
+            return {}
+        return self.per_char_records[block_number].get(line.textStart(), {})
+
+    def is_tate_chu_yoko_line(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> bool:
+        """Return whether one vertical layout line is a combined run."""
+        return 'text_combine_height' in self._line_record(block, line_number)
+
+    @staticmethod
+    def _line_cursor_x(line: QTextLine, position: int) -> float:
+        value = line.cursorToX(position)
+        if isinstance(value, (tuple, list)):
+            value = value[0]
+        return float(value)
+
+    def _vertical_line_cells(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> List[Tuple[int, int, float, float, bool]]:
+        """Return logical cells using the line's settled vertical boundaries.
+
+        Cells use block-local UTF-16 ranges. The final boolean distinguishes
+        whitespace whose geometry Qt does not paint at its vertical position.
+
+        >>> callable(VerticalTextDocumentLayout._vertical_line_cells)
+        True
+        """
+        layout = block.layout()
+        line = layout.lineAt(line_number)
+        if not line.isValid() or line.textLength() <= 0:
+            return []
+        trailing, leading, offsets, line_position = self.line_spaces_lst[
+            block.blockNumber()
+        ][line_number]
+        text_length = line.textLength()
+        if line_position + text_length > _utf16_length(block.text()):
+            return []
+
+        # An all-whitespace QTextLine reports the same run as both leading
+        # and trailing. Keep one cell per authored code unit.
+        if leading >= text_length and trailing >= text_length:
+            count = min(text_length, max(0, len(offsets) - 1))
+            return [
+                (
+                    line_position + index,
+                    line_position + index + 1,
+                    offsets[index],
+                    offsets[index + 1],
+                    True,
+                )
+                for index in range(count)
+            ]
+
+        cells = []
+        leading = min(leading, text_length)
+        trailing = min(trailing, text_length - leading)
+        required_boundaries = leading + trailing + 2
+        if len(offsets) < required_boundaries:
+            return []
+
+        for index in range(leading):
+            cells.append((
+                line_position + index,
+                line_position + index + 1,
+                offsets[index],
+                offsets[index + 1],
+                True,
+            ))
+
+        content_start = line_position + leading
+        content_length = text_length - leading - trailing
+        content_top = offsets[leading]
+        content_bottom = offsets[leading + 1]
+        if content_length > 0:
+            content = _utf16_slice(
+                block.text(), content_start, content_length
+            )
+            graphemes = _grapheme_ranges(content)
+            if graphemes:
+                run_height = max(content_bottom - content_top, 0.0)
+                cell_height = run_height / len(graphemes)
+                char = _utf16_char_at(block.text(), content_start)
+                if len(graphemes) > 1 and self.needs_vertical_rotation(char):
+                    char_format = self.get_char_fontfmt(
+                        block.blockNumber(), content_start
+                    )
+                    if char_format is not None:
+                        natural_height = char_format.punc_rect(char)[0].width()
+                        cell_height = min(cell_height, natural_height)
+                for index, (start, end) in enumerate(graphemes):
+                    bottom = (
+                        content_bottom
+                        if index == len(graphemes) - 1
+                        else content_top + (index + 1) * cell_height
+                    )
+                    cells.append((
+                        content_start + start,
+                        content_start + end,
+                        content_top + index * cell_height,
+                        bottom,
+                        False,
+                    ))
+            else:
+                cells.append((
+                    content_start,
+                    content_start + content_length,
+                    content_top,
+                    content_bottom,
+                    False,
+                ))
+
+        trailing_start = content_start + content_length
+        boundary_index = leading + 1
+        for index in range(trailing):
+            cells.append((
+                trailing_start + index,
+                trailing_start + index + 1,
+                offsets[boundary_index + index],
+                offsets[boundary_index + index + 1],
+                True,
+            ))
+        return cells
+
+    def _vertical_line_width(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> float:
+        _trailing, leading, _offsets, line_position = self.line_spaces_lst[
+            block.blockNumber()
+        ][line_number]
+        char_position = min(
+            line_position + leading,
+            max(0, _utf16_length(block.text()) - 1),
+        )
+        char_format = self.get_char_fontfmt(
+            block.blockNumber(), char_position
+        )
+        record = self.per_char_records[block.blockNumber()].get(
+            char_position, {}
+        )
+        if char_format is None:
+            return max(0.0, self.block_ideal_width[block.blockNumber()])
+        return max(
+            0.0,
+            record.get('line_width', char_format.tbr.width()),
+        )
+
+    @staticmethod
+    def _line_has_selection(
+        block: QTextBlock,
+        line: QTextLine,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> bool:
+        line_start = line.textStart()
+        line_end = line_start + line.textLength()
+        for selection in context.selections:
+            if not selection.cursor.hasSelection():
+                continue
+            start = selection.cursor.selectionStart() - block.position()
+            end = selection.cursor.selectionEnd() - block.position()
+            if line_start < end and line_end > start:
+                return True
+        return False
+
+    @staticmethod
+    def _selection_foreground_context(
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> QAbstractTextDocumentLayout.PaintContext:
+        copied = QAbstractTextDocumentLayout.PaintContext()
+        copied.clip = QRectF(context.clip)
+        copied.cursorPosition = context.cursorPosition
+        copied.palette = context.palette
+        copied.selections = []
+        for selection in context.selections:
+            foreground_selection = QAbstractTextDocumentLayout.Selection()
+            foreground_selection.cursor = selection.cursor
+            foreground_selection.format = QTextCharFormat(selection.format)
+            foreground_selection.format.clearBackground()
+            copied.selections.append(foreground_selection)
+        return copied
+
+    def _vertical_selection_backgrounds(
+        self,
+        block: QTextBlock,
+        line_number: int,
+        context: QAbstractTextDocumentLayout.PaintContext,
+        cells: List[Tuple[int, int, float, float, bool]],
+    ) -> List[Tuple[QRectF, QBrush]]:
+        if not cells:
+            return []
+        line = block.layout().lineAt(line_number)
+        width = self._vertical_line_width(block, line_number)
+        backgrounds = []
+        for selection in context.selections:
+            if not selection.cursor.hasSelection():
+                continue
+            selection_start = selection.cursor.selectionStart()
+            selection_end = selection.cursor.selectionEnd()
+            brush = selection.format.background()
+            if brush.style() == Qt.BrushStyle.NoBrush:
+                continue
+            for start, end, top, bottom, _is_space in cells:
+                absolute_start = block.position() + start
+                absolute_end = block.position() + end
+                if (
+                    selection_start < absolute_end
+                    and selection_end > absolute_start
+                ):
+                    backgrounds.append((
+                        QRectF(line.x(), top, width, bottom - top),
+                        brush,
+                    ))
+        return backgrounds
+
+    def tate_chu_yoko_cell_rect(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> Optional[QRectF]:
+        """Return the untransformed vertical cell reserved for a run."""
+        record = self._line_record(block, line_number)
+        cell_width = record.get('text_combine_width')
+        cell_height = record.get('text_combine_height')
+        if cell_width is None or cell_height is None:
+            return None
+        line = block.layout().lineAt(line_number)
+        line_width = record.get('line_width', cell_width)
+        return QRectF(
+            line.x() + (line_width - cell_width) / 2,
+            line.y(),
+            cell_width,
+            cell_height,
+        )
+
+    def annotation_ink_bounds(self) -> QRectF:
+        """Return cached Tate-chu-yoko and attached emphasis ink."""
+        return QRectF(self._annotation_ink_bounds)
+
+    def _refresh_annotation_ink_bounds(self) -> None:
+        """Measure paint overflow after final line placement.
+
+        >>> callable(VerticalTextDocumentLayout._refresh_annotation_ink_bounds)
+        True
+        """
+        bounds = QRectF()
+        block = self.document().firstBlock()
+        while block.isValid():
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                cell = self.tate_chu_yoko_cell_rect(block, line_number)
+                if cell is None:
+                    continue
+                placement = self.vertical_line_placement(
+                    block, line_number
+                )
+                if placement is None:
+                    continue
+                line, offset, orientation = placement
+                candidates = (
+                    cell,
+                    tate_chu_yoko_ink_bounds(line, cell),
+                    emphasis_ink_bounds(
+                        block,
+                        line,
+                        vertical=True,
+                        offset=offset,
+                        orientation=orientation,
+                    ),
+                )
+                for candidate in candidates:
+                    if candidate.isEmpty():
+                        continue
+                    bounds = (
+                        QRectF(candidate)
+                        if bounds.isEmpty()
+                        else bounds.united(candidate)
+                    )
+            block = block.next()
+        self._annotation_ink_bounds = bounds
+
+    def _tate_chu_yoko_hit_position(
+        self,
+        line: QTextLine,
+        transform: QTransform,
+        point: QPointF,
+    ) -> int:
+        """Map one horizontal cell back to its ordinary text cursor.
+
+        >>> callable(VerticalTextDocumentLayout._tate_chu_yoko_hit_position)
+        True
+        """
+        line_start = line.textStart()
+        line_end = line_start + line.textLength()
+        start_x = transform.map(
+            QPointF(self._line_cursor_x(line, line_start), line.y())
+        ).x()
+        end_x = transform.map(
+            QPointF(self._line_cursor_x(line, line_end), line.y())
+        ).x()
+        if start_x <= end_x:
+            if point.x() <= start_x:
+                return line_start
+            if point.x() >= end_x:
+                return line_end
+        else:
+            if point.x() >= start_x:
+                return line_start
+            if point.x() <= end_x:
+                return line_end
+        inverse, invertible = transform.inverted()
+        if not invertible:
+            return line_start
+        return line.xToCursor(
+            inverse.map(point).x(),
+            QTextLine.CursorBetweenCharacters,
+        )
+
+    def _tate_chu_yoko_hit_test(
+        self,
+        point: QPointF,
+    ) -> Optional[int]:
+        """Hit-test visible overhang without widening its layout column."""
+        block = self.document().firstBlock()
+        while block.isValid():
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                cell = self.tate_chu_yoko_cell_rect(block, line_number)
+                if cell is None or not cell.contains(point):
+                    continue
+                placement = self.vertical_line_placement(
+                    block, line_number
+                )
+                if placement is None:
+                    continue
+                line, _offset, transform = placement
+                return block.position() + self._tate_chu_yoko_hit_position(
+                    line, transform, point
+                )
+            block = block.next()
+        return None
+
+    def vertical_line_placement(
+        self,
+        block: QTextBlock,
+        line_number: int,
+    ) -> Optional[Tuple[QTextLine, QPointF, QTransform]]:
+        """Return the established glyph placement for annotation painters."""
+        text_layout = block.layout()
+        line = text_layout.lineAt(line_number)
+        if not line.isValid() or line.textLength() <= 0:
+            return None
+        text_combine_cell = self.tate_chu_yoko_cell_rect(block, line_number)
+        if text_combine_cell is not None:
+            return (
+                line,
+                QPointF(),
+                tate_chu_yoko_transform(line, text_combine_cell),
+            )
+        block_number = block.blockNumber()
+        block_text = block.text()
+        block_text_length = _utf16_length(block_text)
+        _, leading_spaces, _, line_position = self.line_spaces_lst[
+            block_number
+        ][line_number]
+        char_offset = min(
+            line_position + leading_spaces,
+            block_text_length - 1,
+        )
+        if char_offset < 0:
+            return line, QPointF(), QTransform()
+        char = _utf16_char_at(block_text, char_offset)
+        x_offset, y_offset = self._draw_offset[block_number][line_number]
+        orientation = QTransform()
+        if self.needs_vertical_rotation(char):
+            line_x, line_y = line.x(), line.y()
+            orientation = QTransform(
+                0,
+                1,
+                0,
+                -1,
+                0,
+                0,
+                line_y + line_x,
+                line_y - line_x,
+                1,
+            )
+        return line, QPointF(x_offset, y_offset), orientation
+
+    def source_cursor_rect(self, cursor_position: int):
+        """Return the caret owned by the vertical source layout."""
+        block = self.document().firstBlock()
+        while block.isValid():
+            cpos = _block_cursor_position(block, cursor_position)
+            if cpos >= 0:
+                layout = block.layout()
+                line = layout.lineForTextPosition(cpos)
+                if not line.isValid():
+                    return QRectF()
+                line_number = line.lineNumber()
+                text_combine_cell = self.tate_chu_yoko_cell_rect(
+                    block, line_number
+                )
+                if text_combine_cell is not None:
+                    placement = self.vertical_line_placement(
+                        block, line_number
+                    )
+                    if placement is None:
+                        return QRectF()
+                    _line, _offset, transform = placement
+                    cursor_x = self._line_cursor_x(line, cpos)
+                    mapped_x = transform.map(
+                        QPointF(cursor_x, line.y())
+                    ).x()
+                    mapped_x = min(
+                        max(mapped_x, text_combine_cell.left()),
+                        text_combine_cell.right(),
+                    )
+                    return QRectF(
+                        mapped_x - 1.0,
+                        text_combine_cell.top(),
+                        2.0,
+                        text_combine_cell.height(),
+                    )
+                position = line.position()
+                cells = self._vertical_line_cells(block, line_number)
+                y = position.y()
+                if cells:
+                    y = cells[-1][3]
+                    for start, end, top, bottom, _is_space in cells:
+                        if cpos <= start:
+                            y = top
+                            break
+                        if cpos <= end:
+                            y = bottom
+                            break
+                return QRectF(
+                    position.x(),
+                    y,
+                    self._vertical_line_width(block, line_number),
+                    2.0,
+                )
+            block = block.next()
+        return QRectF()
+
+    def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
+        doc = self.document()
+        self.deferred_cursor_position = context.cursorPosition
+        painter.save()
+        block = doc.firstBlock()
+        cursor_block = None
+        context_sel = context.selections
+        has_selection = False
+        render_delegate = self.render_delegate
+        custom_rendering = render_delegate is not None
+        if len(context_sel) > 0:
+            has_selection = True
+
+        while block.isValid():
+            blk_no = block.blockNumber()
+            layout = block.layout()
+            blk_text = block.text()
+            utf16_indexing = (
+                custom_rendering
+                or bool(self.text_combine_ranges[blk_no])
+                or _utf16_length(blk_text) != len(blk_text)
+            )
+            blk_text_len = (
+                _utf16_length(blk_text) if utf16_indexing else len(blk_text)
+            )
+            char_records = self.per_char_records[blk_no]
+
+            line_spaces_lst = self.line_spaces_lst[blk_no]
+            uniform_block_drawn = (
+                custom_rendering
+                and render_delegate.draw_uniform_block(
+                    painter, block, context
+                )
+            )
+
+            if _block_cursor_position(block, context.cursorPosition) >= 0:
+                cursor_block = block
+
+            for ii in range(layout.lineCount()):
+                line = layout.lineAt(ii)
+                if line.textLength() == 0:
+                    continue
+                num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
+                char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
+                if char_idx < 0:
+                    if custom_rendering:
+                        if not uniform_block_drawn:
+                            render_delegate.draw_vertical_line(
+                                painter, block, ii, context
+                            )
+                    else:
+                        line.draw(painter, QPointF(0, 0))
+                    continue
+
+                xoff, yoff = self._draw_offset[blk_no][ii]
+
+                char = (
+                    _utf16_char_at(blk_text, char_idx)
+                    if utf16_indexing
+                    else blk_text[char_idx]
+                )
+                cfmt = self.get_char_fontfmt(blk_no, char_idx)
+                if custom_rendering:
+                    if not uniform_block_drawn:
+                        render_delegate.draw_vertical_line(
+                            painter, block, ii, context
+                        )
+                    placement = self.vertical_line_placement(block, ii)
+                    if placement is not None:
+                        placed_line, offset, orientation = placement
+                        draw_emphasis_marks(
+                            painter,
+                            block,
+                            placed_line,
+                            context,
+                            vertical=True,
+                            offset=offset,
+                            orientation=orientation,
+                        )
+                    continue
+                intersects = has_selection and self._line_has_selection(
+                    block, line, context
+                )
+                line_context = context
+                selection_backgrounds = ()
+                if intersects and not self.is_tate_chu_yoko_line(block, ii):
+                    cells = self._vertical_line_cells(block, ii)
+                    selection_backgrounds = (
+                        self._vertical_selection_backgrounds(
+                            block, ii, context, cells
+                        )
+                    )
+                    space_ranges = [
+                        (start, end)
+                        for start, end, _top, _bottom, is_space in cells
+                        if is_space
+                    ]
+                    line_context = paint_context_without_selection_ranges(
+                        self.document(),
+                        block,
+                        context,
+                        space_ranges,
+                    )
+                    line_context = self._selection_foreground_context(
+                        line_context
+                    )
+                line_width = -1
+                if char_idx in char_records:
+                    line_width = char_records[char_idx]['line_width']
+                if line_width < 0:
+                    line_width = cfmt.tbr.width()
+
+                placement = self.vertical_line_placement(block, ii)
+                if self.is_tate_chu_yoko_line(block, ii):
+                    if placement is not None:
+                        placed_line, offset, orientation = placement
+                        draw_slanted_line(
+                            painter,
+                            block,
+                            placed_line,
+                            offset,
+                            orientation,
+                            0.0,
+                            context,
+                            self._report_render_failure,
+                        )
+                elif (
+                    placement is not None
+                    and intersects
+                ):
+                    placed_line, offset, orientation = placement
+                    draw_slanted_line(
+                        painter,
+                        block,
+                        placed_line,
+                        offset,
+                        orientation,
+                        0.0,
+                        line_context,
+                        self._report_render_failure,
+                        self._selection_geometry_cache,
+                        (self.layout_generation, blk_no, ii),
+                        background_overlays=selection_backgrounds,
+                    )
+                elif self.needs_vertical_rotation(char):
+                    line_x, line_y = line.x(), line.y()
+                    y_x = line_y - line_x
+                    y_p_x = line_y + line_x
+                    transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
+                    inv_transform = QTransform(0, -1, 0, 1, 0, 0, -y_x, y_p_x, 1)
+                    painter.setTransform(transform, True)
+                    line.draw(painter, QPointF(xoff, yoff))
+                    painter.setTransform(inv_transform, True)
+                else:
+                    line.draw(painter, QPointF(xoff, yoff))
+
+                if placement is not None:
+                    placed_line, offset, orientation = placement
+                    draw_emphasis_marks(
+                        painter,
+                        block,
+                        placed_line,
+                        context,
+                        vertical=True,
+                        offset=offset,
+                        orientation=orientation,
+                    )
+
+            block = block.next()
+
+        if self.foreground_pixmap is not None:
+            painter.drawPixmap(0, 0, self.foreground_pixmap)
+
+        if not self.defer_cursor_paint:
+            cursor_rect = QRectF()
+            if cursor_block is not None:
+                cursor_rect = self.source_cursor_rect(
+                    context.cursorPosition
+                )
+            if not cursor_rect.isEmpty():
+                painter.setCompositionMode(
+                    QPainter.CompositionMode.RasterOp_NotDestination
+                )
+                painter.fillRect(cursor_rect, painter.pen().brush())
+            if self.has_selection != has_selection:
+                dirty_rect = QRectF(
+                    0, 0, self.max_width, self.max_height
+                )
+            elif cursor_rect != self._cursor_update_rect:
+                dirty_rect = cursor_rect.united(
+                    self._cursor_update_rect
+                )
+            else:
+                dirty_rect = QRectF()
+            self._cursor_update_rect = QRectF(cursor_rect)
+            if not dirty_rect.isEmpty():
+                if C.USE_PYSIDE6:
+                    self.update.emit()
+                else:
+                    self.update.emit(dirty_rect)
+            self.has_selection = has_selection
+        painter.restore()
+
+    def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
+        point = self.map_input_point(point)
+        text_combine_hit = self._tate_chu_yoko_hit_test(point)
+        if text_combine_hit is not None:
+            return text_combine_hit
+        blk = self.document().firstBlock()
+        x, y = point.x(), point.y()
+        off = 0
+        while blk.isValid():
+            blk_no = blk.blockNumber()
+            rect_right = self.x_offset_lst[blk_no]
+            rect_left = self.x_offset_lst[blk_no + 1]
+            if rect_left <= x and rect_right >= x:
+                layout = blk.layout()
+                for line_number in range(layout.lineCount()):
+                    line = layout.lineAt(line_number)
+                    if line.x() > x:
+                        continue
+                    cells = self._vertical_line_cells(
+                        blk, line_number
+                    )
+                    if not cells:
+                        continue
+                    line_top = min(cell[2] for cell in cells)
+                    line_bottom = max(cell[3] for cell in cells)
+                    if line_top > y:
+                        off = min(off, cells[0][0])
+                    elif line_bottom < y:
+                        off = max(off, cells[-1][1])
+                    else:
+                        for start, end, top, bottom, _is_space in cells:
+                            if top <= y <= bottom:
+                                off = start if y - top < bottom - y else end
+                                break
+                        break
+                break
+            blk = blk.next()
+        return blk.position() + off
+
+    def layoutBlock(self, block: QTextBlock):
+        doc = self.document()
+
+        block.clearLayout()
+        doc_margin = self._effect_padding
+        line_y_offset = doc_margin
+        blk_char_yoffset = []
+        blk_line_spaces = []
+
+        block_no = block.blockNumber()
+        is_final_block = block == doc.lastBlock()
+        blk_text = block.text()
+        custom_rendering = self.render_delegate is not None
+        text_combine_ranges = text_combine_upright_ranges(block)
+        self.text_combine_ranges.append(text_combine_ranges)
+        text_combine_lengths = {
+            start: length for start, length, _group_id in text_combine_ranges
+        }
+        utf16_indexing = (
+            custom_rendering
+            or bool(text_combine_ranges)
+            or _utf16_length(blk_text) != len(blk_text)
+        )
+        blk_text_len = (
+            _utf16_length(blk_text) if utf16_indexing else len(blk_text)
+        )
+        if blk_text_len != 0:
+            block_width = self.block_ideal_width[block_no]
+        else:
+            block_width = CharFontFormat(block.charFormat()).tbr.width()
+
+        layout_first_block = block == doc.firstBlock()
+        if layout_first_block:
+            x_offset = self.max_width - doc_margin
+            self.x_offset_lst = [self.max_width - doc_margin]
+            self.y_offset_lst = []
+        else:
+            x_offset = self.x_offset_lst[-1]
+
+        char_idx = 0
+        tl = block.layout()
+        tl.beginLayout()
+        option = doc.defaultTextOption()
+        option.setWrapMode(QTextOption.WrapAnywhere)
+        tl.setTextOption(option)
+
+        shrink_height = 0
+        width_list = []
+        line_not_set = []
+        ypos_list = []
+        is_first_line = block_no == 0
+        char_records = {}
+        line_char_ids = []
+
+        while True:
+            line = tl.createLine()
+            if not line.isValid():
+                break
+
+            line.setLineWidth(block_width)
+            text_combine_length = text_combine_lengths.get(char_idx)
+            is_text_combine = text_combine_length is not None
+            if is_text_combine:
+                combined_text = _utf16_slice(
+                    blk_text, char_idx, text_combine_length
+                )
+                line.setNumColumns(max(1, _grapheme_count(combined_text)))
+            else:
+                line.setNumColumns(1)
+
+            available_height = self.available_height + doc_margin
+            text_len = line.textLength()
+            end_char = char_idx + text_len >= blk_text_len
+
+            is_first_lbracket = False
+            # _lbracket_shift = 0
+
+            if char_idx + text_len > blk_text_len:
+                ypos = ypos_list[-1] if len(ypos_list) > 0 else 0
+                blk_line_spaces.append([0, 0, [ypos], char_idx])
+                line.setPosition(QPointF(x_offset - block_width, ypos))
+                continue
+
+            num_rspaces, num_lspaces = 0, 0
+            if utf16_indexing:
+                text = _utf16_slice(
+                    blk_text, char_idx, text_len
+                ).replace('\n', '')
+                num_rspaces = _utf16_length(text[len(text.rstrip()):])
+                num_lspaces = _utf16_length(
+                    text[:len(text) - len(text.lstrip())]
+                )
+            else:
+                text = blk_text[char_idx: char_idx + text_len].replace('\n', '')
+                num_rspaces = text_len - len(text.rstrip())
+                num_lspaces = text_len - len(text.lstrip())
+
+            if is_text_combine:
+                # Whitespace is part of the authored horizontal run, not
+                # vertical column leading around it.
+                num_rspaces = num_lspaces = 0
+
+            tbr_h = space_w = spacing_advance = 0
+            char_idx += num_lspaces
+            single_char_h = None
+            text_combine_line_width = None
+
+            if char_idx < blk_text_len:
+                cfmt = self.get_char_fontfmt(block_no, char_idx)
+                space_shift = 0
+                if num_lspaces > 0:
+                    space_shift = num_lspaces * cfmt.space_width
+                line_char_ids.append(char_idx)
+                space_w = cfmt.space_width
+                spacing_advance = (
+                    cfmt.tbr.height() * (cfmt.letter_spacing - 1)
+                )
+
+                tbr_h = cfmt.tbr.height() + spacing_advance
+                char = (
+                    _utf16_char_at(blk_text, char_idx)
+                    if utf16_indexing
+                    else blk_text[char_idx]
+                )
+                is_first_lbracket = (
+                    char_idx - num_lspaces == 0
+                    and char in PUNSET_BRACKETL
+                    and self.needs_vertical_rotation(char)
+                )
+                if is_first_lbracket:
+                    _lbracket_shift = -format_punc_actual_rect(
+                        cfmt,
+                        line,
+                        char,
+                        cache=True,
+                        space_shift=space_shift,
+                    )[0]
+
+                if is_text_combine:
+                    # A grouped run has no separate container format. Its
+                    # leading fragment supplies the normal cell while natural
+                    # horizontal flow and every fragment style are retained.
+                    right_margin, left_margin = emphasis_margins(
+                        block, line, vertical=True
+                    )
+                    natural_bounds = tate_chu_yoko_natural_bounds(line)
+                    text_combine_width = max(
+                        cfmt.tbr.width(),
+                        natural_bounds.width(),
+                    )
+                    text_combine_height = max(
+                        cfmt.tbr.height(), natural_bounds.height()
+                    )
+                    spacing_advance = (
+                        text_combine_height * (cfmt.letter_spacing - 1)
+                    )
+                    tbr_h = text_combine_height + spacing_advance
+                    text_combine_line_width = (
+                        cfmt.tbr.width()
+                        + 2 * max(right_margin, left_margin)
+                    )
+                    char_records[char_idx] = {
+                        'text_combine_height': text_combine_height,
+                        'text_combine_width': text_combine_width,
+                    }
+                elif self.needs_vertical_rotation(char):
+                    tbr, br = cfmt.punc_rect(char)
+                    single_char_h = tbr.width()
+                    tbr_h = tbr.width() * (
+                        _grapheme_count(text) if utf16_indexing else text_len
+                    )
+                    if char.isalpha():
+                        cw2 = cfmt.punc_rect(char+char)[1].width()
+                        tbr_h = br.width() - (br.width() * 2 - cw2)
+                    elif char in {'…', '⋯', '—', '～'}:
+                        # Qt may shape repeated marks as one cluster. Apply
+                        # semantic spacing once to the resulting line.
+                        tbr_h = line.naturalTextWidth() - num_lspaces * space_w
+                    else:
+                        tbr_h = line.naturalTextWidth() - num_lspaces * space_w
+                    tbr_h += spacing_advance
+            elif char_idx - num_lspaces < blk_text_len:
+                cfmt = self.get_char_fontfmt(block_no, char_idx - num_lspaces)
+                tbr_h = cfmt.tbr.height() + cfmt.font_metrics.descent()
+                space_w = cfmt.space_width
+
+            # Zero tracking may collapse a narrow rotated glyph completely,
+            # but a logical cell must never advance backwards.
+            tbr_h = max(tbr_h, 0.0)
+
+            if num_lspaces == 0 and tbr_h != 0 and not is_text_combine:
+                ntw = line.naturalTextWidth()
+                shifted = ntw - cfmt.br.width()
+                if is_final_block:
+                    self.draw_shifted = max(self.draw_shifted, shifted)
+
+            char_yoffset_lst = [line_y_offset]
+            if is_first_lbracket:
+                char_yoffset_lst[0] += _lbracket_shift
+            for _ in range(num_lspaces):
+                char_yoffset_lst.append(min(available_height - tbr_h, char_yoffset_lst[-1] + space_w))
+            blk_line_spaces.append([num_rspaces, num_lspaces, char_yoffset_lst, char_idx - num_lspaces])
+
+            char_bottom = char_yoffset_lst[-1] + tbr_h
+            out_of_vspace = (
+                char_bottom - max(spacing_advance, 0) > available_height
+            )
+            if out_of_vspace:
+                # switch to next line
+                if char_idx == 0 and layout_first_block:
+                    self.min_height = doc_margin + tbr_h
+
+                line_y_offset = doc_margin
+
+                char_yoffset_lst[-1] = line_y_offset
+                char_yoffset_lst.append(line_y_offset + tbr_h)
+                for _ in range(num_rspaces):
+                    char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
+                line_bottom = char_yoffset_lst[-1]
+            else:
+                cfmt = self.get_char_fontfmt(block_no, char_idx)
+                if cfmt is not None:
+                    if text_combine_line_width is None:
+                        right_margin, left_margin = emphasis_margins(
+                            block, line, vertical=True
+                        )
+                        current_line_width = (
+                            cfmt.tbr.width()
+                            + 2 * max(right_margin, left_margin)
+                        )
+                    else:
+                        current_line_width = text_combine_line_width
+                    width_list.append(current_line_width)
+                else:
+                    width_list.append(-1)
+
+                char_yoffset_lst.append(char_bottom)
+                for _ in range(num_rspaces):
+                    char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
+                line_bottom = char_yoffset_lst[-1]
+                shrink_height = max(shrink_height, line_bottom)
+
+            ypos_list.append(line_y_offset)
+            line_not_set.append(line)
+            if out_of_vspace or end_char:
+                if is_first_line:
+                    line_spacing = self.identity_linespacing()
+                else:
+                    line_spacing = self.line_spacing
+                if len(width_list) == 0:
+                    width_list = [block_width]
+                end_line, end_ypos, end_w = (
+                    line,
+                    line_y_offset,
+                    width_list[-1],
+                )
+                if out_of_vspace and text_combine_line_width is not None:
+                    # This line belongs to the next column and therefore did
+                    # not enter the previous column's width list.
+                    end_w = text_combine_line_width
+                idea_line_width = -1
+                if out_of_vspace and end_char and len(width_list) > 1:
+                    idea_line_width = max(width_list[:-1])
+                else:
+                    idea_line_width = max(width_list)
+                if idea_line_width == -1:
+                    idea_line_width = block_width
+
+                if len(line_char_ids) == 0:
+                    line_char_ids = [char_idx]
+                end_char_id = line_char_ids[-1]
+                for cidx in line_char_ids:
+                    char_records.setdefault(cidx, {})[
+                        'line_width'
+                    ] = idea_line_width
+                line_char_ids = []
+
+                x_offset -= self.calculate_line_spacing(
+                    idea_line_width, line_spacing
+                )
+
+                for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
+                    line.setPosition(QPointF(x_offset, ypos))
+                if out_of_vspace:
+                    if end_char:
+                        if not len(line_not_set) == 1:
+                            x_offset -= self.calculate_line_spacing(
+                                end_w, self.line_spacing
+                            )
+                        end_line.setPosition(QPointF(x_offset, end_ypos))
+                        char_records.setdefault(end_char_id, {})[
+                            'line_width'
+                        ] = end_w
+                    else:
+                        line_not_set = [end_line]
+                        ypos_list = [end_ypos]
+                        width_list = [end_w]
+                        line_char_ids = [end_char_id]
+                else:
+                    end_line.setPosition(QPointF(x_offset, end_ypos))
+
+                if out_of_vspace:
+                    is_first_line = False
+
+            strip_space_textlen = (
+                _grapheme_count(text.lstrip())
+                if utf16_indexing
+                else text_len - num_lspaces
+            )
+            if strip_space_textlen > 1 and single_char_h is not None:
+                run_height = max(line_bottom - line_y_offset, 0.0)
+                cell_height = min(
+                    single_char_h,
+                    run_height / strip_space_textlen,
+                )
+                for ii in range(strip_space_textlen - 1):
+                    blk_char_yoffset.append([
+                        line_y_offset + ii * cell_height,
+                        line_y_offset + (ii + 1) * cell_height,
+                    ])
+                blk_char_yoffset.append([blk_char_yoffset[-1][1], line_bottom])
+            else:
+                blk_char_yoffset.append([line_y_offset, line_bottom])
+
+            line_y_offset = max(line_bottom, doc_margin)
+            char_idx += text_len - num_lspaces
+        tl.endLayout()
+
+        self.layout_left = x_offset - self.draw_shifted
+        self.shrink_width = max(self.max_width - self.layout_left - doc_margin + 0.01, self.shrink_width)
+        self.shrink_height = max(shrink_height + 0.01 - doc_margin, self.shrink_height)
+        self.x_offset_lst.append(x_offset)
+        self.y_offset_lst.append(blk_char_yoffset)
+        self.line_spaces_lst.append(blk_line_spaces)
+        self.per_char_records.append(char_records)

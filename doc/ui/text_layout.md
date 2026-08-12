@@ -46,15 +46,20 @@ versionless and follow the compatibility rules in [Text engine](text_engine.md).
 
 `HorizontalTextDocumentLayout` keeps Qt shaping, cursor positions, glyph runs,
 and `WrapAtWordBoundaryOrAnywhere`. Character spacing is passed to Qt as a
-range font property. Qt's native wrap-boundary treatment of leading and
-trailing spaces is therefore also the current horizontal behavior; changing
-that policy requires an explicit feature, not reuse of the vertical workaround.
+range font property. Qt still chooses visible-text line ranges, but overflowing
+U+0020 suffixes receive derived continuation-row cells because Qt hangs those
+spaces on the preceding line. The cells shift following lines and are shared by
+box growth, caret painting, selection, and hit testing. A partially occupied
+continuation row constrains the next native `QTextLine` to its remaining width,
+so following text can share that row without changing document text, HTML, or
+glyph shaping. Tabs, non-breaking spaces, and other Unicode separators retain
+Qt semantics.
 
 ### Vertical orientation
 
 `VerticalTextDocumentLayout` uses `WrapAnywhere`, normally creates one
 `QTextLine` per vertical cell, then places columns from right to left. The
-punctuation sets near the top of `layout.py` are semantic orientation and
+punctuation sets near the top of `vertical_layout.py` are semantic orientation and
 alignment classes; extend those classes rather than adding draw-site glyph
 exceptions.
 
@@ -91,6 +96,12 @@ Vertical whitespace is deliberately explicit. `line_spaces_lst` records
 leading/trailing space counts, their cell boundaries, and the Qt line position
 so spaces consume height and remain hittable. Removing this machinery as
 redundant will change wrapping, caret movement, and hit testing.
+
+Horizontal preserved-space rows solve the same Qt limitation but are separate
+derived records: horizontal wrapping keeps multi-character Qt lines, whereas
+vertical layout normally uses one line per cell. Do not consolidate the two
+record shapes or move whitespace into the editable document merely because
+their space-fitting calculation looks similar.
 
 When character spacing changes on a squeezed, single-column item,
 `spacing_change_height_growth()` may grow the logical height before applying
@@ -137,6 +148,20 @@ glyphs, tate-chu-yoko, emphasis, Glyph Slant, and effect rendering. Cursor,
 selection, and `hitTest()` must consume the same cells and transforms. Visible
 tate-chu-yoko and annotation overhang belongs in source-paint and hit geometry,
 not in persistent logical bounds.
+
+Normal vertical interaction cells are derived on demand from settled
+`line_spaces_lst` boundaries and grapheme ranges. The same cells determine
+caret boundaries, selection backgrounds, and hit positions, so joined glyph
+runs, whitespace, and surrogate pairs cannot expose conflicting cursor
+geometry. Tate-chu-yoko retains its horizontal transformed-cell path. Only
+selected vertical lines use the exact glyph-span painter; the ordinary neutral
+paint path stays native.
+
+On selected vertical lines, document backgrounds paint first, exact selection
+cells second, and glyph ink last. Reordering those layers hides selection over
+rich-text backgrounds or paints the highlight over the glyphs. Their exact
+glyph geometry is cached only for the settled layout generation; ordinary
+unselected painting stays on Qt's native path.
 
 The background effect document reuses the foreground layout's settled draw
 offsets. `updateDrawOffsets()` deliberately preserves them during the stroke

@@ -31,7 +31,7 @@ math, UI, and selected transform controls live in `transforms/`.
 | Persistent typography and transforms | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
 | Live Qt integration | `TextBlkItem` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
 | Inline rich-text annotations | `QTextDocument` character formats plus the semantic HTML boundary | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
-| Horizontal and vertical layout | `SceneTextLayout` subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py) |
+| Horizontal and vertical layout | Shared `SceneTextLayout` plus writing-mode subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py), [`ui/text_engine/horizontal_layout.py`](../../ballontranslator/ui/text_engine/horizontal_layout.py), [`ui/text_engine/vertical_layout.py`](../../ballontranslator/ui/text_engine/vertical_layout.py) |
 | Fill, stroke, shadow, gradient, raster bounds | `TextEffectRenderer` | [`ui/text_engine/effect_renderer.py`](../../ballontranslator/ui/text_engine/effect_renderer.py), [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
 | Derived geometry and visual/input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
 | Scene geometry overlays | `TextBlkShapeControl`, selected-transform controls | [`ui/text_engine/shape_control.py`](../../ballontranslator/ui/text_engine/shape_control.py), [`ui/text_engine/transforms/grid_control.py`](../../ballontranslator/ui/text_engine/transforms/grid_control.py), [`ui/text_engine/transforms/projective_control.py`](../../ballontranslator/ui/text_engine/transforms/projective_control.py) |
@@ -140,6 +140,10 @@ painting, and optional input mapping. Horizontal layout keeps Qt shaping and
 wrapping; vertical layout owns its additional orientation, punctuation, column,
 whitespace, cursor, and hit-test records. Their detailed contract lives in
 [Text layout](text_layout.md).
+
+Keep only genuinely shared metrics and interaction-range helpers in
+`layout.py`. Writing-mode flow, placement, and private records belong in their
+concrete modules; the shared module must not import those subclasses back.
 
 The conceptual paint order is:
 

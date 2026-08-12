@@ -25,14 +25,15 @@ from ballontranslator.ui.text_engine.formatting.commands import (
 )
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.item import TextBlkItem
-from ballontranslator.ui.text_engine.layout import (
-    CharFontFormat,
+from ballontranslator.ui.text_engine.layout import CharFontFormat
+from ballontranslator.ui.text_engine.vertical_layout import (
     PUNSET_ALIGNCENTER,
     PUNSET_BRACKET,
     PUNSET_HALF,
     PUNSET_NONBRACKET,
     PUNSET_PAUSEORSTOP,
     PUNSET_STANDARD_VERTICAL_ROMAN,
+    format_punc_actual_rect,
     punc_actual_rect_cached,
 )
 from ballontranslator.ui.text_engine.rendering.glyph import glyph_geometry
@@ -83,8 +84,11 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         line = block.layout().lineForTextPosition(position)
         line_number = line.lineNumber()
         char_format = item.layout.get_char_fontfmt(0, position)
-        actual = char_format.punc_actual_rect(
-            line, block.text()[position], cache=True
+        actual = format_punc_actual_rect(
+            char_format,
+            line,
+            block.text()[position],
+            cache=True,
         )
         x_offset, y_offset = item.layout._draw_offset[0][line_number]
         ink = QRectF(
@@ -628,14 +632,14 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             first_line.naturalTextWidth(), second_line.naturalTextWidth()
         )
         punc_actual_rect_cached.cache_clear()
-        first_rect = cached_format.punc_actual_rect(
-            first_line, '((', cache=True
+        first_rect = format_punc_actual_rect(
+            cached_format, first_line, '((', cache=True
         )
-        cached_second = cached_format.punc_actual_rect(
-            second_line, '((', cache=True
+        cached_second = format_punc_actual_rect(
+            cached_format, second_line, '((', cache=True
         )
-        uncached_second = cached_format.punc_actual_rect(
-            second_line, '((', cache=False
+        uncached_second = format_punc_actual_rect(
+            cached_format, second_line, '((', cache=False
         )
         self.assertNotEqual(first_rect, uncached_second)
         self.assertEqual(cached_second, uncached_second)

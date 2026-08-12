@@ -2979,9 +2979,13 @@ class TextTransformRenderingTest(TextTransformTestBase):
                     neutral_hit,
                 )
                 item.startEdit()
-                source_cursor_rect = QGraphicsTextItem.inputMethodQuery(
-                    item, Qt.InputMethodQuery.ImCursorRectangle
+                source_cursor_rect = item.layout.source_cursor_rect(
+                    item.textCursor().position()
                 )
+                if source_cursor_rect is None:
+                    source_cursor_rect = QGraphicsTextItem.inputMethodQuery(
+                        item, Qt.InputMethodQuery.ImCursorRectangle
+                    )
                 self.assertEqual(
                     item.inputMethodQuery(
                         Qt.InputMethodQuery.ImCursorRectangle

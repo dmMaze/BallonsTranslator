@@ -15,7 +15,8 @@ from ballontranslator.utils.fontformat import (
     pt2px,
 )
 from ..misc import td_pattern, table_pattern
-from .layout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
+from .horizontal_layout import HorizontalTextDocumentLayout
+from .vertical_layout import VerticalTextDocumentLayout
 from .effect_renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
 from .annotations import (
@@ -408,6 +409,15 @@ class TextBlkItem(QGraphicsTextItem):
 
     def inputMethodQuery(self, query):
         value = super().inputMethodQuery(query)
+        if (
+            query == Qt.InputMethodQuery.ImCursorRectangle
+            and self.layout is not None
+        ):
+            cursor_rect = self.layout.source_cursor_rect(
+                self.textCursor().position()
+            )
+            if cursor_rect is not None:
+                value = cursor_rect
         mapper = self.geometry_controller.visual_mapper
         if mapper is None:
             return value

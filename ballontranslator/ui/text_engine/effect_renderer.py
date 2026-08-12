@@ -22,7 +22,8 @@ from qtpy.QtWidgets import QStyle, QWidget
 from ballontranslator.utils.fontformat import FontFormat, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ..misc import ndarray2pixmap, pixmap2ndarray
-from .layout import HorizontalTextDocumentLayout, VerticalTextDocumentLayout
+from .horizontal_layout import HorizontalTextDocumentLayout
+from .vertical_layout import VerticalTextDocumentLayout
 from .rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,

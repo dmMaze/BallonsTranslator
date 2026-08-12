@@ -1186,6 +1186,7 @@ def draw_slanted_line(
     failure_handler: Optional[Callable[[Exception, bool], None]] = None,
     persistent_geometry_cache: Optional[Any] = None,
     cache_namespace: Optional[Hashable] = None,
+    background_overlays: Sequence[Tuple[QRectF, QBrush]] = (),
 ) -> None:
     """Paint one already-laid-out line without changing logical geometry."""
     layout = block.layout()
@@ -1291,6 +1292,11 @@ def draw_slanted_line(
             if not full_width:
                 _draw_background(painter, rect, span.char_format)
             selection_spans.append((span, rect))
+
+    # Layout-owned selection cells must cover document backgrounds but remain
+    # below glyph ink. This hook keeps that paint order inside the glyph pass.
+    for rect, brush in background_overlays:
+        painter.fillRect(rect, brush)
 
     # Paint normal ink once. Selection foreground is a second, logically
     # clipped pass so ligature overhang outside the selection remains normal.
