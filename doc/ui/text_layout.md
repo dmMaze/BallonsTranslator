@@ -136,6 +136,11 @@ insufficient width requires full reflow. The geometry controller preserves the
 matching scene-space anchor during resize; layout and scene movement must not
 both compensate for the same delta.
 
+`QTextLine` positions use 26.6 fixed-point coordinates. Resize translation is
+derived from the absolute aligned `layout_left` target, and every related
+record moves by the shift Qt actually applied. Incremental float deltas will
+otherwise accumulate and move foreground placement away from effect layout.
+
 ## Indices, placement, and rendering
 
 Qt text positions and fragment lengths are UTF-16 code units. Use the shared

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QPointF, Qt
+from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import QTextCursor
 from qtpy.QtWidgets import QApplication
 
@@ -168,13 +168,17 @@ class VerticalAlignmentTest(unittest.TestCase):
         )
         item.setVertical(True)
         self.assertEqual(item.fontformat.alignment, TextAlignment.Center)
-        self.assertAlmostEqual(
-            item.layout._alignment_x_shift,
-            -(
-                item.layout.available_width
-                - item.layout._column_content_width()
-            ) / 2,
-            places=6,
+        slack = (
+            item.layout.available_width
+            - item.layout._column_content_width()
+        )
+        self.assertLessEqual(
+            abs(
+                item.layout.layout_left
+                - item.layout.effectPadding()
+                - slack / 2
+            ),
+            1 / 64,
         )
 
     def test_writing_mode_switch_detaches_the_old_slant_layout(self):
@@ -372,6 +376,35 @@ class VerticalAlignmentTest(unittest.TestCase):
                     item.layout.layout_generation,
                     expected_generation,
                 )
+
+    def test_fractional_middle_handle_resizes_match_settled_layout(self):
+        for alignment in TextAlignment:
+            for handle in ('left', 'right'):
+                with self.subTest(alignment=alignment, handle=handle):
+                    item = self._make_item(
+                        alignment,
+                        stroke_width=0.08,
+                    )
+                    initial = item.absBoundingRect(qrect=True)
+                    for step in range(1, 201):
+                        resized = QRectF(initial)
+                        delta = step * 0.37
+                        if handle == 'left':
+                            resized.setLeft(initial.left() - delta)
+                        else:
+                            resized.setRight(initial.right() + delta)
+                        item.setRect(resized, repaint=False)
+
+                    fast_positions = self._line_x_positions(item)
+                    item.layout.reLayout()
+                    for fast, settled in zip(
+                        fast_positions,
+                        self._line_x_positions(item),
+                    ):
+                        self.assertLessEqual(
+                            abs(fast - settled),
+                            1 / 64,
+                        )
 
     def test_new_columns_preserve_each_alignment_growth_anchor(self):
         for alignment in TextAlignment:

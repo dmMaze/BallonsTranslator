@@ -250,7 +250,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._resize_layout_max_width = None
         self._resize_layout_available_height = None
         self._resize_layout_padding = None
-        self._alignment_x_shift = 0.0
         self._selection_geometry_cache = {}
 
     def needs_vertical_rotation(self, char: str) -> bool:
@@ -284,47 +283,61 @@ class VerticalTextDocumentLayout(SceneTextLayout):
     def align_right(self):
         return False
 
-    def _translate_columns(self, x_shift: float) -> None:
+    def _translate_columns(self, x_shift: float) -> float:
         """Translate every settled vertical-layout x coordinate together."""
         if abs(x_shift) <= 1e-9:
-            return
+            return 0.0
+        applied_shift: Optional[float] = None
         block = self.document().firstBlock()
         while block.isValid():
             layout = block.layout()
             for line_number in range(layout.lineCount()):
                 line = layout.lineAt(line_number)
                 position = line.position()
-                position.setX(position.x() + x_shift)
+                before = position.x()
+                line_shift = (
+                    x_shift
+                    if applied_shift is None
+                    else applied_shift
+                )
+                position.setX(before + line_shift)
                 line.setPosition(position)
+                if applied_shift is None:
+                    # Keep every derived coordinate on QTextLine's actual
+                    # 26.6 fixed-point movement, not the requested float.
+                    applied_shift = line.position().x() - before
             block = block.next()
+        if applied_shift is None:
+            applied_shift = x_shift
         self.x_offset_lst = [
-            x_offset + x_shift for x_offset in self.x_offset_lst
+            x_offset + applied_shift for x_offset in self.x_offset_lst
         ]
-        self.layout_left += x_shift
+        self.layout_left += applied_shift
+        return applied_shift
 
     def _column_content_width(self) -> float:
         if not self.x_offset_lst:
             return 0.0
         return max(0.0, self.x_offset_lst[0] - self.layout_left)
 
-    def _desired_alignment_x_shift(self) -> float:
+    def _alignment_column_shift(self) -> float:
         slack = max(0.0, self.available_width - self._column_content_width())
         if self.fontformat.alignment == TextAlignment.Left:
-            return -slack
-        if self.fontformat.alignment == TextAlignment.Center:
-            return -slack / 2
-        return 0.0
+            target_left = self._effect_padding
+        elif self.fontformat.alignment == TextAlignment.Center:
+            target_left = self._effect_padding + slack / 2
+        else:
+            target_left = self._effect_padding + slack
+        return target_left - self.layout_left
 
     def apply_alignment(self) -> bool:
         """Translate settled columns without reshaping or resizing the box."""
-        desired = self._desired_alignment_x_shift()
-        x_shift = desired - self._alignment_x_shift
+        x_shift = self._alignment_column_shift()
         if abs(x_shift) <= 1e-9:
             return False
         self._begin_layout_generation()
         self._selection_geometry_cache.clear()
         self._translate_columns(x_shift)
-        self._alignment_x_shift = desired
         self._refresh_annotation_ink_bounds()
         return True
 
@@ -427,7 +440,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.shrink_height = 0
         self.shrink_width = 0
         self.text_padding = 0
-        self._alignment_x_shift = 0.0
         doc = self.document()
         doc_margin = self._effect_padding
         block = doc.firstBlock()
@@ -449,8 +461,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if enlarged:
             self._emit_size_enlarged()
         self._translate_columns(x_shift)
-        self._alignment_x_shift = self._desired_alignment_x_shift()
-        self._translate_columns(self._alignment_x_shift)
+        self._translate_columns(self._alignment_column_shift())
         self.updateDrawOffsets()
         self._refresh_annotation_ink_bounds()
         self._resize_layout_max_width = self.max_width
@@ -479,18 +490,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.reLayout()
             return
 
-        previous_alignment_shift = self._alignment_x_shift
-        desired_alignment_shift = self._desired_alignment_x_shift()
-        column_shift = (
-            width_shift
-            + desired_alignment_shift
-            - previous_alignment_shift
-        )
+        column_shift = self._alignment_column_shift()
         if abs(column_shift) > 1e-9:
             self._begin_layout_generation()
             self._translate_columns(column_shift)
             self._refresh_annotation_ink_bounds()
-        self._alignment_x_shift = desired_alignment_shift
         self._resize_layout_max_width = self.max_width
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
