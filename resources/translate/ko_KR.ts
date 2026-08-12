@@ -452,12 +452,12 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="978"/>
         <source>Hide Unused Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>미사용 글꼴 숨기기</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="981"/>
         <source>Font Exclusion</source>
-        <translation type="unfinished"></translation>
+        <translation>글꼴 제외</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="995"/>
@@ -600,65 +600,67 @@
         <location filename="../../ballontranslator/ui/configpanel.py" line="148"/>
         <location filename="../../ballontranslator/ui/configpanel.py" line="171"/>
         <source>Font Exclusion</source>
-        <translation type="unfinished"></translation>
+        <translation>글꼴 제외</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="183"/>
         <source>Filter Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>글꼴 필터</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="193"/>
         <source>Available Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>사용 가능한 글꼴</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="209"/>
         <source>Hide selected fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>선택한 글꼴 숨기기</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="215"/>
         <source>Show selected fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>선택한 글꼴 표시</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="224"/>
         <source>Hidden Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>숨긴 글꼴</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="240"/>
         <source>Hide Legacy Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>레거시 글꼴 숨기기</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="248"/>
         <source>Cancel</source>
-        <translation type="unfinished">취소</translation>
+        <translation>취소</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="252"/>
         <source>OK</source>
-        <translation type="unfinished"></translation>
+        <translation>확인</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="341"/>
         <location filename="../../ballontranslator/ui/configpanel.py" line="359"/>
         <source>Legacy Fonts</source>
-        <translation type="unfinished"></translation>
+        <translation>레거시 글꼴</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="342"/>
         <source>No additional legacy fonts detected on this system.</source>
-        <translation type="unfinished"></translation>
+        <translation>이 시스템에서 추가 레거시 글꼴을 찾지 못했습니다.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="361"/>
         <source>Added {count} legacy font(s) to the hidden list:
 
 {fonts}</source>
-        <translation type="unfinished"></translation>
+        <translation>레거시 글꼴 {count}개를 숨김 목록에 추가했습니다:
+
+{fonts}</translation>
     </message>
 </context>
 <context>
@@ -3926,7 +3928,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="427"/>
         <source>Font Exclusion</source>
-        <translation type="unfinished"></translation>
+        <translation>글꼴 제외</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="438"/>
