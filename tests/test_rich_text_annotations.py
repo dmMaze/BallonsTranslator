@@ -1296,6 +1296,38 @@ class RichTextAnnotationTest(unittest.TestCase):
             1.8,
         )
 
+    def test_backward_selection_uses_selected_format_and_keeps_direction(self):
+        item = self._make_item(False, text='A——B')
+        item.startEdit()
+
+        selected = item.textCursor()
+        selected.setPosition(1)
+        selected.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(selected)
+        item.setLetterSpacing(1.4)
+
+        backward = item.textCursor()
+        backward.setPosition(3)
+        backward.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(backward)
+
+        self.assertEqual(item.letter_spacing_value(), 1.4)
+        item.setLetterSpacing(1.8)
+        item.setFontItalic(
+            True,
+            set_selected=True,
+            restore_cursor=True,
+        )
+
+        restored = item.textCursor()
+        self.assertEqual((restored.position(), restored.anchor()), (1, 3))
+        self.assertEqual(item.letter_spacing_value(), 1.8)
+        self.assertTrue(item.get_fontformat().italic)
+        self.assertEqual(
+            letter_spacing_value(_format_at(item.document(), 1, 2)),
+            1.8,
+        )
+
     def test_panel_exposes_stable_values_and_emits_one_edit(self):
         group = TextEmphasisGroup()
         edits = []

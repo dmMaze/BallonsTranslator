@@ -2,9 +2,18 @@ from typing import List, Callable, Dict
 import copy
 
 from qtpy.QtGui import QFont
+from qtpy.QtWidgets import (
+    QAbstractSlider,
+    QAbstractSpinBox,
+    QApplication,
+    QComboBox,
+    QLineEdit,
+    QPlainTextEdit,
+    QTextEdit,
+)
 try:
     from qtpy.QtWidgets import QUndoCommand
-except:
+except ImportError:
     from qtpy.QtGui import QUndoCommand
 
 from ... import shared_widget as SW
@@ -18,6 +27,21 @@ local_default_set_kwargs = dict(set_selected=True, restore_cursor=True)
 
 
 def restore_canvas_view_focus() -> None:
+    focus_widget = QApplication.focusWidget()
+    if isinstance(
+        focus_widget,
+        (
+            QAbstractSlider,
+            QAbstractSpinBox,
+            QComboBox,
+            QLineEdit,
+            QPlainTextEdit,
+            QTextEdit,
+        ),
+    ):
+        # Keep keyboard editors active while their live value updates repaint
+        # the selected text. Click-only controls still return focus below.
+        return
     # Scene focus keeps the text caret alive; the view owns keyboard input.
     if not SW.canvas.gv.hasFocus():
         SW.canvas.gv.setFocus()

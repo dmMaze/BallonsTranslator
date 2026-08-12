@@ -119,13 +119,67 @@ def punc_actual_rect(line: QTextLine, family: str, size: float, weight: int, ita
     ar = ar.tolist()
     return ar
 
+
+def _line_glyph_cache_key(line: QTextLine) -> tuple:
+    """Describe multi-glyph placement omitted by total line metrics.
+
+    >>> _line_glyph_cache_key(QTextLine())
+    ()
+    """
+    if not line.isValid() or line.textLength() <= 1:
+        return ()
+
+    signature = []
+    for glyph_run in line.glyphRuns():
+        raw_font = glyph_run.rawFont()
+        raw_style = raw_font.style()
+        raw_weight = raw_font.weight()
+        signature.append((
+            raw_font.familyName(),
+            raw_font.styleName(),
+            raw_font.pixelSize(),
+            getattr(raw_style, 'value', raw_style),
+            getattr(raw_weight, 'value', raw_weight),
+            tuple(int(index) for index in glyph_run.glyphIndexes()),
+            tuple(
+                (position.x(), position.y())
+                for position in glyph_run.positions()
+            ),
+        ))
+    return tuple(signature)
+
+
 @lru_cache(maxsize=2048)
-def punc_actual_rect_cached(cached_args: LruIgnoreArg, char: str, family: str, size: float, weight: int, italic: bool, stroke_width: float, h: int, w: int) -> List[int]:
+def punc_actual_rect_cached(
+    cached_args: LruIgnoreArg,
+    char: str,
+    family: str,
+    size: float,
+    weight: int,
+    italic: bool,
+    stroke_width: float,
+    h: int,
+    w: int,
+    line_height: float,
+    line_width: float,
+    space_shift: float,
+    glyph_key: tuple,
+) -> List[int]:
     '''
     char is actually not used, but can be set as some cache flag
     '''
     # QtextLine line is invisibale to lru
-    return punc_actual_rect(cached_args.line, family, size, weight, italic, stroke_width, h, w, cached_args.space_shift)
+    return punc_actual_rect(
+        cached_args.line,
+        family,
+        size,
+        weight,
+        italic,
+        stroke_width,
+        h,
+        w,
+        space_shift,
+    )
 
 
 def _block_cursor_position(block: QTextBlock, cursor_position: int) -> int:
@@ -193,8 +247,27 @@ class CharFontFormat:
 
     def punc_actual_rect(self, line: QTextLine, char: str, cache=False, stroke_width=0, h=None, w=None, space_shift=0) -> List[int]:
         if cache:
-            cached_args = LruIgnoreArg(line=line, space_shift=space_shift)
-            ar = punc_actual_rect_cached(cached_args, char, self.family, self.size, self.weight, self.font.italic(), stroke_width, h, w)
+            line_height = line.height()
+            line_width = line.naturalTextWidth()
+            glyph_key = _line_glyph_cache_key(line)
+            h = int(line_height) if h is None else h
+            w = int(line_width) if w is None else w
+            cached_args = LruIgnoreArg(line=line)
+            ar = punc_actual_rect_cached(
+                cached_args,
+                char,
+                self.family,
+                self.size,
+                self.weight,
+                self.font.italic(),
+                stroke_width,
+                h,
+                w,
+                line_height,
+                line_width,
+                space_shift,
+                glyph_key,
+            )
         else:
             ar =  punc_actual_rect(line, self.family, self.size, self.weight, self.font.italic(), stroke_width, h, w, space_shift)
         return ar
@@ -547,6 +620,93 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._alignment_x_shift = desired
         self._refresh_annotation_ink_bounds()
         return True
+
+    def spacing_change_height_growth(
+        self,
+        selection_start: int,
+        selection_end: int,
+        value: float,
+    ) -> float:
+        """Return height needed to keep a tight single column from wrapping.
+
+        Multi-column blocks retain their fixed-area reflow behavior. This
+        narrowly covers point-like vertical items whose current content was
+        squeezed to exactly one column.
+
+        >>> callable(VerticalTextDocumentLayout.spacing_change_height_growth)
+        True
+        """
+        if selection_end <= selection_start:
+            return 0.0
+
+        column_x = None
+        maximum_bottom = self._effect_padding
+        spacing_delta = 0.0
+        final_line_delta = 0.0
+        final_positive_spacing = 0.0
+        block = self.document().firstBlock()
+        while block.isValid():
+            block_number = block.blockNumber()
+            text = block.text()
+            text_length = _utf16_length(text)
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                line = text_layout.lineAt(line_number)
+                if not line.isValid() or line.textLength() <= 0:
+                    continue
+                if column_x is None:
+                    column_x = line.x()
+                elif abs(line.x() - column_x) > 1e-6:
+                    return 0.0
+
+                _trailing, leading, offsets, line_position = (
+                    self.line_spaces_lst[block_number][line_number]
+                )
+                if offsets:
+                    maximum_bottom = max(maximum_bottom, offsets[-1])
+                char_position = min(
+                    line_position + leading,
+                    text_length - 1,
+                )
+                document_position = block.position() + char_position
+                if char_position < 0:
+                    continue
+
+                char_format = self.get_char_fontfmt(
+                    block_number, char_position
+                )
+                old_value = char_format.letter_spacing
+                record = self._line_record(block, line_number)
+                spacing_unit = record.get(
+                    'text_combine_height', char_format.tbr.height()
+                )
+                final_line_delta = 0.0
+                final_positive_spacing = max(
+                    spacing_unit * (old_value - 1.0), 0.0
+                )
+                if not (
+                    selection_start <= document_position < selection_end
+                ):
+                    continue
+
+                line_delta = spacing_unit * (value - old_value)
+                spacing_delta += line_delta
+                final_line_delta = line_delta
+            block = block.next()
+
+        available_bottom = self.available_height + self._effect_padding
+        # The final glyph's positive trailing advance never forces another
+        # line, so it is existing slack rather than required fit height.
+        unused_height = max(
+            0.0,
+            available_bottom - maximum_bottom + final_positive_spacing,
+        )
+        growth = max(
+            0.0,
+            spacing_delta - final_line_delta - unused_height,
+        )
+        # Match minSize()'s guard against Qt's fractional metric rounding.
+        return 0.0 if growth <= 1e-6 else growth + 0.01
 
     def reLayout(self):
         self._begin_layout_generation()
@@ -1386,7 +1546,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 # vertical column leading around it.
                 num_rspaces = num_lspaces = 0
 
-            tbr_h = space_w = let_sp_offset = 0
+            tbr_h = space_w = spacing_advance = 0
             char_idx += num_lspaces
             single_char_h = None
             text_combine_line_width = None
@@ -1398,11 +1558,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     space_shift = num_lspaces * cfmt.space_width
                 line_char_ids.append(char_idx)
                 space_w = cfmt.space_width
-                let_sp_offset = (
+                spacing_advance = (
                     cfmt.tbr.height() * (cfmt.letter_spacing - 1)
                 )
 
-                tbr_h = cfmt.tbr.height() + let_sp_offset
+                tbr_h = cfmt.tbr.height() + spacing_advance
                 char = (
                     _utf16_char_at(blk_text, char_idx)
                     if utf16_indexing
@@ -1431,10 +1591,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     text_combine_height = max(
                         cfmt.tbr.height(), natural_bounds.height()
                     )
-                    let_sp_offset = (
+                    spacing_advance = (
                         text_combine_height * (cfmt.letter_spacing - 1)
                     )
-                    tbr_h = text_combine_height + let_sp_offset
+                    tbr_h = text_combine_height + spacing_advance
                     text_combine_line_width = (
                         cfmt.tbr.width()
                         + 2 * max(right_margin, left_margin)
@@ -1453,26 +1613,20 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         cw2 = cfmt.punc_rect(char+char)[1].width()
                         tbr_h = br.width() - (br.width() * 2 - cw2)
                     elif char in {'…', '⋯', '—', '～'}:
+                        # Qt may shape repeated marks as one cluster. Apply
+                        # semantic spacing once to the resulting line.
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
-                        next_char_idx = char_idx + (
-                            _utf16_length(char) if utf16_indexing else 1
-                        )
-                        if (
-                            next_char_idx < blk_text_len
-                            and (
-                                _utf16_char_at(blk_text, next_char_idx)
-                                if utf16_indexing
-                                else blk_text[next_char_idx]
-                            ) == char
-                        ):
-                            tbr_h -= let_sp_offset
                     else:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
-                    tbr_h += let_sp_offset
+                    tbr_h += spacing_advance
             elif char_idx - num_lspaces < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx - num_lspaces)
                 tbr_h = cfmt.tbr.height() + cfmt.font_metrics.descent()
                 space_w = cfmt.space_width
+
+            # Zero tracking may collapse a narrow rotated glyph completely,
+            # but a logical cell must never advance backwards.
+            tbr_h = max(tbr_h, 0.0)
             
             if num_lspaces == 0 and tbr_h != 0 and not is_text_combine:
                 ntw = line.naturalTextWidth()
@@ -1488,7 +1642,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk_line_spaces.append([num_rspaces, num_lspaces, char_yoffset_lst, char_idx - num_lspaces])
             
             char_bottom = char_yoffset_lst[-1] + tbr_h
-            out_of_vspace = char_bottom - max(let_sp_offset, 0) > available_height
+            out_of_vspace = (
+                char_bottom - max(spacing_advance, 0) > available_height
+            )
             if out_of_vspace:
                 # switch to next line
                 if char_idx == 0 and layout_first_block:
@@ -1569,7 +1725,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     if end_char:
                         if not len(line_not_set) == 1:
                             x_offset -= self.calculate_line_spacing(
-                                end_w, line_spacing
+                                end_w, self.line_spacing
                             )
                         end_line.setPosition(QPointF(x_offset, end_ypos))
                         char_records.setdefault(end_char_id, {})[
@@ -1592,8 +1748,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 else text_len - num_lspaces
             )
             if strip_space_textlen > 1 and single_char_h is not None:
+                run_height = max(line_bottom - line_y_offset, 0.0)
+                cell_height = min(
+                    single_char_h,
+                    run_height / strip_space_textlen,
+                )
                 for ii in range(strip_space_textlen - 1):
-                    blk_char_yoffset.append([line_y_offset + ii * single_char_h, line_y_offset + (ii + 1) * single_char_h])
+                    blk_char_yoffset.append([
+                        line_y_offset + ii * cell_height,
+                        line_y_offset + (ii + 1) * cell_height,
+                    ])
                 blk_char_yoffset.append([blk_char_yoffset[-1][1], line_bottom])
             else:
                 blk_char_yoffset.append([line_y_offset, line_bottom])

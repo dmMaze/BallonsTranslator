@@ -7,9 +7,9 @@ from unittest.mock import patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QRectF
-from qtpy.QtGui import QTextCursor
+from qtpy.QtGui import QFont, QTextCharFormat, QTextCursor, QTextLayout
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication, QCheckBox
+from qtpy.QtWidgets import QApplication, QCheckBox, QLineEdit
 try:
     from qtpy.QtGui import QUndoStack
 except ImportError:
@@ -17,25 +17,29 @@ except ImportError:
 
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.canvas import Canvas
+from ballontranslator.ui.custom_widget import SizeComboBox
 from ballontranslator.ui.text_engine.formatting.commands import (
+    ffmt_change_letter_spacing,
     ffmt_change_standard_vertical_roman_alignment,
     ffmt_change_vertical,
 )
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.layout import (
+    CharFontFormat,
     PUNSET_ALIGNCENTER,
     PUNSET_BRACKET,
     PUNSET_HALF,
     PUNSET_NONBRACKET,
     PUNSET_PAUSEORSTOP,
     PUNSET_STANDARD_VERTICAL_ROMAN,
+    punc_actual_rect_cached,
 )
 from ballontranslator.ui.text_engine.rendering.glyph import glyph_geometry
 from ballontranslator.utils import config as C
 from ballontranslator.utils import shared
 from ballontranslator.utils.fontformat import FontFormat, TextAlignment
-from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.textblock import TEXT_LAYOUT_VERSION, TextBlock
 
 
 class VerticalRomanAlignmentTest(unittest.TestCase):
@@ -47,6 +51,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
     def _make_item(
         text: str,
         standard_vertical_roman_alignment: bool,
+        letter_spacing: float = 1.0,
     ) -> TextBlkItem:
         block = TextBlock([0, 0, 220, 900])
         block._bounding_rect = [0, 0, 220, 900]
@@ -54,7 +59,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         block.fontformat.vertical = True
         block.fontformat.font_family = 'Noto Sans CJK SC'
         block.fontformat.font_size = 40
-        block.fontformat.letter_spacing = 1.0
+        block.fontformat.letter_spacing = letter_spacing
         block.fontformat.standard_vertical_roman_alignment = (
             standard_vertical_roman_alignment
         )
@@ -422,6 +427,299 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             SW.canvas = previous_canvas
             focus_thief.close()
             canvas.gv.close()
+
+    def test_live_formatting_keeps_keyboard_editor_focus(self):
+        canvas = Canvas()
+        canvas.gv.resize(800, 500)
+        canvas.gv.show()
+        previous_canvas = SW.canvas
+        SW.canvas = canvas
+        try:
+            item = self._make_item('ABC', True)
+            item.setParentItem(canvas.textLayer)
+            item.startEdit()
+            editors = (
+                QLineEdit(canvas.gv),
+                SizeComboBox([0, 10], 'letter_spacing', canvas.gv),
+            )
+            for editor in editors:
+                with self.subTest(editor=type(editor).__name__):
+                    editor.show()
+                    editor.setFocus()
+                    self.app.processEvents()
+                    self.assertTrue(editor.hasFocus())
+
+                    ffmt_change_letter_spacing(
+                        'letter_spacing',
+                        1.5,
+                        item.fontformat,
+                        False,
+                        [item],
+                        set_focus=True,
+                    )
+                    self.app.processEvents()
+
+                    self.assertTrue(editor.hasFocus())
+                    QTest.keyClicks(editor, '7')
+                    self.assertIn('7', editor.text() if isinstance(
+                        editor, QLineEdit
+                    ) else editor.currentText())
+                    editor.close()
+            item.setParentItem(None)
+        finally:
+            SW.canvas = previous_canvas
+            canvas.gv.close()
+
+    def test_joined_rotated_punctuation_spacing_keeps_its_column(self):
+        for roman, height in ((False, 85), (True, 100)):
+            with self.subTest(roman=roman):
+                block = TextBlock(
+                    [0, 0, 240, height],
+                    text_layout_version=TEXT_LAYOUT_VERSION,
+                )
+                block._bounding_rect = [0, 0, 240, height]
+                block.translation = 'A——B'
+                block.fontformat.vertical = True
+                block.fontformat.font_family = 'Noto Sans CJK SC'
+                block.fontformat.font_size = 40
+                block.fontformat.letter_spacing = 1.0
+                block.fontformat.alignment = TextAlignment.Right
+                block.fontformat.standard_vertical_roman_alignment = roman
+                item = TextBlkItem(block, 0)
+
+                text_block = item.document().firstBlock()
+                before_x = text_block.layout().lineForTextPosition(1).x()
+                item.startEdit()
+                cursor = item.textCursor()
+                cursor.setPosition(1)
+                cursor.setPosition(
+                    3, QTextCursor.MoveMode.KeepAnchor
+                )
+                item.setTextCursor(cursor)
+                item.setLetterSpacing(1.5)
+                self.app.processEvents()
+
+                text_block = item.document().firstBlock()
+                after_x = text_block.layout().lineForTextPosition(1).x()
+                self.assertEqual(after_x, before_x)
+
+    def test_preceding_spacing_keeps_joined_punctuation_in_its_column(self):
+        for roman in (False, True):
+            for alignment in (
+                TextAlignment.Left,
+                TextAlignment.Center,
+                TextAlignment.Right,
+            ):
+                with self.subTest(roman=roman, alignment=alignment):
+                    self._assert_preceding_spacing_keeps_joined_column(
+                        roman, alignment
+                    )
+
+    def _assert_preceding_spacing_keeps_joined_column(
+        self,
+        roman: bool,
+        alignment: TextAlignment,
+    ) -> None:
+        block = TextBlock(
+            [0, 0, 240, 500],
+            text_layout_version=TEXT_LAYOUT_VERSION,
+        )
+        block._bounding_rect = [0, 0, 240, 500]
+        block.translation = '木——'
+        block.fontformat.vertical = True
+        block.fontformat.font_family = 'Noto Sans CJK SC'
+        block.fontformat.font_size = 40
+        block.fontformat.letter_spacing = 1.0
+        block.fontformat.alignment = alignment
+        block.fontformat.standard_vertical_roman_alignment = roman
+        item = TextBlkItem(block, 0)
+        item.squeezeBoundingRect()
+
+        text_block = item.document().firstBlock()
+        dash_line = text_block.layout().lineForTextPosition(1)
+        before = item.mapToScene(dash_line.position())
+        before_height = item.logical_unpadded_rect().height()
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setLetterSpacing(1.3)
+        self.app.processEvents()
+
+        text_block = item.document().firstBlock()
+        dash_line = text_block.layout().lineForTextPosition(1)
+        after = item.mapToScene(dash_line.position())
+        self.assertAlmostEqual(after.x(), before.x())
+        self.assertGreater(after.y(), before.y())
+        self.assertGreater(
+            item.logical_unpadded_rect().height(), before_height
+        )
+
+    def test_nonediting_spacing_keeps_tight_single_column(self):
+        for roman in (False, True):
+            with self.subTest(roman=roman):
+                source = self._make_item('木——', roman, 1.1)
+                source.squeezeBoundingRect()
+                rect = source.absBoundingRect(qrect=True)
+                xyxy = [
+                    rect.left(), rect.top(), rect.right(), rect.bottom()
+                ]
+                loaded_block = TextBlock(
+                    xyxy,
+                    fontformat=source.fontformat.to_serializable_dict(),
+                    text_layout_version=TEXT_LAYOUT_VERSION,
+                )
+                loaded_block._bounding_rect = xyxy
+                loaded_block.translation = '木——'
+                loaded_block.rich_text = source.toHtml()
+                item = TextBlkItem(loaded_block, 0)
+                item.startEdit()
+                item.endEdit()
+
+                text_block = item.document().firstBlock()
+                before = item.mapToScene(
+                    text_block.layout().lineForTextPosition(1).position()
+                )
+                item.setLetterSpacing(1.5)
+                self.app.processEvents()
+
+                text_block = item.document().firstBlock()
+                after = item.mapToScene(
+                    text_block.layout().lineForTextPosition(1).position()
+                )
+                self.assertAlmostEqual(after.x(), before.x())
+                self.assertGreater(after.y(), before.y())
+
+    def test_punctuation_rect_cache_tracks_line_geometry(self):
+        font = QFont('Noto Sans CJK SC')
+        font.setPointSizeF(40)
+        char_format = QTextCharFormat()
+        char_format.setFont(font)
+        cached_format = CharFontFormat(char_format)
+
+        def make_line(first_spacing: float, second_spacing: float):
+            line_font = QFont(font)
+            layout = QTextLayout('((', line_font)
+            formats = []
+            for position, spacing in enumerate((
+                first_spacing,
+                second_spacing,
+            )):
+                format_range = QTextLayout.FormatRange()
+                format_range.start = position
+                format_range.length = 1
+                format_range.format = QTextCharFormat(char_format)
+                format_range.format.setFontLetterSpacingType(
+                    QFont.SpacingType.PercentageSpacing
+                )
+                format_range.format.setFontLetterSpacing(spacing)
+                formats.append(format_range)
+            layout.setFormats(formats)
+            layout.beginLayout()
+            line = layout.createLine()
+            line.setLineWidth(1000)
+            layout.endLayout()
+            return layout, line
+
+        first_layout, first_line = make_line(200, 100)
+        second_layout, second_line = make_line(100, 200)
+        self.assertEqual(
+            first_line.naturalTextWidth(), second_line.naturalTextWidth()
+        )
+        punc_actual_rect_cached.cache_clear()
+        first_rect = cached_format.punc_actual_rect(
+            first_line, '((', cache=True
+        )
+        cached_second = cached_format.punc_actual_rect(
+            second_line, '((', cache=True
+        )
+        uncached_second = cached_format.punc_actual_rect(
+            second_line, '((', cache=False
+        )
+        self.assertNotEqual(first_rect, uncached_second)
+        self.assertEqual(cached_second, uncached_second)
+
+    def test_invalid_spacing_does_not_mutate_format_or_geometry(self):
+        item = self._make_item('木——', True)
+        item.squeezeBoundingRect()
+        before_rect = QRectF(item.logical_unpadded_rect())
+        before_spacing = item.fontformat.letter_spacing
+
+        with self.assertRaises(ValueError):
+            item.setLetterSpacing(11.0)
+
+        self.assertEqual(item.logical_unpadded_rect(), before_rect)
+        self.assertEqual(item.fontformat.letter_spacing, before_spacing)
+
+    def test_zero_spacing_keeps_vertical_cursor_cells_monotonic(self):
+        for roman in (False, True):
+            for text in ('木——木', '木ii木'):
+                with self.subTest(roman=roman, text=text):
+                    item = self._make_item(text, roman)
+                    item.startEdit()
+                    cursor = item.textCursor()
+                    cursor.setPosition(1)
+                    cursor.setPosition(
+                        3, QTextCursor.MoveMode.KeepAnchor
+                    )
+                    item.setTextCursor(cursor)
+                    item.setLetterSpacing(0)
+                    self.app.processEvents()
+
+                    offsets = item.layout.y_offset_lst[0]
+                    self.assertTrue(
+                        all(top <= bottom for top, bottom in offsets)
+                    )
+                    self.assertEqual(offsets, sorted(offsets))
+
+    def test_joined_punctuation_negative_spacing_reduces_run_advance(self):
+        for roman in (False, True):
+            with self.subTest(roman=roman):
+                item = self._make_item('木——木', roman)
+                block = item.document().firstBlock()
+                before = block.layout().lineForTextPosition(3).position()
+
+                item.startEdit()
+                cursor = item.textCursor()
+                cursor.setPosition(1)
+                cursor.setPosition(
+                    3, QTextCursor.MoveMode.KeepAnchor
+                )
+                item.setTextCursor(cursor)
+                item.setLetterSpacing(0.5)
+                self.app.processEvents()
+
+                block = item.document().firstBlock()
+                after = block.layout().lineForTextPosition(3).position()
+                self.assertEqual(after.x(), before.x())
+                self.assertLess(after.y(), before.y())
+
+    def test_lone_final_glyph_uses_configured_column_spacing(self):
+        block = TextBlock(
+            [0, 0, 300, 140],
+            text_layout_version=TEXT_LAYOUT_VERSION,
+        )
+        block._bounding_rect = [0, 0, 300, 140]
+        block.translation = '木木木—'
+        block.fontformat.vertical = True
+        block.fontformat.font_family = 'Noto Sans CJK SC'
+        block.fontformat.font_size = 40
+        block.fontformat.line_spacing = 1.5
+        item = TextBlkItem(block, 0)
+
+        text_block = item.document().firstBlock()
+        first_line = text_block.layout().lineForTextPosition(0)
+        final_line = text_block.layout().lineForTextPosition(3)
+        final_width = item.layout._line_record(
+            text_block, final_line.lineNumber()
+        )['line_width']
+
+        self.assertNotEqual(first_line.x(), final_line.x())
+        self.assertAlmostEqual(
+            first_line.x() - final_line.x(),
+            item.layout.calculate_line_spacing(final_width, 1.5),
+        )
 
     def test_standard_punctuation_is_centered_and_chinese_is_upper_right(self):
         for char in PUNSET_PAUSEORSTOP:

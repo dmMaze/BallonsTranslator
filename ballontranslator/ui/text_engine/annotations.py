@@ -113,7 +113,14 @@ class _InlineExtension:
         )
 
 
-def _canonical_letter_spacing(value: object) -> Optional[float]:
+def canonical_letter_spacing(value: object) -> Optional[float]:
+    """Return a supported spacing multiplier, or ``None`` when invalid.
+
+    >>> canonical_letter_spacing(1.25)
+    1.25
+    >>> canonical_letter_spacing(True) is None
+    True
+    """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     value = float(value)
@@ -133,7 +140,7 @@ def _parse_letter_spacing_attribute(value: object) -> Optional[float]:
         parsed = float(value)
     except ValueError:
         return None
-    return _canonical_letter_spacing(parsed)
+    return canonical_letter_spacing(parsed)
 
 
 def _style_declarations(value: object) -> dict[str, str]:
@@ -422,7 +429,7 @@ def load_rich_text_html(
             )
             else ()
         )
-        fallback = _canonical_letter_spacing(letter_spacing_fallback)
+        fallback = canonical_letter_spacing(letter_spacing_fallback)
         if fallback is not None:
             # Old HTML has no inline spacing. Seed its item-wide value; the
             # next save writes explicit spans for every resulting range.
@@ -486,7 +493,7 @@ def _inline_extension_ranges(
         while not iterator.atEnd():
             fragment = iterator.fragment()
             if fragment.isValid() and fragment.length() > 0:
-                spacing = _canonical_letter_spacing(
+                spacing = canonical_letter_spacing(
                     fragment.charFormat().property(
                         AnnotationProperty.LETTER_SPACING
                     )
@@ -760,12 +767,12 @@ def letter_spacing_value(
     fallback: float = 1.0,
 ) -> float:
     """Return semantic character spacing as a font-size multiplier."""
-    value = _canonical_letter_spacing(
+    value = canonical_letter_spacing(
         char_format.property(AnnotationProperty.LETTER_SPACING)
     )
     if value is not None:
         return value
-    fallback_value = _canonical_letter_spacing(fallback)
+    fallback_value = canonical_letter_spacing(fallback)
     return 1.0 if fallback_value is None else fallback_value
 
 
@@ -776,7 +783,7 @@ def apply_letter_spacing(
     vertical: bool,
 ) -> None:
     """Merge character spacing into a selection or insertion format."""
-    canonical_value = _canonical_letter_spacing(value)
+    canonical_value = canonical_letter_spacing(value)
     if canonical_value is None:
         raise ValueError(f'unsupported letter spacing: {value!r}')
     cursor.mergeCharFormat(
@@ -791,7 +798,7 @@ def set_document_letter_spacing_writing_mode(
     fallback: float,
 ) -> None:
     """Preserve semantic spacing while changing its Qt shaping value."""
-    fallback_value = _canonical_letter_spacing(fallback)
+    fallback_value = canonical_letter_spacing(fallback)
     fallback = 1.0 if fallback_value is None else fallback_value
     ranges = []
     block = document.firstBlock()

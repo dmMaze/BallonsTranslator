@@ -2,9 +2,10 @@
 
 Start here before changing text layout, editing, effects, geometry, or export.
 The code and tests are authoritative; this guide identifies ownership and the
-cross-file invariants that are easiest to break. For Projective, Bend,
-Sine Wave, Grid, or Glyph Slant, continue with
-[Composable text transforms](text_transforms.md).
+cross-file invariants that are easiest to break. Continue with
+[Text layout](text_layout.md) for shaping, wrapping, vertical flow, spacing,
+alignment, cursor, and hit geometry. For Projective, Bend, Sine Wave, Grid, or
+Glyph Slant, continue with [Composable text transforms](text_transforms.md).
 
 ## System and owners
 
@@ -79,24 +80,12 @@ this layer has none of these attributes and follows the same load path;
 malformed optional values are discarded without losing the base document.
 
 Tate-chu-yoko stores a stable group ID as well as the `all` enabled value. One
-application or insertion-format session therefore remains one
-vertical cell even when its inherited character styling creates several Qt
-fragments, while adjacent independent applications remain separate cells. CSS
-stores `text-combine-upright: all`; `data-btrans-text-combine-id` stores that
-stable identity. The
-vertical layout groups that ordinary text into one `QTextLine`; its established
-placement boundary owns cursor geometry, hit testing, effects, and emphasis
-positioning. Like Photoshop, the run keeps its natural horizontal advance and
-is centered on the existing vertical line: excess width is derived paint
-overflow and must not widen the column, move neighboring lines, or resize the
-persistent logical border. `TextItemGeometryController.source_paint_rect()`
-extends Qt paint, effect-cache, transformed-surface, and hit geometry to cover
-that overflow. The leading fragment supplies the normal cell height while
-every fragment retains its own paint style; taller inherited ink enlarges that
-cell instead of being clipped.
-Horizontal layout preserves the annotation without a visual change. Whitespace
-inside the grouped range remains part of that horizontal run rather than
-becoming vertical leading.
+application or insertion-format session therefore remains one group even when
+inherited character styling creates several Qt fragments, while adjacent
+independent applications remain separate. CSS stores
+`text-combine-upright: all`; `data-btrans-text-combine-id` stores that stable
+identity. Its cell, overflow, cursor, hit-test, and paint behavior is specified
+in [Text layout](text_layout.md).
 
 Keep one shared inline range boundary: reserve stable live property IDs,
 coalesce equal extension values, emit one semantic span per resulting text
@@ -115,18 +104,15 @@ multiplier. `FontFormat.letter_spacing` remains the item-wide compatibility and
 default value: rich text without the exact inline attribute is seeded from it
 on load and gains explicit spans on the next save. The attribute's absence is
 the pre-feature compatibility signal; there is no separate rich-text version.
-Horizontal layout lets Qt consume the per-range font spacing. Vertical layout
-keeps Qt's horizontal shaping at normal spacing and applies each leading
-fragment's semantic multiplier to that character cell; switching writing mode
-must retain the range values. Effect-document clones and internal clipboard
-insertion load the same inline representation instead of replacing ranges with
-the item-wide fallback.
+Effect-document clones and internal clipboard insertion load the same inline
+representation. Writing-mode behavior is specified in
+[Text layout](text_layout.md).
 
 `TextBlock.text_layout_version` versions item-wide layout semantics separately
 from the versionless inline HTML extensions. Missing/version-zero vertical
 blocks migrate to right alignment because that was their effective placement
 before vertical alignment was implemented; current blocks preserve their saved
-left, center, or right alignment.
+left, center, or right alignment. See [Text layout](text_layout.md).
 
 ## Coordinate spaces
 
@@ -150,29 +136,10 @@ visual bounding box back as the logical model rectangle.
 
 Both writing modes share `SceneTextLayout` state such as available size,
 effect padding, draw offsets, layout generation, optional delegated glyph
-painting, and optional input mapping.
-
-- Horizontal layout should continue using Qt shaping, wrapping, glyph runs, and
-  cursor indices.
-- Vertical layout owns its extra character orientation, punctuation, offsets,
-  and column records.
-- `FontFormat.standard_vertical_roman_alignment` is an item-wide persistent
-  switch and defaults to `True`, including when an older project omits it.
-  Enabled vertical text keeps Roman characters upright and centers upright
-  Roman and pause/stop punctuation in their character cells. Disabled vertical
-  text uses the Chinese mixed-layout path: proportional Roman characters rotate
-  clockwise, CLREQ vertical punctuation rotates by class, and pause/stop marks
-  use the Mainland upper-right placement. Horizontal layout is unaffected.
-- Character spacing is range-bound document state once text exists. A selection
-  changes only that range; no selection changes the insertion format. The
-  item-wide `FontFormat` field remains a legacy/default fallback, not a second
-  source that may overwrite restored ranges.
-- `VerticalTextDocumentLayout.reLayoutForResize()` has a width-only fast path:
-  it translates settled columns when height and padding are unchanged. Left,
-  center, and right alignment keep the top-left, top-center, and top-right
-  growth anchor respectively. Height, padding, or minimum-width changes still
-  require a full relayout.
-- Shared layout changes must cover horizontal and vertical writing.
+painting, and optional input mapping. Horizontal layout keeps Qt shaping and
+wrapping; vertical layout owns its additional orientation, punctuation, column,
+whitespace, cursor, and hit-test records. Their detailed contract lives in
+[Text layout](text_layout.md).
 
 The conceptual paint order is:
 

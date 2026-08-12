@@ -24,6 +24,7 @@ from .annotations import (
     apply_emphasis,
     apply_letter_spacing,
     apply_text_combine_upright,
+    canonical_letter_spacing,
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
@@ -877,7 +878,7 @@ class TextBlkItem(QGraphicsTextItem):
         return inserted
 
     def get_fontformat(self) -> FontFormat:
-        fmt = self.textCursor().charFormat()
+        fmt = self._active_char_format()
         font = fmt.font()
         color = fmt.foreground().color()
         fontformat = self.fontformat.deepcopy()
@@ -1031,8 +1032,12 @@ class TextBlkItem(QGraphicsTextItem):
                 if has_set_all:
                     cursor.setPosition(pos1)
                 else:
-                    cursor.setPosition(min(pos1, pos2))
-                    cursor.setPosition(max(pos1, pos2), QTextCursor.MoveMode.KeepAnchor)
+                    # Restore the original active end as well as the range.
+                    # Selection direction controls Qt's insertion format.
+                    cursor.setPosition(pos2)
+                    cursor.setPosition(
+                        pos1, QTextCursor.MoveMode.KeepAnchor
+                    )
                 self.setTextCursor(cursor)
 
         cursor.endEditBlock()
@@ -1113,12 +1118,21 @@ class TextBlkItem(QGraphicsTextItem):
         self.set_cursor_cfmt(cursor, cfmt, True)
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 
+    def _active_char_format(self) -> QTextCharFormat:
+        """Return a direction-independent format for panel synchronization."""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            # charFormat() samples immediately before the active cursor end.
+            # Use the selection end so forward and backward selections agree.
+            cursor.setPosition(cursor.selectionEnd())
+        return cursor.charFormat()
+
     def emphasis_values(self) -> tuple[str, str]:
-        return emphasis_values(self.textCursor().charFormat())
+        return emphasis_values(self._active_char_format())
 
     def letter_spacing_value(self) -> float:
         return letter_spacing_value(
-            self.textCursor().charFormat(),
+            self._active_char_format(),
             self.fontformat.letter_spacing,
         )
 
@@ -1160,7 +1174,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def tate_chu_yoko_enabled(self) -> bool:
         value, _group_id = text_combine_upright_values(
-            self.textCursor().charFormat()
+            self._active_char_format()
         )
         return value == TEXT_COMBINE_ALL
 
@@ -1206,7 +1220,34 @@ class TextBlkItem(QGraphicsTextItem):
         self.is_formatting = False
 
     def setLetterSpacing(self, value: float) -> None:
+        canonical_value = canonical_letter_spacing(value)
+        if canonical_value is None:
+            raise ValueError(f'unsupported letter spacing: {value!r}')
+        value = canonical_value
         update_item_default = not self.isEditing()
+        height_growth = 0.0
+        if isinstance(self.layout, VerticalTextDocumentLayout):
+            cursor = self.textCursor()
+            if update_item_default:
+                selection_start = 0
+                selection_end = self.document().characterCount() - 1
+            elif cursor.hasSelection():
+                selection_start = cursor.selectionStart()
+                selection_end = cursor.selectionEnd()
+            else:
+                selection_start = selection_end = cursor.position()
+            height_growth = self.layout.spacing_change_height_growth(
+                selection_start,
+                selection_end,
+                value,
+            )
+        if height_growth > 1e-6:
+            source_rect = self.geometry_controller.source_rect()
+            self.set_size(
+                source_rect.width(),
+                source_rect.height() + height_growth,
+                set_layout_maxsize=True,
+            )
         if update_item_default:
             self.old_ffmt_values = {
                 'letter_spacing': self.fontformat.letter_spacing
