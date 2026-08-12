@@ -1,6 +1,7 @@
 import threading
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.modules.context.errors import ContextLengthError
@@ -72,9 +73,17 @@ class LLMTranslatorTest(unittest.TestCase):
     def setUp(self):
         self.translator = LLMTranslator('日本語', '简体中文')
 
-    def test_json_response_parser_accepts_schema(self):
+    def test_json_response_parser_accepts_legacy_array_schema(self):
         result = self.translator._parse_response(
             '{"translations": [{"id": 1, "translation": "心"}, {"id": 2, "translation": "精神"}]}',
+            2,
+        )
+
+        self.assertEqual(result, ['心', '精神'])
+
+    def test_json_response_parser_accepts_fixed_id_object_schema(self):
+        result = self.translator._parse_response(
+            '{"2":"精神","1":"心"}',
             2,
         )
 
@@ -88,7 +97,7 @@ class LLMTranslatorTest(unittest.TestCase):
 
         self.assertIn('Translate every source string into Simplified Chinese.', messages[0]['content'])
         self.assertIn('Additional translation instructions:\nKeep JSON example {"x": 1}.', messages[0]['content'])
-        self.assertIn('"translations"', messages[0]['content'])
+        self.assertIn('{"1":"Translated text"', messages[0]['content'])
         self.assertIn('"source": "心"', prompt)
 
     def test_missing_required_api_key_raises_profile_error(self):
@@ -193,12 +202,47 @@ class LLMTranslatorTest(unittest.TestCase):
         profile = default_profile('OpenAI')
         profile.json_schema_response_format = True
 
-        args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
+        args = self.translator._api_args(
+            profile,
+            [{'role': 'user', 'content': 'x'}],
+            expected_translations=3,
+        )
 
         self.assertEqual(args['response_format']['type'], 'json_schema')
         self.assertEqual(args['response_format']['json_schema']['name'], 'translation_response')
         self.assertTrue(args['response_format']['json_schema']['strict'])
-        self.assertEqual(args['response_format']['json_schema']['schema'], self.translator._json_schema())
+        self.assertEqual(
+            args['response_format']['json_schema']['schema'],
+            {
+                'type': 'object',
+                'properties': {
+                    '1': {'type': 'string'},
+                    '2': {'type': 'string'},
+                    '3': {'type': 'string'},
+                },
+                'required': ['1', '2', '3'],
+                'additionalProperties': False,
+            },
+        )
+
+    def test_json_schema_rejects_an_empty_translation_request(self):
+        with self.assertRaisesRegex(ValueError, 'at least 1'):
+            self.translator._json_schema(0)
+
+    def test_translate_passes_input_count_to_structured_request(self):
+        profile = default_profile('LM Studio')
+        with mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value='{"1":"甲","2":"乙","3":"丙"}',
+        ) as request:
+            result = self.translator._translate(
+                ['a', 'b', 'c'],
+                profile=profile,
+            )
+
+        self.assertEqual(result, ['甲', '乙', '丙'])
+        self.assertEqual(request.call_args.kwargs['expected_translations'], 3)
 
     def test_stop_event_interrupts_wait(self):
         event = threading.Event()
