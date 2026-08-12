@@ -1226,6 +1226,83 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertEqual(block.fontformat.shadow_color, [7, 8, 9])
             self.assertEqual(block.fontformat.shadow_offset, [2, 1])
 
+    def test_detected_vertical_alignment_defaults_to_center(self):
+        global_format = FontFormat(alignment=0, vertical=True)
+        blocks = []
+        project = SimpleNamespace(
+            num_pages=1,
+            get_blklist_byidx=lambda _: blocks,
+            set_current_img_byidx=lambda _: None,
+            save=lambda: None,
+        )
+        owner = SimpleNamespace(
+            imgtrans_proj=project,
+            backup_blkstyles=[],
+            _run_imgtrans_wo_textstyle_update=False,
+            _render_only=False,
+            _render_global_format=global_format,
+            postprocess_translations=lambda _: None,
+            textPanel=SimpleNamespace(
+                formatpanel=SimpleNamespace(global_format=global_format)
+            ),
+            st_manager=SimpleNamespace(
+                auto_textlayout_flag=False,
+                updateSceneTextitems=lambda: None,
+                textblk_item_list=[],
+            ),
+            pageList=SimpleNamespace(
+                currentIndex=lambda: SimpleNamespace(row=lambda: 0)
+            ),
+            canvas=SimpleNamespace(updateCanvas=lambda: None),
+            saveCurrentPage=lambda *args: None,
+        )
+
+        def run(block):
+            blocks[:] = [block]
+            MainWindow.on_pagtrans_finished(owner, 0)
+
+        with patch.multiple(
+            pcfg,
+            let_alignment_flag=0,
+            let_writing_mode_flag=0,
+            let_fntsize_flag=0,
+            let_fntstroke_flag=0,
+            let_fntcolor_flag=0,
+            let_fnt_scolor_flag=0,
+            let_fnteffect_flag=0,
+            let_family_flag=0,
+        ), patch.multiple(
+            pcfg.module,
+            enable_detect=True,
+            enable_ocr=False,
+            enable_translate=False,
+            enable_inpaint=False,
+        ):
+            detected_vertical = TextBlock(text_layout_version=1)
+            detected_vertical.vertical = True
+            detected_vertical.src_is_vertical = True
+            detected_vertical.alignment = 2
+            run(detected_vertical)
+            self.assertEqual(detected_vertical.alignment, 1)
+
+            pcfg.let_alignment_flag = 1
+            global_alignment = TextBlock(text_layout_version=1)
+            global_alignment.vertical = True
+            global_alignment.src_is_vertical = True
+            global_alignment.alignment = 2
+            run(global_alignment)
+            self.assertEqual(global_alignment.alignment, 0)
+
+            pcfg.let_alignment_flag = 0
+            pcfg.let_writing_mode_flag = 1
+            forced_vertical = TextBlock(text_layout_version=1)
+            forced_vertical.vertical = False
+            forced_vertical.src_is_vertical = False
+            forced_vertical.alignment = 2
+            run(forced_vertical)
+            self.assertTrue(forced_vertical.vertical)
+            self.assertEqual(forced_vertical.alignment, 1)
+
     def test_render_only_skips_module_preparation_and_finishes_every_page(self):
         pages = []
         finished = []

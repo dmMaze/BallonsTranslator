@@ -11,7 +11,12 @@ from functools import lru_cache, cached_property
 
 from ..misc import pixmap2ndarray, LruIgnoreArg
 from ballontranslator.utils import shared as C
-from ballontranslator.utils.fontformat import pt2px, FontFormat, LineSpacingType
+from ballontranslator.utils.fontformat import (
+    pt2px,
+    FontFormat,
+    LineSpacingType,
+    TextAlignment,
+)
 from .annotations import letter_spacing_value, text_combine_upright_ranges
 from .rendering.indexing import (
     _grapheme_count,
@@ -467,6 +472,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._resize_layout_max_width = None
         self._resize_layout_available_height = None
         self._resize_layout_padding = None
+        self._alignment_x_shift = 0.0
 
     def needs_vertical_rotation(self, char: str) -> bool:
         rotation_chars = (
@@ -499,6 +505,49 @@ class VerticalTextDocumentLayout(SceneTextLayout):
     def align_right(self):
         return False
 
+    def _translate_columns(self, x_shift: float) -> None:
+        """Translate every settled vertical-layout x coordinate together."""
+        if abs(x_shift) <= 1e-9:
+            return
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for line_number in range(layout.lineCount()):
+                line = layout.lineAt(line_number)
+                position = line.position()
+                position.setX(position.x() + x_shift)
+                line.setPosition(position)
+            block = block.next()
+        self.x_offset_lst = [
+            x_offset + x_shift for x_offset in self.x_offset_lst
+        ]
+        self.layout_left += x_shift
+
+    def _column_content_width(self) -> float:
+        if not self.x_offset_lst:
+            return 0.0
+        return max(0.0, self.x_offset_lst[0] - self.layout_left)
+
+    def _desired_alignment_x_shift(self) -> float:
+        slack = max(0.0, self.available_width - self._column_content_width())
+        if self.fontformat.alignment == TextAlignment.Left:
+            return -slack
+        if self.fontformat.alignment == TextAlignment.Center:
+            return -slack / 2
+        return 0.0
+
+    def apply_alignment(self) -> bool:
+        """Translate settled columns without reshaping or resizing the box."""
+        desired = self._desired_alignment_x_shift()
+        x_shift = desired - self._alignment_x_shift
+        if abs(x_shift) <= 1e-9:
+            return False
+        self._begin_layout_generation()
+        self._translate_columns(x_shift)
+        self._alignment_x_shift = desired
+        self._refresh_annotation_ink_bounds()
+        return True
+
     def reLayout(self):
         self._begin_layout_generation()
         self.min_height = 0
@@ -510,6 +559,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.shrink_height = 0
         self.shrink_width = 0
         self.text_padding = 0
+        self._alignment_x_shift = 0.0
         doc = self.document()
         doc_margin = self._effect_padding
         block = doc.firstBlock()
@@ -530,18 +580,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             enlarged = True
         if enlarged:
             self._emit_size_enlarged()
-            if x_shift != 0:
-                block = doc.firstBlock()
-                while block.isValid():
-                    tl = block.layout()
-                    for ii in range(tl.lineCount()):
-                        line = tl.lineAt(ii)
-                        line_pos = line.position()
-                        line_pos.setX(x_shift + line_pos.x())
-                        line.setPosition(line_pos)
-                    block = block.next()
-                for ii, xoffset in enumerate(self.x_offset_lst):
-                    self.x_offset_lst[ii] = xoffset + x_shift
+        self._translate_columns(x_shift)
+        self._alignment_x_shift = self._desired_alignment_x_shift()
+        self._translate_columns(self._alignment_x_shift)
         self.updateDrawOffsets()
         self._refresh_annotation_ink_bounds()
         self._resize_layout_max_width = self.max_width
@@ -559,32 +600,29 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         ):
             self.reLayout()
             return
-        x_shift = self.max_width - self._resize_layout_max_width
-        if x_shift == 0:
+        width_shift = self.max_width - self._resize_layout_max_width
+        if width_shift == 0:
             self.documentSizeChanged.emit(
                 QSizeF(self.max_width, self.max_height)
             )
             return
-        if self.layout_left + x_shift < self._effect_padding:
+        if self.available_width + 1e-9 < self._column_content_width():
             # The normal path enforces the content's minimum column width.
             self.reLayout()
             return
 
-        self._begin_layout_generation()
-        block = self.document().firstBlock()
-        while block.isValid():
-            layout = block.layout()
-            for line_number in range(layout.lineCount()):
-                line = layout.lineAt(line_number)
-                position = line.position()
-                position.setX(position.x() + x_shift)
-                line.setPosition(position)
-            block = block.next()
-        self.x_offset_lst = [
-            x_offset + x_shift for x_offset in self.x_offset_lst
-        ]
-        self.layout_left += x_shift
-        self._refresh_annotation_ink_bounds()
+        previous_alignment_shift = self._alignment_x_shift
+        desired_alignment_shift = self._desired_alignment_x_shift()
+        column_shift = (
+            width_shift
+            + desired_alignment_shift
+            - previous_alignment_shift
+        )
+        if abs(column_shift) > 1e-9:
+            self._begin_layout_generation()
+            self._translate_columns(column_shift)
+            self._refresh_annotation_ink_bounds()
+        self._alignment_x_shift = desired_alignment_shift
         self._resize_layout_max_width = self.max_width
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 

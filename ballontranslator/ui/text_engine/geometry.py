@@ -658,18 +658,18 @@ class TextItemGeometryController:
 
     def _size_alignment_anchor(self, rect: QRectF) -> QPointF:
         item = self.item
-        if (
-            item.fontformat.vertical
-            or item.fontformat.alignment == TextAlignment.Right
-        ):
+        alignment = item.fontformat.alignment
+        if item.fontformat.vertical:
+            if alignment == TextAlignment.Left:
+                return rect.topLeft()
+            if alignment == TextAlignment.Center:
+                return QPointF(rect.center().x(), rect.top())
             return rect.topRight()
-        if item.fontformat.alignment == TextAlignment.Left:
+        if alignment == TextAlignment.Right:
+            return rect.topRight()
+        if alignment == TextAlignment.Left:
             return rect.topLeft()
         return rect.center()
-
-    def _scene_scale_factor(self):
-        scene = self.item.scene()
-        return scene.scale_factor if hasattr(scene, 'scale_factor') else 1
 
     def resize(
         self,
@@ -707,39 +707,17 @@ class TextItemGeometryController:
         if set_layout_maxsize:
             item.layout.setMaxSize(width, height)
 
-        old_width = self.display_rect.width()
-        old_height = self.display_rect.height()
-        old_center = item.sceneBoundingRect().center()
+        old_rect = self.logical_rect()
+        old_anchor_parent = item.mapToParent(
+            self._size_alignment_anchor(old_rect)
+        )
         self.display_rect.setWidth(width)
         self.display_rect.setHeight(height)
         self.sync_origin()
-        pos_shift = (
-            old_center - item.sceneBoundingRect().center()
-        ) / self._scene_scale_factor()
-
-        align_center = align_top_right = False
-        if item.fontformat.vertical:
-            align_top_right = True
-        else:
-            alignment = item.fontformat.alignment
-            if alignment == TextAlignment.Right:
-                align_top_right = True
-            elif alignment != TextAlignment.Left:
-                align_center = True
-
-        if not align_center:
-            delta_width = (width - old_width) / 2
-            delta_height = (height - old_height) / 2
-            if align_top_right:
-                delta_width = -delta_width
-            radians = -np.deg2rad(item.rotation())
-            cosine, sine = np.cos(radians), np.sin(radians)
-            pos_shift += QPointF(
-                cosine * delta_width + sine * delta_height,
-                -sine * delta_width + cosine * delta_height,
-            )
-
-        item.setPos(item.pos() + pos_shift)
+        new_anchor_parent = item.mapToParent(
+            self._size_alignment_anchor(self.logical_rect())
+        )
+        item.setPos(item.pos() + old_anchor_parent - new_anchor_parent)
         if item.blk is not None and set_blk_size:
             item.blk._bounding_rect = self.absolute_rect()
 
@@ -1093,8 +1071,10 @@ class TextItemGeometryController:
         if renderer is None:
             renderer = GlyphSlantLayoutRenderer(self.item.layout)
             self.layout_renderer = renderer
-        else:
-            renderer.bind_layout(self.item.layout)
+        elif renderer.layout is not self.item.layout:
+            raise RuntimeError(
+                'glyph renderer must be detached before layout replacement'
+            )
         self.item.layout.render_delegate = renderer
         self.item.layout.render_failure_handler = (
             self.item.effect_renderer._on_glyph_raster_failure

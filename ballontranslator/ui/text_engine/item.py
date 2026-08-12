@@ -504,6 +504,30 @@ class TextBlkItem(QGraphicsTextItem):
             if self.fontformat is not None:
                 self.fontformat.vertical = vertical
 
+            # Vertical alignment moves settled columns without touching the
+            # document. Synchronize Qt's paragraph option only when a writing
+            # mode switch is already rebuilding the layout.
+            option = doc.defaultTextOption()
+            option.setAlignment((
+                Qt.AlignmentFlag.AlignLeft,
+                Qt.AlignmentFlag.AlignCenter,
+                Qt.AlignmentFlag.AlignRight,
+            )[int(self.fontformat.alignment)])
+            if self.layout is None:
+                doc.setDefaultTextOption(option)
+            else:
+                relayout_on_changed = self.layout.relayout_on_changed
+                self.layout.relayout_on_changed = False
+                try:
+                    doc.setDefaultTextOption(option)
+                finally:
+                    self.layout.relayout_on_changed = relayout_on_changed
+
+            # QTextDocument owns its document layout and can delete the old
+            # QObject synchronously in setDocumentLayout(). The glyph renderer
+            # is bound to that exact layout, so release it before crossing the
+            # ownership boundary; initialize_layout() attaches a fresh one.
+            controller.detach_layout_renderer()
             if vertical:
                 layout = VerticalTextDocumentLayout(doc, self.fontformat)
             else:
@@ -940,11 +964,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.setStrokeWidth(ffmat.stroke_width, repaint_background=False)
         self.setOpacity(ffmat.opacity)
         
-        alignment_qt_flag = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][ffmat.alignment]
-        doc = self.document()
-        op = doc.defaultTextOption()
-        op.setAlignment(alignment_qt_flag)
-        doc.setDefaultTextOption(op)
+        self.setAlignment(ffmat.alignment, repaint_background=False)
         
         self.setLineSpacing(ffmat.line_spacing)
         
@@ -1290,19 +1310,49 @@ class TextBlkItem(QGraphicsTextItem):
 
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 
-    def setAlignment(self, value, restore_cursor=False, repaint_background=True, *args, **kwargs):
-        cursor, after_kwargs = self._before_set_ffmt(set_selected=False, restore_cursor=restore_cursor)
-        if isinstance(value, int):
-            qt_align_flag = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][value]
+    def _set_alignment_state(self, value: int) -> bool:
+        value = int(value)
+        state_changed = self.fontformat.alignment != value
+        vertical_layout = isinstance(self.layout, VerticalTextDocumentLayout)
+        if vertical_layout:
+            if not state_changed:
+                return False
+            self.prepareGeometryChange()
+            self.fontformat.alignment = value
+            self.layout.apply_alignment()
+            return True
+
+        qt_align_flag = (
+            Qt.AlignmentFlag.AlignLeft,
+            Qt.AlignmentFlag.AlignCenter,
+            Qt.AlignmentFlag.AlignRight,
+        )[value]
         doc = self.document()
-        op = doc.defaultTextOption()
-        op.setAlignment(qt_align_flag)
-        doc.setDefaultTextOption(op)
+        option = doc.defaultTextOption()
+        option_changed = option.alignment() != qt_align_flag
+        if not option_changed and not state_changed:
+            return False
+
+        # Alignment can move slanted-glyph ink beyond the logical rectangle in
+        # either writing mode, so notify the scene before changing the layout.
+        self.prepareGeometryChange()
+        self.fontformat.alignment = value
+        option.setAlignment(qt_align_flag)
+        doc.setDefaultTextOption(option)
+        return True
+
+    def setAlignment(self, value, restore_cursor=False, repaint_background=True, *args, **kwargs):
+        if not self._set_alignment_state(value):
+            return
+
+        self.geometry_controller.invalidate_surface_cache()
         if repaint_background:
             self.repaint_background()
-            self.update()
-        self.fontformat.alignment = value
-        self._after_set_ffmt(cursor, repaint_background=False, restore_cursor=restore_cursor, **after_kwargs)
+        else:
+            # A caller may defer the expensive effect redraw, but visible ink
+            # still needs correct bounds after slanted glyphs move.
+            self._update_effect_padding()
+        self.update()
 
     def get_char_fmts(self) -> List[QTextCharFormat]:
         cursor = self.textCursor()

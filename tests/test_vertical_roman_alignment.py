@@ -34,7 +34,7 @@ from ballontranslator.ui.text_engine.layout import (
 from ballontranslator.ui.text_engine.rendering.glyph import glyph_geometry
 from ballontranslator.utils import config as C
 from ballontranslator.utils import shared
-from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.fontformat import FontFormat, TextAlignment
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -227,6 +227,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         block._bounding_rect = [0, 0, 90, 70]
         block.translation = 'A'
         block.fontformat.vertical = True
+        block.fontformat.alignment = TextAlignment.Right
         block.fontformat.standard_vertical_roman_alignment = False
         block.fontformat.glyph_slant_angle = 24.0
         item = TextBlkItem(block, 0)
@@ -254,6 +255,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         wide_block._bounding_rect = [0, 0, 140, 220]
         wide_block.translation = '縦'
         wide_block.fontformat.vertical = True
+        wide_block.fontformat.alignment = TextAlignment.Right
         wide_block.fontformat.standard_vertical_roman_alignment = True
         wide_block.fontformat.glyph_slant_angle = 18.0
         wide_item = TextBlkItem(wide_block, 1)

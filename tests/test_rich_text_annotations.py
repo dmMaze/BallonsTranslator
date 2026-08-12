@@ -46,6 +46,7 @@ from ballontranslator.ui.text_engine.rendering.tate_chu_yoko import (
     tate_chu_yoko_ink_bounds,
     tate_chu_yoko_natural_bounds,
 )
+from ballontranslator.utils.fontformat import TextAlignment
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -967,6 +968,7 @@ class RichTextAnnotationTest(unittest.TestCase):
                 block = TextBlock([0, 0, 140, 140])
                 block._bounding_rect = [0, 0, 140, 140]
                 block.vertical = True
+                block.alignment = TextAlignment.Right
                 block.translation = '天天'
                 block.fontformat.font_size = 48
                 if effect == 'stroke':

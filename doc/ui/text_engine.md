@@ -122,6 +122,12 @@ must retain the range values. Effect-document clones and internal clipboard
 insertion load the same inline representation instead of replacing ranges with
 the item-wide fallback.
 
+`TextBlock.text_layout_version` versions item-wide layout semantics separately
+from the versionless inline HTML extensions. Missing/version-zero vertical
+blocks migrate to right alignment because that was their effective placement
+before vertical alignment was implemented; current blocks preserve their saved
+left, center, or right alignment.
+
 ## Coordinate spaces
 
 Name the space whenever geometry crosses an owner:
@@ -162,8 +168,10 @@ painting, and optional input mapping.
   item-wide `FontFormat` field remains a legacy/default fallback, not a second
   source that may overwrite restored ranges.
 - `VerticalTextDocumentLayout.reLayoutForResize()` has a width-only fast path:
-  it translates settled columns when height and padding are unchanged. Height,
-  padding, or minimum-width changes still require a full relayout.
+  it translates settled columns when height and padding are unchanged. Left,
+  center, and right alignment keep the top-left, top-center, and top-right
+  growth anchor respectively. Height, padding, or minimum-width changes still
+  require a full relayout.
 - Shared layout changes must cover horizontal and vertical writing.
 
 The conceptual paint order is:

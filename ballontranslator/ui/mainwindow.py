@@ -1662,18 +1662,21 @@ class MainWindow(mainwindow_cls):
                         blk.set_font_colors(fg_colors=gf.frgb)
                     if override_fnt_scolor:
                         blk.set_font_colors(bg_colors=gf.srgb)
+                    if override_writing_mode:
+                        blk.vertical = gf.vertical
                     if override_alignment:
                         blk.alignment = gf.alignment
-                    elif enable_detect and not blk.src_is_vertical:
-                        blk.recalulate_alignment()
+                    elif enable_detect:
+                        if blk.vertical:
+                            blk.alignment = TextAlignment.Center
+                        elif not blk.src_is_vertical:
+                            blk.recalulate_alignment()
                     if override_effect:
                         blk.opacity = gf.opacity
                         blk.shadow_color = gf.shadow_color
                         blk.shadow_radius = gf.shadow_radius
                         blk.shadow_strength = gf.shadow_strength
                         blk.shadow_offset = gf.shadow_offset
-                    if override_writing_mode:
-                        blk.vertical = gf.vertical
                     if override_font_family or blk.font_family is None:
                         blk.font_family = gf.font_family
                         if blk.rich_text:

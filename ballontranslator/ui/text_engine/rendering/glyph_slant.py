@@ -108,17 +108,6 @@ class GlyphSlantLayoutRenderer:
         self.geometry_plan_bounds = QRectF()
         self.geometry_cache = LayoutGlyphGeometryCache(self)
 
-    def bind_layout(self, layout: SceneTextLayout) -> None:
-        """Attach a replacement writing-mode layout without leaking caches."""
-        if self.layout is layout:
-            return
-        self.geometry_cache.invalidate_generation()
-        self.layout = layout
-        self.generation = getattr(layout, 'layout_generation', 0)
-        self.bounds_cache.clear()
-        self.geometry_plan = None
-        self.geometry_plan_bounds = QRectF()
-
     def ensure_layout_generation(self) -> None:
         generation = getattr(self.layout, 'layout_generation', self.generation)
         if generation == self.generation:
