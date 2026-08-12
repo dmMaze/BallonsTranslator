@@ -47,6 +47,16 @@ from .rendering.tate_chu_yoko import (
     tate_chu_yoko_natural_bounds,
     tate_chu_yoko_transform,
 )
+from .rendering.ruby import (
+    RubyBlockMetrics,
+    RubyPlacement,
+    RubyUnitMetrics,
+    clear_horizontal_ruby_layout,
+    draw_ruby_placement,
+    ruby_placement,
+    ruby_side_margins,
+    vertical_ruby_metrics,
+)
 
 PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 
@@ -245,6 +255,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.need_ideal_width = True
         self.per_char_records = []
         self.text_combine_ranges = []
+        self._ruby_metrics: List[RubyBlockMetrics] = []
         self._annotation_ink_bounds = QRectF()
         self._cursor_update_rect = QRectF()
         self._resize_layout_max_width = None
@@ -436,6 +447,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.line_spaces_lst = []
         self.per_char_records = []
         self.text_combine_ranges = []
+        self._ruby_metrics = []
         self.draw_shifted = 0
         self.shrink_height = 0
         self.shrink_width = 0
@@ -901,8 +913,92 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         )
 
     def annotation_ink_bounds(self) -> QRectF:
-        """Return cached Tate-chu-yoko and attached emphasis ink."""
+        """Return cached Tate-chu-yoko, Ruby, and emphasis ink."""
         return QRectF(self._annotation_ink_bounds)
+
+    def _vertical_ruby_base_cell(
+        self,
+        block: QTextBlock,
+        metric: RubyUnitMetrics,
+    ) -> QRectF:
+        layout = block.layout()
+        local_start = metric.unit.start - block.position()
+        local_end = metric.unit.end - block.position()
+        base_bounds = QRectF()
+        first_line = layout.lineForTextPosition(local_start)
+        last_line = layout.lineForTextPosition(max(local_start, local_end - 1))
+        if not first_line.isValid() or not last_line.isValid():
+            return base_bounds
+        for line_number in range(
+            first_line.lineNumber(), last_line.lineNumber() + 1
+        ):
+            line = layout.lineAt(line_number)
+            line_start = line.textStart()
+            line_end = line_start + line.textLength()
+            if line_start >= local_end or line_end <= local_start:
+                continue
+            cells = self._vertical_line_cells(block, line_number)
+            if not cells:
+                continue
+            top = min(cell[2] for cell in cells)
+            bottom = max(cell[3] for cell in cells)
+            char_format = self.get_char_fontfmt(
+                block.blockNumber(), max(local_start, line_start)
+            )
+            base_width = (
+                self._vertical_line_width(block, line_number)
+                if char_format is None
+                else char_format.tbr.width()
+            )
+            line_width = self._vertical_line_width(block, line_number)
+            rect = QRectF(
+                line.x() + (line_width - base_width) / 2,
+                top,
+                base_width,
+                bottom - top,
+            )
+            base_bounds = (
+                rect
+                if base_bounds.isEmpty()
+                else base_bounds.united(rect)
+            )
+        return base_bounds
+
+    def _vertical_ruby_unit_cell(
+        self,
+        block: QTextBlock,
+        metric: RubyUnitMetrics,
+    ) -> QRectF:
+        base_bounds = self._vertical_ruby_base_cell(block, metric)
+        return base_bounds.adjusted(
+            0.0, -metric.extra / 2, 0.0, metric.extra / 2
+        ) if not base_bounds.isEmpty() else base_bounds
+
+    def _vertical_ruby_placements(
+        self,
+        block: QTextBlock,
+        context: Optional[QAbstractTextDocumentLayout.PaintContext] = None,
+    ) -> Tuple[RubyPlacement, ...]:
+        if block.blockNumber() >= len(self._ruby_metrics):
+            return ()
+        angle = float(getattr(self.render_delegate, 'glyph_slant_angle', 0.0))
+        placements = []
+        block_metrics = self._ruby_metrics[block.blockNumber()]
+        for metric in block_metrics:
+            cell = self._vertical_ruby_unit_cell(block, metric)
+            if cell.isEmpty():
+                continue
+            placements.append(ruby_placement(
+                block,
+                metric.container,
+                metric.unit,
+                cell,
+                vertical=True,
+                context=context,
+                glyph_slant_angle=angle,
+                format_index=block_metrics.format_index,
+            ))
+        return tuple(placements)
 
     def _refresh_annotation_ink_bounds(self) -> None:
         """Measure paint overflow after final line placement.
@@ -914,9 +1010,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         block = self.document().firstBlock()
         while block.isValid():
             text_layout = block.layout()
+            has_ruby = (
+                block.blockNumber() < len(self._ruby_metrics)
+                and bool(self._ruby_metrics[block.blockNumber()])
+            )
             for line_number in range(text_layout.lineCount()):
                 cell = self.tate_chu_yoko_cell_rect(block, line_number)
-                if cell is None:
+                if cell is None and not has_ruby:
                     continue
                 placement = self.vertical_line_placement(
                     block, line_number
@@ -924,17 +1024,27 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if placement is None:
                     continue
                 line, offset, orientation = placement
-                candidates = (
-                    cell,
-                    tate_chu_yoko_ink_bounds(line, cell),
+                ruby_margins = ruby_side_margins(
+                    block,
+                    line,
+                    self._ruby_metrics[block.blockNumber()],
+                    vertical=True,
+                )
+                candidates = [
                     emphasis_ink_bounds(
                         block,
                         line,
                         vertical=True,
                         offset=offset,
                         orientation=orientation,
+                        side_offsets=ruby_margins,
                     ),
-                )
+                ]
+                if cell is not None:
+                    candidates.extend((
+                        cell,
+                        tate_chu_yoko_ink_bounds(line, cell),
+                    ))
                 for candidate in candidates:
                     if candidate.isEmpty():
                         continue
@@ -943,8 +1053,95 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         if bounds.isEmpty()
                         else bounds.united(candidate)
                     )
+            for placement in self._vertical_ruby_placements(block):
+                candidate = placement.ink_bounds
+                if not candidate.isEmpty():
+                    bounds = (
+                        QRectF(candidate)
+                        if bounds.isEmpty()
+                        else bounds.united(candidate)
+                    )
             block = block.next()
         self._annotation_ink_bounds = bounds
+
+    def _ruby_hit_test(self, point: QPointF) -> Optional[int]:
+        block = self.document().firstBlock()
+        while block.isValid():
+            if block.blockNumber() >= len(self._ruby_metrics):
+                block = block.next()
+                continue
+            angle = float(getattr(
+                self.render_delegate, 'glyph_slant_angle', 0.0
+            ))
+            block_metrics = self._ruby_metrics[block.blockNumber()]
+            for metric in block_metrics:
+                cell = self._vertical_ruby_unit_cell(block, metric)
+                if cell.isEmpty():
+                    continue
+                placement = ruby_placement(
+                    block,
+                    metric.container,
+                    metric.unit,
+                    cell,
+                    vertical=True,
+                    glyph_slant_angle=angle,
+                    format_index=block_metrics.format_index,
+                )
+                base_cell = self._vertical_ruby_base_cell(block, metric)
+                annotation_hit = placement.ink_bounds.contains(point)
+                gap_hit = (
+                    placement.cell.contains(point)
+                    and not base_cell.contains(point)
+                )
+                if not annotation_hit and not gap_hit:
+                    continue
+                boundaries = []
+                layout = block.layout()
+                local_start = metric.unit.start - block.position()
+                local_end = metric.unit.end - block.position()
+                first_line = layout.lineForTextPosition(local_start)
+                last_line = layout.lineForTextPosition(
+                    max(local_start, local_end - 1)
+                )
+                for line_number in range(
+                    first_line.lineNumber(), last_line.lineNumber() + 1
+                ):
+                    for start, end, top, bottom, _is_space in (
+                        self._vertical_line_cells(block, line_number)
+                    ):
+                        if start < local_end and end > local_start:
+                            boundaries.extend(((top, start), (bottom, end)))
+                if boundaries:
+                    _distance, local = min(
+                        (abs(point.y() - y), position)
+                        for y, position in boundaries
+                    )
+                    return block.position() + local
+                return placement.unit.start
+            block = block.next()
+        return None
+
+    def _paint_ruby_selection_backgrounds(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        if block.blockNumber() >= len(self._ruby_metrics):
+            return
+        for selection in context.selections:
+            if not selection.cursor.hasSelection():
+                continue
+            brush = selection.format.background()
+            if brush.style() == Qt.BrushStyle.NoBrush:
+                continue
+            for metric in self._ruby_metrics[block.blockNumber()].overlapping(
+                selection.cursor.selectionStart(),
+                selection.cursor.selectionEnd(),
+            ):
+                cell = self._vertical_ruby_unit_cell(block, metric)
+                if not cell.isEmpty():
+                    painter.fillRect(cell, brush)
 
     def _tate_chu_yoko_hit_position(
         self,
@@ -1061,6 +1258,17 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             cpos = _block_cursor_position(block, cursor_position)
             if cpos >= 0:
                 layout = block.layout()
+                if block.blockNumber() < len(self._ruby_metrics):
+                    metric = self._ruby_metrics[
+                        block.blockNumber()
+                    ].containing(cursor_position)
+                    if metric is not None:
+                        start = metric.unit.start - block.position()
+                        end = metric.unit.end - block.position()
+                        cell = self._vertical_ruby_unit_cell(block, metric)
+                        if not cell.isEmpty() and cpos in (start, end):
+                            y = cell.top() if cpos == start else cell.bottom()
+                            return QRectF(cell.left(), y, cell.width(), 2.0)
                 line = layout.lineForTextPosition(cpos)
                 if not line.isValid():
                     return QRectF()
@@ -1148,6 +1356,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             if _block_cursor_position(block, context.cursorPosition) >= 0:
                 cursor_block = block
 
+            self._paint_ruby_selection_backgrounds(
+                painter, block, context
+            )
+
             for ii in range(layout.lineCount()):
                 line = layout.lineAt(ii)
                 if line.textLength() == 0:
@@ -1188,6 +1400,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             vertical=True,
                             offset=offset,
                             orientation=orientation,
+                            side_offsets=ruby_side_margins(
+                                block,
+                                placed_line,
+                                self._ruby_metrics[block.blockNumber()],
+                                vertical=True,
+                            ),
                         )
                     continue
                 intersects = has_selection and self._line_has_selection(
@@ -1276,8 +1494,18 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         vertical=True,
                         offset=offset,
                         orientation=orientation,
+                        side_offsets=ruby_side_margins(
+                            block,
+                            placed_line,
+                            self._ruby_metrics[block.blockNumber()],
+                            vertical=True,
+                        ),
                     )
 
+            for ruby_annotation in self._vertical_ruby_placements(
+                block, context
+            ):
+                draw_ruby_placement(painter, ruby_annotation)
             block = block.next()
 
         if self.foreground_pixmap is not None:
@@ -1315,6 +1543,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
         point = self.map_input_point(point)
+        ruby_hit = self._ruby_hit_test(point)
+        if ruby_hit is not None:
+            return ruby_hit
         text_combine_hit = self._tate_chu_yoko_hit_test(point)
         if text_combine_hit is not None:
             return text_combine_hit
@@ -1356,6 +1587,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         doc = self.document()
 
         block.clearLayout()
+        clear_horizontal_ruby_layout(block)
         doc_margin = self._effect_padding
         line_y_offset = doc_margin
         blk_char_yoffset = []
@@ -1367,6 +1599,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         custom_rendering = self.render_delegate is not None
         text_combine_ranges = text_combine_upright_ranges(block)
         self.text_combine_ranges.append(text_combine_ranges)
+        ruby_metrics = vertical_ruby_metrics(
+            block,
+            self.needs_vertical_rotation,
+            self.letter_spacing,
+        )
+        self._ruby_metrics.append(ruby_metrics)
+        ruby_starts = {
+            metric.unit.start - block.position(): metric
+            for metric in ruby_metrics
+        }
         text_combine_lengths = {
             start: length for start, length, _group_id in text_combine_ranges
         }
@@ -1405,6 +1647,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         is_first_line = block_no == 0
         char_records = {}
         line_char_ids = []
+        active_ruby_metric = None
 
         while True:
             line = tl.createLine()
@@ -1425,6 +1668,44 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
             end_char = char_idx + text_len >= blk_text_len
+            if active_ruby_metric is None:
+                active_ruby_metric = ruby_starts.get(char_idx)
+            ruby_metric = active_ruby_metric
+            ruby_unit_start = (
+                -1
+                if ruby_metric is None
+                else ruby_metric.unit.start - block.position()
+            )
+            ruby_unit_end = (
+                -1
+                if ruby_metric is None
+                else ruby_metric.unit.end - block.position()
+            )
+            ruby_leading = (
+                ruby_metric.extra / 2
+                if ruby_metric is not None and char_idx == ruby_unit_start
+                else 0.0
+            )
+            ruby_trailing = (
+                ruby_metric.extra / 2
+                if ruby_metric is not None and char_idx + text_len >= ruby_unit_end
+                else 0.0
+            )
+            group_ruby = (
+                ruby_metric is not None
+                and ruby_metric.container.ruby_type == 'group'
+            )
+            if ruby_metric is not None and ruby_metric.extent > self.available_height:
+                self.min_height = max(
+                    self.min_height, doc_margin + ruby_metric.extent
+                )
+            force_ruby_wrap = (
+                ruby_metric is not None
+                and char_idx == ruby_unit_start
+                and line_y_offset > doc_margin + 1e-6
+                and line_y_offset + ruby_metric.extent
+                > self.available_height + doc_margin
+            )
 
             is_first_lbracket = False
             # _lbracket_shift = 0
@@ -1548,7 +1829,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if is_final_block:
                     self.draw_shifted = max(self.draw_shifted, shifted)
 
-            char_yoffset_lst = [line_y_offset]
+            line_position_y = line_y_offset + ruby_leading
+            char_yoffset_lst = [line_position_y]
             if is_first_lbracket:
                 char_yoffset_lst[0] += _lbracket_shift
             for _ in range(num_lspaces):
@@ -1557,7 +1839,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             char_bottom = char_yoffset_lst[-1] + tbr_h
             out_of_vspace = (
-                char_bottom - max(spacing_advance, 0) > available_height
+                force_ruby_wrap
+                or (
+                    not group_ruby
+                    and char_bottom + ruby_trailing
+                    - max(spacing_advance, 0) > available_height
+                )
             )
             if out_of_vspace:
                 # switch to next line
@@ -1565,12 +1852,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     self.min_height = doc_margin + tbr_h
 
                 line_y_offset = doc_margin
-
-                char_yoffset_lst[-1] = line_y_offset
-                char_yoffset_lst.append(line_y_offset + tbr_h)
+                line_position_y = line_y_offset + ruby_leading
+                char_yoffset_lst[-1] = line_position_y
+                char_yoffset_lst.append(line_position_y + tbr_h)
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
-                line_bottom = char_yoffset_lst[-1]
+                line_bottom = char_yoffset_lst[-1] + ruby_trailing
             else:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 if cfmt is not None:
@@ -1578,6 +1865,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         right_margin, left_margin = emphasis_margins(
                             block, line, vertical=True
                         )
+                        ruby_right, ruby_left = ruby_side_margins(
+                            block, line, ruby_metrics, vertical=True
+                        )
+                        right_margin += ruby_right
+                        left_margin += ruby_left
                         current_line_width = (
                             cfmt.tbr.width()
                             + 2 * max(right_margin, left_margin)
@@ -1591,10 +1883,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 char_yoffset_lst.append(char_bottom)
                 for _ in range(num_rspaces):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
-                line_bottom = char_yoffset_lst[-1]
+                line_bottom = char_yoffset_lst[-1] + ruby_trailing
                 shrink_height = max(shrink_height, line_bottom)
 
-            ypos_list.append(line_y_offset)
+            ypos_list.append(line_position_y)
             line_not_set.append(line)
             if out_of_vspace or end_char:
                 if is_first_line:
@@ -1678,6 +1970,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             line_y_offset = max(line_bottom, doc_margin)
             char_idx += text_len - num_lspaces
+            if ruby_metric is not None and char_idx >= ruby_unit_end:
+                active_ruby_metric = None
         tl.endLayout()
 
         self.layout_left = x_offset - self.draw_shifted

@@ -30,6 +30,7 @@ from ...custom_widget import (
     Widget,
 )
 from ..item import TextBlkItem
+from ..annotations import RubyValidationError
 from .advanced import TextAdvancedFormatPanel
 from ..transforms.edit_session import TextTransformEditSession
 from ..transforms.panel import TextTransformPanel
@@ -414,6 +415,12 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.tate_chu_yoko_changed.connect(
             self.on_tate_chu_yoko_changed
         )
+        self.textadvancedfmt_panel.ruby_apply_requested.connect(
+            self.on_ruby_apply_requested
+        )
+        self.textadvancedfmt_panel.ruby_remove_requested.connect(
+            self.on_ruby_remove_requested
+        )
         self.texttransform_panel = TextTransformPanel(
             self.tr('Text Transform'),
             config_name='text_transform_panel',
@@ -532,10 +539,84 @@ class FontFormatPanel(Widget):
             items = [self.textblk_item]
         else:
             items = SW.canvas.selected_text_items()
-        for item in items:
-            item.setTateChuYoko(enabled)
+        try:
+            for item in items:
+                item.setTateChuYoko(enabled)
+        except RubyValidationError as error:
+            if str(error) == 'Tate-chu-yoko cannot overlap Ruby':
+                message = self.tr('Tate-chu-yoko cannot overlap Ruby.')
+            else:
+                message = self.tr(
+                    'Unable to apply Tate-chu-yoko to this selection.'
+                )
+            self.textadvancedfmt_panel.tate_chu_yoko_group.set_error(message)
+            current = (
+                self.textblk_item.tate_chu_yoko_enabled()
+                if self.textblk_item is not None else False
+            )
+            self.textadvancedfmt_panel.set_tate_chu_yoko_enabled(current)
+            return
+        self.textadvancedfmt_panel.tate_chu_yoko_group.set_error('')
         if items:
             restore_canvas_view_focus()
+
+    def _restore_ruby_edit_focus(self, item: TextBlkItem) -> None:
+        if item.isEditing():
+            SW.canvas.gv.setFocus()
+            item.setFocus(Qt.FocusReason.OtherFocusReason)
+        else:
+            restore_canvas_view_focus()
+
+    def on_ruby_apply_requested(
+        self, ruby_type: str, text: str, position: str
+    ) -> None:
+        item = self.textblk_item
+        if item is None:
+            return
+        try:
+            item.setRuby(ruby_type, text, position)
+        except RubyValidationError as error:
+            messages = {
+                'Ruby cannot partially overlap an existing container': self.tr(
+                    'Ruby cannot partially overlap an existing container.'
+                ),
+                'Ruby cannot overlap Tate-chu-yoko': self.tr(
+                    'Ruby cannot overlap Tate-chu-yoko.'
+                ),
+                'Ruby base text cannot contain paragraph or forced line breaks': self.tr(
+                    'Ruby base text cannot contain paragraph or forced line breaks.'
+                ),
+            }
+            self.textadvancedfmt_panel.ruby_group.set_error(
+                messages.get(
+                    str(error),
+                    self.tr('Unable to apply Ruby to this selection.'),
+                )
+            )
+            self._restore_ruby_edit_focus(item)
+            return
+        values = item.ruby_editor_values()
+        self.textadvancedfmt_panel.set_ruby_state(
+            *values[:3],
+            editable=values[3],
+            can_create=values[4],
+            base_count=values[5],
+        )
+        self._restore_ruby_edit_focus(item)
+
+    def on_ruby_remove_requested(self) -> None:
+        item = self.textblk_item
+        if item is None:
+            return
+        item.removeRuby()
+        values = item.ruby_editor_values()
+        self.textadvancedfmt_panel.set_ruby_state(
+            *values[:3],
+            editable=values[3],
+            can_create=values[4],
+            base_count=values[5],
+        )
+        self._restore_ruby_edit_focus(item)
 
     def resolve_text_transform_edits_for_save(self):
         self.text_transform_session.resolve_for_save()
@@ -615,12 +696,25 @@ class FontFormatPanel(Widget):
                 'none', 'over right'
             )
             self.textadvancedfmt_panel.set_tate_chu_yoko_enabled(False)
+            self.textadvancedfmt_panel.set_ruby_state(
+                'group', '', 'over',
+                editable=False,
+                can_create=False,
+                base_count=0,
+            )
         else:
             self.textadvancedfmt_panel.set_emphasis_values(
                 *self.textblk_item.emphasis_values()
             )
             self.textadvancedfmt_panel.set_tate_chu_yoko_enabled(
                 self.textblk_item.tate_chu_yoko_enabled()
+            )
+            values = self.textblk_item.ruby_editor_values()
+            self.textadvancedfmt_panel.set_ruby_state(
+                *values[:3],
+                editable=values[3],
+                can_create=values[4],
+                base_count=values[5],
             )
         if update_transform_panel:
             self.texttransform_panel.set_active_format(font_format)

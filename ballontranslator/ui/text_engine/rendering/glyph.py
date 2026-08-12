@@ -8,6 +8,7 @@ through the glyph-local shear and the placement/orientation supplied by
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections import OrderedDict
 import math
 from typing import (
@@ -258,6 +259,14 @@ def _composed_transform(*transforms: QTransform) -> QTransform:
 
 
 def _format_at(block: QTextBlock, local_position: int) -> QTextCharFormat:
+    layout = block.document().documentLayout()
+    indexed_ranges = getattr(layout, 'fragment_format_ranges', None)
+    if indexed_ranges is not None:
+        ranges = indexed_ranges(
+            block.blockNumber(), local_position, local_position + 1
+        )
+        if ranges:
+            return QTextCharFormat(ranges[0][2])
     absolute = block.position() + local_position
     iterator = block.begin()
     while not iterator.atEnd():
@@ -323,21 +332,41 @@ def resolve_paint_spans(
         return ()
     boundaries = {line_start, line_end}
 
-    iterator = block.begin()
-    while not iterator.atEnd():
-        fragment = iterator.fragment()
-        if fragment.isValid():
-            start = fragment.position() - block.position()
-            end = start + fragment.length()
-            if start < line_end and end > line_start:
-                boundaries.update((max(start, line_start), min(end, line_end)))
-        iterator += 1
+    layout = block.document().documentLayout()
+    indexed_ranges = getattr(layout, 'fragment_format_ranges', None)
+    fragment_ranges = (
+        indexed_ranges(block.blockNumber(), line_start, line_end)
+        if indexed_ranges is not None else ()
+    )
+    if fragment_ranges:
+        for start, end, _char_format in fragment_ranges:
+            boundaries.update((start, end))
+    else:
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid():
+                start = fragment.position() - block.position()
+                end = start + fragment.length()
+                if start < line_end and end > line_start:
+                    boundaries.update((
+                        max(start, line_start), min(end, line_end)
+                    ))
+            iterator += 1
 
-    for format_range in additional_formats:
+    additional_starts = {}
+    additional_ends = {}
+    for order, format_range in enumerate(additional_formats):
         start = int(format_range.start)
         end = start + int(format_range.length)
         if start < line_end and end > line_start:
-            boundaries.update((max(start, line_start), min(end, line_end)))
+            clipped_start = max(start, line_start)
+            clipped_end = min(end, line_end)
+            boundaries.update((clipped_start, clipped_end))
+            additional_starts.setdefault(clipped_start, []).append(
+                (order, format_range.format)
+            )
+            additional_ends.setdefault(clipped_end, []).append(order)
 
     selection_bounds = None
     if selection is not None:
@@ -349,15 +378,31 @@ def resolve_paint_spans(
 
     ordered = sorted(boundaries)
     spans: List[PaintSpan] = []
+    fragment_index = 0
+    active_formats = {}
     for start, end in zip(ordered, ordered[1:]):
         if end <= start:
             continue
-        char_format = _format_at(block, start)
-        for format_range in additional_formats:
-            range_start = int(format_range.start)
-            range_end = range_start + int(format_range.length)
+        for order in additional_ends.get(start, ()):
+            active_formats.pop(order, None)
+        for order, char_format_override in additional_starts.get(start, ()):
+            active_formats[order] = char_format_override
+        while (
+            fragment_index < len(fragment_ranges)
+            and fragment_ranges[fragment_index][1] <= start
+        ):
+            fragment_index += 1
+        indexed = None
+        if fragment_index < len(fragment_ranges):
+            range_start, range_end, candidate = fragment_ranges[fragment_index]
             if range_start <= start < range_end:
-                char_format.merge(format_range.format)
+                indexed = candidate
+        char_format = (
+            QTextCharFormat(indexed)
+            if indexed is not None else _format_at(block, start)
+        )
+        for order in sorted(active_formats):
+            char_format.merge(active_formats[order])
         if (
             selection is not None
             and selection_bounds is not None
@@ -1187,6 +1232,7 @@ def draw_slanted_line(
     persistent_geometry_cache: Optional[Any] = None,
     cache_namespace: Optional[Hashable] = None,
     background_overlays: Sequence[Tuple[QRectF, QBrush]] = (),
+    horizontal_shifts: Sequence[Tuple[int, int, float]] = (),
 ) -> None:
     """Paint one already-laid-out line without changing logical geometry."""
     layout = block.layout()
@@ -1194,16 +1240,26 @@ def draw_slanted_line(
     normal_spans = resolve_paint_spans(block, line, additional_formats)
     baseline_y = line.y() + line.ascent() + offset.y()
     geometry_cache = {}
+    shift_starts = tuple(start for start, _end, _shift in horizontal_shifts)
+
+    def span_offset(span: PaintSpan) -> QPointF:
+        if not shift_starts:
+            return offset
+        index = bisect_right(shift_starts, span.start) - 1
+        if index < 0 or span.start >= horizontal_shifts[index][1]:
+            return offset
+        return QPointF(offset.x() + horizontal_shifts[index][2], offset.y())
 
     def span_geometry(span: PaintSpan) -> GlyphGeometry:
         key = (span.start, span.length)
         geometry = geometry_cache.get(key)
         if geometry is None:
+            span_draw_offset = span_offset(span)
             persistent_key = _geometry_cache_key(
                 cache_namespace,
                 span.start,
                 span.length,
-                offset,
+                span_draw_offset,
                 orientation,
                 angle,
             )
@@ -1214,7 +1270,7 @@ def draw_slanted_line(
                     line,
                     span.start,
                     span.length,
-                    offset,
+                    span_draw_offset,
                     orientation,
                     angle,
                 )
@@ -1257,7 +1313,9 @@ def draw_slanted_line(
         return
 
     for span in normal_spans:
-        rect = logical_span_rect(line, span.start, span.length, offset, orientation)
+        rect = logical_span_rect(
+            line, span.start, span.length, span_offset(span), orientation
+        )
         _draw_background(painter, rect, span.char_format)
 
     selection_spans = []
@@ -1287,7 +1345,7 @@ def draw_slanted_line(
             ):
                 continue
             rect = logical_span_rect(
-                line, span.start, span.length, offset, orientation
+                line, span.start, span.length, span_offset(span), orientation
             )
             if not full_width:
                 _draw_background(painter, rect, span.char_format)
@@ -1310,7 +1368,7 @@ def draw_slanted_line(
         _draw_decorations(
             painter,
             _logical_span_base_rect(
-                line, span.start, span.length, offset
+                line, span.start, span.length, span_offset(span)
             ),
             span.char_format,
             orientation,
@@ -1330,7 +1388,7 @@ def draw_slanted_line(
             _draw_decorations(
                 painter,
                 _logical_span_base_rect(
-                    line, span.start, span.length, offset
+                    line, span.start, span.length, span_offset(span)
                 ),
                 span.char_format,
                 orientation,

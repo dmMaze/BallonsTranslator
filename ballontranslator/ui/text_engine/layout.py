@@ -196,6 +196,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.y_offset_lst = []
 
         self.block_charfmt_lst = []
+        self.block_qcharfmt_lst = []
         self.block_ideal_width = []
         self.need_ideal_width = False
         self.block_ideal_height = []
@@ -331,11 +332,12 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self._max_font_size = -1
         block = self.document().firstBlock()
         self.block_charfmt_lst = []
+        self.block_qcharfmt_lst = []
         self.block_ideal_width = []
         self.block_ideal_height = []
         self._map_charidx2frag = []
         while block.isValid():
-            charfmt_lst, ideal_width, char_idx = [], -1, 0
+            charfmt_lst, qcharfmt_lst, ideal_width, char_idx = [], [], -1, 0
             ideal_height = 0
             charidx_map = {}
             it = block.begin()
@@ -345,6 +347,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                 fcmt = fragment.charFormat()
                 cfmt = CharFontFormat(fcmt, self.letter_spacing)
                 charfmt_lst.append(cfmt)
+                qcharfmt_lst.append(QTextCharFormat(fcmt))
                 if cfmt.size > self._max_font_size:
                     self._max_font_size = cfmt.size
 
@@ -366,6 +369,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                 frag_idx += 1
 
             self.block_charfmt_lst.append(charfmt_lst)
+            self.block_qcharfmt_lst.append(qcharfmt_lst)
             self.block_ideal_width.append(ideal_width)
             self.block_ideal_height.append(ideal_height)
             self._map_charidx2frag.append(charidx_map)
@@ -389,3 +393,38 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             char_idx = len(charidx2frag_map) - 1
         frag_idx = charidx2frag_map[char_idx]
         return self.block_charfmt_lst[block_number][frag_idx]
+
+    def fragment_format_ranges(
+        self,
+        block_number: int,
+        start: int,
+        end: int,
+    ) -> Tuple[Tuple[int, int, QTextCharFormat], ...]:
+        """Return indexed QTextCharFormat runs intersecting one block range."""
+        position_map = self._map_charidx2frag[block_number]
+        if not position_map or end <= start:
+            return ()
+        start = max(0, start)
+        end = min(end, len(position_map))
+        if end <= start:
+            return ()
+        ranges = []
+        range_start = start
+        fragment_index = position_map[start]
+        for position in range(start + 1, end):
+            candidate = position_map[position]
+            if candidate == fragment_index:
+                continue
+            ranges.append((
+                range_start,
+                position,
+                self.block_qcharfmt_lst[block_number][fragment_index],
+            ))
+            range_start = position
+            fragment_index = candidate
+        ranges.append((
+            range_start,
+            end,
+            self.block_qcharfmt_lst[block_number][fragment_index],
+        ))
+        return tuple(ranges)

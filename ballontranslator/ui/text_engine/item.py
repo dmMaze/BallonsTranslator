@@ -19,11 +19,13 @@ from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
 from .effect_renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
+from .rendering.indexing import _grapheme_ranges, _utf16_slice
 from .annotations import (
     AnnotationProperty,
     TEXT_COMBINE_ALL,
     apply_emphasis,
     apply_letter_spacing,
+    apply_ruby,
     apply_text_combine_upright,
     canonical_letter_spacing,
     create_rich_text_mime,
@@ -31,6 +33,9 @@ from .annotations import (
     insert_rich_text_mime,
     letter_spacing_value,
     load_rich_text_html,
+    prepare_ruby_insertion,
+    remove_ruby,
+    ruby_container_for_cursor,
     set_document_letter_spacing_writing_mode,
     text_combine_upright_values,
     to_rich_text_html,
@@ -107,7 +112,37 @@ class TextBlkItem(QGraphicsTextItem):
             self.input_method_text = e.commitString()
         else:
             self.pre_editing = True
-        super().inputMethodEvent(e)
+        if e.commitString():
+            cursor = self.textCursor()
+            cursor.beginEditBlock()
+            prepare_cursor = QTextCursor(cursor)
+            replacement_length = e.replacementLength()
+            if replacement_length > 0:
+                document_end = max(0, self.document().characterCount() - 1)
+                replacement_start = max(
+                    0,
+                    min(
+                        document_end,
+                        cursor.position() + e.replacementStart(),
+                    ),
+                )
+                replacement_end = min(
+                    document_end, replacement_start + replacement_length
+                )
+                prepare_cursor.setPosition(replacement_start)
+                prepare_cursor.setPosition(
+                    replacement_end, QTextCursor.MoveMode.KeepAnchor
+                )
+            prepare_ruby_insertion(prepare_cursor, e.commitString())
+            if replacement_length == 0:
+                cursor = prepare_cursor
+            super().setTextCursor(cursor)
+            try:
+                super().inputMethodEvent(e)
+            finally:
+                cursor.endEditBlock()
+        else:
+            super().inputMethodEvent(e)
         # Preedit text and attributes live in QTextLayout, so they need an
         # explicit surface invalidation even when the document revision does
         # not change. The next paint is cached until another IME event.
@@ -654,7 +689,25 @@ class TextBlkItem(QGraphicsTextItem):
                 return
         elif e.key() == Qt.Key.Key_Return:
             e.accept()
-            self.textCursor().insertText('\n')
+            cursor = self.textCursor()
+            cursor.beginEditBlock()
+            try:
+                prepare_ruby_insertion(cursor, '\n')
+                cursor.insertText('\n')
+            finally:
+                cursor.endEditBlock()
+            self.setTextCursor(cursor)
+            return
+        elif e.text().isprintable():
+            e.accept()
+            cursor = self.textCursor()
+            cursor.beginEditBlock()
+            try:
+                prepare_ruby_insertion(cursor, e.text())
+                cursor.insertText(e.text())
+            finally:
+                cursor.endEditBlock()
+            self.setTextCursor(cursor)
             return
         super().keyPressEvent(e)
         self._emit_inline_format_changed()
@@ -886,6 +939,17 @@ class TextBlkItem(QGraphicsTextItem):
         if inserted:
             self.setTextCursor(cursor)
         return inserted
+
+    def insert_plain_text_at_cursor(self, text: str) -> None:
+        """Insert clipboard text with Ruby's boundary inheritance rules."""
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        try:
+            prepare_ruby_insertion(cursor, text)
+            cursor.insertText(text)
+        finally:
+            cursor.endEditBlock()
+        self.setTextCursor(cursor)
 
     def get_fontformat(self) -> FontFormat:
         fmt = self._active_char_format()
@@ -1193,6 +1257,72 @@ class TextBlkItem(QGraphicsTextItem):
         self._apply_inline_format(
             lambda cursor: apply_text_combine_upright(cursor, enabled)
         )
+
+    def ruby_editor_values(
+        self,
+    ) -> tuple[str, str, str, bool, bool, int]:
+        """Return values and creation state for the Advanced Format panel."""
+        cursor = self.textCursor()
+        container = ruby_container_for_cursor(cursor)
+        if container is None:
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+            block = self.document().findBlock(start)
+            can_create = (
+                cursor.hasSelection()
+                and block.isValid()
+                and block == self.document().findBlock(end - 1)
+            )
+            base_count = (
+                len(_grapheme_ranges(_utf16_slice(
+                    block.text(), start - block.position(), end - start
+                )))
+                if can_create else 0
+            )
+            return 'group', '', 'over', False, can_create, base_count
+        text = (
+            container.units[0].text
+            if container.ruby_type == 'group'
+            else ' '.join(unit.text for unit in container.units)
+        )
+        block = self.document().findBlock(container.start)
+        base_count = len(_grapheme_ranges(_utf16_slice(
+            block.text(),
+            container.start - block.position(),
+            container.length,
+        )))
+        return (
+            container.ruby_type,
+            text,
+            container.position,
+            True,
+            False,
+            base_count,
+        )
+
+    def setRuby(self, ruby_type: str, text: str, position: str) -> None:
+        """Apply or update Ruby at the current text selection/caret."""
+        cursor = self.textCursor()
+        self.is_formatting = True
+        try:
+            apply_ruby(cursor, ruby_type, text, position)
+            self.setTextCursor(cursor)
+            self.geometry_controller.flush_deferred_compilation()
+        finally:
+            self.is_formatting = False
+
+    def removeRuby(self) -> bool:
+        """Remove the complete Ruby container at the active cursor."""
+        cursor = self.textCursor()
+        self.is_formatting = True
+        try:
+            removed = remove_ruby(cursor)
+            if removed:
+                self.setTextCursor(cursor)
+                self.geometry_controller.flush_deferred_compilation()
+            return removed
+        finally:
+            self.is_formatting = False
 
     def setGradientEnabled(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
         self.fontformat.gradient_enabled = value

@@ -29,6 +29,7 @@ from .glyph import (
     GlyphGeometry,
 )
 from .emphasis import draw_emphasis_marks, emphasis_ink_bounds
+from .ruby import draw_ruby_placement, ruby_side_margins
 from .indexing import _utf16_char_at, _utf16_length
 
 if TYPE_CHECKING:
@@ -181,16 +182,16 @@ class GlyphSlantLayoutRenderer:
                 self._draw_glyph_range(
                     painter, selection_start, selection_end
                 )
-            self._draw_emphasis_selection_mask(painter, context)
+            self._draw_annotation_selection_mask(painter, context)
         finally:
             painter.restore()
 
-    def _draw_emphasis_selection_mask(
+    def _draw_annotation_selection_mask(
         self,
         painter: QPainter,
         context: QAbstractTextDocumentLayout.PaintContext,
     ) -> None:
-        """Include emphasis ink in the vertical transformed-stroke mask."""
+        """Include selected annotation ink in the transformed-stroke mask."""
         if not context.selections:
             return
         mask_context = QAbstractTextDocumentLayout.PaintContext()
@@ -222,7 +223,25 @@ class GlyphSlantLayoutRenderer:
                     vertical=True,
                     offset=offset,
                     orientation=orientation,
+                    side_offsets=ruby_side_margins(
+                        block,
+                        line,
+                        self.layout._ruby_metrics[block.blockNumber()],
+                        vertical=True,
+                    ),
                 )
+            ruby_placements = getattr(
+                self.layout, '_vertical_ruby_placements', None
+            )
+            if ruby_placements is not None:
+                for placement in ruby_placements(block, mask_context):
+                    if any(
+                        selection.cursor.selectionStart() < placement.unit.end
+                        and placement.unit.start
+                        < selection.cursor.selectionEnd()
+                        for selection in context.selections
+                    ):
+                        draw_ruby_placement(painter, placement)
             block = block.next()
 
     def _draw_glyph_range(
@@ -367,6 +386,32 @@ class GlyphSlantLayoutRenderer:
                     self.geometry_cache,
                     (block.blockNumber(), line_number),
                 )
+
+    def draw_horizontal_line(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        line_number: int,
+        context: QAbstractTextDocumentLayout.PaintContext,
+        horizontal_shifts=(),
+    ) -> None:
+        """Draw one horizontal line for layout-owned Ruby translations."""
+        line = block.layout().lineAt(line_number)
+        if not line.isValid() or line.textLength() <= 0:
+            return
+        draw_slanted_line(
+            painter,
+            block,
+            line,
+            QPointF(),
+            QTransform(),
+            self.glyph_slant_angle,
+            context,
+            self._report_glyph_raster_failure,
+            self.geometry_cache,
+            (block.blockNumber(), line_number),
+            horizontal_shifts=horizontal_shifts,
+        )
 
     def clear_caches(self) -> None:
         self.bounds_cache.clear()
@@ -556,6 +601,12 @@ class GlyphSlantLayoutRenderer:
                     vertical=vertical,
                     offset=offset,
                     orientation=orientation,
+                    side_offsets=ruby_side_margins(
+                        block,
+                        line,
+                        self.layout._ruby_metrics[block.blockNumber()],
+                        vertical=vertical,
+                    ),
                 )
                 if not mark_bounds.isEmpty():
                     bounds = (
@@ -564,5 +615,12 @@ class GlyphSlantLayoutRenderer:
                         else bounds.united(mark_bounds)
                     )
             block = block.next()
+        annotation_bounds = self.layout.annotation_ink_bounds()
+        if not annotation_bounds.isEmpty():
+            bounds = (
+                QRectF(annotation_bounds)
+                if bounds.isNull()
+                else bounds.united(annotation_bounds)
+            )
         self.bounds_cache = {key: QRectF(bounds)}
         return bounds

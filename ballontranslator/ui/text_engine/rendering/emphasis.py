@@ -162,6 +162,7 @@ def _iter_emphasis_marks(
     context: Optional[QAbstractTextDocumentLayout.PaintContext] = None,
     offset: QPointF = QPointF(),
     orientation: QTransform = QTransform(),
+    side_offsets: tuple[float, float] = (0.0, 0.0),
 ) -> Iterator[EmphasisMark]:
     """Yield exact mark geometry for painting and effect-bound queries."""
     line_start = line.textStart()
@@ -233,17 +234,27 @@ def _iter_emphasis_marks(
             )
             horizontal_side, vertical_side = position.split()
             if vertical:
-                x = (
-                    cell.right() + gap + path_bounds.width() / 2
+                side_offset = (
+                    side_offsets[0]
                     if vertical_side == 'right'
-                    else cell.left() - gap - path_bounds.width() / 2
+                    else side_offsets[1]
+                )
+                x = (
+                    cell.right() + side_offset + gap + path_bounds.width() / 2
+                    if vertical_side == 'right'
+                    else cell.left() - side_offset - gap - path_bounds.width() / 2
                 )
                 center = QPointF(x, cell.center().y())
             else:
-                y = (
-                    cell.top() - gap - path_bounds.height() / 2
+                side_offset = (
+                    side_offsets[0]
                     if horizontal_side == 'over'
-                    else cell.bottom() + gap + path_bounds.height() / 2
+                    else side_offsets[1]
+                )
+                y = (
+                    cell.top() - side_offset - gap - path_bounds.height() / 2
+                    if horizontal_side == 'over'
+                    else cell.bottom() + side_offset + gap + path_bounds.height() / 2
                 )
                 center = QPointF(cell.center().x(), y)
             yield EmphasisMark(
@@ -263,6 +274,7 @@ def draw_emphasis_marks(
     vertical: bool,
     offset: QPointF = QPointF(),
     orientation: QTransform = QTransform(),
+    side_offsets: tuple[float, float] = (0.0, 0.0),
 ) -> None:
     """Paint one mark per emphasized typographic unit using fragment style."""
     for mark in _iter_emphasis_marks(
@@ -272,6 +284,7 @@ def draw_emphasis_marks(
         context=context,
         offset=offset,
         orientation=orientation,
+        side_offsets=side_offsets,
     ):
         draw_glyph_geometry(painter, mark.geometry, mark.char_format)
 
@@ -283,6 +296,7 @@ def emphasis_ink_bounds(
     vertical: bool,
     offset: QPointF = QPointF(),
     orientation: QTransform = QTransform(),
+    side_offsets: tuple[float, float] = (0.0, 0.0),
 ) -> QRectF:
     """Return source-space mark ink for effect padding calculations."""
     bounds = QRectF()
@@ -292,6 +306,7 @@ def emphasis_ink_bounds(
         vertical=vertical,
         offset=offset,
         orientation=orientation,
+        side_offsets=side_offsets,
     ):
         mark_bounds = mark.geometry.bounds
         bounds = (

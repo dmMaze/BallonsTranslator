@@ -11,6 +11,7 @@ from qtpy.QtGui import (
     QTextLine,
     QTextOption,
     QTextFormat,
+    QTransform,
 )
 
 from ballontranslator.utils import shared as C
@@ -22,8 +23,23 @@ from .layout import (
     paint_context_without_selection_ranges,
     selection_segments_excluding,
 )
-from .rendering.emphasis import draw_emphasis_marks, emphasis_margins
+from .rendering.emphasis import (
+    draw_emphasis_marks,
+    emphasis_ink_bounds,
+    emphasis_margins,
+)
 from .rendering.indexing import _utf16_length, _utf16_slice
+from .rendering.glyph import draw_slanted_line
+from .rendering.ruby import (
+    RubyBlockMetrics,
+    RubyPlacement,
+    RubyUnitMetrics,
+    draw_ruby_placement,
+    prepare_horizontal_ruby_layout,
+    protect_horizontal_ruby_wrap,
+    ruby_placement,
+    ruby_side_margins,
+)
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
 
@@ -37,6 +53,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self._relocated_spaces = []
         self._space_caret_rects = {}
         self._cursor_update_rect = QRectF()
+        self._ruby_metrics: List[RubyBlockMetrics] = []
+        self._annotation_ink_bounds = QRectF()
 
     @staticmethod
     def _cursor_x(line: QTextLine, position: int) -> float:
@@ -347,7 +365,264 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self, cursor_position: int
     ) -> Optional[QRectF]:
         rect = self._space_caret_rects.get(cursor_position)
-        return None if rect is None else QRectF(rect)
+        if rect is not None:
+            return QRectF(rect)
+        block = self.document().findBlock(cursor_position)
+        if not block.isValid() or block.blockNumber() >= len(self._ruby_metrics):
+            return None
+        local_position = cursor_position - block.position()
+        block_metrics = self._ruby_metrics[block.blockNumber()]
+        metric = block_metrics.containing(cursor_position)
+        if metric is not None:
+            start = metric.unit.start - block.position()
+            end = metric.unit.end - block.position()
+            line = block.layout().lineForTextPosition(start)
+            if line.isValid():
+                cell = self._ruby_unit_cell(block, line, metric)
+                if local_position == end:
+                    x = cell.right()
+                else:
+                    x = self._cursor_x(line, local_position) + metric.extra / 2
+                return QRectF(x - 0.5, cell.top(), 1.0, cell.height())
+        return None
+
+    def _ruby_unit_cell(
+        self,
+        block: QTextBlock,
+        line: QTextLine,
+        metric: RubyUnitMetrics,
+    ) -> QRectF:
+        start = metric.unit.start - block.position()
+        end = metric.unit.end - block.position()
+        left, right = self._cursor_span(line, start, end)
+        return QRectF(left, line.y(), right - left, line.height())
+
+    def _ruby_line_placements(
+        self,
+        block: QTextBlock,
+        line: QTextLine,
+        context: Optional[QAbstractTextDocumentLayout.PaintContext] = None,
+    ) -> Tuple[RubyPlacement, ...]:
+        if block.blockNumber() >= len(self._ruby_metrics):
+            return ()
+        line_start = line.textStart()
+        line_end = line_start + line.textLength()
+        angle = float(getattr(self.render_delegate, 'glyph_slant_angle', 0.0))
+        placements = []
+        block_metrics = self._ruby_metrics[block.blockNumber()]
+        for metric in block_metrics.contained(
+            block.position() + line_start,
+            block.position() + line_end,
+        ):
+            placements.append(ruby_placement(
+                block,
+                metric.container,
+                metric.unit,
+                self._ruby_unit_cell(block, line, metric),
+                vertical=False,
+                context=context,
+                glyph_slant_angle=angle,
+                format_index=block_metrics.format_index,
+            ))
+        return tuple(placements)
+
+    def _ruby_line_segments(
+        self,
+        block: QTextBlock,
+        line: QTextLine,
+    ) -> Tuple[Tuple[int, int, float, QRectF], ...]:
+        line_start = line.textStart()
+        line_end = line_start + line.textLength()
+        metrics = []
+        if block.blockNumber() < len(self._ruby_metrics):
+            metrics = self._ruby_metrics[block.blockNumber()].contained(
+                block.position() + line_start,
+                block.position() + line_end,
+            )
+        segments = []
+        position = line_start
+        for metric in metrics:
+            start = metric.unit.start - block.position()
+            end = metric.unit.end - block.position()
+            if start > position:
+                left, right = self._cursor_span(line, position, start)
+                segments.append((position, start, 0.0, QRectF(
+                    left, line.y(), right - left, line.height()
+                )))
+            cell = self._ruby_unit_cell(block, line, metric)
+            segments.append((start, end, metric.extra / 2, cell))
+            position = end
+        if position < line_end:
+            left, right = self._cursor_span(line, position, line_end)
+            segments.append((position, line_end, 0.0, QRectF(
+                left, line.y(), right - left, line.height()
+            )))
+        return tuple(segments)
+
+    def _draw_ruby_base_line(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        line_number: int,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        line = block.layout().lineAt(line_number)
+        segments = self._ruby_line_segments(block, line)
+        if not segments:
+            return
+        shifts = tuple(
+            (start, end, shift) for start, end, shift, _clip in segments
+        )
+        painter.save()
+        if context.clip.isValid():
+            painter.setClipRect(
+                context.clip, Qt.ClipOperation.IntersectClip
+            )
+        try:
+            self._draw_ruby_base_line_once(
+                painter, block, line_number, context, shifts
+            )
+        finally:
+            painter.restore()
+
+    def _draw_ruby_base_line_once(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        line_number: int,
+        context: QAbstractTextDocumentLayout.PaintContext,
+        shifts: Tuple[Tuple[int, int, float], ...],
+    ) -> None:
+        line = block.layout().lineAt(line_number)
+        if self.render_delegate is None:
+            draw_slanted_line(
+                painter,
+                block,
+                line,
+                QPointF(),
+                QTransform(),
+                0.0,
+                context,
+                self._report_render_failure,
+                horizontal_shifts=shifts,
+            )
+        else:
+            self.render_delegate.draw_horizontal_line(
+                painter,
+                block,
+                line_number,
+                context,
+                horizontal_shifts=shifts,
+            )
+
+    def annotation_ink_bounds(self) -> QRectF:
+        return QRectF(self._annotation_ink_bounds)
+
+    def _refresh_annotation_ink_bounds(self) -> None:
+        if not any(self._ruby_metrics):
+            self._annotation_ink_bounds = QRectF()
+            return
+        bounds = QRectF()
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for line_number in range(layout.lineCount()):
+                line = layout.lineAt(line_number)
+                ruby_margins = ruby_side_margins(
+                    block,
+                    line,
+                    self._ruby_metrics[block.blockNumber()],
+                    vertical=False,
+                )
+                candidates = [
+                    emphasis_ink_bounds(
+                        block,
+                        line,
+                        vertical=False,
+                        side_offsets=ruby_margins,
+                    )
+                ]
+                candidates.extend(
+                    placement.ink_bounds
+                    for placement in self._ruby_line_placements(block, line)
+                )
+                for candidate in candidates:
+                    if candidate.isEmpty():
+                        continue
+                    bounds = (
+                        QRectF(candidate)
+                        if bounds.isEmpty()
+                        else bounds.united(candidate)
+                    )
+            block = block.next()
+        self._annotation_ink_bounds = bounds
+
+    def _ruby_hit_test(self, point: QPointF) -> Optional[int]:
+        block = self.document().firstBlock()
+        while block.isValid():
+            if block.blockNumber() >= len(self._ruby_metrics):
+                block = block.next()
+                continue
+            layout = block.layout()
+            angle = float(getattr(
+                self.render_delegate, 'glyph_slant_angle', 0.0
+            ))
+            block_metrics = self._ruby_metrics[block.blockNumber()]
+            for metric in block_metrics:
+                local_start = metric.unit.start - block.position()
+                local_end = metric.unit.end - block.position()
+                line = layout.lineForTextPosition(local_start)
+                if not line.isValid():
+                    continue
+                cell = self._ruby_unit_cell(block, line, metric)
+                placement = ruby_placement(
+                    block,
+                    metric.container,
+                    metric.unit,
+                    cell,
+                    vertical=False,
+                    glyph_slant_angle=angle,
+                    format_index=block_metrics.format_index,
+                )
+                hit_rect = placement.cell.united(placement.ink_bounds)
+                if not hit_rect.contains(point):
+                    continue
+                # Base glyphs are centered by this translation at paint.
+                # Undo it before asking Qt for the nearest native caret.
+                local = int(line.xToCursor(
+                    point.x() - metric.extra / 2
+                ))
+                return block.position() + max(
+                    local_start, min(local, local_end)
+                )
+            block = block.next()
+        return None
+
+    def _paint_ruby_selection_backgrounds(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        if block.blockNumber() >= len(self._ruby_metrics):
+            return
+        for selection in context.selections:
+            if not selection.cursor.hasSelection():
+                continue
+            brush = selection.format.background()
+            if brush.style() == Qt.BrushStyle.NoBrush:
+                continue
+            for metric in self._ruby_metrics[block.blockNumber()].overlapping(
+                selection.cursor.selectionStart(),
+                selection.cursor.selectionEnd(),
+            ):
+                line = block.layout().lineForTextPosition(
+                    metric.unit.start - block.position()
+                )
+                if line.isValid():
+                    painter.fillRect(
+                        self._ruby_unit_cell(block, line, metric), brush
+                    )
 
     def _paint_space_selection(
         self,
@@ -382,6 +657,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self._space_rows = []
         self._relocated_spaces = []
         self._space_caret_rects = {}
+        self._ruby_metrics = []
+        self._annotation_ink_bounds = QRectF()
         block = doc.firstBlock()
         while block.isValid():
             self.layoutBlock(block)
@@ -408,6 +685,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                     line.setPosition(line_pos)
                 block = block.next()
             self._translate_space_rows_y(y_offset)
+
+        self._refresh_annotation_ink_bounds()
 
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
@@ -444,6 +723,9 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
         point = self.map_input_point(point)
+        ruby_hit = self._ruby_hit_test(point)
+        if ruby_hit is not None:
+            return ruby_hit
         space_hit = self._space_hit_test(point)
         if space_hit is not None:
             return space_hit
@@ -477,6 +759,9 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         doc = self.document()
         block.clearLayout()
         tl = block.layout()
+
+        ruby_metrics = prepare_horizontal_ruby_layout(block)
+        self._ruby_metrics.append(ruby_metrics)
 
         option = doc.defaultTextOption()
         # maybe an option for it
@@ -528,6 +813,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             ):
                 shared_space_row = None
                 line.setLineWidth(self.available_width)
+            protect_horizontal_ruby_wrap(block, line, ruby_metrics)
             nchar = line.textLength()
 
             dy = 0
@@ -552,9 +838,14 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             if idea_height == -1:
                 idea_height = block_height
 
-            over_margin, under_margin = emphasis_margins(
+            emphasis_over, emphasis_under = emphasis_margins(
                 block, line, vertical=False
             )
+            ruby_over, ruby_under = ruby_side_margins(
+                block, line, ruby_metrics, vertical=False
+            )
+            over_margin = emphasis_over + ruby_over
+            under_margin = emphasis_under + ruby_under
             line_y_offset = (
                 shared_space_row[0].top()
                 if shared_space_row is not None
@@ -650,6 +941,9 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             if _block_cursor_position(block, context.cursorPosition) >= 0:
                 cursor_block = block
             self._paint_space_selection(painter, block, context)
+            self._paint_ruby_selection_backgrounds(
+                painter, block, context
+            )
             if render_delegate is None:
                 selections = []
                 for sel in context.selections:
@@ -685,36 +979,71 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                             o.format = sel.format
                             selections.append(o)
                 clip = context.clip if context.clip.isValid() else QRectF()
-                layout.draw(painter, QPointF(0, 0), selections, clip)
+                if self._ruby_metrics[block.blockNumber()]:
+                    ruby_context = paint_context_without_selection_ranges(
+                        self.document(),
+                        block,
+                        context,
+                        self._relocated_spaces[
+                            block.blockNumber()
+                        ].values(),
+                    )
+                    for line_number in range(layout.lineCount()):
+                        self._draw_ruby_base_line(
+                            painter,
+                            block,
+                            line_number,
+                            ruby_context,
+                        )
+                else:
+                    layout.draw(painter, QPointF(0, 0), selections, clip)
             else:
                 if context.clip.isValid():
                     painter.save()
                     painter.setClipRect(context.clip, Qt.ClipOperation.IntersectClip)
                 try:
-                    render_delegate.draw_horizontal_block(
-                        painter,
+                    delegated_context = paint_context_without_selection_ranges(
+                        self.document(),
                         block,
-                        paint_context_without_selection_ranges(
-                            self.document(),
-                            block,
-                            context,
-                            self._relocated_spaces[
-                                block.blockNumber()
-                            ].values(),
-                        ),
+                        context,
+                        self._relocated_spaces[
+                            block.blockNumber()
+                        ].values(),
                     )
+                    if self._ruby_metrics[block.blockNumber()]:
+                        for line_number in range(layout.lineCount()):
+                            self._draw_ruby_base_line(
+                                painter,
+                                block,
+                                line_number,
+                                delegated_context,
+                            )
+                    else:
+                        render_delegate.draw_horizontal_block(
+                            painter, block, delegated_context
+                        )
                 finally:
                     if context.clip.isValid():
                         painter.restore()
             for line_number in range(layout.lineCount()):
                 line = layout.lineAt(line_number)
                 if line.isValid() and line.textLength() > 0:
+                    for placement in self._ruby_line_placements(
+                        block, line, context
+                    ):
+                        draw_ruby_placement(painter, placement)
                     draw_emphasis_marks(
                         painter,
                         block,
                         line,
                         context,
                         vertical=False,
+                        side_offsets=ruby_side_margins(
+                            block,
+                            line,
+                            self._ruby_metrics[block.blockNumber()],
+                            vertical=False,
+                        ),
                     )
             block = block.next()
 

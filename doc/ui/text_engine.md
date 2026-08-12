@@ -69,7 +69,7 @@ and surface resources.
 ### Inline annotations
 
 Qt character-format user properties are the live source of truth for emphasis,
-tate-chu-yoko, character spacing, and future range-bound features such as ruby.
+tate-chu-yoko, character spacing, and Ruby/furigana.
 `TextBlock.rich_text` remains an HTML string. `annotations.py` extends Qt's
 ordinary HTML with semantic inline `span` markup. Standard CSS carries
 emphasis, tate-chu-yoko, and approximate external character spacing;
@@ -94,6 +94,26 @@ HTML. Give the existing layout/render owners each feature's metrics and paint
 hook; do not introduce a parallel editable document model or a position side
 table. Internal clipboard data uses the same extended representation, with
 ordinary HTML and plain-text fallbacks.
+
+Ruby uses semantic `<ruby>`/`<rt>` HTML because Qt otherwise flattens the
+annotation into editable base text. The standard-library preprocessing path
+removes `<rt>` annotation and `<rp>` fallback content before `setHtml()`, restores runtime-only
+container/unit properties to the base range, and tolerantly drops only
+malformed, nested, or unsupported annotations. Export reconstructs group Ruby
+as one base/reading unit and mono Ruby as ordered base/reading pairs; runtime
+IDs are never persisted and both ID levels are remapped on internal paste.
+Older builds do not understand this Ruby extension: opening and resaving a
+Ruby-containing project in one lets Qt flatten `<rt>` readings into editable
+text.
+
+`rendering/ruby.py` is the shared measurement and glyph-geometry boundary.
+Horizontal and vertical layouts reserve `max(base advance, annotation
+advance)`, keep group units indivisible, allow mono breaks only between pairs,
+and reuse the resulting cells for paint, cursor, selection, hit testing, ink
+bounds, effects, and transforms. Ruby derives its font and glyph styling from
+the relevant base fragment at 50% size. When Ruby and emphasis use the same
+side, Ruby stays nearest the base and emphasis consumes the accumulated outer
+margin. Ruby remains annotation text, not editable document characters.
 
 Character spacing uses the same selection/insertion behavior as other inline
 formats. Qt imports but does not export CSS `letter-spacing`, and the existing

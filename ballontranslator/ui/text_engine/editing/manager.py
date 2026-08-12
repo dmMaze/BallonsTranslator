@@ -578,8 +578,7 @@ class SceneTextManager(QObject):
         if blk_item.insert_from_mime_data(self.app_clipborad.mimeData()):
             return
         text = self.app_clipborad.text()
-        cursor = blk_item.textCursor()
-        cursor.insertText(text)
+        blk_item.insert_plain_text_at_cursor(text)
 
     def on_inline_format_changed(self) -> None:
         item = self.sender()
@@ -589,6 +588,13 @@ class SceneTextManager(QObject):
             )
             self.formatpanel.textadvancedfmt_panel.set_tate_chu_yoko_enabled(
                 item.tate_chu_yoko_enabled()
+            )
+            ruby_values = item.ruby_editor_values()
+            self.formatpanel.textadvancedfmt_panel.set_ruby_state(
+                *ruby_values[:3],
+                editable=ruby_values[3],
+                can_create=ruby_values[4],
+                base_count=ruby_values[5],
             )
             self.formatpanel.set_letter_spacing_value(
                 item.letter_spacing_value()

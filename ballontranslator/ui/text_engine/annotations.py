@@ -12,6 +12,7 @@ from enum import IntEnum
 from html import escape, unescape
 from html.parser import HTMLParser
 import math
+import re
 from typing import Optional
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.utils.logger import logger as LOGGER
+from .rendering.indexing import _grapheme_ranges, _utf16_length, _utf16_slice
 
 
 RICH_TEXT_MIME_TYPE = 'application/x-ballonstranslator-rich-text'
@@ -37,6 +39,19 @@ _INLINE_EXTENSION_MARKERS = (
     'text-emphasis-style',
     'text-combine-upright',
     LETTER_SPACING_ATTRIBUTE,
+    '<ruby',
+    'data-btrans-runtime-ruby-id',
+)
+
+RUBY_TYPES = ('group', 'mono')
+RUBY_POSITIONS = ('over', 'under')
+DEFAULT_RUBY_POSITION = 'over'
+_RUNTIME_RUBY_ATTRIBUTES = (
+    'data-btrans-runtime-ruby-id',
+    'data-btrans-runtime-ruby-unit-id',
+    'data-btrans-runtime-ruby-type',
+    'data-btrans-runtime-ruby-text',
+    'data-btrans-runtime-ruby-position',
 )
 
 
@@ -63,6 +78,14 @@ class AnnotationProperty(IntEnum):
 
     # Qt does not round-trip QFont letter spacing through QTextDocument HTML.
     LETTER_SPACING = _enum_value(QTextFormat.Property.UserProperty) + 1380
+
+    # Ruby IDs are runtime-only. Semantic HTML stores only the relationship;
+    # loading and in-app paste allocate fresh container and unit identities.
+    RUBY_ID = _enum_value(QTextFormat.Property.UserProperty) + 1420
+    RUBY_UNIT_ID = _enum_value(QTextFormat.Property.UserProperty) + 1421
+    RUBY_TYPE = _enum_value(QTextFormat.Property.UserProperty) + 1422
+    RUBY_TEXT = _enum_value(QTextFormat.Property.UserProperty) + 1423
+    RUBY_POSITION = _enum_value(QTextFormat.Property.UserProperty) + 1424
 
 
 EMPHASIS_STYLES = (
@@ -104,12 +127,18 @@ class _InlineExtension:
     emphasis_position: str = DEFAULT_EMPHASIS_POSITION
     text_combine_id: str = ''
     letter_spacing: Optional[float] = None
+    ruby_id: str = ''
+    ruby_unit_id: str = ''
+    ruby_type: str = ''
+    ruby_text: str = ''
+    ruby_position: str = DEFAULT_RUBY_POSITION
 
     def is_empty(self) -> bool:
         return (
             self.emphasis_style == 'none'
             and not self.text_combine_id
             and self.letter_spacing is None
+            and not self.ruby_id
         )
 
 
@@ -208,6 +237,30 @@ def _span_extension(
                 attributes[LETTER_SPACING_ATTRIBUTE],
             )
         extension = replace(extension, letter_spacing=spacing)
+
+    if _RUNTIME_RUBY_ATTRIBUTES[0] in attributes:
+        values = tuple(attributes.get(name, '') for name in _RUNTIME_RUBY_ATTRIBUTES)
+        ruby_id, unit_id, ruby_type, ruby_text, position = values
+        valid = (
+            bool(ruby_id)
+            and bool(unit_id)
+            and ruby_type in RUBY_TYPES
+            and bool(ruby_text)
+            and position in RUBY_POSITIONS
+            and len(ruby_id) <= MAX_ANNOTATION_ID_LENGTH
+            and len(unit_id) <= MAX_ANNOTATION_ID_LENGTH
+        )
+        if valid:
+            extension = replace(
+                extension,
+                ruby_id=ruby_id,
+                ruby_unit_id=unit_id,
+                ruby_type=ruby_type,
+                ruby_text=ruby_text,
+                ruby_position=position,
+            )
+        else:
+            LOGGER.warning('Ignoring invalid runtime Ruby annotation')
     return extension
 
 
@@ -234,10 +287,6 @@ def _apply_document_letter_spacing(
     cursor.mergeBlockCharFormat(modifier)
 
 
-def _utf16_length(text: str) -> int:
-    return len(text.encode('utf-16-le')) // 2
-
-
 def _document_blocks(document: QTextDocument) -> tuple[QTextBlock, ...]:
     blocks = []
     block = document.firstBlock()
@@ -245,6 +294,325 @@ def _document_blocks(document: QTextDocument) -> tuple[QTextBlock, ...]:
         blocks.append(block)
         block = block.next()
     return tuple(blocks)
+
+
+def _start_tag(tag: str, attrs: list) -> str:
+    attributes = ''.join(
+        f' {name}' if value is None else f' {name}="{escape(str(value), quote=True)}"'
+        for name, value in attrs
+    )
+    return f'<{tag}{attributes}>'
+
+
+class _RubyBaseOnlyParser(HTMLParser):
+    """Remove Ruby annotations while retaining ordinary base markup."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.output: list[str] = []
+        self.annotation_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        tag = tag.lower()
+        if tag in ('rt', 'rp'):
+            self.annotation_depth += 1
+        elif tag != 'ruby' and self.annotation_depth == 0:
+            self.output.append(self.get_starttag_text() or _start_tag(tag, attrs))
+
+    def handle_startendtag(self, tag: str, attrs: list) -> None:
+        if self.annotation_depth == 0 and tag.lower() not in ('ruby', 'rt', 'rp'):
+            self.output.append(self.get_starttag_text() or _start_tag(tag, attrs))
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in ('rt', 'rp') and self.annotation_depth:
+            self.annotation_depth -= 1
+        elif tag != 'ruby' and self.annotation_depth == 0:
+            self.output.append(f'</{tag}>')
+
+    def handle_data(self, data: str) -> None:
+        if self.annotation_depth == 0:
+            self.output.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        if self.annotation_depth == 0:
+            self.output.append(f'&{name};')
+
+    def handle_charref(self, name: str) -> None:
+        if self.annotation_depth == 0:
+            self.output.append(f'&#{name};')
+
+
+class _RubyContentParser(HTMLParser):
+    """Split one non-nested Ruby element into direct base/reading pairs."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.base_html: list[str] = []
+        self.base_text: list[str] = []
+        self.reading: list[str] = []
+        self.pairs: list[tuple[str, str, str]] = []
+        self.markup_stack: list[str] = []
+        self.annotation_tag = ''
+        self.annotation_stack: list[str] = []
+        self.invalid = False
+
+    def _append_base_start(self, tag: str, attrs: list) -> None:
+        self.base_html.append(self.get_starttag_text() or _start_tag(tag, attrs))
+        self.markup_stack.append(tag)
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        tag = tag.lower()
+        if self.annotation_tag:
+            if tag in ('ruby', 'rtc', 'rt', 'rp'):
+                self.invalid = True
+            self.annotation_stack.append(tag)
+            return
+        if tag in ('rt', 'rp') and not self.markup_stack:
+            self.annotation_tag = tag
+            self.annotation_stack = [tag]
+            if tag == 'rt' and not ''.join(self.base_text):
+                self.invalid = True
+            return
+        if tag in ('ruby', 'rtc', 'br', 'p', 'div', 'li'):
+            self.invalid = True
+        self._append_base_start(tag, attrs)
+
+    def handle_startendtag(self, tag: str, attrs: list) -> None:
+        if self.annotation_tag:
+            if tag.lower() in ('ruby', 'rtc', 'rt', 'rp'):
+                self.invalid = True
+            return
+        tag = tag.lower()
+        if tag in ('rt', 'rp', 'ruby', 'rtc', 'br', 'p', 'div', 'li'):
+            self.invalid = True
+            return
+        self.base_html.append(self.get_starttag_text() or _start_tag(tag, attrs))
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if self.annotation_tag:
+            if not self.annotation_stack or self.annotation_stack[-1] != tag:
+                self.invalid = True
+                return
+            self.annotation_stack.pop()
+            if not self.annotation_stack:
+                annotation_tag = self.annotation_tag
+                self.annotation_tag = ''
+                if annotation_tag == 'rt':
+                    reading = ''.join(self.reading)
+                    self.pairs.append((
+                        ''.join(self.base_html),
+                        ''.join(self.base_text),
+                        reading,
+                    ))
+                    self.base_html.clear()
+                    self.base_text.clear()
+                    self.reading.clear()
+            return
+        if self.markup_stack and self.markup_stack[-1] == tag:
+            self.base_html.append(f'</{tag}>')
+            self.markup_stack.pop()
+        else:
+            self.invalid = True
+
+    def handle_data(self, data: str) -> None:
+        if self.annotation_tag == 'rt':
+            self.reading.append(data)
+        elif not self.annotation_tag:
+            self.base_html.append(data)
+            self.base_text.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        raw = f'&{name};'
+        if self.annotation_tag == 'rt':
+            self.reading.append(unescape(raw))
+        elif not self.annotation_tag:
+            self.base_html.append(raw)
+            self.base_text.append(unescape(raw))
+
+    def handle_charref(self, name: str) -> None:
+        raw = f'&#{name};'
+        if self.annotation_tag == 'rt':
+            self.reading.append(unescape(raw))
+        elif not self.annotation_tag:
+            self.base_html.append(raw)
+            self.base_text.append(unescape(raw))
+
+
+def _runtime_ruby_span(
+    base_html: str,
+    ruby_id: str,
+    unit_id: str,
+    ruby_type: str,
+    ruby_text: str,
+    position: str,
+) -> str:
+    values = (ruby_id, unit_id, ruby_type, ruby_text, position)
+    attributes = ' '.join(
+        f'{name}="{escape(value, quote=True)}"'
+        for name, value in zip(_RUNTIME_RUBY_ATTRIBUTES, values)
+    )
+    return f'<span {attributes}>{base_html}</span>'
+
+
+def _sanitize_ruby_element(attrs: list, inner_html: str) -> str:
+    parser = _RubyContentParser()
+    try:
+        parser.feed(inner_html)
+        parser.close()
+    except (TypeError, ValueError) as error:
+        LOGGER.warning('Discarding malformed Ruby annotation: %s', error)
+        parser.invalid = True
+
+    attributes = {str(name).lower(): value for name, value in attrs}
+    styles = _style_declarations(attributes.get('style'))
+    merge = styles.get('ruby-merge', '')
+    position = styles.get('ruby-position', DEFAULT_RUBY_POSITION)
+    align = styles.get('ruby-align', '')
+    overhang = styles.get('ruby-overhang', '')
+    inferred_type = 'mono' if len(parser.pairs) > 1 else 'group'
+    ruby_type = {
+        'merge': 'group',
+        'separate': 'mono',
+        '': inferred_type,
+    }.get(merge)
+    trailing_text = ''.join(parser.base_text)
+    valid = (
+        not parser.invalid
+        and not parser.markup_stack
+        and not parser.annotation_stack
+        and ruby_type in RUBY_TYPES
+        and position in RUBY_POSITIONS
+        and align in ('', 'center')
+        and overhang in ('', 'none')
+        and not trailing_text
+        and bool(parser.pairs)
+        and all(
+            base_text and reading.strip()
+            and not any(
+                separator in base_text
+                for separator in ('\n', '\r', '\u2028', '\u2029')
+            )
+            for _html, base_text, reading in parser.pairs
+        )
+    )
+    if ruby_type == 'group':
+        valid = valid and len(parser.pairs) == 1
+    elif ruby_type == 'mono':
+        valid = valid and all(
+            len(_grapheme_ranges(base_text)) == 1
+            and not any(character.isspace() for character in reading)
+            for _html, base_text, reading in parser.pairs
+        )
+    if not valid:
+        fallback = _RubyBaseOnlyParser()
+        try:
+            fallback.feed(inner_html)
+            fallback.close()
+        except (TypeError, ValueError):
+            return unescape(inner_html)
+        LOGGER.warning('Discarding unsupported or malformed Ruby annotation')
+        return ''.join(fallback.output)
+
+    ruby_id = uuid4().hex
+    if ruby_type == 'group':
+        base_html, _base_text, reading = parser.pairs[0]
+        return _runtime_ruby_span(
+            base_html,
+            ruby_id,
+            uuid4().hex,
+            ruby_type,
+            reading,
+            position,
+        )
+    return ''.join(
+        _runtime_ruby_span(
+            base_html,
+            ruby_id,
+            uuid4().hex,
+            ruby_type,
+            reading,
+            position,
+        )
+        for base_html, _base_text, reading in parser.pairs
+    )
+
+
+class _RubyHTMLPreprocessor(HTMLParser):
+    """Replace semantic Ruby with base-only HTML plus transient metadata."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.output: list[str] = []
+        self.ruby_attrs: list = []
+        self.ruby_inner: list[str] = []
+        self.ruby_depth = 0
+
+    def _append(self, raw: str) -> None:
+        (self.ruby_inner if self.ruby_depth else self.output).append(raw)
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        tag = tag.lower()
+        if tag == 'ruby':
+            if self.ruby_depth:
+                self.ruby_inner.append(self.get_starttag_text() or _start_tag(tag, attrs))
+            else:
+                self.ruby_attrs = attrs
+            self.ruby_depth += 1
+            return
+        self._append(self.get_starttag_text() or _start_tag(tag, attrs))
+
+    def handle_startendtag(self, tag: str, attrs: list) -> None:
+        self._append(self.get_starttag_text() or _start_tag(tag, attrs))
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag == 'ruby' and self.ruby_depth:
+            self.ruby_depth -= 1
+            if self.ruby_depth:
+                self.ruby_inner.append('</ruby>')
+            else:
+                self.output.append(_sanitize_ruby_element(
+                    self.ruby_attrs, ''.join(self.ruby_inner)
+                ))
+                self.ruby_attrs = []
+                self.ruby_inner.clear()
+            return
+        self._append(f'</{tag}>')
+
+    def handle_data(self, data: str) -> None:
+        self._append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        self._append(f'&{name};')
+
+    def handle_charref(self, name: str) -> None:
+        self._append(f'&#{name};')
+
+    def handle_comment(self, data: str) -> None:
+        self._append(f'<!--{data}-->')
+
+    def handle_decl(self, decl: str) -> None:
+        self._append(f'<!{decl}>')
+
+
+def _preprocess_ruby_html(html: str) -> str:
+    if '<ruby' not in html.lower():
+        return html
+    parser = _RubyHTMLPreprocessor()
+    try:
+        parser.feed(html)
+        parser.close()
+    except (TypeError, ValueError) as error:
+        LOGGER.warning('Unable to preprocess Ruby HTML: %s', error)
+        return html
+    if parser.ruby_depth:
+        LOGGER.warning('Discarding unterminated Ruby annotation')
+        fallback = _RubyBaseOnlyParser()
+        fallback.feed(''.join(parser.ruby_inner))
+        parser.output.extend(fallback.output)
+    return ''.join(parser.output)
 
 
 class _InlineExtensionRangeParser(HTMLParser):
@@ -303,7 +671,7 @@ class _InlineExtensionRangeParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
         tag = tag.lower()
-        if tag in ('p', 'li'):
+        if tag in ('p', 'li', 'div'):
             self._start_block()
         if tag == 'span':
             self.extension_stack.append(self.extension)
@@ -325,7 +693,7 @@ class _InlineExtensionRangeParser(HTMLParser):
         tag = tag.lower()
         if tag == 'span' and self.extension_stack:
             self.extension = self.extension_stack.pop()
-        elif tag in ('p', 'li'):
+        elif tag in ('p', 'li', 'div'):
             self.in_block = False
 
     def handle_data(self, data: str) -> None:
@@ -403,6 +771,20 @@ def _apply_inline_extension_ranges(
             modifier.setFontLetterSpacing(
                 100.0 if vertical else extension.letter_spacing * 100.0
             )
+        if extension.ruby_id:
+            modifier.setProperty(AnnotationProperty.RUBY_ID, extension.ruby_id)
+            modifier.setProperty(
+                AnnotationProperty.RUBY_UNIT_ID, extension.ruby_unit_id
+            )
+            modifier.setProperty(
+                AnnotationProperty.RUBY_TYPE, extension.ruby_type
+            )
+            modifier.setProperty(
+                AnnotationProperty.RUBY_TEXT, extension.ruby_text
+            )
+            modifier.setProperty(
+                AnnotationProperty.RUBY_POSITION, extension.ruby_position
+            )
         cursor.setPosition(start)
         cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
         cursor.mergeCharFormat(modifier)
@@ -419,10 +801,11 @@ def load_rich_text_html(
     undo_enabled = document.isUndoRedoEnabled()
     document.setUndoRedoEnabled(False)
     try:
-        document.setHtml(html)
-        lowered_html = html.lower()
+        qt_html = _preprocess_ruby_html(html)
+        document.setHtml(qt_html)
+        lowered_html = qt_html.lower()
         extension_ranges = (
-            _inline_extension_ranges_from_html(document, html)
+            _inline_extension_ranges_from_html(document, qt_html)
             if any(
                 marker in lowered_html
                 for marker in _INLINE_EXTENSION_MARKERS
@@ -435,6 +818,7 @@ def load_rich_text_html(
             # next save writes explicit spans for every resulting range.
             _apply_document_letter_spacing(document, fallback, vertical)
         _apply_inline_extension_ranges(document, extension_ranges, vertical)
+        _discard_ruby_tate_overlaps(document)
     finally:
         document.setUndoRedoEnabled(undo_enabled)
 
@@ -480,6 +864,170 @@ def text_combine_upright_ranges(
                     ranges.append((start, length, group_id))
         iterator += 1
     return tuple(ranges)
+
+
+@dataclass(frozen=True)
+class RubyUnitRange:
+    """One group base or mono pair in absolute Qt UTF-16 coordinates.
+
+    >>> RubyUnitRange(0, 1, 'u', 'か').end
+    1
+    """
+
+    start: int
+    length: int
+    unit_id: str
+    text: str
+
+    @property
+    def end(self) -> int:
+        return self.start + self.length
+
+
+@dataclass(frozen=True)
+class RubyContainerRange:
+    """One validated, contiguous semantic Ruby container.
+
+    >>> unit = RubyUnitRange(0, 1, 'unit', 'か')
+    >>> RubyContainerRange(0, 1, 'ruby', 'group', 'over', (unit,)).end
+    1
+    """
+
+    start: int
+    length: int
+    container_id: str
+    ruby_type: str
+    position: str
+    units: tuple[RubyUnitRange, ...]
+
+    @property
+    def end(self) -> int:
+        return self.start + self.length
+
+
+def ruby_values(
+    char_format: QTextCharFormat,
+) -> tuple[str, str, str, str, str]:
+    """Return canonical runtime Ruby values, or five empty values."""
+    values = tuple(str(char_format.property(prop) or '') for prop in (
+        AnnotationProperty.RUBY_ID,
+        AnnotationProperty.RUBY_UNIT_ID,
+        AnnotationProperty.RUBY_TYPE,
+        AnnotationProperty.RUBY_TEXT,
+        AnnotationProperty.RUBY_POSITION,
+    ))
+    container_id, unit_id, ruby_type, text, position = values
+    if (
+        not container_id
+        or not unit_id
+        or ruby_type not in RUBY_TYPES
+        or not text
+        or position not in RUBY_POSITIONS
+        or len(container_id) > MAX_ANNOTATION_ID_LENGTH
+        or len(unit_id) > MAX_ANNOTATION_ID_LENGTH
+    ):
+        return '', '', '', '', ''
+    return container_id, unit_id, ruby_type, text, position
+
+
+def ruby_containers_in_block(
+    block: QTextBlock,
+) -> tuple[RubyContainerRange, ...]:
+    """Normalize fragment-split Ruby properties into validated containers."""
+    chunks = []
+    iterator = block.begin()
+    while not iterator.atEnd():
+        fragment = iterator.fragment()
+        if fragment.isValid() and fragment.length() > 0:
+            values = ruby_values(fragment.charFormat())
+            if values[0]:
+                start = fragment.position()
+                length = fragment.length()
+                if (
+                    chunks
+                    and chunks[-1][0] + chunks[-1][1] == start
+                    and chunks[-1][2:] == values
+                ):
+                    previous = chunks[-1]
+                    chunks[-1] = (previous[0], previous[1] + length, *values)
+                else:
+                    chunks.append((start, length, *values))
+        iterator += 1
+
+    containers = []
+    index = 0
+    while index < len(chunks):
+        start, length, container_id, unit_id, ruby_type, text, position = chunks[index]
+        unit_chunks = [(start, length, unit_id, text)]
+        end = start + length
+        index += 1
+        while index < len(chunks):
+            candidate = chunks[index]
+            if (
+                candidate[0] != end
+                or candidate[2] != container_id
+                or candidate[4] != ruby_type
+                or candidate[6] != position
+            ):
+                break
+            c_start, c_length, _rid, c_unit, _type, c_text, _position = candidate
+            if unit_chunks[-1][2:] == (c_unit, c_text):
+                old = unit_chunks[-1]
+                unit_chunks[-1] = (old[0], old[1] + c_length, c_unit, c_text)
+            else:
+                unit_chunks.append((c_start, c_length, c_unit, c_text))
+            end += c_length
+            index += 1
+
+        units = tuple(RubyUnitRange(*unit) for unit in unit_chunks)
+        block_text = block.text()
+        valid = (
+            ruby_type == 'group' and len(units) == 1
+            or ruby_type == 'mono' and all(
+                len(_grapheme_ranges(_utf16_slice(
+                    block_text,
+                    unit.start - block.position(),
+                    unit.length,
+                ))) == 1
+                for unit in units
+            )
+        )
+        if valid:
+            containers.append(RubyContainerRange(
+                start,
+                end - start,
+                container_id,
+                ruby_type,
+                position,
+                units,
+            ))
+    return tuple(containers)
+
+
+def ruby_containers(document: QTextDocument) -> tuple[RubyContainerRange, ...]:
+    """Return every valid document-local Ruby container in order."""
+    containers = []
+    block = document.firstBlock()
+    while block.isValid():
+        containers.extend(ruby_containers_in_block(block))
+        block = block.next()
+    return tuple(containers)
+
+
+def _discard_ruby_tate_overlaps(document: QTextDocument) -> None:
+    overlapping = [
+        container
+        for container in ruby_containers(document)
+        if _range_has_text_combine(document, container.start, container.end)
+    ]
+    if not overlapping:
+        return
+    LOGGER.warning('Discarding Ruby annotation overlapping Tate-chu-yoko')
+    cursor = QTextCursor(document)
+    for container in overlapping:
+        cursor.setPosition(container.start)
+        cursor.setPosition(container.end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.mergeCharFormat(_clear_ruby_modifier())
 
 
 def _inline_extension_ranges(
@@ -726,6 +1274,165 @@ def _add_inline_extensions(
     return ''.join(parser.output)
 
 
+_HTML_BLOCK_TAGS = {
+    'html', 'head', 'body', 'meta', 'style', 'title', 'p', 'div', 'li',
+    'ul', 'ol', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th',
+}
+_HTML_VOID_TAGS = {'br', 'img', 'meta', 'hr', 'input', 'link'}
+
+
+class _RubySemanticHTMLExporter(HTMLParser):
+    """Insert balanced semantic Ruby around Qt's ordinary inline markup."""
+
+    def __init__(
+        self,
+        document: QTextDocument,
+        containers: tuple[RubyContainerRange, ...],
+    ) -> None:
+        super().__init__(convert_charrefs=False)
+        self.blocks = _document_blocks(document)
+        self.containers = containers
+        self.container_index = 0
+        self.active: Optional[RubyContainerRange] = None
+        self.unit_index = 0
+        self.block_index = -1
+        self.block_offset = 0
+        self.in_block = False
+        self.inline_stack: list[tuple[str, str]] = []
+        self.output: list[str] = []
+
+    def _position(self) -> int:
+        if 0 <= self.block_index < len(self.blocks):
+            return self.blocks[self.block_index].position() + self.block_offset
+        return -1
+
+    def _close_inline(self) -> None:
+        self.output.extend(f'</{tag}>' for tag, _raw in reversed(self.inline_stack))
+
+    def _reopen_inline(self) -> None:
+        self.output.extend(raw for _tag, raw in self.inline_stack)
+
+    def _before_text(self) -> None:
+        if self.active is not None or self.container_index >= len(self.containers):
+            return
+        candidate = self.containers[self.container_index]
+        if self._position() != candidate.start:
+            return
+        self._close_inline()
+        merge = 'merge' if candidate.ruby_type == 'group' else 'separate'
+        self.output.append(
+            '<ruby style="'
+            f'ruby-position: {candidate.position}; '
+            'ruby-align: center; '
+            f'ruby-merge: {merge};">'
+        )
+        self.output.append('<span>')
+        self._reopen_inline()
+        self.active = candidate
+        self.unit_index = 0
+
+    def _after_text(self) -> None:
+        if self.active is None:
+            return
+        unit = self.active.units[self.unit_index]
+        if self._position() != unit.end:
+            return
+        self._close_inline()
+        self.output.append(f'</span><rt>{escape(unit.text)}</rt>')
+        self.unit_index += 1
+        if self._position() == self.active.end:
+            self.output.append('</ruby>')
+            self.active = None
+            self.container_index += 1
+        else:
+            self.output.append('<span>')
+        self._reopen_inline()
+
+    def _append_character(self, raw: str, decoded: str) -> None:
+        if not self.in_block:
+            self.output.append(raw)
+            return
+        self._before_text()
+        self.output.append(raw)
+        self.block_offset += _utf16_length(decoded)
+        self._after_text()
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        tag = tag.lower()
+        raw = self.get_starttag_text() or _start_tag(tag, attrs)
+        if tag in ('p', 'li'):
+            self.block_index += 1
+            self.block_offset = 0
+            self.in_block = True
+            self.inline_stack.clear()
+        self.output.append(raw)
+        if (
+            self.in_block
+            and tag not in _HTML_BLOCK_TAGS
+            and tag not in _HTML_VOID_TAGS
+        ):
+            self.inline_stack.append((tag, raw))
+        if tag in ('br', 'img') and self.in_block:
+            self.block_offset += 1
+
+    def handle_startendtag(self, tag: str, attrs: list) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag.lower() not in _HTML_VOID_TAGS:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        self.output.append(f'</{tag}>')
+        if self.inline_stack and self.inline_stack[-1][0] == tag:
+            self.inline_stack.pop()
+        if tag in ('p', 'li'):
+            self.in_block = False
+            self.inline_stack.clear()
+
+    def handle_data(self, data: str) -> None:
+        for character in data:
+            self._append_character(character, character)
+
+    def handle_entityref(self, name: str) -> None:
+        raw = f'&{name};'
+        self._append_character(raw, unescape(raw))
+
+    def handle_charref(self, name: str) -> None:
+        raw = f'&#{name};'
+        self._append_character(raw, unescape(raw))
+
+    def handle_comment(self, data: str) -> None:
+        self.output.append(f'<!--{data}-->')
+
+    def handle_decl(self, decl: str) -> None:
+        self.output.append(
+            '<!DOCTYPE html>'
+            if decl.lower().startswith('doctype html')
+            else f'<!{decl}>'
+        )
+
+
+def _add_semantic_ruby(document: QTextDocument, html: str) -> str:
+    containers = ruby_containers(document)
+    if not containers:
+        return html
+    parser = _RubySemanticHTMLExporter(document, containers)
+    try:
+        parser.feed(html)
+        parser.close()
+    except (IndexError, TypeError, ValueError) as error:
+        LOGGER.warning('Unable to export Ruby annotations: %s', error)
+        return html
+    if parser.active is not None or parser.container_index != len(containers):
+        LOGGER.warning('Unable to map all Ruby annotations during export')
+        return html
+    result = ''.join(parser.output)
+    # Boundary balancing can reopen a Qt span immediately before its authored
+    # close tag. Empty spans carry no document state, so omit that serializer
+    # artifact from the canonical representation.
+    return re.sub(r'<span\b[^>]*></span>', '', result, flags=re.IGNORECASE)
+
+
 def to_rich_text_html(
     document: QTextDocument,
     html: Optional[str] = None,
@@ -733,7 +1440,10 @@ def to_rich_text_html(
     """Extend Qt's HTML with semantic inline formatting."""
     if html is None:
         html = document.toHtml()
-    return _add_inline_extensions(document, html)
+    return _add_semantic_ruby(
+        document,
+        _add_inline_extensions(document, html),
+    )
 
 
 def emphasis_values(char_format: QTextCharFormat) -> tuple[str, str]:
@@ -840,6 +1550,16 @@ def apply_text_combine_upright(
     enabled: bool,
 ) -> None:
     """Apply one combined-run ID to a selection or insertion format."""
+    if enabled:
+        start = cursor.selectionStart()
+        end = cursor.selectionEnd()
+        if any(
+            container.start < end and start < container.end
+            if cursor.hasSelection()
+            else container.start <= cursor.position() < container.end
+            for container in ruby_containers(cursor.document())
+        ):
+            raise RubyValidationError('Tate-chu-yoko cannot overlap Ruby')
     modifier = QTextCharFormat()
     modifier.setProperty(
         AnnotationProperty.TEXT_COMBINE_UPRIGHT,
@@ -850,6 +1570,248 @@ def apply_text_combine_upright(
         uuid4().hex if enabled else '',
     )
     cursor.mergeCharFormat(modifier)
+
+
+class RubyValidationError(ValueError):
+    """A requested Ruby edit cannot be represented by the first version."""
+
+
+def ruby_container_for_cursor(
+    cursor: QTextCursor,
+) -> Optional[RubyContainerRange]:
+    """Return the single complete container identified by a caret/selection."""
+    start = cursor.selectionStart()
+    end = cursor.selectionEnd()
+    for container in ruby_containers(cursor.document()):
+        if cursor.hasSelection():
+            if container.start <= start and end <= container.end:
+                return container
+        elif container.start <= cursor.position() < container.end:
+            return container
+    return None
+
+
+def _ruby_readings(
+    ruby_type: str,
+    text: str,
+    base_text: str,
+) -> tuple[tuple[int, int, str], ...]:
+    if ruby_type not in RUBY_TYPES:
+        raise RubyValidationError(f'unsupported Ruby type: {ruby_type!r}')
+    if not isinstance(text, str) or not text.strip():
+        raise RubyValidationError('Ruby text cannot be empty')
+    graphemes = _grapheme_ranges(base_text)
+    if ruby_type == 'group':
+        return ((0, _utf16_length(base_text), text.strip()),)
+    readings = text.split()
+    if len(readings) != len(graphemes):
+        raise RubyValidationError(
+            'Mono Ruby needs one whitespace-separated reading per base grapheme'
+        )
+    return tuple(
+        (start, end - start, reading)
+        for (start, end), reading in zip(graphemes, readings)
+    )
+
+
+def _range_has_text_combine(
+    document: QTextDocument,
+    start: int,
+    end: int,
+) -> bool:
+    block = document.findBlock(start)
+    while block.isValid() and block.position() < end:
+        for local_start, length, _group_id in text_combine_upright_ranges(block):
+            absolute_start = block.position() + local_start
+            if absolute_start < end and absolute_start + length > start:
+                return True
+        block = block.next()
+    return False
+
+
+def _ruby_modifier(
+    container_id: str,
+    unit_id: str,
+    ruby_type: str,
+    text: str,
+    position: str,
+) -> QTextCharFormat:
+    modifier = QTextCharFormat()
+    for prop, value in (
+        (AnnotationProperty.RUBY_ID, container_id),
+        (AnnotationProperty.RUBY_UNIT_ID, unit_id),
+        (AnnotationProperty.RUBY_TYPE, ruby_type),
+        (AnnotationProperty.RUBY_TEXT, text),
+        (AnnotationProperty.RUBY_POSITION, position),
+    ):
+        modifier.setProperty(prop, value)
+    return modifier
+
+
+def _clear_ruby_modifier() -> QTextCharFormat:
+    return _ruby_modifier('', '', '', '', '')
+
+
+def apply_ruby(
+    cursor: QTextCursor,
+    ruby_type: str,
+    text: str,
+    position: str = DEFAULT_RUBY_POSITION,
+) -> RubyContainerRange:
+    """Create or update one Ruby container as one native undo transaction.
+
+    >>> issubclass(RubyValidationError, ValueError)
+    True
+    """
+    if position not in RUBY_POSITIONS:
+        raise RubyValidationError(f'unsupported Ruby position: {position!r}')
+    document = cursor.document()
+    existing = ruby_container_for_cursor(cursor)
+    selection_start = cursor.selectionStart()
+    selection_end = cursor.selectionEnd()
+    if existing is None and not cursor.hasSelection():
+        raise RubyValidationError('Select non-empty base text before applying Ruby')
+    if existing is not None:
+        start, end = existing.start, existing.end
+    else:
+        start, end = selection_start, selection_end
+
+    start_block = document.findBlock(start)
+    end_block = document.findBlock(max(start, end - 1))
+    if (
+        not start_block.isValid()
+        or start_block != end_block
+        or end <= start
+    ):
+        raise RubyValidationError(
+            'Ruby base text cannot contain paragraph or forced line breaks'
+        )
+    base_text = _utf16_slice(
+        start_block.text(), start - start_block.position(), end - start
+    )
+    if any(separator in base_text for separator in ('\n', '\r', '\u2028', '\u2029')):
+        raise RubyValidationError(
+            'Ruby base text cannot contain paragraph or forced line breaks'
+        )
+    readings = _ruby_readings(ruby_type, text, base_text)
+    if _range_has_text_combine(document, start, end):
+        raise RubyValidationError('Ruby cannot overlap Tate-chu-yoko')
+
+    overlaps = tuple(
+        container
+        for container in ruby_containers(document)
+        if container.start < end and container.end > start
+    )
+    if overlaps and (
+        existing is None
+        or len(overlaps) != 1
+        or overlaps[0].container_id != existing.container_id
+    ):
+        raise RubyValidationError('Ruby cannot partially overlap an existing container')
+
+    container_id = uuid4().hex
+    work = QTextCursor(document)
+    work.beginEditBlock()
+    try:
+        if existing is not None:
+            work.setPosition(existing.start)
+            work.setPosition(existing.end, QTextCursor.MoveMode.KeepAnchor)
+            work.mergeCharFormat(_clear_ruby_modifier())
+        for offset, length, reading in readings:
+            work.setPosition(start + offset)
+            work.setPosition(
+                start + offset + length,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            work.mergeCharFormat(_ruby_modifier(
+                container_id,
+                uuid4().hex,
+                ruby_type,
+                reading,
+                position,
+            ))
+    finally:
+        work.endEditBlock()
+    result = next(
+        container
+        for container in ruby_containers(document)
+        if container.container_id == container_id
+    )
+    return result
+
+
+def remove_ruby(cursor: QTextCursor) -> bool:
+    """Remove the whole container identified by ``cursor``."""
+    container = ruby_container_for_cursor(cursor)
+    if container is None:
+        return False
+    work = QTextCursor(cursor.document())
+    work.beginEditBlock()
+    try:
+        work.setPosition(container.start)
+        work.setPosition(container.end, QTextCursor.MoveMode.KeepAnchor)
+        work.mergeCharFormat(_clear_ruby_modifier())
+    finally:
+        work.endEditBlock()
+    return True
+
+
+def prepare_ruby_insertion(cursor: QTextCursor, text: str = '') -> None:
+    """Prepare text insertion/replacement without creating invalid Ruby."""
+    document = cursor.document()
+    start = cursor.selectionStart()
+    end = cursor.selectionEnd()
+    has_break = any(
+        separator in text for separator in ('\n', '\r', '\u2028', '\u2029')
+    )
+    clear_ranges = []
+    for container in ruby_containers(document):
+        overlaps = (
+            container.start < end and start < container.end
+            if cursor.hasSelection()
+            else container.start < cursor.position() < container.end
+        )
+        if not overlaps:
+            continue
+        if has_break and container.ruby_type == 'group':
+            clear_ranges.append((container.start, container.end))
+        elif cursor.hasSelection() and container.ruby_type == 'mono':
+            clear_ranges.extend(
+                (unit.start, unit.end)
+                for unit in container.units
+                if unit.start < end and start < unit.end
+            )
+    if clear_ranges:
+        work = QTextCursor(document)
+        for range_start, range_end in clear_ranges:
+            work.setPosition(range_start)
+            work.setPosition(range_end, QTextCursor.MoveMode.KeepAnchor)
+            work.mergeCharFormat(_clear_ruby_modifier())
+
+    if cursor.hasSelection():
+        return
+    position = cursor.position()
+    inherited = ruby_values(cursor.charFormat())
+    if not inherited[0]:
+        return
+    keep = any(
+        container.ruby_type == 'group'
+        and container.start < position < container.end
+        and not has_break
+        for container in ruby_containers(document)
+    )
+    if keep:
+        return
+    char_format = QTextCharFormat(cursor.charFormat())
+    for prop in (
+        AnnotationProperty.RUBY_ID,
+        AnnotationProperty.RUBY_UNIT_ID,
+        AnnotationProperty.RUBY_TYPE,
+        AnnotationProperty.RUBY_TEXT,
+        AnnotationProperty.RUBY_POSITION,
+    ):
+        char_format.setProperty(prop, '')
+    cursor.setCharFormat(char_format)
 
 
 def _remap_text_combine_ids(document: QTextDocument) -> None:
@@ -874,6 +1836,35 @@ def _remap_text_combine_ids(document: QTextDocument) -> None:
                 )
                 cursor.mergeCharFormat(modifier)
             block = block.next()
+    finally:
+        cursor.endEditBlock()
+
+
+def _remap_ruby_ids(document: QTextDocument) -> None:
+    """Give pasted Ruby containers and units fresh document-local IDs."""
+    container_ids = {}
+    unit_ids = {}
+    cursor = QTextCursor(document)
+    cursor.beginEditBlock()
+    try:
+        for container in ruby_containers(document):
+            replacement_container = container_ids.setdefault(
+                container.container_id, uuid4().hex
+            )
+            for unit in container.units:
+                replacement_unit = unit_ids.setdefault(
+                    (container.container_id, unit.unit_id), uuid4().hex
+                )
+                modifier = QTextCharFormat()
+                modifier.setProperty(
+                    AnnotationProperty.RUBY_ID, replacement_container
+                )
+                modifier.setProperty(
+                    AnnotationProperty.RUBY_UNIT_ID, replacement_unit
+                )
+                cursor.setPosition(unit.start)
+                cursor.setPosition(unit.end, QTextCursor.MoveMode.KeepAnchor)
+                cursor.mergeCharFormat(modifier)
     finally:
         cursor.endEditBlock()
 
@@ -918,5 +1909,69 @@ def insert_rich_text_mime(
     document = QTextDocument()
     load_rich_text_html(document, html, vertical=vertical)
     _remap_text_combine_ids(document)
-    cursor.insertFragment(QTextDocumentFragment(document))
+    _remap_ruby_ids(document)
+    pasted_text = document.toPlainText()
+    pasted_has_ruby = bool(ruby_containers(document))
+    pasted_has_tate = any(
+        text_combine_upright_ranges(block)
+        for block in _document_blocks(document)
+    )
+    target_start = cursor.selectionStart()
+    target_end = cursor.selectionEnd()
+    surrounding_group = None
+    for container in ruby_containers(cursor.document()):
+        if container.ruby_type != 'group':
+            continue
+        contained_selection = (
+            cursor.hasSelection()
+            and container.start <= target_start
+            and target_end <= container.end
+        )
+        interior_caret = (
+            not cursor.hasSelection()
+            and container.start < cursor.position() < container.end
+        )
+        if contained_selection or interior_caret:
+            surrounding_group = container
+            break
+    has_break = any(
+        separator in pasted_text
+        for separator in ('\n', '\r', '\u2028', '\u2029')
+    )
+    inherit_group = (
+        surrounding_group is not None
+        and not has_break
+        and not pasted_has_ruby
+        and not pasted_has_tate
+    )
+
+    cursor.beginEditBlock()
+    try:
+        if surrounding_group is not None and (pasted_has_ruby or pasted_has_tate):
+            work = QTextCursor(cursor.document())
+            work.setPosition(surrounding_group.start)
+            work.setPosition(
+                surrounding_group.end, QTextCursor.MoveMode.KeepAnchor
+            )
+            work.mergeCharFormat(_clear_ruby_modifier())
+        prepare_ruby_insertion(cursor, pasted_text)
+        insertion_start = cursor.selectionStart()
+        cursor.insertFragment(QTextDocumentFragment(document))
+        insertion_end = cursor.position()
+        if inherit_group and insertion_end > insertion_start:
+            unit = surrounding_group.units[0]
+            work = QTextCursor(cursor.document())
+            work.setPosition(insertion_start)
+            work.setPosition(
+                insertion_end, QTextCursor.MoveMode.KeepAnchor
+            )
+            work.mergeCharFormat(_ruby_modifier(
+                surrounding_group.container_id,
+                unit.unit_id,
+                'group',
+                unit.text,
+                surrounding_group.position,
+            ))
+    finally:
+        cursor.endEditBlock()
     return True

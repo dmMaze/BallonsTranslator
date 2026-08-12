@@ -8,6 +8,7 @@ except:
     from qtpy.QtGui import QUndoCommand
 
 from ..item import TextBlkItem, TextBlock
+from ..annotations import prepare_ruby_insertion
 from .widgets import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
     FontFormat,
@@ -32,6 +33,8 @@ def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit
         cursor.beginEditBlock()
     if removed > 0:
         cursor.setPosition(pos + removed, QTextCursor.MoveMode.KeepAnchor)
+    if isinstance(target_edit, TextBlkItem):
+        prepare_ruby_insertion(cursor, added_text)
     cursor.insertText(added_text)
     cursor.endEditBlock()
     target_edit.old_undo_steps = target_edit.document().availableUndoSteps()

@@ -6,6 +6,8 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -370,15 +372,145 @@ class TateChuYokoGroup(QGroupBox):
         self.enable_checker.checkStateChanged.connect(
             self.enabled_changed.emit
         )
+        self.validation_label = QLabel(self)
+        self.validation_label.setWordWrap(True)
         self.enable_unit = _atomic_unit(self, self.enable_checker)
         self.row, self.adaptive_layout = _adaptive_row(
             self, self.enable_unit
         )
         layout = QVBoxLayout(self)
         layout.addWidget(self.row)
+        layout.addWidget(self.validation_label)
 
     def set_enabled(self, enabled: bool) -> None:
         self.enable_checker.setCheckState(enabled)
+
+    def set_error(self, message: str) -> None:
+        self.validation_label.setText(message)
+
+
+class RubyFuriganaGroup(QGroupBox):
+    """Selection-owned group/mono Ruby editor."""
+
+    apply_requested = Signal(str, str, str)
+    remove_requested = Signal()
+
+    def __init__(self, parent: QWidget = None) -> None:
+        super().__init__(parent)
+        self.setTitle(self.tr('Ruby / Furigana'))
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self._can_create = False
+        self._editable = False
+        self._base_count = 0
+
+        self.type_combobox = SmallComboBox(parent=self)
+        self.type_combobox.addItem(self.tr('Group'), 'group')
+        self.type_combobox.addItem(self.tr('Mono'), 'mono')
+        self.type_combobox.activated.connect(self._refresh_validation)
+        self.type_label = _word_wrap_label(
+            SmallParamLabel(self.tr('Type'), parent=self)
+        )
+
+        self.text_edit = QLineEdit(self)
+        self.text_edit.setPlaceholderText(self.tr('Ruby text'))
+        self.text_edit.setToolTip(
+            self.tr('For Mono Ruby, separate readings with whitespace')
+        )
+        self.text_edit.textChanged.connect(self._refresh_validation)
+        self.text_edit.returnPressed.connect(self._emit_apply)
+        self.text_label = _word_wrap_label(
+            SmallParamLabel(self.tr('Reading'), parent=self)
+        )
+
+        self.position_combobox = SmallComboBox(parent=self)
+        self.position_combobox.addItem(self.tr('Over / Right'), 'over')
+        self.position_combobox.addItem(self.tr('Under / Left'), 'under')
+        self.position_label = _word_wrap_label(
+            SmallParamLabel(self.tr('Position'), parent=self)
+        )
+
+        self.apply_button = QPushButton(self.tr('Apply / Update'), self)
+        self.apply_button.clicked.connect(self._emit_apply)
+        self.remove_button = QPushButton(self.tr('Remove'), self)
+        self.remove_button.clicked.connect(self.remove_requested.emit)
+        self.validation_label = QLabel(self)
+        self.validation_label.setWordWrap(True)
+
+        type_unit = _atomic_unit(
+            self, self.type_label, self.type_combobox
+        )
+        position_unit = _atomic_unit(
+            self, self.position_label, self.position_combobox
+        )
+        selector_row, self.adaptive_layout = _adaptive_row(
+            self, type_unit, position_unit
+        )
+        text_unit = _atomic_unit(self, self.text_label, self.text_edit)
+        button_unit = _atomic_unit(
+            self, self.apply_button, self.remove_button
+        )
+        layout = QVBoxLayout(self)
+        layout.addWidget(selector_row)
+        layout.addWidget(text_unit)
+        layout.addWidget(self.validation_label)
+        layout.addWidget(button_unit)
+        self._refresh_validation()
+
+    def _emit_apply(self) -> None:
+        if not self.apply_button.isEnabled():
+            return
+        self.apply_requested.emit(
+            str(self.type_combobox.currentData()),
+            self.text_edit.text(),
+            str(self.position_combobox.currentData()),
+        )
+
+    def _refresh_validation(self, *_args) -> None:
+        text = self.text_edit.text()
+        ruby_type = str(self.type_combobox.currentData() or 'group')
+        valid = bool(text.strip()) and (self._can_create or self._editable)
+        message = ''
+        if ruby_type == 'mono' and text.strip():
+            reading_count = len(text.split())
+            if reading_count != self._base_count:
+                valid = False
+                message = self.tr(
+                    'Mono Ruby needs one whitespace-separated reading per base grapheme.'
+                )
+        elif not self._can_create and not self._editable:
+            message = self.tr('Select base text to apply Ruby.')
+        self.validation_label.setText(message)
+        self.apply_button.setEnabled(valid)
+        self.remove_button.setEnabled(self._editable)
+
+    def set_state(
+        self,
+        ruby_type: str,
+        text: str,
+        position: str,
+        *,
+        can_create: bool,
+        editable: bool,
+        base_count: int,
+    ) -> None:
+        self._can_create = can_create
+        self._editable = editable
+        self._base_count = base_count
+        for combobox, value in (
+            (self.type_combobox, ruby_type),
+            (self.position_combobox, position),
+        ):
+            index = combobox.findData(value)
+            if index >= 0:
+                combobox.setCurrentIndex(index)
+        if self.text_edit.text() != text:
+            self.text_edit.setText(text)
+        self._refresh_validation()
+
+    def set_error(self, message: str) -> None:
+        self.validation_label.setText(message)
 
 
 class TextAdvancedFormatPanel(PanelArea):
@@ -386,6 +518,8 @@ class TextAdvancedFormatPanel(PanelArea):
     param_changed = Signal(str, object)
     emphasis_changed = Signal(str, str)
     tate_chu_yoko_changed = Signal(bool)
+    ruby_apply_requested = Signal(str, str, str)
+    ruby_remove_requested = Signal()
 
     def __init__(
         self,
@@ -501,12 +635,20 @@ class TextAdvancedFormatPanel(PanelArea):
         self.tate_chu_yoko_group.enabled_changed.connect(
             self.tate_chu_yoko_changed.emit
         )
+        self.ruby_group = RubyFuriganaGroup(self.scrollContent)
+        self.ruby_group.apply_requested.connect(
+            self.ruby_apply_requested.emit
+        )
+        self.ruby_group.remove_requested.connect(
+            self.ruby_remove_requested.emit
+        )
         self.gradient_group = TextGradientGroup(self.on_format_changed)
         vlayout = QVBoxLayout()
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.top_section)
         vlayout.addWidget(self.emphasis_group)
         vlayout.addWidget(self.tate_chu_yoko_group)
+        vlayout.addWidget(self.ruby_group)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
 
@@ -617,6 +759,7 @@ class TextAdvancedFormatPanel(PanelArea):
                 self.top_layout,
                 self.emphasis_group.adaptive_layout,
                 self.tate_chu_yoko_group.adaptive_layout,
+                self.ruby_group.adaptive_layout,
                 self.shadow_group.adaptive_layout,
                 self.gradient_group.adaptive_layout,
             )
@@ -754,3 +897,22 @@ class TextAdvancedFormatPanel(PanelArea):
 
     def set_tate_chu_yoko_enabled(self, enabled: bool) -> None:
         self.tate_chu_yoko_group.set_enabled(enabled)
+
+    def set_ruby_state(
+        self,
+        ruby_type: str,
+        text: str,
+        position: str,
+        *,
+        can_create: bool,
+        editable: bool,
+        base_count: int,
+    ) -> None:
+        self.ruby_group.set_state(
+            ruby_type,
+            text,
+            position,
+            can_create=can_create,
+            editable=editable,
+            base_count=base_count,
+        )
