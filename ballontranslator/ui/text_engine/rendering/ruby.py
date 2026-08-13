@@ -7,13 +7,15 @@ from bisect import bisect_right
 from dataclasses import dataclass
 from typing import Callable, Iterable, Optional
 
-from qtpy.QtCore import QPointF, QRectF
+from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
+    QBrush,
     QFont,
     QFontMetricsF,
     QPainter,
     QPainterPath,
+    QPen,
     QTextBlock,
     QTextCharFormat,
     QTextLayout,
@@ -33,14 +35,19 @@ from .glyph import (
     FallbackGlyph,
     GlyphGeometry,
     _composed_transform,
-    draw_glyph_geometry,
     glyph_geometry,
+    glyph_slant_transform,
 )
 from .indexing import (
     _grapheme_ranges,
     _utf16_char_at,
     _utf16_length,
     _utf16_slice,
+)
+from .native_document import (
+    NativeTextDocument,
+    draw_native_text_document,
+    native_text_document,
 )
 
 
@@ -221,16 +228,28 @@ class RubyBlockMetrics:
 
 
 @dataclass(frozen=True)
+class RubyPaintRun:
+    source: NativeTextDocument
+    transform: QTransform
+    geometry: GlyphGeometry
+
+
+@dataclass(frozen=True)
 class RubyPlacement:
     unit: RubyUnitRange
     cell: QRectF
-    geometries: tuple[GlyphGeometry, ...]
+    paint_runs: tuple[RubyPaintRun, ...]
     char_format: QTextCharFormat
+
+    @property
+    def geometries(self) -> tuple[GlyphGeometry, ...]:
+        return tuple(run.geometry for run in self.paint_runs)
 
     @property
     def ink_bounds(self) -> QRectF:
         bounds = QRectF()
-        for geometry in self.geometries:
+        for run in self.paint_runs:
+            geometry = run.geometry
             if geometry.bounds.isEmpty():
                 continue
             bounds = (
@@ -250,6 +269,27 @@ def ruby_font(char_format: QTextCharFormat) -> QFont:
         font.setPixelSize(max(1, round(font.pixelSize() * RUBY_FONT_SCALE)))
     font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 100.0)
     return font
+
+
+def _ruby_document_format(
+    char_format: QTextCharFormat,
+) -> QTextCharFormat:
+    """Keep Ruby glyph paint while dropping base-document semantics."""
+    font = QFont(char_format.font())
+    font.setUnderline(False)
+    font.setOverline(False)
+    font.setStrikeOut(False)
+    result = QTextCharFormat()
+    result.setFont(font)
+    foreground = char_format.foreground()
+    if foreground.style() != Qt.BrushStyle.NoBrush:
+        result.setForeground(QBrush(foreground))
+    outline = QPen(char_format.textOutline())
+    if outline.style() != Qt.PenStyle.NoPen:
+        if outline.widthF() > 0.0:
+            outline.setWidthF(outline.widthF() * RUBY_FONT_SCALE)
+        result.setTextOutline(outline)
+    return result
 
 
 def _space_around_spacing(
@@ -789,13 +829,35 @@ def _translated_geometry(geometry: GlyphGeometry, offset: QPointF) -> GlyphGeome
     )
 
 
-def _horizontal_geometry(
+def _paint_run(
+    text: str,
+    char_format: QTextCharFormat,
+    baseline: float,
+    geometry: GlyphGeometry,
+    translation: QPointF,
+    glyph_slant_angle: float,
+) -> RubyPaintRun:
+    source = native_text_document(
+        text, _ruby_document_format(char_format)
+    )
+    transform = _composed_transform(
+        glyph_slant_transform(glyph_slant_angle, baseline),
+        QTransform.fromTranslate(translation.x(), translation.y()),
+    )
+    return RubyPaintRun(
+        source,
+        transform,
+        _translated_geometry(geometry, translation),
+    )
+
+
+def _horizontal_runs(
     text: str,
     char_format: QTextCharFormat,
     cell: QRectF,
     position: str,
     glyph_slant_angle: float,
-) -> tuple[GlyphGeometry, ...]:
+) -> tuple[RubyPaintRun, ...]:
     base_height = QFontMetricsF(char_format.font()).height() / RUBY_FONT_SCALE
     gap = base_height * RUBY_GAP_SCALE
     target_y = (
@@ -824,19 +886,24 @@ def _horizontal_geometry(
             else target_y + geometry.bounds.height() / 2
         )
         target = QPointF(cell.left() + inline_center, center_y)
-        result.append(_translated_geometry(
-            geometry, target - geometry.bounds.center()
+        result.append(_paint_run(
+            cluster,
+            char_format,
+            line.y() + line.ascent(),
+            geometry,
+            target - geometry.bounds.center(),
+            glyph_slant_angle,
         ))
     return tuple(result)
 
 
-def _vertical_geometries(
+def _vertical_runs(
     text: str,
     char_format: QTextCharFormat,
     cell: QRectF,
     position: str,
     glyph_slant_angle: float,
-) -> tuple[GlyphGeometry, ...]:
+) -> tuple[RubyPaintRun, ...]:
     source = []
     for grapheme, inline_center in _space_around_positions(
         text, char_format.font(), cell.height(), vertical=True
@@ -850,7 +917,12 @@ def _vertical_geometries(
             QTransform(),
             glyph_slant_angle,
         )
-        source.append((geometry, inline_center))
+        source.append((
+            grapheme,
+            line.y() + line.ascent(),
+            geometry,
+            inline_center,
+        ))
     if not source:
         return ()
     base_height = QFontMetricsF(char_format.font()).height() / RUBY_FONT_SCALE
@@ -861,15 +933,20 @@ def _vertical_geometries(
         else cell.left() - gap
     )
     result = []
-    for geometry, inline_center in source:
+    for grapheme, baseline, geometry, inline_center in source:
         center_x = (
             x + geometry.bounds.width() / 2
             if position == 'over'
             else x - geometry.bounds.width() / 2
         )
         center = QPointF(center_x, cell.top() + inline_center)
-        result.append(_translated_geometry(
-            geometry, center - geometry.bounds.center()
+        result.append(_paint_run(
+            grapheme,
+            char_format,
+            baseline,
+            geometry,
+            center - geometry.bounds.center(),
+            glyph_slant_angle,
         ))
     return tuple(result)
 
@@ -892,18 +969,18 @@ def ruby_placement(
         unit.length,
         format_index,
     )
-    geometries = (
-        _vertical_geometries(
+    paint_runs = (
+        _vertical_runs(
             unit.text, char_format, cell, container.position, glyph_slant_angle
         )
         if vertical
-        else _horizontal_geometry(
+        else _horizontal_runs(
             unit.text, char_format, cell, container.position, glyph_slant_angle
         )
     )
-    return RubyPlacement(unit, QRectF(cell), geometries, char_format)
+    return RubyPlacement(unit, QRectF(cell), paint_runs, char_format)
 
 
 def draw_ruby_placement(painter: QPainter, placement: RubyPlacement) -> None:
-    for geometry in placement.geometries:
-        draw_glyph_geometry(painter, geometry, placement.char_format)
+    for run in placement.paint_runs:
+        draw_native_text_document(painter, run.source, run.transform)

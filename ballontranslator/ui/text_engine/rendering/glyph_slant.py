@@ -161,6 +161,8 @@ class GlyphSlantLayoutRenderer:
         self,
         painter: QPainter,
         context: QAbstractTextDocumentLayout.PaintContext,
+        *,
+        include_annotations: bool = True,
     ) -> None:
         """Draw only glyphs named by temporary document-layout selections.
 
@@ -182,30 +184,49 @@ class GlyphSlantLayoutRenderer:
                 self._draw_glyph_range(
                     painter, selection_start, selection_end
                 )
-            self._draw_annotation_selection_mask(painter, context)
+            if include_annotations:
+                self._draw_annotation_selection(painter, context)
         finally:
             painter.restore()
 
-    def _draw_annotation_selection_mask(
+    def draw_native_annotation_selection(
         self,
         painter: QPainter,
         context: QAbstractTextDocumentLayout.PaintContext,
     ) -> None:
-        """Include selected annotation ink in the transformed-stroke mask."""
+        """Paint only native annotation ink named by effect selections."""
+        painter.save()
+        try:
+            if context.clip.isValid():
+                painter.setClipRect(context.clip)
+            self._draw_annotation_selection(painter, context, native=True)
+        finally:
+            painter.restore()
+
+    def _draw_annotation_selection(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+        *,
+        native: bool = False,
+    ) -> None:
+        """Draw selected annotation ink with mask or native paint formats."""
         if not context.selections:
             return
-        mask_context = QAbstractTextDocumentLayout.PaintContext()
-        mask_context.cursorPosition = -1
-        mask_context.selections = []
-        for selection in context.selections:
-            mask_selection = QAbstractTextDocumentLayout.Selection()
-            mask_selection.cursor = selection.cursor
-            mask_format = QTextCharFormat()
-            mask_format.setProperty(GLYPH_STROKE_FORMAT_PROPERTY, True)
-            mask_format.setForeground(Qt.GlobalColor.white)
-            mask_format.setTextOutline(QPen(Qt.PenStyle.NoPen))
-            mask_selection.format = mask_format
-            mask_context.selections.append(mask_selection)
+        paint_context = context
+        if not native:
+            paint_context = QAbstractTextDocumentLayout.PaintContext()
+            paint_context.cursorPosition = -1
+            paint_context.selections = []
+            for selection in context.selections:
+                mask_selection = QAbstractTextDocumentLayout.Selection()
+                mask_selection.cursor = selection.cursor
+                mask_format = QTextCharFormat()
+                mask_format.setProperty(GLYPH_STROKE_FORMAT_PROPERTY, True)
+                mask_format.setForeground(Qt.GlobalColor.white)
+                mask_format.setTextOutline(QPen(Qt.PenStyle.NoPen))
+                mask_selection.format = mask_format
+                paint_context.selections.append(mask_selection)
 
         block = self.document().firstBlock()
         while block.isValid():
@@ -219,7 +240,7 @@ class GlyphSlantLayoutRenderer:
                     painter,
                     block,
                     line,
-                    mask_context,
+                    paint_context,
                     vertical=True,
                     offset=offset,
                     orientation=orientation,
@@ -234,7 +255,9 @@ class GlyphSlantLayoutRenderer:
                 self.layout, '_vertical_ruby_placements', None
             )
             if ruby_placements is not None:
-                for placement in ruby_placements(block, mask_context):
+                for placement in ruby_placements(
+                    block, paint_context
+                ):
                     if any(
                         selection.cursor.selectionStart() < placement.unit.end
                         and placement.unit.start

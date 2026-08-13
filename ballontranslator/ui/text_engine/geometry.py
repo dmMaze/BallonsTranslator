@@ -7,7 +7,13 @@ from typing import Iterator, Optional, TYPE_CHECKING
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRect, QRectF, QSizeF, Qt
-from qtpy.QtGui import QPainter, QPainterPath, QPolygonF, QTransform
+from qtpy.QtGui import (
+    QAbstractTextDocumentLayout,
+    QPainter,
+    QPainterPath,
+    QPolygonF,
+    QTransform,
+)
 from qtpy.QtWidgets import (
     QGraphicsItem,
     QGraphicsTextItem,
@@ -1103,12 +1109,33 @@ class TextItemGeometryController:
         """Return whether glyph painting is delegated to a transform renderer."""
         return self.layout_renderer is not None
 
-    def draw_layout_selection_mask(self, painter, context) -> None:
+    def draw_layout_selection_mask(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+        *,
+        include_annotations: bool = True,
+    ) -> None:
         """Draw an effect mask through the active transform renderer."""
         renderer = self.layout_renderer
         if renderer is None:
             raise RuntimeError('no custom text layout renderer is active')
-        renderer.draw_glyph_selection_mask(painter, context)
+        renderer.draw_glyph_selection_mask(
+            painter,
+            context,
+            include_annotations=include_annotations,
+        )
+
+    def draw_layout_annotations(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        """Draw selected Ruby/emphasis through native annotation renderers."""
+        renderer = self.layout_renderer
+        if renderer is None:
+            raise RuntimeError('no custom text layout renderer is active')
+        renderer.draw_native_annotation_selection(painter, context)
 
     def initialize_layout(self, *, persistent_cache: bool = True) -> bool:
         state = self.effective()

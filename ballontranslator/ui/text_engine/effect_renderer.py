@@ -390,9 +390,8 @@ class TextEffectRenderer:
                     QTextCursor.MoveMode.KeepAnchor,
                 )
                 char_format.setTextOutline(stroke_pen)
-                # Annotation glyphs are painted from paths. A filled-mask
-                # dilation avoids QPen self-intersection cavities on small
-                # components such as emphasis dots and exclamation points.
+                # Path-painted glyph extensions consume this flag. Ruby and
+                # emphasis derive half-width native outlines in temporary docs.
                 char_format.setProperty(
                     GLYPH_DILATED_STROKE_FORMAT_PROPERTY, True
                 )
@@ -441,7 +440,9 @@ class TextEffectRenderer:
                 fragment_context = self._effect_paint_context()
                 fragment_context.selections = selections
                 self.geometry_controller.draw_layout_selection_mask(
-                    source_painter, fragment_context
+                    source_painter,
+                    fragment_context,
+                    include_annotations=False,
                 )
             finally:
                 source_painter.end()
@@ -488,6 +489,11 @@ class TextEffectRenderer:
             )
         stroke_pixmap.setDevicePixelRatio(render_scale)
         painter.drawPixmap(rect.topLeft(), stroke_pixmap)
+        # Half-font annotations own native outlines, not the base mask's
+        # full-font morphology radius.
+        self.geometry_controller.draw_layout_annotations(
+            painter, stroke_context
+        )
 
     def paint_stroke(
         self,

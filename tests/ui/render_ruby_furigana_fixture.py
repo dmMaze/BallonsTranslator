@@ -36,6 +36,8 @@ def _item(
     base_length: int = 2,
     emphasis: bool = True,
     effects: bool = True,
+    stroke_width: float = 0.12,
+    fill_color: list[int] | None = None,
 ) -> TextBlkItem:
     width, height = ((510, 180) if not vertical else (250, 470))
     block = TextBlock([origin[0], origin[1], origin[0] + width, origin[1] + height])
@@ -43,8 +45,10 @@ def _item(
     block.translation = text
     block.vertical = vertical
     block.fontformat.font_size = 34
+    if fill_color is not None:
+        block.fontformat.frgb = fill_color
     if effects:
-        block.fontformat.stroke_width = 0.12
+        block.fontformat.stroke_width = stroke_width
         block.fontformat.shadow_strength = 0.8
         block.fontformat.shadow_radius = 0.1
         block.fontformat.shadow_offset = [0.08, 0.08]
@@ -72,7 +76,7 @@ def render(scale: int) -> QImage:
     scene = QGraphicsScene()
     scene.setSceneRect(QRectF(0, 0, width, height))
     title = scene.addSimpleText(
-        'Ruby / Furigana — space-around, group + mono, horizontal + vertical',
+        'Ruby / Furigana — native half-width stroke, space-around, H + V',
         QFont('Sans Serif', 12),
     )
     title.setBrush(QColor('#665f57'))
@@ -89,7 +93,8 @@ def render(scale: int) -> QImage:
             origin=(590, 50),
             base_length=6,
             emphasis=False,
-            effects=False,
+            stroke_width=0.18,
+            fill_color=[242, 242, 242],
         ),
         _item('日本。B?', vertical=True, position='under', ruby_type='mono', reading='にっ ぽん', origin=(860, 50)),
     )

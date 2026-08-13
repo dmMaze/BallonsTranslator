@@ -8,19 +8,23 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
+    QBrush,
     QColor,
     QFont,
     QImage,
+    QLinearGradient,
     QPainter,
     QPen,
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
+    QTransform,
 )
 from qtpy.QtWidgets import QApplication, QGraphicsScene
 
 from ballontranslator.ui.misc import doc_replace, pixmap2ndarray
 from ballontranslator.ui.text_engine.annotations import (
+    AnnotationProperty,
     LETTER_SPACING_ATTRIBUTE,
     TEXT_COMBINE_ID_ATTRIBUTE,
     apply_emphasis,
@@ -39,14 +43,28 @@ from ballontranslator.ui.text_engine.formatting.advanced import (
     TateChuYokoGroup,
     TextEmphasisGroup,
 )
+from ballontranslator.ui.text_engine import effect_renderer as effect_rendering
 from ballontranslator.ui.text_engine.item import TextBlkItem
-from ballontranslator.ui.text_engine.rendering.emphasis import emphasis_ink_bounds
+from ballontranslator.ui.text_engine.rendering import emphasis as emphasis_rendering
+from ballontranslator.ui.text_engine.rendering import glyph as glyph_rendering
+from ballontranslator.ui.text_engine.rendering.emphasis import (
+    draw_emphasis_marks,
+    emphasis_ink_bounds,
+)
 from ballontranslator.ui.text_engine.rendering.indexing import _grapheme_ranges
+from ballontranslator.ui.text_engine.rendering.native_document import (
+    NATIVE_DOCUMENT_CACHE,
+    NATIVE_DOCUMENT_CACHE_MAX_ENTRIES,
+)
 from ballontranslator.ui.text_engine.rendering.tate_chu_yoko import (
     tate_chu_yoko_ink_bounds,
     tate_chu_yoko_natural_bounds,
 )
-from ballontranslator.utils.fontformat import TextAlignment
+from ballontranslator.utils.fontformat import (
+    TextAlignment,
+    TextTransformStack,
+    pt2px,
+)
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -894,7 +912,11 @@ class RichTextAnnotationTest(unittest.TestCase):
         cell = item.layout.tate_chu_yoko_cell_rect(block, 2)
         self.assertLess(line.x(), block.layout().lineAt(0).x())
         self.assertGreater(record['line_width'], record['text_combine_width'])
-        self.assertGreaterEqual(cell.left(), item.layout.layout_left - 0.01)
+        fixed_point_tolerance = 1.0 / 64.0 + 0.001
+        self.assertGreaterEqual(
+            cell.left(),
+            item.layout.layout_left - fixed_point_tolerance,
+        )
         self.assertLessEqual(
             cell.right(), line.x() + record['line_width'] + 0.01
         )
@@ -1148,6 +1170,367 @@ class RichTextAnnotationTest(unittest.TestCase):
             text_layout.lineCount(),
         )
 
+    def test_emphasis_uses_cached_native_document_without_mutating_live_document(self):
+        item = self._make_item(False, text='AA')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+        item.setEmphasis('filled circle', 'over right')
+
+        cursor = QTextCursor(item.document())
+        cursor.select(QTextCursor.SelectionType.Document)
+        outline = QTextCharFormat()
+        outline.setTextOutline(QPen(QColor('#203060'), 8.0))
+        outline.setProperty(
+            glyph_rendering.GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
+            True,
+        )
+        cursor.mergeCharFormat(outline)
+        item.layout.reLayout()
+
+        NATIVE_DOCUMENT_CACHE.clear()
+        self.addCleanup(
+            NATIVE_DOCUMENT_CACHE.clear
+        )
+        live_document = item.document()
+        live_revision = live_document.revision()
+        live_text = live_document.toPlainText()
+        live_html = to_rich_text_html(live_document)
+        block = live_document.firstBlock()
+        line = block.layout().lineAt(0)
+        context = QAbstractTextDocumentLayout.PaintContext()
+        image = QImage(
+            700,
+            300,
+            QImage.Format.Format_ARGB32_Premultiplied,
+        )
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        calls = []
+        native_draw = QTextDocument.drawContents
+
+        def record_draw(document, *args):
+            calls.append(document)
+            return native_draw(document, *args)
+
+        try:
+            with patch.object(
+                QTextDocument,
+                'drawContents',
+                new=record_draw,
+            ), patch.object(
+                glyph_rendering,
+                '_draw_dilated_path_stroke',
+            ) as dilated_stroke:
+                draw_emphasis_marks(
+                    painter,
+                    block,
+                    line,
+                    context,
+                    vertical=False,
+                )
+        finally:
+            painter.end()
+
+        self.assertEqual(len(calls), 2)
+        self.assertIs(calls[0], calls[1])
+        self.assertIsNot(calls[0], live_document)
+        self.assertEqual(len(NATIVE_DOCUMENT_CACHE), 1)
+        cached_document = next(
+            iter(NATIVE_DOCUMENT_CACHE.values())
+        ).document
+        self.assertIsNot(cached_document, live_document)
+        self.assertEqual(cached_document.toPlainText(), '●')
+        self.assertEqual(cached_document.documentMargin(), 0.0)
+        self.assertEqual(
+            cached_document.firstBlock().layout().lineAt(0).position(),
+            QPointF(),
+        )
+        dilated_stroke.assert_not_called()
+        self.assertEqual(live_document.revision(), live_revision)
+        self.assertEqual(live_document.toPlainText(), live_text)
+        self.assertEqual(to_rich_text_html(live_document), live_html)
+
+    def test_emphasis_document_cache_derives_only_native_mark_paint(self):
+        NATIVE_DOCUMENT_CACHE.clear()
+        self.addCleanup(
+            NATIVE_DOCUMENT_CACHE.clear
+        )
+        font = QFont('DejaVu Sans')
+        font.setPointSizeF(40.0)
+        font.setBold(True)
+        font.setItalic(True)
+        font.setUnderline(True)
+        font.setOverline(True)
+        font.setStrikeOut(True)
+        gradient = QLinearGradient(0.0, 0.0, 100.0, 0.0)
+        gradient.setColorAt(0.0, QColor('#e03020'))
+        gradient.setColorAt(1.0, QColor('#2040e0'))
+        source = QTextCharFormat()
+        source.setFont(font)
+        source.setForeground(QBrush(gradient))
+        source.setBackground(QColor('#40ff80'))
+        source.setTextOutline(QPen(QColor('#102030'), 12.0))
+        source.setProperty(
+            AnnotationProperty.EMPHASIS_STYLE,
+            'filled circle',
+        )
+        source.setProperty(
+            AnnotationProperty.EMPHASIS_POSITION,
+            'over right',
+        )
+        source.setProperty(
+            glyph_rendering.GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
+            True,
+        )
+
+        first = emphasis_rendering._mark_document(
+            'filled circle', source
+        )
+        identical = emphasis_rendering._mark_document(
+            'filled circle', source
+        )
+        cursor = QTextCursor(first.document)
+        cursor.setPosition(0)
+        cursor.movePosition(
+            QTextCursor.MoveOperation.NextCharacter,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        derived = cursor.charFormat()
+
+        self.assertIs(first, identical)
+        self.assertAlmostEqual(derived.fontPointSize(), 20.0)
+        self.assertTrue(derived.font().bold())
+        self.assertTrue(derived.font().italic())
+        self.assertFalse(derived.font().underline())
+        self.assertFalse(derived.font().overline())
+        self.assertFalse(derived.font().strikeOut())
+        self.assertEqual(derived.foreground(), source.foreground())
+        self.assertEqual(
+            derived.background().style(),
+            Qt.BrushStyle.NoBrush,
+        )
+        self.assertEqual(derived.textOutline().color(), QColor('#102030'))
+        self.assertAlmostEqual(derived.textOutline().widthF(), 6.0)
+        for annotation_property in AnnotationProperty:
+            self.assertFalse(
+                derived.hasProperty(int(annotation_property)),
+            )
+        self.assertFalse(
+            derived.hasProperty(
+                glyph_rendering.GLYPH_DILATED_STROKE_FORMAT_PROPERTY
+            )
+        )
+        tag_type = getattr(QFont, 'Tag', None)
+        if tag_type is not None and hasattr(derived.font(), 'featureValue'):
+            ruby_tag = tag_type.fromString('ruby')
+            self.assertEqual(derived.font().featureValue(ruby_tag), 1)
+        self.assertFalse(first.glyph_bounds.isEmpty())
+        self.assertTrue(first.ink_bounds.contains(first.glyph_bounds))
+        self.assertGreater(first.ink_bounds.width(), first.glyph_bounds.width())
+
+        ignored = QTextCharFormat(source)
+        ignored.setBackground(QColor('#ff00ff'))
+        ignored.setFontUnderline(False)
+        self.assertIs(
+            emphasis_rendering._mark_document('filled circle', ignored),
+            first,
+        )
+        recolored = QTextCharFormat(source)
+        recolored.setForeground(QColor('#abcdef'))
+        self.assertIsNot(
+            emphasis_rendering._mark_document('filled circle', recolored),
+            first,
+        )
+        resized_outline = QTextCharFormat(source)
+        resized_outline.setTextOutline(QPen(QColor('#102030'), 14.0))
+        self.assertIsNot(
+            emphasis_rendering._mark_document(
+                'filled circle', resized_outline
+            ),
+            first,
+        )
+        self.assertIsNot(
+            emphasis_rendering._mark_document('open circle', source),
+            first,
+        )
+
+        NATIVE_DOCUMENT_CACHE.clear()
+        oldest = None
+        for index in range(
+            NATIVE_DOCUMENT_CACHE_MAX_ENTRIES + 1
+        ):
+            varied = QTextCharFormat(source)
+            varied.setFontPointSize(10.0 + index)
+            entry = emphasis_rendering._mark_document(
+                'filled circle', varied
+            )
+            if index == 0:
+                oldest = entry
+        self.assertEqual(
+            len(NATIVE_DOCUMENT_CACHE),
+            NATIVE_DOCUMENT_CACHE_MAX_ENTRIES,
+        )
+        self.assertNotIn(
+            oldest,
+            NATIVE_DOCUMENT_CACHE.values(),
+        )
+
+    def test_emphasis_native_document_preserves_gradient_and_opacity(self):
+        item = self._make_item(False, text='A     A')
+        item.fontformat.gradient_start_color = [230, 30, 20]
+        item.fontformat.gradient_end_color = [20, 40, 230]
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+        item.setEmphasis('filled circle', 'over right')
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+        item.setGradientEnabled(True)
+
+        NATIVE_DOCUMENT_CACHE.clear()
+        self.addCleanup(
+            NATIVE_DOCUMENT_CACHE.clear
+        )
+        block = item.document().firstBlock()
+        line = block.layout().lineAt(0)
+        context = QAbstractTextDocumentLayout.PaintContext()
+        marks = tuple(
+            emphasis_rendering._iter_emphasis_marks(
+                block,
+                line,
+                vertical=False,
+                context=context,
+            )
+        )
+        self.assertEqual(len(marks), 2)
+        cached_foreground = _format_at(
+            marks[0].source.document, 0
+        ).foreground()
+
+        def render(opacity: float) -> QImage:
+            image = QImage(
+                800,
+                300,
+                QImage.Format.Format_ARGB32_Premultiplied,
+            )
+            image.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(image)
+            try:
+                painter.translate(80.0, 120.0)
+                painter.setOpacity(opacity)
+                draw_emphasis_marks(
+                    painter,
+                    block,
+                    line,
+                    context,
+                    vertical=False,
+                )
+            finally:
+                painter.end()
+            return image
+
+        opaque = render(1.0)
+        translucent = render(0.4)
+        self.assertEqual(
+            _format_at(marks[0].source.document, 0).foreground(),
+            cached_foreground,
+        )
+
+        def channel_means(image: QImage, mark) -> tuple[float, float]:
+            bounds = mark.ink_bounds.translated(80.0, 120.0).toAlignedRect()
+            colors = []
+            for y in range(
+                max(0, bounds.top()),
+                min(image.height(), bounds.bottom() + 1),
+            ):
+                for x in range(
+                    max(0, bounds.left()),
+                    min(image.width(), bounds.right() + 1),
+                ):
+                    color = image.pixelColor(x, y)
+                    if color.alpha() > 64:
+                        colors.append(color)
+            self.assertTrue(colors)
+            return (
+                sum(color.red() for color in colors) / len(colors),
+                sum(color.blue() for color in colors) / len(colors),
+            )
+
+        left_red, left_blue = channel_means(opaque, marks[0])
+        right_red, right_blue = channel_means(opaque, marks[1])
+        self.assertGreater(left_red, left_blue)
+        self.assertGreater(left_red, right_red)
+        self.assertGreater(right_blue, left_blue)
+        self.assertLess(
+            max(
+                translucent.pixelColor(x, y).alpha()
+                for y in range(translucent.height())
+                for x in range(translucent.width())
+            ),
+            max(
+                opaque.pixelColor(x, y).alpha()
+                for y in range(opaque.height())
+                for x in range(opaque.width())
+            ),
+        )
+
+    def test_native_emphasis_ink_uses_shared_horizontal_and_vertical_placement(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item = self._make_item(vertical, text='A')
+                item.startEdit()
+                cursor = item.textCursor()
+                cursor.select(QTextCursor.SelectionType.Document)
+                item.setTextCursor(cursor)
+                item.setEmphasis('open circle', 'under left')
+                block = item.document().firstBlock()
+                if vertical:
+                    line, offset, orientation = (
+                        item.layout.vertical_line_placement(block, 0)
+                    )
+                else:
+                    line = block.layout().lineAt(0)
+                    offset = QPointF()
+                    orientation = None
+                kwargs = {
+                    'vertical': vertical,
+                    'offset': offset,
+                }
+                if orientation is not None:
+                    kwargs['orientation'] = orientation
+                marks = tuple(
+                    emphasis_rendering._iter_emphasis_marks(
+                        block,
+                        line,
+                        **kwargs,
+                    )
+                )
+                self.assertEqual(len(marks), 1)
+                cell = glyph_rendering.logical_span_rect(
+                    line,
+                    0,
+                    1,
+                    offset,
+                    orientation or QTransform(),
+                )
+                if vertical:
+                    self.assertLess(marks[0].ink_bounds.right(), cell.left())
+                else:
+                    self.assertGreater(marks[0].ink_bounds.top(), cell.bottom())
+                self.assertEqual(
+                    emphasis_ink_bounds(block, line, **kwargs),
+                    marks[0].ink_bounds,
+                )
+                self.assertTrue(
+                    item.boundingRect().adjusted(
+                        -0.02, -0.02, 0.02, 0.02
+                    ).contains(marks[0].ink_bounds)
+                )
+
     def test_emphasis_adds_css_like_line_and_column_leading(self):
         horizontal_plain = self._make_item(False)
         horizontal_marked = self._make_item(False)
@@ -1203,6 +1586,207 @@ class RichTextAnnotationTest(unittest.TestCase):
                 for actual, expected in zip(after, before):
                     self.assertAlmostEqual(actual.x(), expected.x())
                     self.assertAlmostEqual(actual.y(), expected.y())
+
+    def test_effect_stroke_scales_native_emphasis_outline_with_mark_font(self):
+        block = TextBlock([0, 0, 240, 160])
+        block._bounding_rect = [0, 0, 240, 160]
+        block.translation = 'A'
+        block.fontformat.font_size = 40.0
+        block.fontformat.stroke_width = 0.25
+        item = TextBlkItem(block, 0)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+        item.setEmphasis('open circle', 'over right')
+        item.endEdit(keep_focus=False)
+
+        NATIVE_DOCUMENT_CACHE.clear()
+        self.addCleanup(
+            NATIVE_DOCUMENT_CACHE.clear
+        )
+        item.repaint_background()
+
+        outlined = [
+            _format_at(entry.document, 0)
+            for entry in NATIVE_DOCUMENT_CACHE.values()
+            if _format_at(entry.document, 0).textOutline().style()
+            != Qt.PenStyle.NoPen
+        ]
+        self.assertTrue(outlined)
+        expected_width = (
+            pt2px(_format_at(item.document(), 0).fontPointSize())
+            * item.fontformat.stroke_width
+            * emphasis_rendering.EMPHASIS_FONT_SCALE
+        )
+        for mark_format in outlined:
+            self.assertAlmostEqual(
+                mark_format.textOutline().widthF(),
+                expected_width,
+            )
+            self.assertFalse(
+                mark_format.hasProperty(
+                    glyph_rendering.GLYPH_DILATED_STROKE_FORMAT_PROPERTY
+                )
+            )
+
+    def test_vertical_glyph_slant_stroke_keeps_emphasis_out_of_dilation(self):
+        block = TextBlock([0, 0, 180, 220])
+        block._bounding_rect = [0, 0, 180, 220]
+        block.translation = 'A'
+        block.vertical = True
+        block.fontformat.font_size = 48.0
+        block.fontformat.stroke_width = 0.2
+        block.fontformat.text_transform = TextTransformStack((), 11.0)
+        item = TextBlkItem(block, 0)
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        self.addCleanup(scene.removeItem, item)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+        item.setEmphasis('open circle', 'over right')
+        item.endEdit(keep_focus=False)
+        self.app.processEvents()
+
+        document_block = item.document().firstBlock()
+        line, offset, orientation = item.layout.vertical_line_placement(
+            document_block, 0
+        )
+        normal_mark = next(
+            emphasis_rendering._iter_emphasis_marks(
+                document_block,
+                line,
+                vertical=True,
+                offset=offset,
+                orientation=orientation,
+            )
+        )
+        normal_bounds = QRectF(normal_mark.ink_bounds)
+        surface_rect = QRectF(item.boundingRect())
+        NATIVE_DOCUMENT_CACHE.clear()
+        self.addCleanup(
+            NATIVE_DOCUMENT_CACHE.clear
+        )
+
+        mask_flags = []
+        dilation_inputs = []
+        native_documents = []
+        draw_mask = item.geometry_controller.draw_layout_selection_mask
+        dilate = effect_rendering.cv2.dilate
+        native_draw = QTextDocument.drawContents
+
+        def record_mask(painter, context, *, include_annotations=True):
+            mask_flags.append(include_annotations)
+            return draw_mask(
+                painter,
+                context,
+                include_annotations=include_annotations,
+            )
+
+        def record_dilate(source, kernel, *args, **kwargs):
+            dilation_inputs.append(source.copy())
+            return dilate(source, kernel, *args, **kwargs)
+
+        def record_document(document, *args):
+            native_documents.append(document)
+            return native_draw(document, *args)
+
+        with patch.object(
+            item.geometry_controller,
+            'draw_layout_selection_mask',
+            new=record_mask,
+        ), patch.object(
+            effect_rendering.cv2,
+            'dilate',
+            new=record_dilate,
+        ), patch.object(
+            QTextDocument,
+            'drawContents',
+            new=record_document,
+        ):
+            item.repaint_background()
+
+        def alpha_region(alpha, bounds: QRectF, padding: float = 0.0):
+            local = QRectF(bounds).translated(-surface_rect.topLeft())
+            local.adjust(-padding, -padding, padding, padding)
+            pixels = local.toAlignedRect()
+            left = max(0, pixels.left())
+            top = max(0, pixels.top())
+            right = min(alpha.shape[1], pixels.right() + 1)
+            bottom = min(alpha.shape[0], pixels.bottom() + 1)
+            return alpha[top:bottom, left:right]
+
+        self.assertTrue(mask_flags)
+        self.assertFalse(any(mask_flags))
+        self.assertTrue(dilation_inputs)
+        self.assertTrue(all(alpha.any() for alpha in dilation_inputs))
+        self.assertTrue(
+            all(
+                not alpha_region(alpha, normal_bounds).any()
+                for alpha in dilation_inputs
+            )
+        )
+
+        expected_width = (
+            pt2px(_format_at(item.document(), 0).fontPointSize())
+            * item.fontformat.stroke_width
+            * emphasis_rendering.EMPHASIS_FONT_SCALE
+        )
+        outlined_documents = []
+        for entry in NATIVE_DOCUMENT_CACHE.values():
+            mark_format = _format_at(entry.document, 0)
+            if mark_format.textOutline().style() == Qt.PenStyle.NoPen:
+                continue
+            outlined_documents.append(entry.document)
+            self.assertAlmostEqual(
+                mark_format.textOutline().widthF(), expected_width
+            )
+        self.assertTrue(outlined_documents)
+        self.assertTrue(
+            any(
+                painted is outlined
+                for painted in native_documents
+                for outlined in outlined_documents
+            )
+        )
+
+        stroke_context = item.effect_renderer._stroke_paint_context()
+        outlined_mark = next(
+            emphasis_rendering._iter_emphasis_marks(
+                document_block,
+                line,
+                vertical=True,
+                context=stroke_context,
+                offset=offset,
+                orientation=orientation,
+            )
+        )
+        self.assertAlmostEqual(
+            outlined_mark.ink_bounds.width() - normal_bounds.width(),
+            expected_width,
+        )
+        self.assertTrue(
+            item.boundingRect().adjusted(
+                -0.02, -0.02, 0.02, 0.02
+            ).contains(outlined_mark.ink_bounds)
+        )
+        final_alpha = pixmap2ndarray(
+            item.effect_renderer.background_pixmap,
+            keep_alpha=True,
+        )[..., 3]
+        mark_region = alpha_region(
+            final_alpha, outlined_mark.ink_bounds, padding=4.0
+        )
+        self.assertTrue(mark_region.any())
+        local_ink = QRectF(outlined_mark.ink_bounds).translated(
+            -surface_rect.topLeft()
+        )
+        self.assertGreater(local_ink.left(), 0.0)
+        self.assertGreater(local_ink.top(), 0.0)
+        self.assertLess(local_ink.right(), final_alpha.shape[1])
+        self.assertLess(local_ink.bottom(), final_alpha.shape[0])
 
     def test_wrapped_vertical_columns_keep_mark_space_and_render(self):
         text = '強調文字列強調文字列'

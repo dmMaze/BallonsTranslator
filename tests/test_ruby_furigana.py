@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QEvent, Qt
+from qtpy.QtCore import QEvent, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
@@ -22,7 +22,11 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import QApplication, QGraphicsScene
 
-from ballontranslator.ui.text_engine import horizontal_layout
+from ballontranslator.ui.text_engine import (
+    effect_renderer as effect_rendering,
+    horizontal_layout,
+)
+from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.ui.text_engine.rendering import glyph as glyph_rendering
 from ballontranslator.ui.text_engine.annotations import (
     RubyValidationError,
@@ -43,7 +47,12 @@ from ballontranslator.ui.text_engine.editing.commands import propagate_user_edit
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering.glyph import resolve_paint_spans
 from ballontranslator.ui.text_engine.rendering.ruby import (
+    RUBY_FONT_SCALE,
     _space_around_positions,
+    draw_ruby_placement,
+)
+from ballontranslator.ui.text_engine.rendering.native_document import (
+    NATIVE_DOCUMENT_CACHE,
 )
 from ballontranslator.utils.fontformat import (
     BendTextTransform,
@@ -688,8 +697,10 @@ class RubyFuriganaTest(unittest.TestCase):
             ))
 
     def test_paint_span_fragment_lookup_is_single_pass_for_many_mono_units(self):
+        self.addCleanup(NATIVE_DOCUMENT_CACHE.clear)
         for count in (32, 256):
             with self.subTest(count=count):
+                NATIVE_DOCUMENT_CACHE.clear()
                 item = self._item(
                     text='A' * count,
                     bounds=(0, 0, count * 160, 180),
@@ -772,6 +783,10 @@ class RubyFuriganaTest(unittest.TestCase):
                 finally:
                     painter.end()
                 self.assertEqual(paint_line.call_count, 1)
+                self.assertLessEqual(
+                    len(NATIVE_DOCUMENT_CACHE),
+                    len(set('とてもながいとう')),
+                )
 
     def test_horizontal_placement_spacing_and_selection_share_ruby_cell(self):
         centers = {}
@@ -962,6 +977,13 @@ class RubyFuriganaTest(unittest.TestCase):
                         font_metrics.horizontalAdvance('A')
                         + font_metrics.horizontalAdvance('V'),
                     )
+                self.assertEqual(
+                    tuple(
+                        run.source.document.toPlainText()
+                        for run in placement.paint_runs
+                    ),
+                    runs,
+                )
                 centers = [
                     geometry.bounds.center().y()
                     if vertical else geometry.bounds.center().x()
@@ -1308,6 +1330,243 @@ class RubyFuriganaTest(unittest.TestCase):
         both_y = both.document().firstBlock().layout().lineAt(0).y()
         self.assertGreater(ruby_y, plain_y)
         self.assertGreater(both_y, ruby_y)
+
+    def test_ruby_uses_cached_native_documents_without_mutating_live_document(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item = self._item(vertical=vertical, text='学院')
+                effect = item.fontformat.deepcopy()
+                effect.stroke_width = 0.2
+                item.set_fontformat(effect)
+                cursor = _select(item.document(), 0, 2)
+                decorated = QTextCharFormat()
+                decorated.setFontUnderline(True)
+                decorated.setBackground(QColor('#70ff90'))
+                cursor.mergeCharFormat(decorated)
+                apply_ruby(cursor, 'group', '佛佛', 'over')
+                item.layout.reLayoutEverything()
+
+                live_document = item.document()
+                revision = live_document.revision()
+                text = live_document.toPlainText()
+                html = to_rich_text_html(live_document)
+                stroke_context = item.effect_renderer._stroke_paint_context()
+                NATIVE_DOCUMENT_CACHE.clear()
+                self.addCleanup(NATIVE_DOCUMENT_CACHE.clear)
+                block = live_document.firstBlock()
+                placements = (
+                    item.layout._vertical_ruby_placements(
+                        block, stroke_context
+                    )
+                    if vertical
+                    else item.layout._ruby_line_placements(
+                        block,
+                        block.layout().lineAt(0),
+                        stroke_context,
+                    )
+                )
+                self.assertEqual(len(placements), 1)
+                placement = placements[0]
+                self.assertEqual(len(placement.paint_runs), 2)
+                self.assertIs(
+                    placement.paint_runs[0].source,
+                    placement.paint_runs[1].source,
+                )
+
+                image = QImage(
+                    800,
+                    500,
+                    QImage.Format.Format_ARGB32_Premultiplied,
+                )
+                image.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(image)
+                painted_documents = []
+                native_draw = QTextDocument.drawContents
+
+                def record_document(document, *args):
+                    painted_documents.append(document)
+                    return native_draw(document, *args)
+
+                try:
+                    with patch.object(
+                        QTextDocument,
+                        'drawContents',
+                        new=record_document,
+                    ), patch.object(
+                        glyph_rendering,
+                        '_draw_dilated_path_stroke',
+                    ) as generic_dilation:
+                        draw_ruby_placement(painter, placement)
+                finally:
+                    painter.end()
+
+                source = placement.paint_runs[0].source
+                self.assertEqual(
+                    painted_documents,
+                    [source.document, source.document],
+                )
+                self.assertIsNot(source.document, live_document)
+                self.assertEqual(source.document.toPlainText(), '佛')
+                self.assertEqual(source.document.documentMargin(), 0.0)
+                self.assertEqual(len(NATIVE_DOCUMENT_CACHE), 1)
+                generic_dilation.assert_not_called()
+                source_cursor = QTextCursor(source.document)
+                source_cursor.select(QTextCursor.SelectionType.Document)
+                source_format = source_cursor.charFormat()
+                self.assertFalse(source_format.font().underline())
+                self.assertEqual(
+                    source_format.background().style(),
+                    Qt.BrushStyle.NoBrush,
+                )
+                expected_outline = (
+                    stroke_context.selections[0]
+                    .format.textOutline().widthF()
+                    * RUBY_FONT_SCALE
+                )
+                self.assertAlmostEqual(
+                    source_format.textOutline().widthF(),
+                    expected_outline,
+                )
+                self.assertEqual(live_document.revision(), revision)
+                self.assertEqual(live_document.toPlainText(), text)
+                self.assertEqual(to_rich_text_html(live_document), html)
+                if vertical:
+                    with patch.object(
+                        glyph_rendering,
+                        '_draw_dilated_path_stroke',
+                    ) as neutral_generic_dilation:
+                        item.repaint_background()
+                    neutral_generic_dilation.assert_not_called()
+
+    def test_vertical_glyph_slant_stroke_keeps_ruby_out_of_dilation(self):
+        block = TextBlock([0, 0, 220, 260])
+        block._bounding_rect = [0, 0, 220, 260]
+        block.translation = '学'
+        block.vertical = True
+        block.fontformat.font_size = 64.0
+        block.fontformat.stroke_width = 0.25
+        block.fontformat.text_transform = TextTransformStack((), 11.0)
+        item = TextBlkItem(block, 0)
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        self.addCleanup(scene.removeItem, item)
+        apply_ruby(_select(item.document(), 0, 1), 'group', '佛', 'over')
+        item.layout.reLayoutEverything()
+        self.app.processEvents()
+
+        live_document = item.document()
+        document_block = live_document.firstBlock()
+        normal = item.layout._vertical_ruby_placements(document_block)[0]
+        normal_bounds = QRectF(normal.ink_bounds)
+        surface_rect = QRectF(item.boundingRect())
+        NATIVE_DOCUMENT_CACHE.clear()
+        self.addCleanup(NATIVE_DOCUMENT_CACHE.clear)
+
+        mask_flags = []
+        dilation_inputs = []
+        native_documents = []
+        annotation_calls = []
+        draw_mask = item.geometry_controller.draw_layout_selection_mask
+        draw_annotations = item.geometry_controller.draw_layout_annotations
+        dilate = effect_rendering.cv2.dilate
+        native_draw = QTextDocument.drawContents
+
+        def record_mask(painter, context, *, include_annotations=True):
+            mask_flags.append(include_annotations)
+            return draw_mask(
+                painter,
+                context,
+                include_annotations=include_annotations,
+            )
+
+        def record_annotations(painter, context):
+            annotation_calls.append(True)
+            return draw_annotations(painter, context)
+
+        def record_dilate(source, kernel, *args, **kwargs):
+            dilation_inputs.append(source.copy())
+            return dilate(source, kernel, *args, **kwargs)
+
+        def record_document(document, *args):
+            native_documents.append(document)
+            return native_draw(document, *args)
+
+        with patch.object(
+            item.geometry_controller,
+            'draw_layout_selection_mask',
+            new=record_mask,
+        ), patch.object(
+            item.geometry_controller,
+            'draw_layout_annotations',
+            new=record_annotations,
+        ), patch.object(
+            effect_rendering.cv2,
+            'dilate',
+            new=record_dilate,
+        ), patch.object(
+            QTextDocument,
+            'drawContents',
+            new=record_document,
+        ), patch.object(
+            glyph_rendering,
+            '_draw_dilated_path_stroke',
+        ) as generic_dilation:
+            item.repaint_background()
+
+        def alpha_region(alpha, bounds: QRectF, padding: float = 0.0):
+            local = QRectF(bounds).translated(-surface_rect.topLeft())
+            local.adjust(-padding, -padding, padding, padding)
+            pixels = local.toAlignedRect()
+            left = max(0, pixels.left())
+            top = max(0, pixels.top())
+            right = min(alpha.shape[1], pixels.right() + 1)
+            bottom = min(alpha.shape[0], pixels.bottom() + 1)
+            return alpha[top:bottom, left:right]
+
+        self.assertTrue(mask_flags)
+        self.assertFalse(any(mask_flags))
+        self.assertEqual(len(annotation_calls), 1)
+        self.assertTrue(dilation_inputs)
+        self.assertTrue(all(alpha.any() for alpha in dilation_inputs))
+        self.assertTrue(all(
+            not alpha_region(alpha, normal_bounds).any()
+            for alpha in dilation_inputs
+        ))
+        generic_dilation.assert_not_called()
+
+        stroke_context = item.effect_renderer._stroke_paint_context()
+        outlined = item.layout._vertical_ruby_placements(
+            document_block, stroke_context
+        )[0]
+        source = outlined.paint_runs[0].source
+        source_cursor = QTextCursor(source.document)
+        source_cursor.select(QTextCursor.SelectionType.Document)
+        expected_width = (
+            stroke_context.selections[0].format.textOutline().widthF()
+            * RUBY_FONT_SCALE
+        )
+        self.assertAlmostEqual(
+            source_cursor.charFormat().textOutline().widthF(),
+            expected_width,
+        )
+        self.assertEqual(
+            sum(document is source.document for document in native_documents),
+            1,
+        )
+        final_alpha = pixmap2ndarray(
+            item.effect_renderer.background_pixmap,
+            keep_alpha=True,
+        )[..., 3]
+        self.assertTrue(alpha_region(
+            final_alpha, outlined.ink_bounds, padding=expected_width
+        ).any())
+        local_ink = QRectF(outlined.ink_bounds).translated(
+            -surface_rect.topLeft()
+        )
+        self.assertGreater(local_ink.left(), 0.0)
+        self.assertGreater(local_ink.top(), 0.0)
+        self.assertLess(local_ink.right(), final_alpha.shape[1])
+        self.assertLess(local_ink.bottom(), final_alpha.shape[0])
 
     def test_effects_glyph_slant_mode_switch_and_paint_share_ruby_geometry(self):
         def pixels_in(image, scene_rect, target):

@@ -121,6 +121,15 @@ margin. Ruby remains annotation text, not editable document characters.
 The supported subset always uses `ruby-overhang: none`; automatic overhang and
 collision handling remain deferred.
 
+Ruby and emphasis paint their layout-owned annotation ink through a shared,
+bounded cache of zero-margin native `QTextDocument`s derived from the source
+fragment format; the live editable document is never reused or mutated for
+annotation painting. Qt therefore owns native fill and proportional outline
+rasterization while the horizontal and vertical layouts continue to own
+placement and ink bounds. Vertical Glyph Slant stroke masks keep base-text
+morphology, then composite Ruby and emphasis once through their half-font
+native outlines.
+
 Character spacing uses the same selection/insertion behavior as other inline
 formats. Qt imports but does not export CSS `letter-spacing`, and the existing
 value is a per-glyph-width multiplier rather than CSS's additive length. Each

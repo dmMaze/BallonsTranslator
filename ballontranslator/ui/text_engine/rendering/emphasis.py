@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Iterable, Iterator, NamedTuple, Optional
 
-from qtpy.QtCore import QPointF, QRectF
+from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QFont,
     QFontMetricsF,
     QPainter,
-    QPainterPath,
+    QPen,
     QTextBlock,
     QTextCharFormat,
     QTextLine,
@@ -24,14 +24,17 @@ from ..annotations import (
 )
 from .glyph import (
     GLYPH_STROKE_FORMAT_PROPERTY,
-    GlyphGeometry,
     PaintSpan,
-    draw_glyph_geometry,
     glyph_geometry,
     logical_span_rect,
     resolve_paint_spans,
 )
 from .indexing import _grapheme_ranges, _utf16_slice
+from .native_document import (
+    NativeTextDocument,
+    draw_native_text_document,
+    native_text_document,
+)
 
 
 EMPHASIS_GLYPHS = {
@@ -51,20 +54,57 @@ EMPHASIS_GAP_SCALE = 0.08
 
 
 class EmphasisMark(NamedTuple):
-    """One paint-ready mark retaining its source fragment format."""
+    """One layout-owned placement of a cached native mark document."""
 
-    geometry: GlyphGeometry
-    char_format: QTextCharFormat
+    source: NativeTextDocument
+    offset: QPointF
+
+    @property
+    def ink_bounds(self) -> QRectF:
+        return self.source.ink_bounds.translated(self.offset)
 
 
 def _mark_font(char_format: QTextCharFormat) -> QFont:
     font = QFont(char_format.font())
     point_size = font.pointSizeF()
     if point_size > 0:
-        font.setPointSizeF(max(1.0, point_size * EMPHASIS_FONT_SCALE))
+        font.setPointSizeF(point_size * EMPHASIS_FONT_SCALE)
     elif font.pixelSize() > 0:
         font.setPixelSize(max(1, round(font.pixelSize() * EMPHASIS_FONT_SCALE)))
+    font.setUnderline(False)
+    font.setOverline(False)
+    font.setStrikeOut(False)
+    tag_type = getattr(QFont, 'Tag', None)
+    if (
+        tag_type is not None
+        and hasattr(tag_type, 'fromString')
+        and hasattr(font, 'setFeature')
+    ):
+        font.setFeature(tag_type.fromString('ruby'), 1)
     return font
+
+
+def _mark_char_format(char_format: QTextCharFormat) -> QTextCharFormat:
+    """Keep glyph paint inputs while dropping document semantics."""
+    result = QTextCharFormat()
+    result.setFont(_mark_font(char_format))
+    foreground = char_format.foreground()
+    if foreground.style() != Qt.BrushStyle.NoBrush:
+        result.setForeground(foreground)
+    outline = QPen(char_format.textOutline())
+    if outline.style() != Qt.PenStyle.NoPen:
+        if outline.widthF() > 0.0:
+            outline.setWidthF(outline.widthF() * EMPHASIS_FONT_SCALE)
+        result.setTextOutline(outline)
+    return result
+
+
+def _mark_document(
+    style: str,
+    char_format: QTextCharFormat,
+) -> NativeTextDocument:
+    mark_format = _mark_char_format(char_format)
+    return native_text_document(EMPHASIS_GLYPHS[style], mark_format)
 
 
 def _mark_extent(
@@ -73,7 +113,7 @@ def _mark_extent(
     *,
     vertical: bool,
 ) -> float:
-    bounds = _mark_path(style, char_format).boundingRect()
+    bounds = _mark_document(style, char_format).glyph_bounds
     ink_extent = bounds.width() if vertical else bounds.height()
     gap = QFontMetricsF(char_format.font()).height() * EMPHASIS_GAP_SCALE
     # Stroke rendering temporarily injects an outline into a cloned document.
@@ -142,18 +182,6 @@ def _effect_spans(
     return spans
 
 
-def _mark_path(style: str, char_format: QTextCharFormat) -> QPainterPath:
-    path = QPainterPath()
-    path.addText(QPointF(), _mark_font(char_format), EMPHASIS_GLYPHS[style])
-    return path
-
-
-def _mark_geometry(center: QPointF, path: QPainterPath) -> GlyphGeometry:
-    bounds = path.boundingRect()
-    path.translate(center - bounds.center())
-    return GlyphGeometry((path,), (), path.boundingRect())
-
-
 def _iter_emphasis_marks(
     block: QTextBlock,
     line: QTextLine,
@@ -194,6 +222,7 @@ def _iter_emphasis_marks(
         style, position = emphasis_values(span.char_format)
         if style == 'none':
             continue
+        source = _mark_document(style, span.char_format)
         span_end = span.start + span.length
         for start, end in graphemes:
             owns_mark = (
@@ -226,8 +255,7 @@ def _iter_emphasis_marks(
                     cell = run_bounds
             if cell.isEmpty():
                 continue
-            path = _mark_path(style, span.char_format)
-            path_bounds = path.boundingRect()
+            mark_bounds = source.glyph_bounds
             gap = (
                 QFontMetricsF(span.char_format.font()).height()
                 * EMPHASIS_GAP_SCALE
@@ -240,9 +268,9 @@ def _iter_emphasis_marks(
                     else side_offsets[1]
                 )
                 x = (
-                    cell.right() + side_offset + gap + path_bounds.width() / 2
+                    cell.right() + side_offset + gap + mark_bounds.width() / 2
                     if vertical_side == 'right'
-                    else cell.left() - side_offset - gap - path_bounds.width() / 2
+                    else cell.left() - side_offset - gap - mark_bounds.width() / 2
                 )
                 center = QPointF(x, cell.center().y())
             else:
@@ -252,14 +280,14 @@ def _iter_emphasis_marks(
                     else side_offsets[1]
                 )
                 y = (
-                    cell.top() - side_offset - gap - path_bounds.height() / 2
+                    cell.top() - side_offset - gap - mark_bounds.height() / 2
                     if horizontal_side == 'over'
-                    else cell.bottom() + side_offset + gap + path_bounds.height() / 2
+                    else cell.bottom() + side_offset + gap + mark_bounds.height() / 2
                 )
                 center = QPointF(cell.center().x(), y)
             yield EmphasisMark(
-                _mark_geometry(center, path),
-                span.char_format,
+                source,
+                center - mark_bounds.center(),
             )
             if combined_unit:
                 return
@@ -286,7 +314,11 @@ def draw_emphasis_marks(
         orientation=orientation,
         side_offsets=side_offsets,
     ):
-        draw_glyph_geometry(painter, mark.geometry, mark.char_format)
+        draw_native_text_document(
+            painter,
+            mark.source,
+            QTransform.fromTranslate(mark.offset.x(), mark.offset.y()),
+        )
 
 
 def emphasis_ink_bounds(
@@ -308,7 +340,7 @@ def emphasis_ink_bounds(
         orientation=orientation,
         side_offsets=side_offsets,
     ):
-        mark_bounds = mark.geometry.bounds
+        mark_bounds = mark.ink_bounds
         bounds = (
             QRectF(mark_bounds)
             if bounds.isNull()
