@@ -1356,11 +1356,7 @@ class TextItemGeometryController:
         duplicate the same matrix calculation.
         """
         item = self.item
-        center = (
-            self.logical_rect().center()
-            if self.requires_custom_resize()
-            else item.boundingRect().center()
-        )
+        center = self.logical_rect().center()
         if item.transformOriginPoint() == center:
             return False
         with self.update_transaction():

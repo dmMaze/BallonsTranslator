@@ -603,6 +603,72 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         self.app.processEvents()
         self.assertIn(item, scene.items(scene_point))
 
+    def test_rotated_item_uses_logical_pivot_when_overflow_appears(self):
+        item = self._make_overflow_item(
+            standard=True,
+            text='一般abcg',
+            bounds=(180, 700),
+            font_size=96,
+        )
+        scene = QGraphicsScene()
+        scene.setItemIndexMethod(
+            QGraphicsScene.ItemIndexMethod.BspTreeIndex
+        )
+        scene.setSceneRect(QRectF(-200, -200, 600, 1100))
+        scene.addItem(item)
+        item.setRotation(12.0)
+        logical = QRectF(item.logical_unpadded_rect())
+
+        def cjk_geometry() -> tuple[QPointF, QPointF, QPointF]:
+            block = item.document().firstBlock()
+            line = block.layout().lineForTextPosition(1)
+            placement = item.layout.vertical_line_placement(
+                block, line.lineNumber()
+            )
+            glyph = glyph_geometry(
+                placement[0],
+                placement[0].textStart(),
+                placement[0].textLength(),
+                placement[1],
+                placement[2],
+                0.0,
+            ).bounds
+            return (
+                QPointF(line.position()),
+                item.mapToScene(line.position()),
+                item.mapToScene(glyph.center()),
+            )
+
+        logical_anchor = item.mapToScene(logical.center())
+        cjk_before = cjk_geometry()
+        self.assertEqual(item.transformOriginPoint(), logical.center())
+
+        item.setStandardVerticalRomanAlignment(False)
+        self.app.processEvents()
+
+        self.assertEqual(item.logical_unpadded_rect(), logical)
+        self.assertEqual(item.transformOriginPoint(), logical.center())
+        self.assertEqual(item.mapToScene(logical.center()), logical_anchor)
+        self.assertEqual(cjk_geometry(), cjk_before)
+        g_ink = self._transformed_line_ink(item)[-1]
+        outside = QPointF(
+            (g_ink.left() + logical.left()) / 2,
+            g_ink.center().y(),
+        )
+        scene_point = item.mapToScene(outside)
+        self.assertTrue(
+            item.geometry_controller.source_paint_rect().contains(g_ink)
+        )
+        self.assertTrue(item.boundingRect().contains(g_ink))
+        self.assertTrue(item.shape().boundingRect().contains(g_ink))
+        self.assertIn(item, scene.items(scene_point))
+
+        item.setStandardVerticalRomanAlignment(True)
+        self.app.processEvents()
+        self.assertEqual(item.transformOriginPoint(), logical.center())
+        self.assertEqual(item.mapToScene(logical.center()), logical_anchor)
+        self.assertEqual(cjk_geometry(), cjk_before)
+
     def test_document_edit_updates_scene_overflow_without_item_hook(self):
         item = self._make_overflow_item(
             text='一般abc',
