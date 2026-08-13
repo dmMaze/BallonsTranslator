@@ -216,6 +216,96 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                         )
                         self.assertTrue(item.contains(bounds.center()))
 
+    def test_fresh_project_item_does_not_add_glyph_bearing_padding(self):
+        def make_item(text: str) -> TextBlkItem:
+            payload = {
+                'xyxy': [81, 111, 220, 362],
+                '_bounding_rect': [234, 93, 30, 269],
+                'translation': text,
+                'rich_text': (
+                    '<html><body style="font-family:\'Noto Sans\'; '
+                    'font-size:22.5pt; font-weight:700">'
+                    '<p><span data-btrans-letter-spacing="1.23">'
+                    f'{text}</span></p></body></html>'
+                ),
+                'fontformat': {
+                    'font_family': 'Noto Sans',
+                    'font_size': 30.0,
+                    'font_weight': 700,
+                    'bold': True,
+                    'alignment': TextAlignment.Left,
+                    'vertical': True,
+                    'standard_vertical_roman_alignment': False,
+                    'letter_spacing': 1.23,
+                },
+                'text_layout_version': TEXT_LAYOUT_VERSION,
+            }
+            return TextBlkItem(TextBlock(**payload), 12, show_rect=True)
+
+        reference = make_item('一般abc')
+        item = make_item('一般abcg')
+        scene = QGraphicsScene()
+        scene.addItem(reference)
+        scene.addItem(item)
+        self.app.processEvents()
+
+        # Only the settled native column may enlarge the saved box; glyph
+        # bearings are paint overflow, not layout width.
+        native_width = max(30.0, item.layout._column_content_width())
+        actual_rect = item.absBoundingRect(qrect=True)
+        actual_width = actual_rect.width()
+        self.assertEqual(actual_rect.topLeft(), QPointF(234, 93))
+        self.assertEqual(actual_rect.height(), 269.0)
+        self.assertGreaterEqual(actual_width, native_width)
+        self.assertLessEqual(actual_width - native_width, 1.0)
+        self.assertEqual(
+            item.blk._bounding_rect,
+            [234, 93, math.ceil(actual_width), 269],
+        )
+        self.assertEqual(item.logical_unpadded_rect().width(), actual_width)
+        self.assertEqual(
+            item.geometry_controller.visual_outline_in_item().boundingRect(),
+            item.logical_unpadded_rect(),
+        )
+
+        for position in (0, 1):
+            reference_line = (
+                reference.document().firstBlock().layout()
+                .lineForTextPosition(position)
+            )
+            item_line = (
+                item.document().firstBlock().layout()
+                .lineForTextPosition(position)
+            )
+            self.assertEqual(item_line.position(), reference_line.position())
+            self.assertEqual(
+                item.mapToScene(item_line.position()),
+                reference.mapToScene(reference_line.position()),
+            )
+
+        first_ink = self._ink_and_cell(item, 0)[0]
+        reference_first_ink = self._ink_and_cell(reference, 0)[0]
+        self.assertEqual(
+            item.mapRectToScene(first_ink),
+            reference.mapRectToScene(reference_first_ink),
+        )
+        self.assertLessEqual(
+            item.logical_unpadded_rect().right() - first_ink.right(),
+            2.0,
+        )
+        g_ink = self._transformed_line_ink(item)[-1]
+        outside = QPointF(
+            (g_ink.left() + item.logical_unpadded_rect().left()) / 2,
+            g_ink.center().y(),
+        )
+        self.assertLess(g_ink.left(), item.logical_unpadded_rect().left())
+        self.assertTrue(
+            item.geometry_controller.source_paint_rect().contains(g_ink)
+        )
+        self.assertTrue(item.boundingRect().contains(g_ink))
+        self.assertTrue(item.shape().contains(outside))
+        self.assertIn(item, scene.items(item.mapToScene(outside)))
+
     def test_upright_roman_and_horizontal_paths_keep_native_bounds(self):
         for alignment in (
             TextAlignment.Left,

@@ -250,7 +250,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.min_height = 0
         self.layout_left = 0
         self.has_selection = False
-        self.draw_shifted = 0
 
         self.need_ideal_width = True
         self.per_char_records = []
@@ -450,7 +449,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.per_char_records = []
         self.text_combine_ranges = []
         self._ruby_metrics = []
-        self.draw_shifted = 0
         self.shrink_height = 0
         self.shrink_width = 0
         self.text_padding = 0
@@ -1667,7 +1665,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         blk_line_spaces = []
 
         block_no = block.blockNumber()
-        is_final_block = block == doc.lastBlock()
         blk_text = block.text()
         custom_rendering = self.render_delegate is not None
         text_combine_ranges = text_combine_upright_ranges(block)
@@ -1905,12 +1902,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             # but a logical cell must never advance backwards.
             tbr_h = max(tbr_h, 0.0)
 
-            if num_lspaces == 0 and tbr_h != 0 and not is_text_combine:
-                ntw = line.naturalTextWidth()
-                shifted = ntw - cfmt.br.width()
-                if is_final_block:
-                    self.draw_shifted = max(self.draw_shifted, shifted)
-
             line_position_y = line_y_offset + ruby_leading
             char_yoffset_lst = [line_position_y]
             if is_first_lbracket:
@@ -2084,7 +2075,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 active_ruby_metric = None
         tl.endLayout()
 
-        self.layout_left = x_offset - self.draw_shifted
+        self.layout_left = x_offset
         self.shrink_width = max(self.max_width - self.layout_left - doc_margin + 0.01, self.shrink_width)
         self.shrink_height = max(shrink_height + 0.01 - doc_margin, self.shrink_height)
         self.x_offset_lst.append(x_offset)
