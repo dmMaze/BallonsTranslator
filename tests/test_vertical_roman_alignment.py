@@ -1,3 +1,4 @@
+import math
 import os
 import unittest
 from types import SimpleNamespace
@@ -6,10 +7,23 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QRectF
-from qtpy.QtGui import QFont, QTextCharFormat, QTextCursor, QTextLayout
+from qtpy.QtCore import QPointF, QRectF
+from qtpy.QtGui import (
+    QColor,
+    QFont,
+    QImage,
+    QPainter,
+    QTextCharFormat,
+    QTextCursor,
+    QTextLayout,
+)
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication, QCheckBox, QLineEdit
+from qtpy.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QGraphicsScene,
+    QLineEdit,
+)
 try:
     from qtpy.QtGui import QUndoStack
 except ImportError:
@@ -39,7 +53,12 @@ from ballontranslator.ui.text_engine.vertical_layout import (
 from ballontranslator.ui.text_engine.rendering.glyph import glyph_geometry
 from ballontranslator.utils import config as C
 from ballontranslator.utils import shared
-from ballontranslator.utils.fontformat import FontFormat, TextAlignment
+from ballontranslator.utils.fontformat import (
+    BendTextTransform,
+    FontFormat,
+    TextAlignment,
+    TextTransformStack,
+)
 from ballontranslator.utils.textblock import TEXT_LAYOUT_VERSION, TextBlock
 
 
@@ -102,6 +121,225 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         ]
         top, bottom = item.layout.y_offset_lst[0][position]
         return ink, QRectF(line.x(), top, line_width, bottom - top)
+
+    @staticmethod
+    def _make_overflow_item(
+        *,
+        alignment: TextAlignment = TextAlignment.Left,
+        standard: bool = False,
+        vertical: bool = True,
+        stroke_width: float = 0.0,
+        text: str = 'g一般ajpqy',
+        bounds: tuple[float, float] = (260, 210),
+        font_size: float = 64,
+    ) -> TextBlkItem:
+        width, height = bounds
+        block = TextBlock(
+            [0, 0, width, height],
+            text_layout_version=TEXT_LAYOUT_VERSION,
+        )
+        block._bounding_rect = [0, 0, width, height]
+        block.translation = text
+        block.fontformat.vertical = vertical
+        block.fontformat.font_family = 'Noto Sans CJK SC'
+        block.fontformat.font_size = font_size
+        block.fontformat.alignment = alignment
+        block.fontformat.standard_vertical_roman_alignment = standard
+        block.fontformat.stroke_width = stroke_width
+        return TextBlkItem(block, 0)
+
+    @staticmethod
+    def _transformed_line_ink(item: TextBlkItem) -> tuple[QRectF, ...]:
+        ink = []
+        block = item.document().firstBlock()
+        while block.isValid():
+            text_layout = block.layout()
+            placement_for_line = getattr(
+                item.layout, 'vertical_line_placement', None
+            )
+            if placement_for_line is None:
+                block = block.next()
+                continue
+            for line_number in range(text_layout.lineCount()):
+                placement = placement_for_line(block, line_number)
+                if placement is None or placement[2].isIdentity():
+                    continue
+                line, offset, orientation = placement
+                ink.append(glyph_geometry(
+                    line,
+                    line.textStart(),
+                    line.textLength(),
+                    offset,
+                    orientation,
+                    0.0,
+                ).bounds)
+            block = block.next()
+        return tuple(ink)
+
+    def test_rotated_roman_ink_extends_real_item_geometry_after_resize(self):
+        for alignment in (
+            TextAlignment.Left,
+            TextAlignment.Center,
+            TextAlignment.Right,
+        ):
+            with self.subTest(alignment=alignment):
+                item = self._make_overflow_item(alignment=alignment)
+                logical = QRectF(item.logical_unpadded_rect())
+
+                for width in (260.0, 315.0, 205.0):
+                    item.set_size(
+                        width,
+                        logical.height(),
+                        set_layout_maxsize=True,
+                    )
+                    self.app.processEvents()
+                    logical = QRectF(item.logical_unpadded_rect())
+                    ink = self._transformed_line_ink(item)
+
+                    self.assertGreater(len({
+                        item.document().firstBlock().layout()
+                        .lineAt(index).x()
+                        for index in range(
+                            item.document().firstBlock().layout().lineCount()
+                        )
+                    }), 1)
+                    self.assertTrue(ink)
+                    self.assertEqual(logical.width(), width)
+                    for bounds in ink:
+                        self.assertTrue(
+                            item.geometry_controller.source_paint_rect()
+                            .contains(bounds)
+                        )
+                        self.assertTrue(item.boundingRect().contains(bounds))
+                        self.assertTrue(
+                            item.shape().boundingRect().contains(bounds)
+                        )
+                        self.assertTrue(item.contains(bounds.center()))
+
+    def test_upright_roman_and_horizontal_paths_keep_native_bounds(self):
+        for alignment in (
+            TextAlignment.Left,
+            TextAlignment.Center,
+            TextAlignment.Right,
+        ):
+            with self.subTest(alignment=alignment):
+                item = self._make_overflow_item(
+                    alignment=alignment,
+                    standard=True,
+                )
+                for width in (260.0, 205.0):
+                    item.set_size(
+                        width,
+                        item.logical_unpadded_rect().height(),
+                        set_layout_maxsize=True,
+                    )
+                    self.app.processEvents()
+                    self.assertEqual(
+                        item.logical_unpadded_rect().width(), width
+                    )
+                    self.assertTrue(item.layout.base_ink_bounds().isEmpty())
+                    self.assertEqual(
+                        item.geometry_controller.source_paint_rect(),
+                        item.geometry_controller.source_rect(),
+                    )
+
+        item = self._make_overflow_item(vertical=False)
+
+        self.assertTrue(item.layout.base_ink_bounds().isEmpty())
+        self.assertEqual(
+            item.geometry_controller.source_paint_rect(),
+            item.geometry_controller.source_rect(),
+        )
+
+    def test_rotated_ink_measurement_is_cached_by_settled_layout(self):
+        with patch(
+            'ballontranslator.ui.text_engine.vertical_layout.glyph_geometry',
+            wraps=glyph_geometry,
+        ) as measure:
+            item = self._make_overflow_item()
+            settled_calls = measure.call_count
+            line_count = item.document().firstBlock().layout().lineCount()
+            self.assertGreater(settled_calls, 0)
+            self.assertLessEqual(settled_calls, line_count)
+
+            for _ in range(20):
+                item.layout.base_ink_bounds()
+                item.geometry_controller.source_paint_rect()
+                item.boundingRect()
+                item.shape()
+
+            self.assertEqual(measure.call_count, settled_calls)
+
+    def test_rotated_ink_effect_and_transform_bounds_share_one_owner(self):
+        item = self._make_overflow_item(stroke_width=0.14)
+        neutral_ink = item.layout.base_ink_bounds()
+        padding = item.padding()
+        self.assertGreater(padding, 0.0)
+        self.assertTrue(
+            item.geometry_controller.source_paint_rect().contains(
+                neutral_ink.adjusted(-padding, -padding, padding, padding)
+            )
+        )
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        scene_rect = QRectF(item.boundingRect())
+        scene.setSceneRect(scene_rect)
+        scale = 2.0
+        image = QImage(
+            math.ceil(scene_rect.width() * scale),
+            math.ceil(scene_rect.height() * scale),
+            QImage.Format.Format_ARGB32_Premultiplied,
+        )
+        image.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(image)
+        try:
+            scene.render(painter)
+        finally:
+            painter.end()
+        logical_left = math.floor(
+            (item.logical_unpadded_rect().left() - scene_rect.left())
+            * image.width() / scene_rect.width()
+        )
+        self.assertGreater(logical_left, 0)
+        self.assertTrue(any(
+            image.pixelColor(x, y).alpha() > 0
+            for x in range(logical_left)
+            for y in range(image.height())
+        ))
+
+        item.set_text_transform(TextTransformStack((
+            BendTextTransform(0.2),
+        )))
+        controller = item.geometry_controller
+        self.assertIsNone(controller.layout_renderer)
+        self.assertEqual(
+            controller.layout_ink_bounds(), item.layout.base_ink_bounds()
+        )
+        mapped_center = controller.visual_mapper.forward_point(
+            neutral_ink.center()
+        )
+        self.assertTrue(item.boundingRect().contains(mapped_center))
+        self.assertTrue(item.shape().contains(mapped_center))
+
+        item.set_text_transform(TextTransformStack(
+            (BendTextTransform(0.2),),
+            18.0,
+        ))
+        renderer_ink = controller.layout_renderer.ink_bounds()
+        padding = item.padding()
+        self.assertEqual(controller.layout_ink_bounds(), renderer_ink)
+        self.assertTrue(
+            controller.source_paint_rect().contains(
+                renderer_ink.adjusted(
+                    -padding, -padding, padding, padding
+                )
+            )
+        )
+        mapped_center = controller.visual_mapper.forward_point(
+            renderer_ink.center()
+        )
+        self.assertTrue(item.boundingRect().contains(mapped_center))
+        self.assertTrue(item.shape().contains(mapped_center))
 
     def test_missing_project_field_uses_default_enabled_alignment(self):
         legacy_block = TextBlock(
@@ -308,6 +546,98 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         )
         self.assertGreater(item.layout.layout_generation, previous_generation)
         self.assertFalse(self._orientation(item, 0).isIdentity())
+
+    def test_orientation_toggle_updates_scene_overflow_in_both_directions(self):
+        item = self._make_overflow_item(
+            standard=True,
+            text='一般abcg',
+            bounds=(180, 520),
+            font_size=96,
+        )
+        scene = QGraphicsScene()
+        scene.setItemIndexMethod(
+            QGraphicsScene.ItemIndexMethod.BspTreeIndex
+        )
+        scene.setSceneRect(QRectF(-100, -100, 400, 800))
+        scene.addItem(item)
+        logical = QRectF(item.logical_unpadded_rect())
+        prepare_states = []
+        prepare_geometry_change = item.prepareGeometryChange
+
+        def observe_prepare() -> None:
+            prepare_states.append((
+                item.fontformat.standard_vertical_roman_alignment,
+                item.layout.base_ink_bounds().isEmpty(),
+            ))
+            prepare_geometry_change()
+
+        with patch.object(
+            item,
+            'prepareGeometryChange',
+            side_effect=observe_prepare,
+        ) as prepare:
+            item.setStandardVerticalRomanAlignment(False)
+            self.app.processEvents()
+            g_ink = self._transformed_line_ink(item)[-1]
+            outside = QPointF(
+                (g_ink.left() + logical.left()) / 2,
+                g_ink.center().y(),
+            )
+            scene_point = item.mapToScene(outside)
+            self.assertLess(outside.x(), logical.left())
+            self.assertIn(item, scene.items(scene_point))
+            self.assertTrue(item.sceneBoundingRect().contains(scene_point))
+            self.assertEqual(item.logical_unpadded_rect(), logical)
+
+            item.setStandardVerticalRomanAlignment(True)
+            self.app.processEvents()
+            self.assertNotIn(item, scene.items(scene_point))
+            self.assertFalse(item.sceneBoundingRect().contains(scene_point))
+            self.assertEqual(item.logical_unpadded_rect(), logical)
+
+            self.assertEqual(prepare.call_count, 2)
+
+        self.assertEqual(prepare_states, [(True, True), (False, False)])
+
+        item.setStandardVerticalRomanAlignment(False)
+        self.app.processEvents()
+        self.assertIn(item, scene.items(scene_point))
+
+    def test_document_edit_updates_scene_overflow_without_item_hook(self):
+        item = self._make_overflow_item(
+            text='一般abc',
+            bounds=(180, 520),
+            font_size=96,
+        )
+        scene = QGraphicsScene()
+        scene.setItemIndexMethod(
+            QGraphicsScene.ItemIndexMethod.BspTreeIndex
+        )
+        scene.setSceneRect(QRectF(-100, -100, 400, 800))
+        scene.addItem(item)
+        logical = QRectF(item.logical_unpadded_rect())
+        before_bounds = QRectF(item.sceneBoundingRect())
+
+        cursor = QTextCursor(item.document())
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText('g')
+        self.app.processEvents()
+        g_ink = self._transformed_line_ink(item)[-1]
+        outside = QPointF(
+            (g_ink.left() + logical.left()) / 2,
+            g_ink.center().y(),
+        )
+        scene_point = item.mapToScene(outside)
+        self.assertIn(item, scene.items(scene_point))
+        self.assertTrue(item.sceneBoundingRect().contains(scene_point))
+        self.assertLess(item.sceneBoundingRect().left(), before_bounds.left())
+        self.assertEqual(item.logical_unpadded_rect(), logical)
+
+        cursor.deletePreviousChar()
+        self.app.processEvents()
+        self.assertNotIn(item, scene.items(scene_point))
+        self.assertEqual(item.sceneBoundingRect(), before_bounds)
+        self.assertEqual(item.logical_unpadded_rect(), logical)
 
     def test_item_switch_uses_canvas_undo_history(self):
         item = self._make_item('ABC', True)

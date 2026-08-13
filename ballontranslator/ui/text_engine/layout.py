@@ -238,6 +238,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         """Return annotation paint overflow without changing layout bounds."""
         return QRectF()
 
+    def base_ink_bounds(self) -> QRectF:
+        """Return layout-owned base-text paint overflow, when required."""
+        return QRectF()
+
     def _begin_layout_generation(self):
         self.layout_generation += 1
 

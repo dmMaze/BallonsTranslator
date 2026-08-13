@@ -227,23 +227,30 @@ class TextItemGeometryController:
         """Return the unwarped local paint surface, including effect padding."""
         return QRectF(QPointF(), self.display_rect.size())
 
+    def _source_ink_bounds(self) -> QRectF:
+        """Return the one layout-owned source-ink union."""
+        bounds = self.layout_ink_bounds()
+        layout = getattr(self.item, 'layout', None)
+        if layout is None:
+            return bounds
+        annotation_bounds = layout.annotation_ink_bounds()
+        if annotation_bounds.isEmpty():
+            return bounds
+        return (
+            QRectF(annotation_bounds)
+            if bounds.isEmpty()
+            else bounds.united(annotation_bounds)
+        )
+
     def source_paint_rect(self) -> QRectF:
         """Include derived ink overhang without changing logical geometry."""
         rect = self.source_rect()
-        layout = getattr(self.item, 'layout', None)
-        candidates = [self.layout_ink_bounds()]
-        if layout is not None:
-            candidates.append(layout.annotation_ink_bounds())
-        padding = self.item.padding()
-        for candidate in candidates:
-            if candidate.isEmpty():
-                continue
+        ink_bounds = self._source_ink_bounds()
+        if not ink_bounds.isEmpty():
+            padding = self.item.padding()
             rect = rect.united(
-                candidate.adjusted(
-                    -padding,
-                    -padding,
-                    padding,
-                    padding,
+                ink_bounds.adjusted(
+                    -padding, -padding, padding, padding
                 )
             )
         return rect
@@ -261,27 +268,22 @@ class TextItemGeometryController:
         return rect.adjusted(padding, padding, -padding, -padding)
 
     def shape(self) -> QPainterPath:
-        layout = getattr(self.item, 'layout', None)
-        annotation_bounds = (
-            QRectF()
-            if layout is None
-            else layout.annotation_ink_bounds()
-        )
+        ink_bounds = self._source_ink_bounds()
         if self.visual_mapper is not None:
             path = self.visual_mapper.map_rect_path(self.logical_rect())
-            if not annotation_bounds.isEmpty():
+            if not ink_bounds.isEmpty():
                 path = path.united(
-                    self.visual_mapper.map_rect_path(annotation_bounds)
+                    self.visual_mapper.map_rect_path(ink_bounds)
                 )
             return path
         path = QPainterPath()
         path.addRect(
             self.source_rect() if self.is_neutral() else self.logical_rect()
         )
-        if not annotation_bounds.isEmpty():
-            annotation_path = QPainterPath()
-            annotation_path.addRect(annotation_bounds)
-            path = path.united(annotation_path)
+        if not ink_bounds.isEmpty():
+            ink_path = QPainterPath()
+            ink_path.addRect(ink_bounds)
+            path = path.united(ink_path)
         return path
 
     def contains(self, point: QPointF) -> bool:
@@ -1101,9 +1103,12 @@ class TextItemGeometryController:
         self.layout_renderer = None
         return True
 
-    def layout_ink_bounds(self):
+    def layout_ink_bounds(self) -> QRectF:
         renderer = self.layout_renderer
-        return QRectF() if renderer is None else renderer.ink_bounds()
+        if renderer is not None:
+            return renderer.ink_bounds()
+        layout = getattr(self.item, 'layout', None)
+        return QRectF() if layout is None else layout.base_ink_bounds()
 
     def has_layout_distortion(self) -> bool:
         """Return whether glyph painting is delegated to a transform renderer."""

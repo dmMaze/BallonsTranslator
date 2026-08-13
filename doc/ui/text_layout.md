@@ -29,7 +29,7 @@ Qt remains the text model and shaper. The custom layouts place Qt
 | `x_offset_lst`, `y_offset_lst`, `line_spaces_lst` | Settled column, cell, whitespace, caret, and hit-test geometry |
 | `per_char_records`, `text_combine_ranges` | Derived line width and tate-chu-yoko geometry |
 | `_draw_offset` | Final visible-ink placement shared by fill and effects |
-| `layout_generation`, annotation ink bounds | Cache invalidation and paint overflow |
+| `layout_generation`, base/annotation ink bounds | Cache invalidation and paint overflow |
 
 All records below the first two rows are derived and must be rebuilt as one
 settled layout. Never persist them or update only the record needed by one
@@ -68,7 +68,9 @@ mode proportional Roman glyphs remain upright and centered, while punctuation
 uses the standard vertical classes. When disabled, proportional Roman glyphs
 rotate clockwise and CLREQ-oriented punctuation uses the Chinese mixed-layout
 path, including upper-right pause/stop placement. Horizontal layout is
-unaffected.
+unaffected. Exact ink for rotated base lines is cached after settled placement;
+descenders and other overhang extend source paint and interaction geometry but
+never the persistent logical box or column width.
 
 Tate-chu-yoko is one ordinary horizontal Qt line occupying one vertical cell.
 It keeps its natural horizontal advance centered on the column; excess width

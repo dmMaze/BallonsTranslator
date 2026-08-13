@@ -635,8 +635,14 @@ class TextBlkItem(QGraphicsTextItem):
         enabled = bool(enabled)
         if self.fontformat.standard_vertical_roman_alignment == enabled:
             return
+        vertical_layout = isinstance(
+            self.layout, VerticalTextDocumentLayout
+        )
+        if vertical_layout:
+            # Orientation changes can expose ink outside the logical box.
+            self.prepareGeometryChange()
         self.fontformat.standard_vertical_roman_alignment = enabled
-        if not isinstance(self.layout, VerticalTextDocumentLayout):
+        if not vertical_layout:
             return
 
         self.layout.reLayout()

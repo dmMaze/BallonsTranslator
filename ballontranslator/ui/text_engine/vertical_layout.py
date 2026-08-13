@@ -34,7 +34,7 @@ from .rendering.emphasis import (
     emphasis_ink_bounds,
     emphasis_margins,
 )
-from .rendering.glyph import draw_slanted_line
+from .rendering.glyph import draw_slanted_line, glyph_geometry
 from .rendering.indexing import (
     _grapheme_count,
     _grapheme_ranges,
@@ -256,6 +256,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.per_char_records = []
         self.text_combine_ranges = []
         self._ruby_metrics: List[RubyBlockMetrics] = []
+        self._base_ink_bounds = QRectF()
         self._annotation_ink_bounds = QRectF()
         self._cursor_update_rect = QRectF()
         self._resize_layout_max_width = None
@@ -349,6 +350,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._begin_layout_generation()
         self._selection_geometry_cache.clear()
         self._translate_columns(x_shift)
+        self._refresh_base_ink_bounds()
         self._refresh_annotation_ink_bounds()
         return True
 
@@ -475,6 +477,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._translate_columns(x_shift)
         self._translate_columns(self._alignment_column_shift())
         self.updateDrawOffsets()
+        self._refresh_base_ink_bounds()
         self._refresh_annotation_ink_bounds()
         self._resize_layout_max_width = self.max_width
         self._resize_layout_available_height = self.available_height
@@ -506,6 +509,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if abs(column_shift) > 1e-9:
             self._begin_layout_generation()
             self._translate_columns(column_shift)
+            self._refresh_base_ink_bounds()
             self._refresh_annotation_ink_bounds()
         self._resize_layout_max_width = self.max_width
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
@@ -935,6 +939,49 @@ class VerticalTextDocumentLayout(SceneTextLayout):
     def annotation_ink_bounds(self) -> QRectF:
         """Return cached Tate-chu-yoko, Ruby, and emphasis ink."""
         return QRectF(self._annotation_ink_bounds)
+
+    def base_ink_bounds(self) -> QRectF:
+        """Return cached ink for base lines with non-native orientation."""
+        return QRectF(self._base_ink_bounds)
+
+    def _refresh_base_ink_bounds(self) -> None:
+        """Cache exact neutral ink for transformed vertical base lines.
+
+        Ordinary upright lines remain covered by the logical text box. Rotated
+        lines can overhang it because their horizontal glyph ink becomes
+        vertical-layout x ink after placement.
+
+        >>> callable(VerticalTextDocumentLayout._refresh_base_ink_bounds)
+        True
+        """
+        bounds = QRectF()
+        block = self.document().firstBlock()
+        while block.isValid():
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                placement = self.vertical_line_placement(block, line_number)
+                if placement is None:
+                    continue
+                line, offset, orientation = placement
+                if orientation.isIdentity():
+                    continue
+                candidate = glyph_geometry(
+                    line,
+                    line.textStart(),
+                    line.textLength(),
+                    offset,
+                    orientation,
+                    0.0,
+                ).bounds
+                if candidate.isEmpty():
+                    continue
+                bounds = (
+                    QRectF(candidate)
+                    if bounds.isEmpty()
+                    else bounds.united(candidate)
+                )
+            block = block.next()
+        self._base_ink_bounds = bounds
 
     def _vertical_ruby_base_cell(
         self,
