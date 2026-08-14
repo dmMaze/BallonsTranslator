@@ -229,6 +229,32 @@ class LLMTranslatorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'at least 1'):
             self.translator._json_schema(0)
 
+    def test_dynamic_schema_stays_out_of_cacheable_message_prefix(self):
+        profile = default_profile('LM Studio')
+        messages = [{'role': 'system', 'content': 'stable prefix'}]
+
+        one_item = self.translator._api_args(
+            profile,
+            messages,
+            expected_translations=1,
+        )
+        three_items = self.translator._api_args(
+            profile,
+            messages,
+            expected_translations=3,
+        )
+
+        self.assertIs(one_item['messages'], messages)
+        self.assertIs(three_items['messages'], messages)
+        self.assertEqual(
+            one_item['response_format']['json_schema']['schema']['required'],
+            ['1'],
+        )
+        self.assertEqual(
+            three_items['response_format']['json_schema']['schema']['required'],
+            ['1', '2', '3'],
+        )
+
     def test_translate_passes_input_count_to_structured_request(self):
         profile = default_profile('LM Studio')
         with mock.patch.object(
