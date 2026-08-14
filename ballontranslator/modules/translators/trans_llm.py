@@ -512,9 +512,10 @@ class LLMTranslator(BaseTranslator):
         history_rule = ''
         if pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY:
             history_rule = (
-                "- When prior translation examples are present, use them to infer context "
-                "and keep names, terminology, and tone consistent. If they conflict, "
-                "follow the current source and glossary.\n"
+                "- Treat prior user/assistant pairs as completed page translation examples "
+                "with IDs scoped to each pair; use them to infer context and keep names, "
+                "terminology, and tone consistent. If they conflict, follow the current "
+                "source and glossary.\n"
             )
         contract = (
             f"You are an expert translator. Translate every source string into {to_lang}.\n"
