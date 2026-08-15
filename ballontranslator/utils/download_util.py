@@ -197,15 +197,16 @@ def download_url_to_file(
     """
     _raise_if_cancelled(cancel_event)
     url = _rewrite_configured_url(url, log_mirror=True)
-    original_ctx = ssl._create_default_https_context
-    ssl._create_default_https_context = ssl._create_unverified_context  # https://stackoverflow.com/questions/50236117/scraping-ssl-certificate-verify-failed-error-for-http-en-wikipedia-org
     u = None
     f = None
     tmp_dst = None
     try:
         file_size = None
         req = Request(url, headers={"User-Agent": "torch.hub"})
-        u = urlopen(req)
+        # Keep verification request-local and supplement platform roots with Requests' CA bundle.
+        ssl_context = ssl.create_default_context()
+        ssl_context.load_verify_locations(cafile=requests.certs.where())
+        u = urlopen(req, context=ssl_context)
         meta = u.info()
         if hasattr(meta, "getheaders"):
             content_length = meta.getheaders("Content-Length")
@@ -271,7 +272,6 @@ def download_url_to_file(
         shutil.move(f.name, dst)
         _notify_progress(progress_callback, event='file_done', path=dst, url=url, downloaded=file_size, total=file_size)
     finally:
-        ssl._create_default_https_context = original_ctx
         if u is not None:
             try:
                 u.close()
