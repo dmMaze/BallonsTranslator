@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -24,10 +25,15 @@ def _module_config(**kwargs):
 class LLMContextConfigTest(unittest.TestCase):
 
     def test_llm_context_defaults_and_invalid_values_are_safe(self):
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        # Close before reopening by path; Windows cannot open a file that is
+        # still held by NamedTemporaryFile.
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
             json.dump({'module': {}}, temp)
             temp.flush()
+        try:
             loaded = ProgramConfig.load(temp.name)
+        finally:
+            os.unlink(temp.name)
 
         self.assertEqual(
             (
@@ -84,10 +90,15 @@ class LLMContextConfigTest(unittest.TestCase):
             },
         )
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        # Close before reopening by path; Windows cannot open a file that is
+        # still held by NamedTemporaryFile.
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
             json.dump(raw, temp)
             temp.flush()
+        try:
             loaded = ProgramConfig.load(temp.name)
+        finally:
+            os.unlink(temp.name)
 
         self.assertEqual(
             loaded.module.llm_translate_context,

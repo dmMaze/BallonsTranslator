@@ -210,7 +210,10 @@ class FontExclusionUiTests(unittest.TestCase):
     def test_selecting_item_with_hidden_font_keeps_filtered_popup(self):
         font_database = QFontDatabase if QT6 else QFontDatabase()
         font_families = sorted(font_database.families(), key=str.casefold)
-        self.assertGreaterEqual(len(font_families), 2)
+        if len(font_families) < 2:
+            # Qt 6.11+ wheels no longer ship fonts, so offscreen test runs on
+            # Windows can end up without any usable font families.
+            self.skipTest('No usable system fonts in this Qt environment.')
         allowed_font, hidden_font = font_families[0], font_families[-1]
         shared.FONT_FAMILIES = set(font_families)
         with patch.object(

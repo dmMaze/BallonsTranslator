@@ -76,10 +76,15 @@ class LLMProfileMigrationTest(unittest.TestCase):
         raw = json.loads(json_dump_program_config(cfg))
         raw['module']['llm_profiles'][0]['model_options'] = ['legacy-model']
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        # Close before reopening by path; Windows cannot open a file that is
+        # still held by NamedTemporaryFile.
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
             json.dump(raw, temp)
             temp.flush()
+        try:
             loaded = ProgramConfig.load(temp.name)
+        finally:
+            os.unlink(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, 'openai')
         self.assertIn('legacy-model', selected.model_options)
@@ -336,10 +341,15 @@ class SecretStoreTest(unittest.TestCase):
         cfg = ProgramConfig(module=ModuleConfig(llm_profiles=[profile], translator_llm_id='openai'))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        # Close before reopening by path; Windows cannot open a file that is
+        # still held by NamedTemporaryFile.
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
             temp.write(saved)
             temp.flush()
+        try:
             loaded = ProgramConfig.load(temp.name)
+        finally:
+            os.unlink(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.translator_llm_id)
         self.assertIsNotNone(selected)
@@ -362,10 +372,15 @@ class SecretStoreTest(unittest.TestCase):
         ))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        # Close before reopening by path; Windows cannot open a file that is
+        # still held by NamedTemporaryFile.
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
             temp.write(saved)
             temp.flush()
+        try:
             loaded = ProgramConfig.load(temp.name)
+        finally:
+            os.unlink(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.ocr_llm_id)
         self.assertEqual(loaded.module.ocr_llm_id, 'openai')
@@ -390,10 +405,15 @@ class SecretStoreTest(unittest.TestCase):
         ))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        # Close before reopening by path; Windows cannot open a file that is
+        # still held by NamedTemporaryFile.
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
             temp.write(saved)
             temp.flush()
+        try:
             loaded = ProgramConfig.load(temp.name)
+        finally:
+            os.unlink(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.inpaint_llm_id)
         self.assertEqual(loaded.module.inpaint_llm_id, 'openrouter')
