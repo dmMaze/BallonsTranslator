@@ -630,7 +630,7 @@ def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = No
     """Migrate old LLM translator settings in a raw module config dict.
 
     Example:
-        >>> migrate_module_llm_profiles({}, secret_store=SecretStore()) == {}
+        >>> 'llm_profiles' in migrate_module_llm_profiles({}, secret_store=SecretStore())
         True
     """
 

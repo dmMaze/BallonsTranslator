@@ -43,13 +43,19 @@ if platform.system() == 'Windows' and platform.version() >= '10.0.10240.0':
             class OCRWindows(OCRBase):
                 dependencies = ['winsdk']
 
+                # Static placeholder that the lazy metadata scanner can read;
+                # language pack options are only known at runtime.
                 params = {
                     'language': {
                         'type':'selector',
-                        'options': languages_display_name,
-                        'value': languages_display_name[0],
+                        'options': ['en'],
+                        'value': 'en',
                     }
                 }
+                # Refresh the runtime options; subscript targets are ignored by
+                # the lazy scanner, so its static metadata above stays intact.
+                params['language']['options'] = languages_display_name
+                params['language']['value'] = languages_display_name[0]
                 language = languages_display_name[0]
 
                 def __init__(self, **params) -> None:

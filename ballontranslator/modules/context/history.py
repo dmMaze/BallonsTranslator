@@ -303,7 +303,10 @@ def window_rebuild_reason(
     if not isinstance(pages, dict):
         return ContextReason.MISSING_PAGES
     page_keys = list(pages)
-    # Production callers obtain page_key from this project; a stale key is a bug.
+    # Production callers obtain page_key from this project; a stale key is a
+    # caller bug. Fall back to a rebuild instead of crashing the request.
+    if page_key not in pages:
+        return ContextReason.NON_ADJACENT
     page_index = page_keys.index(page_key)
     if (
         page_index == 0
