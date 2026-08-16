@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
 
 from qtpy.QtCore import QByteArray, QDataStream, QIODevice, QRectF, Qt
 from qtpy.QtGui import (
@@ -15,6 +14,8 @@ from qtpy.QtGui import (
     QTransform,
 )
 
+from ..cache import KeyedLruCache
+
 
 NATIVE_DOCUMENT_CACHE_MAX_ENTRIES = 128
 
@@ -25,9 +26,9 @@ class NativeTextDocument(NamedTuple):
     ink_bounds: QRectF
 
 
-NATIVE_DOCUMENT_CACHE: OrderedDict[
-    tuple[str, bytes], NativeTextDocument
-] = OrderedDict()
+NATIVE_DOCUMENT_CACHE: KeyedLruCache[
+    Tuple[str, bytes], NativeTextDocument
+] = KeyedLruCache(NATIVE_DOCUMENT_CACHE_MAX_ENTRIES)
 
 
 def _format_cache_key(char_format: QTextCharFormat) -> bytes:
@@ -54,21 +55,10 @@ def _glyph_bounds(document: QTextDocument) -> QRectF:
     return bounds
 
 
-def native_text_document(
+def _build_native_text_document(
     text: str,
     char_format: QTextCharFormat,
 ) -> NativeTextDocument:
-    """Return one cached zero-margin native document for exact paint inputs.
-
-    >>> NATIVE_DOCUMENT_CACHE_MAX_ENTRIES > 0
-    True
-    """
-    key = (text, _format_cache_key(char_format))
-    cached = NATIVE_DOCUMENT_CACHE.get(key)
-    if cached is not None:
-        NATIVE_DOCUMENT_CACHE.move_to_end(key)
-        return cached
-
     document = QTextDocument()
     document.setUndoRedoEnabled(False)
     document.setDocumentMargin(0.0)
@@ -80,16 +70,29 @@ def native_text_document(
     if outline.style() != Qt.PenStyle.NoPen and outline.widthF() > 0.0:
         radius = outline.widthF() / 2.0
         ink_bounds.adjust(-radius, -radius, radius, radius)
-    cached = NativeTextDocument(
+    return NativeTextDocument(
         document,
         glyph_bounds,
         ink_bounds,
     )
-    NATIVE_DOCUMENT_CACHE[key] = cached
-    NATIVE_DOCUMENT_CACHE.move_to_end(key)
-    while len(NATIVE_DOCUMENT_CACHE) > NATIVE_DOCUMENT_CACHE_MAX_ENTRIES:
-        NATIVE_DOCUMENT_CACHE.popitem(last=False)
-    return cached
+
+
+def native_text_document(
+    text: str,
+    char_format: QTextCharFormat,
+) -> NativeTextDocument:
+    """Return one cached zero-margin native document for exact paint inputs.
+
+    >>> NATIVE_DOCUMENT_CACHE_MAX_ENTRIES > 0
+    True
+    """
+    key = (text, _format_cache_key(char_format))
+    return NATIVE_DOCUMENT_CACHE.get_or_create(
+        key,
+        _build_native_text_document,
+        text,
+        char_format,
+    )
 
 
 def draw_native_text_document(

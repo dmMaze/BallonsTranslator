@@ -1,7 +1,5 @@
 import re
 import unicodedata
-import cv2
-import numpy as np
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
@@ -9,7 +7,6 @@ from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QBrush,
-    QImage,
     QPainter,
     QTextBlock,
     QTextCharFormat,
@@ -21,8 +18,8 @@ from qtpy.QtGui import (
 
 from ballontranslator.utils import shared as C
 from ballontranslator.utils.fontformat import FontFormat, TextAlignment
-from ..misc import LruIgnoreArg, pixmap2ndarray
 from .annotations import text_combine_upright_ranges
+from .cache import KeyedLruCache
 from .layout import (
     CharFontFormat,
     SceneTextLayout,
@@ -73,6 +70,12 @@ PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~'}
 PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF)
 PUNSET_STANDARD_VERTICAL_ROMAN = PUNSET_VERNEEDROTATE.difference(PUNSET_HALF)
+# The shared glyph cache owns full paths at layout-specific offsets. Vertical
+# settlement needs only normalized bounds reusable across documents and lines.
+LINE_INK_BOUNDS_CACHE_MAX_ENTRIES = 2048
+_LINE_INK_BOUNDS_CACHE: KeyedLruCache[tuple, QRectF] = KeyedLruCache(
+    LINE_INK_BOUNDS_CACHE_MAX_ENTRIES
+)
 
 PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’'}
 PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘'}
@@ -100,146 +103,79 @@ def _is_non_fullwidth_roman(char: str) -> bool:
     return name.startswith('LATIN ') or name.startswith('ROMAN NUMERAL ')
 
 
-def punc_actual_rect(
+def _uncached_line_ink_bounds(
     line: QTextLine,
-    family: str,
-    size: float,
-    weight: int,
-    italic: bool,
-    stroke_width: float,
-    h: int = None,
-    w: int = None,
-    space_shift: float = 0,
-) -> List[int]:
-    """Raster-measure one established vertical line's visible ink."""
-    if h is None:
-        h = int(line.height())
-    if w is None:
-        w = int(line.naturalTextWidth())
-    image = QImage(w * 2, h * 2, QImage.Format.Format_ARGB32)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    line.draw(painter, QPointF(-line.x() - space_shift, -line.y()))
-    painter.end()
-    mask = pixmap2ndarray(image, keep_alpha=True)
-    if mask is None:
-        return [0, 0, 1, 1]
-    mask = mask[..., -1]
-    actual = np.array(
-        cv2.boundingRect(cv2.findNonZero(mask)), dtype=np.float64
-    )
-    actual[[0, 1]] += stroke_width
-    actual[[2, 3]] -= stroke_width * 2
-    return actual.tolist()
+    space_shift: float = 0.0,
+) -> QRectF:
+    """Return shaped vector ink normalized to the line origin.
 
-
-def _line_glyph_cache_key(line: QTextLine) -> tuple:
-    """Describe multi-glyph placement omitted by total line metrics.
-
-    >>> _line_glyph_cache_key(QTextLine())
-    ()
+    >>> callable(_uncached_line_ink_bounds)
+    True
     """
-    if not line.isValid() or line.textLength() <= 1:
-        return ()
+    return glyph_geometry(
+        line,
+        line.textStart(),
+        line.textLength(),
+        QPointF(-line.x() - space_shift, -line.y()),
+        QTransform(),
+        0.0,
+    ).bounds
+
+
+def _line_ink_cache_key(
+    line: QTextLine,
+    space_shift: float,
+) -> Optional[tuple]:
+    """Describe exact shaped ink independently of line placement.
+
+    >>> _line_ink_cache_key(QTextLine(), 0.0) is None
+    True
+    """
+    if not line.isValid():
+        return None
+    origin_x = line.x() + space_shift
+    origin_y = line.y()
     signature = []
-    for glyph_run in line.glyphRuns():
-        raw_font = glyph_run.rawFont()
-        raw_style = raw_font.style()
-        raw_weight = raw_font.weight()
+    for run in line.glyphRuns(line.textStart(), line.textLength()):
+        raw_font = run.rawFont()
+        font_key = (type(raw_font), raw_font)
+        try:
+            hash(font_key)
+        except (RuntimeError, TypeError, ValueError):
+            return None
         signature.append((
-            raw_font.familyName(),
-            raw_font.styleName(),
-            raw_font.pixelSize(),
-            getattr(raw_style, 'value', raw_style),
-            getattr(raw_weight, 'value', raw_weight),
-            tuple(int(index) for index in glyph_run.glyphIndexes()),
+            font_key,
+            tuple(int(index) for index in run.glyphIndexes()),
             tuple(
-                (position.x(), position.y())
-                for position in glyph_run.positions()
+                (
+                    position.x() - origin_x,
+                    position.y() - origin_y,
+                )
+                for position in run.positions()
             ),
         ))
     return tuple(signature)
 
 
-@lru_cache(maxsize=2048)
-def punc_actual_rect_cached(
-    cached_args: LruIgnoreArg,
-    char: str,
-    family: str,
-    size: float,
-    weight: int,
-    italic: bool,
-    stroke_width: float,
-    h: int,
-    w: int,
-    line_height: float,
-    line_width: float,
-    space_shift: float,
-    glyph_key: tuple,
-) -> List[int]:
-    """Cache actual ink while retaining the live line outside the key.
-
-    >>> callable(punc_actual_rect_cached)
-    True
-    """
-    return punc_actual_rect(
-        cached_args.line,
-        family,
-        size,
-        weight,
-        italic,
-        stroke_width,
-        h,
-        w,
-        space_shift,
-    )
-
-
-def format_punc_actual_rect(
-    char_format: CharFontFormat,
+def _line_ink_bounds(
     line: QTextLine,
-    char: str,
-    *,
-    cache: bool = False,
-    stroke_width: float = 0,
-    h: int = None,
-    w: int = None,
-    space_shift: float = 0,
-) -> List[int]:
-    """Measure visible ink using one line's fragment metrics.
+    space_shift: float = 0.0,
+) -> QRectF:
+    """Return exact normalized ink without retaining live Qt layouts.
 
-    >>> callable(format_punc_actual_rect)
+    >>> LINE_INK_BOUNDS_CACHE_MAX_ENTRIES > 0
     True
     """
-    if not cache:
-        return punc_actual_rect(
-            line,
-            char_format.family,
-            char_format.size,
-            char_format.weight,
-            char_format.font.italic(),
-            stroke_width,
-            h,
-            w,
-            space_shift,
-        )
-    line_height = line.height()
-    line_width = line.naturalTextWidth()
-    return punc_actual_rect_cached(
-        LruIgnoreArg(line=line),
-        char,
-        char_format.family,
-        char_format.size,
-        char_format.weight,
-        char_format.font.italic(),
-        stroke_width,
-        int(line_height) if h is None else h,
-        int(line_width) if w is None else w,
-        line_height,
-        line_width,
+    cache_key = _line_ink_cache_key(line, space_shift)
+    if cache_key is None:
+        return _uncached_line_ink_bounds(line, space_shift)
+    cached = _LINE_INK_BOUNDS_CACHE.get_or_create(
+        cache_key,
+        _uncached_line_ink_bounds,
+        line,
         space_shift,
-        _line_glyph_cache_key(line),
     )
+    return QRectF(cached)
 
 
 class VerticalTextDocumentLayout(SceneTextLayout):
@@ -589,28 +525,29 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         )
 
                     else:   # () （）
-                        non_bracket_br = format_punc_actual_rect(
-                            cfmt,
-                            line,
-                            char,
-                            cache=True,
-                            space_shift=space_shift,
+                        non_bracket_br = _line_ink_bounds(
+                            line, space_shift
                         )
-                        yoff = -non_bracket_br[1] - non_bracket_br[3]
+                        yoff = (
+                            -non_bracket_br.top()
+                            - non_bracket_br.height()
+                        )
                         if char in PUNSET_BRACKETL:
                             if ii == 0:
-                                xoff = -non_bracket_br[0]
+                                xoff = -non_bracket_br.left()
                             else:
                                 xoff = 0
                         else:
-                            xoff = -non_bracket_br[0]
+                            xoff = -non_bracket_br.left()
 
                         if char in PUNSET_ROTATE_ALIGNL:
                             yoff = yoff
                         elif char in PUNSET_ROTATE_ALIGNR:
-                            yoff = yoff - (base_width - non_bracket_br[3])
+                            yoff -= base_width - non_bracket_br.height()
                         else:
-                            yoff = yoff - (base_width - non_bracket_br[3]) / 2
+                            yoff -= (
+                                base_width - non_bracket_br.height()
+                            ) / 2
                     yoff -= left_margin
 
                 else:
@@ -619,49 +556,46 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         and _is_non_fullwidth_roman(char)
                     )
                     if standard_roman:
-                        # Roman ink has ordinary baseline metrics. Center it
-                        # without priming Qt's process-global glyph raster
-                        # cache during layout.
-                        tight_rect, _ = cfmt.punc_rect(char)
+                        tight_rect = _line_ink_bounds(line, space_shift)
                         xoff = (
                             -tight_rect.left()
                             + (base_width - tight_rect.width()) / 2
                         )
                         yoff = (
-                            -line.ascent()
-                            - tight_rect.top()
+                            -tight_rect.top()
                             + (cfmt.tbr.height() - tight_rect.height()) / 2
                         )
                     else:
-                        act_rect = format_punc_actual_rect(
-                            cfmt,
-                            line,
-                            char,
-                            cache=True,
-                            space_shift=space_shift,
-                        )
+                        act_rect = _line_ink_bounds(line, space_shift)
                         if self.centers_vertical_glyph(char):
                             xoff = (
-                                -act_rect[0]
-                                + (base_width - act_rect[2]) / 2
+                                -act_rect.left()
+                                + (base_width - act_rect.width()) / 2
                             )
                             yoff = (
-                                -act_rect[1]
-                                + (cfmt.tbr.height() - act_rect[3]) / 2
+                                -act_rect.top()
+                                + (
+                                    cfmt.tbr.height()
+                                    - act_rect.height()
+                                ) / 2
                             )
                         elif char in PUNSET_PAUSEORSTOP:
                             # CLREQ's Mainland convention places stop marks at
                             # the upper-right of their full character frame.
-                            xoff = -act_rect[0] + base_width - act_rect[2]
-                            yoff = -act_rect[1]
+                            xoff = (
+                                -act_rect.left()
+                                + base_width
+                                - act_rect.width()
+                            )
+                            yoff = -act_rect.top()
                         else:
                             yoff = min(
                                 cfmt.br.top() - cfmt.tbr.top(),
                                 -cfmt.tbr.top() - line.ascent(),
                             )
                             xoff = (
-                                -act_rect[0]
-                                + (base_width - act_rect[2]) / 2
+                                -act_rect.left()
+                                + (base_width - act_rect.width()) / 2
                             )
 
                     xoff += left_margin
@@ -1841,13 +1775,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     and self.needs_vertical_rotation(char)
                 )
                 if is_first_lbracket:
-                    _lbracket_shift = -format_punc_actual_rect(
-                        cfmt,
-                        line,
-                        char,
-                        cache=True,
-                        space_shift=space_shift,
-                    )[0]
+                    _lbracket_shift = -_line_ink_bounds(
+                        line, space_shift
+                    ).left()
 
                 if is_text_combine:
                     # A grouped run has no separate container format. Its

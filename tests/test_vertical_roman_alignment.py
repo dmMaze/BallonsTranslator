@@ -39,16 +39,17 @@ from ballontranslator.ui.text_engine.formatting.commands import (
 )
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.item import TextBlkItem
-from ballontranslator.ui.text_engine.layout import CharFontFormat
 from ballontranslator.ui.text_engine.vertical_layout import (
+    _LINE_INK_BOUNDS_CACHE,
+    _line_ink_bounds,
+    _line_ink_cache_key,
+    _uncached_line_ink_bounds,
     PUNSET_ALIGNCENTER,
     PUNSET_BRACKET,
     PUNSET_HALF,
     PUNSET_NONBRACKET,
     PUNSET_PAUSEORSTOP,
     PUNSET_STANDARD_VERTICAL_ROMAN,
-    format_punc_actual_rect,
-    punc_actual_rect_cached,
 )
 from ballontranslator.ui.text_engine.rendering.glyph import glyph_geometry
 from ballontranslator.utils import config as C
@@ -72,13 +73,14 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         text: str,
         standard_vertical_roman_alignment: bool,
         letter_spacing: float = 1.0,
+        font_size: float = 40.0,
     ) -> TextBlkItem:
         block = TextBlock([0, 0, 220, 900])
         block._bounding_rect = [0, 0, 220, 900]
         block.translation = text
         block.fontformat.vertical = True
         block.fontformat.font_family = 'Noto Sans CJK SC'
-        block.fontformat.font_size = 40
+        block.fontformat.font_size = font_size
         block.fontformat.letter_spacing = letter_spacing
         block.fontformat.standard_vertical_roman_alignment = (
             standard_vertical_roman_alignment
@@ -102,20 +104,16 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         block = item.document().firstBlock()
         line = block.layout().lineForTextPosition(position)
         line_number = line.lineNumber()
-        char_format = item.layout.get_char_fontfmt(0, position)
-        actual = format_punc_actual_rect(
-            char_format,
-            line,
-            block.text()[position],
-            cache=True,
-        )
-        x_offset, y_offset = item.layout._draw_offset[0][line_number]
-        ink = QRectF(
-            line.x() + x_offset + actual[0],
-            line.y() + y_offset + actual[1],
-            actual[2],
-            actual[3],
-        )
+        placement = item.layout.vertical_line_placement(block, line_number)
+        placed_line, offset, orientation = placement
+        ink = glyph_geometry(
+            placed_line,
+            placed_line.textStart(),
+            placed_line.textLength(),
+            offset,
+            orientation,
+            0.0,
+        ).bounds
         line_width = item.layout.per_char_records[0][position][
             'line_width'
         ]
@@ -283,15 +281,16 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                 reference.mapToScene(reference_line.position()),
             )
 
-        first_ink = self._ink_and_cell(item, 0)[0]
+        first_ink, first_cell = self._ink_and_cell(item, 0)
         reference_first_ink = self._ink_and_cell(reference, 0)[0]
         self.assertEqual(
             item.mapRectToScene(first_ink),
             reference.mapRectToScene(reference_first_ink),
         )
-        self.assertLessEqual(
-            item.logical_unpadded_rect().right() - first_ink.right(),
-            2.0,
+        self.assertAlmostEqual(
+            first_ink.center().x(),
+            first_cell.center().x(),
+            delta=1 / 64 + 0.001,
         )
         g_ink = self._transformed_line_ink(item)[-1]
         outside = QPointF(
@@ -624,6 +623,102 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                 self.assertAlmostEqual(
                     ink.center().y(), cell.center().y(), delta=1.0
                 )
+
+    def test_small_vertical_ink_shares_exact_column_center(self):
+        tolerance = 1 / 64 + 0.001
+        for font_size in (5.0, 16.0):
+            for standard in (True, False):
+                item = self._make_item(
+                    '啊大木・—…!', standard, font_size=font_size
+                )
+                for position, char in enumerate(item.toPlainText()):
+                    with self.subTest(
+                        font_size=font_size,
+                        standard=standard,
+                        char=char,
+                    ):
+                        ink, cell = self._ink_and_cell(item, position)
+                        self.assertAlmostEqual(
+                            ink.center().x(),
+                            cell.center().x(),
+                            delta=tolerance,
+                        )
+
+    def test_line_ink_bounds_cache_reuses_exact_shaping(self):
+        font = QFont('Noto Sans CJK SC')
+        font.setPointSizeF(5)
+        self.addCleanup(_LINE_INK_BOUNDS_CACHE.clear)
+
+        def make_line(text='木', spacings=()):
+            layout = QTextLayout(text, font)
+            formats = []
+            for position, spacing in enumerate(spacings):
+                char_format = QTextCharFormat()
+                char_format.setFont(font)
+                char_format.setFontLetterSpacingType(
+                    QFont.SpacingType.PercentageSpacing
+                )
+                char_format.setFontLetterSpacing(spacing)
+                format_range = QTextLayout.FormatRange()
+                format_range.start = position
+                format_range.length = 1
+                format_range.format = char_format
+                formats.append(format_range)
+            layout.setFormats(formats)
+            layout.beginLayout()
+            line = layout.createLine()
+            line.setLineWidth(1000)
+            layout.endLayout()
+            return layout, line
+
+        repeated = [make_line() for _ in range(8)]
+        _LINE_INK_BOUNDS_CACHE.clear()
+        with patch(
+            'ballontranslator.ui.text_engine.vertical_layout.'
+            '_uncached_line_ink_bounds',
+            wraps=_uncached_line_ink_bounds,
+        ) as measure:
+            for layout, line in repeated:
+                _line_ink_bounds(line)
+            for layout, line in repeated:
+                _line_ink_bounds(line)
+        self.assertEqual(measure.call_count, 1)
+        self.assertEqual(len(_LINE_INK_BOUNDS_CACHE), 1)
+
+        first_layout, first_line = make_line('((', (200.0, 100.0))
+        second_layout, second_line = make_line('((', (100.0, 200.0))
+        self.assertEqual(
+            first_line.naturalTextWidth(), second_line.naturalTextWidth()
+        )
+        first_bounds = _line_ink_bounds(first_line)
+        second_bounds = _line_ink_bounds(second_line)
+        self.assertNotEqual(first_bounds, second_bounds)
+        self.assertEqual(
+            second_bounds, _uncached_line_ink_bounds(second_line)
+        )
+
+        _LINE_INK_BOUNDS_CACHE.clear()
+        cache_keys = []
+        with patch.object(_LINE_INK_BOUNDS_CACHE, 'max_entries', 2):
+            layouts = []
+            for text in ('木', '大', '啊'):
+                layout, line = make_line(text)
+                layouts.append(layout)
+                cache_keys.append(_line_ink_cache_key(line, 0.0))
+                _line_ink_bounds(line)
+        self.assertEqual(len(_LINE_INK_BOUNDS_CACHE), 2)
+        self.assertNotIn(cache_keys[0], _LINE_INK_BOUNDS_CACHE)
+
+        _LINE_INK_BOUNDS_CACHE.clear()
+        with patch(
+            'ballontranslator.ui.text_engine.vertical_layout.'
+            '_uncached_line_ink_bounds',
+            wraps=_uncached_line_ink_bounds,
+        ) as measure:
+            item = self._make_item('（木', False, font_size=5.0)
+        line_count = item.document().firstBlock().layout().lineCount()
+        self.assertEqual(measure.call_count, line_count)
+        self.assertEqual(len(_LINE_INK_BOUNDS_CACHE), line_count)
 
     def test_item_switch_relayouts_existing_vertical_text(self):
         item = self._make_item('ABC。', True)
@@ -1080,55 +1175,6 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                 )
                 self.assertAlmostEqual(after.x(), before.x())
                 self.assertGreater(after.y(), before.y())
-
-    def test_punctuation_rect_cache_tracks_line_geometry(self):
-        font = QFont('Noto Sans CJK SC')
-        font.setPointSizeF(40)
-        char_format = QTextCharFormat()
-        char_format.setFont(font)
-        cached_format = CharFontFormat(char_format)
-
-        def make_line(first_spacing: float, second_spacing: float):
-            line_font = QFont(font)
-            layout = QTextLayout('((', line_font)
-            formats = []
-            for position, spacing in enumerate((
-                first_spacing,
-                second_spacing,
-            )):
-                format_range = QTextLayout.FormatRange()
-                format_range.start = position
-                format_range.length = 1
-                format_range.format = QTextCharFormat(char_format)
-                format_range.format.setFontLetterSpacingType(
-                    QFont.SpacingType.PercentageSpacing
-                )
-                format_range.format.setFontLetterSpacing(spacing)
-                formats.append(format_range)
-            layout.setFormats(formats)
-            layout.beginLayout()
-            line = layout.createLine()
-            line.setLineWidth(1000)
-            layout.endLayout()
-            return layout, line
-
-        first_layout, first_line = make_line(200, 100)
-        second_layout, second_line = make_line(100, 200)
-        self.assertEqual(
-            first_line.naturalTextWidth(), second_line.naturalTextWidth()
-        )
-        punc_actual_rect_cached.cache_clear()
-        first_rect = format_punc_actual_rect(
-            cached_format, first_line, '((', cache=True
-        )
-        cached_second = format_punc_actual_rect(
-            cached_format, second_line, '((', cache=True
-        )
-        uncached_second = format_punc_actual_rect(
-            cached_format, second_line, '((', cache=False
-        )
-        self.assertNotEqual(first_rect, uncached_second)
-        self.assertEqual(cached_second, uncached_second)
 
     def test_invalid_spacing_does_not_mutate_format_or_geometry(self):
         item = self._make_item('木——', True)
