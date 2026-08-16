@@ -261,7 +261,11 @@ class GlobalReplaceThead(ThreadBase):
                         )
                         span_list = [[rstitem.start, rstitem.end] for rstitem in rstitem_list]
                         doc_replace(doc, span_list, target)
-                        replace_html = to_rich_text_html(doc)
+                        replace_html = to_rich_text_html(
+                            doc,
+                            line_spacing_fallback=blk.fontformat.line_spacing,
+                            line_spacing_type_fallback=blk.fontformat.line_spacing_type,
+                        )
                         replace = doc.toPlainText()
                     else:
                         replace = self.searched_pattern.sub(target, ori)

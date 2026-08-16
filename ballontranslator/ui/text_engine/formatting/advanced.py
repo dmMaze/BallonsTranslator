@@ -353,42 +353,6 @@ class TextEmphasisGroup(QGroupBox):
                     combobox.blockSignals(signals_blocked)
 
 
-class TateChuYokoGroup(QGroupBox):
-    """Advanced-format control for one horizontal-in-vertical text run."""
-
-    enabled_changed = Signal(bool)
-
-    def __init__(self, parent: QWidget = None) -> None:
-        super().__init__(parent)
-        self.setTitle(self.tr('Tate-chu-yoko'))
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-
-        self.enable_checker = TextCheckerLabel(self.tr('Enable'), parent=self)
-        self.enable_checker.setToolTip(
-            self.tr('Combine the selected text into one upright vertical cell')
-        )
-        self.enable_checker.checkStateChanged.connect(
-            self.enabled_changed.emit
-        )
-        self.validation_label = QLabel(self)
-        self.validation_label.setWordWrap(True)
-        self.enable_unit = _atomic_unit(self, self.enable_checker)
-        self.row, self.adaptive_layout = _adaptive_row(
-            self, self.enable_unit
-        )
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.row)
-        layout.addWidget(self.validation_label)
-
-    def set_enabled(self, enabled: bool) -> None:
-        self.enable_checker.setCheckState(enabled)
-
-    def set_error(self, message: str) -> None:
-        self.validation_label.setText(message)
-
-
 class RubyFuriganaGroup(QGroupBox):
     """Selection-owned group/mono Ruby editor."""
 
@@ -517,7 +481,6 @@ class TextAdvancedFormatPanel(PanelArea):
 
     param_changed = Signal(str, object)
     emphasis_changed = Signal(str, str)
-    tate_chu_yoko_changed = Signal(bool)
     ruby_apply_requested = Signal(str, str, str)
     ruby_remove_requested = Signal()
 
@@ -631,10 +594,6 @@ class TextAdvancedFormatPanel(PanelArea):
         self.emphasis_group.emphasis_changed.connect(
             self.emphasis_changed.emit
         )
-        self.tate_chu_yoko_group = TateChuYokoGroup(self.scrollContent)
-        self.tate_chu_yoko_group.enabled_changed.connect(
-            self.tate_chu_yoko_changed.emit
-        )
         self.ruby_group = RubyFuriganaGroup(self.scrollContent)
         self.ruby_group.apply_requested.connect(
             self.ruby_apply_requested.emit
@@ -647,7 +606,6 @@ class TextAdvancedFormatPanel(PanelArea):
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.top_section)
         vlayout.addWidget(self.emphasis_group)
-        vlayout.addWidget(self.tate_chu_yoko_group)
         vlayout.addWidget(self.ruby_group)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
@@ -758,7 +716,6 @@ class TextAdvancedFormatPanel(PanelArea):
             for layout in (
                 self.top_layout,
                 self.emphasis_group.adaptive_layout,
-                self.tate_chu_yoko_group.adaptive_layout,
                 self.ruby_group.adaptive_layout,
                 self.shadow_group.adaptive_layout,
                 self.gradient_group.adaptive_layout,
@@ -892,11 +849,12 @@ class TextAdvancedFormatPanel(PanelArea):
         self.gradient_group.start_picker.setPickerColor(font_format.gradient_start_color)
         self.gradient_group.end_picker.setPickerColor(font_format.gradient_end_color)
 
+    def set_line_spacing_type(self, spacing_type: int) -> None:
+        if not self.linespacing_type_combobox.hasFocus():
+            self.linespacing_type_combobox.setCurrentIndex(int(spacing_type))
+
     def set_emphasis_values(self, style: str, position: str) -> None:
         self.emphasis_group.set_values(style, position)
-
-    def set_tate_chu_yoko_enabled(self, enabled: bool) -> None:
-        self.tate_chu_yoko_group.set_enabled(enabled)
 
     def set_ruby_state(
         self,

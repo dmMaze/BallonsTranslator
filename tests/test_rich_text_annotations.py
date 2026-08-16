@@ -1,5 +1,6 @@
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -22,29 +23,41 @@ from qtpy.QtGui import (
     QTextDocument,
     QTransform,
 )
-from qtpy.QtWidgets import QApplication, QGraphicsScene
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import (
+    QApplication,
+    QGraphicsScene,
+    QHBoxLayout,
+    QWidget,
+)
 
+from ballontranslator.ui import shared_widget as SW
+from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.misc import doc_replace, pixmap2ndarray
 from ballontranslator.ui.text_engine.annotations import (
     AnnotationProperty,
     LETTER_SPACING_ATTRIBUTE,
+    LINE_DISTANCE_ATTRIBUTE,
     TEXT_COMBINE_ID_ATTRIBUTE,
     apply_emphasis,
     apply_letter_spacing,
+    apply_line_spacing,
     apply_text_combine_upright,
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
     letter_spacing_value,
+    line_spacing_values,
     load_rich_text_html,
     text_combine_upright_ranges,
     text_combine_upright_values,
     to_rich_text_html,
 )
 from ballontranslator.ui.text_engine.formatting.advanced import (
-    TateChuYokoGroup,
     TextEmphasisGroup,
 )
+from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
+from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui.text_engine import effect_renderer as effect_rendering
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering import emphasis as emphasis_rendering
@@ -62,7 +75,10 @@ from ballontranslator.ui.text_engine.rendering.tate_chu_yoko import (
     tate_chu_yoko_ink_bounds,
     tate_chu_yoko_natural_bounds,
 )
+from ballontranslator.utils import config as C, shared
 from ballontranslator.utils.fontformat import (
+    FontFormat,
+    LineSpacingType,
     TextAlignment,
     TextTransformStack,
     pt2px,
@@ -75,6 +91,19 @@ def _format_at(document: QTextDocument, start: int, length: int = 1):
     cursor.setPosition(start)
     cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
     return cursor.charFormat()
+
+
+def _line_spacing_at(
+    document: QTextDocument,
+    block_number: int,
+    fallback: float = 1.2,
+    fallback_type: int = LineSpacingType.Proportional,
+) -> tuple[float, LineSpacingType]:
+    return line_spacing_values(
+        document.findBlockByNumber(block_number).blockFormat(),
+        fallback,
+        fallback_type,
+    )
 
 
 class RichTextAnnotationTest(unittest.TestCase):
@@ -123,7 +152,7 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         with patch(
             'ballontranslator.ui.text_engine.annotations.'
-            '_inline_extension_ranges_from_html'
+            '_rich_text_extensions_from_html'
         ) as parse_extensions:
             load_rich_text_html(
                 restored,
@@ -257,6 +286,139 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(letter_spacing_value(_format_at(document, 1)), 1.4)
         self.assertEqual(letter_spacing_value(_format_at(document, 2)), 1.0)
         self.assertEqual(letter_spacing_value(_format_at(document, 3)), 0.8)
+
+    def test_line_spacing_selection_is_block_scoped_and_end_exclusive(self):
+        document = QTextDocument()
+        document.setPlainText('AA\nBB\nCC')
+        cursor = QTextCursor(document)
+        cursor.setPosition(1)
+        cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
+
+        apply_line_spacing(
+            cursor, 1.5, LineSpacingType.Proportional
+        )
+
+        self.assertEqual(
+            _line_spacing_at(document, 0),
+            (1.5, LineSpacingType.Proportional),
+        )
+        self.assertEqual(
+            _line_spacing_at(document, 1),
+            (1.2, LineSpacingType.Proportional),
+        )
+
+        cursor.setPosition(1)
+        cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+        apply_line_spacing(cursor, 0.8, LineSpacingType.Distance)
+
+        self.assertEqual(
+            _line_spacing_at(document, 0),
+            (0.8, LineSpacingType.Distance),
+        )
+        self.assertEqual(
+            _line_spacing_at(document, 1),
+            (0.8, LineSpacingType.Distance),
+        )
+        self.assertEqual(
+            _line_spacing_at(document, 2),
+            (1.2, LineSpacingType.Proportional),
+        )
+
+    def test_line_spacing_caret_formats_current_block_and_enter_inherits(self):
+        document = QTextDocument()
+        document.setPlainText('A\nB')
+        cursor = QTextCursor(document)
+        cursor.setPosition(1)
+        apply_line_spacing(cursor, 0.7, LineSpacingType.Distance)
+
+        cursor.insertText('\nX')
+
+        self.assertEqual(document.toPlainText(), 'A\nX\nB')
+        self.assertEqual(
+            _line_spacing_at(document, 0),
+            (0.7, LineSpacingType.Distance),
+        )
+        self.assertEqual(
+            _line_spacing_at(document, 1),
+            (0.7, LineSpacingType.Distance),
+        )
+        self.assertEqual(
+            _line_spacing_at(document, 2),
+            (1.2, LineSpacingType.Proportional),
+        )
+
+    def test_line_spacing_html_uses_css_and_exact_app_metadata(self):
+        source = QTextDocument()
+        source.setPlainText('AA\nBB')
+        first = QTextCursor(source)
+        first.setPosition(0)
+        apply_line_spacing(first, 1.25, LineSpacingType.Proportional)
+        second = QTextCursor(source)
+        second.movePosition(QTextCursor.MoveOperation.End)
+        apply_line_spacing(second, 0.75, LineSpacingType.Distance)
+
+        html = to_rich_text_html(source)
+        restored = QTextDocument()
+        load_rich_text_html(restored, html)
+        css_reader = QTextDocument()
+        css_reader.setHtml(html)
+
+        self.assertIn('<!DOCTYPE html>', html)
+        self.assertIn('line-height: 1.25;', html)
+        self.assertIn('line-height: calc(1em + 7.5px);', html)
+        self.assertIn(f'{LINE_DISTANCE_ATTRIBUTE}="0.75"', html)
+        self.assertEqual(
+            _line_spacing_at(restored, 0),
+            (1.25, LineSpacingType.Proportional),
+        )
+        self.assertEqual(
+            _line_spacing_at(restored, 1),
+            (0.75, LineSpacingType.Distance),
+        )
+        self.assertEqual(
+            _line_spacing_at(css_reader, 0),
+            (1.25, LineSpacingType.Proportional),
+        )
+
+        apply_line_spacing(second, 1.1, LineSpacingType.Proportional)
+        self.assertNotIn(
+            LINE_DISTANCE_ATTRIBUTE,
+            to_rich_text_html(source, html),
+        )
+
+    def test_standard_css_line_height_is_imported(self):
+        document = QTextDocument()
+        load_rich_text_html(
+            document,
+            '<p style="line-height: 1.35">A</p><p>B</p>',
+        )
+
+        self.assertEqual(
+            _line_spacing_at(document, 0),
+            (1.35, LineSpacingType.Proportional),
+        )
+        self.assertEqual(
+            _line_spacing_at(
+                document,
+                1,
+                0.6,
+                LineSpacingType.Distance,
+            ),
+            (0.6, LineSpacingType.Distance),
+        )
+
+    def test_invalid_exact_line_spacing_keeps_valid_css(self):
+        document = QTextDocument()
+        load_rich_text_html(
+            document,
+            '<p style="line-height: 1.4" '
+            f'{LINE_DISTANCE_ATTRIBUTE}="bad">A</p>',
+        )
+
+        self.assertEqual(
+            _line_spacing_at(document, 0),
+            (1.4, LineSpacingType.Proportional),
+        )
 
     def test_letter_spacing_inline_html_round_trip(self):
         source = QTextDocument()
@@ -393,6 +555,127 @@ class RichTextAnnotationTest(unittest.TestCase):
                 1.6,
             )
 
+    def test_item_line_spacing_uses_selection_without_changing_default(self):
+        item = self._make_item(False, text='A\nB')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(2)
+        cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+
+        item.setLineSpacingType(LineSpacingType.Distance)
+        item.setLineSpacing(0.7)
+
+        self.assertEqual(
+            _line_spacing_at(item.document(), 0),
+            (1.2, LineSpacingType.Proportional),
+        )
+        self.assertEqual(
+            _line_spacing_at(item.document(), 1),
+            (0.7, LineSpacingType.Distance),
+        )
+        self.assertEqual(item.fontformat.line_spacing, 1.2)
+        self.assertEqual(
+            item.fontformat.line_spacing_type,
+            LineSpacingType.Proportional,
+        )
+
+    def test_nonediting_line_spacing_updates_default_and_every_block(self):
+        item = self._make_item(False, text='A\nB')
+
+        item.setLineSpacingType(LineSpacingType.Distance)
+        item.setLineSpacing(0.65)
+
+        self.assertEqual(item.fontformat.line_spacing, 0.65)
+        self.assertEqual(
+            item.fontformat.line_spacing_type,
+            LineSpacingType.Distance,
+        )
+        for block_number in range(2):
+            self.assertEqual(
+                _line_spacing_at(item.document(), block_number),
+                (0.65, LineSpacingType.Distance),
+            )
+
+    def test_whole_format_undo_path_preserves_saved_paragraph_spacing(self):
+        item = self._make_item(False, text='A\nB')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(2)
+        item.setTextCursor(cursor)
+        item._set_line_spacing_pair(0.7, LineSpacingType.Distance)
+        item.endEdit()
+        old_html = item.toHtml()
+        old_format = item.get_fontformat()
+        replacement = old_format.deepcopy()
+        replacement.line_spacing = 2.0
+
+        item.set_fontformat(replacement, set_char_format=True)
+        item.load_rich_text_html(old_html)
+        item.set_fontformat(old_format)
+
+        self.assertEqual(
+            _line_spacing_at(item.document(), 0),
+            (1.2, LineSpacingType.Proportional),
+        )
+        self.assertEqual(
+            _line_spacing_at(item.document(), 1),
+            (0.7, LineSpacingType.Distance),
+        )
+
+    def test_set_fontformat_relayouts_legacy_line_spacing_fallback(self):
+        item = self._make_item(False, text='A\nB')
+
+        def gap() -> float:
+            first = item.document().findBlockByNumber(0).layout().lineAt(0)
+            second = item.document().findBlockByNumber(1).layout().lineAt(0)
+            return second.position().y() - first.position().y()
+
+        original = item.fontformat.deepcopy()
+        original_gap = gap()
+        expanded = original.deepcopy()
+        expanded.line_spacing = 2.0
+
+        item.set_fontformat(expanded)
+        expanded_gap = gap()
+        item.set_fontformat(original)
+        restored_gap = gap()
+
+        self.assertGreater(expanded_gap, original_gap)
+        self.assertAlmostEqual(restored_gap, original_gap, places=5)
+
+    def test_line_spacing_uses_destination_block_in_both_writing_modes(self):
+        def gap(item: TextBlkItem) -> float:
+            first = item.document().findBlockByNumber(0).layout().lineAt(0)
+            second = item.document().findBlockByNumber(1).layout().lineAt(0)
+            if item.fontformat.vertical:
+                return abs(second.position().x() - first.position().x())
+            return abs(second.position().y() - first.position().y())
+
+        def set_block_spacing(
+            item: TextBlkItem,
+            block_number: int,
+            value: float,
+        ) -> None:
+            item.startEdit()
+            block = item.document().findBlockByNumber(block_number)
+            cursor = item.textCursor()
+            cursor.setPosition(block.position())
+            item.setTextCursor(cursor)
+            item.setLineSpacing(value)
+
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                baseline_item = self._make_item(vertical, text='A\nB')
+                baseline = gap(baseline_item)
+                first_item = self._make_item(vertical, text='A\nB')
+                set_block_spacing(first_item, 0, 2.0)
+                second_item = self._make_item(vertical, text='A\nB')
+                set_block_spacing(second_item, 1, 2.0)
+
+                self.assertAlmostEqual(gap(first_item), baseline, places=5)
+                self.assertGreater(gap(second_item), baseline)
+
     def test_vertical_letter_spacing_is_per_character_and_survives_switch(self):
         item = self._make_item(False, text='甲乙丙')
         item.startEdit()
@@ -474,6 +757,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         apply_emphasis(cursor, 'open sesame', 'over right')
         apply_text_combine_upright(cursor, True)
         apply_letter_spacing(cursor, 1.4, vertical=False)
+        apply_line_spacing(cursor, 0.8, LineSpacingType.Distance)
 
         mime = create_rich_text_mime(cursor)
         target = QTextDocument()
@@ -481,6 +765,7 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         self.assertTrue(inserted)
         self.assertIn(LETTER_SPACING_ATTRIBUTE, mime.html())
+        self.assertIn(LINE_DISTANCE_ATTRIBUTE, mime.html())
         self.assertIn('text-emphasis-style: open sesame', mime.html())
         self.assertIn('text-combine-upright: all', mime.html())
         self.assertEqual(target.toPlainText(), 'copy')
@@ -495,6 +780,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(
             text_combine_upright_values(_format_at(target, 0, 4))[0],
             'all',
+        )
+        self.assertEqual(
+            _line_spacing_at(target, 0),
+            (0.8, LineSpacingType.Distance),
         )
 
     def test_text_combine_inline_round_trip_keeps_qt_html_readable(self):
@@ -1157,6 +1446,96 @@ class RichTextAnnotationTest(unittest.TestCase):
         ).nonzero()
         self.assertTrue(outer_x.size)
         self.assertTrue(fill_x.size)
+        margins = (
+            int(fill_x.min() - outer_x.min()),
+            int(fill_y.min() - outer_y.min()),
+            int(outer_x.max() - fill_x.max()),
+            int(outer_y.max() - fill_y.max()),
+        )
+        self.assertLessEqual(max(margins) - min(margins), 1)
+
+    def test_font_size_stepper_keeps_stroke_and_fill_aligned(self):
+        if QFontInfo(QFont('Source Han Sans')).family() != 'Source Han Sans':
+            self.skipTest('Source Han Sans is unavailable')
+        previous_canvas = getattr(SW, 'canvas', None)
+        previous_active_format = C.active_format
+        canvas = Canvas()
+        SW.canvas = canvas
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        self.addCleanup(
+            setattr, C, 'active_format', previous_active_format
+        )
+        self.addCleanup(canvas.gv.deleteLater)
+
+        host = QWidget()
+        host_layout = QHBoxLayout(host)
+        host_layout.addWidget(canvas.gv)
+        self.addCleanup(host.deleteLater)
+
+        block = TextBlock([0, 0, 30, 30])
+        block._bounding_rect = [0, 0, 30, 30]
+        block.translation = '佛'
+        block.fontformat.vertical = True
+        block.fontformat.font_family = 'Source Han Sans'
+        block.fontformat.font_size = 7.0
+        block.fontformat.stroke_width = 0.2
+        block.fontformat.frgb = [255, 0, 0]
+        block.fontformat.srgb = [0, 0, 255]
+        item = TextBlkItem(block, 0)
+        item.setParentItem(canvas.textLayer)
+        item.setSelected(True)
+        self.addCleanup(item.setParentItem, None)
+
+        with patch.object(
+            shared,
+            'register_view_widget',
+            lambda *_args: None,
+            create=True,
+        ):
+            panel = FontFormatPanel(self.app)
+        panel.global_format = FontFormat()
+        host_layout.addWidget(panel)
+        host.resize(900, 500)
+        host.show()
+        panel.set_textblk_item(item)
+        item.startEdit()
+        self.app.processEvents()
+
+        changes = []
+        panel.fontsizebox.param_changed.connect(
+            lambda name, value: changes.append((name, value))
+        )
+        QTest.mouseClick(
+            panel.fontsizebox.upBtn,
+            Qt.MouseButton.LeftButton,
+        )
+        self.app.processEvents()
+
+        self.assertEqual(changes, [('font_size', 9.0)])
+        self.assertEqual(item.get_fontformat().font_size, 9.0)
+        self.assertTrue(panel.fontsizebox.fcombobox.hasFocus())
+        item.set_ui_guide_suppressed(True)
+        source = item.sceneBoundingRect()
+        scale = 6
+        pixmap = QPixmap(
+            round(source.width() * scale),
+            round(source.height() * scale),
+        )
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        try:
+            canvas.render(painter, QRectF(pixmap.rect()), source)
+        finally:
+            painter.end()
+        pixels = pixmap2ndarray(pixmap, keep_alpha=True)
+        outer_y, outer_x = (
+            (pixels[..., 2] > pixels[..., 0] * 1.5)
+            & (pixels[..., 2] > 32)
+        ).nonzero()
+        fill_y, fill_x = (
+            (pixels[..., 0] > pixels[..., 2] * 1.5)
+            & (pixels[..., 0] > 32)
+        ).nonzero()
         margins = (
             int(fill_x.min() - outer_x.min()),
             int(fill_y.min() - outer_y.min()),
@@ -2014,6 +2393,25 @@ class RichTextAnnotationTest(unittest.TestCase):
             1.8,
         )
 
+    def test_document_undo_redo_restores_line_spacing_pair(self):
+        item = self._make_item(False, text='A\nB')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(2)
+        item.setTextCursor(cursor)
+        item._set_line_spacing_pair(0.8, LineSpacingType.Distance)
+
+        item.document().undo()
+        self.assertEqual(
+            _line_spacing_at(item.document(), 1),
+            (1.2, LineSpacingType.Proportional),
+        )
+        item.document().redo()
+        self.assertEqual(
+            _line_spacing_at(item.document(), 1),
+            (0.8, LineSpacingType.Distance),
+        )
+
     def test_backward_selection_uses_selected_format_and_keeps_direction(self):
         item = self._make_item(False, text='A——B')
         item.startEdit()
@@ -2058,16 +2456,43 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         self.assertEqual(edits, [('open circle', 'under left')])
 
-    def test_tate_chu_yoko_panel_exposes_one_boolean_edit(self):
-        group = TateChuYokoGroup()
-        edits = []
-        group.enabled_changed.connect(edits.append)
+    def test_font_panel_tate_chu_yoko_switch_edits_selection(self):
+        item = self._make_item(True, text='12')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
 
-        group.set_enabled(True)
-        group.enable_checker.checkStateChanged.emit(True)
+        with patch.object(
+            shared,
+            'register_view_widget',
+            lambda *_args: None,
+            create=True,
+        ):
+            panel = FontFormatPanel(self.app)
+        self.addCleanup(panel.deleteLater)
+        panel.global_format = FontFormat()
+        panel.textblk_item = item
+        panel.set_active_format(item.fontformat)
 
-        self.assertTrue(group.enable_checker.isChecked())
-        self.assertEqual(edits, [True])
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.panel.'
+            'restore_canvas_view_focus'
+        ):
+            panel.tateChuYokoChecker.click()
+
+        self.assertTrue(panel.tateChuYokoChecker.isChecked())
+        self.assertTrue(item.tate_chu_yoko_enabled())
+
+        panel.set_tate_chu_yoko_enabled(False)
+        manager = SimpleNamespace(
+            formatpanel=panel,
+            sender=lambda: item,
+        )
+        SceneTextManager.on_inline_format_changed(manager)
+
+        self.assertTrue(panel.tateChuYokoChecker.isChecked())
 
 
 if __name__ == '__main__':

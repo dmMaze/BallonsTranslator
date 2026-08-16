@@ -1,8 +1,8 @@
 """Rich-text extensions that Qt cannot export by itself.
 
-Qt remains the live editing model. Character-format properties carry live
-meaning; one semantic inline HTML boundary stores emphasis, tate-chu-yoko,
-letter spacing, and their exact application-owned values.
+Qt remains the live editing model. Character and block formats carry live
+meaning; one semantic HTML boundary stores paragraph line spacing, emphasis,
+tate-chu-yoko, letter spacing, and their exact application-owned values.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from uuid import uuid4
 from qtpy.QtCore import QByteArray, QMimeData
 from qtpy.QtGui import (
     QTextBlock,
+    QTextBlockFormat,
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
@@ -27,6 +28,7 @@ from qtpy.QtGui import (
     QFont,
 )
 
+from ballontranslator.utils.fontformat import LineSpacingType
 from ballontranslator.utils.logger import logger as LOGGER
 from .rendering.indexing import _grapheme_ranges, _utf16_length, _utf16_slice
 
@@ -34,11 +36,13 @@ from .rendering.indexing import _grapheme_ranges, _utf16_length, _utf16_slice
 RICH_TEXT_MIME_TYPE = 'application/x-ballonstranslator-rich-text'
 MAX_RICH_TEXT_MIME_BYTES = 16 * 1024 * 1024
 LETTER_SPACING_ATTRIBUTE = 'data-btrans-letter-spacing'
+LINE_DISTANCE_ATTRIBUTE = 'data-btrans-line-distance'
 TEXT_COMBINE_ID_ATTRIBUTE = 'data-btrans-text-combine-id'
-_INLINE_EXTENSION_MARKERS = (
+_RICH_TEXT_EXTENSION_MARKERS = (
     'text-emphasis-style',
     'text-combine-upright',
     LETTER_SPACING_ATTRIBUTE,
+    LINE_DISTANCE_ATTRIBUTE,
     '<ruby',
     'data-btrans-runtime-ruby-id',
 )
@@ -111,8 +115,55 @@ DEFAULT_EMPHASIS_POSITION = 'over right'
 TEXT_COMBINE_NONE = 'none'
 TEXT_COMBINE_ALL = 'all'
 MAX_ANNOTATION_ID_LENGTH = 128
-MIN_LETTER_SPACING = 0.0
 MAX_LETTER_SPACING = 10.0
+MAX_LINE_SPACING = 100.0
+
+
+def _canonical_spacing(value: object, maximum: float) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if math.isfinite(value) and 0.0 <= value <= maximum else None
+
+
+def canonical_line_spacing(value: object) -> Optional[float]:
+    """Return a supported line-spacing value, or ``None`` when invalid.
+
+    >>> canonical_line_spacing(1.25)
+    1.25
+    >>> canonical_line_spacing(float('nan')) is None
+    True
+    """
+    return _canonical_spacing(value, MAX_LINE_SPACING)
+
+
+def canonical_line_spacing_type(
+    value: object,
+) -> Optional[LineSpacingType]:
+    """Return a supported line-spacing type.
+
+    >>> canonical_line_spacing_type(0) == LineSpacingType.Proportional
+    True
+    >>> canonical_line_spacing_type(True) is None
+    True
+    """
+    if isinstance(value, bool):
+        return None
+    try:
+        return LineSpacingType(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def validated_line_spacing(
+    value: object,
+    spacing_type: object,
+) -> tuple[float, LineSpacingType]:
+    canonical_value = canonical_line_spacing(value)
+    canonical_type = canonical_line_spacing_type(spacing_type)
+    if canonical_value is None or canonical_type is None:
+        raise ValueError(f'unsupported line spacing: {(value, spacing_type)!r}')
+    return canonical_value, canonical_type
 
 
 @dataclass(frozen=True)
@@ -150,16 +201,7 @@ def canonical_letter_spacing(value: object) -> Optional[float]:
     >>> canonical_letter_spacing(True) is None
     True
     """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    value = float(value)
-    if (
-        not math.isfinite(value)
-        or value < MIN_LETTER_SPACING
-        or value > MAX_LETTER_SPACING
-    ):
-        return None
-    return value
+    return _canonical_spacing(value, MAX_LETTER_SPACING)
 
 
 def _parse_letter_spacing_attribute(value: object) -> Optional[float]:
@@ -285,6 +327,100 @@ def _apply_document_letter_spacing(
     modifier = _letter_spacing_modifier(value, vertical)
     cursor.mergeCharFormat(modifier)
     cursor.mergeBlockCharFormat(modifier)
+
+
+def _native_line_spacing_values(
+    block_format: QTextBlockFormat,
+) -> Optional[tuple[float, LineSpacingType]]:
+    line_height_type = _enum_value(block_format.lineHeightType())
+    proportional_type = _enum_value(
+        QTextBlockFormat.LineHeightTypes.ProportionalHeight
+    )
+    distance_type = _enum_value(
+        QTextBlockFormat.LineHeightTypes.LineDistanceHeight
+    )
+    if line_height_type == proportional_type:
+        value = canonical_line_spacing(block_format.lineHeight() / 100.0)
+        spacing_type = LineSpacingType.Proportional
+    elif line_height_type == distance_type:
+        value = canonical_line_spacing(block_format.lineHeight() / 10.0)
+        spacing_type = LineSpacingType.Distance
+    else:
+        return None
+    return None if value is None else (value, spacing_type)
+
+
+def line_spacing_values(
+    block_format: QTextBlockFormat,
+    fallback: float = 1.2,
+    fallback_type: int = LineSpacingType.Proportional,
+) -> tuple[float, LineSpacingType]:
+    """Return the paragraph's semantic line-spacing value and type.
+
+    >>> line_spacing_values(QTextBlockFormat(), 1.25)[0]
+    1.25
+    """
+    values = _native_line_spacing_values(block_format)
+    if values is not None:
+        return values
+    fallback_value = canonical_line_spacing(fallback)
+    spacing_type = canonical_line_spacing_type(fallback_type)
+    return (
+        1.2 if fallback_value is None else fallback_value,
+        LineSpacingType.Proportional
+        if spacing_type is None else spacing_type,
+    )
+
+
+def _line_spacing_modifier(
+    value: float,
+    spacing_type: LineSpacingType,
+) -> QTextBlockFormat:
+    modifier = QTextBlockFormat()
+    if spacing_type == LineSpacingType.Proportional:
+        modifier.setLineHeight(
+            value * 100.0,
+            _enum_value(
+                QTextBlockFormat.LineHeightTypes.ProportionalHeight
+            ),
+        )
+    else:
+        modifier.setLineHeight(
+            value * 10.0,
+            _enum_value(
+                QTextBlockFormat.LineHeightTypes.LineDistanceHeight
+            ),
+        )
+    return modifier
+
+
+def apply_line_spacing(
+    cursor: QTextCursor,
+    value: float,
+    spacing_type: int,
+) -> None:
+    """Apply one spacing pair to the end-exclusive selected paragraphs.
+
+    A caret formats its current paragraph. A non-empty selection formats the
+    paragraph containing its first character through the paragraph containing
+    its last selected character, so ending at the next paragraph start does
+    not include that paragraph.
+
+    >>> callable(apply_line_spacing)
+    True
+    """
+    canonical_value, canonical_type = validated_line_spacing(
+        value, spacing_type
+    )
+    start = cursor.selectionStart()
+    end = cursor.selectionEnd()
+    target = QTextCursor(cursor)
+    if end > start:
+        target.setPosition(start)
+        target.setPosition(end - 1, QTextCursor.MoveMode.KeepAnchor)
+    target.mergeBlockFormat(
+        _line_spacing_modifier(canonical_value, canonical_type)
+    )
 
 
 def _document_blocks(document: QTextDocument) -> tuple[QTextBlock, ...]:
@@ -615,6 +751,45 @@ def _preprocess_ruby_html(html: str) -> str:
     return ''.join(parser.output)
 
 
+def _line_distance_attribute(attrs: list) -> Optional[float]:
+    attributes = {str(name).lower(): value for name, value in attrs}
+    if LINE_DISTANCE_ATTRIBUTE not in attributes:
+        return None
+    raw_value = attributes[LINE_DISTANCE_ATTRIBUTE]
+    try:
+        value = canonical_line_spacing(float(raw_value))
+    except (TypeError, ValueError):
+        value = None
+    if value is None:
+        LOGGER.warning(
+            'Ignoring invalid paragraph line distance: %r',
+            raw_value,
+        )
+        return None
+    return value
+
+
+def _replace_style_declarations(
+    style: object,
+    replacements: tuple[str, ...],
+) -> str:
+    kept = []
+    if isinstance(style, str):
+        for declaration in style.split(';'):
+            name, separator, _value = declaration.partition(':')
+            if (
+                separator
+                and name.strip().lower()
+                in {'line-height', '-qt-line-height-type'}
+            ):
+                continue
+            declaration = declaration.strip()
+            if declaration:
+                kept.append(declaration)
+    kept.extend(replacements)
+    return '; '.join(kept) + (';' if kept else '')
+
+
 class _InlineExtensionRangeParser(HTMLParser):
     """Read inline extensions using loaded Qt block positions.
 
@@ -631,11 +806,15 @@ class _InlineExtensionRangeParser(HTMLParser):
         self.extension = _InlineExtension()
         self.extension_stack: list[_InlineExtension] = []
         self.ranges: list[tuple[int, int, _InlineExtension]] = []
+        self.line_distances: list[tuple[int, float]] = []
 
-    def _start_block(self) -> None:
+    def _start_block(self, attrs: list = ()) -> None:
         self.block_index += 1
         self.block_offset = 0
         self.in_block = True
+        distance = _line_distance_attribute(attrs)
+        if distance is not None:
+            self.line_distances.append((self.block_index, distance))
 
     def _current_block(self) -> Optional[QTextBlock]:
         if self.block_index < 0 and self.blocks:
@@ -672,7 +851,7 @@ class _InlineExtensionRangeParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list) -> None:
         tag = tag.lower()
         if tag in ('p', 'li', 'div'):
-            self._start_block()
+            self._start_block(attrs)
         if tag == 'span':
             self.extension_stack.append(self.extension)
             self.extension = _span_extension(self.extension, attrs)
@@ -715,18 +894,21 @@ class _InlineExtensionRangeParser(HTMLParser):
             self._advance_text(unescape(f'&#{name};'))
 
 
-def _inline_extension_ranges_from_html(
+def _rich_text_extensions_from_html(
     document: QTextDocument,
     html: str,
-) -> tuple[tuple[int, int, _InlineExtension], ...]:
+) -> tuple[
+    tuple[tuple[int, int, _InlineExtension], ...],
+    tuple[tuple[int, float], ...],
+]:
     parser = _InlineExtensionRangeParser(document)
     try:
         parser.feed(html)
         parser.close()
     except (ValueError, TypeError) as error:
         LOGGER.warning('Unable to parse rich-text extensions: %s', error)
-        return ()
-    return tuple(parser.ranges)
+        return (), ()
+    return tuple(parser.ranges), tuple(parser.line_distances)
 
 
 def _apply_inline_extension_ranges(
@@ -790,6 +972,23 @@ def _apply_inline_extension_ranges(
         cursor.mergeCharFormat(modifier)
 
 
+def _apply_paragraph_line_distances(
+    document: QTextDocument,
+    distances: tuple[tuple[int, float], ...],
+) -> None:
+    for block_number, value in distances:
+        block = document.findBlockByNumber(block_number)
+        if not block.isValid():
+            LOGGER.warning(
+                'Ignoring out-of-range paragraph line distance: %d',
+                block_number,
+            )
+            continue
+        QTextCursor(block).mergeBlockFormat(
+            _line_spacing_modifier(value, LineSpacingType.Distance)
+        )
+
+
 def load_rich_text_html(
     document: QTextDocument,
     html: str,
@@ -804,19 +1003,20 @@ def load_rich_text_html(
         qt_html = _preprocess_ruby_html(html)
         document.setHtml(qt_html)
         lowered_html = qt_html.lower()
-        extension_ranges = (
-            _inline_extension_ranges_from_html(document, qt_html)
+        extension_ranges, paragraph_distances = (
+            _rich_text_extensions_from_html(document, qt_html)
             if any(
                 marker in lowered_html
-                for marker in _INLINE_EXTENSION_MARKERS
+                for marker in _RICH_TEXT_EXTENSION_MARKERS
             )
-            else ()
+            else ((), ())
         )
         fallback = canonical_letter_spacing(letter_spacing_fallback)
         if fallback is not None:
             # Old HTML has no inline spacing. Seed its item-wide value; the
             # next save writes explicit spans for every resulting range.
             _apply_document_letter_spacing(document, fallback, vertical)
+        _apply_paragraph_line_distances(document, paragraph_distances)
         _apply_inline_extension_ranges(document, extension_ranges, vertical)
         _discard_ruby_tate_overlaps(document)
     finally:
@@ -1098,6 +1298,43 @@ def _format_spacing_number(value: float) -> str:
     return format(value, '.12g')
 
 
+def _css_line_height(
+    value: float,
+    spacing_type: LineSpacingType,
+) -> str:
+    if spacing_type == LineSpacingType.Proportional:
+        return _format_spacing_number(value)
+    distance = _format_spacing_number(value * 10.0)
+    return f'calc(1em + {distance}px)'
+
+
+def _line_spacing_start_tag(
+    tag: str,
+    attrs: list,
+    values: Optional[tuple[float, LineSpacingType]],
+) -> str:
+    attributes = {str(name).lower(): raw for name, raw in attrs}
+    declarations = ()
+    if values is not None:
+        value, spacing_type = values
+        declarations = (
+            f'line-height: {_css_line_height(value, spacing_type)}',
+        )
+    style = _replace_style_declarations(
+        attributes.get('style'), declarations
+    )
+    replacements = {'style': style} if style else {}
+    if values is not None and spacing_type == LineSpacingType.Distance:
+        replacements[LINE_DISTANCE_ATTRIBUTE] = _format_spacing_number(value)
+    rewritten = [
+        (name, raw)
+        for name, raw in attrs
+        if str(name).lower() not in {'style', LINE_DISTANCE_ATTRIBUTE}
+    ]
+    rewritten.extend(replacements.items())
+    return _start_tag(tag, rewritten)
+
+
 def _inline_extension_span(text: str, extension: _InlineExtension) -> str:
     styles = []
     attributes = []
@@ -1127,7 +1364,7 @@ def _inline_extension_span(text: str, extension: _InlineExtension) -> str:
 
 
 class _InlineExtensionHTMLExporter(HTMLParser):
-    """Inject inline extensions without replacing Qt's HTML serializer.
+    """Inject rich-text extensions without replacing Qt's HTML serializer.
 
     >>> _format_spacing_number(1.15)
     '1.15'
@@ -1135,17 +1372,19 @@ class _InlineExtensionHTMLExporter(HTMLParser):
 
     def __init__(
         self,
-        document: QTextDocument,
+        blocks: tuple[QTextBlock, ...],
         ranges: list[tuple[int, int, _InlineExtension]],
+        line_spacing_fallback: Optional[tuple[float, LineSpacingType]],
     ) -> None:
         super().__init__(convert_charrefs=False)
-        self.blocks = _document_blocks(document)
+        self.blocks = blocks
         self.ranges = ranges
         self.range_index = 0
         self.block_index = -1
         self.block_offset = 0
         self.in_block = False
         self.output: list[str] = []
+        self.line_spacing_fallback = line_spacing_fallback
 
     def _start_block(self) -> None:
         self.block_index += 1
@@ -1156,6 +1395,17 @@ class _InlineExtensionHTMLExporter(HTMLParser):
         if 0 <= self.block_index < len(self.blocks):
             return self.blocks[self.block_index]
         return None
+
+    def _current_line_spacing(
+        self,
+    ) -> Optional[tuple[float, LineSpacingType]]:
+        block = self._current_block()
+        if block is None:
+            return None
+        return (
+            _native_line_spacing_values(block.blockFormat())
+            or self.line_spacing_fallback
+        )
 
     def _extension_at(self, position: int) -> Optional[_InlineExtension]:
         while self.range_index < len(self.ranges):
@@ -1214,9 +1464,16 @@ class _InlineExtensionHTMLExporter(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
         tag = tag.lower()
+        raw = self.get_starttag_text() or _start_tag(tag, attrs)
         if tag in ('p', 'li'):
             self._start_block()
-        self.output.append(self.get_starttag_text())
+            values = self._current_line_spacing()
+            if values is not None or any(
+                str(name).lower() == LINE_DISTANCE_ATTRIBUTE
+                for name, _value in attrs
+            ):
+                raw = _line_spacing_start_tag(tag, attrs, values)
+        self.output.append(raw)
         if tag in ('br', 'img'):
             self._advance_object()
 
@@ -1260,11 +1517,38 @@ class _InlineExtensionHTMLExporter(HTMLParser):
 def _add_inline_extensions(
     document: QTextDocument,
     html: str,
+    line_spacing_fallback: Optional[float],
+    line_spacing_type_fallback: int,
 ) -> str:
     ranges = _inline_extension_ranges(document)
-    if not ranges:
+    blocks = _document_blocks(document)
+    fallback = canonical_line_spacing(line_spacing_fallback)
+    fallback_type = canonical_line_spacing_type(
+        line_spacing_type_fallback
+    )
+    fallback_pair = (
+        (fallback, fallback_type)
+        if fallback is not None and fallback_type is not None
+        else None
+    )
+    needs_line_spacing = (
+        fallback_pair is not None
+        or LINE_DISTANCE_ATTRIBUTE in html.lower()
+        or any(
+            values is not None and values[1] == LineSpacingType.Distance
+            for values in (
+                _native_line_spacing_values(block.blockFormat())
+                for block in blocks
+            )
+        )
+    )
+    if not ranges and not needs_line_spacing:
         return html
-    parser = _InlineExtensionHTMLExporter(document, ranges)
+    parser = _InlineExtensionHTMLExporter(
+        blocks,
+        ranges,
+        fallback_pair,
+    )
     try:
         parser.feed(html)
         parser.close()
@@ -1437,13 +1721,21 @@ def _add_semantic_ruby(document: QTextDocument, html: str) -> str:
 def to_rich_text_html(
     document: QTextDocument,
     html: Optional[str] = None,
+    *,
+    line_spacing_fallback: Optional[float] = None,
+    line_spacing_type_fallback: int = LineSpacingType.Proportional,
 ) -> str:
-    """Extend Qt's HTML with semantic inline formatting."""
+    """Extend Qt HTML with semantic inline and paragraph formatting."""
     if html is None:
         html = document.toHtml()
     return _add_semantic_ruby(
         document,
-        _add_inline_extensions(document, html),
+        _add_inline_extensions(
+            document,
+            html,
+            line_spacing_fallback,
+            line_spacing_type_fallback,
+        ),
     )
 
 
@@ -1870,7 +2162,12 @@ def _remap_ruby_ids(document: QTextDocument) -> None:
         cursor.endEditBlock()
 
 
-def create_rich_text_mime(cursor: QTextCursor) -> QMimeData:
+def create_rich_text_mime(
+    cursor: QTextCursor,
+    *,
+    line_spacing_fallback: Optional[float] = None,
+    line_spacing_type_fallback: int = LineSpacingType.Proportional,
+) -> QMimeData:
     """Create interoperable clipboard data with exact inline extensions."""
     mime = QMimeData()
     if not cursor.hasSelection():
@@ -1879,7 +2176,11 @@ def create_rich_text_mime(cursor: QTextCursor) -> QMimeData:
     document.setUndoRedoEnabled(False)
     target = QTextCursor(document)
     target.insertFragment(QTextDocumentFragment(cursor))
-    extended_html = to_rich_text_html(document)
+    extended_html = to_rich_text_html(
+        document,
+        line_spacing_fallback=line_spacing_fallback,
+        line_spacing_type_fallback=line_spacing_type_fallback,
+    )
     mime.setText(document.toPlainText())
     mime.setHtml(extended_html)
     mime.setData(

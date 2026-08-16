@@ -23,8 +23,8 @@ Qt remains the text model and shaper. The custom layouts place Qt
 
 | State | Contract |
 | --- | --- |
-| `FontFormat` writing mode, alignment, line spacing, and Roman mode | Item-wide persistent input |
-| `QTextDocument` character formats | Range-bound font, character spacing, emphasis, and tate-chu-yoko input |
+| `FontFormat` writing mode, alignment, default line spacing, and Roman mode | Item-wide persistent input |
+| `QTextDocument` character/block formats | Range-bound font/annotations and paragraph-bound line spacing input |
 | `block_charfmt_lst`, `_map_charidx2frag` | Per-fragment metrics and Qt-position lookup rebuilt before layout |
 | `x_offset_lst`, `y_offset_lst`, `line_spaces_lst` | Settled column, cell, whitespace, caret, and hit-test geometry |
 | `per_char_records`, `text_combine_ranges` | Derived line width and tate-chu-yoko geometry |
@@ -106,9 +106,13 @@ and similar marks as one cluster; they retain one signed run-level advance and
 keep their derived cell bounds monotonic when compressed.
 
 The first column uses identity line spacing to anchor content at the logical
-right edge. Every later column uses the configured line spacing, including a
-terminal glyph that overflows and is settled during the same layout iteration.
-Paragraph boundaries do not restart that first-column rule.
+right edge. Every later column uses its destination paragraph's line-spacing
+pair, including a terminal glyph that overflows and is settled during the same
+layout iteration. Paragraph boundaries do not restart that first-column rule.
+Horizontal layout follows the same leading-edge ownership: the first row is
+anchored and each later row uses its destination paragraph's pair. This keeps
+mixed paragraph behavior consistent in both writing modes and makes a final
+one-line paragraph's spacing observable.
 
 Vertical whitespace is deliberately explicit. `line_spaces_lst` records
 leading/trailing space counts, their cell boundaries, and the Qt line position

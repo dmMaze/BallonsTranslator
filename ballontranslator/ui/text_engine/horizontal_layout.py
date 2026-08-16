@@ -15,7 +15,7 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.utils import shared as C
-from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.fontformat import FontFormat, LineSpacingType
 from .layout import (
     SceneTextLayout,
     _block_cursor_position,
@@ -195,6 +195,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         spaces: List[Tuple[int, float]],
         y_offset: float,
         fallback_height: float,
+        line_spacing: float,
+        line_spacing_type: LineSpacingType,
     ) -> Tuple[
         float,
         Optional[Tuple[QRectF, List[Tuple[int, QRectF]], bool]],
@@ -274,7 +276,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 y_offset + row_height - self._effect_padding,
             )
             y_offset += self.calculate_line_spacing(
-                row_height, self.line_spacing
+                row_height, line_spacing, line_spacing_type
             )
         return y_offset, block_rows[-1]
 
@@ -770,6 +772,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self._space_caret_rects = {}
         self._ruby_metrics = []
         self._annotation_ink_bounds = QRectF()
+        self._last_row_advance = None
         block = doc.firstBlock()
         while block.isValid():
             self.layoutBlock(block)
@@ -894,6 +897,9 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         if block_height == 0:
             tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
             block_height = tbr.height()
+        block_line_spacing, block_line_spacing_type = (
+            self.block_line_spacing(block)
+        )
         if block == doc.firstBlock():
             self.x_offset_lst = []
             self.y_offset_lst = []
@@ -915,6 +921,11 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         text_padding = 0
         is_first_line = False
         pending_space_row = None
+        replace_leading_advance = (
+            block != doc.firstBlock()
+            and self._last_row_advance is not None
+        )
+        last_row_advance = None
 
         while True:
             line = tl.createLine()
@@ -965,6 +976,14 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             )
             over_margin = emphasis_over + ruby_over
             under_margin = emphasis_under + ruby_under
+            line_advance = self.calculate_line_spacing(
+                idea_height,
+                block_line_spacing,
+                block_line_spacing_type,
+            )
+            if replace_leading_advance:
+                y_offset += line_advance - self._last_row_advance
+                replace_leading_advance = False
             line_y_offset = (
                 shared_space_row[0].top()
                 if shared_space_row is not None
@@ -1007,20 +1026,24 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 self.shrink_height,
             )
             line_next_y = line_y_offset + (
-                self.calculate_line_spacing(idea_height, self.line_spacing)
-                + under_margin
+                line_advance + under_margin
             )
             y_offset = (
                 max(y_offset, line_next_y)
                 if shared_space_row is not None
                 else line_next_y
             )
-            y_offset, pending_space_row = self._append_space_rows(
-                block,
-                relocated_spaces,
-                y_offset,
-                idea_height,
+            y_offset, pending_space_row = (
+                self._append_space_rows(
+                    block,
+                    relocated_spaces,
+                    y_offset,
+                    idea_height,
+                    block_line_spacing,
+                    block_line_spacing_type,
+                )
             )
+            last_row_advance = line_advance
             if (
                 relocated_spaces
                 and char_idx + nchar < _utf16_length(block.text())
@@ -1048,6 +1071,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         if is_first_block or is_last_block:
             self.text_padding = max(self.text_padding, text_padding / 2)
         self.y_offset_lst.append(y_offset)
+        self._last_row_advance = last_row_advance
         self.shrink_width = max(shrink_width, self.shrink_width)
         return 1
 

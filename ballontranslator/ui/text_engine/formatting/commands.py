@@ -20,7 +20,6 @@ from ... import shared_widget as SW
 from ballontranslator.utils.fontformat import FontFormat, px2pt
 from ballontranslator.utils.io_utils import empty_func
 from ..item import TextBlkItem
-from ..editing.commands import RotateItemCommand
 
 global_default_set_kwargs = dict(set_selected=False, restore_cursor=False)
 local_default_set_kwargs = dict(set_selected=True, restore_cursor=True)
@@ -138,11 +137,10 @@ def ffmt_change_letter_spacing(param_name: str, values: str, act_ffmt: FontForma
     for blkitem, value in zip(blkitems, values):
         blkitem.setLetterSpacing(value)
 
-@font_formating(push_undostack=True)
+@font_formating()
 def ffmt_change_line_spacing(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
-        blkitem.setLineSpacing(value, **set_kwargs)
+        blkitem.setLineSpacing(value)
 
 @font_formating(push_undostack=True)
 def ffmt_change_vertical(param_name: str, values: bool, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
@@ -206,30 +204,10 @@ def ffmt_change_opacity(param_name: str, values: float, act_ffmt: FontFormat, is
     for blkitem, value in zip(blkitems, values):
         blkitem.setOpacity(value)
 
-@font_formating(push_undostack=True)
+@font_formating()
 def ffmt_change_line_spacing_type(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    restore_cursor = not is_global
     for blkitem, value in zip(blkitems, values):
-        blkitem.setLineSpacingType(value, restore_cursor=restore_cursor)
-
-
-def ffmt_change_angle(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, set_focus: bool = False, **kwargs):
-    if is_global:
-        blkitems = SW.canvas.selected_text_items()
-    elif not isinstance(blkitems, list):
-        blkitems = [blkitems]
-
-    blkitems = [blkitem for blkitem in blkitems if blkitem is not None]
-    if len(blkitems) > 0:
-        SW.canvas.push_undo_command(
-            RotateItemCommand(
-                blkitems,
-                values,
-            )
-        )
-
-    if set_focus:
-        restore_canvas_view_focus()
+        blkitem.setLineSpacingType(value)
 
 
 @font_formating(push_undostack=True)
@@ -255,5 +233,5 @@ ffmt_change_gradient_size = ffmt_change_gradient_enabled
 
 handle_ffmt_change = {
     name: globals().get(f'ffmt_change_{name}', empty_func)
-    for name in (*FontFormat.params(), 'rel_font_size', 'angle')
+    for name in (*FontFormat.params(), 'rel_font_size')
 }

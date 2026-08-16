@@ -1,5 +1,5 @@
 from functools import cached_property, lru_cache
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from qtpy.QtCore import QPointF, QRectF, Signal, QSizeF
 from qtpy.QtGui import (
@@ -15,7 +15,7 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, pt2px
-from .annotations import letter_spacing_value
+from .annotations import letter_spacing_value, line_spacing_values
 
 
 def selection_segments_excluding(
@@ -274,31 +274,43 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     def reLayoutForResize(self):
         self.reLayout()
 
-    def setLineSpacing(self, line_spacing: float):
-        if self.line_spacing != line_spacing:
-            self.line_spacing = line_spacing
-            self.reLayout()
+    def block_line_spacing(
+        self,
+        block: QTextBlock,
+    ) -> tuple[float, LineSpacingType]:
+        return line_spacing_values(
+            block.blockFormat(),
+            self.line_spacing,
+            self.linespacing_type,
+        )
 
-    def setLineSpacingType(self, linespacing_type: int):
-        if self.linespacing_type != linespacing_type:
-            self.linespacing_type = linespacing_type
-            self.reLayout()
-
-    def calculate_line_spacing(self, size: float, line_spacing: float = 1):
-        if self.linespacing_type == LineSpacingType.Proportional:
+    def calculate_line_spacing(
+        self,
+        size: float,
+        line_spacing: float = 1,
+        linespacing_type: Optional[LineSpacingType] = None,
+    ) -> float:
+        if linespacing_type is None:
+            linespacing_type = self.linespacing_type
+        if linespacing_type == LineSpacingType.Proportional:
             return line_spacing * size
-        elif self.linespacing_type == LineSpacingType.Distance:
+        elif linespacing_type == LineSpacingType.Distance:
             return line_spacing * 10 + size
         else:
-            raise Exception(f'Invalid line spacing type: {self.linespacing_type}')
+            raise Exception(f'Invalid line spacing type: {linespacing_type}')
 
-    def identity_linespacing(self):
-        if self.linespacing_type == LineSpacingType.Proportional:
+    def identity_linespacing(
+        self,
+        linespacing_type: Optional[LineSpacingType] = None,
+    ) -> float:
+        if linespacing_type is None:
+            linespacing_type = self.linespacing_type
+        if linespacing_type == LineSpacingType.Proportional:
             return 1.
-        elif self.linespacing_type == LineSpacingType.Distance:
+        elif linespacing_type == LineSpacingType.Distance:
             return 0.
         else:
-            raise Exception(f'Invalid line spacing type: {self.linespacing_type}')
+            raise Exception(f'Invalid line spacing type: {linespacing_type}')
 
     def blockBoundingRect(self, block: QTextBlock) -> QRectF:
         if not block.isValid():

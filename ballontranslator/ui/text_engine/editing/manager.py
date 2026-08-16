@@ -586,7 +586,7 @@ class SceneTextManager(QObject):
             self.formatpanel.textadvancedfmt_panel.set_emphasis_values(
                 *item.emphasis_values()
             )
-            self.formatpanel.textadvancedfmt_panel.set_tate_chu_yoko_enabled(
+            self.formatpanel.set_tate_chu_yoko_enabled(
                 item.tate_chu_yoko_enabled()
             )
             ruby_values = item.ruby_editor_values()
@@ -598,6 +598,9 @@ class SceneTextManager(QObject):
             )
             self.formatpanel.set_letter_spacing_value(
                 item.letter_spacing_value()
+            )
+            self.formatpanel.set_line_spacing_values(
+                *item.line_spacing_values()
             )
 
     def onTextBlkItemBeginEdit(self, blk_id: int):

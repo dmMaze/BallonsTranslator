@@ -1642,6 +1642,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             block_width = self.block_ideal_width[block_no]
         else:
             block_width = CharFontFormat(block.charFormat()).tbr.width()
+        block_line_spacing, block_line_spacing_type = (
+            self.block_line_spacing(block)
+        )
 
         layout_first_block = block == doc.firstBlock()
         if layout_first_block:
@@ -1894,9 +1897,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             line_not_set.append(line)
             if out_of_vspace or end_char:
                 if is_first_line:
-                    line_spacing = self.identity_linespacing()
+                    line_spacing = self.identity_linespacing(
+                        block_line_spacing_type
+                    )
                 else:
-                    line_spacing = self.line_spacing
+                    line_spacing = block_line_spacing
                 if len(width_list) == 0:
                     width_list = [(block_width, 0.0, 0.0)]
                 end_line, end_ypos, end_metrics = (
@@ -1942,7 +1947,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 line_char_ids = []
 
                 x_offset -= self.calculate_line_spacing(
-                    idea_line_width, line_spacing
+                    idea_line_width,
+                    line_spacing,
+                    block_line_spacing_type,
                 )
 
                 for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
@@ -1959,7 +1966,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         )
                         if not len(line_not_set) == 1:
                             x_offset -= self.calculate_line_spacing(
-                                end_width, self.line_spacing
+                                end_width,
+                                block_line_spacing,
+                                block_line_spacing_type,
                             )
                         end_line.setPosition(QPointF(x_offset, end_ypos))
                         char_records.setdefault(end_char_id, {}).update({

@@ -8,9 +8,10 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSizePolicy,
+    QToolTip,
     QVBoxLayout,
 )
-from qtpy.QtCore import Signal, Qt
+from qtpy.QtCore import QSignalBlocker, Signal, Qt
 from qtpy.QtGui import QFocusEvent, QTextCursor, QKeyEvent
 
 from ballontranslator.utils import shared
@@ -188,45 +189,33 @@ class FontSizeBox(QFrame):
     def getFontSize(self) -> str:
         return self.fcombobox.currentText()
 
-    def onUpBtnClicked(self):
-        raito = 1.25
-        size = self.getFontSize()
-        multi_size=False
-        if "+" in size:
-            size = size.strip("+")
-            multi_size=True
-        size = float(size)
-        newsize = int(round(size * raito))
-        if newsize == size:
-            newsize += 1
-        newsize = min(1000, newsize)
-        if newsize != size:
-            if not multi_size:
-                self.param_changed.emit('font_size', newsize)
-                self.fcombobox.setCurrentText(str(newsize))
-            else:
-                self.param_changed.emit('rel_font_size', raito)
-                self.fcombobox.setCurrentText(str(newsize)+"+")
+    def _change_font_size(self, ratio: float) -> None:
+        size_text = self.getFontSize()
+        multi_size = size_text.endswith('+')
+        size = float(size_text[:-1] if multi_size else size_text)
+        new_size = int(round(size * ratio))
+        if new_size == size:
+            new_size += 1 if ratio > 1 else -1
+        new_size = min(1000, max(1, new_size))
+        if new_size == size:
+            return
 
-    def onDownBtnClicked(self):
-        raito = 0.75
-        size = self.getFontSize()
-        multi_size=False
-        if "+" in size:
-            size = size.strip("+")
-            multi_size=True
-        size = float(size)
-        newsize = int(round(size * raito))
-        if newsize == size:
-            newsize -= 1
-        newsize = max(1, newsize)
-        if newsize != size:
-            if not multi_size:
-                self.param_changed.emit('font_size', newsize)
-                self.fcombobox.setCurrentText(str(newsize))
-            else:
-                self.param_changed.emit('rel_font_size', raito)
-                self.fcombobox.setCurrentText(str(newsize)+"+")
+        display_text = f'{new_size}+' if multi_size else str(new_size)
+        with QSignalBlocker(self.fcombobox):
+            self.fcombobox.setCurrentText(display_text)
+        # The arrows are part of the editable size control. Keep focus on that
+        # control so effects and the live text use the same unfocused layout.
+        self.fcombobox.setFocus()
+        self.param_changed.emit(
+            'rel_font_size' if multi_size else 'font_size',
+            ratio if multi_size else new_size,
+        )
+
+    def onUpBtnClicked(self) -> None:
+        self._change_font_size(1.25)
+
+    def onDownBtnClicked(self) -> None:
+        self._change_font_size(0.75)
     
 
 class FontFamilyComboBox(QFontComboBox):
@@ -336,6 +325,16 @@ class FontFormatPanel(Widget):
         self.verticalChecker.setObjectName("FontVerticalChecker")
         self.verticalChecker.clicked.connect(lambda : self.on_param_changed('vertical', self.verticalChecker.isChecked()))
 
+        self._tate_chu_yoko_tooltip = self.tr(
+            'Combine the selected text into one upright vertical cell'
+        )
+        self.tateChuYokoChecker = QFontChecker(self)
+        self.tateChuYokoChecker.setObjectName("FontTateChuYokoChecker")
+        self.tateChuYokoChecker.setToolTip(self._tate_chu_yoko_tooltip)
+        self.tateChuYokoChecker.clicked.connect(
+            self.on_tate_chu_yoko_changed
+        )
+
         self.strokeWidthBox = SizeComboBox([0, 10], 'stroke_width', self)
         self.strokeWidthBox.addItems(["0.1"])
         self.strokeWidthBox.setToolTip(self.tr("Change stroke width"))
@@ -377,23 +376,6 @@ class FontFormatPanel(Widget):
         lettersp_hlayout.addWidget(self.letterSpacingBox)
         lettersp_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
 
-        self.angleBox = SizeComboBox([-180, 180], "angle", self)
-        self.angleBox.addItems(["0", "90", "180", "-90"])
-        self.angleBox.setToolTip(self.tr("Angle"))
-        self.angleBox.setMinimumWidth(int(self.angleBox.height() * 2.5))
-        self.angleBox.param_changed.connect(self.on_param_changed)
-
-        self.angleLabel = SizeControlLabel(self, direction=0, transparent_bg=False)
-        self.angleLabel.setObjectName("fontAngleLabel")
-        self.angleLabel.setToolTip(self.tr("Angle"))
-        self.angleLabel.size_ctrl_changed.connect(self.onAngleCtrlChanged)
-        self.angleLabel.btn_released.connect(lambda : self.on_param_changed('angle', self.angleBox.value()))
-
-        angle_hlayout = QHBoxLayout()
-        angle_hlayout.addWidget(self.angleLabel)
-        angle_hlayout.addWidget(self.angleBox)
-        angle_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
-        
         self.global_fontfmt_str = self.tr("Global Font Format")
         self.textstyle_panel = TextStylePresetPanel(
             self.global_fontfmt_str,
@@ -411,9 +393,6 @@ class FontFormatPanel(Widget):
         )
         self.textadvancedfmt_panel.emphasis_changed.connect(
             self.on_emphasis_changed
-        )
-        self.textadvancedfmt_panel.tate_chu_yoko_changed.connect(
-            self.on_tate_chu_yoko_changed
         )
         self.textadvancedfmt_panel.ruby_apply_requested.connect(
             self.on_ruby_apply_requested
@@ -458,17 +437,25 @@ class FontFormatPanel(Widget):
         vl0.setSpacing(0)
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
-        hl1.addWidget(self.familybox)
+        font_selector_layout = QHBoxLayout()
+        font_selector_layout.addWidget(self.familybox)
+        font_selector_layout.addWidget(self.colorPicker)
+        font_selector_layout.setSpacing(shared.WIDGET_SPACING_CLOSE)
+        font_selector_layout.setContentsMargins(0, 0, 0, 0)
+        hl1.addLayout(font_selector_layout, 1)
         hl1.addWidget(self.fontsizebox)
-        hl1.addLayout(angle_hlayout)
         hl1.setSpacing(4)
         hl1.setContentsMargins(0, 12, 0, 0)
         hl2 = QHBoxLayout()
         hl2.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl2.addWidget(self.colorPicker)
         hl2.addWidget(self.alignBtnGroup)
         hl2.addWidget(self.formatBtnGroup)
-        hl2.addWidget(self.verticalChecker)
+        vertical_layout = QHBoxLayout()
+        vertical_layout.addWidget(self.verticalChecker)
+        vertical_layout.addWidget(self.tateChuYokoChecker)
+        vertical_layout.setSpacing(0)
+        vertical_layout.setContentsMargins(0, 0, 0, 0)
+        hl2.addLayout(vertical_layout)
         hl2.setSpacing(FONTFORMAT_SPACING)
         hl2.setContentsMargins(0, 0, 0, 0)
         hl3 = QHBoxLayout()
@@ -549,14 +536,21 @@ class FontFormatPanel(Widget):
                 message = self.tr(
                     'Unable to apply Tate-chu-yoko to this selection.'
                 )
-            self.textadvancedfmt_panel.tate_chu_yoko_group.set_error(message)
             current = (
                 self.textblk_item.tate_chu_yoko_enabled()
                 if self.textblk_item is not None else False
             )
-            self.textadvancedfmt_panel.set_tate_chu_yoko_enabled(current)
+            self.set_tate_chu_yoko_enabled(current)
+            self.tateChuYokoChecker.setToolTip(message)
+            QToolTip.showText(
+                self.tateChuYokoChecker.mapToGlobal(
+                    self.tateChuYokoChecker.rect().bottomLeft()
+                ),
+                message,
+                self.tateChuYokoChecker,
+            )
             return
-        self.textadvancedfmt_panel.tate_chu_yoko_group.set_error('')
+        self.tateChuYokoChecker.setToolTip(self._tate_chu_yoko_tooltip)
         if items:
             restore_canvas_view_focus()
 
@@ -656,9 +650,6 @@ class FontFormatPanel(Widget):
             mul = 0.01
         self.lineSpacingBox.setValue(self.lineSpacingBox.value() + delta * mul)
 
-    def onAngleCtrlChanged(self, delta: int):
-        self.angleBox.setValue(round(self.angleBox.value()) + delta)
-
     def set_active_format(
         self,
         font_format: FontFormat,
@@ -682,7 +673,6 @@ class FontFormatPanel(Widget):
         self.strokeWidthBox.setValue(font_format.stroke_width)
         self.lineSpacingBox.setValue(font_format.line_spacing)
         self.letterSpacingBox.setValue(font_format.letter_spacing)
-        self.angleBox.setValue(0 if self.textblk_item is None else self.textblk_item.angle)
         self.verticalChecker.setChecked(font_format.vertical)
         self.formatBtnGroup.boldBtn.setChecked(font_format.bold)
         self.formatBtnGroup.underlineBtn.setChecked(font_format.underline)
@@ -695,7 +685,7 @@ class FontFormatPanel(Widget):
             self.textadvancedfmt_panel.set_emphasis_values(
                 'none', 'over right'
             )
-            self.textadvancedfmt_panel.set_tate_chu_yoko_enabled(False)
+            self.set_tate_chu_yoko_enabled(False)
             self.textadvancedfmt_panel.set_ruby_state(
                 'group', '', 'over',
                 editable=False,
@@ -706,7 +696,7 @@ class FontFormatPanel(Widget):
             self.textadvancedfmt_panel.set_emphasis_values(
                 *self.textblk_item.emphasis_values()
             )
-            self.textadvancedfmt_panel.set_tate_chu_yoko_enabled(
+            self.set_tate_chu_yoko_enabled(
                 self.textblk_item.tate_chu_yoko_enabled()
             )
             values = self.textblk_item.ruby_editor_values()
@@ -723,6 +713,21 @@ class FontFormatPanel(Widget):
         C.active_format.letter_spacing = value
         if not self.letterSpacingBox.hasFocus():
             self.letterSpacingBox.setValue(value)
+
+    def set_tate_chu_yoko_enabled(self, enabled: bool) -> None:
+        self.tateChuYokoChecker.setChecked(enabled)
+        self.tateChuYokoChecker.setToolTip(self._tate_chu_yoko_tooltip)
+
+    def set_line_spacing_values(
+        self,
+        value: float,
+        spacing_type: int,
+    ) -> None:
+        C.active_format.line_spacing = value
+        C.active_format.line_spacing_type = int(spacing_type)
+        if not self.lineSpacingBox.hasFocus():
+            self.lineSpacingBox.setValue(value)
+        self.textadvancedfmt_panel.set_line_spacing_type(spacing_type)
 
     def set_globalfmt_title(self):
         active_text_style_label = self.active_text_style_label()
@@ -797,9 +802,17 @@ class FontFormatPanel(Widget):
                     letter_spacing = (
                         self.textblk_item.fontformat.letter_spacing
                     )
+                    line_spacing = self.textblk_item.fontformat.line_spacing
+                    line_spacing_type = (
+                        self.textblk_item.fontformat.line_spacing_type
+                    )
                     self.textblk_item.fontformat.merge(C.active_format)
                     self.textblk_item.fontformat.letter_spacing = (
                         letter_spacing
+                    )
+                    self.textblk_item.fontformat.line_spacing = line_spacing
+                    self.textblk_item.fontformat.line_spacing_type = (
+                        line_spacing_type
                     )
                 self.textblk_item = None
                 self.set_active_format(

@@ -5,12 +5,13 @@ from qtpy.QtWidgets import QApplication, QGraphicsItem, QWidget, QGraphicsSceneH
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
-                       QBrush, QPen)
+                       QBrush, QPen, QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
     FontFormat,
+    LineSpacingType,
     TextTransformStack,
     pt2px,
 )
@@ -24,6 +25,7 @@ from .annotations import (
     AnnotationProperty,
     TEXT_COMBINE_ALL,
     apply_emphasis,
+    apply_line_spacing,
     apply_letter_spacing,
     apply_ruby,
     apply_text_combine_upright,
@@ -32,6 +34,7 @@ from .annotations import (
     emphasis_values,
     insert_rich_text_mime,
     letter_spacing_value,
+    line_spacing_values,
     load_rich_text_html,
     prepare_ruby_insertion,
     remove_ruby,
@@ -39,6 +42,7 @@ from .annotations import (
     set_document_letter_spacing_writing_mode,
     text_combine_upright_values,
     to_rich_text_html,
+    validated_line_spacing,
 )
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
@@ -681,7 +685,11 @@ class TextBlkItem(QGraphicsTextItem):
                 cursor = self.textCursor()
                 if cursor.hasSelection():
                     QApplication.clipboard().setMimeData(
-                        create_rich_text_mime(cursor)
+                        create_rich_text_mime(
+                            cursor,
+                            line_spacing_fallback=self.fontformat.line_spacing,
+                            line_spacing_type_fallback=self.fontformat.line_spacing_type,
+                        )
                     )
                     if e.key() == Qt.Key.Key_X:
                         cursor.removeSelectedText()
@@ -919,7 +927,12 @@ class TextBlkItem(QGraphicsTextItem):
             html = tables[0] + td + '</body></html>'
 
         html = html.replace('>\n<', '><')
-        return to_rich_text_html(self.document(), html)
+        return to_rich_text_html(
+            self.document(),
+            html,
+            line_spacing_fallback=self.fontformat.line_spacing,
+            line_spacing_type_fallback=self.fontformat.line_spacing_type,
+        )
 
     def load_rich_text_html(self, html: str) -> None:
         """Restore ordinary Qt HTML plus application-owned annotations."""
@@ -972,6 +985,10 @@ class TextBlkItem(QGraphicsTextItem):
         fontformat.bold = font.bold()
         fontformat.underline = font.underline()
         fontformat.italic = font.italic()
+        (
+            fontformat.line_spacing,
+            fontformat.line_spacing_type,
+        ) = self.line_spacing_values()
         # Preserve gradient settings
         fontformat.gradient_enabled = self.fontformat.gradient_enabled
         fontformat.gradient_start_color = self.fontformat.gradient_start_color
@@ -1047,7 +1064,23 @@ class TextBlkItem(QGraphicsTextItem):
         
         self.setAlignment(ffmat.alignment, repaint_background=False)
         
-        self.setLineSpacing(ffmat.line_spacing)
+        if set_char_format:
+            self._set_line_spacing_pair(
+                ffmat.line_spacing,
+                ffmat.line_spacing_type,
+                whole_item=True,
+            )
+        else:
+            # Rich HTML may already own different paragraph pairs. Update only
+            # the compatibility default unless this is a whole-style apply.
+            fallback_changed = (
+                self.layout.line_spacing != ffmat.line_spacing
+                or self.layout.linespacing_type != ffmat.line_spacing_type
+            )
+            self.layout.line_spacing = ffmat.line_spacing
+            self.layout.linespacing_type = ffmat.line_spacing_type
+            if fallback_changed:
+                self.layout.reLayout()
         
         # Preserve gradient properties
         self.fontformat.gradient_enabled = ffmat.gradient_enabled
@@ -1216,16 +1249,39 @@ class TextBlkItem(QGraphicsTextItem):
             self.fontformat.letter_spacing,
         )
 
-    def _apply_inline_format(
+    def _active_block_format(self) -> QTextBlockFormat:
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            block = self.document().findBlock(cursor.selectionEnd() - 1)
+        else:
+            block = cursor.block()
+        return block.blockFormat()
+
+    def line_spacing_values(self) -> tuple[float, LineSpacingType]:
+        """Return the item default or active paragraph spacing pair."""
+        if not self.isEditing():
+            return (
+                self.fontformat.line_spacing,
+                LineSpacingType(self.fontformat.line_spacing_type),
+            )
+        return line_spacing_values(
+            self._active_block_format(),
+            self.fontformat.line_spacing,
+            self.fontformat.line_spacing_type,
+        )
+
+    def _apply_text_format(
         self,
         apply_format: Callable[[QTextCursor], None],
+        *,
+        select_document: bool = False,
     ) -> None:
-        """Run one selection/insertion formatting transaction."""
+        """Run one selection/caret formatting transaction."""
         cursor = self.textCursor()
-        restore_cursor = not self.isEditing()
+        restore_cursor = not self.isEditing() or select_document
         cursor_position = cursor.position()
         cursor_anchor = cursor.anchor()
-        if restore_cursor:
+        if not self.isEditing() or select_document:
             cursor.select(QTextCursor.SelectionType.Document)
         self.is_formatting = True
         try:
@@ -1248,7 +1304,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def setEmphasis(self, style: str, position: str) -> None:
         """Apply emphasis to a selection or the active insertion format."""
-        self._apply_inline_format(
+        self._apply_text_format(
             lambda cursor: apply_emphasis(cursor, style, position)
         )
 
@@ -1260,7 +1316,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def setTateChuYoko(self, enabled: bool) -> None:
         """Combine one selected run, or change the insertion format."""
-        self._apply_inline_format(
+        self._apply_text_format(
             lambda cursor: apply_text_combine_upright(cursor, enabled)
         )
 
@@ -1345,25 +1401,50 @@ class TextBlkItem(QGraphicsTextItem):
         self._refresh_gradient_geometry()
 
 
-    def setLineSpacing(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
-        self.is_formatting = True
-        self.fontformat.line_spacing = value
-        self.layout.setLineSpacing(value)
-        self.geometry_controller.flush_deferred_compilation()
-        if repaint_background:
-            self.repaint_background()
-            self.update()
-        self.is_formatting = False
+    def _set_line_spacing_pair(
+        self,
+        value: float,
+        spacing_type: int,
+        *,
+        whole_item: bool = False,
+    ) -> None:
+        canonical_value, canonical_type = validated_line_spacing(
+            value, spacing_type
+        )
+        update_item_default = whole_item or not self.isEditing()
+        if update_item_default:
+            self.old_ffmt_values = {
+                'line_spacing': self.fontformat.line_spacing,
+                'line_spacing_type': self.fontformat.line_spacing_type,
+            }
+            self.fontformat.line_spacing = canonical_value
+            self.fontformat.line_spacing_type = int(canonical_type)
+            # Paragraph formats drive settled layout; these remain the
+            # compatibility defaults for unformatted legacy paragraphs.
+            self.layout.line_spacing = canonical_value
+            self.layout.linespacing_type = canonical_type
+        previous_block_change = self.block_change_signal
+        if whole_item:
+            # ApplyFontformatCommand already owns this whole-item transaction.
+            self.block_change_signal = True
+        try:
+            self._apply_text_format(
+                lambda cursor: apply_line_spacing(
+                    cursor, canonical_value, canonical_type
+                ),
+                select_document=whole_item,
+            )
+        finally:
+            self.block_change_signal = previous_block_change
+            self.old_ffmt_values = None
 
-    def setLineSpacingType(self, value: int, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
-        self.is_formatting = True
-        self.fontformat.line_spacing_type = value
-        self.layout.setLineSpacingType(value)
-        self.geometry_controller.flush_deferred_compilation()
-        if repaint_background:
-            self.repaint_background()
-            self.update()
-        self.is_formatting = False
+    def setLineSpacing(self, value: float) -> None:
+        _current_value, spacing_type = self.line_spacing_values()
+        self._set_line_spacing_pair(value, spacing_type)
+
+    def setLineSpacingType(self, value: int) -> None:
+        line_spacing, _current_type = self.line_spacing_values()
+        self._set_line_spacing_pair(line_spacing, value)
 
     def setLetterSpacing(self, value: float) -> None:
         canonical_value = canonical_letter_spacing(value)
@@ -1401,7 +1482,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.fontformat.letter_spacing = value
             self.layout.letter_spacing = value
         try:
-            self._apply_inline_format(
+            self._apply_text_format(
                 lambda cursor: apply_letter_spacing(
                     cursor,
                     value,

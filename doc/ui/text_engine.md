@@ -30,7 +30,7 @@ math, UI, and selected transform controls live in `transforms/`.
 | Block text, logical rectangle, angle, metadata | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
 | Persistent typography and transforms | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
 | Live Qt integration | `TextBlkItem` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
-| Inline rich-text annotations | `QTextDocument` character formats plus the semantic HTML boundary | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
+| Rich-text annotations | `QTextDocument` character/block formats plus the semantic HTML boundary | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
 | Horizontal and vertical layout | Shared `SceneTextLayout` plus writing-mode subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py), [`ui/text_engine/horizontal_layout.py`](../../ballontranslator/ui/text_engine/horizontal_layout.py), [`ui/text_engine/vertical_layout.py`](../../ballontranslator/ui/text_engine/vertical_layout.py) |
 | Fill, stroke, shadow, gradient, raster bounds | `TextEffectRenderer` | [`ui/text_engine/effect_renderer.py`](../../ballontranslator/ui/text_engine/effect_renderer.py), [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
 | Derived geometry and visual/input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py) |
@@ -69,7 +69,9 @@ and surface resources.
 ### Inline annotations
 
 Qt character-format user properties are the live source of truth for emphasis,
-tate-chu-yoko, character spacing, and Ruby/furigana.
+tate-chu-yoko, character spacing, and Ruby/furigana. Native
+`QTextBlockFormat` line height is the live source of truth for paragraph line
+spacing.
 `TextBlock.rich_text` remains an HTML string. `annotations.py` extends Qt's
 ordinary HTML with semantic inline `span` markup. Standard CSS carries
 emphasis, tate-chu-yoko, and approximate external character spacing;
@@ -142,6 +144,25 @@ the pre-feature compatibility signal; there is no separate rich-text version.
 Effect-document clones and internal clipboard insertion load the same inline
 representation. Writing-mode behavior is specified in
 [Text layout](text_layout.md).
+
+Line spacing is paragraph-bound because visual rows and columns can change
+after wrapping or resize. A non-empty selection formats every logical paragraph
+containing selected content, excluding a paragraph whose start is exactly the
+selection end. A caret formats its current paragraph immediately; Enter
+inherits that block format. The spacing value and Proportional/Distance type
+are one pair, sampled from the selection's logical end and applied together.
+The first visual row or column remains identity-spaced; every later row or
+column uses the destination paragraph's pair.
+
+HTML stores proportional spacing as the standard unitless CSS `line-height`
+value. Distance mode has no exact single legacy CSS equivalent, so its closest
+external representation is `calc(1em + Npx)` and its exact application value
+is stored as `data-btrans-line-distance`; the mode is implied. The native
+Qt block format is reconstructed after `setHtml()`. Standard proportional
+`line-height` from external HTML is accepted directly.
+`FontFormat.line_spacing` and `line_spacing_type` remain
+the item-wide compatibility/default pair: old HTML without a supported block
+height falls back to it, while local edits do not overwrite it.
 
 `TextBlock.text_layout_version` versions item-wide layout semantics separately
 from the versionless inline HTML extensions. Missing/version-zero vertical
