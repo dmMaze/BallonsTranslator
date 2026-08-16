@@ -18,6 +18,7 @@ from qtpy.QtGui import (
 )
 
 from ..annotations import (
+    EMPHASIS_GLYPHS,
     TEXT_COMBINE_ALL,
     emphasis_values,
     text_combine_upright_values,
@@ -36,19 +37,6 @@ from .native_document import (
     native_text_document,
 )
 
-
-EMPHASIS_GLYPHS = {
-    'filled dot': '\u2022',
-    'open dot': '\u25e6',
-    'filled circle': '\u25cf',
-    'open circle': '\u25cb',
-    'filled double-circle': '\u25c9',
-    'open double-circle': '\u25ce',
-    'filled triangle': '\u25b2',
-    'open triangle': '\u25b3',
-    'filled sesame': '\ufe45',
-    'open sesame': '\ufe46',
-}
 EMPHASIS_FONT_SCALE = 0.5
 EMPHASIS_GAP_SCALE = 0.08
 

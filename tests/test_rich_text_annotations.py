@@ -30,6 +30,10 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QWidget,
 )
+try:
+    from qtpy.QtGui import QUndoStack
+except ImportError:
+    from qtpy.QtWidgets import QUndoStack
 
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.canvas import Canvas
@@ -53,11 +57,12 @@ from ballontranslator.ui.text_engine.annotations import (
     text_combine_upright_values,
     to_rich_text_html,
 )
-from ballontranslator.ui.text_engine.formatting.advanced import (
-    TextEmphasisGroup,
+from ballontranslator.ui.text_engine.formatting.panel import (
+    EmphasisToolButton,
+    FontFormatPanel,
 )
-from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
+from ballontranslator.ui.text_engine.editing.commands import TextItemEditCommand
 from ballontranslator.ui.text_engine import effect_renderer as effect_rendering
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering import emphasis as emphasis_rendering
@@ -2444,17 +2449,96 @@ class RichTextAnnotationTest(unittest.TestCase):
             1.8,
         )
 
-    def test_panel_exposes_stable_values_and_emits_one_edit(self):
-        group = TextEmphasisGroup()
+    def test_emphasis_button_toggles_and_applies_selected_mark(self):
+        button = EmphasisToolButton()
         edits = []
-        group.emphasis_changed.connect(
+        button.emphasis_changed.connect(
             lambda style, position: edits.append((style, position))
         )
-        group.set_values('open circle', 'under left')
+        button._position_actions['under left'].trigger()
+        self.assertEqual(edits, [])
+        button.set_values('open circle', 'under left')
 
-        group._on_value_changed(group.style_combobox.currentIndex())
+        button.click()
+        button.click()
+        button._style_actions['filled sesame'].trigger()
 
-        self.assertEqual(edits, [('open circle', 'under left')])
+        self.assertEqual(
+            edits,
+            [
+                ('none', 'under left'),
+                ('open circle', 'under left'),
+                ('filled sesame', 'under left'),
+            ],
+        )
+
+    def test_emphasis_button_undo_redo_uses_one_command_per_edit(self):
+        item = self._make_item(False, text='AB')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+
+        with patch.object(
+            shared,
+            'register_view_widget',
+            lambda *_args: None,
+            create=True,
+        ):
+            panel = FontFormatPanel(self.app)
+        self.addCleanup(panel.deleteLater)
+        panel.global_format = FontFormat()
+        panel.textblk_item = item
+        panel.set_active_format(item.get_fontformat())
+
+        stack = QUndoStack()
+        pushed_steps = []
+
+        def push_history(num_steps: int, is_formatting: bool) -> None:
+            pushed_steps.append((num_steps, is_formatting))
+            stack.push(TextItemEditCommand(item, None, num_steps, panel))
+
+        item.push_undo_stack.connect(push_history)
+        self.addCleanup(item.push_undo_stack.disconnect, push_history)
+        button = panel.formatBtnGroup.emphasisBtn
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.panel.'
+            'restore_canvas_view_focus'
+        ):
+            button._style_actions['filled circle'].trigger()
+            button._position_actions['under left'].trigger()
+            button.click()
+
+        self.assertEqual(len(pushed_steps), 3)
+        self.assertTrue(
+            all(
+                num_steps > 0 and is_formatting
+                for num_steps, is_formatting in pushed_steps
+            )
+        )
+        self.assertEqual(stack.count(), 3)
+        self.assertEqual(item.emphasis_values(), ('none', 'under left'))
+
+        stack.undo()
+        self.assertEqual(
+            item.emphasis_values(), ('filled circle', 'under left')
+        )
+        self.assertTrue(button.isChecked())
+        stack.undo()
+        self.assertEqual(
+            item.emphasis_values(), ('filled circle', 'over right')
+        )
+        stack.undo()
+        self.assertEqual(item.emphasis_values()[0], 'none')
+        self.assertFalse(button.isChecked())
+        self.assertEqual(stack.count(), 3)
+
+        stack.redo()
+        stack.redo()
+        stack.redo()
+        self.assertEqual(item.emphasis_values(), ('none', 'under left'))
+        self.assertFalse(button.isChecked())
+        self.assertEqual(len(pushed_steps), 3)
 
     def test_font_panel_tate_chu_yoko_switch_edits_selection(self):
         item = self._make_item(True, text='12')
@@ -2512,6 +2596,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         char_format.setFontUnderline(True)
         char_format.setForeground(QColor(12, 34, 56))
         modified.mergeCharFormat(char_format)
+        apply_emphasis(modified, 'open circle', 'under left')
         apply_letter_spacing(modified, 1.4, vertical=False)
 
         caret = QTextCursor(item.document())
@@ -2540,7 +2625,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             panel.lineSpacingBox.param_changed,
             panel.letterSpacingBox.param_changed,
             panel.formatBtnGroup.param_changed,
-            panel.textadvancedfmt_panel.emphasis_changed,
+            panel.formatBtnGroup.emphasisBtn.emphasis_changed,
         ):
             signal.connect(lambda *_args: feedback.append(True))
         revision = item.document().revision()
@@ -2558,6 +2643,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(panel.colorPicker.rgb(), (12, 34, 56))
         self.assertTrue(panel.formatBtnGroup.italicBtn.isChecked())
         self.assertTrue(panel.formatBtnGroup.underlineBtn.isChecked())
+        self.assertEqual(
+            panel.formatBtnGroup.emphasisBtn.values(),
+            ('open circle', 'under left'),
+        )
         self.assertEqual(panel.letterSpacingBox.value(), 1.4)
         self.assertEqual(C.active_format.font_weight, active.font_weight)
 
@@ -2570,6 +2659,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(panel.colorPicker.rgb(), tuple(normal.frgb))
         self.assertFalse(panel.formatBtnGroup.italicBtn.isChecked())
         self.assertFalse(panel.formatBtnGroup.underlineBtn.isChecked())
+        self.assertFalse(panel.formatBtnGroup.emphasisBtn.isChecked())
 
 
 if __name__ == '__main__':

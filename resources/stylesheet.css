@@ -386,11 +386,11 @@ QComboBox QAbstractItemView::item:selected {
 }
 
 QFontComboBox#FontFamilyBox {
-    width: 106px;
-    height: 26px;
-    font-size: 14px;
-    padding-right: 14px;
-    padding-left: 6px;
+    width: 95px;
+    height: 23px;
+    font-size: 13px;
+    padding-right: 13px;
+    padding-left: 5px;
     border-color: @borderColor;
 }
 
@@ -399,10 +399,19 @@ QFontComboBox#FontFamilyBox::hover {
 }
 
 QComboBox#FontWeightBox {
-    min-width: 58px;
-    max-width: 58px;
-    height: 26px;
-    padding-right: 14px;
+    min-width: 52px;
+    max-width: 52px;
+    height: 23px;
+    font-size: 12px;
+    padding-right: 13px;
+    padding-left: 5px;
+}
+
+QFontComboBox#FontFamilyBox::down-arrow,
+QComboBox#FontWeightBox::down-arrow {
+    width: 10px;
+    height: 10px;
+    padding-right: 12px;
 }
 
 SizeComboBox {
@@ -430,6 +439,23 @@ SizeComboBox::drop-down {
     width: 12px;
 }
 
+SizeComboBox#FontFormatSizeBox {
+    height: 22px;
+    font-size: 11px;
+    min-width: 48px;
+    max-width: 48px;
+}
+
+SizeComboBox#FontFormatSizeBox::down-arrow {
+    width: 22px;
+    height: 10px;
+    padding-right: 10px;
+}
+
+SizeComboBox#FontFormatSizeBox::drop-down {
+    width: 11px;
+}
+
 SizeControlLabel {
     font-size: 14px;
 }
@@ -441,10 +467,10 @@ SmallSizeControlLabel {
 
 QLabel#lineSpacingLabel {
     image: url(resources/icons/fontfmt_linespacing.svg);
-    max-width: 25px;
-    max-height: 25px;
-    min-width: 25px;
-    min-height: 25px;
+    max-width: 23px;
+    max-height: 23px;
+    min-width: 23px;
+    min-height: 23px;
 }
 
 QGroupBox {
@@ -1257,10 +1283,10 @@ QToolButton#LLMProfileDeleteButton:hover {
 
 QLabel#letterSpacingLabel {
     image: url(resources/icons/fontfmt_letterspacing.svg);
-    max-width: 28px;
-    max-height: 28px;
-    min-width: 28px;
-    min-height: 28px;
+    max-width: 25px;
+    max-height: 25px;
+    min-width: 25px;
+    min-height: 25px;
 }
 
 ColorPickerLabel {
@@ -1273,6 +1299,13 @@ ColorPickerLabel {
 
 ColorPickerLabel::hover {
     border: 2px solid rgb(30, 147, 229);
+}
+
+ColorPickerLabel#FontFormatColorPicker {
+    max-height: 19px;
+    min-height: 19px;
+    min-width: 19px;
+    max-width: 19px;
 }
 
 SmallColorPickerLabel {
@@ -1288,8 +1321,8 @@ AlignmentChecker {
 }
 
 AlignmentChecker::indicator {
-    height: 25px;
-    width: 28px;
+    height: 22px;
+    width: 25px;
     border: 2px solid @borderColor;
     border-radius: 0px;
 }
@@ -1310,8 +1343,8 @@ AlignmentChecker::indicator:disabled {
 
 AlignmentChecker#AlignLeftChecker::indicator {
     border-right: none;
-    min-width: 36px;
-    max-width: 36px;
+    min-width: 32px;
+    max-width: 32px;
     image: url(resources/icons/fontfmt_alignl.svg);
 }
 
@@ -1322,8 +1355,8 @@ AlignmentChecker#AlignLeftChecker::indicator:checked {
 AlignmentChecker#AlignCenterChecker::indicator {
     border-right: none;
     border-left: none;
-    min-width: 36px;
-    max-width: 36px;
+    min-width: 32px;
+    max-width: 32px;
     image: url(resources/icons/fontfmt_alignc.svg);
 }
 
@@ -1333,8 +1366,8 @@ AlignmentChecker#AlignCenterChecker::indicator:checked {
 
 AlignmentChecker#AlignRightChecker::indicator {
     border-left: none;
-    min-width: 35px;
-    max-width: 35px;
+    min-width: 32px;
+    max-width: 32px;
     image: url(resources/icons/fontfmt_alignr.svg);
 }
 
@@ -1343,12 +1376,12 @@ AlignmentChecker#AlignRightChecker::indicator:checked {
 }
 
 QFontChecker {
-    max-width: 34px;
+    max-width: 31px;
 }
 
 QFontChecker::indicator {
-    width: 30px;
-    height: 25px;
+    width: 27px;
+    height: 22px;
     border: 2px solid rgba(30, 147, 229, 0);
     border-radius: 0px;
 }
@@ -1378,6 +1411,27 @@ QFontChecker#FontUnderlineChecker::indicator:checked {
     image: url(resources/icons/fontfmt_underline_activate.svg);
 }
 
+QToolButton#FontEmphasisToolButton {
+    min-width: 39px;
+    max-width: 39px;
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0px;
+    border: 2px solid transparent;
+    border-radius: 0px;
+    background-color: transparent;
+}
+
+QToolButton#FontEmphasisToolButton::menu-button {
+    width: 11px;
+    border: none;
+    background-color: transparent;
+}
+
+QToolButton#FontEmphasisToolButton::menu-arrow {
+    image: none;
+}
+
 QFontChecker#FontVerticalChecker::indicator {
     image: url(resources/icons/fontfmt_vertical.svg);
 }
@@ -1392,6 +1446,14 @@ QFontChecker#FontTateChuYokoChecker::indicator {
 
 QFontChecker#FontTateChuYokoChecker::indicator:checked {
     image: url(resources/icons/fontfmt_tate_chu_yoko_activate.svg);
+}
+
+SizeControlLabel#fontStrokeLabel {
+    font-size: 13px;
+}
+
+QLabel#FontFormatActionLabel {
+    font-size: 11pt;
 }
 
 TextEditListScrollArea {
@@ -1455,6 +1517,10 @@ QMenu::indicator:unchecked {
 
 QMenu::indicator:checked {
     image: none;
+}
+
+QMenu#FontEmphasisMenu::item {
+    height: 24px;
 }
 
 QMenu::item:selected {

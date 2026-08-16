@@ -110,6 +110,18 @@ EMPHASIS_STYLES = (
     'filled sesame',
     'open sesame',
 )
+EMPHASIS_GLYPHS = {
+    'filled dot': '\u2022',
+    'open dot': '\u25e6',
+    'filled circle': '\u25cf',
+    'open circle': '\u25cb',
+    'filled double-circle': '\u25c9',
+    'open double-circle': '\u25ce',
+    'filled triangle': '\u25b2',
+    'open triangle': '\u25b3',
+    'filled sesame': '\ufe45',
+    'open sesame': '\ufe46',
+}
 EMPHASIS_POSITIONS = (
     'over right',
     'under right',

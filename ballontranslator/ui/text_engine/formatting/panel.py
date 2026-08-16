@@ -8,16 +8,24 @@ from qtpy.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLineEdit,
+    QMenu,
     QPushButton,
     QSizePolicy,
+    QToolButton,
     QToolTip,
     QVBoxLayout,
 )
 from qtpy.QtCore import QSignalBlocker, Signal, Qt
 from qtpy.QtGui import (
+    QActionGroup,
+    QColor,
     QFocusEvent,
     QFontDatabase,
+    QIcon,
     QKeyEvent,
+    QPainter,
+    QPen,
+    QPixmap,
     QTextCursor,
 )
 
@@ -40,7 +48,13 @@ from ...custom_widget import (
     Widget,
 )
 from ..item import TextBlkItem
-from ..annotations import RubyValidationError
+from ..annotations import (
+    DEFAULT_EMPHASIS_POSITION,
+    EMPHASIS_GLYPHS,
+    EMPHASIS_POSITIONS,
+    EMPHASIS_STYLES,
+    RubyValidationError,
+)
 from .advanced import TextAdvancedFormatPanel
 from ..transforms.edit_session import TextTransformEditSession
 from ..transforms.panel import TextTransformPanel
@@ -81,7 +95,7 @@ class LineEdit(QLineEdit):
 class IncrementalBtn(QPushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setFixedSize(13, 13)
+        self.setFixedSize(12, 12)
 
 
 class AlignmentBtnGroup(QFrame):
@@ -103,6 +117,7 @@ class AlignmentBtnGroup(QFrame):
         hlayout.addWidget(self.alignCenterChecker)
         hlayout.addWidget(self.alignRightChecker)
         hlayout.setSpacing(0)
+        hlayout.setContentsMargins(8, 8, 8, 8)
 
     def alignBtnPressed(self):
         btn = self.sender()
@@ -137,6 +152,203 @@ class AlignmentBtnGroup(QFrame):
             self.alignRightChecker.setChecked(True)
 
 
+class EmphasisToolButton(QToolButton):
+    """Toggle emphasis and select its CSS-compatible mark and position."""
+
+    emphasis_changed = Signal(str, str)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._selected_style = 'filled dot'
+        self._position = DEFAULT_EMPHASIS_POSITION
+        self.setObjectName('FontEmphasisToolButton')
+        self.setCheckable(True)
+        self.setToolTip(self.tr('Emphasis Marks'))
+        popup_modes = getattr(QToolButton, 'ToolButtonPopupMode', QToolButton)
+        self.setPopupMode(popup_modes.MenuButtonPopup)
+
+        menu = QMenu(self)
+        menu.setObjectName('FontEmphasisMenu')
+        section_font = menu.font()
+        section_font.setBold(True)
+        marks_header = menu.addAction(self.tr('Marks'))
+        marks_header.setEnabled(False)
+        marks_header.setFont(section_font)
+        self._style_group = QActionGroup(self)
+        self._style_group.setExclusive(True)
+        self._style_actions = {}
+        style_labels = (
+            self.tr('Filled Dot'),
+            self.tr('Open Dot'),
+            self.tr('Filled Circle'),
+            self.tr('Open Circle'),
+            self.tr('Filled Double Circle'),
+            self.tr('Open Double Circle'),
+            self.tr('Filled Triangle'),
+            self.tr('Open Triangle'),
+            self.tr('Filled Sesame'),
+            self.tr('Open Sesame'),
+        )
+        for label, style in zip(style_labels, EMPHASIS_STYLES[1:]):
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setData(style)
+            self._style_group.addAction(action)
+            self._style_actions[style] = action
+        self._style_group.triggered.connect(self._on_style_selected)
+
+        position_header = menu.addAction(self.tr('Position'))
+        position_header.setEnabled(False)
+        position_header.setFont(section_font)
+        self._position_group = QActionGroup(self)
+        self._position_group.setExclusive(True)
+        self._position_actions = {}
+        position_labels = (
+            self.tr('Over / Right'),
+            self.tr('Under / Right'),
+            self.tr('Over / Left'),
+            self.tr('Under / Left'),
+        )
+        for label, position in zip(position_labels, EMPHASIS_POSITIONS):
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setData(position)
+            self._position_group.addAction(action)
+            self._position_actions[position] = action
+
+        self._position_group.triggered.connect(self._on_position_selected)
+        menu.aboutToShow.connect(self._update_menu_icons)
+        self.setMenu(menu)
+        self._update_menu_icons()
+        self._style_actions[self._selected_style].setChecked(True)
+        self._position_actions[self._position].setChecked(True)
+        self.clicked.connect(self._on_toggled)
+
+    def values(self) -> tuple[str, str]:
+        style = self._selected_style if self.isChecked() else 'none'
+        return style, self._position
+
+    def _update_menu_icons(self) -> None:
+        icon_size = 24
+        ratio = max(1.0, self.devicePixelRatioF())
+        font = self.font()
+        font.setPixelSize(20)
+        color = self.palette().text().color()
+        icon_key = (ratio, font.toString(), color.rgba())
+        if icon_key == getattr(self, '_menu_icon_key', None):
+            return
+        self._menu_icon_key = icon_key
+        for style, action in self._style_actions.items():
+            pixmap = QPixmap(
+                round(icon_size * ratio), round(icon_size * ratio)
+            )
+            pixmap.setDevicePixelRatio(ratio)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+            painter.setFont(font)
+            painter.setPen(color)
+            painter.drawText(
+                0, 0, icon_size, icon_size,
+                Qt.AlignmentFlag.AlignCenter,
+                EMPHASIS_GLYPHS[style],
+            )
+            painter.end()
+            action.setIcon(QIcon(pixmap))
+
+    def set_values(self, style: str, position: str) -> None:
+        enabled = style in self._style_actions
+        if enabled:
+            self._selected_style = style
+            self._style_actions[style].setChecked(True)
+        if position in self._position_actions:
+            self._position = position
+            self._position_actions[position].setChecked(True)
+        with QSignalBlocker(self):
+            self.setChecked(enabled)
+        self.update()
+
+    def _on_toggled(self, _checked: bool) -> None:
+        self.emphasis_changed.emit(*self.values())
+
+    def _on_style_selected(self, action) -> None:
+        self._selected_style = str(action.data())
+        self.setChecked(True)
+        self.update()
+        self.emphasis_changed.emit(*self.values())
+
+    def _on_position_selected(self, action) -> None:
+        self._position = str(action.data())
+        if self.isChecked():
+            self.emphasis_changed.emit(*self.values())
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        arrow_width = 11
+        icon_width = max(1, self.width() - arrow_width)
+        icon_rect = self.rect()
+        icon_rect.setWidth(icon_width)
+        if self.isChecked() and self.isEnabled():
+            painter.fillRect(
+                icon_rect.adjusted(2, 2, -2, -2), QColor(30, 147, 229)
+            )
+        if self.isEnabled() and (self.isChecked() or self.underMouse()):
+            painter.setPen(QPen(QColor(30, 147, 229), 2))
+            painter.drawRect(icon_rect.adjusted(1, 1, -1, -1))
+        color = (
+            QColor('white')
+            if self.isChecked() and self.isEnabled()
+            else self.palette().text().color()
+        )
+        if not self.isEnabled():
+            color.setAlpha(110)
+        painter.setPen(color)
+
+        glyph_font = self.font()
+        glyph_font.setPixelSize(16)
+        mark_font = self.font()
+        mark_font.setPixelSize(12)
+        painter.setFont(mark_font)
+        mark = EMPHASIS_GLYPHS[self._selected_style]
+        mark_bounds = painter.fontMetrics().tightBoundingRect(mark)
+        mark_x = round((icon_width - mark_bounds.width()) / 2 - mark_bounds.left())
+        mark_y = self.height() - 3 - mark_bounds.bottom()
+        painter.drawText(mark_x, mark_y, mark)
+
+        glyph = 'あ'
+        glyph_bottom = mark_y + mark_bounds.top() - 1
+        painter.setFont(glyph_font)
+        glyph_bounds = painter.fontMetrics().tightBoundingRect(glyph)
+        available_height = max(1, glyph_bottom - 1)
+        if glyph_bounds.height() > 0:
+            fitted_size = round(
+                glyph_font.pixelSize()
+                * available_height
+                / glyph_bounds.height()
+            )
+            glyph_font.setPixelSize(min(19, max(16, fitted_size)))
+            painter.setFont(glyph_font)
+            glyph_bounds = painter.fontMetrics().tightBoundingRect(glyph)
+        glyph_x = round(
+            (icon_width - glyph_bounds.width()) / 2 - glyph_bounds.left()
+        )
+        glyph_y = glyph_bottom - glyph_bounds.bottom()
+        painter.drawText(glyph_x, glyph_y, glyph)
+
+        separator = QColor(color)
+        separator.setAlpha(90)
+        painter.setPen(QPen(separator, 1))
+        painter.drawLine(icon_width, 3, icon_width, self.height() - 4)
+        painter.setPen(QPen(color, 1.2))
+        arrow_x = self.width() - arrow_width // 2
+        arrow_y = self.height() // 2
+        painter.drawLine(arrow_x - 3, arrow_y - 1, arrow_x, arrow_y + 2)
+        painter.drawLine(arrow_x, arrow_y + 2, arrow_x + 3, arrow_y - 1)
+
+
 class FormatGroupBtn(QFrame):
     param_changed = Signal(str, bool)
     def __init__(self, *args, **kwargs) -> None:
@@ -147,10 +359,13 @@ class FormatGroupBtn(QFrame):
         self.underlineBtn = QFontChecker(self)
         self.underlineBtn.setObjectName("FontUnderlineChecker")
         self.underlineBtn.clicked.connect(self.setUnderline)
+        self.emphasisBtn = EmphasisToolButton(self)
         hlayout = QHBoxLayout(self)
         hlayout.addWidget(self.italicBtn)
         hlayout.addWidget(self.underlineBtn)
+        hlayout.addWidget(self.emphasisBtn)
         hlayout.setSpacing(0)
+        hlayout.setContentsMargins(8, 8, 8, 8)
 
     def setItalic(self):
         self.param_changed.emit('italic', self.italicBtn.isChecked())
@@ -170,6 +385,7 @@ class FontSizeBox(QFrame):
         self.upBtn.clicked.connect(self.onUpBtnClicked)
         self.downBtn.clicked.connect(self.onDownBtnClicked)
         self.fcombobox = SizeComboBox([1, 1000], 'font_size', self)
+        self.fcombobox.setObjectName("FontFormatSizeBox")
         self.fcombobox.addItems([
             "5", "5.5", "6.5", "7.5", "8", "9", "10", "10.5",
             "11", "12", "14", "16", "18", "20", '22', "26", "28",
@@ -452,6 +668,7 @@ class FontFormatPanel(Widget):
         self.lineSpacingLabel.btn_released.connect(lambda : self.on_param_changed('line_spacing', self.lineSpacingBox.value()))
 
         self.lineSpacingBox = SizeComboBox([0, 100], 'line_spacing', self)
+        self.lineSpacingBox.setObjectName("FontFormatSizeBox")
         self.lineSpacingBox.addItems(["1.0", "1.1", "1.2"])
         self.lineSpacingBox.setToolTip(self.tr("Change line spacing"))
         self.lineSpacingBox.param_changed.connect(self.on_param_changed)
@@ -459,9 +676,10 @@ class FontFormatPanel(Widget):
         linesp_hlayout = QHBoxLayout()
         linesp_hlayout.addWidget(self.lineSpacingLabel)
         linesp_hlayout.addWidget(self.lineSpacingBox)
-        linesp_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
+        linesp_hlayout.setSpacing(7)
         
         self.colorPicker = ColorPickerLabel(self, param_name='frgb')
+        self.colorPicker.setObjectName('FontFormatColorPicker')
         self.colorPicker.setToolTip(self.tr("Change font color"))
         self.colorPicker.changingColor.connect(self.changingColor)
         self.colorPicker.colorChanged.connect(self.onColorLabelChanged)
@@ -488,19 +706,18 @@ class FontFormatPanel(Widget):
         )
 
         self.strokeWidthBox = SizeComboBox([0, 10], 'stroke_width', self)
+        self.strokeWidthBox.setObjectName("FontFormatSizeBox")
         self.strokeWidthBox.addItems(["0.1"])
         self.strokeWidthBox.setToolTip(self.tr("Change stroke width"))
         self.strokeWidthBox.param_changed.connect(self.on_param_changed)
 
         self.fontStrokeLabel = SizeControlLabel(self, 0, self.tr("Stroke"))
         self.fontStrokeLabel.setObjectName("fontStrokeLabel")
-        font = self.fontStrokeLabel.font()
-        font.setPointSizeF(shared.CONFIG_FONTSIZE_CONTENT * 0.95)
-        self.fontStrokeLabel.setFont(font)
         self.fontStrokeLabel.size_ctrl_changed.connect(self.strokeWidthBox.changeByDelta)
         self.fontStrokeLabel.btn_released.connect(lambda : self.on_param_changed('stroke_width', self.strokeWidthBox.value()))
         
         self.strokeColorPicker = ColorPickerLabel(self, param_name='srgb')
+        self.strokeColorPicker.setObjectName('FontFormatColorPicker')
         self.strokeColorPicker.setToolTip(self.tr("Change stroke color"))
         self.strokeColorPicker.changingColor.connect(self.changingColor)
         self.strokeColorPicker.colorChanged.connect(self.onColorLabelChanged)
@@ -510,9 +727,10 @@ class FontFormatPanel(Widget):
         stroke_hlayout.addWidget(self.fontStrokeLabel)
         stroke_hlayout.addWidget(self.strokeWidthBox)
         stroke_hlayout.addWidget(self.strokeColorPicker)
-        stroke_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
+        stroke_hlayout.setSpacing(7)
 
         self.letterSpacingBox = SizeComboBox([0, 10], "letter_spacing", self)
+        self.letterSpacingBox.setObjectName("FontFormatSizeBox")
         self.letterSpacingBox.addItems(["0.0"])
         self.letterSpacingBox.setToolTip(self.tr("Change letter spacing"))
         self.letterSpacingBox.setMinimumWidth(int(self.letterSpacingBox.height() * 2.5))
@@ -526,7 +744,7 @@ class FontFormatPanel(Widget):
         lettersp_hlayout = QHBoxLayout()
         lettersp_hlayout.addWidget(self.letterSpacingLabel)
         lettersp_hlayout.addWidget(self.letterSpacingBox)
-        lettersp_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
+        lettersp_hlayout.setSpacing(7)
 
         self.global_fontfmt_str = self.tr("Global Font Format")
         self.textstyle_panel = TextStylePresetPanel(
@@ -543,7 +761,7 @@ class FontFormatPanel(Widget):
             config_expand_name='expand_tadvanced_panel',
             on_format_changed=self.on_param_changed
         )
-        self.textadvancedfmt_panel.emphasis_changed.connect(
+        self.formatBtnGroup.emphasisBtn.emphasis_changed.connect(
             self.on_emphasis_changed
         )
         self.textadvancedfmt_panel.ruby_apply_requested.connect(
@@ -579,8 +797,10 @@ class FontFormatPanel(Widget):
         self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
         self.sourceBtn = TextCheckerLabel(self.tr("Source"))
         self.transBtn = TextCheckerLabel(self.tr("Translation"))
+        for label in (self.foldTextBtn, self.sourceBtn, self.transBtn):
+            label.setObjectName("FontFormatActionLabel")
 
-        FONTFORMAT_SPACING = 6
+        FONTFORMAT_SPACING = 5
 
         vl0 = QVBoxLayout()
         vl0.addWidget(self.textstyle_panel.view_widget)
@@ -593,12 +813,12 @@ class FontFormatPanel(Widget):
         font_selector_layout.addWidget(self.colorPicker)
         font_selector_layout.addWidget(self.familybox, 1)
         font_selector_layout.addWidget(self.fontWeightBox)
-        font_selector_layout.setSpacing(shared.WIDGET_SPACING_CLOSE)
+        font_selector_layout.setSpacing(7)
         font_selector_layout.setContentsMargins(0, 0, 0, 0)
         hl1.addLayout(font_selector_layout, 1)
         hl1.addWidget(self.fontsizebox)
         hl1.setSpacing(4)
-        hl1.setContentsMargins(0, 12, 0, 0)
+        hl1.setContentsMargins(0, 11, 0, 0)
         hl2 = QHBoxLayout()
         hl2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl2.addWidget(self.alignBtnGroup)
@@ -617,7 +837,7 @@ class FontFormatPanel(Widget):
         hl3.addLayout(lettersp_hlayout)
         hl3.addLayout(linesp_hlayout)
         hl3.setContentsMargins(3, 0, 3, 0)
-        hl3.setSpacing(13)
+        hl3.setSpacing(12)
         hl4 = QHBoxLayout()
         hl4.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl4.addWidget(self.foldTextBtn)
@@ -626,7 +846,7 @@ class FontFormatPanel(Widget):
         hl4.setStretch(0, 1)
         hl4.setStretch(1, 1)
         hl4.setStretch(2, 1)
-        hl4.setContentsMargins(0, 12, 0, 0)
+        hl4.setContentsMargins(0, 11, 0, 0)
         hl4.setSpacing(0)
 
         self.vlayout.addLayout(vl0)
@@ -634,7 +854,7 @@ class FontFormatPanel(Widget):
         self.vlayout.addLayout(hl2)
         self.vlayout.addLayout(hl3)
         self.vlayout.addLayout(hl4)
-        self.vlayout.setContentsMargins(0, 0, 7, 0)
+        self.vlayout.setContentsMargins(0, 0, 6, 0)
         self.vlayout.setSpacing(0)
 
         self.focusOnColorDialog = False
@@ -890,7 +1110,7 @@ class FontFormatPanel(Widget):
             font_format.line_spacing_type
         )
         if self.textblk_item is None:
-            self.textadvancedfmt_panel.set_emphasis_values(
+            self.formatBtnGroup.emphasisBtn.set_values(
                 'none', 'over right'
             )
             self.set_tate_chu_yoko_enabled(False)
@@ -901,7 +1121,7 @@ class FontFormatPanel(Widget):
                 base_count=0,
             )
         else:
-            self.textadvancedfmt_panel.set_emphasis_values(
+            self.formatBtnGroup.emphasisBtn.set_values(
                 *self.textblk_item.emphasis_values()
             )
             self.set_tate_chu_yoko_enabled(

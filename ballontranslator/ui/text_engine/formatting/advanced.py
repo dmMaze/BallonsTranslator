@@ -25,7 +25,6 @@ from ...custom_widget import (
 )
 from ...adaptive_wrap_layout import AdaptiveWrapLayout
 from ballontranslator.utils.fontformat import FontFormat
-from ..annotations import EMPHASIS_POSITIONS, EMPHASIS_STYLES
 
 def _word_wrap_label(label: QLabel):
     label.setWordWrap(True)
@@ -273,86 +272,6 @@ class TextGradientGroup(QGroupBox):
         self.adaptive_layout.addWidget(self.geometry_row)
 
 
-class TextEmphasisGroup(QGroupBox):
-    """Advanced-format controls for CSS-compatible emphasis values."""
-
-    emphasis_changed = Signal(str, str)
-
-    def __init__(self, parent: QWidget = None) -> None:
-        super().__init__(parent)
-        self.setTitle(self.tr('Emphasis Marks'))
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-
-        self.style_combobox = SmallComboBox(parent=self)
-        style_labels = (
-            self.tr('None'),
-            self.tr('Filled Dot'),
-            self.tr('Open Dot'),
-            self.tr('Filled Circle'),
-            self.tr('Open Circle'),
-            self.tr('Filled Double Circle'),
-            self.tr('Open Double Circle'),
-            self.tr('Filled Triangle'),
-            self.tr('Open Triangle'),
-            self.tr('Filled Sesame'),
-            self.tr('Open Sesame'),
-        )
-        for label, value in zip(style_labels, EMPHASIS_STYLES):
-            self.style_combobox.addItem(label, value)
-        self.style_combobox.activated.connect(self._on_value_changed)
-        self.style_label = _word_wrap_label(
-            SmallParamLabel(self.tr('Mark'), parent=self)
-        )
-
-        self.position_combobox = SmallComboBox(parent=self)
-        position_labels = (
-            self.tr('Over / Right'),
-            self.tr('Under / Right'),
-            self.tr('Over / Left'),
-            self.tr('Under / Left'),
-        )
-        for label, value in zip(position_labels, EMPHASIS_POSITIONS):
-            self.position_combobox.addItem(label, value)
-        self.position_combobox.activated.connect(self._on_value_changed)
-        self.position_label = _word_wrap_label(
-            SmallParamLabel(self.tr('Position'), parent=self)
-        )
-
-        self.style_unit = _atomic_unit(
-            self, self.style_label, self.style_combobox
-        )
-        self.position_unit = _atomic_unit(
-            self, self.position_label, self.position_combobox
-        )
-        self.row, self.adaptive_layout = _adaptive_row(
-            self, self.style_unit, self.position_unit
-        )
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.row)
-
-    def _on_value_changed(self, _index: int) -> None:
-        self.emphasis_changed.emit(
-            str(self.style_combobox.currentData()),
-            str(self.position_combobox.currentData()),
-        )
-
-    def set_values(self, style: str, position: str) -> None:
-        for combobox, value in (
-            (self.style_combobox, style),
-            (self.position_combobox, position),
-        ):
-            index = combobox.findData(value)
-            if index >= 0:
-                signals_blocked = combobox.signalsBlocked()
-                combobox.blockSignals(True)
-                try:
-                    combobox.setCurrentIndex(index)
-                finally:
-                    combobox.blockSignals(signals_blocked)
-
-
 class RubyFuriganaGroup(QGroupBox):
     """Selection-owned group/mono Ruby editor."""
 
@@ -480,7 +399,6 @@ class RubyFuriganaGroup(QGroupBox):
 class TextAdvancedFormatPanel(PanelArea):
 
     param_changed = Signal(str, object)
-    emphasis_changed = Signal(str, str)
     ruby_apply_requested = Signal(str, str, str)
     ruby_remove_requested = Signal()
 
@@ -590,10 +508,6 @@ class TextAdvancedFormatPanel(PanelArea):
             self.on_format_changed, title=self.tr('Shadow')
         )
 
-        self.emphasis_group = TextEmphasisGroup(self.scrollContent)
-        self.emphasis_group.emphasis_changed.connect(
-            self.emphasis_changed.emit
-        )
         self.ruby_group = RubyFuriganaGroup(self.scrollContent)
         self.ruby_group.apply_requested.connect(
             self.ruby_apply_requested.emit
@@ -605,7 +519,6 @@ class TextAdvancedFormatPanel(PanelArea):
         vlayout = QVBoxLayout()
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.top_section)
-        vlayout.addWidget(self.emphasis_group)
         vlayout.addWidget(self.ruby_group)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
@@ -715,7 +628,6 @@ class TextAdvancedFormatPanel(PanelArea):
             layout.minimumSize().width()
             for layout in (
                 self.top_layout,
-                self.emphasis_group.adaptive_layout,
                 self.ruby_group.adaptive_layout,
                 self.shadow_group.adaptive_layout,
                 self.gradient_group.adaptive_layout,
@@ -852,9 +764,6 @@ class TextAdvancedFormatPanel(PanelArea):
     def set_line_spacing_type(self, spacing_type: int) -> None:
         if not self.linespacing_type_combobox.hasFocus():
             self.linespacing_type_combobox.setCurrentIndex(int(spacing_type))
-
-    def set_emphasis_values(self, style: str, position: str) -> None:
-        self.emphasis_group.set_values(style, position)
 
     def set_ruby_state(
         self,
