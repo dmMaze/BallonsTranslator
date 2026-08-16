@@ -11,10 +11,12 @@ from qtpy.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QFontInfo,
     QImage,
     QLinearGradient,
     QPainter,
     QPen,
+    QPixmap,
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
@@ -1036,6 +1038,133 @@ class RichTextAnnotationTest(unittest.TestCase):
                 self.assertTrue(((alpha > 0) & (alpha < 255)).any())
                 scene.removeItem(item)
 
+    def test_native_stroke_alignment_is_transient_and_reversible(self):
+        block = TextBlock([0, 0, 90, 180])
+        block._bounding_rect = [0, 0, 90, 180]
+        block.translation = '哈尔滨\n佛学院'
+        block.vertical = True
+        block.fontformat.font_family = 'Source Han Sans'
+        block.fontformat.font_size = 7.0
+        block.fontformat.stroke_width = 0.2
+        item = TextBlkItem(block, 0)
+        document = item.document()
+        revision = document.revision()
+        html = to_rich_text_html(document)
+        undo_steps = document.availableUndoSteps()
+
+        item.repaint_background(6.0)
+        alignment_ranges = []
+        document_block = document.firstBlock()
+        while document_block.isValid():
+            alignment_ranges.extend(
+                entry
+                for entry in document_block.layout().formats()
+                if bool(entry.format.property(
+                    effect_rendering.STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY
+                ))
+            )
+            document_block = document_block.next()
+        self.assertEqual(len(alignment_ranges), document.blockCount())
+        outline = alignment_ranges[0].format.textOutline()
+        self.assertEqual(outline.style(), Qt.PenStyle.SolidLine)
+        self.assertEqual(outline.color().alpha(), 0)
+        self.assertEqual(outline.widthF(), 0.0)
+        self.assertEqual(document.revision(), revision)
+        self.assertEqual(to_rich_text_html(document), html)
+        self.assertEqual(document.availableUndoSteps(), undo_steps)
+        with patch.object(
+            item.layout, 'reLayout', wraps=item.layout.reLayout
+        ) as relayout:
+            item.repaint_background(6.0)
+        relayout.assert_not_called()
+
+        item.setStrokeWidth(0.0)
+        document_block = document.firstBlock()
+        while document_block.isValid():
+            self.assertFalse(any(
+                bool(entry.format.property(
+                    effect_rendering.STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY
+                ))
+                for entry in document_block.layout().formats()
+            ))
+            document_block = document_block.next()
+        self.assertEqual(to_rich_text_html(document), html)
+
+    def test_native_stroke_alignment_blocks_reentrant_repaint(self):
+        block = TextBlock([0, 0, 90, 180])
+        block._bounding_rect = [0, 0, 90, 180]
+        block.translation = '哈尔滨\n佛学院'
+        block.vertical = True
+        item = TextBlkItem(block, 0)
+        renderer = item.effect_renderer
+        original_relayout = item.layout.reLayout
+        block.fontformat.stroke_width = 0.2
+        guard_states = []
+
+        def reentrant_relayout() -> None:
+            guard_states.append(item.repainting)
+            item.repaint_background(6.0)
+            original_relayout()
+
+        with patch.object(
+            item.layout, 'reLayout', side_effect=reentrant_relayout
+        ) as relayout, patch.object(
+            renderer,
+            '_render_effect_surface',
+            wraps=renderer._render_effect_surface,
+        ) as render_surface:
+            item.repaint_background(6.0)
+
+        self.assertGreaterEqual(relayout.call_count, 1)
+        self.assertTrue(all(guard_states))
+        render_surface.assert_called_once()
+        self.assertFalse(item.repainting)
+
+    def test_small_native_stroke_is_centered_on_production_fill(self):
+        if QFontInfo(QFont('Source Han Sans')).family() != 'Source Han Sans':
+            self.skipTest('Source Han Sans is unavailable')
+        block = TextBlock([0, 0, 30, 30])
+        block._bounding_rect = [0, 0, 30, 30]
+        block.translation = '佛'
+        block.vertical = True
+        block.fontformat.font_family = 'Source Han Sans'
+        block.fontformat.font_size = 7.0
+        block.fontformat.stroke_width = 0.2
+        block.fontformat.frgb = [255, 0, 0]
+        block.fontformat.srgb = [0, 0, 255]
+        item = TextBlkItem(block, 0)
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        self.addCleanup(scene.removeItem, item)
+
+        source = item.boundingRect()
+        scale = 6
+        pixmap = QPixmap(
+            round(source.width() * scale),
+            round(source.height() * scale),
+        )
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        try:
+            scene.render(painter, QRectF(pixmap.rect()), source)
+        finally:
+            painter.end()
+        pixels = pixmap2ndarray(pixmap, keep_alpha=True)
+        outer_y, outer_x = (pixels[..., 3] > 8).nonzero()
+        fill_y, fill_x = (
+            (pixels[..., 0] > pixels[..., 2] * 1.5)
+            & (pixels[..., 0] > 32)
+        ).nonzero()
+        self.assertTrue(outer_x.size)
+        self.assertTrue(fill_x.size)
+        margins = (
+            int(fill_x.min() - outer_x.min()),
+            int(fill_y.min() - outer_y.min()),
+            int(outer_x.max() - fill_x.max()),
+            int(outer_y.max() - fill_y.max()),
+        )
+        self.assertLessEqual(max(margins) - min(margins), 1)
+
     def test_nonediting_effect_change_invalidates_scene_cache(self):
         for effect in ('stroke width', 'shadow color'):
             with self.subTest(effect=effect):
@@ -1612,6 +1741,8 @@ class RichTextAnnotationTest(unittest.TestCase):
             for entry in NATIVE_DOCUMENT_CACHE.values()
             if _format_at(entry.document, 0).textOutline().style()
             != Qt.PenStyle.NoPen
+            and _format_at(entry.document, 0).textOutline().color().alpha()
+            > 0
         ]
         self.assertTrue(outlined)
         expected_width = (
@@ -1737,7 +1868,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         outlined_documents = []
         for entry in NATIVE_DOCUMENT_CACHE.values():
             mark_format = _format_at(entry.document, 0)
-            if mark_format.textOutline().style() == Qt.PenStyle.NoPen:
+            if (
+                mark_format.textOutline().style() == Qt.PenStyle.NoPen
+                or mark_format.textOutline().color().alpha() == 0
+            ):
                 continue
             outlined_documents.append(entry.document)
             self.assertAlmostEqual(

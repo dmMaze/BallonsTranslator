@@ -46,6 +46,8 @@ from .rendering.raster import (
 
 
 GRADIENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1238
+STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1241
+_STROKE_ALIGNMENT_RANGE_LENGTH = 0x7FFFFFFF
 # Glyph Slant writes vector paths into effect pixmaps, not native text.
 _VECTOR_EFFECT_RENDER_HINTS = (
     QPainter.RenderHint.Antialiasing
@@ -320,6 +322,62 @@ class TextEffectRenderer:
             * self.fontformat.stroke_width
             / 2
         )
+
+    def _sync_native_stroke_alignment(self) -> None:
+        """Keep fill and stroke on Qt's same native glyph raster path."""
+        if self.layout is None:
+            return
+        enabled = self.fontformat.stroke_width > 0
+        changed = False
+        alignment_format = None
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            formats = list(layout.formats())
+            tagged = [
+                entry
+                for entry in formats
+                if bool(entry.format.property(
+                    STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY
+                ))
+            ]
+            if enabled == bool(tagged):
+                block = block.next()
+                continue
+            formats = [
+                entry
+                for entry in formats
+                if not bool(entry.format.property(
+                    STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY
+                ))
+            ]
+            if enabled:
+                if alignment_format is None:
+                    alignment_format = QTextCharFormat()
+                    alignment_format.setProperty(
+                        STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY, True
+                    )
+                    # A styled outline selects Qt's path-backed glyph
+                    # rasterizer; transparent zero width paints no pixels.
+                    alignment_format.setTextOutline(QPen(
+                        QColor(0, 0, 0, 0),
+                        0.0,
+                        Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap,
+                        Qt.PenJoinStyle.RoundJoin,
+                    ))
+                entry = QTextLayout.FormatRange()
+                entry.start = 0
+                entry.length = _STROKE_ALIGNMENT_RANGE_LENGTH
+                entry.format = alignment_format
+                formats.append(entry)
+            layout.setFormats(formats)
+            changed = True
+            block = block.next()
+        if changed:
+            # setFormats invalidates QTextLine objects but changes no document
+            # content or geometry; rebuild once after all blocks are updated.
+            self.layout.reLayout()
 
     def _new_effect_pixmap(
         self,
@@ -820,6 +878,11 @@ class TextEffectRenderer:
             # cache because PaintContext cannot exclude active preedit glyphs.
             return
 
+        self.repainting = True
+        try:
+            self._sync_native_stroke_alignment()
+        finally:
+            self.repainting = False
         self._update_effect_padding()
 
         paint_stroke, paint_shadow = self._effect_flags()

@@ -191,7 +191,11 @@ stroke / shadow background
 
 `TextEffectRenderer` owns stroke, shadow, gradient, and the padding they
 require. Effect padding is derived layout state, not document content, and must
-not create `QTextDocument` undo steps.
+not create `QTextDocument` undo steps. While native stroke is active, one
+transparent zero-width outline is attached as a transient layout format so the
+live fill and cloned stroke use Qt's same outline-capable glyph rasterizer.
+This keeps small fill/stroke origins aligned without caching the fill or
+building a second full-resolution surface; the format is removed with stroke.
 
 Qt's text control remains authoritative for shaping, cursor, selection, IME,
 and ordinary hit testing. When source and visual geometry differ, adapt points
