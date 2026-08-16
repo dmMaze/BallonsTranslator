@@ -13,6 +13,7 @@ from qtpy.QtCore import Qt, Signal, QSize, QItemSelection, QTimer
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
 
 from .custom_widget import ConfigComboBox, NoBorderPushBtn, ScrollBar, Widget
+from .shortcut_editor import ShortcutEditor
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.version import APP_VERSION
@@ -676,6 +677,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     show_pre_MT_keyword_window = Signal()
     show_MT_keyword_window = Signal()
     show_OCR_keyword_window = Signal()
+    shortcuts_changed = Signal()
 
     dictionary_urls = DICTIONARY_URLS
 
@@ -711,12 +713,14 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         label_application = self.tr('Application')
         label_typesetting = self.tr('Typesetting')
         label_spellcheck = self.tr('Spell Checker')
+        label_shortcuts = self.tr('Shortcuts')
 
         pipelineConfigPanel = self.addConfigBlock(label_pipeline, moduleTableItem, 'pipeline')
         llmProfileConfigPanel = self.addConfigBlock(label_llm_profile, moduleTableItem, 'llm_profile')
         applicationConfigPanel = self.addConfigBlock(label_application, generalTableItem, 'application')
         typesettingConfigPanel = self.addConfigBlock(label_typesetting, generalTableItem, 'typesetting')
         spellcheckConfigPanel = self.addConfigBlock(label_spellcheck, generalTableItem, 'spellcheck')
+        shortcutsConfigPanel = self.addConfigBlock(label_shortcuts, generalTableItem, 'shortcuts')
         
         pipeline_options = QWidget()
         pipeline_options.setObjectName('PipelineModuleOptions')
@@ -894,6 +898,10 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         ext_layout.addLayout(ext_btns_layout)
 
         self.spellcheck_subblock = spellcheckConfigPanel.addBlockWidget(ext_layout)
+
+        self.shortcut_editor = ShortcutEditor()
+        self.shortcut_editor.shortcut_changed.connect(self._on_shortcuts_changed)
+        shortcutsConfigPanel.vlayout.addWidget(self.shortcut_editor)
 
         update_status_widget = QWidget()
         update_status_widget.setObjectName('ConfigInlineRow')
@@ -1101,6 +1109,10 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def _on_shortcuts_changed(self):
+        self.save_config.emit()
+        self.shortcuts_changed.emit()
 
     def showSection(self, section_key: str):
         section_key = SECTION_ALIASES.get(section_key, section_key)

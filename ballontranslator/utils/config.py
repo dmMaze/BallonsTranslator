@@ -309,6 +309,7 @@ class ProgramConfig(Config):
     text_transform_panel: bool = True
     expand_ttransform_panel: bool = True
     excluded_fonts: List[str] = field(default_factory=list)
+    shortcuts: Dict[str, List[str]] = field(default_factory=dict)
 
     @staticmethod
     def load(cfg_path: str):

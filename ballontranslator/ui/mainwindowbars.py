@@ -318,16 +318,12 @@ class TitleBar(Widget):
 
         undoAction = QAction(self.tr('Undo'), self)
         self.undo_trigger = undoAction.triggered
-        undoAction.setShortcut(QKeySequence.StandardKey.Undo)
         redoAction = QAction(self.tr('Redo'), self)
         self.redo_trigger = redoAction.triggered
-        redoAction.setShortcut(QKeySequence.StandardKey.Redo)
         pageSearchAction = QAction(self.tr('Search'), self)
         self.page_search_trigger = pageSearchAction.triggered
-        pageSearchAction.setShortcut(QKeySequence('Ctrl+F'))
         globalSearchAction = QAction(self.tr('Global Search'), self)
         self.global_search_trigger = globalSearchAction.triggered
-        globalSearchAction.setShortcut(QKeySequence('Ctrl+G'))
 
         replacePreMTkeyword = QAction(self.tr("Keyword substitution for machine translation source text"), self)
         self.replacePreMTkeyword_trigger = replacePreMTkeyword.triggered
@@ -363,9 +359,7 @@ class TitleBar(Widget):
         self.displayLanguageMenu.addActions(lang_actions)
 
         drawBoardAction = QAction(self.tr('Drawing Board'), self)
-        drawBoardAction.setShortcut(QKeySequence('P'))
         texteditAction = QAction(self.tr('Text Editor'), self)
-        texteditAction.setShortcut(QKeySequence('T'))
         importTextStyles = QAction(self.tr('Import Text Styles'), self)
         exportTextStyles = QAction(self.tr('Export Text Styles'), self)
         self.darkModeAction = darkModeAction = QAction(self.tr('Dark Mode'), self)
@@ -405,9 +399,7 @@ class TitleBar(Widget):
         self.goToolBtn = TitleBarToolBtn(self)
         self.goToolBtn.setText(self.tr('Go'))
         prevPageAction = QAction(self.tr('Previous Page'), self)
-        # prevPageAction.setShortcuts([QKeySequence.StandardKey.MoveToPreviousPage, QKeySequence('A')])
         nextPageAction = QAction(self.tr('Next Page'), self)
-        # nextPageAction.setShortcuts([QKeySequence.StandardKey.MoveToNextPage, QKeySequence('D')])
         goMenu = QMenu(self.goToolBtn)
         goMenu.addActions([prevPageAction, nextPageAction])
         self.goToolBtn.setMenu(goMenu)
@@ -421,7 +413,6 @@ class TitleBar(Widget):
         
         # 区域合并工具
         mergeToolAction = QAction('区域合并工具', self)
-        mergeToolAction.setShortcut(QKeySequence('Ctrl+Shift+M'))
         self.merge_tool_trigger = mergeToolAction.triggered
 
         fontExclusionAction = QAction(self.tr('Font Exclusion'), self)

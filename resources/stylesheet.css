@@ -2452,3 +2452,76 @@ QWidget#suggestion_popup QScrollBar::sub-page:horizontal {
     width: 0px;
     background: transparent;
 }
+
+/* Shortcut editor (settings -> Shortcuts) */
+QLabel#ShortcutActionName {
+    color: @qwidgetForegroundColor;
+    background: transparent;
+    border: none;
+}
+
+QFrame#ShortcutPill {
+    background: rgba(120, 140, 170, 0.25);
+    border-radius: 4px;
+}
+
+QFrame#ShortcutPill[conflict="true"] {
+    background: rgba(255, 90, 90, 0.30);
+}
+
+QLabel#ShortcutPillLabel {
+    color: @qwidgetForegroundColor;
+    background: transparent;
+    border: none;
+}
+
+QLabel#ShortcutPillLabel[conflict="true"] {
+    color: #ff8080;
+}
+
+QPushButton#ShortcutPillCloseBtn {
+    color: @qwidgetForegroundColor;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    padding: 0px;
+}
+
+QPushButton#ShortcutPillCloseBtn:hover {
+    color: #ff8080;
+    background: rgba(255, 90, 90, 0.25);
+}
+
+QPushButton#ShortcutAddBtn {
+    color: @qwidgetForegroundColor;
+    background: transparent;
+    border: 1px solid @borderColor;
+    border-radius: 3px;
+    padding: 0px;
+}
+
+QPushButton#ShortcutAddBtn:hover {
+    color: #7fb4ff;
+    border-color: #7fb4ff;
+}
+
+QPushButton#ShortcutDelBtn,
+QPushButton#ShortcutRstBtn {
+    color: @qwidgetForegroundColor;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    padding: 0px;
+}
+
+QPushButton#ShortcutDelBtn:hover,
+QPushButton#ShortcutRstBtn:hover {
+    color: #ff8080;
+}
+
+QLabel#ShortcutNoneLabel {
+    color: @qwidgetForegroundColor;
+    background: transparent;
+    font-style: italic;
+}
+

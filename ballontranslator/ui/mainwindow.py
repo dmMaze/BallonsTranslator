@@ -1,6 +1,6 @@
 import os.path as osp
 import os, re, traceback, sys
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 from pathlib import Path
 import subprocess
 from functools import partial
@@ -31,6 +31,7 @@ from ballontranslator.utils.config import (
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
 from .configpanel import ConfigPanel
+from .shortcut_editor import resolve_shortcut_keys
 from .module_manager import ModuleManager
 from .text_engine.editing.widgets import SourceTextEdit, TransTextEdit
 from .drawingpanel import DrawingPanel
@@ -123,6 +124,7 @@ class MainWindow(mainwindow_cls):
         self.setupUi()
         self.validateModuleSelections()
         self.setupConfig()
+        self.shortcut_registry: Dict[str, list] = {}
         self.setupShortcuts()
         self.setupRegisterWidget()
         if not shared.ON_WINDOWS:
@@ -851,52 +853,72 @@ class MainWindow(mainwindow_cls):
             self.configPanel.show_font_exclusion_dialog
         )
 
-        shortcutA = QShortcut(QKeySequence("A"), self)
-        shortcutA.activated.connect(self.shortcutBefore)
-        shortcutPageUp = QShortcut(QKeySequence(QKeySequence.StandardKey.MoveToPreviousPage), self)
-        shortcutPageUp.activated.connect(self.shortcutBefore)
+        self.configPanel.shortcuts_changed.connect(self.refreshShortcuts)
+        self._install_shortcuts()
 
-        shortcutD = QShortcut(QKeySequence("D"), self)
-        shortcutD.activated.connect(self.shortcutNext)
-        shortcutPageDown = QShortcut(QKeySequence(QKeySequence.StandardKey.MoveToNextPage), self)
-        shortcutPageDown.activated.connect(self.shortcutNext)
+    def _make_shortcuts(self, action_id: str, slot) -> list:
+        """Create QShortcut objects for *action_id* from current config."""
+        lst = []
+        for k in resolve_shortcut_keys(action_id):
+            sc = QShortcut(QKeySequence(k), self)
+            sc.activated.connect(slot)
+            lst.append(sc)
+        return lst
 
-        shortcutTextblock = QShortcut(QKeySequence("W"), self)
-        shortcutTextblock.activated.connect(self.shortcutTextblock)
-        shortcutZoomIn = QShortcut(QKeySequence.StandardKey.ZoomIn, self)
-        shortcutZoomIn.activated.connect(self.canvas.gv.scale_up_signal)
-        shortcutZoomOut = QShortcut(QKeySequence.StandardKey.ZoomOut, self)
-        shortcutZoomOut.activated.connect(self.canvas.gv.scale_down_signal)
-        shortcutCtrlD = QShortcut(QKeySequence("Ctrl+D"), self)
-        shortcutCtrlD.activated.connect(self.shortcutCtrlD)
-        shortcutSpace = QShortcut(QKeySequence("Space"), self)
-        shortcutSpace.activated.connect(self.shortcutSpace)
-        shortcutSelectAll = QShortcut(QKeySequence.StandardKey.SelectAll, self)
-        shortcutSelectAll.activated.connect(self.shortcutSelectAll)
+    def refreshShortcuts(self):
+        """Rebuild all QShortcut objects from current pcfg.shortcuts (live update)."""
+        for lst in self.shortcut_registry.values():
+            for sc in lst:
+                sc.deleteLater()
+        self.shortcut_registry.clear()
+        self._install_shortcuts()
 
-        shortcutEscape = QShortcut(QKeySequence("Escape"), self)
-        shortcutEscape.activated.connect(self.shortcutEscape)
+    def _install_shortcuts(self):
+        """Create all QShortcut objects from current config (init + refresh)."""
+        self.shortcut_registry["prev_page"] = self._make_shortcuts("prev_page", self.shortcutBefore)
+        self.shortcut_registry["prev_page_alt"] = self._make_shortcuts("prev_page_alt", self.shortcutBefore)
+        self.shortcut_registry["next_page"] = self._make_shortcuts("next_page", self.shortcutNext)
+        self.shortcut_registry["next_page_alt"] = self._make_shortcuts("next_page_alt", self.shortcutNext)
+        self.shortcut_registry["textedit_mode"] = self._make_shortcuts("textedit_mode", self.shortcutTextedit)
+        self.shortcut_registry["textblock_mode"] = self._make_shortcuts("textblock_mode", self.shortcutTextblock)
+        self.shortcut_registry["drawboard_mode"] = self._make_shortcuts("drawboard_mode", self.shortcutDrawboard)
+        self.shortcut_registry["zoom_in"] = self._make_shortcuts("zoom_in", self.canvas.gv.scale_up_signal)
+        self.shortcut_registry["zoom_out"] = self._make_shortcuts("zoom_out", self.canvas.gv.scale_down_signal)
+        self.shortcut_registry["delete_blks"] = self._make_shortcuts("delete_blks", self.shortcutDelete)
+        self.shortcut_registry["delete_blks_alt"] = self._make_shortcuts("delete_blks_alt", self.shortcutCtrlD)
+        self.shortcut_registry["select_all"] = self._make_shortcuts("select_all", self.shortcutSelectAll)
+        self.shortcut_registry["bold"] = self._make_shortcuts("bold", self.shortcutBold)
+        self.shortcut_registry["italic"] = self._make_shortcuts("italic", self.shortcutItalic)
+        self.shortcut_registry["underline"] = self._make_shortcuts("underline", self.shortcutUnderline)
+        self.shortcut_registry["undo"] = self._make_shortcuts("undo", self.on_undo)
+        self.shortcut_registry["redo"] = self._make_shortcuts("redo", self.on_redo)
+        self.shortcut_registry["page_search"] = self._make_shortcuts("page_search", self.on_page_search)
+        self.shortcut_registry["global_search"] = self._make_shortcuts("global_search", self.on_global_search)
+        self.shortcut_registry["escape"] = self._make_shortcuts("escape", self.shortcutEscape)
+        self.shortcut_registry["space_inpaint"] = self._make_shortcuts("space_inpaint", self.shortcutSpace)
+        self.shortcut_registry["merge_tool"] = self._make_shortcuts("merge_tool", self.on_open_merge_tool)
 
-        shortcutBold = QShortcut(QKeySequence.StandardKey.Bold, self)
-        shortcutBold.activated.connect(self.shortcutBold)
-        shortcutItalic = QShortcut(QKeySequence.StandardKey.Italic, self)
-        shortcutItalic.activated.connect(self.shortcutItalic)
-        shortcutUnderline = QShortcut(QKeySequence.StandardKey.Underline, self)
-        shortcutUnderline.activated.connect(self.shortcutUnderline)
-
-        shortcutDelete = QShortcut(QKeySequence.StandardKey.Delete, self)
-        shortcutDelete.activated.connect(self.shortcutDelete)
-
-        drawpanel_shortcuts = {'hand': 'H', 'rect': 'R', 'inpaint': 'J', 'pen': 'B'}
-        for tool_name, shortcut_key in drawpanel_shortcuts.items():
-            shortcut = QShortcut(QKeySequence(shortcut_key), self)
-            key = getattr(QKEY, f'Key_{shortcut_key}')
-            shortcut.activated.connect(partial(
-                self.drawingPanel.shortcutSetCurrentToolByName,
-                tool_name,
-                key,
-            ))
-            self.drawingPanel.setShortcutTip(tool_name, shortcut_key)
+        drawpanel_info = {
+            "hand": "hand_tool",
+            "rect": "rect_tool",
+            "inpaint": "inpaint_tool",
+            "pen": "pen_tool",
+        }
+        for tool_name, action_id in drawpanel_info.items():
+            keys = resolve_shortcut_keys(action_id)
+            lst = []
+            for k in keys:
+                sc = QShortcut(QKeySequence(k), self)
+                key = getattr(QKEY, f'Key_{k}', None) if len(k) == 1 else None
+                sc.activated.connect(partial(
+                    self.drawingPanel.shortcutSetCurrentToolByName,
+                    tool_name,
+                    key,
+                ))
+                lst.append(sc)
+            if keys:
+                self.drawingPanel.setShortcutTip(tool_name, keys[0])
+            self.shortcut_registry[action_id] = lst
 
     def shortcutNext(self):
         sender: QShortcut = self.sender()
