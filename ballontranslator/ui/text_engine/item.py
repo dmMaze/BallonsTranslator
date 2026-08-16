@@ -5,8 +5,9 @@ from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGr
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
-                       QBrush, QPen)
+                       QBrush, QPen, QFontMetrics)
 
+from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
@@ -576,6 +577,48 @@ class TextBlkItem(QGraphicsTextItem):
             super().paint,
         )
         self._paint_ui_guide(painter)
+        self._paint_seq_badge(painter)
+
+    def _paint_seq_badge(self, painter: QPainter) -> None:
+        """Draw the reading-order number badge at the content top-left corner."""
+        if self._ui_guide_suppressed or not pcfg.show_seq_badge:
+            return
+        outline = self.geometry_controller.visual_outline_in_item()
+        content_rect = (
+            outline.boundingRect() if not outline.isEmpty() else self.boundingRect()
+        )
+        top_level = self.topLevelItem()
+        scale = top_level.scale() if top_level is not None else 1.0
+        scale = scale if scale > 0 else 1.0
+        font_size = max(6, int(11 / scale))
+        font = QFont()
+        font.setBold(True)
+        font.setPixelSize(font_size)
+        seq_text = str(self.idx + 1)
+        fm = QFontMetrics(font)
+        text_w = fm.horizontalAdvance(seq_text) + 8
+        text_h = fm.height() + 4
+        badge_rect = QRectF(
+            content_rect.x(),
+            content_rect.y(),
+            text_w,
+            text_h,
+        )
+        painter.save()
+        if self.isSelected():
+            from ballontranslator.ui.custom_widget.helper import themeColor
+
+            bg = QColor(themeColor())
+            bg.setAlpha(200)
+        else:
+            bg = QColor(0, 0, 0, 170)
+        painter.setBrush(bg)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(badge_rect, 3, 3)
+        painter.setPen(Qt.GlobalColor.white)
+        painter.setFont(font)
+        painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, seq_text)
+        painter.restore()
 
     def _paint_ui_guide(self, painter: QPainter) -> None:
         """Paint selection/block guides outside cached effect surfaces."""

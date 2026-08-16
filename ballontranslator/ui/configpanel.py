@@ -678,6 +678,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     show_MT_keyword_window = Signal()
     show_OCR_keyword_window = Signal()
     shortcuts_changed = Signal()
+    show_seq_badge_changed = Signal()
 
     dictionary_urls = DICTIONARY_URLS
 
@@ -1005,6 +1006,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_show_only_custom_fonts, sublock = typesettingConfigPanel.addCheckBox(self.tr("Show only custom fonts"))
         self.let_show_only_custom_fonts.stateChanged.connect(self.on_show_only_custom_fonts)
 
+        self.show_seq_badge_checker, _ = typesettingConfigPanel.addCheckBox(self.tr('Sequence Badge'))
+        self.show_seq_badge_checker.stateChanged.connect(self.on_show_seq_badge_changed)
+
         self.exclude_fonts_btn = QPushButton(self.tr('Hide Unused Fonts'), parent=self)
         self.exclude_fonts_btn.clicked.connect(self.show_font_exclusion_dialog)
         typesettingConfigPanel.addBlockWidget(
@@ -1307,6 +1311,11 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_uppercase_changed(self):
         pcfg.let_uppercase_flag = self.let_uppercase_checker.isChecked()
 
+    def on_show_seq_badge_changed(self):
+        pcfg.show_seq_badge = self.show_seq_badge_checker.isChecked()
+        self.show_seq_badge_changed.emit()
+        self.save_config.emit()
+
     def on_textstyle_indep_changed(self):
         pcfg.let_textstyle_indep_flag = self.let_textstyle_indep_checker.isChecked()
         self.reload_textstyle.emit(pcfg.let_textstyle_indep_flag)
@@ -1495,6 +1504,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
         self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
         self.let_textstyle_indep_checker.setChecked(pcfg.let_textstyle_indep_flag)
+        self.show_seq_badge_checker.setChecked(pcfg.show_seq_badge)
         self.rst_imgformat_combobox.setCurrentText(pcfg.imgsave_ext.replace('.', '').upper())
         self.intermediate_imgformat_combobox.setCurrentText(pcfg.intermediate_imgsave_ext.replace('.', '').upper())
         self.rst_imgquality_edit.setText(str(pcfg.imgsave_quality))

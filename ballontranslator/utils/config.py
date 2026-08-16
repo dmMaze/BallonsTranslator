@@ -308,6 +308,7 @@ class ProgramConfig(Config):
     expand_tadvanced_panel: bool = True
     text_transform_panel: bool = True
     expand_ttransform_panel: bool = True
+    show_seq_badge: bool = True
     excluded_fonts: List[str] = field(default_factory=list)
     shortcuts: Dict[str, List[str]] = field(default_factory=dict)
 
