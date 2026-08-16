@@ -634,6 +634,10 @@
         <source>Max spelling difference in letters. Higher values search deeper but perform slower.</source>
         <translation type="vanished">允許的最大拼寫錯誤字元數。數值越大匹配範圍越廣，但搜索速度越慢。</translation>
     </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>
@@ -4826,6 +4830,156 @@ All existing translation results will be cleared!</source>
         <source>Failed to install &apos;pyspellchecker&apos;:
 </source>
         <translation>&apos;pyspellchecker&apos; 安裝失敗</translation>
+    </message>
+</context>
+<context>
+    <name>_ShortcutRow</name>
+    <message>
+        <source>Page Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Page Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Page Up (alt)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Page Down (alt)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text Editor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text Block</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Draw Board</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom In</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom Out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete (alt)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Italic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Underline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Page Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Global Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Escape</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inpaint</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hand Tool</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rect Tool</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inpaint Tool</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pen Tool</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Merge Tool</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>— None —</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove all shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset to default</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ShortcutEditor</name>
+    <message>
+        <source>Navigation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tools</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>General</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 </TS>

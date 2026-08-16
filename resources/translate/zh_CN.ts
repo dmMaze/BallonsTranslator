@@ -634,6 +634,10 @@
         <source>Max spelling difference in letters. Higher values search deeper but perform slower.</source>
         <translation type="vanished">允许的最大拼写错误字符数。数值越大匹配范围越广，但搜索速度越慢。</translation>
     </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation>快捷键</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>
@@ -4782,6 +4786,156 @@ All existing translation results will be cleared!</source>
         <source>Failed to install &apos;pyspellchecker&apos;:
 </source>
         <translation>&apos;pyspellchecker&apos; 安装失败</translation>
+    </message>
+</context>
+<context>
+    <name>_ShortcutRow</name>
+    <message>
+        <source>Page Up</source>
+        <translation>上一页</translation>
+    </message>
+    <message>
+        <source>Page Down</source>
+        <translation>下一页</translation>
+    </message>
+    <message>
+        <source>Page Up (alt)</source>
+        <translation>上一页 (备选)</translation>
+    </message>
+    <message>
+        <source>Page Down (alt)</source>
+        <translation>下一页 (备选)</translation>
+    </message>
+    <message>
+        <source>Text Editor</source>
+        <translation>文本编辑</translation>
+    </message>
+    <message>
+        <source>Text Block</source>
+        <translation>选框模式</translation>
+    </message>
+    <message>
+        <source>Draw Board</source>
+        <translation>画板模式</translation>
+    </message>
+    <message>
+        <source>Zoom In</source>
+        <translation>放大</translation>
+    </message>
+    <message>
+        <source>Zoom Out</source>
+        <translation>缩小</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>删除</translation>
+    </message>
+    <message>
+        <source>Delete (alt)</source>
+        <translation>删除 (备选)</translation>
+    </message>
+    <message>
+        <source>Select All</source>
+        <translation>全选</translation>
+    </message>
+    <message>
+        <source>Bold</source>
+        <translation>粗体</translation>
+    </message>
+    <message>
+        <source>Italic</source>
+        <translation>斜体</translation>
+    </message>
+    <message>
+        <source>Underline</source>
+        <translation>下划线</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>撤销</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>重做</translation>
+    </message>
+    <message>
+        <source>Page Search</source>
+        <translation>页面查找</translation>
+    </message>
+    <message>
+        <source>Global Search</source>
+        <translation>全局查找</translation>
+    </message>
+    <message>
+        <source>Escape</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Inpaint</source>
+        <translation>修复</translation>
+    </message>
+    <message>
+        <source>Hand Tool</source>
+        <translation>抓手工具</translation>
+    </message>
+    <message>
+        <source>Rect Tool</source>
+        <translation>矩形工具</translation>
+    </message>
+    <message>
+        <source>Inpaint Tool</source>
+        <translation>修复笔刷</translation>
+    </message>
+    <message>
+        <source>Pen Tool</source>
+        <translation>画笔工具</translation>
+    </message>
+    <message>
+        <source>Merge Tool</source>
+        <translation>合并工具</translation>
+    </message>
+    <message>
+        <source>— None —</source>
+        <translation>— 无 —</translation>
+    </message>
+    <message>
+        <source>Add shortcut</source>
+        <translation>添加快捷键</translation>
+    </message>
+    <message>
+        <source>Remove all shortcuts</source>
+        <translation>清除所有快捷键</translation>
+    </message>
+    <message>
+        <source>Reset to default</source>
+        <translation>重置为默认</translation>
+    </message>
+</context>
+<context>
+    <name>ShortcutEditor</name>
+    <message>
+        <source>Navigation</source>
+        <translation>导航</translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation>视图</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>编辑</translation>
+    </message>
+    <message>
+        <source>Tools</source>
+        <translation>工具</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>搜索</translation>
+    </message>
+    <message>
+        <source>General</source>
+        <translation>常规</translation>
     </message>
 </context>
 </TS>
