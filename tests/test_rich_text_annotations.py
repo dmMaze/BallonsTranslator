@@ -2494,6 +2494,83 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         self.assertTrue(panel.tateChuYokoChecker.isChecked())
 
+    def test_font_panel_tracks_the_active_inline_format(self):
+        previous_active_format = C.active_format
+        self.addCleanup(
+            setattr, C, 'active_format', previous_active_format
+        )
+        item = self._make_item(False, text='AB')
+        item.startEdit()
+        modified = QTextCursor(item.document())
+        modified.setPosition(0)
+        modified.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+        char_format = QTextCharFormat()
+        char_format.setFontFamily('Courier New')
+        char_format.setFontPointSize(18)
+        char_format.setFontWeight(QFont.Weight.Black)
+        char_format.setFontItalic(True)
+        char_format.setFontUnderline(True)
+        char_format.setForeground(QColor(12, 34, 56))
+        modified.mergeCharFormat(char_format)
+        apply_letter_spacing(modified, 1.4, vertical=False)
+
+        caret = QTextCursor(item.document())
+        caret.setPosition(1)
+        item.setTextCursor(caret)
+        with patch.object(
+            shared,
+            'register_view_widget',
+            lambda *_args: None,
+            create=True,
+        ):
+            panel = FontFormatPanel(self.app)
+        self.addCleanup(panel.deleteLater)
+        panel.global_format = FontFormat()
+        panel.textblk_item = item
+        panel.set_active_format(item.fontformat)
+        manager = SimpleNamespace(
+            formatpanel=panel,
+            sender=lambda: item,
+        )
+        feedback = []
+        for signal in (
+            panel.familybox.param_changed,
+            panel.fontWeightBox.param_changed,
+            panel.fontsizebox.param_changed,
+            panel.lineSpacingBox.param_changed,
+            panel.letterSpacingBox.param_changed,
+            panel.formatBtnGroup.param_changed,
+            panel.textadvancedfmt_panel.emphasis_changed,
+        ):
+            signal.connect(lambda *_args: feedback.append(True))
+        revision = item.document().revision()
+
+        SceneTextManager.on_inline_format_changed(manager)
+
+        self.assertEqual(feedback, [])
+        self.assertEqual(item.document().revision(), revision)
+        active = item.get_fontformat()
+        self.assertEqual(panel.familybox.currentText(), active.font_family)
+        self.assertEqual(panel.fontWeightBox.weight(), active.font_weight)
+        self.assertAlmostEqual(
+            float(panel.fontsizebox.getFontSize()), active.font_size
+        )
+        self.assertEqual(panel.colorPicker.rgb(), (12, 34, 56))
+        self.assertTrue(panel.formatBtnGroup.italicBtn.isChecked())
+        self.assertTrue(panel.formatBtnGroup.underlineBtn.isChecked())
+        self.assertEqual(panel.letterSpacingBox.value(), 1.4)
+        self.assertEqual(C.active_format.font_weight, active.font_weight)
+
+        caret.setPosition(2)
+        item.setTextCursor(caret)
+        SceneTextManager.on_inline_format_changed(manager)
+
+        normal = item.get_fontformat()
+        self.assertEqual(panel.fontWeightBox.weight(), normal.font_weight)
+        self.assertEqual(panel.colorPicker.rgb(), tuple(normal.frgb))
+        self.assertFalse(panel.formatBtnGroup.italicBtn.isChecked())
+        self.assertFalse(panel.formatBtnGroup.underlineBtn.isChecked())
+
 
 if __name__ == '__main__':
     unittest.main()

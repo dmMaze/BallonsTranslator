@@ -62,6 +62,15 @@ Passive project loading follows the permissive recovery policy in `AGENTS.md`.
 Live setters, rendering, and explicit saves may assume or require canonical
 values.
 
+`FontFormat.font_weight` uses the standard CSS/Qt 6 numeric scale from Thin
+(`100`) through Black (`900`). Legacy Qt 5 numeric values are normalized on
+load, and live values are converted where they enter or leave Qt. Project data
+writes only `font_weight`; legacy `bold` fields are ignored. Ctrl+B remains a
+direct Normal/Bold toggle. Per-range rich text uses the native CSS
+`font-weight` declaration and needs no custom `data-*` attribute. The HTML
+boundary normalizes Qt 5's legacy serializer scale so both bindings write the
+same CSS values and still load older Qt 5 rich text at its original weight.
+
 Before save, page change, undo/redo, or scene replacement, resolve or cancel
 pending edits and previews. Before removing items, release their effect, glyph,
 and surface resources.

@@ -398,6 +398,13 @@ QFontComboBox#FontFamilyBox::hover {
     border: 1px solid rgb(30, 147, 229);
 }
 
+QComboBox#FontWeightBox {
+    min-width: 80px;
+    max-width: 80px;
+    height: 26px;
+    padding-right: 14px;
+}
+
 SizeComboBox {
     padding-left: 0px;
     padding-right: 0px;
@@ -1353,14 +1360,6 @@ QFontChecker::indicator::hover {
 QFontChecker::indicator::checked {
     border: 2px solid rgb(30, 147, 229);
     background-color: rgb(30, 147, 229);
-}
-
-QFontChecker#FontBoldChecker::indicator {
-    image: url(resources/icons/fontfmt_bold.svg);
-}
-
-QFontChecker#FontBoldChecker::indicator:checked {
-    image: url(resources/icons/fontfmt_bold_activate.svg);
 }
 
 QFontChecker#FontItalicChecker::indicator {

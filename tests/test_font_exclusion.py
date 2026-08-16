@@ -224,7 +224,9 @@ class FontExclusionUiTests(unittest.TestCase):
         active_format = FontFormat(font_family=hidden_font)
         panel.global_format = active_format
         panel.familybox.update_font_list([allowed_font])
-        panel.familybox.param_changed.disconnect(panel.on_param_changed)
+        panel.familybox.param_changed.disconnect(
+            panel.on_font_family_changed
+        )
         changes = []
         panel.familybox.param_changed.connect(lambda *args: changes.append(args))
 

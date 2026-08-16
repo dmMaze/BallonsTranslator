@@ -972,7 +972,7 @@ class MainWindow(mainwindow_cls):
 
     def shortcutBold(self):
         if self.textPanel.formatpanel.isVisible():
-            self.textPanel.formatpanel.formatBtnGroup.boldBtn.click()
+            self.textPanel.formatpanel.toggle_bold()
 
     def shortcutDelete(self):
         if self.canvas.gv.isVisible():
@@ -1685,7 +1685,7 @@ class MainWindow(mainwindow_cls):
                     blk.line_spacing = gf.line_spacing
                     blk.letter_spacing = gf.letter_spacing
                     blk.italic = gf.italic
-                    blk.bold = gf.bold
+                    blk.font_weight = gf.font_weight
                     blk.underline = gf.underline
                     sw = blk.stroke_width
                     if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:

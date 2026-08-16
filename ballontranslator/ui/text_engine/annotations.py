@@ -16,6 +16,7 @@ import re
 from typing import Optional
 from uuid import uuid4
 
+from qtpy import QT6
 from qtpy.QtCore import QByteArray, QMimeData
 from qtpy.QtGui import (
     QTextBlock,
@@ -28,7 +29,11 @@ from qtpy.QtGui import (
     QFont,
 )
 
-from ballontranslator.utils.fontformat import LineSpacingType
+from ballontranslator.utils.fontformat import (
+    LineSpacingType,
+    export_font_weight_html,
+    import_font_weight_html,
+)
 from ballontranslator.utils.logger import logger as LOGGER
 from .rendering.indexing import _grapheme_ranges, _utf16_length, _utf16_slice
 
@@ -1000,7 +1005,9 @@ def load_rich_text_html(
     undo_enabled = document.isUndoRedoEnabled()
     document.setUndoRedoEnabled(False)
     try:
-        qt_html = _preprocess_ruby_html(html)
+        qt_html = import_font_weight_html(
+            _preprocess_ruby_html(html), qt6=QT6
+        )
         document.setHtml(qt_html)
         lowered_html = qt_html.lower()
         extension_ranges, paragraph_distances = (
@@ -1728,7 +1735,7 @@ def to_rich_text_html(
     """Extend Qt HTML with semantic inline and paragraph formatting."""
     if html is None:
         html = document.toHtml()
-    return _add_semantic_ruby(
+    extended_html = _add_semantic_ruby(
         document,
         _add_inline_extensions(
             document,
@@ -1737,6 +1744,7 @@ def to_rich_text_html(
             line_spacing_type_fallback,
         ),
     )
+    return export_font_weight_html(extended_html, qt6=QT6)
 
 
 def emphasis_values(char_format: QTextCharFormat) -> tuple[str, str]:

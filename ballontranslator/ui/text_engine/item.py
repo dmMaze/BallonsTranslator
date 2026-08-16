@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Callable, List, Optional, Tuple, Union
 
+from qtpy import QT6
 from qtpy.QtWidgets import QApplication, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
@@ -11,8 +12,11 @@ from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
     FontFormat,
+    FontWeight,
     LineSpacingType,
     TextTransformStack,
+    font_weight_from_qt,
+    font_weight_to_qt,
     pt2px,
 )
 from ..misc import td_pattern, table_pattern
@@ -976,25 +980,19 @@ class TextBlkItem(QGraphicsTextItem):
         color = fmt.foreground().color()
         fontformat = self.fontformat.deepcopy()
         fontformat.frgb = [color.red(), color.green(), color.blue()]
-        fontformat.font_weight = font.weight()
+        fontformat.font_weight = font_weight_from_qt(font.weight())
         fontformat.font_family = font.family()
         if self.isEditing():
             fontformat.font_size = pt2px(font.pointSizeF())
         else:
             fontformat.font_size = self.minFontSize()
-        fontformat.bold = font.bold()
         fontformat.underline = font.underline()
         fontformat.italic = font.italic()
+        fontformat.letter_spacing = self.letter_spacing_value()
         (
             fontformat.line_spacing,
             fontformat.line_spacing_type,
         ) = self.line_spacing_values()
-        # Preserve gradient settings
-        fontformat.gradient_enabled = self.fontformat.gradient_enabled
-        fontformat.gradient_start_color = self.fontformat.gradient_start_color
-        fontformat.gradient_end_color = self.fontformat.gradient_end_color
-        fontformat.gradient_angle = self.fontformat.gradient_angle
-        fontformat.gradient_size = self.fontformat.gradient_size
         return fontformat
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True, set_effect=True):
@@ -1020,11 +1018,10 @@ class TextBlkItem(QGraphicsTextItem):
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.NoSubpixelAntialias)
 
-        fweight = ffmat.font_weight
-        if fweight is  None:
-            fweight = font.weight()
-            ffmat.font_weight = fweight
-        font.setBold(ffmat.bold)
+        fweight = QFont.Weight(
+            font_weight_to_qt(ffmat.font_weight, qt6=QT6)
+        )
+        font.setWeight(fweight)
 
         self.document().setDefaultFont(font)
         format.setFont(font)
@@ -1033,8 +1030,7 @@ class TextBlkItem(QGraphicsTextItem):
             format.setForeground(gradient)
         else:
             format.setForeground(QColor(*ffmat.foreground_color()))
-        if not ffmat.bold:
-            format.setFontWeight(fweight)
+        format.setFontWeight(fweight)
         format.setFontItalic(ffmat.italic)
         format.setFontUnderline(ffmat.underline)
         format.setProperty(
@@ -1210,10 +1206,18 @@ class TextBlkItem(QGraphicsTextItem):
         cfmt.setFontFamily(value)
         self.set_cursor_cfmt(cursor, cfmt)
 
-    def setFontWeight(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+    def setFontWeight(
+        self,
+        value: FontWeight,
+        repaint_background: bool = True,
+        set_selected: bool = False,
+        restore_cursor: bool = False,
+    ) -> None:
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
         cfmt = QTextCharFormat()
-        cfmt.setFontWeight(value)
+        cfmt.setFontWeight(
+            QFont.Weight(font_weight_to_qt(value, qt6=QT6))
+        )
         self.set_cursor_cfmt(cursor, cfmt, True)
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 

@@ -1,7 +1,6 @@
 from typing import List, Callable, Dict
 import copy
 
-from qtpy.QtGui import QFont
 from qtpy.QtWidgets import (
     QAbstractSlider,
     QAbstractSpinBox,
@@ -17,7 +16,7 @@ except ImportError:
     from qtpy.QtGui import QUndoCommand
 
 from ... import shared_widget as SW
-from ballontranslator.utils.fontformat import FontFormat, px2pt
+from ballontranslator.utils.fontformat import FontFormat, FontWeight, px2pt
 from ballontranslator.utils.io_utils import empty_func
 from ..item import TextBlkItem
 
@@ -119,16 +118,15 @@ def ffmt_change_underline(param_name: str, values: str, act_ffmt: FontFormat, is
         blkitem.setFontUnderline(value, **set_kwargs)
 
 @font_formating()
-def ffmt_change_font_weight(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
+def ffmt_change_font_weight(
+    param_name: str,
+    values: FontWeight,
+    act_ffmt: FontFormat,
+    is_global: bool,
+    blkitems: List[TextBlkItem],
+    **kwargs,
+) -> None:
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
-    for blkitem, value in zip(blkitems, values):
-        blkitem.setFontWeight(value, **set_kwargs)
-
-@font_formating()
-def ffmt_change_bold(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, **kwargs):
-    set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
-    values = [QFont.Weight.Bold if value else QFont.Weight.Normal for value in values]
-    # ffmt_change_weight('weight', values, act_ffmt, is_global, blkitems, **kwargs)
     for blkitem, value in zip(blkitems, values):
         blkitem.setFontWeight(value, **set_kwargs)
 

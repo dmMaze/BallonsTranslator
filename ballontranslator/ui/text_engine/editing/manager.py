@@ -583,25 +583,7 @@ class SceneTextManager(QObject):
     def on_inline_format_changed(self) -> None:
         item = self.sender()
         if item is self.formatpanel.textblk_item:
-            self.formatpanel.textadvancedfmt_panel.set_emphasis_values(
-                *item.emphasis_values()
-            )
-            self.formatpanel.set_tate_chu_yoko_enabled(
-                item.tate_chu_yoko_enabled()
-            )
-            ruby_values = item.ruby_editor_values()
-            self.formatpanel.textadvancedfmt_panel.set_ruby_state(
-                *ruby_values[:3],
-                editable=ruby_values[3],
-                can_create=ruby_values[4],
-                base_count=ruby_values[5],
-            )
-            self.formatpanel.set_letter_spacing_value(
-                item.letter_spacing_value()
-            )
-            self.formatpanel.set_line_spacing_values(
-                *item.line_spacing_values()
-            )
+            self.formatpanel.sync_inline_format(item.get_fontformat())
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]

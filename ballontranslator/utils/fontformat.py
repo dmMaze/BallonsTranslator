@@ -404,35 +404,165 @@ class LineSpacingType(enum.IntEnum):
     Distance = 1
 
 
+class FontWeight(enum.IntEnum):
+    Thin = 100
+    ExtraLight = 200
+    Light = 300
+    Normal = 400
+    Medium = 500
+    DemiBold = 600
+    Bold = 700
+    ExtraBold = 800
+    Black = 900
+
+
 class TextAlignment(enum.IntEnum):
     Left = 0
     Center = 1
     Right = 2
 
 
-fontweight_qt5_to_qt6 = {0: 100, 12: 200, 25: 300, 50: 400, 57: 500, 63: 600, 75: 700, 81: 800, 87: 900}
-fontweight_qt6_to_qt5 = {100: 0, 200: 12, 300: 25, 400: 50, 500: 57, 600: 63, 700: 75, 800: 81, 900: 87}
+_QT5_TO_FONT_WEIGHT = {
+    0: FontWeight.Thin,
+    12: FontWeight.ExtraLight,
+    25: FontWeight.Light,
+    50: FontWeight.Normal,
+    57: FontWeight.Medium,
+    63: FontWeight.DemiBold,
+    75: FontWeight.Bold,
+    81: FontWeight.ExtraBold,
+    87: FontWeight.Black,
+}
+_FONT_WEIGHT_TO_QT5 = {
+    int(canonical): native
+    for native, canonical in _QT5_TO_FONT_WEIGHT.items()
+}
+_QT5_CSS_TO_FONT_WEIGHT = {
+    native * 8: int(canonical)
+    for native, canonical in _QT5_TO_FONT_WEIGHT.items()
+}
+_FONT_WEIGHT_TO_QT5_CSS = {
+    canonical: native_css
+    for native_css, canonical in _QT5_CSS_TO_FONT_WEIGHT.items()
+}
+_FONT_WEIGHT_CSS_PATTERN = re.compile(
+    r'(font-weight\s*:\s*)(\d+)', re.IGNORECASE
+)
+_QT_RICH_TEXT_META = '<meta name="qrichtext" content="1" />'
+_QT_RICH_TEXT_MARKER = 'name="qrichtext"'
+_UTF8_META = '<meta charset="utf-8" />'
+_CHARSET_META_MARKER = '<meta charset='
 
-fontweight_pattern = re.compile(r'font-weight:(\d+)', re.DOTALL)
 
-def fix_fontweight_qt(weight: Union[str, int]):
+def _replace_css_font_weights(html: str, mapping: dict[int, int]) -> str:
+    return _FONT_WEIGHT_CSS_PATTERN.sub(
+        lambda match: (
+            match.group(1)
+            + str(mapping.get(int(match.group(2)), int(match.group(2))))
+        ),
+        html,
+    )
 
-    def _fix_html_fntweight(matched):
-        weight = int(matched.group(1))
-        return f'font-weight:{fix_fontweight_qt(weight)}'
 
-    if weight is None:
-        return None
-    if isinstance(weight, int):
-        if shared.FLAG_QT6 and weight < 100:
-            if weight in fontweight_qt5_to_qt6:
-                weight = fontweight_qt5_to_qt6[weight]
-        if not shared.FLAG_QT6 and weight >= 100:
-            if weight in fontweight_qt6_to_qt5:
-                weight = fontweight_qt6_to_qt5[weight]
-    if isinstance(weight, str):
-        weight = fontweight_pattern.sub(lambda matched: _fix_html_fntweight(matched), weight)
-    return weight
+def export_font_weight_html(html: str, *, qt6: bool) -> str:
+    """Write canonical CSS weights from either Qt HTML serializer.
+
+    >>> export_font_weight_html('font-weight:600', qt6=False)
+    'font-weight:700'
+    """
+    if qt6:
+        return html
+    html = _replace_css_font_weights(html, _QT5_CSS_TO_FONT_WEIGHT)
+    if (
+        _QT_RICH_TEXT_META in html
+        and _CHARSET_META_MARKER not in html.lower()
+    ):
+        html = html.replace(
+            _QT_RICH_TEXT_META,
+            _QT_RICH_TEXT_META + _UTF8_META,
+            1,
+        )
+    return html
+
+
+def import_font_weight_html(html: str, *, qt6: bool) -> str:
+    """Adapt canonical or legacy Qt 5 CSS to the active Qt parser.
+
+    >>> legacy = _QT_RICH_TEXT_META + '<b style="font-weight:600">x</b>'
+    >>> 'font-weight:700' in import_font_weight_html(legacy, qt6=True)
+    True
+    >>> standard = _QT_RICH_TEXT_META + _UTF8_META
+    >>> standard += '<b style="font-weight:700">x</b>'
+    >>> 'font-weight:600' in import_font_weight_html(standard, qt6=False)
+    True
+    """
+    lowered_html = html.lower()
+    legacy_qt5 = (
+        _QT_RICH_TEXT_MARKER in lowered_html
+        and _CHARSET_META_MARKER not in lowered_html
+    )
+    if legacy_qt5:
+        return (
+            _replace_css_font_weights(html, _QT5_CSS_TO_FONT_WEIGHT)
+            if qt6
+            else html
+        )
+    return (
+        html
+        if qt6
+        else _replace_css_font_weights(html, _FONT_WEIGHT_TO_QT5_CSS)
+    )
+
+
+def coerce_font_weight(weight: int) -> FontWeight:
+    """Load one canonical weight.
+
+    >>> coerce_font_weight(25) is FontWeight.Light
+    True
+    >>> coerce_font_weight(29) is FontWeight.Light
+    True
+    """
+    if not isinstance(weight, bool) and isinstance(weight, int):
+        if 0 <= weight < 100:
+            native = min(
+                _QT5_TO_FONT_WEIGHT,
+                key=lambda candidate: abs(candidate - weight),
+            )
+            weight = _QT5_TO_FONT_WEIGHT[native]
+        elif 100 <= weight <= 1000:
+            weight = min(
+                FontWeight,
+                key=lambda candidate: abs(int(candidate) - weight),
+            )
+        try:
+            return FontWeight(weight)
+        except ValueError:
+            pass
+    if weight is not None:
+        LOGGER.warning(
+            'Ignoring invalid font weight %r; using Normal.',
+            weight,
+        )
+    return FontWeight.Normal
+
+
+def font_weight_to_qt(
+    weight: FontWeight,
+    *,
+    qt6: bool = None,
+) -> int:
+    """Return the current Qt binding's native integer weight."""
+    canonical = FontWeight(weight)
+    if qt6 is None:
+        qt6 = shared.FLAG_QT6
+    if qt6:
+        return int(canonical)
+    return _FONT_WEIGHT_TO_QT5[int(canonical)]
+
+
+def font_weight_from_qt(weight: int) -> FontWeight:
+    """Return a canonical weight from either Qt 5 or Qt 6."""
+    return coerce_font_weight(int(weight))
 
 
 @nested_dataclass
@@ -443,13 +573,15 @@ class FontFormat(Config):
     stroke_width: float = 0.
     frgb: List = field(default_factory=lambda: [0, 0, 0])
     srgb: List = field(default_factory=lambda: [0, 0, 0])
-    bold: bool = False
     underline: bool = False
     italic: bool = False
     alignment: int = 0
     vertical: bool = False
     standard_vertical_roman_alignment: bool = True
-    font_weight: int = None
+    # None is constructor-only so legacy payloads can distinguish an omitted
+    # weight from an explicitly saved Normal value. __post_init__ canonicalizes
+    # every live instance to FontWeight.
+    font_weight: FontWeight = None
     line_spacing: float = 1.2
     letter_spacing: float = 1.15
     opacity: float = 1.
@@ -495,7 +627,7 @@ class FontFormat(Config):
         if len(da) > 0:
             if 'size' in da:
                 self.font_size = pt2px(da['size'])
-            if 'weight' in da:
+            if self.font_weight is None and 'weight' in da:
                 self.font_weight = da['weight']
             if 'family' in da:
                 self.font_family = da['family']
@@ -508,7 +640,7 @@ class FontFormat(Config):
             )
             self.standard_vertical_roman_alignment = True
 
-        self.font_weight = fix_fontweight_qt(self.font_weight)
+        self.font_weight = coerce_font_weight(self.font_weight)
         if not isinstance(self.text_transform, TextTransformStack):
             if isinstance(self.text_transform, (list, tuple)):
                 transforms = []
@@ -540,6 +672,7 @@ class FontFormat(Config):
     def to_serializable_dict(self) -> dict:
         """Return config/project data with a typed transform payload."""
         serialized = vars(self).copy()
+        serialized['font_weight'] = int(FontWeight(self.font_weight))
         serialized['text_transform'] = [
             asdict(transform) for transform in self.text_transform
         ]
