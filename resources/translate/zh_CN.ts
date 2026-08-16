@@ -638,6 +638,10 @@
         <source>Shortcuts</source>
         <translation>快捷键</translation>
     </message>
+    <message>
+        <source>Sequence Badge</source>
+        <translation>序号徽标</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>
