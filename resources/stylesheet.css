@@ -399,8 +399,8 @@ QFontComboBox#FontFamilyBox::hover {
 }
 
 QComboBox#FontWeightBox {
-    min-width: 80px;
-    max-width: 80px;
+    min-width: 58px;
+    max-width: 58px;
     height: 26px;
     padding-right: 14px;
 }
