@@ -835,6 +835,19 @@ class Canvas(QGraphicsScene):
                         on_update=self._select_scene_items_in_rect,
                     )
 
+        if btn == Qt.MouseButton.LeftButton and self.txtblkShapeControl.isVisible():
+            items_at = self.items(event.scenePos())
+            # Keep the editing overlays (shape handles / grid handles) alive
+            # when the press lands on one of them; only an empty-space click
+            # clears the control frames (fully deselecting the block).
+            if not any(
+                isinstance(item, TextBlkItem)
+                or item.data(CONTROL_ITEM_DATA_KEY)
+                for item in items_at
+            ):
+                self.txtblkShapeControl.setBlkItem(None)
+                self.clear_text_transform_controls()
+
         return super().mousePressEvent(event)
 
     @property
