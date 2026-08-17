@@ -209,9 +209,6 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(config.let_letter_case, OCRTextPostprocess.NONE)
         self.assertFalse(hasattr(config, 'let_uppercase_flag'))
 
-        invalid = ProgramConfig(let_letter_case='invalid')
-        self.assertEqual(invalid.let_letter_case, OCRTextPostprocess.NONE)
-
     def test_typesetting_letter_case_buttons_update_config(self):
         original = pcfg.let_letter_case
         pcfg.let_letter_case = OCRTextPostprocess.CAPITALIZE

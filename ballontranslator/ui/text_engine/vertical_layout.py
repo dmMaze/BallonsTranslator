@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from bisect import bisect_right
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
@@ -69,8 +70,14 @@ PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗'
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 PUNSET_COMPACT = PUNSET_PAUSEORSTOP.union(PUNSET_BRACKET)
 
+PUNSET_INSEPARABLE_REPEAT = {'—', '―', '‥', '…', '⋯'}
 PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~'}
-PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF)
+PUNSET_VERNEEDROTATE = (
+    PUNSET_NONBRACKET
+    | PUNSET_BRACKET
+    | PUNSET_HALF
+    | PUNSET_INSEPARABLE_REPEAT
+)
 PUNSET_STANDARD_VERTICAL_ROMAN = PUNSET_VERNEEDROTATE.difference(PUNSET_HALF)
 # The shared glyph cache owns full paths at layout-specific offsets. Vertical
 # settlement needs only normalized bounds reusable across documents and lines.
@@ -103,6 +110,39 @@ def _is_non_fullwidth_roman(char: str) -> bool:
         return False
     name = unicodedata.name(char, '')
     return name.startswith('LATIN ') or name.startswith('ROMAN NUMERAL ')
+
+
+def _inseparable_punctuation_run(
+    text: str,
+    start: int,
+) -> Optional[Tuple[int, int]]:
+    """Return the UTF-16 start and columns of a repeated punctuation run.
+
+    >>> _inseparable_punctuation_run(' ……', 0)
+    (1, 2)
+    >>> _inseparable_punctuation_run('—…', 0) is None
+    True
+    """
+    text_length = _utf16_length(text)
+    run_start = start
+    while run_start < text_length:
+        char = _utf16_char_at(text, run_start)
+        if not char.isspace():
+            break
+        run_start += 2 if ord(char) > 0xFFFF else 1
+    if run_start >= text_length:
+        return None
+    mark = _utf16_char_at(text, run_start)
+    if mark not in PUNSET_INSEPARABLE_REPEAT:
+        return None
+    columns = 0
+    offset = run_start
+    while offset < text_length and _utf16_char_at(text, offset) == mark:
+        columns += 1
+        offset += 1
+    if columns < 2:
+        return None
+    return run_start, columns
 
 
 def _uncached_line_ink_bounds(
@@ -1711,6 +1751,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             metric.unit.start - block.position(): metric
             for metric in ruby_metrics
         }
+        inline_unit_boundaries = None
         ruby_base_leading = {}
         ruby_base_trailing = {}
         for metric in ruby_metrics:
@@ -1769,6 +1810,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         active_ruby_metric = None
 
         while True:
+            inseparable_run_range = None
             line = tl.createLine()
             if not line.isValid():
                 break
@@ -1783,6 +1825,46 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 line.setNumColumns(max(1, _grapheme_count(combined_text)))
             else:
                 line.setNumColumns(1)
+                punctuation_run = _inseparable_punctuation_run(
+                    blk_text, char_idx
+                )
+                if punctuation_run is not None:
+                    if inline_unit_boundaries is None:
+                        boundaries = set()
+                        for start, length, _group_id in text_combine_ranges:
+                            boundaries.update((start, start + length))
+                        for metric in ruby_metrics:
+                            boundaries.update((
+                                metric.unit.start - block.position(),
+                                metric.unit.end - block.position(),
+                            ))
+                        inline_unit_boundaries = tuple(sorted(boundaries))
+                    run_start, punctuation_columns = punctuation_run
+                    run_end = run_start + punctuation_columns
+                    # Never merge an inseparable run across another inline
+                    # annotation's layout unit.
+                    boundary_index = bisect_right(
+                        inline_unit_boundaries, char_idx
+                    )
+                    if boundary_index < len(inline_unit_boundaries):
+                        run_end = min(
+                            run_end,
+                            inline_unit_boundaries[boundary_index],
+                        )
+                    columns = 1
+                    # Qt may already shape the full pair as one column.
+                    while (
+                        run_end - run_start > 1
+                        and columns < run_end - line.textStart()
+                        and line.textStart() + line.textLength() < run_end
+                    ):
+                        columns += 1
+                        line.setNumColumns(columns)
+                    if (
+                        run_end - run_start > 1
+                        and line.textStart() + line.textLength() >= run_end
+                    ):
+                        inseparable_run_range = (run_start, run_end)
 
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
@@ -1852,9 +1934,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             char_idx += num_lspaces
             single_char_h = None
             text_combine_line_metrics = None
+            line_base_width = block_width
 
             if char_idx < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
+                line_base_width = cfmt.tbr.width()
+                if inseparable_run_range is not None:
+                    line_base_width = max(
+                        self.get_char_fontfmt(block_no, position).tbr.width()
+                        for position in range(*inseparable_run_range)
+                    )
                 space_shift = 0
                 if num_lspaces > 0:
                     space_shift = num_lspaces * cfmt.space_width
@@ -1959,6 +2048,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         )
             elif char_idx - num_lspaces < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx - num_lspaces)
+                line_base_width = cfmt.tbr.width()
                 tbr_h = cfmt.tbr.height() + cfmt.font_metrics.descent()
                 space_w = cfmt.space_width
 
@@ -2008,7 +2098,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         right_margin += ruby_right
                         left_margin += ruby_left
                         current_line_metrics = (
-                            cfmt.tbr.width(),
+                            line_base_width,
                             right_margin,
                             left_margin,
                         )

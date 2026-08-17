@@ -32,6 +32,7 @@ class VerticalInteractionTest(unittest.TestCase):
         *,
         letter_spacing: float = 1.0,
         height: int = 300,
+        standard_vertical_roman_alignment: bool = True,
     ) -> TextBlkItem:
         bounds = [0, 0, 220, height]
         block = TextBlock(bounds)
@@ -41,6 +42,9 @@ class VerticalInteractionTest(unittest.TestCase):
         block.fontformat.font_family = 'Noto Sans CJK SC'
         block.fontformat.font_size = 40
         block.fontformat.letter_spacing = letter_spacing
+        block.fontformat.standard_vertical_roman_alignment = (
+            standard_vertical_roman_alignment
+        )
         return TextBlkItem(block, 0)
 
     @staticmethod
@@ -139,17 +143,116 @@ class VerticalInteractionTest(unittest.TestCase):
         )
 
     def test_positive_joined_spacing_remains_a_trailing_run_advance(self):
-        normal = self._make_item('——')
-        spaced = self._make_item('——', letter_spacing=1.5)
-        normal_cells = normal.layout._vertical_line_cells(
-            normal.document().firstBlock(), 0
-        )
-        spaced_cells = spaced.layout._vertical_line_cells(
-            spaced.document().firstBlock(), 0
-        )
+        for roman_alignment in (False, True):
+            for text in ('——', '――', '……', '‥‥', '⋯⋯'):
+                with self.subTest(
+                    roman_alignment=roman_alignment,
+                    text=text,
+                ):
+                    source = f'木{text}水'
+                    normal = self._make_item(
+                        source,
+                        standard_vertical_roman_alignment=roman_alignment,
+                    )
+                    spaced = self._make_item(
+                        source,
+                        letter_spacing=1.5,
+                        standard_vertical_roman_alignment=roman_alignment,
+                    )
+                    normal_block = normal.document().firstBlock()
+                    spaced_block = spaced.document().firstBlock()
+                    normal_line = normal_block.layout().lineForTextPosition(1)
+                    spaced_line = spaced_block.layout().lineForTextPosition(1)
 
-        self.assertEqual(spaced_cells[0][3], normal_cells[0][3])
-        self.assertGreater(spaced_cells[-1][3], normal_cells[-1][3])
+                    self.assertEqual(
+                        (normal_line.textStart(), normal_line.textLength()),
+                        (1, 2),
+                    )
+                    self.assertEqual(
+                        (spaced_line.textStart(), spaced_line.textLength()),
+                        (1, 2),
+                    )
+                    self.assertEqual(
+                        spaced_block.layout().lineForTextPosition(
+                            3
+                        ).textStart(),
+                        3,
+                    )
+                    normal_cells = normal.layout._vertical_line_cells(
+                        normal_block, normal_line.lineNumber()
+                    )
+                    spaced_cells = spaced.layout._vertical_line_cells(
+                        spaced_block, spaced_line.lineNumber()
+                    )
+
+                    self.assertEqual(len(normal_cells), 2)
+                    self.assertEqual(len(spaced_cells), 2)
+                    self.assertEqual(
+                        spaced_cells[0][3] - spaced_cells[0][2],
+                        normal_cells[0][3] - normal_cells[0][2],
+                    )
+                    self.assertGreater(
+                        spaced_cells[-1][3] - spaced_cells[0][2],
+                        normal_cells[-1][3] - normal_cells[0][2],
+                    )
+
+    def test_joined_punctuation_uses_widest_fragment_column(self):
+        for large_position in (0, 1):
+            with self.subTest(large_position=large_position):
+                item = self._make_item('……', letter_spacing=1.5)
+                cursor = QTextCursor(item.document())
+                cursor.setPosition(large_position)
+                cursor.setPosition(
+                    large_position + 1,
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+                char_format = QTextCharFormat()
+                char_format.setFontPointSize(80.0)
+                cursor.mergeCharFormat(char_format)
+                self.app.processEvents()
+
+                block = item.document().firstBlock()
+                line = block.layout().lineAt(0)
+                widths = [
+                    item.layout.get_char_fontfmt(0, position).tbr.width()
+                    for position in range(2)
+                ]
+                self.assertEqual(
+                    (line.textStart(), line.textLength()), (0, 2)
+                )
+                self.assertAlmostEqual(
+                    item.layout._line_record(block, 0)['base_width'],
+                    max(widths),
+                )
+
+    def test_joined_punctuation_stops_at_tate_chu_yoko_boundary(self):
+        item = self._make_item('……', letter_spacing=1.5)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setTateChuYoko(True)
+        self.app.processEvents()
+
+        block = item.document().firstBlock()
+        layout = block.layout()
+        self.assertEqual(
+            (layout.lineAt(0).textStart(), layout.lineAt(0).textLength()),
+            (0, 1),
+        )
+        self.assertIsNotNone(item.layout.tate_chu_yoko_cell_rect(block, 1))
+
+    def test_leading_spaces_keep_following_punctuation_joined(self):
+        item = self._make_item('  ……水', letter_spacing=1.5)
+        block = item.document().firstBlock()
+        layout = block.layout()
+
+        self.assertEqual(
+            (layout.lineAt(0).textStart(), layout.lineAt(0).textLength()),
+            (0, 4),
+        )
+        self.assertEqual(layout.lineForTextPosition(4).textStart(), 4)
 
     def test_selection_uses_vertical_glyph_and_space_cells(self):
         for text, start, end, line_number, selected_cell in (

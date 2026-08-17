@@ -72,6 +72,16 @@ unaffected. Exact ink for rotated base lines is cached after settled placement;
 descenders and other overhang extend source paint and interaction geometry but
 never the persistent logical box or column width.
 
+The global `compact_vertical_punctuation_spacing` setting defaults to `True`.
+It shortens pause/stop marks and brackets toward half-width cells in vertical
+text without clipping larger punctuation ink, while keeping paint, cursor,
+selection, hit-test, effect, and wrapping geometry on those same compact cells.
+Configured character spacing keeps the normal em unit so compact punctuation
+remains centered between neighboring glyphs. Horizontal text is unaffected.
+Repeated em dashes, horizontal bars, two-dot leaders, and ellipses form an
+inseparable vertical run: character spacing is applied after the run, never
+between its marks. This is independent of Roman glyph orientation.
+
 Tate-chu-yoko is one ordinary horizontal Qt line occupying one vertical cell.
 It keeps its natural horizontal advance centered on the column; excess width
 is paint overflow and must not widen the column or move neighboring columns.
