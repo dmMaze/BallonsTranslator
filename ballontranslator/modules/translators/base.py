@@ -9,7 +9,7 @@ from ..base import BaseModule, DEVICE_SELECTOR
 from ballontranslator.utils.registry import Registry
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
-from ballontranslator.utils.config import TranslateContext, pcfg
+from ballontranslator.utils.config import OCRTextPostprocess, TranslateContext, pcfg
 from ballontranslator.utils.text_processing import (
     finalize_translation_text,
     substitute_keywords,
@@ -82,12 +82,13 @@ def postprocess_translation_text(
     target_language: str,
     substitutions: Sequence[Mapping],
     *,
-    uppercase: bool = False,
+    letter_case: str = OCRTextPostprocess.NONE,
     convert_to_traditional: bool = False,
     full_page: bool = False,
 ) -> str:
     """Apply the fixed translation finalization order for one result.
 
+    Full-page processing applies normalization, substitution, then letter case.
     Selected-block translation retains its historical substitution-only behavior.
 
     >>> rules = [{'keyword': 'A', 'sub': 'X', 'use_reg': False,
@@ -114,7 +115,7 @@ def postprocess_translation_text(
             source_language,
             target_language,
             substitute=lambda value: substitute_keywords(value, substitutions),
-            uppercase=uppercase,
+            letter_case=letter_case,
         )
     return substitute_keywords(text, substitutions)
 
@@ -314,7 +315,7 @@ class BaseTranslator(BaseModule):
                 self.lang_source,
                 self.lang_target,
                 pcfg.mt_sublist,
-                uppercase=pcfg.let_uppercase_flag,
+                letter_case=pcfg.let_letter_case,
                 convert_to_traditional=self.cht_require_convert,
                 full_page=full_page,
             )

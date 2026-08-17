@@ -19,6 +19,7 @@ from qtpy.QtGui import (
     QInputMethodEvent,
     QKeyEvent,
     QPainter,
+    QTextCharFormat,
     QTextCursor,
 )
 from qtpy.QtTest import QTest
@@ -39,6 +40,7 @@ except ImportError:
 
 from ballontranslator.ui.text_engine.editing.widgets import TransPairWidget
 from ballontranslator.ui.text_engine.editing.commands import (
+    CapitalizeTextItemsCommand,
     MultiPasteCommand,
     ReshapeItemCommand,
     SetTextTransformCommand,
@@ -1377,6 +1379,95 @@ class TextTransformPanelTest(TextTransformTestBase):
 
 
 class TextTransformUndoTest(TextTransformTestBase):
+    def test_capitalize_selected_items_is_one_synced_undo_command(self):
+        original = 'hELLO WORLD. next ONE!'
+        capitalized = 'Hello world. Next one!'
+        item, pair = self._make_pair(0, original, False)
+        second_original = '😀 aNOTHER item. sECOND sentence!'
+        second_capitalized = '😀 Another item. Second sentence!'
+        second_item, second_pair = self._make_pair(
+            1,
+            second_original,
+            True,
+        )
+
+        colors = (QColor(210, 20, 30), QColor(20, 80, 210))
+        for position, color in zip((1, 2), colors):
+            cursor = QTextCursor(item.document())
+            cursor.setPosition(position)
+            cursor.setPosition(
+                position + 1,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            char_format = QTextCharFormat()
+            char_format.setForeground(color)
+            char_format.setFontItalic(True)
+            cursor.mergeCharFormat(char_format)
+
+        stack = QUndoStack()
+        canvas = SimpleNamespace(
+            textEditMode=lambda: True,
+            selected_text_items=lambda: [item, second_item],
+            push_undo_command=stack.push,
+        )
+        manager = SimpleNamespace(
+            canvas=canvas,
+            pairwidget_list=[pair, second_pair],
+        )
+        unexpected_history = []
+        item.push_undo_stack.connect(
+            lambda *_args: unexpected_history.append('item')
+        )
+        pair.e_trans.push_undo_stack.connect(
+            lambda *_args: unexpected_history.append('pair')
+        )
+        pair.show()
+        pair.e_trans.setFocus()
+        self.app.processEvents()
+
+        SceneTextManager.capitalize_selected_textitems(manager)
+
+        self.assertEqual(stack.count(), 1)
+        self.assertEqual(stack.index(), 1)
+        self.assertEqual(item.toPlainText(), capitalized)
+        self.assertEqual(pair.e_trans.toPlainText(), capitalized)
+        self.assertEqual(second_item.toPlainText(), second_capitalized)
+        self.assertEqual(second_pair.e_trans.toPlainText(), second_capitalized)
+        self.assertEqual(unexpected_history, [])
+        for position, color in zip((1, 2), colors):
+            cursor = QTextCursor(item.document())
+            cursor.setPosition(position)
+            cursor.setPosition(
+                position + 1,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            self.assertEqual(cursor.charFormat().foreground().color(), color)
+            self.assertTrue(cursor.charFormat().fontItalic())
+
+        SceneTextManager.capitalize_selected_textitems(manager)
+        self.assertEqual(stack.count(), 1)
+
+        stack.undo()
+        self.assertEqual(item.toPlainText(), original)
+        self.assertEqual(pair.e_trans.toPlainText(), original)
+        self.assertEqual(second_item.toPlainText(), second_original)
+        self.assertEqual(second_pair.e_trans.toPlainText(), second_original)
+        stack.redo()
+        self.assertEqual(item.toPlainText(), capitalized)
+        self.assertEqual(pair.e_trans.toPlainText(), capitalized)
+        self.assertEqual(second_item.toPlainText(), second_capitalized)
+        self.assertEqual(second_pair.e_trans.toPlainText(), second_capitalized)
+        pair.hide()
+
+    def test_capitalize_command_rejects_unsynchronized_pair(self):
+        item, pair = self._make_pair(0, 'hELLO', False)
+        pair.e_trans.setPlainText('different')
+
+        self.assertIsNone(CapitalizeTextItemsCommand.create(
+            [item],
+            [pair.e_trans],
+        ))
+
     def test_parameter_preview_repaints_only_changed_items(self):
         states = (
             transform_state(ProjectiveTextTransform(horizontal_scale=1.0)),

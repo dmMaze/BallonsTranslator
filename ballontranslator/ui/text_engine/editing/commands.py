@@ -1,6 +1,7 @@
+from difflib import SequenceMatcher
 from typing import Callable, List, Optional, Sequence, Union
 
-from qtpy.QtGui import QTextCursor
+from qtpy.QtGui import QTextCharFormat, QTextCursor, QTextDocument
 from qtpy.QtCore import QPointF
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -9,6 +10,7 @@ except:
 
 from ..item import TextBlkItem, TextBlock
 from ..annotations import prepare_ruby_insertion
+from ..rendering.indexing import _utf16_boundaries
 from .widgets import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
     FontFormat,
@@ -18,6 +20,7 @@ from ...misc import doc_replace, doc_replace_no_shift
 from ..shape_control import TextBlkShapeControl
 from ...page_search_widget import PageSearchWidget, Matched
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.text_processing import capitalize_sentences
 
 
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, joint_previous: bool = False):
@@ -38,6 +41,74 @@ def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit
     cursor.insertText(added_text)
     cursor.endEditBlock()
     target_edit.old_undo_steps = target_edit.document().availableUndoSteps()
+
+
+def _replace_changed_text(
+    document: QTextDocument,
+    before: str,
+    after: str,
+) -> bool:
+    """Replace only changed spans in one document edit block.
+
+    >>> document = QTextDocument('hELLO world')
+    >>> _replace_changed_text(document, 'hELLO world', 'Hello world')
+    True
+    >>> document.toPlainText()
+    'Hello world'
+    >>> _replace_changed_text(document, 'Hello world', 'Hello world')
+    False
+    """
+    if before == after:
+        return False
+    if document.toPlainText() != before:
+        raise ValueError('document text changed before replacement')
+
+    if len(before) == len(after):
+        replacements = [
+            (index, index + 1, index, index + 1)
+            for index, (old, new) in enumerate(zip(before, after))
+            if old != new
+        ]
+    else:
+        replacements = [
+            (old_start, old_end, new_start, new_end)
+            for tag, old_start, old_end, new_start, new_end
+            in SequenceMatcher(None, before, after, autojunk=False).get_opcodes()
+            if tag != 'equal'
+        ]
+
+    boundaries = _utf16_boundaries(before)
+    cursor = QTextCursor(document)
+    cursor.beginEditBlock()
+    try:
+        for old_start, old_end, new_start, new_end in reversed(replacements):
+            formats = []
+            for index in range(old_start, old_end):
+                format_cursor = QTextCursor(document)
+                format_cursor.setPosition(boundaries[index])
+                format_cursor.setPosition(
+                    boundaries[index + 1],
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+                formats.append(QTextCharFormat(format_cursor.charFormat()))
+
+            cursor.setPosition(boundaries[old_start])
+            cursor.setPosition(
+                boundaries[old_end],
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            insertion_format = QTextCharFormat(cursor.charFormat())
+            cursor.removeSelectedText()
+            for index, character in enumerate(after[new_start:new_end]):
+                char_format = (
+                    formats[min(index, len(formats) - 1)]
+                    if formats
+                    else insertion_format
+                )
+                cursor.insertText(character, char_format)
+    finally:
+        cursor.endEditBlock()
+    return True
 
 
 class SetTextTransformCommand(QUndoCommand):
@@ -598,6 +669,85 @@ class GlobalRepalceAllCommand(QUndoCommand):
         for src_dict in self.src_list:
             blk: TextBlock = self.proj.pages[src_dict['pagename']][src_dict['idx']]
             blk.text = src_dict['ori']
+
+
+class CapitalizeTextItemsCommand(QUndoCommand):
+    """Capitalize selected item documents and their paired editors together."""
+
+    def __init__(
+        self,
+        changes: Sequence[tuple[TextBlkItem, TransTextEdit, str, str]],
+    ) -> None:
+        super().__init__()
+        self.changes = tuple(changes)
+        self._first_redo = True
+
+    @classmethod
+    def create(
+        cls,
+        items: Sequence[TextBlkItem],
+        edits: Sequence[TransTextEdit],
+    ) -> Optional['CapitalizeTextItemsCommand']:
+        """Build one command for changed synchronized pairs, or no command."""
+        if len(items) != len(edits):
+            raise ValueError('items and edits must have the same length')
+
+        changes = []
+        for item, edit in zip(items, edits):
+            before = item.toPlainText()
+            if edit.toPlainText() != before:
+                return None
+            after = capitalize_sentences(before)
+            if after != before:
+                changes.append((item, edit, before, after))
+        return cls(changes) if changes else None
+
+    @staticmethod
+    def _repaint_once(item: TextBlkItem, callback: Callable[[], object]) -> None:
+        repaint_on_changed = item.repaint_on_changed
+        item.repaint_on_changed = False
+        try:
+            callback()
+        finally:
+            item.repaint_on_changed = repaint_on_changed
+        item.repaint_background()
+
+    def _apply_first_redo(self) -> None:
+        for item, edit, before, after in self.changes:
+            item_in_history = item.in_redo_undo
+            edit_in_history = edit.in_redo_undo
+            item.in_redo_undo = True
+            edit.in_redo_undo = True
+            try:
+                self._repaint_once(
+                    item,
+                    lambda: _replace_changed_text(
+                        item.document(),
+                        before,
+                        after,
+                    ),
+                )
+                _replace_changed_text(edit.document(), before, after)
+            finally:
+                item.in_redo_undo = item_in_history
+                edit.in_redo_undo = edit_in_history
+            item.updateUndoSteps()
+            edit.updateUndoSteps()
+
+    def _step_history(self, operation: str) -> None:
+        for item, edit, _before, _after in self.changes:
+            self._repaint_once(item, getattr(item, operation))
+            getattr(edit, operation)()
+
+    def redo(self) -> None:
+        if self._first_redo:
+            self._first_redo = False
+            self._apply_first_redo()
+            return
+        self._step_history('redo')
+
+    def undo(self) -> None:
+        self._step_history('undo')
 
 
 class MultiPasteCommand(QUndoCommand):

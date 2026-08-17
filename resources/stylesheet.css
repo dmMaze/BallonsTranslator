@@ -136,7 +136,8 @@ QWidget#ModuleParamContent QComboBox::drop-down {
     border: none;
 }
 
-QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin {
+QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin,
+QWidget#ConfigContentScrollContent QSpinBox#AutoTateChuYokoMaxLength {
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 6px;
@@ -146,13 +147,16 @@ QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin {
     font-size: 13px;
 }
 
-QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin:focus {
+QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin:focus,
+QWidget#ConfigContentScrollContent QSpinBox#AutoTateChuYokoMaxLength:focus {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
 QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin::up-button,
-QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin::down-button {
+QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin::down-button,
+QWidget#ConfigContentScrollContent QSpinBox#AutoTateChuYokoMaxLength::up-button,
+QWidget#ConfigContentScrollContent QSpinBox#AutoTateChuYokoMaxLength::down-button {
     border: none;
     background-color: transparent;
 }
@@ -237,6 +241,35 @@ QWidget#ConfigContentScrollContent QWidget#PipelineModuleOptions {
 
 QWidget#ConfigContentScrollContent QCheckBox#PipelineModuleActionCheckBox {
     font-size: 13px;
+}
+
+QWidget#ConfigContentScrollContent QRadioButton#ConfigLetterCaseOption {
+    background-color: transparent;
+    spacing: 5px;
+    font-size: 13px;
+}
+
+QWidget#ConfigContentScrollContent QRadioButton#ConfigLetterCaseOption::indicator {
+    width: 13px;
+    height: 13px;
+    border: 1px solid @borderColor;
+    border-radius: 7px;
+    background-color: transparent;
+}
+
+QWidget#ConfigContentScrollContent QRadioButton#ConfigLetterCaseOption::indicator:hover {
+    border-color: rgb(30, 147, 229);
+}
+
+QWidget#ConfigContentScrollContent QRadioButton#ConfigLetterCaseOption::indicator:checked {
+    background: qradialgradient(
+        cx: 0.5, cy: 0.5,
+        radius: 0.5, fx: 0.5, fy: 0.5,
+        stop: 0 rgb(30, 147, 229),
+        stop: 0.42 rgb(30, 147, 229),
+        stop: 0.43 rgba(0, 0, 0, 0),
+        stop: 1 rgba(0, 0, 0, 0)
+    );
 }
 
 QPushButton#DrawingInpainterConfigButton {

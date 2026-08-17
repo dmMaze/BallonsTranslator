@@ -43,16 +43,19 @@ from ballontranslator.ui.text_engine.annotations import (
     LETTER_SPACING_ATTRIBUTE,
     LINE_DISTANCE_ATTRIBUTE,
     TEXT_COMBINE_ID_ATTRIBUTE,
+    apply_auto_text_combine_upright,
     apply_emphasis,
     apply_letter_spacing,
     apply_line_spacing,
     apply_text_combine_upright,
+    apply_ruby,
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
     letter_spacing_value,
     line_spacing_values,
     load_rich_text_html,
+    ruby_containers,
     text_combine_upright_ranges,
     text_combine_upright_values,
     to_rich_text_html,
@@ -858,6 +861,44 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(
             text_combine_upright_values(_format_at(document, 5))[0],
             'none',
+        )
+
+    def test_auto_text_combine_replaces_runs_and_skips_long_or_ruby_text(self):
+        document = QTextDocument()
+        document.setPlainText('12-ABC-12345-東京-🅰🅱')
+
+        old_run = QTextCursor(document)
+        old_run.setPosition(7)
+        old_run.setPosition(12, QTextCursor.MoveMode.KeepAnchor)
+        apply_text_combine_upright(old_run, True)
+
+        ruby = QTextCursor(document)
+        ruby.setPosition(13)
+        ruby.setPosition(15, QTextCursor.MoveMode.KeepAnchor)
+        apply_ruby(ruby, 'group', 'とうきょう')
+
+        changed = apply_auto_text_combine_upright(
+            document,
+            frozenset('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ東京🅰🅱'),
+            4,
+        )
+        self.assertTrue(changed)
+
+        ranges = text_combine_upright_ranges(document.firstBlock())
+        self.assertEqual(
+            [(start, length) for start, length, _group_id in ranges],
+            [(0, 2), (3, 3), (16, 4)],
+        )
+        self.assertEqual(len({group_id for *_range, group_id in ranges}), 3)
+        self.assertEqual(len(ruby_containers(document)), 1)
+
+        self.assertTrue(
+            apply_auto_text_combine_upright(document, frozenset(), 4)
+        )
+        self.assertEqual(text_combine_upright_ranges(document.firstBlock()), ())
+        self.assertEqual(len(ruby_containers(document)), 1)
+        self.assertFalse(
+            apply_auto_text_combine_upright(document, frozenset(), 4)
         )
 
     def test_adjacent_text_combine_runs_and_pastes_keep_boundaries(self):

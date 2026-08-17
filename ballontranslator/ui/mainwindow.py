@@ -50,6 +50,7 @@ from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .text_engine.editing.commands import GlobalRepalceAllCommand
 from .text_engine.transforms.grid import start_grid_numba_warmup
+from .text_engine.pipeline_formatting import apply_auto_tate_chu_yoko
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
@@ -883,6 +884,10 @@ class MainWindow(mainwindow_cls):
         shortcutItalic.activated.connect(self.shortcutItalic)
         shortcutUnderline = QShortcut(QKeySequence.StandardKey.Underline, self)
         shortcutUnderline.activated.connect(self.shortcutUnderline)
+        shortcutCapitalize = QShortcut(QKeySequence("Shift+F3"), self)
+        shortcutCapitalize.activated.connect(
+            self.st_manager.capitalize_selected_textitems
+        )
 
         shortcutDelete = QShortcut(QKeySequence.StandardKey.Delete, self)
         shortcutDelete.activated.connect(self.shortcutDelete)
@@ -1693,6 +1698,18 @@ class MainWindow(mainwindow_cls):
 
                     # Apply the complete global text-transform stack.
                     blk.fontformat.text_transform = gf.text_transform
+
+            if pcfg.auto_tate_chu_yoko.enabled and (
+                enable_translate
+                or (
+                    self._render_only
+                    and not self._run_imgtrans_wo_textstyle_update
+                )
+            ):
+                apply_auto_tate_chu_yoko(
+                    blk_list,
+                    pcfg.auto_tate_chu_yoko,
+                )
 
             self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
                 (enable_detect or enable_translate)

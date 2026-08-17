@@ -72,20 +72,36 @@ def capitalize_sentences(text: str) -> str:
 
     >>> capitalize_sentences('hello WORLD. "next ONE!" final?')
     'Hello world. "Next one!" Final?'
+    >>> capitalize_sentences('123 hello. 45 NEXT')
+    '123 Hello. 45 Next'
     """
 
     text = text.lower()
     capitalize_next = True
     result = []
     for char in text:
-        if capitalize_next and char.isalnum():
-            if char.isalpha():
-                char = char.upper()
+        if capitalize_next and char.isalpha():
+            char = char.upper()
             capitalize_next = False
         result.append(char)
         if char in SENTENCE_TERMINATORS:
             capitalize_next = True
     return ''.join(result)
+
+
+def apply_letter_case(text: str, mode: str) -> str:
+    """Apply a persisted letter-case mode, tolerating unknown values.
+
+    >>> apply_letter_case('123 hELLO. nEXT!', 'capitalize')
+    '123 Hello. Next!'
+    >>> apply_letter_case('Hello', 'uppercase')
+    'HELLO'
+    """
+    if mode == 'capitalize':
+        return capitalize_sentences(text)
+    if mode == 'uppercase':
+        return text.upper()
+    return text
 
 
 def full_len(s: str):
@@ -107,7 +123,7 @@ def finalize_translation_text(
     source_language: str,
     target_language: str,
     substitute: Callable[[str], str] = None,
-    uppercase: bool = False,
+    letter_case: str = 'none',
 ) -> str:
     """Apply pure text finalization before translation completion is recorded.
 
@@ -115,6 +131,10 @@ def finalize_translation_text(
     'A!B'
     >>> finalize_translation_text('ａｂｃ', '日本語', 'English', str.upper)
     'ABC'
+    >>> finalize_translation_text(
+    ...     'hELLO WORLD. nEXT!', 'English', 'English',
+    ...     letter_case='capitalize')
+    'Hello world. Next!'
     """
     source_is_cjk = source_language in LANGSET_CJK
     target_is_cjk = target_language in LANGSET_CJK
@@ -129,9 +149,7 @@ def finalize_translation_text(
 
     if substitute is not None:
         text = substitute(text)
-    if uppercase:
-        text = text.upper()
-    return text
+    return apply_letter_case(text, letter_case)
 
 def seg_to_chars(text: str) -> List[str]:
     text = text.replace('\n', '')

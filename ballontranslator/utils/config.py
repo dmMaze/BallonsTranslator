@@ -1,4 +1,4 @@
-import json, os, traceback
+import json, os, string, traceback
 import os.path as osp
 import copy
 from typing import Callable, Optional
@@ -236,6 +236,56 @@ class NetworkMirrorsConfig(Config):
     huggingface: Optional[str] = None
     pypi: Optional[str] = None
 
+
+@nested_dataclass
+class AutoTateChuYokoConfig(Config):
+    """Settings reserved for automatic tate-chu-yoko detection.
+
+    >>> AutoTateChuYokoConfig().enabled
+    False
+    """
+
+    enabled: bool = False
+    max_length: int = 4
+    include_numbers: bool = True
+    include_letters: bool = False
+    additional_chars: str = ''
+
+    def allowed_characters(self) -> frozenset[str]:
+        """Return the configured character categories as one lookup set.
+
+        >>> AutoTateChuYokoConfig(include_letters=True).allowed_characters() >= {'A', 'z'}
+        True
+        """
+        characters = set(self.additional_chars)
+        if self.include_numbers:
+            characters.update(string.digits)
+        if self.include_letters:
+            characters.update(string.ascii_letters)
+        return frozenset(characters)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            LOGGER.warning('Discard invalid auto_tate_chu_yoko.enabled config.')
+            self.enabled = False
+        if (
+            not isinstance(self.max_length, int)
+            or isinstance(self.max_length, bool)
+            or not 1 <= self.max_length <= 99
+        ):
+            LOGGER.warning('Discard invalid auto_tate_chu_yoko.max_length config.')
+            self.max_length = 4
+        if not isinstance(self.include_numbers, bool):
+            LOGGER.warning('Discard invalid auto_tate_chu_yoko.include_numbers config.')
+            self.include_numbers = True
+        if not isinstance(self.include_letters, bool):
+            LOGGER.warning('Discard invalid auto_tate_chu_yoko.include_letters config.')
+            self.include_letters = False
+        if not isinstance(self.additional_chars, str):
+            LOGGER.warning('Discard invalid auto_tate_chu_yoko.additional_chars config.')
+            self.additional_chars = ''
+
+
 @nested_dataclass
 class ProgramConfig(Config):
 
@@ -243,6 +293,7 @@ class ProgramConfig(Config):
     package_manager: PackageManagerConfig = field(default_factory=lambda: PackageManagerConfig())
     mirrors: NetworkMirrorsConfig = field(default_factory=lambda: NetworkMirrorsConfig())
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
+    auto_tate_chu_yoko: AutoTateChuYokoConfig = field(default_factory=AutoTateChuYokoConfig)
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
     recent_proj_list: List = field(default_factory=lambda: list())
     show_page_list: bool = False
@@ -274,7 +325,7 @@ class ProgramConfig(Config):
     let_writing_mode_flag: int = 0
     let_family_flag: int = 0
     let_autolayout_flag: bool = True
-    let_uppercase_flag: bool = True
+    let_letter_case: str = OCRTextPostprocess.NONE
     let_show_only_custom_fonts_flag: bool = False
     let_textstyle_indep_flag: bool = False
     text_styles_path: str = osp.join(shared.DEFAULT_TEXTSTYLE_DIR, 'default.json')
@@ -310,11 +361,23 @@ class ProgramConfig(Config):
     expand_ttransform_panel: bool = True
     excluded_fonts: List[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.auto_tate_chu_yoko, AutoTateChuYokoConfig):
+            LOGGER.warning('Discard invalid auto_tate_chu_yoko config.')
+            self.auto_tate_chu_yoko = AutoTateChuYokoConfig()
+        if self.let_letter_case not in OCRTextPostprocess.Valid:
+            LOGGER.warning('Discard invalid let_letter_case config.')
+            self.let_letter_case = OCRTextPostprocess.NONE
+
     @staticmethod
     def load(cfg_path: str):
         
         with open(cfg_path, 'r', encoding='utf8') as f:
             config_dict = json.loads(f.read())
+
+        if 'let_uppercase_flag' in config_dict:
+            LOGGER.warning('Discard removed let_uppercase_flag config.')
+            config_dict.pop('let_uppercase_flag')
 
         if 'excluded_fonts' in config_dict:
             excluded_fonts = config_dict['excluded_fonts']

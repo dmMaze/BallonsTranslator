@@ -16,7 +16,22 @@ from ..item import TextBlkItem, TextBlock
 from ...canvas import Canvas
 from .widgets import TransTextEdit, SourceTextEdit, TransPairWidget, TextEditListScrollArea, QVBoxLayout, Widget
 from ballontranslator.utils.fontformat import FontFormat
-from .commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
+from .commands import (
+    ApplyFontformatCommand,
+    AutoLayoutCommand,
+    CapitalizeTextItemsCommand,
+    MoveBlkItemsCommand,
+    MultiPasteCommand,
+    PageReplaceAllCommand,
+    PageReplaceOneCommand,
+    ReshapeItemCommand,
+    ResetAngleCommand,
+    RotateItemCommand,
+    SqueezeCommand,
+    TextEditCommand,
+    TextItemEditCommand,
+    propagate_user_edit,
+)
 from ..formatting.panel import FontFormatPanel
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils import shared
@@ -1029,6 +1044,16 @@ class SceneTextManager(QObject):
         
         etrans = [self.pairwidget_list[blkitem.idx].e_trans for blkitem in blkitems]
         self.canvas.push_undo_command(MultiPasteCommand(text, blkitems, etrans))
+
+    def capitalize_selected_textitems(self) -> None:
+        """Capitalize selected translations as one synchronized undo action."""
+        if not self.canvas.textEditMode():
+            return
+        items = self.canvas.selected_text_items()
+        edits = [self.pairwidget_list[item.idx].e_trans for item in items]
+        command = CapitalizeTextItemsCommand.create(items, edits)
+        if command is not None:
+            self.canvas.push_undo_command(command)
 
     def on_transwidget_focus_in(self, idx: int):
         if self.is_editting():

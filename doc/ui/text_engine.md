@@ -98,6 +98,16 @@ independent applications remain separate. CSS stores
 identity. Its cell, overflow, cursor, hit-test, and paint behavior is specified
 in [Text layout](text_layout.md).
 
+The optional automatic pipeline pass runs only after a page translation or a
+rendering-only style update. It removes existing tate-chu-yoko ranges, then
+applies fresh groups to maximal runs from the configured character set that fit
+the maximum length and do not overlap Ruby. A disabled pass leaves authored
+formatting untouched; an enabled pass with an empty character set only removes
+the existing groups. Rendering with text-style updates disabled skips the pass.
+The TextBlock-to-document bridge for this pass is owned by
+`ballontranslator/ui/text_engine/pipeline_formatting.py`; `MainWindow` only
+triggers it at the completed-page boundary.
+
 Keep one shared inline range boundary: reserve stable live property IDs,
 coalesce equal extension values, emit one semantic span per resulting text
 segment, and restore all supported properties after Qt loads the ordinary
@@ -252,6 +262,10 @@ One logical formatting action may emit several Qt signals. Wrap the internal
 document work in one edit boundary, publish one user-visible command, and guard
 undo/redo from recursively creating another command. IME preedit text remains
 transient; only Qt's normal commit lifecycle should make it persistent.
+
+`Shift+F3` applies sentence capitalization to the selected text items. It
+replaces only changed character ranges, keeps the paired translation editors
+synchronized, and publishes no canvas command when every item is unchanged.
 
 ## Geometry and transforms
 

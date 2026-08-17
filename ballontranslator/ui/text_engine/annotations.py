@@ -13,7 +13,7 @@ from html import escape, unescape
 from html.parser import HTMLParser
 import math
 import re
-from typing import Optional
+from typing import AbstractSet, Optional
 from uuid import uuid4
 
 from qtpy import QT6
@@ -1858,6 +1858,19 @@ def set_document_letter_spacing_writing_mode(
         cursor.endEditBlock()
 
 
+def _text_combine_modifier(enabled: bool) -> QTextCharFormat:
+    modifier = QTextCharFormat()
+    modifier.setProperty(
+        AnnotationProperty.TEXT_COMBINE_UPRIGHT,
+        TEXT_COMBINE_ALL if enabled else TEXT_COMBINE_NONE,
+    )
+    modifier.setProperty(
+        AnnotationProperty.TEXT_COMBINE_ID,
+        uuid4().hex if enabled else '',
+    )
+    return modifier
+
+
 def apply_text_combine_upright(
     cursor: QTextCursor,
     enabled: bool,
@@ -1873,16 +1886,107 @@ def apply_text_combine_upright(
             for container in ruby_containers(cursor.document())
         ):
             raise RubyValidationError('Tate-chu-yoko cannot overlap Ruby')
-    modifier = QTextCharFormat()
-    modifier.setProperty(
-        AnnotationProperty.TEXT_COMBINE_UPRIGHT,
-        TEXT_COMBINE_ALL if enabled else TEXT_COMBINE_NONE,
-    )
-    modifier.setProperty(
-        AnnotationProperty.TEXT_COMBINE_ID,
-        uuid4().hex if enabled else '',
-    )
+    modifier = _text_combine_modifier(enabled)
     cursor.mergeCharFormat(modifier)
+
+
+def apply_auto_text_combine_upright(
+    document: QTextDocument,
+    allowed_characters: AbstractSet[str],
+    max_length: int,
+) -> bool:
+    """Replace Tate-chu-yoko with qualified non-Ruby character runs.
+
+    ``allowed_characters`` is compiled once by the pipeline and reused for
+    every block on the page. Return whether the document changed.
+
+    >>> document = QTextDocument('12')
+    >>> apply_auto_text_combine_upright(document, frozenset('12'), 2)
+    True
+    >>> apply_auto_text_combine_upright(document, frozenset('12'), 2)
+    True
+    """
+    if (
+        isinstance(max_length, bool)
+        or not isinstance(max_length, int)
+        or max_length < 1
+    ):
+        raise ValueError(f'unsupported maximum run length: {max_length!r}')
+
+    old_ranges = []
+    block = document.firstBlock()
+    while block.isValid():
+        old_ranges.extend(
+            (block.position() + start, length)
+            for start, length, _group_id in text_combine_upright_ranges(block)
+        )
+        block = block.next()
+
+    new_ranges = []
+    if allowed_characters:
+        ruby_ranges = ruby_containers(document)
+        ruby_index = 0
+        block = document.firstBlock()
+        while block.isValid():
+            run_start = -1
+            run_length = 0
+            utf16_offset = 0
+            runs = []
+            for character in block.text():
+                if character in allowed_characters:
+                    if run_start < 0:
+                        run_start = utf16_offset
+                    run_length += 1
+                elif run_start >= 0:
+                    runs.append((run_start, utf16_offset - run_start, run_length))
+                    run_start = -1
+                    run_length = 0
+                utf16_offset += _utf16_length(character)
+            if run_start >= 0:
+                runs.append((run_start, utf16_offset - run_start, run_length))
+
+            for local_start, utf16_length, character_count in runs:
+                if character_count > max_length:
+                    continue
+                start = block.position() + local_start
+                end = start + utf16_length
+                while (
+                    ruby_index < len(ruby_ranges)
+                    and ruby_ranges[ruby_index].end <= start
+                ):
+                    ruby_index += 1
+                if (
+                    ruby_index < len(ruby_ranges)
+                    and ruby_ranges[ruby_index].start < end
+                ):
+                    continue
+                new_ranges.append((start, utf16_length))
+            block = block.next()
+
+    if not old_ranges and not new_ranges:
+        return False
+
+    cursor = QTextCursor(document)
+    cursor.beginEditBlock()
+    try:
+        clear_format = _text_combine_modifier(False)
+        for start, length in old_ranges:
+            cursor.setPosition(start)
+            cursor.setPosition(
+                start + length,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            cursor.mergeCharFormat(clear_format)
+        for start, length in new_ranges:
+            cursor.setPosition(start)
+            cursor.setPosition(
+                start + length,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            cursor.mergeCharFormat(_text_combine_modifier(True))
+    finally:
+        cursor.endEditBlock()
+    return True
 
 
 class RubyValidationError(ValueError):
