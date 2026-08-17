@@ -30,6 +30,7 @@ from ballontranslator.utils.config import (
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
+from .text_engine.item import TextBlkItem
 from .configpanel import ConfigPanel
 from .shortcut_editor import resolve_shortcut_keys
 from .module_manager import ModuleManager
@@ -853,6 +854,7 @@ class MainWindow(mainwindow_cls):
         self.titleBar.font_exclusion_trigger.connect(
             self.configPanel.show_font_exclusion_dialog
         )
+        self.titleBar.path_reorder_trigger.connect(self.on_path_reorder)
 
         self.configPanel.shortcuts_changed.connect(self.refreshShortcuts)
         self._install_shortcuts()
@@ -898,6 +900,7 @@ class MainWindow(mainwindow_cls):
         self.shortcut_registry["escape"] = self._make_shortcuts("escape", self.shortcutEscape)
         self.shortcut_registry["space_inpaint"] = self._make_shortcuts("space_inpaint", self.shortcutSpace)
         self.shortcut_registry["merge_tool"] = self._make_shortcuts("merge_tool", self.on_open_merge_tool)
+        self.shortcut_registry["path_reorder"] = self._make_shortcuts("path_reorder", self.on_path_reorder)
 
         drawpanel_info = {
             "hand": "hand_tool",
@@ -1090,6 +1093,100 @@ class MainWindow(mainwindow_cls):
             self.merge_dialog.activateWindow()
         else:
             self.merge_dialog.show()
+
+    # ── Path Reorder ─────────────────────────────────────────
+
+    def on_path_reorder(self):
+        """Path Reorder: user draws a path across text blocks to set reading order."""
+        if self.canvas._reorder_mode:
+            # Already in path-reorder mode — ignore repeat trigger
+            return
+
+        if self.imgtrans_proj.is_empty:
+            QMessageBox.warning(
+                self, self.tr("Warning"), self.tr("Please open a project first")
+            )
+            return
+
+        current_img = self.imgtrans_proj.current_img
+        if not current_img:
+            QMessageBox.warning(
+                self, self.tr("Warning"), self.tr("No current file")
+            )
+            return
+
+        if not self.imgtrans_proj.current_block_list():
+            QMessageBox.warning(
+                self, self.tr("Notice"), self.tr("No text blocks on current page")
+            )
+            return
+
+        self.canvas.reorder_path_finished.connect(self._on_reorder_path_done)
+        self.canvas.enterReorderMode()
+
+    def _on_reorder_path_done(self, touched_ids):
+        """Callback when a reorder path stroke is completed."""
+        self.canvas.reorder_path_finished.disconnect(self._on_reorder_path_done)
+
+        if len(touched_ids) < 2:
+            mb = QMessageBox(self)
+            mb.setWindowTitle(self.tr("Path Reorder"))
+            mb.setText(
+                self.tr(
+                    "Not enough text blocks touched by the path (need at least 2)."
+                )
+            )
+            cont_btn = mb.addButton(
+                self.tr("Continue Drawing"), QMessageBox.ButtonRole.ActionRole
+            )
+            mb.addButton(
+                self.tr("Cancel"), QMessageBox.ButtonRole.RejectRole
+            )
+            mb.setDefaultButton(cont_btn)
+            mb.exec_()
+            if mb.clickedButton() == cont_btn:
+                self.canvas.reorder_path_finished.connect(self._on_reorder_path_done)
+            else:
+                self.canvas.exitReorderMode()
+            return
+
+        mb = QMessageBox(self)
+        mb.setWindowTitle(self.tr("Path Reorder"))
+        mb.setText(self.tr("Apply reorder?"))
+        apply_btn = mb.addButton(
+            self.tr("Apply"), QMessageBox.ButtonRole.AcceptRole
+        )
+        cont_btn = mb.addButton(
+            self.tr("Continue Drawing"), QMessageBox.ButtonRole.ActionRole
+        )
+        mb.addButton(
+            self.tr("Cancel"), QMessageBox.ButtonRole.RejectRole
+        )
+        mb.setDefaultButton(apply_btn)
+        mb.exec_()
+
+        clicked = mb.clickedButton()
+        if clicked == apply_btn:
+            current_img = self.imgtrans_proj.current_img
+            # Build block list from canvas items (includes unsaved new blocks)
+            blk_list = [
+                item.blk
+                for item in self.canvas.textLayer.childItems()
+                if isinstance(item, TextBlkItem)
+            ]
+            reordered = [blk_list[i] for i in touched_ids]
+            untouched = [
+                b for i, b in enumerate(blk_list) if i not in touched_ids
+            ]
+            reordered.extend(untouched)
+            self.imgtrans_proj.pages[current_img] = reordered
+            self.canvas.updateCanvas()
+            self.st_manager.updateSceneTextitems()
+            self.canvas.exitReorderMode()
+        elif clicked == cont_btn:
+            self.canvas.reorder_path_finished.connect(self._on_reorder_path_done)
+        else:
+            self.canvas.exitReorderMode()
 
     def run_merge_task(self, on_current=False):
         """执行区域合并任务"""

@@ -2,9 +2,9 @@ import numpy as np
 from typing import Callable, List, Optional, Union
 import os
 
-from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand, QGraphicsPathItem
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSize, QSizeF, QEvent, QTimer
-from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
+from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QPainterPathStroker, QColor, QCursor, QNativeGestureEvent
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
@@ -162,6 +162,9 @@ class Canvas(QGraphicsScene):
     incanvas_selection_changed = Signal()
     switch_text_item = Signal(int, QKeyEvent)
 
+    # Path-reorder mode
+    reorder_path_finished = Signal(list)  # touched_ids in contact order
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scale_factor = 1.
@@ -170,6 +173,14 @@ class Canvas(QGraphicsScene):
         self.creating_textblock = False
         self.create_block_origin: QPointF = None
         self.editing_textblkitem: TextBlkItem = None
+
+        # Path-reorder mode (replaces grid-based Smart Reorder)
+        self._reorder_mode = False
+        self._reorder_drawing = False       # left button currently held
+        self._reorder_path = QPainterPath()
+        self._reorder_path_item: QGraphicsPathItem = None
+        self._reorder_touched_blocks: List[TextBlock] = []
+        self._reorder_brush_radius = 20.0   # effective brush half-width (scene coords)
 
         self.gv = CustomGV(self)
         self.gv.scale_down_signal.connect(self.scaleDown)
@@ -705,7 +716,116 @@ class Canvas(QGraphicsScene):
                 textblk_created = True
         return textblk_created
 
+    # ── Path-reorder mode ───────────────────────────────────────
+
+    def enterReorderMode(self):
+        """Enter path-drawing reorder mode.
+
+        The user draws one or more strokes across text blocks on the canvas.
+        Blocks are reordered in the sequence they are first touched.
+        """
+        self._reorder_mode = True
+        self._reorder_drawing = False
+        self._reorder_path = QPainterPath()
+        self._reorder_touched_blocks.clear()
+        self.gv.setCursor(Qt.CursorShape.CrossCursor)
+        self.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
+
+        # Create visual path item
+        pen = QPen(QColor(52, 152, 219, 150), 4)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        self._reorder_path_item = QGraphicsPathItem()
+        self._reorder_path_item.setPen(pen)
+        self._reorder_path_item.setZValue(150)  # above textLayer children
+        self._reorder_path_item.setParentItem(self.textLayer)
+        self._reorder_path_item.hide()
+        self.addItem(self._reorder_path_item)
+
+    def exitReorderMode(self):
+        """Exit path-drawing reorder mode and clean up."""
+        self._reorder_mode = False
+        self._reorder_drawing = False
+        self._reorder_path = QPainterPath()
+        self._reorder_touched_blocks.clear()
+        self.gv.unsetCursor()
+        self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+        # Remove visual path item
+        if self._reorder_path_item is not None:
+            self.removeItem(self._reorder_path_item)
+            self._reorder_path_item = None
+
+        # Reset reorder badge state on all text blocks
+        for item in self.textLayer.childItems():
+            if isinstance(item, TextBlkItem):
+                if item._reorder_seq >= 0:
+                    item._reorder_seq = -1
+                    item.setSelected(False)
+                    item.update()
+
+    def _reorder_start_stroke(self, scene_pos: QPointF):
+        """Begin a new reorder path stroke at *scene_pos*."""
+        self._reorder_drawing = True
+        self._reorder_path = QPainterPath()
+        # Map from scene coords to textLayer local coords so the path
+        # and absBoundingRect() are in the same coordinate space.
+        self._reorder_path.moveTo(self.textLayer.mapFromScene(scene_pos))
+
+    def _reorder_extend_stroke(self, scene_pos: QPointF):
+        """Extend the current reorder stroke and check intersections."""
+        # Map to textLayer local coords to match absBoundingRect() space
+        local_pos = self.textLayer.mapFromScene(scene_pos)
+        self._reorder_path.lineTo(local_pos)
+
+        # Build a stroked (wide) version for collision detection.
+        # Scale brush radius inversely with zoom so the visual hit
+        # area stays consistent regardless of zoom level.
+        stroker = QPainterPathStroker()
+        stroker.setWidth(self._reorder_brush_radius * 2 / self.scale_factor)
+        stroked = stroker.createStroke(self._reorder_path)
+
+        # Check un-touched blocks
+        for item in self.textLayer.childItems():
+            if not isinstance(item, TextBlkItem):
+                continue
+            if any(item.blk is blk for blk in self._reorder_touched_blocks):
+                continue
+            br = item.absBoundingRect(qrect=True)
+            if stroked.intersects(br):
+                self._reorder_touched_blocks.append(item.blk)
+                item.setSelected(True)
+                item._reorder_seq = len(self._reorder_touched_blocks) - 1
+                item.update()
+
+        # Update visual path
+        if self._reorder_path_item is not None:
+            self._reorder_path_item.setPath(self._reorder_path)
+            if not self._reorder_path_item.isVisible():
+                self._reorder_path_item.show()
+
+    def _reorder_end_stroke(self):
+        """Finalize current stroke and emit results."""
+        self._reorder_drawing = False
+        # Build index from ALL canvas text items (includes unsaved
+        # new blocks that aren't yet in imgtrans_proj.pages)
+        canvas_blocks = [
+            item.blk
+            for item in self.textLayer.childItems()
+            if isinstance(item, TextBlkItem)
+        ]
+        idx_map = {id(blk): i for i, blk in enumerate(canvas_blocks)}
+        touched_ids = [
+            idx_map[id(blk)]
+            for blk in self._reorder_touched_blocks
+            if id(blk) in idx_map
+        ]
+        self.reorder_path_finished.emit(touched_ids)
+
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        # Path-reorder mode — extend stroke and check intersections
+        if self._reorder_drawing:
+            self._reorder_extend_stroke(event.scenePos())
+            return
         control = self.active_text_transform_control()
         if control is not None and control.handle_modal_mouse_move(event):
             return
@@ -780,6 +900,10 @@ class Canvas(QGraphicsScene):
         if control is not None and control.handle_modal_mouse_press(event):
             return
         btn = event.button()
+        # Path-reorder mode — start drawing a stroke
+        if self._reorder_mode and btn == Qt.MouseButton.LeftButton:
+            self._reorder_start_stroke(event.scenePos())
+            return
         if (
             btn in (
                 Qt.MouseButton.LeftButton,
@@ -846,6 +970,10 @@ class Canvas(QGraphicsScene):
         if control is not None and control.handle_modal_mouse_release(event):
             return
         btn = event.button()
+        # Path-reorder mode — finish stroke and emit results
+        if self._reorder_drawing and btn == Qt.MouseButton.LeftButton:
+            self._reorder_end_stroke()
+            return
         rubber_target = self._rubber_band_target
         if self._finish_rubber_band(event.scenePos(), btn) and (
             rubber_target == 'grid'

@@ -50,6 +50,7 @@ DEFAULT_SHORTCUTS: Dict[str, List[str]] = {
     "inpaint_tool": ["J"],
     "pen_tool": ["B"],
     "merge_tool": ["Ctrl+Shift+M"],
+    "path_reorder": [],
 }
 
 _ACTION_NAMES: Dict[str, str] = {
@@ -79,6 +80,7 @@ _ACTION_NAMES: Dict[str, str] = {
     "inpaint_tool": "Inpaint Tool",
     "pen_tool": "Pen Tool",
     "merge_tool": "Merge Tool",
+    "path_reorder": "Path Reorder",
 }
 
 _SHORTCUT_GROUPS: List[tuple] = [
@@ -108,6 +110,7 @@ _SHORTCUT_GROUPS: List[tuple] = [
             "inpaint_tool",
             "pen_tool",
             "merge_tool",
+            "path_reorder",
             "space_inpaint",
         ],
     ),

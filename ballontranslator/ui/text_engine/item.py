@@ -56,6 +56,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.old_ffmt_values = None
         
         self.idx = idx
+        self._reorder_seq = -1   # reading-order badge override during path reorder
         
         self.stroke_qcolor = QColor(0, 0, 0)
         self._old_pos = QPointF()
@@ -594,7 +595,10 @@ class TextBlkItem(QGraphicsTextItem):
         font = QFont()
         font.setBold(True)
         font.setPixelSize(font_size)
-        seq_text = str(self.idx + 1)
+        if self._reorder_seq >= 0:
+            seq_text = str(self._reorder_seq + 1)
+        else:
+            seq_text = str(self.idx + 1)
         fm = QFontMetrics(font)
         text_w = fm.horizontalAdvance(seq_text) + 8
         text_h = fm.height() + 4

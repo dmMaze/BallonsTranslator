@@ -415,11 +415,16 @@ class TitleBar(Widget):
         mergeToolAction = QAction('区域合并工具', self)
         self.merge_tool_trigger = mergeToolAction.triggered
 
+        # 路径重排（画路径定义阅读顺序）
+        pathReorderAction = QAction(self.tr('Path Reorder'), self)
+        self.path_reorder_trigger = pathReorderAction.triggered
+
         fontExclusionAction = QAction(self.tr('Font Exclusion'), self)
         self.font_exclusion_trigger = fontExclusionAction.triggered
         
         toolsMenu = QMenu(self.toolsToolBtn)
         toolsMenu.addAction(mergeToolAction)
+        toolsMenu.addAction(pathReorderAction)
         toolsMenu.addSeparator()
         toolsMenu.addAction(fontExclusionAction)
         self.toolsToolBtn.setMenu(toolsMenu)
